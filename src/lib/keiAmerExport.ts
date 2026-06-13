@@ -64,6 +64,7 @@ export async function exportKeiListingsToEstateOS(options?: {
   agentCommissionPercent?: number;
   count?: number;
   propertyKind?: KeiPropertyKind;
+  selections?: Array<{ keiId?: string; portalUrl: string }>;
 }): Promise<{
   ok: true;
   exported: KeiExportItemResult[];
@@ -84,8 +85,17 @@ export async function exportKeiListingsToEstateOS(options?: {
 
   const targetUserId = resolveExportUserId(options?.targetUserId);
   const agentCommissionPercent = resolveCommissionPercent(options?.agentCommissionPercent);
-  const count = resolveExportCount(options?.count);
   const propertyKind = resolvePropertyKind(options?.propertyKind);
+
+  const rawSelections = Array.isArray(options?.selections) ? options.selections : [];
+  const selections = rawSelections
+    .map((row) => ({
+      keiId: String(row?.keiId || '').trim(),
+      portalUrl: String(row?.portalUrl || '').trim(),
+    }))
+    .filter((row) => row.portalUrl);
+
+  const count = selections.length > 0 ? selections.length : resolveExportCount(options?.count);
 
   const owner = await prisma.user.findUnique({
     where: { id: targetUserId },
@@ -95,28 +105,51 @@ export async function exportKeiListingsToEstateOS(options?: {
     throw new Error(`Użytkownik docelowy #${targetUserId} nie istnieje.`);
   }
 
-  const listings = await findWarsawPortalListings({
-    propertyKind,
-    maxResults: Math.max(count * 5, 30),
-    maxPages: 12,
-  });
+  type ExportTarget = { keiListingId: string; portalUrl: string };
 
-  if (listings.length === 0) {
-    throw new Error(
-      `Nie znaleziono ogłoszeń (${keiPropertyKindLabel(propertyKind)}) w Warszawie z linkiem OtoDom / OLX / Nieruchomosci-Online.`,
-    );
+  let exportTargets: ExportTarget[] = [];
+
+  if (selections.length > 0) {
+    exportTargets = selections.map((row) => ({
+      keiListingId: row.keiId || row.portalUrl,
+      portalUrl: row.portalUrl,
+    }));
+  } else {
+    const listings = await findWarsawPortalListings({
+      propertyKind,
+      maxResults: Math.max(count * 5, 30),
+      maxPages: 12,
+    });
+
+    if (listings.length === 0) {
+      throw new Error(
+        `Nie znaleziono ogłoszeń (${keiPropertyKindLabel(propertyKind)}) w Warszawie z linkiem OtoDom / OLX / Nieruchomosci-Online.`,
+      );
+    }
+
+    exportTargets = listings
+      .map((listing) => ({
+        keiListingId: listing.id,
+        portalUrl: String(listing.www || '').trim(),
+      }))
+      .filter((row) => row.portalUrl);
+  }
+
+  if (exportTargets.length === 0) {
+    throw new Error('Brak ogłoszeń do eksportu.');
   }
 
   const exported: KeiExportItemResult[] = [];
   const skipped: KeiExportSkippedItem[] = [];
 
-  for (const listing of listings) {
-    if (exported.length >= count) break;
+  for (const target of exportTargets) {
+    if (selections.length === 0 && exported.length >= count) break;
 
-    const portalUrl = String(listing.www || '').trim();
+    const portalUrl = target.portalUrl;
+    const keiListingId = target.keiListingId;
     if (!portalUrl || !isSupportedImportOfferUrl(portalUrl)) {
       skipped.push({
-        keiListingId: listing.id,
+        keiListingId,
         portalUrl: portalUrl || '(pusty)',
         reason: 'Nieobsługiwany link portalu.',
       });
@@ -127,7 +160,7 @@ export async function exportKeiListingsToEstateOS(options?: {
       const existingByUrl = await findExistingImportedOfferByPortalUrl(portalUrl);
       if (existingByUrl) {
         skipped.push({
-          keiListingId: listing.id,
+          keiListingId,
           portalUrl,
           reason: 'Już zaimportowane (URL) — pominięto.',
           existingOfferId: existingByUrl.id,
@@ -139,7 +172,7 @@ export async function exportKeiListingsToEstateOS(options?: {
       const existing = await findExistingImportedOffer(draft);
       if (existing) {
         skipped.push({
-          keiListingId: listing.id,
+          keiListingId,
           portalUrl,
           reason: 'Już zaimportowane — pominięto.',
           existingOfferId: existing.id,
@@ -154,7 +187,7 @@ export async function exportKeiListingsToEstateOS(options?: {
 
       if (!created.ok) {
         skipped.push({
-          keiListingId: listing.id,
+          keiListingId,
           portalUrl,
           reason: created.message || 'Import nie powiódł się.',
           existingOfferId: created.existingOfferId,
@@ -170,7 +203,7 @@ export async function exportKeiListingsToEstateOS(options?: {
       });
 
       exported.push({
-        keiListingId: listing.id,
+        keiListingId,
         portalUrl,
         offerId: created.offerId,
         publicUrl: created.publicUrl,
@@ -178,7 +211,7 @@ export async function exportKeiListingsToEstateOS(options?: {
       });
     } catch (error) {
       skipped.push({
-        keiListingId: listing.id,
+        keiListingId,
         portalUrl,
         reason: error instanceof Error ? error.message : 'Nieznany błąd importu.',
       });
@@ -187,6 +220,11 @@ export async function exportKeiListingsToEstateOS(options?: {
 
   if (exported.length === 0) {
     const alreadyImported = skipped.filter((item) => item.existingOfferId).length;
+    if (selections.length > 0 && alreadyImported > 0) {
+      throw new Error(
+        `Wybrane ogłoszenia są już w bazie (${alreadyImported} pominiętych). Odznacz je lub wybierz inne.`,
+      );
+    }
     if (alreadyImported > 0) {
       throw new Error(
         `Wszystkie sprawdzone ogłoszenia są już w bazie (${alreadyImported} pominiętych). Brak nowych do eksportu.`,

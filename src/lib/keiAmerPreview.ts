@@ -1,7 +1,7 @@
 import { findExistingImportedOfferByPortalUrl } from '@/lib/otodomImportCreate';
 import {
   ensureKeiAmerSession,
-  findWarsawPortalListings,
+  findWarsawPortalListingsPaged,
   isSupportedKeiPortalUrl,
   keiPropertyKindLabel,
   type KeiPropertyKind,
@@ -18,7 +18,6 @@ export type KeiPreviewListing = {
   sourceLabel: string;
   alreadyImported: boolean;
   existingOfferId: number | null;
-  willExport: boolean;
 };
 
 function portalHostFromUrl(url: string): string {
@@ -36,42 +35,16 @@ function sourceLabelFromHost(host: string): string {
   return host || 'Portal';
 }
 
-export async function previewKeiExportListings(options?: {
-  propertyKind?: KeiPropertyKind;
-  count?: number;
-}): Promise<{
-  ok: true;
-  propertyKind: KeiPropertyKind;
-  count: number;
-  listings: KeiPreviewListing[];
-  message: string;
-}> {
-  const session = await ensureKeiAmerSession();
-  if (!session.ok) {
-    throw new Error(session.message);
-  }
-
-  const propertyKind = options?.propertyKind === 'house' ? 'house' : 'apartment';
-  const count = Math.max(1, Math.min(Number(options?.count) || 10, 30));
-
-  const rows = await findWarsawPortalListings({
-    propertyKind,
-    maxResults: Math.max(count * 4, 20),
-    maxPages: 10,
-  });
-
+async function mapRowsToPreviewListings(
+  rows: Awaited<ReturnType<typeof findWarsawPortalListingsPaged>>['rows'],
+): Promise<KeiPreviewListing[]> {
   const listings: KeiPreviewListing[] = [];
-  let exportSlots = count;
 
   for (const row of rows) {
     const portalUrl = String(row.www || '').trim();
     if (!portalUrl || !isSupportedKeiPortalUrl(portalUrl)) continue;
 
     const existing = await findExistingImportedOfferByPortalUrl(portalUrl);
-    const alreadyImported = Boolean(existing);
-    const willExport = !alreadyImported && exportSlots > 0;
-    if (willExport) exportSlots -= 1;
-
     const host = portalHostFromUrl(portalUrl);
     listings.push({
       keiId: row.id,
@@ -82,26 +55,57 @@ export async function previewKeiExportListings(options?: {
       portalUrl,
       portalHost: host,
       sourceLabel: sourceLabelFromHost(host),
-      alreadyImported,
+      alreadyImported: Boolean(existing),
       existingOfferId: existing?.id ?? null,
-      willExport,
     });
-
-    if (listings.length >= count + 10) break;
   }
+
+  return listings;
+}
+
+export async function previewKeiExportListings(options?: {
+  propertyKind?: KeiPropertyKind;
+  page?: number;
+  pageSize?: number;
+  /** Pula do auto-zaznaczenia (strona 1, do 25 pozycji). */
+  selectionPool?: boolean;
+}): Promise<{
+  ok: true;
+  propertyKind: KeiPropertyKind;
+  page: number;
+  pageSize: number;
+  hasNextPage: boolean;
+  listings: KeiPreviewListing[];
+  message: string;
+}> {
+  const session = await ensureKeiAmerSession();
+  if (!session.ok) {
+    throw new Error(session.message);
+  }
+
+  const propertyKind = options?.propertyKind === 'house' ? 'house' : 'apartment';
+  const page = options?.selectionPool ? 1 : Math.max(1, Math.floor(options?.page ?? 1));
+  const pageSize = options?.selectionPool
+    ? 25
+    : Math.max(1, Math.min(Math.floor(options?.pageSize ?? 12), 30));
+
+  const paged = await findWarsawPortalListingsPaged({ propertyKind, page, pageSize });
+  const listings = await mapRowsToPreviewListings(paged.rows);
 
   const kindLabel = keiPropertyKindLabel(propertyKind);
   const freshCount = listings.filter((item) => !item.alreadyImported).length;
   const message =
     listings.length === 0
-      ? `Brak ogłoszeń (${kindLabel}) w Warszawie z obsługiwanym linkiem portalu.`
-      : `Podgląd ${listings.length} ogłoszeń (${kindLabel}). ${freshCount} nowych do eksportu.`;
+      ? `Brak ogłoszeń (${kindLabel}) na stronie ${page}.`
+      : `Strona ${page}: ${listings.length} ogłoszeń (${kindLabel}), ${freshCount} nowych.`;
 
   return {
     ok: true,
     propertyKind,
-    count,
-    listings: listings.slice(0, count + 10),
+    page: paged.page,
+    pageSize: paged.pageSize,
+    hasNextPage: paged.hasNextPage,
+    listings,
     message,
   };
 }

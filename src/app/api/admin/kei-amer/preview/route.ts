@@ -14,10 +14,12 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const propertyKind = url.searchParams.get('propertyKind') === 'house' ? 'house' : 'apartment';
-  const count = Number(url.searchParams.get('count') || 10);
+  const page = Number(url.searchParams.get('page') || 1);
+  const pageSize = Number(url.searchParams.get('pageSize') || 12);
+  const selectionPool = url.searchParams.get('selectionPool') === '1';
 
   try {
-    const result = await previewKeiExportListings({ propertyKind, count });
+    const result = await previewKeiExportListings({ propertyKind, page, pageSize, selectionPool });
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Podgląd KEI nie powiódł się.';

@@ -259,6 +259,35 @@ export async function findWarsawPortalListings(options?: {
   return results;
 }
 
+export async function findWarsawPortalListingsPaged(options?: {
+  propertyKind?: KeiPropertyKind;
+  page?: number;
+  pageSize?: number;
+}): Promise<{
+  rows: KeiListingRow[];
+  page: number;
+  pageSize: number;
+  hasNextPage: boolean;
+}> {
+  const page = Math.max(1, Math.floor(options?.page ?? 1));
+  const pageSize = Math.max(1, Math.min(Math.floor(options?.pageSize ?? 12), 30));
+  const skip = (page - 1) * pageSize;
+  const need = skip + pageSize + 1;
+
+  const collected = await findWarsawPortalListings({
+    propertyKind: options?.propertyKind,
+    maxResults: need,
+    maxPages: Math.min(Math.ceil(need / 6) + 4, 24),
+  });
+
+  return {
+    rows: collected.slice(skip, skip + pageSize),
+    page,
+    pageSize,
+    hasNextPage: collected.length > skip + pageSize,
+  };
+}
+
 export async function findLatestWarsawPortalListing(
   propertyKind: KeiPropertyKind = 'apartment',
   maxPages = 8,

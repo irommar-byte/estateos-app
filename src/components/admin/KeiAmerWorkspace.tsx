@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, Eye, Loader2, RefreshCw, UploadCloud } from "lucide-react";
+import { Check, ExternalLink, Eye, Loader2, RefreshCw, UploadCloud } from "lucide-react";
 
 type SessionState = {
   loading: boolean;
@@ -34,17 +34,64 @@ type PreviewListing = {
   sourceLabel: string;
   alreadyImported: boolean;
   existingOfferId: number | null;
-  willExport: boolean;
 };
 
 type PreviewState = {
   loading: boolean;
   error: string;
   message: string;
+  page: number;
+  hasNextPage: boolean;
   listings: PreviewListing[];
 };
 
 type PropertyKind = "apartment" | "house";
+type GridDensity = 1 | 2 | 4;
+
+const MAX_SELECT = 25;
+const PAGE_SIZE = 12;
+
+const GRID_DENSITY_OPTIONS: { value: GridDensity; label: string }[] = [
+  { value: 1, label: "1 na stronę" },
+  { value: 2, label: "2 obok siebie" },
+  { value: 4, label: "4 w rzędzie" },
+];
+
+function gridColsClass(density: GridDensity): string {
+  if (density === 4) return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4";
+  if (density === 2) return "grid-cols-1 sm:grid-cols-2";
+  return "grid-cols-1";
+}
+
+function PagePager(props: {
+  page: number;
+  hasNextPage: boolean;
+  onChange: (page: number) => void;
+  disabled?: boolean;
+}) {
+  const maxPage = props.page + (props.hasNextPage ? 1 : 0);
+  const pages = Array.from({ length: maxPage }, (_, i) => i + 1);
+
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2">
+      {pages.map((p) => (
+        <button
+          key={p}
+          type="button"
+          disabled={props.disabled}
+          onClick={() => props.onChange(p)}
+          className={`min-w-[2.25rem] h-9 px-3 rounded-xl text-xs font-black transition-colors disabled:opacity-50 ${
+            p === props.page
+              ? "bg-emerald-500 text-black"
+              : "bg-white/5 border border-white/10 text-white/70 hover:text-white hover:border-white/25"
+          }`}
+        >
+          {p}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function KeiAmerWorkspace() {
   const [session, setSession] = useState<SessionState>({
@@ -56,6 +103,9 @@ export default function KeiAmerWorkspace() {
   const [commissionPercent, setCommissionPercent] = useState("2");
   const [exportCount, setExportCount] = useState("1");
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("apartment");
+  const [previewPage, setPreviewPage] = useState(1);
+  const [gridDensity, setGridDensity] = useState<GridDensity>(1);
+  const [selectedMap, setSelectedMap] = useState<Map<string, string>>(new Map());
   const [exportState, setExportState] = useState<ExportState>({
     loading: false,
     message: "",
@@ -67,8 +117,12 @@ export default function KeiAmerWorkspace() {
     loading: false,
     error: "",
     message: "",
+    page: 1,
+    hasNextPage: false,
     listings: [],
   });
+
+  const selectedCount = selectedMap.size;
 
   const ensureSession = useCallback(async (force = false) => {
     setSession((prev) => ({ ...prev, loading: true }));
@@ -93,57 +147,105 @@ export default function KeiAmerWorkspace() {
     }
   }, []);
 
-  const loadPreview = useCallback(async () => {
-    const count = Math.max(Number(exportCount) || 1, 10);
-    setPreview((prev) => ({ ...prev, loading: true, error: "" }));
-    try {
-      const qs = new URLSearchParams({
-        propertyKind,
-        count: String(Math.min(count + 5, 20)),
-      });
-      const res = await fetch(`/api/admin/kei-amer/preview?${qs.toString()}`, {
-        credentials: "include",
-        cache: "no-store",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+  const loadPreview = useCallback(
+    async (page = previewPage) => {
+      setPreview((prev) => ({ ...prev, loading: true, error: "" }));
+      try {
+        const qs = new URLSearchParams({
+          propertyKind,
+          page: String(page),
+          pageSize: String(PAGE_SIZE),
+        });
+        const res = await fetch(`/api/admin/kei-amer/preview?${qs.toString()}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setPreview({
+            loading: false,
+            error: String(data?.error || `Błąd podglądu (${res.status}).`),
+            message: "",
+            page,
+            hasNextPage: false,
+            listings: [],
+          });
+          return;
+        }
+        const listings = Array.isArray(data?.listings)
+          ? data.listings.map((row: Record<string, unknown>) => ({
+              keiId: String(row.keiId || ""),
+              date: String(row.date || ""),
+              address: String(row.address || ""),
+              price: String(row.price || ""),
+              area: String(row.area || ""),
+              portalUrl: String(row.portalUrl || ""),
+              sourceLabel: String(row.sourceLabel || ""),
+              alreadyImported: Boolean(row.alreadyImported),
+              existingOfferId: Number(row.existingOfferId) || null,
+            }))
+          : [];
         setPreview({
           loading: false,
-          error: String(data?.error || `Błąd podglądu (${res.status}).`),
+          error: "",
+          message: String(data?.message || ""),
+          page: Number(data?.page) || page,
+          hasNextPage: Boolean(data?.hasNextPage),
+          listings,
+        });
+      } catch {
+        setPreview({
+          loading: false,
+          error: "Błąd połączenia podczas ładowania podglądu.",
           message: "",
+          page,
+          hasNextPage: false,
           listings: [],
         });
+      }
+    },
+    [previewPage, propertyKind],
+  );
+
+  const autoSelectByCount = useCallback(
+    async (count: number) => {
+      if (!session.ok) return;
+      const n = Math.max(0, Math.min(Math.floor(count), MAX_SELECT));
+      if (n === 0) {
+        setSelectedMap(new Map());
         return;
       }
-      const listings = Array.isArray(data?.listings)
-        ? data.listings.map((row: Record<string, unknown>) => ({
-            keiId: String(row.keiId || ""),
-            date: String(row.date || ""),
-            address: String(row.address || ""),
-            price: String(row.price || ""),
-            area: String(row.area || ""),
-            portalUrl: String(row.portalUrl || ""),
-            sourceLabel: String(row.sourceLabel || ""),
-            alreadyImported: Boolean(row.alreadyImported),
-            existingOfferId: Number(row.existingOfferId) || null,
-            willExport: Boolean(row.willExport),
-          }))
-        : [];
-      setPreview({
-        loading: false,
-        error: "",
-        message: String(data?.message || ""),
-        listings,
-      });
-    } catch {
-      setPreview({
-        loading: false,
-        error: "Błąd połączenia podczas ładowania podglądu.",
-        message: "",
-        listings: [],
-      });
-    }
-  }, [exportCount, propertyKind]);
+
+      try {
+        const qs = new URLSearchParams({
+          propertyKind,
+          selectionPool: "1",
+        });
+        const res = await fetch(`/api/admin/kei-amer/preview?${qs.toString()}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+
+        const pool = Array.isArray(data?.listings) ? data.listings : [];
+        const next = new Map<string, string>();
+        for (const row of pool) {
+          if (next.size >= n) break;
+          if (row.alreadyImported) continue;
+          const keiId = String(row.keiId || "");
+          const portalUrl = String(row.portalUrl || "");
+          if (!keiId || !portalUrl) continue;
+          next.set(keiId, portalUrl);
+        }
+        setSelectedMap(next);
+        setExportCount(String(next.size));
+      } catch {
+        // ignore pool fetch errors
+      }
+    },
+    [propertyKind, session.ok],
+  );
 
   useEffect(() => {
     void ensureSession(true);
@@ -151,13 +253,45 @@ export default function KeiAmerWorkspace() {
 
   useEffect(() => {
     if (!session.ok || session.loading) return;
-    void loadPreview();
-  }, [session.ok, session.loading, propertyKind, exportCount, loadPreview]);
+    void loadPreview(previewPage);
+  }, [session.ok, session.loading, propertyKind, previewPage, loadPreview]);
 
-  const handleExportLatest = async () => {
+  useEffect(() => {
+    if (!session.ok) return;
+    setPreviewPage(1);
+    setSelectedMap(new Map());
+    void autoSelectByCount(Number(exportCount) || 1);
+  }, [propertyKind, session.ok]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleExportCountChange = (raw: string) => {
+    setExportCount(raw);
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) {
+      setSelectedMap(new Map());
+      return;
+    }
+    void autoSelectByCount(n);
+  };
+
+  const toggleSelection = (item: PreviewListing) => {
+    if (item.alreadyImported) return;
+
+    setSelectedMap((prev) => {
+      const next = new Map(prev);
+      if (next.has(item.keiId)) {
+        next.delete(item.keiId);
+      } else {
+        if (next.size >= MAX_SELECT) return prev;
+        next.set(item.keiId, item.portalUrl);
+      }
+      setExportCount(String(next.size));
+      return next;
+    });
+  };
+
+  const handleExport = async () => {
     const parsedUserId = Number(targetUserId);
     const parsedCommission = Number(commissionPercent);
-    const parsedCount = Number(exportCount);
 
     if (!Number.isFinite(parsedUserId) || parsedUserId <= 0) {
       setExportState({
@@ -179,16 +313,31 @@ export default function KeiAmerWorkspace() {
       });
       return;
     }
-    if (!Number.isFinite(parsedCount) || parsedCount <= 0 || parsedCount > 25) {
+    if (selectedCount <= 0) {
       setExportState({
         loading: false,
         message: "",
-        error: "Liczba ogłoszeń musi być od 1 do 25.",
+        error: "Zaznacz co najmniej jedno ogłoszenie do eksportu.",
         items: [],
         skippedCount: 0,
       });
       return;
     }
+    if (selectedCount > MAX_SELECT) {
+      setExportState({
+        loading: false,
+        message: "",
+        error: `Maksymalnie ${MAX_SELECT} ogłoszeń na raz.`,
+        items: [],
+        skippedCount: 0,
+      });
+      return;
+    }
+
+    const selections = Array.from(selectedMap.entries()).map(([keiId, portalUrl]) => ({
+      keiId,
+      portalUrl,
+    }));
 
     setExportState({
       loading: true,
@@ -206,8 +355,9 @@ export default function KeiAmerWorkspace() {
         body: JSON.stringify({
           targetUserId: parsedUserId,
           agentCommissionPercent: parsedCommission,
-          count: Math.floor(parsedCount),
+          count: selections.length,
           propertyKind,
+          selections,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -223,24 +373,12 @@ export default function KeiAmerWorkspace() {
       }
 
       const exported = Array.isArray(data?.exported) ? data.exported : [];
-      const items: ExportResultItem[] =
-        exported.length > 0
-          ? exported.map((item: Record<string, unknown>) => ({
-              offerId: Number(item.offerId) || 0,
-              portalUrl: String(item.portalUrl || ""),
-              publicUrl: String(item.publicUrl || ""),
-              editUrl: String(item.editUrl || ""),
-            }))
-          : data?.offerId
-            ? [
-                {
-                  offerId: Number(data.offerId) || 0,
-                  portalUrl: String(data.portalUrl || ""),
-                  publicUrl: String(data.publicUrl || ""),
-                  editUrl: String(data.editUrl || ""),
-                },
-              ]
-            : [];
+      const items: ExportResultItem[] = exported.map((item: Record<string, unknown>) => ({
+        offerId: Number(item.offerId) || 0,
+        portalUrl: String(item.portalUrl || ""),
+        publicUrl: String(item.publicUrl || ""),
+        editUrl: String(item.editUrl || ""),
+      }));
 
       setExportState({
         loading: false,
@@ -249,7 +387,11 @@ export default function KeiAmerWorkspace() {
         items: items.filter((item) => item.offerId > 0),
         skippedCount: Array.isArray(data?.skipped) ? data.skipped.length : 0,
       });
-      void loadPreview();
+
+      setSelectedMap(new Map());
+      setExportCount("1");
+      void autoSelectByCount(1);
+      void loadPreview(previewPage);
     } catch {
       setExportState({
         loading: false,
@@ -261,6 +403,8 @@ export default function KeiAmerWorkspace() {
     }
   };
 
+  const densityIndex = GRID_DENSITY_OPTIONS.findIndex((o) => o.value === gridDensity);
+
   return (
     <div className="mt-10 bg-[#0a0a0a] border border-white/5 rounded-[40px] p-6 md:p-8 shadow-2xl relative overflow-hidden">
       <div className="absolute top-0 right-0 w-72 h-72 bg-cyan-500/5 blur-[120px] rounded-full pointer-events-none" />
@@ -270,8 +414,8 @@ export default function KeiAmerWorkspace() {
           <div>
             <h3 className="text-xl md:text-2xl font-black mb-2">KEI AMER — eksport ogłoszeń</h3>
             <p className="text-gray-500 text-xs md:text-sm max-w-3xl leading-relaxed">
-              Lista najnowszych ogłoszeń z <span className="text-white/70">amer.kei.pl</span> (Warszawa).
-              Zielone pozycje zostaną wyeksportowane po kliknięciu. Już zaimportowane są pomijane automatycznie.
+              Zaznacz ptaszkiem ogłoszenia do importu lub ustaw liczbę — auto-zaznaczy najnowsze.
+              Strony 1, 2, 3… pokazują starsze ogłoszenia z KEI.
             </p>
           </div>
 
@@ -287,7 +431,7 @@ export default function KeiAmerWorkspace() {
             </button>
             <button
               type="button"
-              onClick={() => void loadPreview()}
+              onClick={() => void loadPreview(previewPage)}
               disabled={preview.loading || session.loading || !session.ok}
               className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl border border-white/10 text-xs font-black uppercase tracking-wider text-white/80 hover:text-white hover:border-white/25 transition-colors disabled:opacity-60"
             >
@@ -332,13 +476,15 @@ export default function KeiAmerWorkspace() {
           </label>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Ile ogłoszeń</span>
+            <span className="text-[10px] font-black uppercase tracking-wider text-white/50">
+              Ile ogłoszeń ({selectedCount} zazn.)
+            </span>
             <input
               type="number"
-              min={1}
-              max={25}
+              min={0}
+              max={MAX_SELECT}
               value={exportCount}
-              onChange={(e) => setExportCount(e.target.value)}
+              onChange={(e) => handleExportCountChange(e.target.value)}
               className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white focus:outline-none focus:border-emerald-500/50"
               placeholder="1"
             />
@@ -359,12 +505,12 @@ export default function KeiAmerWorkspace() {
           <div className="flex items-end">
             <button
               type="button"
-              onClick={() => void handleExportLatest()}
-              disabled={exportState.loading || session.loading || !session.ok}
+              onClick={() => void handleExport()}
+              disabled={exportState.loading || session.loading || !session.ok || selectedCount <= 0}
               className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed text-black text-xs font-black uppercase tracking-wider transition-colors shadow-[0_12px_32px_rgba(16,185,129,0.28)]"
             >
               {exportState.loading ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
-              Export najnowsze
+              Export ({selectedCount})
             </button>
           </div>
         </div>
@@ -444,11 +590,40 @@ export default function KeiAmerWorkspace() {
         ) : null}
 
         <div className="rounded-[28px] border border-white/10 bg-white/[0.02] min-h-[320px]">
-          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-3">
-            <p className="text-xs font-black uppercase tracking-wider text-white/60">Podgląd kolejki importu</p>
-            {preview.message ? (
-              <p className="text-[11px] text-white/45 truncate">{preview.message}</p>
-            ) : null}
+          <div className="px-4 py-3 border-b border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wider text-white/60">Podgląd ogłoszeń KEI</p>
+              {preview.message ? (
+                <p className="text-[11px] text-white/45 mt-0.5">{preview.message}</p>
+              ) : null}
+            </div>
+
+            <label className="flex flex-col gap-1 min-w-[180px]">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/45">
+                Układ: {GRID_DENSITY_OPTIONS[densityIndex]?.label ?? "1 na stronę"}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={2}
+                step={1}
+                value={densityIndex >= 0 ? densityIndex : 0}
+                onChange={(e) => {
+                  const idx = Number(e.target.value);
+                  setGridDensity(GRID_DENSITY_OPTIONS[idx]?.value ?? 1);
+                }}
+                className="w-full accent-emerald-500"
+              />
+            </label>
+          </div>
+
+          <div className="px-4 py-3 border-b border-white/10">
+            <PagePager
+              page={preview.page}
+              hasNextPage={preview.hasNextPage}
+              disabled={preview.loading || !session.ok}
+              onChange={(p) => setPreviewPage(p)}
+            />
           </div>
 
           {preview.loading ? (
@@ -461,59 +636,99 @@ export default function KeiAmerWorkspace() {
           ) : preview.listings.length === 0 ? (
             <p className="text-white/40 px-4 py-8 text-sm text-center">
               {session.ok
-                ? "Brak ogłoszeń spełniających kryteria. Zmień typ lub odśwież listę."
+                ? "Brak ogłoszeń na tej stronie. Spróbuj innej strony lub typu."
                 : "Podgląd pojawi się po poprawnym zalogowaniu KEI AMER."}
             </p>
           ) : (
-            <div className="divide-y divide-white/5 max-h-[70vh] overflow-y-auto">
-              {preview.listings.map((item) => (
-                <div
-                  key={item.keiId}
-                  className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 ${
-                    item.willExport
-                      ? "bg-emerald-500/[0.07]"
-                      : item.alreadyImported
-                        ? "bg-white/[0.02] opacity-70"
-                        : ""
-                  }`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
-                        {item.date || "—"}
-                      </span>
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/10 text-white/70">
-                        {item.sourceLabel}
-                      </span>
-                      {item.willExport ? (
-                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300">
-                          Do eksportu
+            <div className={`p-4 grid gap-3 ${gridColsClass(gridDensity)} max-h-[70vh] overflow-y-auto`}>
+              {preview.listings.map((item) => {
+                const isSelected = selectedMap.has(item.keiId);
+                const disabled = item.alreadyImported;
+
+                return (
+                  <div
+                    key={item.keiId}
+                    role="button"
+                    tabIndex={disabled ? -1 : 0}
+                    onClick={() => toggleSelection(item)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleSelection(item);
+                      }
+                    }}
+                    className={`relative rounded-2xl border p-4 transition-colors text-left ${
+                      disabled
+                        ? "border-white/5 bg-white/[0.02] opacity-60 cursor-not-allowed"
+                        : isSelected
+                          ? "border-emerald-400/50 bg-emerald-500/10 cursor-pointer"
+                          : "border-white/10 bg-white/[0.03] hover:border-white/20 cursor-pointer"
+                    } ${gridDensity === 1 ? "min-h-[120px]" : "min-h-[100px]"}`}
+                  >
+                    <div className="absolute top-3 right-3">
+                      {disabled ? (
+                        <span className="text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-full bg-amber-500/15 text-amber-300">
+                          #{item.existingOfferId}
                         </span>
-                      ) : item.alreadyImported ? (
-                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">
-                          W bazie #{item.existingOfferId}
-                        </span>
-                      ) : null}
+                      ) : (
+                        <div
+                          className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center ${
+                            isSelected
+                              ? "bg-emerald-500 border-emerald-400 text-black"
+                              : "border-white/25 bg-black/30"
+                          }`}
+                        >
+                          {isSelected ? <Check size={14} strokeWidth={3} /> : null}
+                        </div>
+                      )}
                     </div>
-                    <p className="text-sm text-white/90 truncate">{item.address || "Brak adresu"}</p>
-                    <p className="text-xs text-white/50 mt-0.5">
-                      {item.price || "—"} · {item.area ? `${item.area} m²` : "—"}
-                    </p>
+
+                    <div className="pr-10">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                          {item.date || "—"}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/10 text-white/70">
+                          {item.sourceLabel}
+                        </span>
+                      </div>
+                      <p
+                        className={`text-white/90 font-semibold leading-snug ${
+                          gridDensity === 1 ? "text-base" : "text-sm line-clamp-3"
+                        }`}
+                      >
+                        {item.address || "Brak adresu"}
+                      </p>
+                      <p className="text-xs text-white/50 mt-2">
+                        {item.price || "—"} · {item.area ? `${item.area} m²` : "—"}
+                      </p>
+                    </div>
+
+                    {item.portalUrl ? (
+                      <a
+                        href={item.portalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300/90 hover:text-cyan-200"
+                      >
+                        Portal <ExternalLink size={11} />
+                      </a>
+                    ) : null}
                   </div>
-                  {item.portalUrl ? (
-                    <a
-                      href={item.portalUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-wider text-white/80 hover:text-white"
-                    >
-                      Zobacz ogłoszenie <ExternalLink size={12} />
-                    </a>
-                  ) : null}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
+
+          <div className="px-4 py-3 border-t border-white/10">
+            <PagePager
+              page={preview.page}
+              hasNextPage={preview.hasNextPage}
+              disabled={preview.loading || !session.ok}
+              onChange={(p) => setPreviewPage(p)}
+            />
+          </div>
         </div>
       </div>
     </div>

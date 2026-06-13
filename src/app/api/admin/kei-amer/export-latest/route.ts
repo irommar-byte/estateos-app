@@ -14,11 +14,21 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   try {
+    const selections = Array.isArray(body?.selections)
+      ? body.selections
+          .map((row: Record<string, unknown>) => ({
+            keiId: String(row?.keiId || ''),
+            portalUrl: String(row?.portalUrl || ''),
+          }))
+          .filter((row: { portalUrl: string }) => row.portalUrl)
+      : undefined;
+
     const result = await exportKeiListingsToEstateOS({
       targetUserId: body?.targetUserId,
       agentCommissionPercent: body?.agentCommissionPercent,
       count: body?.count,
       propertyKind: body?.propertyKind === 'house' ? 'house' : 'apartment',
+      selections,
     });
     return NextResponse.json(result);
   } catch (error) {
