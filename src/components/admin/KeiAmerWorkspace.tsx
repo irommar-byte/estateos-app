@@ -1,7 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Check, ExternalLink, Eye, Loader2, RefreshCw, UploadCloud } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Check,
+  CheckCircle2,
+  Circle,
+  ExternalLink,
+  Eye,
+  ImageIcon,
+  Loader2,
+  RefreshCw,
+  UploadCloud,
+} from "lucide-react";
 
 type SessionState = {
   loading: boolean;
@@ -47,8 +57,62 @@ type PreviewState = {
 
 type PropertyKind = "apartment" | "house";
 
+type ImportStepId = "check_duplicate" | "fetch_portal" | "create_offer" | "images" | "activate";
+
+type LastImagePeek = {
+  loading: boolean;
+  error: string;
+  lastImageUrl: string | null;
+  suggestedFloorPlan: boolean;
+  imageCount: number;
+};
+
+type ItemProgress = {
+  index: number;
+  keiListingId: string;
+  portalUrl: string;
+  status: "pending" | "active" | "done" | "skipped";
+  completedSteps: ImportStepId[];
+  currentStep: ImportStepId | null;
+  stepLabel: string;
+  stepDetail?: string;
+  imageProgress?: { index: number; total: number; label: string; asFloorPlan: boolean };
+  offerId?: number;
+  reason?: string;
+};
+
+type ImportProgressState = {
+  active: boolean;
+  total: number;
+  message: string;
+  items: ItemProgress[];
+};
+
+type ExportFinalResult = {
+  ok: boolean;
+  exported: Record<string, unknown>[];
+  skipped: unknown[];
+  message: string;
+};
+
 const MAX_SELECT = 25;
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 20;
+
+const STEP_ORDER: ImportStepId[] = [
+  "check_duplicate",
+  "fetch_portal",
+  "create_offer",
+  "images",
+  "activate",
+];
+
+const STEP_LABELS: Record<ImportStepId, string> = {
+  check_duplicate: "Duplikat",
+  fetch_portal: "Portal",
+  create_offer: "Oferta",
+  images: "Zdjęcia",
+  activate: "Publikacja",
+};
 
 function PagePager(props: {
   page: number;
@@ -80,6 +144,185 @@ function PagePager(props: {
   );
 }
 
+function ImportProgressPanel(props: { progress: ImportProgressState }) {
+  const { progress } = props;
+  if (!progress.active) return null;
+
+  const doneCount = progress.items.filter((i) => i.status === "done").length;
+  const pct = progress.total > 0 ? Math.round((doneCount / progress.total) * 100) : 0;
+  const activeItem = progress.items.find((i) => i.status === "active");
+
+  return (
+    <div className="rounded-[24px] border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02] backdrop-blur-xl overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+      <div className="px-5 py-4 border-b border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/45">Import w toku</p>
+          <p className="text-sm font-semibold text-white/90 mt-1">
+            {doneCount} / {progress.total} ogłoszeń
+          </p>
+        </div>
+        <div className="flex items-center gap-3 min-w-[180px]">
+          <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-500 ease-out"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <span className="text-xs font-bold text-white/60 tabular-nums w-10 text-right">{pct}%</span>
+        </div>
+      </div>
+
+      {activeItem ? (
+        <div className="px-5 py-3 bg-emerald-500/[0.06] border-b border-white/5">
+          <p className="text-[10px] uppercase tracking-wider text-emerald-300/70 font-bold">Teraz</p>
+          <p className="text-sm text-white/90 truncate">{activeItem.stepLabel}</p>
+          {activeItem.stepDetail ? (
+            <p className="text-xs text-white/45 truncate mt-0.5">{activeItem.stepDetail}</p>
+          ) : null}
+          {activeItem.imageProgress ? (
+            <p className="text-[11px] text-cyan-300/80 mt-1">
+              {activeItem.imageProgress.label}
+              {activeItem.imageProgress.asFloorPlan ? " · rzut lokalu" : ""}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="divide-y divide-white/5 max-h-[280px] overflow-y-auto">
+        {progress.items.map((item) => (
+          <div key={`${item.index}-${item.portalUrl}`} className="px-5 py-3 flex items-start gap-3">
+            <div className="mt-0.5 shrink-0">
+              {item.status === "done" ? (
+                <CheckCircle2 size={18} className="text-emerald-400" />
+              ) : item.status === "skipped" ? (
+                <Circle size={18} className="text-amber-400/70" />
+              ) : item.status === "active" ? (
+                <Loader2 size={18} className="text-cyan-300 animate-spin" />
+              ) : (
+                <Circle size={18} className="text-white/20" />
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                <span className="text-[10px] font-bold text-white/40">#{item.index + 1}</span>
+                {item.offerId ? (
+                  <span className="text-[10px] font-black text-emerald-300">oferta #{item.offerId}</span>
+                ) : null}
+                {item.status === "skipped" ? (
+                  <span className="text-[10px] text-amber-300/90 truncate">{item.reason}</span>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap gap-1">
+                {STEP_ORDER.map((step) => {
+                  const done = item.completedSteps.includes(step);
+                  const current = item.status === "active" && item.currentStep === step;
+                  return (
+                    <span
+                      key={step}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${
+                        done
+                          ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25"
+                          : current
+                            ? "bg-cyan-500/15 text-cyan-200 border border-cyan-400/30"
+                            : "bg-white/5 text-white/30 border border-white/5"
+                      }`}
+                    >
+                      {done ? <Check size={8} strokeWidth={3} /> : null}
+                      {STEP_LABELS[step]}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {progress.message ? (
+        <div className="px-5 py-3 border-t border-white/10 text-xs text-white/50">{progress.message}</div>
+      ) : null}
+    </div>
+  );
+}
+
+function FloorPlanToggle(props: {
+  portalUrl: string;
+  peek: LastImagePeek | undefined;
+  asFloorPlan: boolean | undefined;
+  onChange: (portalUrl: string, value: boolean) => void;
+}) {
+  const { peek, portalUrl, asFloorPlan, onChange } = props;
+  const effective = asFloorPlan ?? peek?.suggestedFloorPlan ?? false;
+
+  return (
+    <div className="mt-2 p-2.5 rounded-xl bg-black/30 border border-white/10 flex items-center gap-3">
+      <div className="w-14 h-14 rounded-lg overflow-hidden bg-white/5 border border-white/10 shrink-0 flex items-center justify-center">
+        {peek?.loading ? (
+          <Loader2 size={16} className="animate-spin text-white/40" />
+        ) : peek?.lastImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={peek.lastImageUrl} alt="Ostatnie zdjęcie" className="w-full h-full object-cover" />
+        ) : (
+          <ImageIcon size={18} className="text-white/30" />
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-white/45">Ostatnie zdjęcie</p>
+        <p className="text-[11px] text-white/60 truncate">
+          {peek?.loading
+            ? "Analiza…"
+            : peek?.error
+              ? peek.error
+              : peek?.imageCount
+                ? `${peek.imageCount} zdj. · ${peek.suggestedFloorPlan ? "wykryto rzut" : "zdjęcie"}`
+                : "Brak podglądu"}
+        </p>
+        <label className="mt-1.5 inline-flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={effective}
+            onChange={(e) => onChange(portalUrl, e.target.checked)}
+            className="rounded border-white/20 bg-black/40 text-emerald-500 focus:ring-emerald-500/40"
+          />
+          <span className="text-[10px] font-semibold text-white/75">Importuj jako rzut lokalu</span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+async function consumeExportStream(
+  response: Response,
+  onEvent: (payload: Record<string, unknown>) => void,
+): Promise<void> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Brak strumienia odpowiedzi.");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() || "";
+
+    for (const chunk of chunks) {
+      const line = chunk.trim();
+      if (!line.startsWith("data: ")) continue;
+      try {
+        onEvent(JSON.parse(line.slice(6)) as Record<string, unknown>);
+      } catch {
+        // ignore malformed chunk
+      }
+    }
+  }
+}
+
 export default function KeiAmerWorkspace() {
   const [session, setSession] = useState<SessionState>({
     loading: true,
@@ -92,6 +335,14 @@ export default function KeiAmerWorkspace() {
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("apartment");
   const [previewPage, setPreviewPage] = useState(1);
   const [selectedMap, setSelectedMap] = useState<Map<string, string>>(new Map());
+  const [floorPlanOverrides, setFloorPlanOverrides] = useState<Record<string, boolean>>({});
+  const [lastImagePeeks, setLastImagePeeks] = useState<Record<string, LastImagePeek>>({});
+  const [importProgress, setImportProgress] = useState<ImportProgressState>({
+    active: false,
+    total: 0,
+    message: "",
+    items: [],
+  });
   const [exportState, setExportState] = useState<ExportState>({
     loading: false,
     message: "",
@@ -130,6 +381,73 @@ export default function KeiAmerWorkspace() {
         ok: false,
         message: "Nie udało się połączyć z integracją KEI AMER.",
       });
+    }
+  }, []);
+
+  const loadLastImagePeek = useCallback(async (portalUrl: string) => {
+    if (!portalUrl) return;
+
+    setLastImagePeeks((prev) => ({
+      ...prev,
+      [portalUrl]: prev[portalUrl] ?? {
+        loading: true,
+        error: "",
+        lastImageUrl: null,
+        suggestedFloorPlan: false,
+        imageCount: 0,
+      },
+    }));
+
+    try {
+      const qs = new URLSearchParams({ portalUrl });
+      const res = await fetch(`/api/admin/kei-amer/peek?${qs.toString()}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLastImagePeeks((prev) => ({
+          ...prev,
+          [portalUrl]: {
+            loading: false,
+            error: String(data?.error || "Podgląd niedostępny"),
+            lastImageUrl: null,
+            suggestedFloorPlan: false,
+            imageCount: 0,
+          },
+        }));
+        return;
+      }
+
+      setLastImagePeeks((prev) => ({
+        ...prev,
+        [portalUrl]: {
+          loading: false,
+          error: "",
+          lastImageUrl: data.lastImageUrl ? String(data.lastImageUrl) : null,
+          suggestedFloorPlan: Boolean(data.suggestedFloorPlan),
+          imageCount: Number(data.imageCount) || 0,
+        },
+      }));
+
+      setFloorPlanOverrides((prev) => {
+        if (Object.prototype.hasOwnProperty.call(prev, portalUrl)) return prev;
+        if (data.suggestedFloorPlan) {
+          return { ...prev, [portalUrl]: true };
+        }
+        return prev;
+      });
+    } catch {
+      setLastImagePeeks((prev) => ({
+        ...prev,
+        [portalUrl]: {
+          loading: false,
+          error: "Błąd podglądu",
+          lastImageUrl: null,
+          suggestedFloorPlan: false,
+          imageCount: 0,
+        },
+      }));
     }
   }, []);
 
@@ -226,11 +544,14 @@ export default function KeiAmerWorkspace() {
         }
         setSelectedMap(next);
         setExportCount(String(next.size));
+        for (const portalUrl of next.values()) {
+          void loadLastImagePeek(portalUrl);
+        }
       } catch {
         // ignore pool fetch errors
       }
     },
-    [propertyKind, session.ok],
+    [propertyKind, session.ok, loadLastImagePeek],
   );
 
   useEffect(() => {
@@ -246,6 +567,7 @@ export default function KeiAmerWorkspace() {
     if (!session.ok) return;
     setPreviewPage(1);
     setSelectedMap(new Map());
+    setFloorPlanOverrides({});
     void autoSelectByCount(Number(exportCount) || 1);
   }, [propertyKind, session.ok]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -269,11 +591,146 @@ export default function KeiAmerWorkspace() {
       } else {
         if (next.size >= MAX_SELECT) return prev;
         next.set(item.keiId, item.portalUrl);
+        void loadLastImagePeek(item.portalUrl);
       }
       setExportCount(String(next.size));
       return next;
     });
   };
+
+  const setFloorPlanForUrl = (portalUrl: string, value: boolean) => {
+    setFloorPlanOverrides((prev) => ({ ...prev, [portalUrl]: value }));
+  };
+
+  const updateProgressFromEvent = useCallback((payload: Record<string, unknown>) => {
+    const type = String(payload.type || "");
+
+    if (type === "batch_start") {
+      const total = Number(payload.total) || 0;
+      setImportProgress({
+        active: true,
+        total,
+        message: "",
+        items: [],
+      });
+      return;
+    }
+
+    if (type === "item_start") {
+      const index = Number(payload.index) || 0;
+      setImportProgress((prev) => {
+        const items = [...prev.items];
+        const existing = items.find((i) => i.index === index);
+        if (!existing) {
+          items.push({
+            index,
+            keiListingId: String(payload.keiListingId || ""),
+            portalUrl: String(payload.portalUrl || ""),
+            status: "active",
+            completedSteps: [],
+            currentStep: null,
+            stepLabel: "Rozpoczynanie importu…",
+          });
+        } else {
+          existing.status = "active";
+        }
+        return { ...prev, items };
+      });
+      return;
+    }
+
+    if (type === "step") {
+      const index = Number(payload.index) || 0;
+      const step = String(payload.step || "") as ImportStepId;
+      setImportProgress((prev) => {
+        const items = prev.items.map((item) => {
+          if (item.index !== index) return item;
+          const completedSteps = [...item.completedSteps];
+          const stepIdx = STEP_ORDER.indexOf(step);
+          for (let i = 0; i < stepIdx; i += 1) {
+            const s = STEP_ORDER[i];
+            if (!completedSteps.includes(s)) completedSteps.push(s);
+          }
+          return {
+            ...item,
+            status: "active" as const,
+            currentStep: step,
+            completedSteps,
+            stepLabel: String(payload.label || item.stepLabel),
+            stepDetail: payload.detail ? String(payload.detail) : item.stepDetail,
+          };
+        });
+        return { ...prev, items };
+      });
+      return;
+    }
+
+    if (type === "image_progress") {
+      const index = Number(payload.index) || 0;
+      setImportProgress((prev) => ({
+        ...prev,
+        items: prev.items.map((item) =>
+          item.index !== index
+            ? item
+            : {
+                ...item,
+                imageProgress: {
+                  index: Number(payload.imageIndex) || 0,
+                  total: Number(payload.imageTotal) || 0,
+                  label: String(payload.label || ""),
+                  asFloorPlan: Boolean(payload.asFloorPlan),
+                },
+              },
+        ),
+      }));
+      return;
+    }
+
+    if (type === "item_done") {
+      const index = Number(payload.index) || 0;
+      setImportProgress((prev) => ({
+        ...prev,
+        items: prev.items.map((item) =>
+          item.index !== index
+            ? item
+            : {
+                ...item,
+                status: "done" as const,
+                completedSteps: [...STEP_ORDER],
+                currentStep: null,
+                offerId: Number(payload.offerId) || item.offerId,
+                stepLabel: "Zaimportowano",
+              },
+        ),
+      }));
+      return;
+    }
+
+    if (type === "item_skip") {
+      const index = Number(payload.index) || 0;
+      setImportProgress((prev) => ({
+        ...prev,
+        items: prev.items.map((item) =>
+          item.index !== index
+            ? item
+            : {
+                ...item,
+                status: "skipped" as const,
+                currentStep: null,
+                reason: String(payload.reason || "Pominięto"),
+              },
+        ),
+      }));
+      return;
+    }
+
+    if (type === "batch_done") {
+      setImportProgress((prev) => ({
+        ...prev,
+        message: String(payload.message || ""),
+      }));
+    }
+  }, []);
 
   const handleExport = async () => {
     const parsedUserId = Number(targetUserId);
@@ -325,6 +782,14 @@ export default function KeiAmerWorkspace() {
       portalUrl,
     }));
 
+    const overrides: Record<string, boolean> = {};
+    for (const { portalUrl } of selections) {
+      if (Object.prototype.hasOwnProperty.call(floorPlanOverrides, portalUrl)) {
+        overrides[portalUrl] = floorPlanOverrides[portalUrl];
+      }
+    }
+
+    setImportProgress({ active: true, total: selections.length, message: "", items: [] });
     setExportState({
       loading: true,
       message: "",
@@ -334,7 +799,7 @@ export default function KeiAmerWorkspace() {
     });
 
     try {
-      const res = await fetch("/api/admin/kei-amer/export-latest", {
+      const res = await fetch("/api/admin/kei-amer/export-stream", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -344,10 +809,13 @@ export default function KeiAmerWorkspace() {
           count: selections.length,
           propertyKind,
           selections,
+          floorPlanOverrides: Object.keys(overrides).length > 0 ? overrides : undefined,
         }),
       });
-      const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setImportProgress((prev) => ({ ...prev, active: false }));
         setExportState({
           loading: false,
           message: "",
@@ -358,7 +826,25 @@ export default function KeiAmerWorkspace() {
         return;
       }
 
-      const exported = Array.isArray(data?.exported) ? data.exported : [];
+      const outcome = { result: null as ExportFinalResult | null };
+
+      await consumeExportStream(res, (payload) => {
+        if (payload.type === "result") {
+          outcome.result = payload as unknown as ExportFinalResult;
+          return;
+        }
+        if (payload.type === "error") {
+          throw new Error(String(payload.message || "Eksport nie powiódł się."));
+        }
+        updateProgressFromEvent(payload);
+      });
+
+      const finalResult = outcome.result;
+      if (!finalResult?.ok) {
+        throw new Error("Brak wyniku eksportu.");
+      }
+
+      const exported = Array.isArray(finalResult.exported) ? finalResult.exported : [];
       const items: ExportResultItem[] = exported.map((item: Record<string, unknown>) => ({
         offerId: Number(item.offerId) || 0,
         portalUrl: String(item.portalUrl || ""),
@@ -368,26 +854,33 @@ export default function KeiAmerWorkspace() {
 
       setExportState({
         loading: false,
-        message: String(data?.message || "Eksport zakończony."),
+        message: String(finalResult.message || "Eksport zakończony."),
         error: "",
         items: items.filter((item) => item.offerId > 0),
-        skippedCount: Array.isArray(data?.skipped) ? data.skipped.length : 0,
+        skippedCount: Array.isArray(finalResult.skipped) ? finalResult.skipped.length : 0,
       });
 
+      setImportProgress((prev) => ({ ...prev, active: false }));
       setSelectedMap(new Map());
+      setFloorPlanOverrides({});
       setExportCount("1");
       void autoSelectByCount(1);
       void loadPreview(previewPage);
-    } catch {
+    } catch (error) {
+      setImportProgress((prev) => ({ ...prev, active: false }));
       setExportState({
         loading: false,
         message: "",
-        error: "Błąd połączenia podczas eksportu.",
+        error: error instanceof Error ? error.message : "Błąd połączenia podczas eksportu.",
         items: [],
         skippedCount: 0,
       });
     }
   };
+
+  const selectedListings = useMemo(() => {
+    return preview.listings.filter((item) => selectedMap.has(item.keiId));
+  }, [preview.listings, selectedMap]);
 
   return (
     <div className="mt-10 bg-[#0a0a0a] border border-white/5 rounded-[40px] p-6 md:p-8 shadow-2xl relative overflow-hidden">
@@ -399,7 +892,7 @@ export default function KeiAmerWorkspace() {
             <h3 className="text-xl md:text-2xl font-black mb-2">KEI AMER — eksport ogłoszeń</h3>
             <p className="text-gray-500 text-xs md:text-sm max-w-3xl leading-relaxed">
               Zaznacz ptaszkiem ogłoszenia do importu lub ustaw liczbę — auto-zaznaczy najnowsze.
-              Strony 1, 2, 3… pokazują starsze ogłoszenia z KEI.
+              {PAGE_SIZE} ogłoszeń na stronę. Ostatnie zdjęcie możesz oznaczyć jako rzut lokalu.
             </p>
           </div>
 
@@ -513,13 +1006,15 @@ export default function KeiAmerWorkspace() {
           )}
         </div>
 
+        <ImportProgressPanel progress={importProgress} />
+
         {exportState.error ? (
           <p className="text-red-300/90 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm">
             {exportState.error}
           </p>
         ) : null}
 
-        {exportState.message ? (
+        {exportState.message && !importProgress.active ? (
           <div className="space-y-3">
             <p className="text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-4 py-3 text-sm">
               {exportState.message}
@@ -573,6 +1068,25 @@ export default function KeiAmerWorkspace() {
           </div>
         ) : null}
 
+        {selectedListings.length > 0 ? (
+          <div className="rounded-[24px] border border-white/10 bg-white/[0.02] p-4 space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-wider text-white/50">
+              Rzut lokalu — podgląd ostatniego zdjęcia
+            </p>
+            {selectedListings.map((item) => (
+              <div key={item.keiId}>
+                <p className="text-xs text-white/70 truncate mb-1">{item.address || item.portalUrl}</p>
+                <FloorPlanToggle
+                  portalUrl={item.portalUrl}
+                  peek={lastImagePeeks[item.portalUrl]}
+                  asFloorPlan={floorPlanOverrides[item.portalUrl]}
+                  onChange={setFloorPlanForUrl}
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <div className="rounded-[28px] border border-white/10 bg-white/[0.02]">
           <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-3">
             <div>
@@ -581,7 +1095,7 @@ export default function KeiAmerWorkspace() {
                 <p className="text-[11px] text-white/45 mt-0.5">{preview.message}</p>
               ) : null}
             </div>
-            <p className="text-[10px] text-white/40 shrink-0">{selectedCount} zaznaczonych</p>
+            <p className="text-[10px] text-white/40 shrink-0">{selectedCount} zaznaczonych · {PAGE_SIZE}/str.</p>
           </div>
 
           <div className="px-4 py-2 border-b border-white/10">

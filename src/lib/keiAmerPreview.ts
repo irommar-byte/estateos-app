@@ -87,7 +87,7 @@ export async function previewKeiExportListings(options?: {
   const page = options?.selectionPool ? 1 : Math.max(1, Math.floor(options?.page ?? 1));
   const pageSize = options?.selectionPool
     ? 25
-    : Math.max(1, Math.min(Math.floor(options?.pageSize ?? 12), 30));
+    : Math.max(1, Math.min(Math.floor(options?.pageSize ?? 20), 30));
 
   const paged = await findWarsawPortalListingsPaged({ propertyKind, page, pageSize });
   const listings = await mapRowsToPreviewListings(paged.rows);

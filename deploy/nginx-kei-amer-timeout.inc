@@ -1,5 +1,5 @@
 # Dłuższy timeout dla eksportu KEI AMER (import wielu zdjęć może trwać >60s).
-location ~ ^/api/admin/kei-amer/(export-latest|preview) {
+location ~ ^/api/admin/kei-amer/(export-latest|export-stream|preview|peek) {
     proxy_pass http://127.0.0.1:3000;
     proxy_http_version 1.1;
     proxy_read_timeout 300s;
