@@ -176,6 +176,169 @@ function computeOverallPercent(items: ItemProgress[]): number {
   return Math.round(sum / items.length);
 }
 
+function KeiListingRow(props: {
+  item: PreviewListing;
+  isSelected: boolean;
+  onToggle: (item: PreviewListing) => void;
+  resolveFloorPlan: (portalUrl: string) => boolean;
+  lastImagePeeks: Record<string, LastImagePeek>;
+  setFloorPlanForUrl: (portalUrl: string, value: boolean) => void;
+  compact?: boolean;
+}) {
+  const { item, isSelected, compact } = props;
+  const disabled = item.alreadyImported;
+
+  return (
+    <div
+      className={`px-3 py-2.5 ${
+        compact ? "py-2" : ""
+      } ${
+        isSelected ? "bg-emerald-500/[0.07]" : "hover:bg-white/[0.03]"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => props.onToggle(item)}
+          className={`shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center disabled:cursor-not-allowed ${
+            isSelected
+              ? "bg-emerald-500 border-emerald-400 text-black"
+              : "border-white/25 bg-black/30"
+          }`}
+        >
+          {isSelected ? <Check size={12} strokeWidth={3} /> : null}
+        </button>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">
+              {item.date || "—"}
+            </span>
+            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-white/10 text-white/60">
+              {item.sourceLabel}
+            </span>
+            {isSelected && props.resolveFloorPlan(item.portalUrl) ? (
+              <span className="text-[9px] font-black uppercase text-emerald-300">rzut</span>
+            ) : null}
+          </div>
+          <p className={`truncate ${compact ? "text-[11px] text-white/70" : "text-xs text-white/90"}`}>
+            {item.address || "Brak adresu"}
+          </p>
+          <p className="text-[10px] text-white/45">
+            {item.price || "—"} · {item.area ? `${item.area} m²` : "—"}
+          </p>
+        </div>
+
+        {item.portalUrl ? (
+          <a
+            href={item.portalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 p-2 rounded-lg text-white/50 hover:text-white"
+            aria-label="Otwórz ogłoszenie"
+          >
+            <ExternalLink size={14} />
+          </a>
+        ) : null}
+      </div>
+
+      {isSelected && !compact ? (
+        <FloorPlanToggle
+          portalUrl={item.portalUrl}
+          peek={props.lastImagePeeks[item.portalUrl]}
+          asFloorPlan={props.resolveFloorPlan(item.portalUrl)}
+          onChange={props.setFloorPlanForUrl}
+          compact
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ImportedListingsStack(props: {
+  listings: PreviewListing[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const { listings, expanded } = props;
+  if (listings.length === 0) return null;
+
+  const previewLine = listings[0]?.address || "—";
+  const lastLine = listings.length > 1 ? listings[listings.length - 1]?.address : null;
+
+  return (
+    <div className="border-b border-white/10">
+      <button
+        type="button"
+        onClick={props.onToggle}
+        className={`w-full text-left px-4 py-3.5 transition-colors ${
+          expanded ? "bg-amber-500/[0.06]" : "bg-gradient-to-r from-amber-500/[0.08] via-black/20 to-black/40 hover:from-amber-500/[0.12]"
+        } shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]`}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center border shadow-inner ${
+              expanded
+                ? "bg-amber-500/20 border-amber-400/30"
+                : "bg-black/40 border-white/10"
+            }`}
+          >
+            {expanded ? (
+              <ChevronDown size={18} className="text-amber-200" />
+            ) : (
+              <ChevronRight size={18} className="text-amber-200/80" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-black uppercase tracking-wider text-amber-200/90">
+              {listings.length} {listings.length === 1 ? "ogłoszenie" : "ogłoszeń"} już w bazie
+            </p>
+            <p className="text-[11px] text-white/45 mt-0.5 truncate">
+              {expanded
+                ? "Kliknij, aby zwinąć stos zaimportowanych"
+                : `Stos zwinięty · od „${previewLine.slice(0, 48)}${previewLine.length > 48 ? "…" : ""}”${
+                    lastLine ? " …" : ""
+                  }`}
+            </p>
+          </div>
+          <span className="shrink-0 px-2.5 py-1 rounded-lg bg-black/40 border border-white/10 text-[10px] font-bold tabular-nums text-white/50">
+            {listings.length}
+          </span>
+        </div>
+      </button>
+
+      {expanded ? (
+        <div className="max-h-[220px] overflow-y-auto divide-y divide-white/5 bg-black/25 shadow-[inset_0_8px_24px_rgba(0,0,0,0.35)]">
+          {listings.map((item) => (
+            <div
+              key={item.keiId}
+              className="px-3 py-2 flex items-center gap-2 opacity-60 hover:opacity-80 transition-opacity"
+            >
+              <span className="text-[9px] font-black uppercase text-amber-300/80 shrink-0 w-16">
+                #{item.existingOfferId}
+              </span>
+              <span className="text-[11px] text-white/60 truncate flex-1">{item.address || "—"}</span>
+              <span className="text-[10px] text-white/30 shrink-0 hidden sm:inline">{item.price || "—"}</span>
+              {item.portalUrl ? (
+                <a
+                  href={item.portalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 p-1.5 rounded-lg text-white/40 hover:text-white"
+                  aria-label="Oryginał"
+                >
+                  <ExternalLink size={12} />
+                </a>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AppleSwitch(props: { checked: boolean; onChange: (checked: boolean) => void; label: string }) {
   return (
     <button
@@ -497,7 +660,7 @@ export default function KeiAmerWorkspace() {
   const [selectedMeta, setSelectedMeta] = useState<Map<string, SelectedListingMeta>>(new Map());
   const [floorPlanOverrides, setFloorPlanOverrides] = useState<Record<string, boolean>>({});
   const [lastImagePeeks, setLastImagePeeks] = useState<Record<string, LastImagePeek>>({});
-  const [expandedImported, setExpandedImported] = useState<Set<string>>(new Set());
+  const [importedStackExpanded, setImportedStackExpanded] = useState(false);
   const [importProgress, setImportProgress] = useState<ImportProgressState>({
     visible: false,
     status: "idle",
@@ -659,6 +822,7 @@ export default function KeiAmerWorkspace() {
           hasNextPage: Boolean(data?.hasNextPage),
           listings,
         });
+        setImportedStackExpanded(false);
       } catch {
         setPreview({
           loading: false,
@@ -1123,18 +1287,19 @@ export default function KeiAmerWorkspace() {
     }
   };
 
+  const listingGroups = useMemo(() => {
+    const imported: PreviewListing[] = [];
+    const available: PreviewListing[] = [];
+    for (const item of preview.listings) {
+      if (item.alreadyImported) imported.push(item);
+      else available.push(item);
+    }
+    return { imported, available };
+  }, [preview.listings]);
+
   const selectedListings = useMemo(() => {
     return Array.from(selectedMeta.values());
   }, [selectedMeta]);
-
-  const toggleImportedExpand = (keiId: string) => {
-    setExpandedImported((prev) => {
-      const next = new Set(prev);
-      if (next.has(keiId)) next.delete(keiId);
-      else next.add(keiId);
-      return next;
-    });
-  };
 
   const dismissImportProgress = () => {
     setImportProgress({
@@ -1346,117 +1511,54 @@ export default function KeiAmerWorkspace() {
                 : "Podgląd pojawi się po poprawnym zalogowaniu KEI AMER."}
             </p>
           ) : (
-            <div className="divide-y divide-white/5">
-              {preview.listings.map((item) => {
-                const isSelected = selectedMap.has(item.keiId);
-                const disabled = item.alreadyImported;
-                const isExpanded = expandedImported.has(item.keiId);
+            <div>
+              <ImportedListingsStack
+                listings={listingGroups.imported}
+                expanded={importedStackExpanded}
+                onToggle={() => setImportedStackExpanded((v) => !v)}
+              />
 
-                if (disabled && !isExpanded) {
-                  return (
-                    <button
-                      key={item.keiId}
-                      type="button"
-                      onClick={() => toggleImportedExpand(item.keiId)}
-                      className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-white/[0.03] transition-colors opacity-55"
-                    >
-                      <ChevronRight size={14} className="text-white/35 shrink-0" />
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-amber-300/80 shrink-0">
-                        w bazie #{item.existingOfferId}
-                      </span>
-                      <span className="text-xs text-white/55 truncate flex-1">
-                        {item.address || "Brak adresu"}
-                      </span>
-                      <span className="text-[10px] text-white/30 shrink-0 hidden sm:inline">
-                        {item.price || "—"}
-                      </span>
-                    </button>
-                  );
-                }
-
-                return (
-                  <div
-                    key={item.keiId}
-                    className={`px-3 py-2.5 ${
-                      disabled
-                        ? "opacity-60 bg-white/[0.02]"
-                        : isSelected
-                          ? "bg-emerald-500/[0.07]"
-                          : "hover:bg-white/[0.03]"
-                    }`}
-                  >
-                    {disabled ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleImportedExpand(item.keiId)}
-                        className="flex items-center gap-2 mb-2 text-[10px] font-bold uppercase tracking-wider text-white/40 hover:text-white/60"
-                      >
-                        <ChevronDown size={14} />
-                        Zwiń zaimportowane
-                      </button>
-                    ) : null}
-                    <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => toggleSelection(item)}
-                      className={`shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center disabled:cursor-not-allowed ${
-                        isSelected
-                          ? "bg-emerald-500 border-emerald-400 text-black"
-                          : "border-white/25 bg-black/30"
-                      }`}
-                    >
-                      {isSelected ? <Check size={12} strokeWidth={3} /> : null}
-                    </button>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">
-                          {item.date || "—"}
-                        </span>
-                        <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-white/10 text-white/60">
-                          {item.sourceLabel}
-                        </span>
-                        {isSelected && resolveFloorPlan(item.portalUrl) ? (
-                          <span className="text-[9px] font-black uppercase text-emerald-300">rzut</span>
-                        ) : null}
-                        {disabled ? (
-                          <span className="text-[9px] font-black uppercase text-amber-300/90">
-                            w bazie #{item.existingOfferId}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="text-xs text-white/90 truncate">{item.address || "Brak adresu"}</p>
-                      <p className="text-[10px] text-white/45">
-                        {item.price || "—"} · {item.area ? `${item.area} m²` : "—"}
-                      </p>
-                    </div>
-
-                    {item.portalUrl ? (
-                      <a
-                        href={item.portalUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0 p-2 rounded-lg text-white/50 hover:text-white"
-                        aria-label="Otwórz ogłoszenie"
-                      >
-                        <ExternalLink size={14} />
-                      </a>
-                    ) : null}
-                    </div>
-
-                    {isSelected && !disabled ? (
-                      <FloorPlanToggle
-                        portalUrl={item.portalUrl}
-                        peek={lastImagePeeks[item.portalUrl]}
-                        asFloorPlan={resolveFloorPlan(item.portalUrl)}
-                        onChange={setFloorPlanForUrl}
-                        compact
-                      />
-                    ) : null}
+              {listingGroups.available.length > 0 ? (
+                <>
+                  <div className="px-4 py-2.5 border-b border-emerald-500/20 bg-emerald-500/[0.04]">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300/90">
+                      Do importu · {listingGroups.available.length}{" "}
+                      {listingGroups.available.length === 1 ? "ogłoszenie" : "ogłoszeń"}
+                    </p>
                   </div>
-                );
-              })}
+                  <div className="divide-y divide-white/5">
+                    {listingGroups.available.map((item) => (
+                      <KeiListingRow
+                        key={item.keiId}
+                        item={item}
+                        isSelected={selectedMap.has(item.keiId)}
+                        onToggle={toggleSelection}
+                        resolveFloorPlan={resolveFloorPlan}
+                        lastImagePeeks={lastImagePeeks}
+                        setFloorPlanForUrl={setFloorPlanForUrl}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : listingGroups.imported.length > 0 ? (
+                <div className="px-4 py-8 text-center space-y-4">
+                  <p className="text-sm text-white/55">
+                    Na tej stronie wszystkie ogłoszenia są już w bazie.
+                  </p>
+                  {preview.hasNextPage ? (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPage(preview.page + 1)}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-xs font-black uppercase tracking-wider text-emerald-200 hover:bg-emerald-500/25 shadow-[0_8px_24px_rgba(16,185,129,0.15)] transition-colors"
+                    >
+                      Szukaj nowych na stronie {preview.page + 1}
+                      <ChevronRight size={14} />
+                    </button>
+                  ) : (
+                    <p className="text-xs text-white/35">To ostatnia strona listy KEI.</p>
+                  )}
+                </div>
+              ) : null}
             </div>
           )}
 
