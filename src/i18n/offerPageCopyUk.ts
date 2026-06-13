@@ -40,6 +40,7 @@ export const UK: OfferPageCopy = {
   pricePerSqmEur: "Ціна за м² (EUR)",
   rooms: "Кімнати",
   floor: "Поверх",
+  totalFloors: "Поверхів у будинку",
   standard: "Стандарт",
   buildingType: "Тип об'єкта",
   buildYear: "Рік будівництва",

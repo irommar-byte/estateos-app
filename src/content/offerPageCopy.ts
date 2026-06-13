@@ -39,6 +39,7 @@ export type OfferPageCopy = {
   pricePerSqmEur: string;
   rooms: string;
   floor: string;
+  totalFloors: string;
   standard: string;
   buildingType: string;
   buildYear: string;
@@ -181,6 +182,7 @@ const PL: OfferPageCopy = {
   pricePerSqmEur: "Cena za m² (EUR)",
   rooms: "Pokoje",
   floor: "Piętro",
+  totalFloors: "Pięter w budynku",
   standard: "Standard",
   buildingType: "Typ obiektu",
   buildYear: "Rok budowy",
@@ -325,6 +327,7 @@ const EN: OfferPageCopy = {
   pricePerSqmEur: "Price per m² (EUR)",
   rooms: "Rooms",
   floor: "Floor",
+  totalFloors: "Building floors",
   standard: "Finish standard",
   buildingType: "Property type",
   buildYear: "Year built",

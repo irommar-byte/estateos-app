@@ -250,6 +250,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       buildYear,
       year: yearBuilt,
       buildYearLabel: formatOfferBuildYear(legalOffer as Record<string, unknown>),
+      floorPlanUrl: (legalOffer as { floorPlanUrl?: string | null }).floorPlanUrl || null,
+      floorPlan: (legalOffer as { floorPlanUrl?: string | null }).floorPlanUrl || null,
       marketListedAt: marketListing.marketListedAt,
       marketRenewedAt: marketListing.marketRenewedAt,
       localityCountry: localityResolved.localityCountry,

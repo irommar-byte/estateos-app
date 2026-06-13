@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState, useRef, use } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2 } from "lucide-react";
+import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2, BedDouble, Layers, Calendar, Ruler, Home } from "lucide-react";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import {
   describeOfferAgentCommission,
@@ -370,6 +370,26 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   const yearBuiltLabel = formatOfferBuildYear(offer);
   const heatingLabel = offer.heating ? String(offer.heating) : null;
+  const floorPlanSrc = String(offer.floorPlanUrl || offer.floorPlan || "").trim();
+  const propertyTypeLabel = formatOfferPropertyType(offer.propertyType, locale);
+  const floorDisplay = (() => {
+    const floorVal = offer.floor != null && offer.floor !== "" ? String(offer.floor) : null;
+    const totalVal =
+      offer.totalFloors != null && offer.totalFloors !== "" ? String(offer.totalFloors) : null;
+    if (floorVal && totalVal) return `${floorVal} / ${totalVal}`;
+    return floorVal || totalVal;
+  })();
+  const transactionLabel = isRent
+    ? locale === "en"
+      ? "For rent"
+      : locale === "uk"
+        ? "Оренда"
+        : "Wynajem"
+    : locale === "en"
+      ? "For sale"
+      : locale === "uk"
+        ? "Продаж"
+        : "Sprzedaż";
   const adminFeeLabel =
     rentAdminFeeAmount != null
       ? formatOfferSecondaryAmount({
@@ -398,13 +418,27 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             value: perSqmDisplay && !isLocked ? perSqmDisplay : isLocked ? t.hiddenPrice : null,
           },
           { label: t.rooms, value: offer.rooms != null && offer.rooms !== '' ? String(offer.rooms) : null },
-          { label: t.floor, value: offer.floor != null && offer.floor !== '' ? String(offer.floor) : null },
+          { label: t.floor, value: floorDisplay },
+          ...(floorDisplay && offer.totalFloors != null && offer.totalFloors !== '' && !String(offer.floor ?? '').trim()
+            ? [{ label: t.totalFloors, value: String(offer.totalFloors) }]
+            : []),
           {
             label: t.standard,
             value: formatOfferCondition(offer.condition || offer.finishCondition, locale) || null,
           },
         ]),
-  ].filter((p) => p.value != null && p.value !== '');
+  ].filter((p) => p.value);
+
+  const quickFacts = [
+    propertyTypeLabel ? { icon: Home, label: propertyTypeLabel } : null,
+    numericArea > 0 ? { icon: Ruler, label: `${numericArea} m²` } : null,
+    offer.rooms != null && offer.rooms !== "" ? { icon: BedDouble, label: `${offer.rooms} ${t.rooms.toLowerCase()}` } : null,
+    floorDisplay ? { icon: Layers, label: floorDisplay } : null,
+    yearBuiltLabel ? { icon: Calendar, label: yearBuiltLabel } : null,
+    propertyTypeRaw === "HOUSE" && numericPlotArea > 0
+      ? { icon: Ruler, label: `${t.plotArea}: ${numericPlotArea} m²` }
+      : null,
+  ].filter(Boolean) as Array<{ icon: typeof Home; label: string }>;
 
   const agentCommissionInfo = describeOfferAgentCommission(offer, offer.price);
   const agentCommissionAmountLabel = agentCommissionInfo
@@ -776,6 +810,18 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             )}
 
             <div>
+                <div className="mb-4 flex flex-wrap items-center gap-2 sm:hidden">
+                  <span
+                    className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${themeColors.borderActive} ${themeColors.bgActiveSoft} ${themeColors.textActive}`}
+                  >
+                    {transactionLabel}
+                  </span>
+                  {propertyTypeLabel ? (
+                    <span className="inline-flex items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                      {propertyTypeLabel}
+                    </span>
+                  ) : null}
+                </div>
                 <h1 className="mb-7 text-4xl font-light leading-tight tracking-tighter text-[var(--eos-text)] [text-wrap:balance] sm:hidden">
                   {isLocked ? t.beforeLaunchTitle : offer.title}
                 </h1>
@@ -839,6 +885,22 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 ) : (
                   <div className="mb-6" />
                 )}
+                {!isLocked && quickFacts.length > 0 ? (
+                  <div className="mb-8 flex flex-wrap gap-2.5">
+                    {quickFacts.map((fact) => {
+                      const Icon = fact.icon;
+                      return (
+                        <div
+                          key={fact.label}
+                          className={`inline-flex items-center gap-2 rounded-2xl border bg-[var(--eos-input)] px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] ${themeColors.borderActive}`}
+                        >
+                          <Icon size={15} className={themeColors.textActive} />
+                          <span className="text-sm font-semibold text-[var(--eos-text)]">{fact.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
                 {!isLocked && listingPrice.amount > 0 && (
                   <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     {eurResolved && priceFormatted.displayCurrency !== "EUR" ? (
@@ -873,6 +935,50 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     <p className="eos-subtle-copy mt-1 text-[11px]">{t.listingPriceIncludesCommission}</p>
                   </div>
                 ) : null}
+
+                {floorPlanSrc && !isLocked ? (
+                  <section className="eos-offer-panel mb-8 overflow-hidden p-0">
+                    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--eos-border)] px-6 py-5 md:px-8">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <FileImage size={16} className={themeColors.textActive} />
+                          <h3 className="eos-offer-metric-label">{t.floorPlan}</h3>
+                        </div>
+                        <p className="mt-1.5 text-sm text-[var(--eos-muted)]">
+                          {locale === "en" ? "Layout and room arrangement" : "Układ pomieszczeń i metraż"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsFloorplanModalOpen(true)}
+                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition-colors ${themeColors.borderActive} ${themeColors.bgActiveSoft} hover:bg-[var(--eos-surface-strong)]`}
+                      >
+                        <Maximize2 size={13} />
+                        {t.enlarge}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsFloorplanModalOpen(true)}
+                      className="group block w-full px-6 py-6 md:px-8"
+                    >
+                      <div className="relative aspect-[16/10] overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[#050505] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_55%)]" />
+                        <img
+                          src={floorPlanSrc}
+                          className="relative z-10 h-full w-full object-contain p-4 transition-transform duration-700 group-hover:scale-[1.02]"
+                          alt={t.floorPlan}
+                        />
+                        <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 to-transparent px-5 py-4 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/80">
+                            {t.enlarge}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  </section>
+                ) : null}
+
                 <div className="eos-offer-panel p-8 md:p-12">
                   <h3 className="eos-offer-metric-label mb-6">{t.aboutProperty}</h3>
                   <OfferDescriptionBody description={offer.description || ""} />
@@ -888,25 +994,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                         <span className="text-sm font-semibold text-[var(--eos-text)]">{amenity.trim()}</span>
                       </div>
                     ))}
-                  </div>
-                </div>
-                )}
-
-                {offer.floorPlan && !isLocked && (
-                <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-8 md:p-12 backdrop-blur-3xl mt-8 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
-                  <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-6 flex items-center gap-2">
-                    <FileImage size={16} /> {t.floorPlan}
-                  </h3>
-                  <div 
-                    onClick={() => setIsFloorplanModalOpen(true)}
-                    className="relative w-full h-[400px] rounded-[2rem] overflow-hidden border border-white/10 cursor-pointer group bg-black"
-                  >
-                    <img src={offer.floorPlan} className="w-full h-full object-contain opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" alt={t.floorPlan} />
-                    <div className="eos-on-media absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                       <span className="flex items-center gap-2 rounded-full border border-white/20 bg-black/60 px-6 py-3 text-[11px] font-bold uppercase tracking-[0.2em] text-white shadow-2xl backdrop-blur-xl">
-                         <Maximize2 size={14} /> {t.enlarge}
-                       </span>
-                    </div>
                   </div>
                 </div>
                 )}
@@ -957,6 +1044,26 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     </div>
                   ) : null}
                 </div>
+
+                {floorPlanSrc && !isLocked ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsFloorplanModalOpen(true)}
+                    className="eos-offer-panel group w-full overflow-hidden p-4 text-left transition-colors hover:bg-[var(--eos-surface-strong)]"
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <p className={`eos-offer-metric-label ${themeColors.textActive}`}>{t.floorPlan}</p>
+                      <Maximize2 size={14} className="text-[var(--eos-muted)] transition-colors group-hover:text-[var(--eos-text)]" />
+                    </div>
+                    <div className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[#050505]">
+                      <img
+                        src={floorPlanSrc}
+                        alt={t.floorPlan}
+                        className="aspect-[4/3] w-full object-contain p-3 transition-transform duration-500 group-hover:scale-[1.02]"
+                      />
+                    </div>
+                  </button>
+                ) : null}
 
                 <div className="eos-offer-panel p-6">
                   <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.mainParamsSection}</h4>
@@ -1122,7 +1229,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               <X size={24} />
             </button>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="relative w-full max-w-5xl max-h-screen flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-              <img src={offer.floorPlan} className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 bg-[#0a0a0a]" alt="Rzut Zoomony" />
+              <img src={floorPlanSrc} className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 bg-[#0a0a0a]" alt={t.floorPlan} />
             </motion.div>
           </motion.div>
         )}
