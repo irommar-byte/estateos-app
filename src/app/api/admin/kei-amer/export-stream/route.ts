@@ -27,9 +27,19 @@ export async function POST(req: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: KeiExportProgressEvent) => {
+      const send = (event: KeiExportProgressEvent | Record<string, unknown>) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
+
+      send({ type: 'connected', message: 'Połączono — rozpoczynam import…' });
+
+      const heartbeat = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(': ping\n\n'));
+        } catch {
+          clearInterval(heartbeat);
+        }
+      }, 4000);
 
       try {
         const selections = Array.isArray(body?.selections)
@@ -60,6 +70,7 @@ export async function POST(req: Request) {
         const message = error instanceof Error ? error.message : 'Eksport KEI nie powiódł się.';
         send({ type: 'error', message });
       } finally {
+        clearInterval(heartbeat);
         controller.close();
       }
     },
@@ -70,6 +81,7 @@ export async function POST(req: Request) {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
     },
   });
 }

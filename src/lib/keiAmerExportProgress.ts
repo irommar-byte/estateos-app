@@ -49,6 +49,7 @@ export type KeiExportProgressEvent =
       existingOfferId?: number;
     }
   | { type: 'batch_done'; message: string; exportedCount: number; skippedCount: number }
+  | { type: 'connected'; message: string }
   | { type: 'error'; message: string };
 
 export type KeiExportProgressEmitter = (event: KeiExportProgressEvent) => void;
