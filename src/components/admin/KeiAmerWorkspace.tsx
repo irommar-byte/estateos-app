@@ -46,22 +46,9 @@ type PreviewState = {
 };
 
 type PropertyKind = "apartment" | "house";
-type GridDensity = 1 | 2 | 4;
 
 const MAX_SELECT = 25;
 const PAGE_SIZE = 12;
-
-const GRID_DENSITY_OPTIONS: { value: GridDensity; label: string }[] = [
-  { value: 1, label: "1 na stronę" },
-  { value: 2, label: "2 obok siebie" },
-  { value: 4, label: "4 w rzędzie" },
-];
-
-function gridColsClass(density: GridDensity): string {
-  if (density === 4) return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4";
-  if (density === 2) return "grid-cols-1 sm:grid-cols-2";
-  return "grid-cols-1";
-}
 
 function PagePager(props: {
   page: number;
@@ -104,7 +91,6 @@ export default function KeiAmerWorkspace() {
   const [exportCount, setExportCount] = useState("1");
   const [propertyKind, setPropertyKind] = useState<PropertyKind>("apartment");
   const [previewPage, setPreviewPage] = useState(1);
-  const [gridDensity, setGridDensity] = useState<GridDensity>(1);
   const [selectedMap, setSelectedMap] = useState<Map<string, string>>(new Map());
   const [exportState, setExportState] = useState<ExportState>({
     loading: false,
@@ -403,8 +389,6 @@ export default function KeiAmerWorkspace() {
     }
   };
 
-  const densityIndex = GRID_DENSITY_OPTIONS.findIndex((o) => o.value === gridDensity);
-
   return (
     <div className="mt-10 bg-[#0a0a0a] border border-white/5 rounded-[40px] p-6 md:p-8 shadow-2xl relative overflow-hidden">
       <div className="absolute top-0 right-0 w-72 h-72 bg-cyan-500/5 blur-[120px] rounded-full pointer-events-none" />
@@ -589,35 +573,18 @@ export default function KeiAmerWorkspace() {
           </div>
         ) : null}
 
-        <div className="rounded-[28px] border border-white/10 bg-white/[0.02] min-h-[320px]">
-          <div className="px-4 py-3 border-b border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="rounded-[28px] border border-white/10 bg-white/[0.02]">
+          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-black uppercase tracking-wider text-white/60">Podgląd ogłoszeń KEI</p>
               {preview.message ? (
                 <p className="text-[11px] text-white/45 mt-0.5">{preview.message}</p>
               ) : null}
             </div>
-
-            <label className="flex flex-col gap-1 min-w-[180px]">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/45">
-                Układ: {GRID_DENSITY_OPTIONS[densityIndex]?.label ?? "1 na stronę"}
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={2}
-                step={1}
-                value={densityIndex >= 0 ? densityIndex : 0}
-                onChange={(e) => {
-                  const idx = Number(e.target.value);
-                  setGridDensity(GRID_DENSITY_OPTIONS[idx]?.value ?? 1);
-                }}
-                className="w-full accent-emerald-500"
-              />
-            </label>
+            <p className="text-[10px] text-white/40 shrink-0">{selectedCount} zaznaczonych</p>
           </div>
 
-          <div className="px-4 py-3 border-b border-white/10">
+          <div className="px-4 py-2 border-b border-white/10">
             <PagePager
               page={preview.page}
               hasNextPage={preview.hasNextPage}
@@ -627,20 +594,20 @@ export default function KeiAmerWorkspace() {
           </div>
 
           {preview.loading ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-white/50 text-sm">
+            <div className="flex items-center justify-center gap-2 py-12 text-white/50 text-sm">
               <Loader2 size={18} className="animate-spin" />
               Ładowanie listy z KEI…
             </div>
           ) : preview.error ? (
-            <p className="text-red-300/90 px-4 py-8 text-sm">{preview.error}</p>
+            <p className="text-red-300/90 px-4 py-6 text-sm">{preview.error}</p>
           ) : preview.listings.length === 0 ? (
-            <p className="text-white/40 px-4 py-8 text-sm text-center">
+            <p className="text-white/40 px-4 py-6 text-sm text-center">
               {session.ok
                 ? "Brak ogłoszeń na tej stronie. Spróbuj innej strony lub typu."
                 : "Podgląd pojawi się po poprawnym zalogowaniu KEI AMER."}
             </p>
           ) : (
-            <div className={`p-4 grid gap-3 ${gridColsClass(gridDensity)} max-h-[70vh] overflow-y-auto`}>
+            <div className="divide-y divide-white/5">
               {preview.listings.map((item) => {
                 const isSelected = selectedMap.has(item.keiId);
                 const disabled = item.alreadyImported;
@@ -648,58 +615,43 @@ export default function KeiAmerWorkspace() {
                 return (
                   <div
                     key={item.keiId}
-                    role="button"
-                    tabIndex={disabled ? -1 : 0}
-                    onClick={() => toggleSelection(item)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        toggleSelection(item);
-                      }
-                    }}
-                    className={`relative rounded-2xl border p-4 transition-colors text-left ${
+                    className={`px-3 py-2.5 flex items-center gap-3 ${
                       disabled
-                        ? "border-white/5 bg-white/[0.02] opacity-60 cursor-not-allowed"
+                        ? "opacity-60"
                         : isSelected
-                          ? "border-emerald-400/50 bg-emerald-500/10 cursor-pointer"
-                          : "border-white/10 bg-white/[0.03] hover:border-white/20 cursor-pointer"
-                    } ${gridDensity === 1 ? "min-h-[120px]" : "min-h-[100px]"}`}
+                          ? "bg-emerald-500/[0.07]"
+                          : "hover:bg-white/[0.03]"
+                    }`}
                   >
-                    <div className="absolute top-3 right-3">
-                      {disabled ? (
-                        <span className="text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-full bg-amber-500/15 text-amber-300">
-                          #{item.existingOfferId}
-                        </span>
-                      ) : (
-                        <div
-                          className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center ${
-                            isSelected
-                              ? "bg-emerald-500 border-emerald-400 text-black"
-                              : "border-white/25 bg-black/30"
-                          }`}
-                        >
-                          {isSelected ? <Check size={14} strokeWidth={3} /> : null}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => toggleSelection(item)}
+                      className={`shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center disabled:cursor-not-allowed ${
+                        isSelected
+                          ? "bg-emerald-500 border-emerald-400 text-black"
+                          : "border-white/25 bg-black/30"
+                      }`}
+                    >
+                      {isSelected ? <Check size={12} strokeWidth={3} /> : null}
+                    </button>
 
-                    <div className="pr-10">
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">
                           {item.date || "—"}
                         </span>
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/10 text-white/70">
+                        <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-white/10 text-white/60">
                           {item.sourceLabel}
                         </span>
+                        {disabled ? (
+                          <span className="text-[9px] font-black uppercase text-amber-300/90">
+                            w bazie #{item.existingOfferId}
+                          </span>
+                        ) : null}
                       </div>
-                      <p
-                        className={`text-white/90 font-semibold leading-snug ${
-                          gridDensity === 1 ? "text-base" : "text-sm line-clamp-3"
-                        }`}
-                      >
-                        {item.address || "Brak adresu"}
-                      </p>
-                      <p className="text-xs text-white/50 mt-2">
+                      <p className="text-xs text-white/90 truncate">{item.address || "Brak adresu"}</p>
+                      <p className="text-[10px] text-white/45">
                         {item.price || "—"} · {item.area ? `${item.area} m²` : "—"}
                       </p>
                     </div>
@@ -709,10 +661,10 @@ export default function KeiAmerWorkspace() {
                         href={item.portalUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300/90 hover:text-cyan-200"
+                        className="shrink-0 p-2 rounded-lg text-white/50 hover:text-white"
+                        aria-label="Otwórz ogłoszenie"
                       >
-                        Portal <ExternalLink size={11} />
+                        <ExternalLink size={14} />
                       </a>
                     ) : null}
                   </div>
@@ -721,7 +673,7 @@ export default function KeiAmerWorkspace() {
             </div>
           )}
 
-          <div className="px-4 py-3 border-t border-white/10">
+          <div className="px-4 py-2 border-t border-white/10">
             <PagePager
               page={preview.page}
               hasNextPage={preview.hasNextPage}

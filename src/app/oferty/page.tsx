@@ -17,6 +17,7 @@ import {
   Navigation,
   UserRound,
   Gavel,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import { normalizeTransactionType } from "@/lib/transactionType";
@@ -75,6 +76,64 @@ const SECTION_ORDER: GallerySection[] = [
   "featured",
 ];
 
+type CatalogGridDensity = 1 | 2 | 4;
+
+const CATALOG_GRID_STORAGE_KEY = "estateos-catalog-grid-density";
+const CATALOG_GRID_OPTIONS: CatalogGridDensity[] = [1, 2, 4];
+
+function catalogGridStyles(density: CatalogGridDensity) {
+  if (density === 4) {
+    return {
+      gridClass: "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4",
+      imageMb: "mb-2",
+      imageRounded: "rounded-lg md:rounded-xl",
+      titleClass: "text-xs sm:text-sm font-bold tracking-tight line-clamp-2",
+      metaClass: "mt-0.5 text-[9px] sm:text-[10px] font-medium uppercase tracking-[0.1em]",
+      priceClass: "text-xs sm:text-sm font-bold tabular-nums",
+      discoverClass: "mt-1 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.14em]",
+      imageSizes: "(max-width: 640px) 50vw, (max-width: 1280px) 33vw, 25vw",
+    };
+  }
+  if (density === 1) {
+    return {
+      gridClass: "grid grid-cols-1 gap-7 md:gap-8 max-w-3xl mx-auto",
+      imageMb: "mb-4",
+      imageRounded: "rounded-2xl md:rounded-[1.75rem]",
+      titleClass: "text-xl md:text-2xl font-bold tracking-tight line-clamp-2",
+      metaClass: "mt-1.5 text-[11px] font-medium uppercase tracking-[0.12em]",
+      priceClass: "text-lg md:text-xl font-bold tabular-nums",
+      discoverClass: "mt-2 text-[10px] font-black uppercase tracking-[0.16em]",
+      imageSizes: "(max-width: 768px) 100vw, 768px",
+    };
+  }
+  return {
+    gridClass: "grid grid-cols-1 sm:grid-cols-2 gap-5 md:gap-6 lg:gap-7",
+    imageMb: "mb-3",
+    imageRounded: "rounded-xl md:rounded-2xl",
+    titleClass: "text-base md:text-lg font-bold tracking-tight line-clamp-2",
+    metaClass: "mt-1 text-[10px] md:text-[11px] font-medium uppercase tracking-[0.12em]",
+    priceClass: "text-base md:text-lg font-bold tabular-nums",
+    discoverClass: "mt-1.5 text-[10px] font-black uppercase tracking-[0.16em]",
+    imageSizes: "(max-width: 768px) 100vw, 50vw",
+  };
+}
+
+function gridDensityLabel(density: CatalogGridDensity, locale: string): string {
+  if (locale === "pl") {
+    if (density === 1) return "Duże karty";
+    if (density === 4) return "4 w rzędzie";
+    return "2 obok siebie";
+  }
+  if (locale === "uk") {
+    if (density === 1) return "Великі";
+    if (density === 4) return "4 в ряд";
+    return "2 поруч";
+  }
+  if (density === 1) return "Large cards";
+  if (density === 4) return "4 per row";
+  return "2 per row";
+}
+
 function formatPriceLabel(
   offer: CatalogOffer,
   formatOffer: ReturnType<typeof useFormatOfferPrice>["formatOffer"],
@@ -127,7 +186,30 @@ export default function CatalogPage() {
   const [loadingAuction, setLoadingAuction] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<GallerySection>("all");
+  const [gridDensity, setGridDensity] = useState<CatalogGridDensity>(2);
   const { location, denied, pending, request } = useUserLocation();
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CATALOG_GRID_STORAGE_KEY);
+      if (raw === "1" || raw === "2" || raw === "4") {
+        setGridDensity(Number(raw) as CatalogGridDensity);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CATALOG_GRID_STORAGE_KEY, String(gridDensity));
+    } catch {
+      // ignore
+    }
+  }, [gridDensity]);
+
+  const cardStyles = catalogGridStyles(gridDensity);
+  const gridDensityIndex = CATALOG_GRID_OPTIONS.indexOf(gridDensity);
 
   const nearestCopy =
     locale === "pl"
@@ -330,15 +412,15 @@ export default function CatalogPage() {
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-24 pt-36 md:pt-40 font-sans text-[var(--eos-text)]">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <header className="mb-10 md:mb-14 border-b border-[var(--eos-border)] pb-8 md:pb-10">
+        <header className="mb-8 md:mb-10 border-b border-[var(--eos-border)] pb-6 md:pb-8">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="text-4xl font-bold leading-[1.05] tracking-tight text-[var(--eos-text)] md:text-6xl lg:text-7xl">
+            <h1 className="text-3xl font-bold leading-[1.08] tracking-tight text-[var(--eos-text)] md:text-5xl lg:text-6xl">
               {labels.title}
               <span className="block font-serif italic font-normal text-[var(--eos-muted)] mt-1 md:mt-2">
                 {labels.subtitle}
               </span>
             </h1>
-            <p className="mt-5 max-w-2xl text-base md:text-lg font-light leading-relaxed text-[var(--eos-muted)]">
+            <p className="mt-4 max-w-2xl text-sm md:text-base font-light leading-relaxed text-[var(--eos-muted)]">
               {labels.lead}
             </p>
             {!location ? (
@@ -415,11 +497,32 @@ export default function CatalogPage() {
                   );
                 })}
               </div>
-              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--eos-subtle)]">
-                {resultLabel}
-                <span className="mx-2 text-[var(--eos-border)]">·</span>
-                <span className="text-[var(--eos-muted)]">{labels.sections[activeSection]}</span>
-              </p>
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--eos-subtle)]">
+                  {resultLabel}
+                  <span className="mx-2 text-[var(--eos-border)]">·</span>
+                  <span className="text-[var(--eos-muted)]">{labels.sections[activeSection]}</span>
+                </p>
+                <label className="flex items-center gap-2.5 shrink-0 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)]/60 px-3 py-2">
+                  <SlidersHorizontal className="size-3.5 text-[var(--eos-subtle)]" aria-hidden />
+                  <input
+                    type="range"
+                    min={0}
+                    max={2}
+                    step={1}
+                    value={gridDensityIndex >= 0 ? gridDensityIndex : 1}
+                    onChange={(e) => {
+                      const idx = Number(e.target.value);
+                      setGridDensity(CATALOG_GRID_OPTIONS[idx] ?? 2);
+                    }}
+                    className="w-24 sm:w-28 accent-emerald-500"
+                    aria-label={gridDensityLabel(gridDensity, locale)}
+                  />
+                  <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--eos-muted)] whitespace-nowrap min-w-[5.5rem]">
+                    {gridDensityLabel(gridDensity, locale)}
+                  </span>
+                </label>
+              </div>
               {sectionLead ? (
                 <p className="mt-3 max-w-3xl text-sm leading-relaxed text-[var(--eos-muted)]">{sectionLead}</p>
               ) : null}
@@ -496,7 +599,7 @@ export default function CatalogPage() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.25 }}
-                className="grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-x-10 md:gap-y-14 lg:gap-x-14"
+                className={cardStyles.gridClass}
               >
                 {auctionEvents.map((event, i) => (
                   <CatalogAuctionCard
@@ -548,7 +651,7 @@ export default function CatalogPage() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.25 }}
-              className="grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-x-10 md:gap-y-14 lg:gap-x-14"
+              className={cardStyles.gridClass}
             >
               {offersInSection.map((offer, i) => (
                 <Link href={`/oferta/${offer.id}`} key={offer.id} className="block group">
@@ -558,7 +661,9 @@ export default function CatalogPage() {
                     viewport={{ once: true, margin: "-80px" }}
                     transition={{ delay: Math.min(i * 0.05, 0.35), duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                   >
-                    <div className="relative mb-5 aspect-[4/3] w-full overflow-hidden rounded-2xl md:rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]">
+                    <div
+                      className={`relative ${cardStyles.imageMb} aspect-[4/3] w-full overflow-hidden ${cardStyles.imageRounded} border border-[var(--eos-border)] bg-[var(--eos-card)]`}
+                    >
                       {offer.isLegalSafeVerified === true ? (
                         <LegalVerifiedShieldBadge
                           variant="card"
@@ -596,7 +701,7 @@ export default function CatalogPage() {
                             labels.offerImageAlt.replace("{id}", String(offer.id))
                           }
                           fill
-                          sizes="(max-width: 768px) 100vw, 50vw"
+                          sizes={cardStyles.imageSizes}
                           className="object-cover transition duration-700 ease-out group-hover:scale-[1.03]"
                           unoptimized
                           priority={i < 2}
@@ -608,19 +713,23 @@ export default function CatalogPage() {
 
                     <div className="flex items-end justify-between gap-4 px-0.5">
                       <div className="min-w-0">
-                        <h2 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--eos-text)] transition-colors group-hover:text-emerald-600 dark:group-hover:text-emerald-400 line-clamp-2">
+                        <h2
+                          className={`${cardStyles.titleClass} text-[var(--eos-text)] transition-colors group-hover:text-emerald-600 dark:group-hover:text-emerald-400`}
+                        >
                           {offer.title?.trim() ||
                             labels.offerTitleFallback.replace("{id}", String(offer.id))}
                         </h2>
-                        <p className="mt-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--eos-muted)]">
+                        <p className={`${cardStyles.metaClass} text-[var(--eos-muted)]`}>
                           {formatAreaLabel(offer)} · {formatLocationLabel(offer, labels.countryDefault)}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="text-lg md:text-xl font-bold tabular-nums text-[var(--eos-text)]">
+                        <p className={`${cardStyles.priceClass} text-[var(--eos-text)]`}>
                           {formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth)}
                         </p>
-                        <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-subtle)] group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                        <span
+                          className={`${cardStyles.discoverClass} inline-flex items-center gap-1 text-[var(--eos-subtle)] group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors`}
+                        >
                           {labels.discover}
                           <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
                         </span>
