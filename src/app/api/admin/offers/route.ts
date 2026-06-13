@@ -8,6 +8,10 @@ import { extractVerificationMeta, setVerificationStatusInDescription, type Offer
 import { completeAdminOfferApproval, adminForceArchiveOffer, adminReactivateArchivedOffer } from '@/lib/offerPublication';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 import { deleteOfferCompletely } from '@/lib/deleteOfferCompletely';
+import {
+  batchRefreshOfferSourceStatusIfStale,
+  listOfferImportSourceMeta,
+} from '@/lib/offerPrivateNotes';
 
 type AdminUser = { id: number; role: string } | null;
 
@@ -63,11 +67,26 @@ export async function GET() {
     }
 
     const offers = await prisma.offer.findMany({ include: { user: true }, orderBy: { createdAt: 'desc' } });
+    const offerIds = offers.map((o) => o.id);
+    const sourceMetaBefore = await listOfferImportSourceMeta(offerIds);
+    const refreshTargets = offers
+      .filter((o) => sourceMetaBefore.has(o.id))
+      .map((o) => ({ offerId: o.id, userId: Number(o.userId) }));
+    if (refreshTargets.length > 0) {
+      await batchRefreshOfferSourceStatusIfStale(refreshTargets, { concurrency: 6 });
+    }
+    const sourceMeta = await listOfferImportSourceMeta(offerIds);
+
     const enriched = offers.map((offer) => {
       const { verification } = extractVerificationMeta(offer.description);
+      const source = sourceMeta.get(offer.id);
       return {
         ...offer,
         verificationStatus: verification.status,
+        importExternalUrl: source?.importExternalUrl ?? null,
+        sourceIsActive: source?.sourceIsActive ?? null,
+        sourceListingExpired: source?.sourceIsActive === false,
+        sourceLastCheckAt: source?.sourceLastCheckAt ?? null,
       };
     });
     return NextResponse.json({ success: true, offers: enriched });

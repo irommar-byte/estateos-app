@@ -21,7 +21,85 @@ function parseImportMarkerFromDescription(description: string): {
 }
 
 const SOURCE_CHECK_MAX_AGE_MS = 1000 * 60 * 60 * 24;
+export const ADMIN_SOURCE_CHECK_MAX_AGE_MS = 1000 * 60 * 60; // 1h w panelu admina
 const SOURCE_CHECK_TIMEOUT_MS = 12_000;
+
+export function isPortalListingInactiveHtml(html: string): boolean {
+  const sample = html.slice(0, 150_000).toLowerCase();
+  return (
+    /ogłoszenie\s+(?:nie\s+)?(?:jest\s+)?(?:już\s+)?nieaktualne/.test(sample) ||
+    /ogłoszenie\s+(?:nie\s+)?istnieje/.test(sample) ||
+    /nie\s+znaleźliśmy\s+ogłoszenia/.test(sample) ||
+    /to\s+ogłoszenie\s+nie\s+jest\s+(?:już\s+)?dost[eę]pne/.test(sample) ||
+    /oferta\s+(?:zakończona|wygasła|nieaktualna|niedostępna)/.test(sample) ||
+    /ogłoszenie\s+zostało\s+(?:usunięte|zakończone|dezaktywowane)/.test(sample) ||
+    /"status"\s*:\s*"(?:inactive|removed|archived)"/i.test(html) ||
+    /ad_not_found|inactive_ad|offer_not_found/i.test(html)
+  );
+}
+
+export type OfferImportSourceMeta = {
+  offerId: number;
+  userId: number;
+  importExternalUrl: string | null;
+  sourceIsActive: boolean | null;
+  sourceLastCheckAt: string | null;
+};
+
+export async function listOfferImportSourceMeta(offerIds: number[]): Promise<Map<number, OfferImportSourceMeta>> {
+  await ensureOfferPrivateNoteTable();
+  if (offerIds.length === 0) return new Map();
+  const placeholders = offerIds.map(() => '?').join(',');
+  const rows = await prisma.$queryRawUnsafe<
+    Array<{
+      offerId: number;
+      userId: number;
+      importExternalUrl: string | null;
+      sourceIsActive: number | null;
+      sourceLastCheckAt: Date | null;
+    }>
+  >(
+    `
+      SELECT offerId, userId, importExternalUrl, sourceIsActive, sourceLastCheckAt
+      FROM OfferPrivateNote
+      WHERE offerId IN (${placeholders}) AND importExternalUrl IS NOT NULL AND TRIM(importExternalUrl) <> ''
+    `,
+    ...offerIds,
+  );
+  const map = new Map<number, OfferImportSourceMeta>();
+  for (const row of rows) {
+    map.set(Number(row.offerId), {
+      offerId: Number(row.offerId),
+      userId: Number(row.userId),
+      importExternalUrl: row.importExternalUrl,
+      sourceIsActive: row.sourceIsActive == null ? null : Boolean(row.sourceIsActive),
+      sourceLastCheckAt: row.sourceLastCheckAt ? new Date(row.sourceLastCheckAt).toISOString() : null,
+    });
+  }
+  return map;
+}
+
+export async function batchRefreshOfferSourceStatusIfStale(
+  entries: Array<{ offerId: number; userId: number }>,
+  options?: { maxAgeMs?: number; concurrency?: number },
+) {
+  const maxAgeMs = options?.maxAgeMs ?? ADMIN_SOURCE_CHECK_MAX_AGE_MS;
+  const concurrency = Math.max(1, Math.min(options?.concurrency ?? 6, 12));
+  const queue = [...entries];
+  const results = new Map<number, OfferPrivateNoteRow | null>();
+
+  async function worker() {
+    while (queue.length > 0) {
+      const next = queue.shift();
+      if (!next) break;
+      const row = await refreshOfferSourceStatusIfStale(next.offerId, next.userId, { maxAgeMs });
+      results.set(next.offerId, row);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, queue.length || 1) }, () => worker()));
+  return results;
+}
 
 export type OfferPrivateNoteRow = {
   offerId: number;
@@ -127,13 +205,15 @@ export async function upsertImportedOfferPrivateSnapshot(params: {
   await prisma.$executeRawUnsafe(
     `
       INSERT INTO OfferPrivateNote
-      (offerId, userId, userNote, importSource, importExternalUrl, importExternalId, importSnapshotJson)
-      VALUES (?, ?, '', ?, ?, ?, ?)
+      (offerId, userId, userNote, importSource, importExternalUrl, importExternalId, importSnapshotJson, sourceIsActive, sourceLastCheckAt)
+      VALUES (?, ?, '', ?, ?, ?, ?, 1, NOW(3))
       ON DUPLICATE KEY UPDATE
         importSource = VALUES(importSource),
         importExternalUrl = VALUES(importExternalUrl),
         importExternalId = VALUES(importExternalId),
-        importSnapshotJson = VALUES(importSnapshotJson);
+        importSnapshotJson = VALUES(importSnapshotJson),
+        sourceIsActive = 1,
+        sourceLastCheckAt = NOW(3);
     `,
     params.offerId,
     params.userId,
@@ -247,10 +327,15 @@ export async function saveOfferPrivateUserNote(params: {
   );
 }
 
-export async function refreshOfferSourceStatusIfStale(offerId: number, userId: number) {
+export async function refreshOfferSourceStatusIfStale(
+  offerId: number,
+  userId: number,
+  options?: { maxAgeMs?: number },
+) {
   const row = await getOfferPrivateNote(offerId, userId);
   if (!row?.importExternalUrl) return row;
 
+  const maxAgeMs = options?.maxAgeMs ?? SOURCE_CHECK_MAX_AGE_MS;
   const lastCheckMs = row.sourceLastCheckAt ? new Date(row.sourceLastCheckAt).getTime() : 0;
   let snapshotNeedsHydration = false;
   if (String(row.importSource || '') === 'NIERUCHOMOSCI_ONLINE' && row.importSnapshotJson) {
@@ -264,7 +349,7 @@ export async function refreshOfferSourceStatusIfStale(offerId: number, userId: n
       snapshotNeedsHydration = true;
     }
   }
-  const isStale = !lastCheckMs || Date.now() - lastCheckMs >= SOURCE_CHECK_MAX_AGE_MS || snapshotNeedsHydration;
+  const isStale = !lastCheckMs || Date.now() - lastCheckMs >= maxAgeMs || snapshotNeedsHydration;
   if (!isStale) return row;
 
   const controller = new AbortController();
@@ -285,9 +370,11 @@ export async function refreshOfferSourceStatusIfStale(offerId: number, userId: n
       redirect: 'follow',
     });
     status = res.status;
-    isActive = res.ok ? 1 : 0;
-    if (res.ok) {
+    if (!res.ok) {
+      isActive = res.status === 404 || res.status === 410 ? 0 : 0;
+    } else {
       const html = await res.text();
+      isActive = isPortalListingInactiveHtml(html) ? 0 : 1;
       if (String(row.importSource || '') === 'NIERUCHOMOSCI_ONLINE') {
         let parsed: Record<string, unknown> = {};
         if (row.importSnapshotJson) {
