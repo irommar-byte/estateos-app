@@ -26,10 +26,15 @@ function parseExportBody(body: Record<string, unknown>) {
         .filter((row: { portalUrl: string }) => row.portalUrl)
     : undefined;
 
+  const targetUserId = Number(body?.targetUserId);
+  const agentCommissionPercent = Number(body?.agentCommissionPercent);
+  const count = Number(body?.count);
+
   return {
-    targetUserId: body?.targetUserId,
-    agentCommissionPercent: body?.agentCommissionPercent,
-    count: body?.count,
+    targetUserId: Number.isFinite(targetUserId) && targetUserId > 0 ? targetUserId : undefined,
+    agentCommissionPercent:
+      Number.isFinite(agentCommissionPercent) && agentCommissionPercent >= 0 ? agentCommissionPercent : undefined,
+    count: Number.isFinite(count) && count > 0 ? count : undefined,
     propertyKind: body?.propertyKind === 'house' ? ('house' as const) : ('apartment' as const),
     selections,
     floorPlanOverrides: parseFloorPlanOverrides(body?.floorPlanOverrides),
