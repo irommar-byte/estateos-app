@@ -134,10 +134,10 @@ export async function callOpenAiText(params: {
 }): Promise<{ text: string; model: string }> {
   const { default: OpenAI } = await import('openai');
   const client = new OpenAI({ apiKey: params.apiKey }) as unknown as OpenAiClient;
+  const json = params.json === true;
   const modelsToTry = buildModelFallbackChain(params.model, { json });
   const baseMaxOutputTokens = params.maxOutputTokens ?? 900;
   const temperature = params.temperature ?? 0.72;
-  const json = params.json === true;
   const userInput = json && !/\bjson\b/i.test(params.user) ? `${params.user}\n\nZwróć poprawny JSON.` : params.user;
   const logPrefix = params.logPrefix || 'openai';
 
