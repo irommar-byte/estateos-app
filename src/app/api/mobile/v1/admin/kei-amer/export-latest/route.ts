@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       floorPlanOverrides: parseFloorPlanOverrides(body?.floorPlanOverrides),
     });
 
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Eksport KEI nie powiódł się.';
     return NextResponse.json({ ok: false, error: message }, { status: 422 });
