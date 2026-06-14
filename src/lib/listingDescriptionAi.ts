@@ -243,9 +243,58 @@ function stripAiDescription(raw: string): string {
 function openAiErrorMessage(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (/429|rate limit/i.test(msg)) return 'Limit zapytań OpenAI — spróbuj za chwilę.';
-  if (/401|403|invalid.*key/i.test(msg)) return 'Błąd konfiguracji OpenAI na serwerze.';
+  if (/does not have access to model/i.test(msg)) {
+    return 'Ten klucz OpenAI nie ma dostępu do wybranego modelu — skontaktuj się z administratorem.';
+  }
+  if (/401|invalid.*key|incorrect api key/i.test(msg)) return 'Błąd konfiguracji OpenAI na serwerze.';
   if (/quota|insufficient/i.test(msg)) return 'Przekroczony limit konta OpenAI.';
   return `OpenAI: ${msg.slice(0, 140)}`;
+}
+
+function resolveListingModel(): string {
+  return (
+    process.env.OPENAI_LISTING_MODEL?.trim() ||
+    process.env.OPENAI_OTODOM_MODEL?.trim() ||
+    'gpt-5.5-pro'
+  );
+}
+
+/** GPT-5.x na tym koncie działa wyłącznie przez Responses API (nie chat/completions). */
+function usesResponsesApi(model: string): boolean {
+  return /^gpt-5|^o[0-9]/i.test(model.trim());
+}
+
+async function generateWithOpenAi(params: {
+  apiKey: string;
+  model: string;
+  system: string;
+  user: string;
+}): Promise<string> {
+  const { default: OpenAI } = await import('openai');
+  const client = new OpenAI({ apiKey: params.apiKey });
+
+  if (usesResponsesApi(params.model)) {
+    const response = await client.responses.create({
+      model: params.model,
+      instructions: params.system,
+      input: params.user,
+      max_output_tokens: 1800,
+    });
+    const text = String(response.output_text || '').trim();
+    if (!text) throw new Error('OpenAI Responses API zwróciło pusty wynik.');
+    return text;
+  }
+
+  const completion = await client.chat.completions.create({
+    model: params.model,
+    temperature: 0.72,
+    max_tokens: 1400,
+    messages: [
+      { role: 'system', content: params.system },
+      { role: 'user', content: params.user },
+    ],
+  });
+  return String(completion.choices[0]?.message?.content || '').trim();
 }
 
 export async function generateListingDescriptionWithGpt(
@@ -259,25 +308,11 @@ export async function generateListingDescriptionWithGpt(
   const locale = resolveLocale(draft.locale);
   const facts = buildDraftFacts(draft);
   const neighborhood = await buildNeighborhoodContext(draft);
-  const model =
-    process.env.OPENAI_LISTING_MODEL?.trim() ||
-    process.env.OPENAI_OTODOM_MODEL?.trim() ||
-    'gpt-4o';
+  const model = resolveListingModel();
+  const system = buildSystemPrompt(locale);
+  const user = buildUserPrompt(facts, neighborhood, locale);
 
-  const { default: OpenAI } = await import('openai');
-  const client = new OpenAI({ apiKey });
-
-  const completion = await client.chat.completions.create({
-    model,
-    temperature: 0.72,
-    max_tokens: 1400,
-    messages: [
-      { role: 'system', content: buildSystemPrompt(locale) },
-      { role: 'user', content: buildUserPrompt(facts, neighborhood, locale) },
-    ],
-  });
-
-  const content = completion.choices[0]?.message?.content?.trim();
+  const content = await generateWithOpenAi({ apiKey, model, system, user });
   if (!content || content.length < 120) {
     throw new Error('OpenAI zwróciło zbyt krótki opis.');
   }
