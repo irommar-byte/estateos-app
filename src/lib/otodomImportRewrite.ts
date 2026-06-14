@@ -1,5 +1,6 @@
 import type { OtodomImportDraft } from '@/lib/otodomImport';
 import { capitalizeImportTitle } from '@/lib/otodomImport';
+import { callOpenAiText, getOpenAiApiKey, openAiErrorMessage, resolveOpenAiModel } from '@/lib/openAiClient';
 
 export type OtodomPresentationCopy = {
   title: string;
@@ -305,14 +306,7 @@ function buildStructuredFallbackHtml(draft: OtodomImportDraft, agentVoice: boole
 }
 
 function formatAiError(error: unknown): string {
-  const msg = error instanceof Error ? error.message : String(error);
-  if (/429|quota|insufficient/i.test(msg)) {
-    return 'OpenAI: przekroczony limit konta (quota) — doładuj billing';
-  }
-  if (/401|invalid.*api.*key/i.test(msg)) {
-    return 'OpenAI: nieprawidłowy klucz API';
-  }
-  return `OpenAI: ${msg.slice(0, 120)}`;
+  return openAiErrorMessage(error).slice(0, 140);
 }
 
 function validateAiOutput(title: string, descriptionHtml: string, sourcePlain: string): string | null {
@@ -384,30 +378,22 @@ JSON: {"title":"...","descriptionHtml":"..."}`;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const { default: OpenAI } = await import('openai');
-      const client = new OpenAI({ apiKey });
-      const completion = await client.chat.completions.create({
-        model: process.env.OPENAI_OTODOM_MODEL || 'gpt-4o-mini',
+      const userContent =
+        attempt > 0
+          ? `${prompt}\n\nPOPRZEDNIA PRÓBA ODRZUCONA: ${lastReason}. Przepisz całkowicie od nowa, bez języka właściciela i bez kopiowania zdań.`
+          : prompt;
+      const { text: raw } = await callOpenAiText({
+        apiKey,
+        model: resolveOpenAiModel('OPENAI_OTODOM_MODEL'),
+        system:
+          'Redagujesz ogłoszenia nieruchomości po polsku jako agent biura. Nigdy nie używasz języka właściciela. Zwracasz wyłącznie JSON.',
+        user: userContent,
+        maxOutputTokens: 4000,
         temperature: attempt === 0 ? 0.72 : attempt === 1 ? 0.58 : 0.45,
-        max_tokens: 4000,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Redagujesz ogłoszenia nieruchomości po polsku jako agent biura. Nigdy nie używasz języka właściciela. Zwracasz wyłącznie JSON.',
-          },
-          {
-            role: 'user',
-            content:
-              attempt > 0
-                ? `${prompt}\n\nPOPRZEDNIA PRÓBA ODRZUCONA: ${lastReason}. Przepisz całkowicie od nowa, bez języka właściciela i bez kopiowania zdań.`
-                : prompt,
-          },
-        ],
-        response_format: { type: 'json_object' },
+        json: true,
+        logPrefix: 'otodom-import',
       });
 
-      const raw = completion.choices[0]?.message?.content || '';
       const parsed = JSON.parse(raw) as { title?: string; descriptionHtml?: string };
       const title = sanitizePortalListingText(String(parsed.title || '').trim());
       const descriptionHtml = finalizeDescriptionHtml(String(parsed.descriptionHtml || '').trim(), draft);
@@ -443,7 +429,7 @@ export async function buildOtodomPresentationCopy(
   options?: OtodomPresentationCopyOptions,
 ): Promise<OtodomPresentationCopy> {
   const agentVoice = options?.agentVoice !== false;
-  const apiKey = process.env.OPENAI_API_KEY?.trim()?.replace(/^"|"$/g, '');
+  const apiKey = getOpenAiApiKey();
   let aiSkipReason: string | undefined;
 
   if (apiKey && isAiRewriteEnabled(options)) {
@@ -466,5 +452,5 @@ export async function buildOtodomPresentationCopy(
 }
 
 export function isOtodomImportAiConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY?.trim()) && isAiRewriteEnabled();
+  return Boolean(getOpenAiApiKey()) && isAiRewriteEnabled();
 }
