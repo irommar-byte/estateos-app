@@ -240,11 +240,20 @@ function stripAiDescription(raw: string): string {
   return text.slice(0, 7800);
 }
 
+const LISTING_MODEL_DEFAULT = 'gpt-5-mini';
+/** Tańszy fallback gdy projekt OpenAI nie ma jeszcze włączonego gpt-5-mini. */
+const LISTING_MODEL_FALLBACK = 'o4-mini';
+
+function isModelAccessDenied(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /does not have access to model|model_not_found|404.*model/i.test(msg);
+}
+
 function openAiErrorMessage(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (/429|rate limit/i.test(msg)) return 'Limit zapytań OpenAI — spróbuj za chwilę.';
   if (/does not have access to model/i.test(msg)) {
-    return 'Ten klucz OpenAI nie ma dostępu do wybranego modelu — skontaktuj się z administratorem.';
+    return `Model ${LISTING_MODEL_DEFAULT} nie jest włączony w panelu OpenAI (Project → Model access). Włącz gpt-5-mini lub skontaktuj się z administratorem.`;
   }
   if (/401|invalid.*key|incorrect api key/i.test(msg)) return 'Błąd konfiguracji OpenAI na serwerze.';
   if (/quota|insufficient/i.test(msg)) return 'Przekroczony limit konta OpenAI.';
@@ -252,16 +261,29 @@ function openAiErrorMessage(err: unknown): string {
 }
 
 function resolveListingModel(): string {
-  return (
-    process.env.OPENAI_LISTING_MODEL?.trim() ||
-    process.env.OPENAI_OTODOM_MODEL?.trim() ||
-    'gpt-5.5-pro'
-  );
+  return process.env.OPENAI_LISTING_MODEL?.trim() || LISTING_MODEL_DEFAULT;
 }
 
-/** GPT-5.x na tym koncie działa wyłącznie przez Responses API (nie chat/completions). */
+/** GPT-5 / o-series na tym koncie działają przez Responses API (nie chat/completions). */
 function usesResponsesApi(model: string): boolean {
   return /^gpt-5|^o[0-9]/i.test(model.trim());
+}
+
+async function callResponsesModel(
+  client: { responses: { create: (args: Record<string, unknown>) => Promise<{ output_text?: string }> } },
+  model: string,
+  system: string,
+  user: string,
+): Promise<string> {
+  const response = await client.responses.create({
+    model,
+    instructions: system,
+    input: user,
+    max_output_tokens: 900,
+  });
+  const text = String(response.output_text || '').trim();
+  if (!text) throw new Error('OpenAI Responses API zwróciło pusty wynik.');
+  return text;
 }
 
 async function generateWithOpenAi(params: {
@@ -269,32 +291,45 @@ async function generateWithOpenAi(params: {
   model: string;
   system: string;
   user: string;
-}): Promise<string> {
+}): Promise<{ text: string; model: string }> {
   const { default: OpenAI } = await import('openai');
   const client = new OpenAI({ apiKey: params.apiKey });
 
-  if (usesResponsesApi(params.model)) {
-    const response = await client.responses.create({
-      model: params.model,
-      instructions: params.system,
-      input: params.user,
-      max_output_tokens: 1800,
-    });
-    const text = String(response.output_text || '').trim();
-    if (!text) throw new Error('OpenAI Responses API zwróciło pusty wynik.');
-    return text;
+  const modelsToTry = [params.model];
+  if (params.model === LISTING_MODEL_DEFAULT && params.model !== LISTING_MODEL_FALLBACK) {
+    modelsToTry.push(LISTING_MODEL_FALLBACK);
   }
 
-  const completion = await client.chat.completions.create({
-    model: params.model,
-    temperature: 0.72,
-    max_tokens: 1400,
-    messages: [
-      { role: 'system', content: params.system },
-      { role: 'user', content: params.user },
-    ],
-  });
-  return String(completion.choices[0]?.message?.content || '').trim();
+  let lastError: unknown;
+  for (const model of modelsToTry) {
+    try {
+      if (usesResponsesApi(model)) {
+        const text = await callResponsesModel(client, model, params.system, params.user);
+        return { text, model };
+      }
+      const completion = await client.chat.completions.create({
+        model,
+        temperature: 0.72,
+        max_tokens: 1200,
+        messages: [
+          { role: 'system', content: params.system },
+          { role: 'user', content: params.user },
+        ],
+      });
+      const text = String(completion.choices[0]?.message?.content || '').trim();
+      if (!text) throw new Error('OpenAI chat zwróciło pusty wynik.');
+      return { text, model };
+    } catch (err) {
+      lastError = err;
+      if (isModelAccessDenied(err) && model !== modelsToTry[modelsToTry.length - 1]) {
+        console.warn(`[listing-description-ai] model ${model} unavailable, trying fallback`);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('OpenAI request failed');
 }
 
 export async function generateListingDescriptionWithGpt(
@@ -312,12 +347,12 @@ export async function generateListingDescriptionWithGpt(
   const system = buildSystemPrompt(locale);
   const user = buildUserPrompt(facts, neighborhood, locale);
 
-  const content = await generateWithOpenAi({ apiKey, model, system, user });
-  if (!content || content.length < 120) {
+  const { text, model: usedModel } = await generateWithOpenAi({ apiKey, model, system, user });
+  if (!text || text.length < 120) {
     throw new Error('OpenAI zwróciło zbyt krótki opis.');
   }
 
-  return { description: stripAiDescription(content), model };
+  return { description: stripAiDescription(text), model: usedModel };
 }
 
 export { openAiErrorMessage };
