@@ -41,6 +41,12 @@ export function isModelAccessDenied(err: unknown): boolean {
   return /does not have access to model|model_not_found|404.*model/i.test(msg);
 }
 
+function isRetryableWithFallback(err: unknown): boolean {
+  if (isModelAccessDenied(err)) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /pusty wynik|empty result/i.test(msg);
+}
+
 export function openAiErrorMessage(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (/429|rate limit/i.test(msg)) return 'Limit zapytań OpenAI — spróbuj za chwilę.';
@@ -135,7 +141,7 @@ export async function callOpenAiText(params: {
       return { text, model };
     } catch (err) {
       lastError = err;
-      if (isModelAccessDenied(err) && model !== modelsToTry[modelsToTry.length - 1]) {
+      if (isRetryableWithFallback(err) && model !== modelsToTry[modelsToTry.length - 1]) {
         console.warn(`[${logPrefix}] model ${model} unavailable, trying fallback`);
         continue;
       }
