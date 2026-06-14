@@ -296,7 +296,7 @@ async function generateWithOpenAi(params: {
   const client = new OpenAI({ apiKey: params.apiKey });
 
   const modelsToTry = [params.model];
-  if (params.model === LISTING_MODEL_DEFAULT && params.model !== LISTING_MODEL_FALLBACK) {
+  if (params.model === LISTING_MODEL_DEFAULT) {
     modelsToTry.push(LISTING_MODEL_FALLBACK);
   }
 
