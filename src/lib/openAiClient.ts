@@ -24,16 +24,25 @@ export function resolveOpenAiModel(envKey?: 'OPENAI_LISTING_MODEL' | 'OPENAI_OTO
   return process.env.OPENAI_DEFAULT_MODEL?.trim() || OPENAI_MODEL_DEFAULT;
 }
 
-export function buildModelFallbackChain(primary: string): string[] {
+export function buildModelFallbackChain(primary: string, options?: { json?: boolean }): string[] {
   const chain: string[] = [primary];
   const fallback = process.env.OPENAI_FALLBACK_MODEL?.trim() || OPENAI_MODEL_FALLBACK;
-  if (primary === OPENAI_MODEL_DEFAULT && fallback && !chain.includes(fallback)) {
+  const skipReasoningFallback = options?.json === true;
+  if (primary === OPENAI_MODEL_DEFAULT && fallback && !chain.includes(fallback) && !skipReasoningFallback) {
     chain.push(fallback);
   }
   if (!chain.includes(OPENAI_MODEL_LEGACY)) {
     chain.push(OPENAI_MODEL_LEGACY);
   }
   return chain;
+}
+
+/** o-series zużywa tokeny na „myślenie” — daj większy budżet wyjścia. */
+function resolveMaxOutputTokens(model: string, requested: number): number {
+  if (/^o[0-9]/i.test(model.trim())) {
+    return Math.max(requested, 3000);
+  }
+  return requested;
 }
 
 export function isModelAccessDenied(err: unknown): boolean {
@@ -125,8 +134,8 @@ export async function callOpenAiText(params: {
 }): Promise<{ text: string; model: string }> {
   const { default: OpenAI } = await import('openai');
   const client = new OpenAI({ apiKey: params.apiKey }) as unknown as OpenAiClient;
-  const modelsToTry = buildModelFallbackChain(params.model);
-  const maxOutputTokens = params.maxOutputTokens ?? 900;
+  const modelsToTry = buildModelFallbackChain(params.model, { json });
+  const baseMaxOutputTokens = params.maxOutputTokens ?? 900;
   const temperature = params.temperature ?? 0.72;
   const json = params.json === true;
   const userInput = json && !/\bjson\b/i.test(params.user) ? `${params.user}\n\nZwróć poprawny JSON.` : params.user;
@@ -135,6 +144,7 @@ export async function callOpenAiText(params: {
   let lastError: unknown;
   for (const model of modelsToTry) {
     try {
+      const maxOutputTokens = resolveMaxOutputTokens(model, baseMaxOutputTokens);
       const text = usesResponsesApi(model)
         ? await callResponsesModel(client, model, params.system, userInput, maxOutputTokens, json)
         : await callChatModel(client, model, params.system, userInput, maxOutputTokens, temperature, json);
