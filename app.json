@@ -48,6 +48,7 @@
       }
     },
     "android": {
+      "versionCode": 42,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -55,6 +56,17 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "pl.estateos.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ],
       "intentFilters": [
         {
           "action": "VIEW",
@@ -108,7 +120,27 @@
       ],
       "react-native-iap",
       "expo-font",
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "EstateOS używa lokalizacji, aby pokazywać oferty w okolicy i ustawiać radar."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "EstateOS używa zdjęć z galerii, aby dodać je do oferty.",
+          "cameraPermission": "EstateOS używa aparatu do zdjęć oferty i skanowania kodu QR."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/app.png",
+          "color": "#ffffff"
+        }
+      ]
     ]
   }
 }

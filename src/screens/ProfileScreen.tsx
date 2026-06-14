@@ -3747,6 +3747,17 @@ function ProfileScreenLoggedIn({
                   </View>
                 ) : undefined}
               />
+              <ListItem
+                icon="cloud-download-outline"
+                color="#FF9500"
+                title="Amer KEI"
+                subtitle="Import ofert z panelu KEI AMER (Warszawa)"
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  (navigation as any).navigate('AdminKeiAmer');
+                }}
+                isDark={isDark}
+              />
               <ListItem icon="people" color="#32ADE6" title="Użytkownicy" onPress={() => setIsAdminUsersVisible(true)} isDark={isDark} />
               <ListItem
                 icon="sparkles"

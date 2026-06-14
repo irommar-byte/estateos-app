@@ -369,8 +369,14 @@ export const addOffer = {
       upload: 'Загрузить план этажа',
     },
     ai: {
-      generate: 'Генерируйте с помощью ИИ',
+      generate: 'Шаблон ИИ',
+      generateGpt: 'Описание GPT Mini',
       generating: 'Анализ...',
+      generatingGpt: 'GPT анализирует район…',
+      gptRequiresLogin: 'Войдите, чтобы сгенерировать описание GPT.',
+      gptErrorTitle: 'Генерация описания',
+      gptInsufficientData:
+        'Заполните тип, локацию (метку на карте) и параметры на предыдущих шагах.',
       descriptionPlaceholder:
         'Let AI analyze your property and create the ideal description, or enter it manually...',
       intros: [

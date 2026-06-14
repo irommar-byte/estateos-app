@@ -30,6 +30,8 @@ import { REST_OF_COUNTRY_CITY } from '../../constants/locationEcosystem';
 import { getAppLocale, t, useI18n } from '../../i18n';
 import { pl } from '../../i18n/locales/pl';
 import { en } from '../../i18n/locales/en';
+import { useAuthStore } from '../../store/useAuthStore';
+import { generateListingDescriptionWithGpt } from '../../services/offerDescriptionAiService';
 
 const Colors = { primary: '#10b981', aiGlow: '#8b5cf6', danger: '#ef4444', premiumDark: '#1C1C1E', premiumBorder: 'rgba(255,255,255,0.08)' };
 
@@ -303,7 +305,8 @@ const formatNumber = (value: number | string): string =>
     .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
 export default function Step5_Media({ theme }: { theme: any }) {
-  const { t: translate } = useI18n();
+  const { t: translate, locale } = useI18n();
+  const token = useAuthStore((s) => s.token);
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
   const navigation = useNavigation<any>();
   const { width: screenWidth } = useWindowDimensions();
@@ -332,6 +335,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
   );
   
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingGpt, setIsGeneratingGpt] = useState(false);
   const [isDraggingGlobal, setIsDraggingGlobal] = useState(false);
   const glowAnim = useRef(new Animated.Value(0)).current;
 
@@ -506,11 +510,90 @@ export default function Step5_Media({ theme }: { theme: any }) {
   };
   const removeFloorPlan = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); updateDraft({ floorPlan: null }); };
 
+  const isDescriptionBusy = isGenerating || isGeneratingGpt;
+
+  const startDescriptionTyping = (fullText: string, onDone: () => void) => {
+    updateDraft({ description: '' });
+    const words = fullText.split(' ');
+    let currentWordIndex = 0;
+    let tempText = '';
+
+    const typingInterval = setInterval(() => {
+      if (currentWordIndex < words.length) {
+        tempText += (currentWordIndex === 0 ? '' : ' ') + words[currentWordIndex];
+        updateDraft({ description: tempText });
+        if (currentWordIndex % 4 === 0) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        currentWordIndex++;
+      } else {
+        clearInterval(typingInterval);
+        onDone();
+      }
+    }, 36);
+  };
+
+  const stopGlowAnimation = () => {
+    glowAnim.stopAnimation();
+    Animated.timing(glowAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start();
+  };
+
+  const startGlowAnimation = () => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 0.6, duration: 800, useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0.1, duration: 800, useNativeDriver: true }),
+      ]),
+    ).start();
+  };
+
+  const generateGptDescription = async () => {
+    if (isDescriptionBusy) return;
+
+    const hasBasics =
+      String(draft.propertyType || '').trim() ||
+      String(draft.city || '').trim() ||
+      String(draft.area || '').trim() ||
+      String(draft.price || '').trim();
+    if (!hasBasics) {
+      Alert.alert(
+        translate('addOffer.step5.ai.gptErrorTitle'),
+        translate('addOffer.step5.ai.gptInsufficientData'),
+      );
+      return;
+    }
+    if (!token) {
+      Alert.alert(
+        translate('addOffer.step5.ai.gptErrorTitle'),
+        translate('addOffer.step5.ai.gptRequiresLogin'),
+      );
+      return;
+    }
+
+    setIsGeneratingGpt(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    startGlowAnimation();
+
+    try {
+      const { description } = await generateListingDescriptionWithGpt(token, { ...draft }, locale);
+      startDescriptionTyping(description, () => {
+        setIsGeneratingGpt(false);
+        stopGlowAnimation();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      });
+    } catch (err: any) {
+      setIsGeneratingGpt(false);
+      stopGlowAnimation();
+      Alert.alert(
+        translate('addOffer.step5.ai.gptErrorTitle'),
+        String(err?.message || translate('addOffer.step5.ai.gptInsufficientData')),
+      );
+    }
+  };
+
   const generateAI = () => {
-    if (isGenerating) return;
+    if (isDescriptionBusy) return;
     setIsGenerating(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Animated.loop(Animated.sequence([ Animated.timing(glowAnim, { toValue: 0.6, duration: 800, useNativeDriver: true }), Animated.timing(glowAnim, { toValue: 0.1, duration: 800, useNativeDriver: true }) ])).start();
+    startGlowAnimation();
 
     const ai = getAddOfferAiCopy();
     const randomIntro = ai.intros[Math.floor(Math.random() * ai.intros.length)];
@@ -672,24 +755,11 @@ export default function Step5_Media({ theme }: { theme: any }) {
       bullets,
     });
     
-    updateDraft({ description: '' });
-    const words = fullText.split(' ');
-    let currentWordIndex = 0; let tempText = '';
-
-    const typingInterval = setInterval(() => {
-      if (currentWordIndex < words.length) {
-        tempText += (currentWordIndex === 0 ? '' : ' ') + words[currentWordIndex];
-        updateDraft({ description: tempText });
-        if (currentWordIndex % 4 === 0) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        currentWordIndex++;
-      } else {
-        clearInterval(typingInterval); 
-        setIsGenerating(false); 
-        glowAnim.stopAnimation();
-        Animated.timing(glowAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start();
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-    }, 40); 
+    startDescriptionTyping(fullText, () => {
+      setIsGenerating(false);
+      stopGlowAnimation();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    });
   };
 
   const isDark = theme.glass === 'dark';
@@ -808,18 +878,32 @@ export default function Step5_Media({ theme }: { theme: any }) {
             </View>
           </AppleHover>
 
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 8 }}>
+          <View style={{ marginTop: 20, marginBottom: 8 }}>
             <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle }}>
               {translate('addOffer.step5.sections.description')}
             </Text>
-            <AppleHover onPress={generateAI} scaleTo={1.05}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.aiGlow, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 }}>
-                <Ionicons name="sparkles" size={16} color="#ffffff" />
-                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13, marginLeft: 6 }}>
-                  {isGenerating ? translate('addOffer.step5.ai.generating') : translate('addOffer.step5.ai.generate')}
-                </Text>
+            <View style={styles.aiButtonsRow}>
+              <View style={styles.aiButtonFlex}>
+                <AppleHover onPress={generateAI} scaleTo={1.03}>
+                  <View style={[styles.aiTemplateBtn, styles.aiButtonFlexInner]}>
+                    <Ionicons name="flash-outline" size={16} color="#ffffff" />
+                    <Text style={styles.aiBtnText} numberOfLines={1}>
+                      {isGenerating ? translate('addOffer.step5.ai.generating') : translate('addOffer.step5.ai.generate')}
+                    </Text>
+                  </View>
+                </AppleHover>
               </View>
-            </AppleHover>
+              <View style={styles.aiButtonFlex}>
+                <AppleHover onPress={generateGptDescription} scaleTo={1.03}>
+                  <View style={[styles.aiGptBtn, styles.aiButtonFlexInner]}>
+                    <Ionicons name="sparkles" size={16} color="#ffffff" />
+                    <Text style={styles.aiBtnText} numberOfLines={1}>
+                      {isGeneratingGpt ? translate('addOffer.step5.ai.generatingGpt') : translate('addOffer.step5.ai.generateGpt')}
+                    </Text>
+                  </View>
+                </AppleHover>
+              </View>
+            </View>
           </View>
           
           <View style={{ position: 'relative' }}>
@@ -845,7 +929,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
                 placeholderTextColor={theme.subtitle}
                 value={draft.description}
                 onChangeText={(text) => updateDraft({ description: text })}
-                editable={!isGenerating}
+                editable={!isDescriptionBusy}
                 maxLength={ADD_OFFER_DESC_MAX}
               />
             </View>
@@ -898,5 +982,36 @@ const styles = StyleSheet.create({
 
   addMediaBtn: { width: '100%', height: 65, borderRadius: 18, borderStyle: 'dashed', borderWidth: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
   floorPlanContainer: { width: '100%', borderRadius: 18, borderStyle: 'dashed', borderWidth: 2 },
-  removeFloorPlanBtn: { position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.6)', width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' }
+  removeFloorPlanBtn: { position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.6)', width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  aiButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+    marginTop: 12,
+  },
+  aiButtonFlex: { flex: 1, minWidth: 0 },
+  aiButtonFlexInner: {
+    flex: 1,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  aiTemplateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(100,116,139,0.92)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    gap: 6,
+  },
+  aiGptBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.aiGlow,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    gap: 6,
+  },
+  aiBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 12, flexShrink: 1 },
 });

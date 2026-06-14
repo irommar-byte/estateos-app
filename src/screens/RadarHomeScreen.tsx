@@ -4311,6 +4311,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               ) : null}
             <Marker
                 coordinate={pinCoord}
+                anchor={{ x: 0.5, y: 1 }}
                 tracksViewChanges={false}
               onPress={() => {
                 Haptics.selectionAsync();
@@ -4318,12 +4319,24 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 listRef.current?.scrollToIndex({ index: idx, animated: true });
               }}
             >
-                <View style={[styles.markerOuter, isSelected && styles.markerOuterSelected, { shadowColor: markerAccent }]}>
+                <View
+                  collapsable={false}
+                  style={[
+                    styles.markerOuter,
+                    Platform.OS === 'android' && styles.markerOuterAndroid,
+                    isSelected && styles.markerOuterSelected,
+                    { shadowColor: markerAccent },
+                  ]}
+                >
                 <LinearGradient
                   colors={luxColors}
                   start={{ x: 0.12, y: 0 }}
                   end={{ x: 0.88, y: 1 }}
-                  style={[styles.markerCapsule, isSelected && styles.markerCapsuleSelected]}
+                  style={[
+                    styles.markerCapsule,
+                    Platform.OS === 'android' && styles.markerCapsuleAndroid,
+                    isSelected && styles.markerCapsuleSelected,
+                  ]}
                 >
                   <LinearGradient
                     colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0)', 'transparent']}
@@ -4332,7 +4345,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                     style={styles.markerHighlight}
                     pointerEvents="none"
                   />
-                    <Text style={styles.mapMarkerText}>{markerPriceLabel}</Text>
+                    <Text
+                      style={[
+                        styles.mapMarkerText,
+                        Platform.OS === 'android' && styles.mapMarkerTextAndroid,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {markerPriceLabel}
+                    </Text>
                 </LinearGradient>
                 <View style={[styles.markerPinTail, { borderTopColor: luxColors[2] }]} />
               </View>
@@ -6213,6 +6234,9 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     elevation: 10,
   },
+  markerOuterAndroid: {
+    overflow: 'visible',
+  },
   markerOuterSelected: {
     transform: [{ scale: 1.08 }],
     shadowOpacity: 0.52,
@@ -6228,6 +6252,12 @@ const styles = StyleSheet.create({
     minWidth: 44,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  markerCapsuleAndroid: {
+    overflow: 'visible',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    minWidth: 52,
   },
   markerCapsuleSelected: {
     paddingHorizontal: 14,
@@ -6260,6 +6290,12 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.28)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+    flexShrink: 0,
+  },
+  mapMarkerTextAndroid: {
+    includeFontPadding: false,
+    fontSize: 11.5,
+    letterSpacing: 0.2,
   },
   searchAreaCenterDot: {
     width: 14,

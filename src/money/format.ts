@@ -12,16 +12,15 @@ export function formatAmountWithCurrency(amount: number, currency: ListingCurren
   return `${n} ${formatCurrencySuffix(currency)}`;
 }
 
-/** Krótka etykieta na pinezkę mapy, np. „150k €" lub „648k zł". */
-export function formatMarkerPriceCompact(amount: number, currency: ListingCurrency): string {
+/** Krótka etykieta na pinezkę mapy, np. „150k" lub „1.3M" (bez sufiksu waluty — mieści się w markerze). */
+export function formatMarkerPriceCompact(amount: number, _currency?: ListingCurrency): string {
   if (!Number.isFinite(amount) || amount <= 0) return '—';
-  const suffix = formatCurrencySuffix(currency);
   if (amount >= 1_000_000) {
     const mln = amount / 1_000_000;
-    return `${mln >= 10 ? mln.toFixed(0) : mln.toFixed(1)}M ${suffix}`;
+    return `${mln >= 10 ? mln.toFixed(0) : mln.toFixed(1)}M`;
   }
-  if (amount >= 1000) return `${Math.round(amount / 1000)}k ${suffix}`;
-  return `${Math.round(amount)} ${suffix}`;
+  if (amount >= 1000) return `${Math.round(amount / 1000)}k`;
+  return `${Math.round(amount)}`;
 }
 
 export function resolveOfferDisplayAmount(params: {

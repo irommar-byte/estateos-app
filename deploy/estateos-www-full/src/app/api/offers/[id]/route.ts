@@ -9,9 +9,10 @@ import {
   extractVerificationMeta,
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
-import { ensureOfferLegalColumns, ensureOfferMoneyColumns, ensureOfferLocalityCountryColumns } from '@/lib/services/offer.service';
-import { enrichOfferMoneyFieldsForApi } from '@/lib/money/offerPrice.server';
-import { enrichOfferMoneyFields, parsePriceAmount } from '@/lib/money/offerPrice';
+import { enrichOfferPriceDiscountFields, ensureOfferPriceHistorySchema, syncOfferPriceHistory } from '@/lib/offerPriceHistory';
+import { ensureOfferLegalColumns, ensureOfferMoneyColumns, ensureOfferLocalityCountryColumns, ensureOfferExtendedAmenityColumns } from '@/lib/services/offer.service';
+import { enrichOfferMoneyFieldsForApi, resolveOfferPriceFromBody } from '@/lib/money/offerPrice.server';
+import { enrichOfferMoneyFields, parsePriceAmount, getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
@@ -44,11 +45,21 @@ const OFFER_WEB_PUT_SELECT = {
   propertyType: true,
   district: true,
   price: true,
+  priceCurrency: true,
+  pricePln: true,
   area: true,
   images: true,
   rooms: true,
   floor: true,
   yearBuilt: true,
+  adminFee: true,
+  hasBalcony: true,
+  hasElevator: true,
+  hasStorage: true,
+  hasParking: true,
+  hasGarden: true,
+  hasAirConditioning: true,
+  isDuplex: true,
   condition: true,
   agentCommissionPercent: true,
   plotArea: true,
@@ -106,7 +117,10 @@ async function resolveCurrentUser() {
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await ensureOfferLegalColumns();
+    await ensureOfferMoneyColumns();
+    await ensureOfferExtendedAmenityColumns();
     await ensureOfferLocalityCountryColumns();
+    await ensureOfferPriceHistorySchema();
     const resolvedParams = await params;
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS OfferViewLog (
@@ -217,7 +231,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         }
       : offerUser;
 
-    return NextResponse.json({
+    return NextResponse.json(
+      enrichOfferPriceDiscountFields({
       ...moneyOffer,
       user: enrichedUser,
       sellerDisplayName,
@@ -235,6 +250,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       buildYear,
       year: yearBuilt,
       buildYearLabel: formatOfferBuildYear(legalOffer as Record<string, unknown>),
+      floorPlanUrl: (legalOffer as { floorPlanUrl?: string | null }).floorPlanUrl || null,
+      floorPlan: (legalOffer as { floorPlanUrl?: string | null }).floorPlanUrl || null,
       marketListedAt: marketListing.marketListedAt,
       marketRenewedAt: marketListing.marketRenewedAt,
       localityCountry: localityResolved.localityCountry,
@@ -242,7 +259,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       _viewerIsPro: isRealPro,
       views: viewsCount,
       viewsCount,
-    });
+    }),
+    );
   } catch (error) {
     if (isOfferSchemaCompatibilityError(error)) {
       return NextResponse.json(
@@ -258,6 +276,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await ensureOfferLegalColumns();
+    await ensureOfferMoneyColumns();
+    await ensureOfferExtendedAmenityColumns();
+    await ensureOfferPriceHistorySchema();
     const resolvedParams = await params;
     const body = await req.json();
     
@@ -318,6 +339,33 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     const parsedPrice = parseFloat(String(body.price ?? currentOffer.price).replace(',', '.'));
+    const oldPricePln = getCanonicalOfferPricePln(currentOffer as { pricePln?: number; price?: number });
+    let previousListPricePln: number | null = null;
+    try {
+      const listRows = (await prisma.$queryRawUnsafe(
+        `SELECT listPricePln FROM \`Offer\` WHERE id = ? LIMIT 1`,
+        Number(resolvedParams.id),
+      )) as Array<{ listPricePln: number | null }>;
+      const raw = Number(listRows[0]?.listPricePln);
+      previousListPricePln = Number.isFinite(raw) && raw > 0 ? raw : null;
+    } catch {
+      previousListPricePln = null;
+    }
+
+    const pricePatch =
+      body.price != null && Number.isFinite(parsedPrice)
+        ? await resolveOfferPriceFromBody({
+            price: parsedPrice,
+            priceAmount: parsedPrice,
+            priceCurrency: String(body.priceCurrency ?? (currentOffer as { priceCurrency?: string }).priceCurrency ?? 'PLN'),
+          })
+        : body.priceCurrency != null
+          ? await resolveOfferPriceFromBody({
+              price: Number(currentOffer.price),
+              priceAmount: Number(currentOffer.price),
+              priceCurrency: String(body.priceCurrency),
+            })
+          : {};
     const parsedArea = parseFloat(String(body.area ?? currentOffer.area).replace(',', '.'));
     const parsedRooms =
       body.rooms !== undefined && String(body.rooms).trim() !== ''
@@ -361,6 +409,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         propertyType: body.propertyType ?? currentOffer.propertyType,
         district: body.district != null ? String(body.district) : currentOffer.district,
         price: Number.isFinite(parsedPrice) ? parsedPrice : currentOffer.price,
+        ...(pricePatch as Record<string, unknown>),
         area: Number.isFinite(parsedArea) ? parsedArea : currentOffer.area,
         images:
           body.images != null
@@ -395,6 +444,20 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         isFurnished: body.isFurnished !== undefined
           ? !!body.isFurnished
           : currentOffer.isFurnished,
+        adminFee:
+          body.adminFee !== undefined
+            ? body.adminFee === null || body.adminFee === ''
+              ? null
+              : Number(body.adminFee)
+            : currentOffer.adminFee,
+        hasBalcony: body.hasBalcony !== undefined ? !!body.hasBalcony : currentOffer.hasBalcony,
+        hasElevator: body.hasElevator !== undefined ? !!body.hasElevator : currentOffer.hasElevator,
+        hasStorage: body.hasStorage !== undefined ? !!body.hasStorage : currentOffer.hasStorage,
+        hasParking: body.hasParking !== undefined ? !!body.hasParking : currentOffer.hasParking,
+        hasGarden: body.hasGarden !== undefined ? !!body.hasGarden : currentOffer.hasGarden,
+        hasAirConditioning:
+          body.hasAirConditioning !== undefined ? !!body.hasAirConditioning : currentOffer.hasAirConditioning,
+        isDuplex: body.isDuplex !== undefined ? !!body.isDuplex : currentOffer.isDuplex,
         condition: body.condition !== undefined ? body.condition : currentOffer.condition,
         ...(agentCommissionPercent !== undefined && { agentCommissionPercent }),
         status: newStatus,
@@ -402,8 +465,19 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       select: OFFER_WEB_PUT_SELECT,
     });
 
-    const oldPrice = Number(currentOffer.price);
-    const newPrice = Number(updatedOffer.price);
+    const oldPrice = oldPricePln;
+    const newPrice = getCanonicalOfferPricePln(updatedOffer as { pricePln?: number; price?: number });
+    if (Number.isFinite(newPrice) && newPrice > 0) {
+      await syncOfferPriceHistory({
+        offerId: Number(updatedOffer.id),
+        price: Number(updatedOffer.price),
+        pricePln: newPrice,
+        priceCurrency: String((updatedOffer as { priceCurrency?: string }).priceCurrency || 'PLN'),
+        previousPricePln: oldPrice,
+        previousListPricePln,
+        source: 'web_offers_put',
+      });
+    }
     if (Number.isFinite(oldPrice) && Number.isFinite(newPrice) && oldPrice !== newPrice) {
       await dispatchFavoritesPriceChangePush({
         offerId: Number(updatedOffer.id),

@@ -57,7 +57,7 @@ export const addOffer = {
       },
       description: {
         label: 'Opis (zalecany)',
-        action: 'Dodaj opis — minimum {{min}} znaków (możesz użyć „Wygeneruj AI”).',
+        action: 'Dodaj opis — minimum {{min}} znaków (możesz użyć „Opis GPT Mini” lub „Szablon AI”).',
       },
     },
   },
@@ -377,8 +377,14 @@ export const addOffer = {
       upload: 'Wgraj rzut poziomy',
     },
     ai: {
-      generate: 'Wygeneruj AI',
+      generate: 'Szablon AI',
+      generateGpt: 'Opis GPT Mini',
       generating: 'Analizuję...',
+      generatingGpt: 'GPT analizuje okolicę…',
+      gptRequiresLogin: 'Zaloguj się, aby wygenerować opis GPT.',
+      gptErrorTitle: 'Generowanie opisu',
+      gptInsufficientData:
+        'Uzupełnij typ nieruchomości, lokalizację (pinezkę) i parametry w poprzednich krokach.',
       descriptionPlaceholder:
         'Pozwól AI przeanalizować Twoją nieruchomość i stworzyć idealny opis, lub wpisz go ręcznie...',
       intros: [

@@ -47,7 +47,7 @@ import {
 } from '../../services/offerPublicationService';
 import type { CreatePublicationRedemption } from '../../contracts/offerPublicationContract';
 import { gatherPublicationBonusCoupons } from '../../services/publicationBonusCoupons';
-import { recordPositiveAppMoment } from '../../services/appRatingPrompt';
+import { recordPositiveAppMoment, shouldOfferAppRatingPrompt } from '../../services/appRatingPrompt';
 import { readUserFirstFreePublicationUsed } from '../../utils/userPublicationFlags';
 import { markProfilePromoCouponUsed } from '../../services/profilePromoService';
 import PublicationChoiceModal, {
@@ -837,40 +837,42 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       // 4. SUKCES
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       void recordPositiveAppMoment('offer_published');
-      Alert.alert(
-        t('addOffer.step6.alerts.congratulations.title'),
-        legalQueueSubmitted
-          ? t('addOffer.step6.alerts.congratulations.messageWithLegal')
-          : t('addOffer.step6.alerts.congratulations.messageDefault'),
-        [{ text: t('addOffer.common.super'), onPress: () => {
-            /* 1) Wyczyść draft NATYCHMIAST — w razie powrotu do taba "Dodaj"
-                  user widzi czysty Step1, nie poprzednią ofertę.
-               2) `popToTop()` — natywna metoda native-stack-navigator, zwija
-                  cały stos AddOffer do pierwszego ekranu (Step1). Działa
-                  pewniej niż `CommonActions.reset` (które po cichu się
-                  wywalało).
-               3) Przepnij ROOT (tab navigator) na zakładkę Radar — `popToTop`
-                  na lokalnym stacku nie zmienia taba, dlatego używamy
-                  `getParent()`. */
-            resetDraft();
-            try {
-              // @ts-ignore — popToTop jest dostępne w native-stack
-              if (typeof (navigation as any).popToTop === 'function') {
-                (navigation as any).popToTop();
+
+      const successAlertDelayMs =
+        Platform.OS === 'ios' && (await shouldOfferAppRatingPrompt()) ? 1400 : 0;
+
+      const showPublishSuccessAlert = () => {
+        Alert.alert(
+          t('addOffer.step6.alerts.congratulations.title'),
+          legalQueueSubmitted
+            ? t('addOffer.step6.alerts.congratulations.messageWithLegal')
+            : t('addOffer.step6.alerts.congratulations.messageDefault'),
+          [{ text: t('addOffer.common.super'), onPress: () => {
+              resetDraft();
+              try {
+                if (typeof (navigation as any).popToTop === 'function') {
+                  (navigation as any).popToTop();
+                } else {
+                  navigation.dispatch(
+                    CommonActions.reset({ index: 0, routes: [{ name: 'Step1' }] }),
+                  );
+                }
+              } catch {}
+              const rootNav = navigation.getParent?.();
+              if (rootNav) {
+                rootNav.navigate('Radar');
               } else {
-                navigation.dispatch(
-                  CommonActions.reset({ index: 0, routes: [{ name: 'Step1' }] }),
-                );
+                navigation.navigate('Radar' as never);
               }
-            } catch {}
-            const rootNav = navigation.getParent?.();
-            if (rootNav) {
-              rootNav.navigate('Radar');
-            } else {
-              navigation.navigate('Radar' as never);
-            }
-        }}]
-      );
+          }}]
+        );
+      };
+
+      if (successAlertDelayMs > 0) {
+        setTimeout(showPublishSuccessAlert, successAlertDelayMs);
+      } else {
+        showPublishSuccessAlert();
+      }
 
     } catch (error: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

@@ -16,9 +16,10 @@ describe('money format', () => {
     assert.match(formatAmountWithCurrency(638_190, 'PLN'), /638.*190 zł/);
   });
 
-  it('marker compact includes currency suffix', () => {
-    assert.equal(formatMarkerPriceCompact(150_000, 'EUR'), '150k €');
-    assert.match(formatMarkerPriceCompact(638_190, 'PLN'), /638k zł/);
+  it('marker compact is ultra-short for map pins', () => {
+    assert.equal(formatMarkerPriceCompact(150_000, 'EUR'), '150k');
+    assert.equal(formatMarkerPriceCompact(638_190, 'PLN'), '638k');
+    assert.equal(formatMarkerPriceCompact(1_300_000, 'PLN'), '1.3M');
   });
 
   it('LISTING preference shows offer currency', () => {

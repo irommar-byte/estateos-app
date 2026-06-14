@@ -1,11 +1,64 @@
 import type { OtodomImportDraft } from '@/lib/otodomImport';
 import { capitalizeImportTitle } from '@/lib/otodomImport';
+import { callOpenAiText, getOpenAiApiKey, openAiErrorMessage, resolveOpenAiModel } from '@/lib/openAiClient';
 
 export type OtodomPresentationCopy = {
   title: string;
   descriptionHtml: string;
   descriptionPreview: string;
+  rewrittenByAi: boolean;
+  aiSkipReason?: string;
 };
+
+export type OtodomPresentationCopyOptions = {
+  agentVoice?: boolean;
+  forceAi?: boolean;
+};
+
+const SOURCE_BANNED_PHRASE_PATTERNS: RegExp[] = [
+  /\bb(?:iuro|iura)\s+nieruchomo[śs]ci\b/gi,
+  /\bagencj[aąę]\s+nieruchomo[śs]ci\b/gi,
+  /\bbezpo[śs]rednio\s+od\s+w[łl]a[śs]ciciela\b/gi,
+  /\bbez\s+po[śs]rednik[óo]w\b/gi,
+  /\boferta\s+bez\s+po[śs]rednik[óo]w\b/gi,
+  /\bsprzeda[żz]\s+bezpo[śs]redni[aą]?\b/gi,
+  /\bsprzeda[żz]\s+prywatn[aą]\b/gi,
+  /\bnie\s+wsp[óo][łl]pracuj[eę](?:my)?\s+z\s+agencj[aą]/gi,
+  /\bagencj[aą]\s+(?:nie\s+)?(?:akceptuj[eę]|obsługuj[eę]|prosz[eę]\s+o\s+nie)/gi,
+  /\bw[łl]a[śs]ciciel\s+(?:oferuje|wystawia|zaprasza|wsp[óo][łl]pracuje)\b/gi,
+  /\bdzi[eę]kuj[eę](?:my)?\s+(?:za\s+)?(?:zainteresowanie|uwagę|kontakt)?\b/gi,
+  /\b(?:otodom|olx|nieruchomosci[- ]online|gratka|morizon)\b/gi,
+  /\b(?:www\.|https?:\/\/)\S+/gi,
+  /\bnumer\s+licencji\b/gi,
+  /\bpo[śs]rednik\s+(?:nieruchomo[śs]ci|w\s+obrocie)\b/gi,
+  /\b(?:tel\.?|telefon|gsm)\.?\s*[\d\s+\-()]{7,}\b/gi,
+  /\bkontakt\s+w\s+godzinach\b/gi,
+  /\b(?:napisz|zadzwo[nń])\s+(?:do\s+nas|teraz)\b/gi,
+];
+
+const OWNER_VOICE_PATTERNS: RegExp[] = [
+  /\bbez\s+po[śs]rednik[óo]w\b/i,
+  /\bsprzeda[żz]\s+prywatn[aą]\b/i,
+  /\bsprzedajemy\b/i,
+  /\bmamy\s+do\s+sprzedania\b/i,
+  /\bja\s+jako\b/i,
+  /\bbyłam\b/i,
+  /\bbyłem\b/i,
+  /\bmogliśmy\b/i,
+  /\bdla\s+mnie\b/i,
+  /\btakże\s+tak\s+naprawdę\b/i,
+  /\bnegocjacji\s+ceny\b/i,
+  /\bzapraszamy\s+do\s+obejrzenia\b/i,
+  /\bprzekonania\s+się\s+osobiście\b/i,
+  /\bgenialnie\s+się\s+tutaj\s+mieszka\b/i,
+];
+
+const PORTAL_META_FEATURE = /^(cena\s+za|poziom:|umeblowane:|rynek:|rodzaj\s+zabudowy:|powierzchnia:|liczba\s+pokoi:|piętro:|typ\s+oferty:)/i;
+
+const AI_OUTPUT_SANITIZE_PATTERNS: RegExp[] = [
+  ...SOURCE_BANNED_PHRASE_PATTERNS,
+  ...OWNER_VOICE_PATTERNS,
+];
 
 function escapeHtml(text: string): string {
   return text
@@ -30,17 +83,62 @@ function stripHtmlToPlain(html: string): string {
     .trim();
 }
 
-function splitParagraphs(text: string): string[] {
-  return text
-    .split(/\n{2,}|\n/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 12)
-    .filter((p) => !/(otodom|olx)/i.test(p))
-    .slice(0, 8);
+function sanitizePortalListingText(text: string): string {
+  let out = text;
+  for (const pattern of SOURCE_BANNED_PHRASE_PATTERNS) {
+    out = out.replace(pattern, ' ');
+  }
+  for (const pattern of OWNER_VOICE_PATTERNS) {
+    out = out.replace(pattern, ' ');
+  }
+  return out
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s+\./g, '.')
+    .replace(/\.\s*\./g, '.')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function containsOwnerVoice(text: string): boolean {
+  return OWNER_VOICE_PATTERNS.some((p) => p.test(text));
+}
+
+function filterListingFeatures(features: string[]): string[] {
+  return features
+    .map((f) => String(f || '').trim())
+    .filter(Boolean)
+    .filter((f) => !PORTAL_META_FEATURE.test(f))
+    .filter((f) => !/cena\s+za\s+m²/i.test(f))
+    .filter((f) => !/^powierzchnia:/i.test(f))
+    .filter((f) => !/^liczba\s+pokoi:/i.test(f));
+}
+
+function normalizeForCompare(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9ąćęłńóśźż]+/g, '');
+}
+
+function copiedSentenceRatio(sourcePlain: string, outputPlain: string): number {
+  const sentences = sourcePlain
+    .split(/[.!?]+/)
+    .map((s) => normalizeForCompare(s))
+    .filter((s) => s.length > 40);
+  if (sentences.length === 0) return 0;
+  const outNorm = normalizeForCompare(outputPlain);
+  let hits = 0;
+  for (const sentence of sentences) {
+    const chunk = sentence.slice(0, Math.min(80, sentence.length));
+    if (chunk.length > 40 && outNorm.includes(chunk)) hits += 1;
+  }
+  return hits / sentences.length;
 }
 
 function transactionLabel(type: OtodomImportDraft['transactionType']): string {
-  return type === 'RENT' ? 'ofertę najmu' : 'ofertę sprzedaży';
+  return type === 'RENT' ? 'najmu' : 'sprzedaży';
 }
 
 function propertyLabel(type: OtodomImportDraft['propertyType']): string {
@@ -63,7 +161,7 @@ function buildLocationPhrase(draft: OtodomImportDraft): string {
 }
 
 function refineTitle(draft: OtodomImportDraft): string {
-  const original = draft.title?.trim() || '';
+  const original = sanitizePortalListingText(draft.title?.trim() || '');
   const location = buildLocationPhrase(draft);
   const rooms =
     draft.rooms != null && draft.rooms > 0
@@ -82,156 +180,277 @@ function refineTitle(draft: OtodomImportDraft): string {
 
   const generated = parts.join(' ').replace(/\s+/g, ' ').trim();
   if (!original || original.length < 8) return capitalizeImportTitle(generated);
-
-  if (normalizeForCompare(original) === normalizeForCompare(generated)) {
-    return capitalizeImportTitle(original);
-  }
-
   return capitalizeImportTitle(generated.length >= 16 ? generated : original);
 }
 
-function normalizeForCompare(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9ąćęłńóśźż]+/g, '');
+function isAiRewriteEnabled(options?: OtodomPresentationCopyOptions): boolean {
+  if (options?.forceAi) return true;
+  const flag = String(process.env.OTODOM_IMPORT_AI_REWRITE ?? '1').trim().toLowerCase();
+  return flag !== '0' && flag !== 'false' && flag !== 'off';
 }
 
-function buildHeuristicDescriptionHtml(draft: OtodomImportDraft): string {
-  const sourcePlain = stripHtmlToPlain(draft.descriptionHtml || draft.descriptionText || '');
-  const sourceParagraphs = splitParagraphs(sourcePlain);
-  const location = buildLocationPhrase(draft);
-  const tx = transactionLabel(draft.transactionType);
-  const typeWord = propertyLabel(draft.propertyType);
-
-  const introFacts: string[] = [];
-  if (draft.area != null) introFacts.push(`${draft.area} m²`);
-  if (draft.rooms != null) introFacts.push(`${draft.rooms} ${draft.rooms === 1 ? 'pokój' : 'pokoje'}`);
+function buildPresentationIntro(draft: OtodomImportDraft, location: string, typeWord: string): string {
+  const txPhrase = draft.transactionType === 'RENT' ? 'do wynajmu' : 'na sprzedaż';
+  const noun =
+    typeWord === 'działkę'
+      ? 'działkę'
+      : typeWord === 'dom'
+        ? 'dom'
+        : typeWord === 'lokal użytkowy'
+          ? 'lokal użytkowy'
+          : 'mieszkanie';
+  const facts: string[] = [];
+  if (draft.area != null) facts.push(`${draft.area} m²`);
+  if (draft.rooms != null) facts.push(`${draft.rooms} ${draft.rooms === 1 ? 'pokój' : 'pokoje'}`);
   if (draft.floor != null && draft.totalFloors != null) {
-    introFacts.push(`piętro ${draft.floor}/${draft.totalFloors}`);
-  } else if (draft.floor != null) {
-    introFacts.push(`piętro ${draft.floor}`);
+    facts.push(`piętro ${draft.floor}/${draft.totalFloors}`);
   }
-  if (draft.yearBuilt != null) introFacts.push(`rok budowy ${draft.yearBuilt}`);
+  const factSuffix = facts.length ? ` (${facts.join(' · ')})` : '';
+  return `Prezentujemy Państwu ${noun} ${txPhrase} w ${location}${factSuffix}. Chcielibyśmy przedstawić szczegóły tej nieruchomości.`;
+}
 
-  const htmlParts: string[] = [
-    `<p>Przedstawiamy ${tx} — ${typeWord} w ${escapeHtml(location)}${
-      introFacts.length ? ` (${escapeHtml(introFacts.join(' · '))})` : ''
-    }. Poniżej najważniejsze informacje o nieruchomości.</p>`,
+function buildAncillaryFeesHtml(draft: OtodomImportDraft): string | null {
+  if (draft.transactionType !== 'RENT') return null;
+  const lines: string[] = [];
+  if (draft.adminFee != null && draft.adminFee > 0) {
+    lines.push(`Opłaty administracyjne: ${draft.adminFee.toLocaleString('pl-PL')} PLN / miesiąc`);
+  }
+  if (draft.deposit != null && draft.deposit > 0) {
+    lines.push(`Kaucja: ${draft.deposit.toLocaleString('pl-PL')} PLN`);
+  }
+  if (lines.length === 0) return null;
+  return `<p><strong>Opłaty dodatkowe:</strong></p><ul>${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ul>`;
+}
+
+function stripMainPriceFromDescription(html: string, draft: OtodomImportDraft): string {
+  if (draft.price == null) return html;
+  const priceFormatted = draft.price.toLocaleString('pl-PL');
+  const priceDigits = String(Math.round(draft.price));
+  const pricePatterns = [
+    new RegExp(`\\b${priceFormatted.replace(/\s/g, '[\\s\\u00a0]?')}\\b`, 'i'),
+    new RegExp(`\\b${priceDigits}\\b`),
   ];
 
-  for (const paragraph of sourceParagraphs) {
-    const cleaned = paragraph
-      .replace(/\bOTODOM\b/gi, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    if (cleaned.length > 20) {
-      htmlParts.push(`<p>${escapeHtml(cleaned)}</p>`);
-    }
+  const isPriceBlock = (plain: string): boolean => {
+    const norm = plain.toLowerCase();
+    if (/cena\s+za\s+m²/i.test(norm)) return true;
+    const hasPriceWord = /(?:^|\s)(?:cena|koszt|kwota|w\s+cenie|czynsz\s+najmu)(?:\s|:)/i.test(norm);
+    if (!hasPriceWord) return false;
+    return pricePatterns.some((p) => p.test(plain.replace(/\s/g, ' ')));
+  };
+
+  let out = html.replace(/<p\b[^>]*>[\s\S]*?<\/p>/gi, (block) => {
+    const plain = stripHtmlToPlain(block);
+    return isPriceBlock(plain) || containsOwnerVoice(plain) ? '' : block;
+  });
+
+  out = out.replace(/<li\b[^>]*>[\s\S]*?<\/li>/gi, (block) => {
+    const plain = stripHtmlToPlain(block);
+    return isPriceBlock(plain) || containsOwnerVoice(plain) || PORTAL_META_FEATURE.test(plain) ? '' : block;
+  });
+
+  return out.replace(/<ul>\s*<\/ul>/gi, '').trim();
+}
+
+function finalizeDescriptionHtml(html: string, draft: OtodomImportDraft): string {
+  let out = html.trim();
+  for (const pattern of AI_OUTPUT_SANITIZE_PATTERNS) {
+    out = out.replace(pattern, ' ');
+  }
+  out = stripMainPriceFromDescription(out, draft);
+  return out.replace(/\s{2,}/g, ' ').trim();
+}
+
+function buildStructuredFallbackHtml(draft: OtodomImportDraft, agentVoice: boolean): string {
+  const location = buildLocationPhrase(draft);
+  const typeWord = propertyLabel(draft.propertyType);
+  const htmlParts: string[] = [];
+
+  if (agentVoice) {
+    htmlParts.push(`<p>${escapeHtml(buildPresentationIntro(draft, location, typeWord))}</p>`);
+  } else {
+    htmlParts.push(`<p>Oferta ${transactionLabel(draft.transactionType)} — ${typeWord} w ${escapeHtml(location)}.</p>`);
   }
 
-  if (draft.features.length > 0) {
-    htmlParts.push('<p><strong>Atuty i wyposażenie:</strong></p>');
+  const factLines: string[] = [];
+  if (draft.area != null) factLines.push(`Powierzchnia użytkowa: ${draft.area} m²`);
+  if (draft.rooms != null) factLines.push(`Liczba pokoi: ${draft.rooms}`);
+  if (draft.floor != null && draft.totalFloors != null) {
+    factLines.push(`Piętro: ${draft.floor} z ${draft.totalFloors}`);
+  } else if (draft.floor != null) {
+    factLines.push(`Piętro: ${draft.floor}`);
+  }
+  if (draft.yearBuilt != null) factLines.push(`Rok budowy: ${draft.yearBuilt}`);
+
+  if (factLines.length > 0) {
+    htmlParts.push('<p><strong>Parametry:</strong></p>');
+    htmlParts.push(`<ul>${factLines.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`);
+  }
+
+  const features = filterListingFeatures(draft.features);
+  if (features.length > 0) {
+    htmlParts.push('<p><strong>Atuty:</strong></p>');
+    htmlParts.push(`<ul>${features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`);
+  }
+
+  const ancillary = buildAncillaryFeesHtml(draft);
+  if (ancillary) htmlParts.push(ancillary);
+
+  if (agentVoice) {
     htmlParts.push(
-      `<ul>${draft.features.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`,
+      '<p>Zapraszamy do kontaktu — chętnie umówimy prezentację nieruchomości i odpowiemy na pytania.</p>',
     );
   }
 
-  if (draft.transactionType === 'RENT' && draft.price != null) {
-    const rentLine = `Czynsz najmu: ${draft.price.toLocaleString('pl-PL')} PLN / miesiąc`;
-    const extras: string[] = [rentLine];
-    if (draft.adminFee != null && draft.adminFee > 0) {
-      extras.push(`opłaty administracyjne: ${draft.adminFee.toLocaleString('pl-PL')} PLN`);
-    } else {
-      extras.push('opłaty administracyjne mogą być wliczone w cenę (szczegóły w treści ogłoszenia)');
-    }
-    if (draft.deposit != null && draft.deposit > 0) {
-      extras.push(`kaucja: ${draft.deposit.toLocaleString('pl-PL')} PLN`);
-    }
-    htmlParts.push(`<p>${escapeHtml(extras.join(' · '))}.</p>`);
-  } else if (draft.price != null) {
-    htmlParts.push(
-      `<p>Cena: ${escapeHtml(draft.price.toLocaleString('pl-PL'))} PLN.</p>`,
-    );
+  return finalizeDescriptionHtml(htmlParts.join('\n'), draft);
+}
+
+function formatAiError(error: unknown): string {
+  return openAiErrorMessage(error).slice(0, 140);
+}
+
+function validateAiOutput(title: string, descriptionHtml: string, sourcePlain: string): string | null {
+  const plainOut = stripHtmlToPlain(descriptionHtml);
+  if (!title || plainOut.length < 350) {
+    return `za krótki opis (${plainOut.length} znaków)`;
   }
-
-  htmlParts.push(
-    '<p><em>Opis przygotowany na podstawie publicznych danych rynkowych i sformułowany na potrzeby prezentacji w serwisie EstateOS.</em></p>',
-  );
-
-  return htmlParts.join('\n');
+  if (containsOwnerVoice(plainOut)) {
+    return 'opis zawiera język właściciela';
+  }
+  const copyRatio = copiedSentenceRatio(sourcePlain, plainOut);
+  if (copyRatio > 0.2) {
+    return `opis zbyt podobny do źródła (${Math.round(copyRatio * 100)}%)`;
+  }
+  const paragraphCount = (descriptionHtml.match(/<p\b/gi) || []).length;
+  const listCount = (descriptionHtml.match(/<ul\b/gi) || []).length;
+  if (paragraphCount + listCount < 2) {
+    return 'za mało sekcji w opisie';
+  }
+  if (/cena\s+za\s+m²/i.test(plainOut)) {
+    return 'opis zawiera cenę za m²';
+  }
+  return null;
 }
 
 async function rewriteWithOpenAI(
   draft: OtodomImportDraft,
   apiKey: string,
-): Promise<OtodomPresentationCopy | null> {
-  try {
-    const { default: OpenAI } = await import('openai');
-    const client = new OpenAI({ apiKey });
-    const plain = stripHtmlToPlain(draft.descriptionHtml || draft.descriptionText || '').slice(0, 6000);
+  agentVoice: boolean,
+): Promise<{ copy: OtodomPresentationCopy | null; skipReason?: string }> {
+  const plain = sanitizePortalListingText(
+    stripHtmlToPlain(draft.descriptionHtml || draft.descriptionText || ''),
+  ).slice(0, 8000);
 
-    const prompt = `Jesteś redaktorem ogłoszeń nieruchomości w Polsce. Przepisz tytuł i opis tak, aby:
-- zachować wszystkie fakty (cena, metraż, pokoje, lokalizacja, cechy),
-- brzmieć profesjonalnie i elegancko po polsku,
-- NIE kopiować sformułowań 1:1 (unikaj duplikatu treści),
-- NIE wspominać OtoDom, OLX ani innych portali,
-- opis zwróć jako krótki HTML (tylko tagi: p, ul, li, strong).
+  const txPhrase = draft.transactionType === 'RENT' ? 'do wynajmu' : 'na sprzedaż';
+  const amenities = filterListingFeatures(draft.features).join(', ') || '—';
 
-Dane:
-Tytuł źródłowy: ${draft.title}
-Miasto: ${draft.city}
-Dzielnica: ${draft.district}
-Transakcja: ${draft.transactionType}
-Typ: ${draft.propertyType}
-Cena: ${draft.price ?? '—'} PLN
-Metraż: ${draft.area ?? '—'} m²
-Pokoje: ${draft.rooms ?? '—'}
-Cechy: ${draft.features.join(', ')}
-Tekst źródłowy:
-${plain}
+  const voiceRules = agentVoice
+    ? `- Jesteś AGENTEM biura nieruchomości. Forma: „Prezentujemy Państwu…”, „Lokal oferuje…”, „W okolicy…”.
+- ZABRONIONE: „bez pośredników”, „sprzedaż prywatna”, „sprzedajemy”, „mamy do sprzedania”, „ja jako”, „byłam”, „zapraszamy do obejrzenia”, „negocjacji ceny”.
+- ZABRONIONE: cena główna, cena za m², czynsz — są w systemie. Dozwolone: opłaty dodatkowe (admin, kaucja).
+- Przepisz KAŻDE zdanie własnymi słowami. Zero kopiowania zdań ze źródła.
+- Zachowaj WSZYSTKIE fakty: metraże, pokoje, wyposażenie, remonty, komunikacja, sklepy, place zabaw, stan prawny.`
+    : `- Ton biura nieruchomości; bez ceny głównej w tekście.`;
 
-Odpowiedz wyłącznie JSON: {"title":"...","descriptionHtml":"..."}`;
+  const prompt = `Przepisz tytuł i opis ogłoszenia importowanego z portalu w tonie profesjonalnego agenta.
 
-    const completion = await client.chat.completions.create({
-      model: process.env.OPENAI_OTODOM_MODEL || 'gpt-4o-mini',
-      temperature: 0.65,
-      messages: [{ role: 'user', content: prompt }],
-      response_format: { type: 'json_object' },
-    });
+TRANSAKCJA: ${txPhrase}
+LOKALIZACJA: ${draft.city}, ${draft.district || ''}
+Metraż: ${draft.area ?? '—'} m² · Pokoje: ${draft.rooms ?? '—'} · Piętro: ${draft.floor ?? '—'}/${draft.totalFloors ?? '—'}
+Atuty (pomocniczo): ${amenities}
 
-    const raw = completion.choices[0]?.message?.content || '';
-    const parsed = JSON.parse(raw) as { title?: string; descriptionHtml?: string };
-    const title = String(parsed.title || '').trim();
-    const descriptionHtml = String(parsed.descriptionHtml || '').trim();
-    if (!title || !descriptionHtml) return null;
+STRUKTURA HTML (p, ul, li, strong):
+1. Wstęp agenta (Prezentujemy Państwu…)
+2. Opis lokalu i układu (lista pomieszczeń jeśli są w źródle)
+3. Wyposażenie i stan
+4. Okolica i komunikacja
+5. Stan prawny
+6. Zaproszenie do kontaktu i prezentacji
 
-    return {
-      title: capitalizeImportTitle(title),
-      descriptionHtml,
-      descriptionPreview: stripHtmlToPlain(descriptionHtml).slice(0, 500),
-    };
-  } catch (error) {
-    console.warn('[otodom-import] OpenAI rewrite skipped:', error);
-    return null;
+TEKST ŹRÓDŁOWY (tylko fakty — przepisz, nie kopiuj):
+${plain || '(brak)'}
+
+${voiceRules}
+
+JSON: {"title":"...","descriptionHtml":"..."}`;
+
+  let lastReason = 'nieznany błąd';
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const userContent =
+        attempt > 0
+          ? `${prompt}\n\nPOPRZEDNIA PRÓBA ODRZUCONA: ${lastReason}. Przepisz całkowicie od nowa, bez języka właściciela i bez kopiowania zdań.`
+          : prompt;
+      const { text: raw } = await callOpenAiText({
+        apiKey,
+        model: resolveOpenAiModel('OPENAI_OTODOM_MODEL'),
+        system:
+          'Redagujesz ogłoszenia nieruchomości po polsku jako agent biura. Nigdy nie używasz języka właściciela. Zwracasz wyłącznie JSON.',
+        user: userContent,
+        maxOutputTokens: 4000,
+        temperature: attempt === 0 ? 0.72 : attempt === 1 ? 0.58 : 0.45,
+        json: true,
+        logPrefix: 'otodom-import',
+      });
+
+      const parsed = JSON.parse(raw) as { title?: string; descriptionHtml?: string };
+      const title = sanitizePortalListingText(String(parsed.title || '').trim());
+      const descriptionHtml = finalizeDescriptionHtml(String(parsed.descriptionHtml || '').trim(), draft);
+      const validationError = validateAiOutput(title, descriptionHtml, plain);
+      if (validationError) {
+        lastReason = validationError;
+        console.warn(`[otodom-import] OpenAI rewrite rejected (attempt ${attempt + 1}):`, validationError);
+        continue;
+      }
+
+      return {
+        copy: {
+          title: capitalizeImportTitle(title),
+          descriptionHtml,
+          descriptionPreview: stripHtmlToPlain(descriptionHtml).slice(0, 500),
+          rewrittenByAi: true,
+        },
+      };
+    } catch (error) {
+      lastReason = formatAiError(error);
+      console.warn(`[otodom-import] OpenAI rewrite failed (attempt ${attempt + 1}):`, lastReason);
+      if (/429|quota|401|invalid.*api.*key/i.test(lastReason)) {
+        break;
+      }
+    }
   }
+
+  return { copy: null, skipReason: lastReason };
 }
 
 export async function buildOtodomPresentationCopy(
   draft: OtodomImportDraft,
+  options?: OtodomPresentationCopyOptions,
 ): Promise<OtodomPresentationCopy> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (apiKey) {
-    const ai = await rewriteWithOpenAI(draft, apiKey);
-    if (ai) return ai;
+  const agentVoice = options?.agentVoice !== false;
+  const apiKey = getOpenAiApiKey();
+  let aiSkipReason: string | undefined;
+
+  if (apiKey && isAiRewriteEnabled(options)) {
+    const { copy, skipReason } = await rewriteWithOpenAI(draft, apiKey, agentVoice);
+    aiSkipReason = skipReason;
+    if (copy) return copy;
+  } else if (!apiKey) {
+    aiSkipReason = 'brak OPENAI_API_KEY na serwerze';
   }
 
   const title = refineTitle(draft);
-  const descriptionHtml = buildHeuristicDescriptionHtml(draft);
+  const descriptionHtml = buildStructuredFallbackHtml(draft, agentVoice);
   return {
     title,
     descriptionHtml,
     descriptionPreview: stripHtmlToPlain(descriptionHtml).slice(0, 500),
+    rewrittenByAi: false,
+    aiSkipReason,
   };
+}
+
+export function isOtodomImportAiConfigured(): boolean {
+  return Boolean(getOpenAiApiKey()) && isAiRewriteEnabled();
 }

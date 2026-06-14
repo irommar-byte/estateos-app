@@ -1,10 +1,11 @@
 import FloorPlanViewer from '../components/FloorPlanViewer';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert, Modal, Platform, Pressable, ScrollView, ActivityIndicator, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert, Modal, Platform, Pressable, ScrollView, ActivityIndicator, useColorScheme, type GestureResponderEvent } from 'react-native';
 import { useThemeStore } from '../store/useThemeStore';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedScrollHandler,
   useSharedValue,
@@ -16,6 +17,8 @@ import Animated, {
   withSequence,
   withRepeat,
 } from 'react-native-reanimated';
+
+const AnimatedScrollView = Animated.createAnimatedComponent(GHScrollView);
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
@@ -827,7 +830,31 @@ export default function OfferDetail({ route, navigation }: any) {
 
   const scrollY = useSharedValue(0);
   const sheetNudge = useSharedValue(0);
+  const scrollViewRef = useRef<GHScrollView>(null);
+  const touchTapRef = useRef({ x: 0, y: 0, at: 0 });
   const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { scrollY.value = e.contentOffset.y; } });
+
+  const isTapNotScroll = (start: { x: number; y: number; at: number }, end: GestureResponderEvent) => {
+    const dx = Math.abs(end.nativeEvent.pageX - start.x);
+    const dy = Math.abs(end.nativeEvent.pageY - start.y);
+    return Date.now() - start.at < 280 && dx < 14 && dy < 14;
+  };
+
+  const rememberTouchStart = (e: GestureResponderEvent) => {
+    touchTapRef.current = {
+      x: e.nativeEvent.pageX,
+      y: e.nativeEvent.pageY,
+      at: Date.now(),
+    };
+  };
+
+  const nudgeSheetOpen = () => {
+    scrollViewRef.current?.scrollTo({ y: 96, animated: true });
+  };
+
+  const handleSheetHintTapEnd = (e: GestureResponderEvent) => {
+    if (isTapNotScroll(touchTapRef.current, e)) nudgeSheetOpen();
+  };
 
   useEffect(() => {
     sheetNudge.value = withRepeat(
@@ -1385,21 +1412,27 @@ export default function OfferDetail({ route, navigation }: any) {
         </View>
       </View>
 
-      <Animated.ScrollView
+      <AnimatedScrollView
+        ref={scrollViewRef}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+        overScrollMode="always"
+        bounces
         pointerEvents="box-none"
         style={styles.scrollLayer}
-        contentContainerStyle={{ flexGrow: 0 }}
+        contentContainerStyle={styles.scrollContent}
       >
         {/*
-          Przezroczysty pas w ScrollView (nad zdjęciem) — tap otwiera galerię.
-          ScrollView ma wyższy zIndex niż hero, więc bez tego dotyk nie dociera do Pressable pod spodem.
+          Przezroczysty pas nad zdjęciem — ScrollView ma pointerEvents="box-none",
+          więc dotyk trafia w Pressable hero pod spodem (galeria). Przewijanie działa
+          na białej karcie treści poniżej.
         */}
         <Pressable
-          style={styles.heroTapStrip}
           onPress={() => openGallery(0)}
+          style={styles.heroTapStrip}
           accessibilityRole="button"
           accessibilityLabel={t('offer.detail.hero.openGallery')}
         />
@@ -1411,7 +1444,6 @@ export default function OfferDetail({ route, navigation }: any) {
               marginTop: -HERO_SHEET_OVERLAP,
             },
           ]}
-          pointerEvents="auto"
         >
           <LinearGradient
             pointerEvents="none"
@@ -1424,37 +1456,44 @@ export default function OfferDetail({ route, navigation }: any) {
             style={styles.sheetTopShade}
           />
           <Animated.View
-            pointerEvents="none"
             style={[styles.sheetGrabberZone, sheetGrabberAnimatedStyle]}
             accessibilityRole="adjustable"
             accessibilityLabel={t('offer.detail.sheetSwipeHint')}
           >
             <View
+              pointerEvents="none"
               style={[
                 styles.sheetDragHandle,
                 { backgroundColor: isDark ? 'rgba(255,255,255,0.34)' : 'rgba(60,60,67,0.28)' },
               ]}
             />
-            <Animated.View style={[styles.sheetSwipeHintRow, sheetSwipeHintStyle]}>
-              <ChevronUp
-                size={13}
-                color={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(60,60,67,0.45)'}
-                strokeWidth={2.5}
-              />
-              <Text
-                style={[
-                  styles.sheetSwipeHintText,
-                  { color: isDark ? 'rgba(255,255,255,0.58)' : 'rgba(60,60,67,0.52)' },
-                ]}
-              >
-                {t('offer.detail.sheetSwipeHint')}
-              </Text>
-              <ChevronUp
-                size={13}
-                color={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(60,60,67,0.45)'}
-                strokeWidth={2.5}
-              />
-            </Animated.View>
+            <View
+              onTouchStart={rememberTouchStart}
+              onTouchEnd={handleSheetHintTapEnd}
+              accessibilityRole="button"
+              accessibilityHint={t('offer.detail.sheetSwipeHint')}
+            >
+              <Animated.View pointerEvents="none" style={[styles.sheetSwipeHintRow, sheetSwipeHintStyle]}>
+                <ChevronUp
+                  size={13}
+                  color={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(60,60,67,0.45)'}
+                  strokeWidth={2.5}
+                />
+                <Text
+                  style={[
+                    styles.sheetSwipeHintText,
+                    { color: isDark ? 'rgba(255,255,255,0.58)' : 'rgba(60,60,67,0.52)' },
+                  ]}
+                >
+                  {t('offer.detail.sheetSwipeHint')}
+                </Text>
+                <ChevronUp
+                  size={13}
+                  color={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(60,60,67,0.45)'}
+                  strokeWidth={2.5}
+                />
+              </Animated.View>
+            </View>
           </Animated.View>
           {/* Cena na górze została usunięta — pełna kwota i PLN/m² siedzą teraz
               w dolnym pasku CTA. Trzymamy tu tylko badge'y meta (czynsz, views). */}
@@ -1628,7 +1667,14 @@ export default function OfferDetail({ route, navigation }: any) {
           <Text style={[styles.description, isDark && { color: '#d1d5db' }]}>{displayOffer.description}</Text>
 
           <Text style={[styles.sectionTitle, { marginTop: 28 }, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.gallery')}</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={width * 0.8 + 16} decelerationRate="fast" contentContainerStyle={styles.galleryContainer}>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled={Platform.OS === 'android'}
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={width * 0.8 + 16}
+            decelerationRate="fast"
+            contentContainerStyle={styles.galleryContainer}
+          >
             {imagesToShow.map((img, idx) => (
               <Pressable key={idx} onPress={() => openGallery(idx)}>
                 <Image source={{ uri: img }} style={styles.galleryThumbnail} contentFit="cover" transition={200} />
@@ -1697,7 +1743,7 @@ export default function OfferDetail({ route, navigation }: any) {
             }}
           />
         </View>
-      </Animated.ScrollView>
+      </AnimatedScrollView>
 
       {/* --- NOWY, LUKSUSOWY BOTTOM BAR APPLE-STYLE --- */}
       <View
@@ -1709,7 +1755,7 @@ export default function OfferDetail({ route, navigation }: any) {
           if (Math.abs(h - bottomBarHeight) > 2) setBottomBarHeight(h);
         }}
       >
-        <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 16) + 12 }, isDark && { backgroundColor: 'rgba(10,10,10,0.65)', borderTopColor: 'rgba(255,255,255,0.1)' }]}>
+        <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 16) + 12 }, Platform.OS === 'android' && { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }, isDark && { backgroundColor: Platform.OS === 'android' ? '#0a0a0a' : 'rgba(10,10,10,0.65)', borderTopColor: 'rgba(255,255,255,0.1)' }]}>
           
           {/* TOP ROW: Cena (z meta-pigułkami) + ROI / status cenowy / sprzedawca */}
           <View style={styles.bottomBarTopRow}>
@@ -2629,8 +2675,9 @@ export default function OfferDetail({ route, navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffff' },
-  imageContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: IMG_HEIGHT, zIndex: 1 },
+  imageContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: IMG_HEIGHT, zIndex: 1, elevation: 1 },
   scrollLayer: { flex: 1, zIndex: 2 },
+  scrollContent: { flexGrow: 0, paddingBottom: 0 },
   heroTapStrip: { height: HERO_TAP_HEIGHT, backgroundColor: 'transparent' },
   heroImagePressable: { flex: 1 },
   mainImage: { width: '100%', height: '100%' },

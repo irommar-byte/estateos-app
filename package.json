@@ -15,7 +15,11 @@
     "prearchive:ios": "npm run verify:ios-release",
     "eas:ios": "eas build --platform ios --profile production",
     "eas:ios:submit": "eas submit --platform ios --latest",
-    "eas:ios:all": "eas build --platform ios --profile production --auto-submit"
+    "eas:ios:all": "eas build --platform ios --profile production --auto-submit",
+    "eas:android": "eas build --platform android --profile production-android",
+    "eas:android:preview": "eas build --platform android --profile preview-android",
+    "eas:android:submit": "eas submit --platform android --profile production-android --latest",
+    "prebuild:android": "expo prebuild --platform android --clean"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

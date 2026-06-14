@@ -1,10 +1,12 @@
 import type { OtodomImportDraft } from '@/lib/otodomImport';
+import { normalizeImportPortalUrl, sanitizeImportYearBuilt } from '@/lib/otodomImport';
 import { assertOtodomImportDraftReady } from '@/lib/importDraftValidate';
 import { resolveOtodomImportLocationFields } from '@/lib/location/resolveOfferLocationFromCoordinates';
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
-import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
+import { buildOtodomPresentationCopy, isOtodomImportAiConfigured } from '@/lib/otodomImportRewrite';
+import { stripHtmlToPlain } from '@/lib/offerDescriptionHtml';
 import { inferCountryFromCoordinates } from '@/lib/offerLocalityCountry';
-import { upsertImportedOfferPrivateSnapshot } from '@/lib/offerPrivateNotes';
+import { upsertImportedOfferPrivateSnapshot, ensureOfferPrivateNoteTable } from '@/lib/offerPrivateNotes';
 import {
   consumeAndReserveImportPublication,
   deleteOfferAfterImportPaymentFailure,
@@ -21,6 +23,7 @@ import {
   saveOfferGalleryOrFloorplan,
   sniffImageMimeFromMagic,
 } from '@/lib/upload/offerMediaUpload';
+import { resolveLastImageIsFloorPlan } from '@/lib/otodomImportFloorPlan';
 import { prisma } from '@/lib/prisma';
 
 const IMPORT_MARKER_PREFIXES: Record<OtodomImportDraft['source'], string> = {
@@ -63,10 +66,57 @@ export async function findExistingOtodomImportOffer(source: OtodomImportDraft['s
   });
 }
 
+function portalUrlLookupCandidates(portalUrl: string): string[] {
+  let normalized = portalUrl.trim();
+  try {
+    normalized = normalizeImportPortalUrl(portalUrl);
+  } catch {
+    // keep raw trimmed URL
+  }
+  const withoutSlash = normalized.replace(/\/$/, '');
+  const withSlash = `${withoutSlash}/`;
+  return Array.from(new Set([normalized, withoutSlash, withSlash, portalUrl.trim()]));
+}
+
+export async function findExistingOfferByImportUrl(portalUrl: string) {
+  const candidates = portalUrlLookupCandidates(portalUrl);
+  if (candidates.length === 0) return null;
+
+  await ensureOfferPrivateNoteTable();
+  const placeholders = candidates.map(() => '?').join(', ');
+  const rows = await prisma.$queryRawUnsafe<Array<{ offerId: number }>>(
+    `SELECT offerId FROM OfferPrivateNote WHERE importExternalUrl IN (${placeholders}) LIMIT 1`,
+    ...candidates,
+  );
+  const offerId = Number(rows[0]?.offerId);
+  if (!Number.isFinite(offerId) || offerId <= 0) return null;
+
+  return prisma.offer.findUnique({
+    where: { id: offerId },
+    select: { id: true, title: true, status: true },
+  });
+}
+
+export async function findExistingImportedOffer(
+  draft: Pick<OtodomImportDraft, 'source' | 'externalId' | 'externalUrl'>,
+) {
+  const byMarker = await findExistingOtodomImportOffer(draft.source, draft.externalId);
+  if (byMarker) return byMarker;
+  if (draft.externalUrl) {
+    return findExistingOfferByImportUrl(draft.externalUrl);
+  }
+  return null;
+}
+
+export async function findExistingImportedOfferByPortalUrl(portalUrl: string) {
+  return findExistingOfferByImportUrl(portalUrl);
+}
+
 export async function draftToOfferCreateBody(
   draft: OtodomImportDraft,
   userId: number,
   presentation: { title: string; descriptionHtml: string },
+  options?: { agentCommissionPercent?: number | null },
 ) {
   assertOtodomImportDraftReady(draft);
 
@@ -90,7 +140,7 @@ export async function draftToOfferCreateBody(
     rooms: draft.rooms,
     floor: draft.floor,
     totalFloors: draft.totalFloors,
-    yearBuilt: draft.yearBuilt,
+    yearBuilt: sanitizeImportYearBuilt(draft.yearBuilt),
     city,
     district,
     street: street || draft.street,
@@ -108,6 +158,9 @@ export async function draftToOfferCreateBody(
     heating: draft.heating,
     status: 'PENDING',
     images: '[]',
+    ...(options?.agentCommissionPercent != null
+      ? { agentCommissionPercent: options.agentCommissionPercent }
+      : {}),
   };
 }
 
@@ -153,21 +206,49 @@ async function downloadRemoteImage(
   }
 }
 
+export type ImportImageProgress = {
+  phase: 'download' | 'upload_gallery' | 'upload_floorplan';
+  index: number;
+  total: number;
+  label: string;
+  asFloorPlan?: boolean;
+};
+
 export async function importOtodomImagesForOffer(params: {
   offerId: number;
   ownerUserId: number;
   imageUrls: string[];
   source: OtodomImportDraft['source'];
-}): Promise<{ uploaded: number; failed: number; urls: string[] }> {
+  maxImages?: number;
+  lastImageAsFloorPlan?: boolean;
+  onProgress?: (progress: ImportImageProgress) => void;
+}): Promise<{ uploaded: number; failed: number; urls: string[]; floorPlanUrl: string | null }> {
   const urls: string[] = [];
   let uploaded = 0;
   let failed = 0;
-  const toFetch = params.imageUrls.slice(0, MAX_IMPORT_IMAGES);
+  let floorPlanUrl: string | null = null;
+  const cap = Math.min(params.maxImages ?? MAX_IMPORT_IMAGES, MAX_IMPORT_IMAGES);
+  const allUrls = params.imageUrls.slice(0, cap);
+  const useFloorPlan =
+    params.lastImageAsFloorPlan === true && allUrls.length > 0;
+  const galleryUrls = useFloorPlan && allUrls.length > 1 ? allUrls.slice(0, -1) : allUrls;
+  const floorPlanRemoteUrl = useFloorPlan ? allUrls[allUrls.length - 1] : null;
+  const totalSteps = galleryUrls.length + (floorPlanRemoteUrl ? 1 : 0);
 
   await acquireOfferUploadLock(params.offerId);
   try {
-    for (let index = 0; index < toFetch.length; index += 1) {
-      const remoteUrl = toFetch[index];
+    let step = 0;
+    for (let index = 0; index < galleryUrls.length; index += 1) {
+      step += 1;
+      const remoteUrl = galleryUrls[index];
+      params.onProgress?.({
+        phase: 'download',
+        index: step,
+        total: totalSteps,
+        label: `Pobieranie zdjęcia ${step}/${totalSteps}`,
+        asFloorPlan: false,
+      });
+
       const file = await downloadRemoteImage(remoteUrl, params.source);
       if (!file) {
         failed += 1;
@@ -180,6 +261,14 @@ export async function importOtodomImagesForOffer(params: {
       } catch {
         processedBuffer = file.buffer;
       }
+
+      params.onProgress?.({
+        phase: 'upload_gallery',
+        index: step,
+        total: totalSteps,
+        label: `Zapisywanie zdjęcia ${step}/${totalSteps}`,
+        asFloorPlan: false,
+      });
 
       const saved = await saveOfferGalleryOrFloorplan({
         offerId: params.offerId,
@@ -200,19 +289,86 @@ export async function importOtodomImagesForOffer(params: {
       uploaded += 1;
       urls.push(saved.url);
     }
+
+    if (floorPlanRemoteUrl) {
+      step += 1;
+      params.onProgress?.({
+        phase: 'download',
+        index: step,
+        total: totalSteps,
+        label: `Pobieranie rzutu (${step}/${totalSteps})`,
+        asFloorPlan: true,
+      });
+
+      const file = await downloadRemoteImage(floorPlanRemoteUrl, params.source);
+      if (!file) {
+        failed += 1;
+      } else {
+        let processedBuffer: Buffer;
+        try {
+          processedBuffer = await processOtodomImportImageBuffer(file.buffer, galleryUrls.length, {
+            isFloorPlan: true,
+          });
+        } catch {
+          processedBuffer = file.buffer;
+        }
+
+        params.onProgress?.({
+          phase: 'upload_floorplan',
+          index: step,
+          total: totalSteps,
+          label: 'Zapisywanie rzutu lokalu',
+          asFloorPlan: true,
+        });
+
+        const saved = await saveOfferGalleryOrFloorplan({
+          offerId: params.offerId,
+          ownerUserId: params.ownerUserId,
+          fileBuffer: processedBuffer,
+          mimeTypeDeclared: 'image/jpeg',
+          originalFileName: 'otodom-import-floorplan.jpg',
+          isFloorPlan: true,
+          byteLengthInput: processedBuffer.length,
+          tileWatermark: false,
+        });
+
+        if (saved.ok) {
+          uploaded += 1;
+          floorPlanUrl = saved.url;
+        } else {
+          failed += 1;
+        }
+      }
+    }
   } finally {
     releaseOfferUploadLock(params.offerId);
   }
 
-  return { uploaded, failed, urls };
+  return { uploaded, failed, urls, floorPlanUrl };
 }
 
 export async function createOfferFromOtodomDraft(
   draft: OtodomImportDraft,
-  adminUserId: number,
+  ownerUserId: number,
   publication?: OtodomPublicationInput | unknown,
+  options?: {
+    agentCommissionPercent?: number | null;
+    maxImportImages?: number;
+    lastImageFloorPlan?: boolean;
+    onImageProgress?: (progress: ImportImageProgress) => void;
+    onCopyProgress?: (label: string, detail?: string, meta?: { rewrittenByAi?: boolean }) => void;
+    onAiRewrite?: (payload: {
+      phase: 'start' | 'done';
+      titleBefore?: string;
+      titleAfter?: string;
+      descriptionBefore?: string;
+      descriptionAfter?: string;
+      rewrittenByAi?: boolean;
+      skipReason?: string;
+    }) => void;
+  },
 ) {
-  const existing = await findExistingOtodomImportOffer(draft.source, draft.externalId);
+  const existing = await findExistingImportedOffer(draft);
   if (existing) {
     return {
       ok: false as const,
@@ -222,8 +378,40 @@ export async function createOfferFromOtodomDraft(
     };
   }
 
-  const presentation = await buildOtodomPresentationCopy(draft);
-  const body = await draftToOfferCreateBody(draft, adminUserId, presentation);
+  const titleBefore = String(draft.title || '').trim();
+  const descriptionBefore = String(draft.descriptionText || stripHtmlToPlain(draft.descriptionHtml || '')).trim().slice(0, 1200);
+
+  options?.onAiRewrite?.({
+    phase: 'start',
+    titleBefore,
+    descriptionBefore,
+  });
+  options?.onCopyProgress?.(
+    'Przeróbka opisu (sztuczna inteligencja)…',
+    isOtodomImportAiConfigured() ? 'GPT' : 'reguły',
+  );
+  const presentation = await buildOtodomPresentationCopy(draft, { agentVoice: true });
+  const descriptionAfter = stripHtmlToPlain(presentation.descriptionHtml).trim().slice(0, 1200);
+  options?.onAiRewrite?.({
+    phase: 'done',
+    titleBefore,
+    titleAfter: presentation.title,
+    descriptionBefore,
+    descriptionAfter,
+    rewrittenByAi: presentation.rewrittenByAi,
+    skipReason: presentation.aiSkipReason,
+  });
+  const detail = presentation.rewrittenByAi
+    ? 'AI ✓'
+    : presentation.aiSkipReason
+      ? `reguły · ${presentation.aiSkipReason}`
+      : 'reguły · treść ze źródła';
+  options?.onCopyProgress?.(
+    presentation.rewrittenByAi ? 'Opis przepisany przez AI' : 'Opis uzupełniony automatycznie',
+    detail,
+    { rewrittenByAi: presentation.rewrittenByAi },
+  );
+  const body = await draftToOfferCreateBody(draft, ownerUserId, presentation, options);
   const offer = await createOffer(body);
   const offerId = Number((offer as { id?: number }).id);
   if (!Number.isFinite(offerId)) {
@@ -232,15 +420,31 @@ export async function createOfferFromOtodomDraft(
 
   await upsertImportedOfferPrivateSnapshot({
     offerId,
-    userId: adminUserId,
+    userId: ownerUserId,
     draft,
   });
 
+  let lastImageBuffer: Buffer | null = null;
+  if (options?.lastImageFloorPlan === undefined && draft.imageUrls.length > 0) {
+    const lastUrl = draft.imageUrls[draft.imageUrls.length - 1];
+    const lastFile = await downloadRemoteImage(lastUrl, draft.source);
+    lastImageBuffer = lastFile?.buffer ?? null;
+  }
+
+  const lastImageAsFloorPlan = await resolveLastImageIsFloorPlan(
+    draft,
+    options?.lastImageFloorPlan,
+    lastImageBuffer,
+  );
+
   const imageResult = await importOtodomImagesForOffer({
     offerId,
-    ownerUserId: adminUserId,
+    ownerUserId: ownerUserId,
     imageUrls: draft.imageUrls,
     source: draft.source,
+    maxImages: options?.maxImportImages,
+    lastImageAsFloorPlan,
+    onProgress: options?.onImageProgress,
   });
 
   const refreshed = await prisma.offer.findUnique({
@@ -254,7 +458,7 @@ export async function createOfferFromOtodomDraft(
       try {
         await consumeAndReserveImportPublication({
           offerId,
-          userId: adminUserId,
+          userId: ownerUserId,
           redemption,
         });
       } catch (error) {

@@ -57,7 +57,7 @@ export const addOffer = {
       },
       description: {
         label: 'Description (recommended)',
-        action: 'Add a description — at least {{min}} characters (you can use “Generate with AI”).',
+        action: 'Add a description — at least {{min}} characters (use “GPT Mini description” or “Template AI”).',
       },
     },
   },
@@ -369,8 +369,14 @@ export const addOffer = {
       upload: 'Upload floor plan',
     },
     ai: {
-      generate: 'Generate with AI',
+      generate: 'Template AI',
+      generateGpt: 'GPT Mini description',
       generating: 'Analyzing...',
+      generatingGpt: 'GPT is analyzing the area…',
+      gptRequiresLogin: 'Sign in to generate a GPT description.',
+      gptErrorTitle: 'Description generation',
+      gptInsufficientData:
+        'Complete property type, location (map pin), and parameters in earlier steps.',
       descriptionPlaceholder:
         'Let AI analyze your property and create the ideal description, or enter it manually...',
       intros: [

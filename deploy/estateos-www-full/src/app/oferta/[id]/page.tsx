@@ -4,11 +4,12 @@ import dynamic from "next/dynamic";
 import { useEffect, useState, useRef, use } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2 } from "lucide-react";
+import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2, BedDouble, Layers, Calendar, Ruler, Home } from "lucide-react";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import {
   describeOfferAgentCommission,
   formatBuyerAgentCommissionLine,
+  formatCommissionAmountForDisplay,
 } from "@/lib/agentCommission";
 import {
   formatOfferBuildYear,
@@ -19,6 +20,8 @@ import { isOutsidePolandBounds } from "@/lib/location/locationNameMatch";
 import AppointmentModal from "@/components/AppointmentModal";
 import BiddingModal from "@/components/BiddingModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
+import OfferDiscountPriceHero from "@/components/offer/OfferDiscountPriceHero";
+import OfferPriceHistoryProSection from "@/components/offer/OfferPriceHistoryProSection";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import OfferGalleryLightbox from "@/components/offer/OfferGalleryLightbox";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
@@ -29,8 +32,11 @@ import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadg
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 import OpenHouseOfferBanner from "@/components/offer/OpenHouseOfferBanner";
 import OpenHouseReserveModal from "@/components/offer/OpenHouseReserveModal";
+import AuctionOfferBanner from "@/components/offer/AuctionOfferBanner";
+import AuctionBidModal from "@/components/offer/AuctionBidModal";
 import ProfileWriteMessageButton from "@/components/contact/ProfileWriteMessageButton";
 import type { OpenHouseEventRecord } from "@/lib/openHouseTypes";
+import type { AuctionEventRecord } from "@/lib/auctionTypes";
 import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
 import {
   resolveSellerDisplayName,
@@ -39,9 +45,12 @@ import {
   isAgentOrAgencySeller,
 } from "@/lib/sellerDisplay";
 import { resolveRentAdminFeeAmount, formatRentAdminFeeCostsLabel } from "@/lib/offers/rentAdminFeeDisplay";
+import { normalizeListingCurrency } from "@/lib/money/convert";
+import { amenityLabelsFromOffer } from "@/lib/offerAmenities";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import {
   formatAmountWithCurrency,
+  formatOfferSecondaryAmount,
   resolveOfferDisplayAmount,
 } from "@/lib/money/format";
 import { resolveOfferListingPrice } from "@/lib/money/resolveListingPrice";
@@ -57,11 +66,15 @@ const NeighborhoodMapPreview = dynamic(
 const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
 
 function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) {
-  const { locale } = useLocale();
-  const { formatOffer, pricePerSqmLabel, rate } = useFormatOfferPrice();
+  const { locale, dict } = useLocale();
+  const { formatOffer, pricePerSqmLabel, rate, preference } = useFormatOfferPrice();
   const t = getOfferPageCopy(locale);
   const priceFormatted = formatOffer(offer);
   const listingPrice = resolveOfferListingPrice(offer, rate);
+  const dateLocale = locale === "pl" ? "pl" : "en";
+  const isDiscounted = Boolean((offer as { isDiscounted?: boolean }).isDiscounted);
+  const discountPercent = Number((offer as { priceDiscountPercent?: number }).priceDiscountPercent) || 0;
+  const listPricePln = Number((offer as { listPricePln?: number }).listPricePln ?? (offer as { previousPrice?: number }).previousPrice ?? 0);
   const favoriteLabels =
     locale === 'en'
       ? { add: 'Save', remove: 'Saved' }
@@ -70,9 +83,15 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const tx = String(offer.transactionType || "sale").toLowerCase();
   const isRent = tx.includes("rent") || tx.includes("wynajem");
   const rentAdminFeeAmount = isRent ? resolveRentAdminFeeAmount(offer) : null;
+  const listingCurrency = normalizeListingCurrency(offer.priceCurrency);
   const rentAdminFeeInline =
     rentAdminFeeAmount != null
-      ? formatRentAdminFeeCostsLabel(rentAdminFeeAmount, locale === "en" ? "en" : "pl")
+      ? formatRentAdminFeeCostsLabel(
+          rentAdminFeeAmount,
+          locale === "en" ? "en" : locale === "uk" ? "uk" : "pl",
+          listingCurrency,
+          { preference, rate },
+        )
       : null;
   const isDealRoom = offer.badges?.isPartner === true;
   const themeColors = {
@@ -141,6 +160,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const [isFloorplanModalOpen, setIsFloorplanModalOpen] = useState(false);
   const [openHouseEvent, setOpenHouseEvent] = useState<OpenHouseEventRecord | null>(null);
   const [isOpenHouseModalOpen, setIsOpenHouseModalOpen] = useState(false);
+  const [auctionEvent, setAuctionEvent] = useState<AuctionEventRecord | null>(null);
+  const [isAuctionModalOpen, setIsAuctionModalOpen] = useState(false);
   const isLegalKwVerified = isOfferLegallyVerified(offer);
   const isNewListing = isOfferNewListing(offer);
   const sellerAvatar = getBestUserAvatarUrl(offer?.user);
@@ -224,15 +245,43 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     };
   }, [offer, isArchived]);
 
+  useEffect(() => {
+    const offerId = offer.id || offer._id;
+    if (!offerId || isArchived) {
+      setAuctionEvent(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/auction/offers/${offerId}`, { cache: "no-store", credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const event = data?.event as AuctionEventRecord | null;
+        if (event && (event.status === "LIVE" || event.status === "SCHEDULED")) {
+          setAuctionEvent(event);
+        } else {
+          setAuctionEvent(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAuctionEvent(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [offer, isArchived]);
+
   const showOpenHouseBanner = Boolean(openHouseEvent);
+  const showAuctionBanner = Boolean(auctionEvent);
   const openOpenHouseModal = () => setIsOpenHouseModalOpen(true);
+  const openAuctionModal = () => setIsAuctionModalOpen(true);
+  const offerLocale = locale === "uk" ? "uk" : locale === "en" ? "en" : "pl";
 
   const rawAreaStr = String(offer.area || '0').replace(/,/g, '.').replace(/[^\d.]/g, '');
   const numericArea = parseFloat(rawAreaStr) || 0;
   const rawPlotAreaStr = String(offer.plotArea || '').replace(/,/g, '.').replace(/[^\d.]/g, '');
   const numericPlotArea = parseFloat(rawPlotAreaStr) || 0;
   const propertyTypeRaw = String(offer.propertyType || '').toUpperCase();
-  const dateLocale = locale === "pl" ? "pl" : "en";
   const cityRaw = String(offer.city || "").trim();
   const districtRaw = String(offer.district || "").trim();
   const streetRaw = String(offer.street || offer.address || "").trim();
@@ -290,6 +339,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
     // Sekcje Specyfikacji Luksusowej
   
+  const amenityLabels = amenityLabelsFromOffer(offer as Record<string, unknown>, dict.addOffer);
+
   const ensureAuthenticated = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -318,10 +369,37 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   ].filter((p) => p.value);
 
   const yearBuiltLabel = formatOfferBuildYear(offer);
-  const adminFeeRaw = offer.adminFee ?? offer.rent;
+  const heatingLabel = offer.heating ? String(offer.heating) : null;
+  const floorPlanSrc = String(offer.floorPlanUrl || offer.floorPlan || "").trim();
+  const propertyTypeLabel = formatOfferPropertyType(offer.propertyType, locale);
+  const floorDisplay = (() => {
+    const floorVal = offer.floor != null && offer.floor !== "" ? String(offer.floor) : null;
+    const totalVal =
+      offer.totalFloors != null && offer.totalFloors !== "" ? String(offer.totalFloors) : null;
+    if (floorVal && totalVal) return `${floorVal} / ${totalVal}`;
+    return floorVal || totalVal;
+  })();
+  const transactionLabel = isRent
+    ? locale === "en"
+      ? "For rent"
+      : locale === "uk"
+        ? "Оренда"
+        : "Wynajem"
+    : locale === "en"
+      ? "For sale"
+      : locale === "uk"
+        ? "Продаж"
+        : "Sprzedaż";
   const adminFeeLabel =
-    adminFeeRaw != null && Number(adminFeeRaw) > 0
-      ? `${Number(adminFeeRaw).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")} PLN`
+    rentAdminFeeAmount != null
+      ? formatOfferSecondaryAmount({
+          amount: rentAdminFeeAmount,
+          listingCurrency,
+          pricePln: listingCurrency === "PLN" ? rentAdminFeeAmount : null,
+          displayPreference: preference,
+          rate,
+          locale: dateLocale,
+        })
       : null;
 
   const mainParams = [
@@ -340,41 +418,60 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             value: perSqmDisplay && !isLocked ? perSqmDisplay : isLocked ? t.hiddenPrice : null,
           },
           { label: t.rooms, value: offer.rooms != null && offer.rooms !== '' ? String(offer.rooms) : null },
-          { label: t.floor, value: offer.floor != null && offer.floor !== '' ? String(offer.floor) : null },
-          { label: t.buildYear, value: yearBuiltLabel },
+          { label: t.floor, value: floorDisplay },
+          ...(floorDisplay && offer.totalFloors != null && offer.totalFloors !== '' && !String(offer.floor ?? '').trim()
+            ? [{ label: t.totalFloors, value: String(offer.totalFloors) }]
+            : []),
           {
             label: t.standard,
             value: formatOfferCondition(offer.condition || offer.finishCondition, locale) || null,
           },
-          { label: t.heating, value: offer.heating ? String(offer.heating) : null },
-          ...(isRent ? [{ label: t.rentFee, value: adminFeeLabel }] : []),
         ]),
-  ].filter((p) => p.value != null && p.value !== '');
+  ].filter((p) => p.value);
+
+  const quickFacts = [
+    propertyTypeLabel ? { icon: Home, label: propertyTypeLabel } : null,
+    numericArea > 0 ? { icon: Ruler, label: `${numericArea} m²` } : null,
+    offer.rooms != null && offer.rooms !== "" ? { icon: BedDouble, label: `${offer.rooms} ${t.rooms.toLowerCase()}` } : null,
+    floorDisplay ? { icon: Layers, label: floorDisplay } : null,
+    yearBuiltLabel ? { icon: Calendar, label: yearBuiltLabel } : null,
+    propertyTypeRaw === "HOUSE" && numericPlotArea > 0
+      ? { icon: Ruler, label: `${t.plotArea}: ${numericPlotArea} m²` }
+      : null,
+  ].filter(Boolean) as Array<{ icon: typeof Home; label: string }>;
 
   const agentCommissionInfo = describeOfferAgentCommission(offer, offer.price);
+  const agentCommissionAmountLabel = agentCommissionInfo
+    ? formatCommissionAmountForDisplay(
+        agentCommissionInfo.amount,
+        offer,
+        offer.price,
+        preference,
+        rate,
+        dateLocale,
+      )
+    : null;
   const agentCommissionLine = agentCommissionInfo
     ? agentCommissionInfo.isZero
       ? t.agentCommissionZero
-      : formatBuyerAgentCommissionLine(agentCommissionInfo, locale)
+      : formatBuyerAgentCommissionLine(
+          {
+            ...agentCommissionInfo,
+            amountLabel: agentCommissionAmountLabel ?? agentCommissionInfo.amountLabel,
+          },
+          locale,
+        )
     : null;
 
   const buildingParams = [
     { label: t.buildingType, value: formatOfferPropertyType(offer.propertyType, locale) },
-    { label: t.buildYear, value: formatOfferBuildYear(offer) },
-    { label: t.heating, value: offer.heating },
+    { label: t.buildYear, value: yearBuiltLabel },
+    { label: t.heating, value: heatingLabel },
     {
       label: t.furnished,
       value: offer.isFurnished === true ? t.furnishedYes : offer.isFurnished === false ? t.furnishedNo : null,
     },
-    {
-      label: t.rentFee,
-      value:
-        offer.adminFee != null && Number(offer.adminFee) > 0
-          ? `${Number(offer.adminFee).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")} PLN`
-          : offer.rent
-            ? `${String(offer.rent).replace(/\D/g, "")} PLN`
-            : null,
-    },
+    ...(isRent && adminFeeLabel ? [{ label: t.rentFee, value: adminFeeLabel }] : []),
     {
       label: t.availability,
       value: offer.availabilityDate
@@ -400,7 +497,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           },
           {
             label: t.commissionAmount,
-            value: agentCommissionInfo.amountLabel,
+            value: agentCommissionAmountLabel,
           },
         ]
       : [];
@@ -457,7 +554,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
       
       <div ref={ref} className="eos-cinematic-dark relative w-full min-h-[64vh] h-[72svh] sm:min-h-[100vh] sm:h-[100dvh] overflow-hidden bg-black">
         <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center ${isArchived ? 'opacity-25 blur-2xl grayscale' : isLocked ? 'opacity-60 blur-xl' : 'opacity-60'}`} />
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-10" />
+        <div className="absolute inset-0 eos-offer-hero-vignette z-10" />
 
         <div
           className="absolute inset-x-0 z-40 px-4 sm:px-6 pointer-events-none"
@@ -575,11 +672,26 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
               </div>
 
+            {showAuctionBanner && auctionEvent ? (
+              <AuctionOfferBanner
+                variant="hero"
+                event={auctionEvent}
+                locale={offerLocale}
+                copy={{
+                  title: t.auction.bannerTitle,
+                  subtitleLive: t.auction.bannerSubtitleLive,
+                  subtitleScheduled: t.auction.bannerSubtitleScheduled,
+                  cta: t.auction.bannerCta,
+                  liveBadge: t.auction.liveBadge,
+                }}
+                onPress={openAuctionModal}
+              />
+            ) : null}
             {showOpenHouseBanner && openHouseEvent ? (
               <OpenHouseOfferBanner
                 variant="hero"
                 event={openHouseEvent}
-                locale={locale === "en" ? "en" : "pl"}
+                locale={offerLocale}
                 copy={{
                   title: t.openHouse.bannerTitle,
                   subtitle: t.openHouse.bannerSubtitle,
@@ -598,7 +710,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           onClick={() => !isLocked && openGallery(0)}
           className="absolute inset-x-0 bottom-0 z-20 hidden cursor-pointer flex-col items-center justify-end px-4 pb-16 pt-32 hover:bg-black/10 sm:flex sm:pb-24"
         >
-          <h1 className="max-w-7xl text-center text-4xl font-light leading-tight tracking-tighter drop-shadow-2xl [text-wrap:balance] sm:text-6xl md:text-[6vw] px-4 sm:px-8 pointer-events-none">
+          <h1 className="eos-offer-hero-title max-w-7xl text-center text-4xl font-light leading-tight tracking-tighter [text-wrap:balance] sm:text-6xl md:text-[6vw] px-4 sm:px-8 pointer-events-none">
             {isLocked ? t.beforeLaunchTitle : offer.title}
           </h1>
         </div>
@@ -698,15 +810,44 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             )}
 
             <div>
+                <div className="mb-4 flex flex-wrap items-center gap-2 sm:hidden">
+                  <span
+                    className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${themeColors.borderActive} ${themeColors.bgActiveSoft} ${themeColors.textActive}`}
+                  >
+                    {transactionLabel}
+                  </span>
+                  {propertyTypeLabel ? (
+                    <span className="inline-flex items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                      {propertyTypeLabel}
+                    </span>
+                  ) : null}
+                </div>
                 <h1 className="mb-7 text-4xl font-light leading-tight tracking-tighter text-[var(--eos-text)] [text-wrap:balance] sm:hidden">
                   {isLocked ? t.beforeLaunchTitle : offer.title}
                 </h1>
+                {showAuctionBanner && auctionEvent && !isLocked ? (
+                  <div className="mb-6 sm:hidden">
+                    <AuctionOfferBanner
+                      variant="inline"
+                      event={auctionEvent}
+                      locale={offerLocale}
+                      copy={{
+                        title: t.auction.bannerTitle,
+                        subtitleLive: t.auction.bannerSubtitleLive,
+                        subtitleScheduled: t.auction.bannerSubtitleScheduled,
+                        cta: t.auction.bannerCta,
+                        liveBadge: t.auction.liveBadge,
+                      }}
+                      onPress={openAuctionModal}
+                    />
+                  </div>
+                ) : null}
                 {showOpenHouseBanner && openHouseEvent && !isLocked ? (
                   <div className="mb-6 sm:hidden">
                     <OpenHouseOfferBanner
                       variant="inline"
                       event={openHouseEvent}
-                      locale={locale === "en" ? "en" : "pl"}
+                      locale={offerLocale}
                       copy={{
                         title: t.openHouse.bannerTitle,
                         subtitle: t.openHouse.bannerSubtitle,
@@ -716,22 +857,50 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     />
                   </div>
                 ) : null}
-                <h2 className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-4xl font-light tracking-tighter text-[var(--eos-text)] sm:text-6xl md:text-7xl">
-                  <span>{priceFormatted.primary}</span>
-                  {rentAdminFeeInline ? (
-                    <span className="text-2xl font-normal text-[var(--eos-muted)] sm:text-4xl md:text-5xl">
-                      + {rentAdminFeeInline}
-                    </span>
-                  ) : null}
-                </h2>
+                <div className="mb-2">
+                  {isDiscounted && discountPercent > 0 && listPricePln > 0 ? (
+                    <OfferDiscountPriceHero
+                      listPricePln={listPricePln}
+                      currentPrimary={priceFormatted.primary}
+                      discountPercent={discountPercent}
+                    />
+                  ) : (
+                    <h2 className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-4xl font-light tracking-tighter text-[var(--eos-text)] sm:text-6xl md:text-7xl">
+                      <span>{priceFormatted.primary}</span>
+                      {rentAdminFeeInline ? (
+                        <span className="text-2xl font-normal text-[var(--eos-muted)] sm:text-4xl md:text-5xl">
+                          + {rentAdminFeeInline}
+                        </span>
+                      ) : null}
+                    </h2>
+                  )}
+                </div>
                 {rentAdminFeeInline ? (
-                  <p className="eos-muted-copy -mt-1 mb-4 text-xs sm:text-sm">{t.rentCostsMonthlyHint}</p>
+                  <p className="eos-muted-copy -mt-1 mb-4 text-xs sm:text-sm">
+                    {isDiscounted ? `+ ${rentAdminFeeInline}` : t.rentCostsMonthlyHint}
+                  </p>
                 ) : null}
                 {!isLocked && priceFormatted.secondary ? (
                   <p className="eos-muted-copy mb-6 text-sm font-semibold">{priceFormatted.secondary}</p>
                 ) : (
                   <div className="mb-6" />
                 )}
+                {!isLocked && quickFacts.length > 0 ? (
+                  <div className="mb-8 flex flex-wrap gap-2.5">
+                    {quickFacts.map((fact) => {
+                      const Icon = fact.icon;
+                      return (
+                        <div
+                          key={fact.label}
+                          className={`inline-flex items-center gap-2 rounded-2xl border bg-[var(--eos-input)] px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] ${themeColors.borderActive}`}
+                        >
+                          <Icon size={15} className={themeColors.textActive} />
+                          <span className="text-sm font-semibold text-[var(--eos-text)]">{fact.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
                 {!isLocked && listingPrice.amount > 0 && (
                   <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     {eurResolved && priceFormatted.displayCurrency !== "EUR" ? (
@@ -766,16 +935,60 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     <p className="eos-subtle-copy mt-1 text-[11px]">{t.listingPriceIncludesCommission}</p>
                   </div>
                 ) : null}
+
+                {floorPlanSrc && !isLocked ? (
+                  <section className="eos-offer-panel mb-8 overflow-hidden p-0">
+                    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--eos-border)] px-6 py-5 md:px-8">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <FileImage size={16} className={themeColors.textActive} />
+                          <h3 className="eos-offer-metric-label">{t.floorPlan}</h3>
+                        </div>
+                        <p className="mt-1.5 text-sm text-[var(--eos-muted)]">
+                          {locale === "en" ? "Layout and room arrangement" : "Układ pomieszczeń i metraż"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsFloorplanModalOpen(true)}
+                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition-colors ${themeColors.borderActive} ${themeColors.bgActiveSoft} hover:bg-[var(--eos-surface-strong)]`}
+                      >
+                        <Maximize2 size={13} />
+                        {t.enlarge}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsFloorplanModalOpen(true)}
+                      className="group block w-full px-6 py-6 md:px-8"
+                    >
+                      <div className="relative aspect-[16/10] overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[#050505] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_55%)]" />
+                        <img
+                          src={floorPlanSrc}
+                          className="relative z-10 h-full w-full object-contain p-4 transition-transform duration-700 group-hover:scale-[1.02]"
+                          alt={t.floorPlan}
+                        />
+                        <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 to-transparent px-5 py-4 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/80">
+                            {t.enlarge}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  </section>
+                ) : null}
+
                 <div className="eos-offer-panel p-8 md:p-12">
                   <h3 className="eos-offer-metric-label mb-6">{t.aboutProperty}</h3>
                   <OfferDescriptionBody description={offer.description || ""} />
                 </div>
 
-                {offer.amenities && offer.amenities.length > 0 && (
+                {amenityLabels.length > 0 && (
                 <div className="eos-offer-panel mt-8 p-8 md:p-12">
                   <h3 className="eos-offer-metric-label mb-6">{t.amenities}</h3>
                   <div className="flex flex-wrap gap-3">
-                    {offer.amenities.split(',').filter(Boolean).map((amenity: string, idx: number) => (
+                    {amenityLabels.map((amenity: string, idx: number) => (
                       <div key={idx} className={`flex items-center gap-2 rounded-2xl border bg-[var(--eos-input)] px-4 py-2.5 ${themeColors.borderActive}`}>
                         <CheckCircle2 size={16} className={themeColors.textActive} />
                         <span className="text-sm font-semibold text-[var(--eos-text)]">{amenity.trim()}</span>
@@ -785,24 +998,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 </div>
                 )}
 
-                {offer.floorPlan && !isLocked && (
-                <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-8 md:p-12 backdrop-blur-3xl mt-8 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
-                  <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-6 flex items-center gap-2">
-                    <FileImage size={16} /> {t.floorPlan}
-                  </h3>
-                  <div 
-                    onClick={() => setIsFloorplanModalOpen(true)}
-                    className="relative w-full h-[400px] rounded-[2rem] overflow-hidden border border-white/10 cursor-pointer group bg-black"
-                  >
-                    <img src={offer.floorPlan} className="w-full h-full object-contain opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" alt={t.floorPlan} />
-                    <div className="eos-on-media absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                       <span className="flex items-center gap-2 rounded-full border border-white/20 bg-black/60 px-6 py-3 text-[11px] font-bold uppercase tracking-[0.2em] text-white shadow-2xl backdrop-blur-xl">
-                         <Maximize2 size={14} /> {t.enlarge}
-                       </span>
-                    </div>
-                  </div>
-                </div>
-                )}
+                <OfferPriceHistoryProSection
+                  offerId={Number(offer.id ?? offer._id)}
+                  enabled={Boolean(isPro && !isLocked)}
+                />
 
             </div>
           </div>
@@ -845,6 +1044,26 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     </div>
                   ) : null}
                 </div>
+
+                {floorPlanSrc && !isLocked ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsFloorplanModalOpen(true)}
+                    className="eos-offer-panel group w-full overflow-hidden p-4 text-left transition-colors hover:bg-[var(--eos-surface-strong)]"
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <p className={`eos-offer-metric-label ${themeColors.textActive}`}>{t.floorPlan}</p>
+                      <Maximize2 size={14} className="text-[var(--eos-muted)] transition-colors group-hover:text-[var(--eos-text)]" />
+                    </div>
+                    <div className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[#050505]">
+                      <img
+                        src={floorPlanSrc}
+                        alt={t.floorPlan}
+                        className="aspect-[4/3] w-full object-contain p-3 transition-transform duration-500 group-hover:scale-[1.02]"
+                      />
+                    </div>
+                  </button>
+                ) : null}
 
                 <div className="eos-offer-panel p-6">
                   <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.mainParamsSection}</h4>
@@ -1010,7 +1229,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               <X size={24} />
             </button>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="relative w-full max-w-5xl max-h-screen flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-              <img src={offer.floorPlan} className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 bg-[#0a0a0a]" alt="Rzut Zoomony" />
+              <img src={floorPlanSrc} className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 bg-[#0a0a0a]" alt={t.floorPlan} />
             </motion.div>
           </motion.div>
         )}
@@ -1041,6 +1260,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         currentUser={currentUser}
         locale={locale}
         onClose={() => setIsOpenHouseModalOpen(false)}
+        onRequireAuth={() => {
+          window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+        }}
+      />
+
+      <AuctionBidModal
+        isOpen={isAuctionModalOpen}
+        eventId={auctionEvent?.id ?? null}
+        currentUser={currentUser}
+        locale={locale}
+        onClose={() => setIsAuctionModalOpen(false)}
         onRequireAuth={() => {
           window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
         }}

@@ -179,7 +179,37 @@ function parseOlxParamText(
   return text || null;
 }
 
-function enrichOlxFieldsFromText(input: {
+export function sanitizeImportYearBuilt(raw: number | null | undefined): number | null {
+  if (raw == null) return null;
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n) || n < 1800 || n > 2100) return null;
+  return n;
+}
+
+function resolveYearBuiltFromCharacteristics(
+  chars: Map<string, { value: string; label: string }>,
+  fallbacks: { title: string; descriptionText: string; descriptionHtml?: string; features: string[] },
+): number | null {
+  const charKeys = ['build_year', 'construction_year', 'building_year', 'year', 'built_year'];
+  for (const key of charKeys) {
+    const fromChar = sanitizeImportYearBuilt(parseNumber(chars.get(key)?.value));
+    if (fromChar) return fromChar;
+    const fromLabel = sanitizeImportYearBuilt(parseNumber(chars.get(key)?.label));
+    if (fromLabel) return fromLabel;
+  }
+
+  const textHints = enrichImportFieldsFromText(fallbacks);
+  if (textHints.yearBuilt) return textHints.yearBuilt;
+
+  const htmlBlob = String(fallbacks.descriptionHtml || '');
+  const htmlYear =
+    sanitizeImportYearBuilt(parseNumber(htmlBlob.match(/"buildYear"\s*:\s*"?(\d{4})"?/i)?.[1])) ??
+    sanitizeImportYearBuilt(parseNumber(htmlBlob.match(/"yearBuilt"\s*:\s*"?(\d{4})"?/i)?.[1])) ??
+    sanitizeImportYearBuilt(parseNumber(htmlBlob.match(/"constructionYear"\s*:\s*"?(\d{4})"?/i)?.[1]));
+  return htmlYear;
+}
+
+function enrichImportFieldsFromText(input: {
   title: string;
   descriptionText: string;
   features: string[];
@@ -199,9 +229,11 @@ function enrichOlxFieldsFromText(input: {
     parseNumber(plain.match(/liczba\s+pokoi[:\s]*(\d+)/i)?.[1]);
 
   const yearBuilt =
-    parseNumber(plain.match(/rok\s*(?:budowy|budow[yai]|konstrukcji)[:\s]*(\d{4})/i)?.[1]) ??
-    parseNumber(plain.match(/(?:zbudowan[eoy]|budyn(?:ek|ku))\s+(?:w\s+)?(?:roku\s+)?(\d{4})/i)?.[1]) ??
-    parseNumber(plain.match(/\bz\s+(19\d{2}|20\d{2})\s+r\.?\b/i)?.[1]);
+    sanitizeImportYearBuilt(parseNumber(plain.match(/rok\s*(?:budowy|budow[yai]|konstrukcji)[:\s]*(\d{4})/i)?.[1])) ??
+    sanitizeImportYearBuilt(parseNumber(plain.match(/r\.\s*budow[yai][:\s]*(\d{4})/i)?.[1])) ??
+    sanitizeImportYearBuilt(parseNumber(plain.match(/(?:zbudowan[eoy]|budyn(?:ek|ku))\s+(?:w\s+)?(?:roku\s+)?(\d{4})/i)?.[1])) ??
+    sanitizeImportYearBuilt(parseNumber(plain.match(/\bz\s+(19\d{2}|20\d{2})\s+r\.?\b/i)?.[1])) ??
+    sanitizeImportYearBuilt(parseNumber(plain.match(/\b(19\d{2}|20\d{2})\s*r\.?\b/i)?.[1]));
 
   const heatingMatch =
     plain.match(/ogrzewani[eę][:\s]+([^.\n;]+)/i) ??
@@ -524,12 +556,22 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     characteristics[key] = value;
   });
 
+  const title = capitalizeImportTitle(String(ad.title ?? '').trim());
+  const descriptionText = stripHtml(descriptionHtml);
+  const features = Array.isArray(ad.features) ? ad.features.map((f) => String(f)) : [];
+  const yearBuilt = resolveYearBuiltFromCharacteristics(chars, {
+    title,
+    descriptionText,
+    descriptionHtml,
+    features,
+  });
+
   return {
     source: 'OTODOM',
     externalId: parseNumber(ad.id) ?? 0,
     externalUrl: String(ad.url ?? sourceUrl),
     slug: String(ad.slug ?? ''),
-    title: capitalizeImportTitle(String(ad.title ?? '').trim()),
+    title,
     transactionType: mapTransactionType(adCategory.type),
     propertyType: mapPropertyType(adCategory.name),
     price: parseNumber(chars.get('price')?.value),
@@ -541,7 +583,7 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     rooms: parseNumber(chars.get('rooms_num')?.value),
     floor: parseFloor(chars.get('floor_no')?.value),
     totalFloors: parseNumber(chars.get('building_floors_num')?.value),
-    yearBuilt: parseNumber(chars.get('build_year')?.value),
+    yearBuilt,
     condition: chars.get('construction_status')?.label ?? null,
     conditionCode: chars.get('construction_status')?.value ?? null,
     heating: chars.get('heating')?.label ?? null,
@@ -555,8 +597,8 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     lng: parseNumber(coordinates.longitude),
     localityCountryCode: 'PL',
     descriptionHtml,
-    descriptionText: stripHtml(descriptionHtml),
-    features: Array.isArray(ad.features) ? ad.features.map((f) => String(f)) : [],
+    descriptionText,
+    features,
     imageUrls,
     imageCount: imageUrls.length,
     agency: agencyRaw
@@ -642,7 +684,7 @@ export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     })
     .filter((value) => Boolean(value));
 
-  const textHints = enrichOlxFieldsFromText({ title, descriptionText, features });
+  const textHints = enrichImportFieldsFromText({ title, descriptionText, features });
 
   const rooms =
     parseOlxParamNumber(params, ['rooms', 'rooms_num', 'number_of_rooms'], ['liczba pokoi', 'pokoi']) ??
@@ -650,6 +692,7 @@ export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
   const yearBuilt =
     parseOlxParamNumber(params, ['buildyear', 'build_year', 'construction_year', 'year_built'], ['rok budowy']) ??
     textHints.yearBuilt;
+  const sanitizedYearBuilt = sanitizeImportYearBuilt(yearBuilt);
   const heating =
     parseOlxParamText(params, ['heating', 'heating_type'], ['ogrzewanie']) ?? textHints.heating;
   const adminFee =
@@ -679,7 +722,7 @@ export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
       parseFloor(map('floor_select')?.value ?? map('floor_select')?.label) ??
       parseFloor(map('floor')?.value ?? map('floor')?.label),
     totalFloors: parseOlxParamNumber(params, ['floornumber', 'building_floors', 'floors'], ['liczba pięter', 'pięter w budynku']),
-    yearBuilt,
+    yearBuilt: sanitizedYearBuilt,
     condition: map('market')?.label ?? null,
     conditionCode: map('market')?.value ?? null,
     heating,
@@ -844,7 +887,17 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
   const floor =
     parseFloor(html.match(/pi(?:ę|e)tro[:\s]*([\w\/-]+)/i)?.[1]) ??
     parseFloor(normalizedHtml.match(/pi(?:ę|e)tro\s*([0-9]+)\s*\/\s*[0-9]+/i)?.[1]);
-  const yearBuilt = parseNumber(html.match(/rok\s*budow[yia][:\s]*([\d]{4})/i)?.[1]);
+  const yearBuilt =
+    sanitizeImportYearBuilt(parseNumber(html.match(/rok\s*budow[yia][:\s]*([\d]{4})/i)?.[1])) ??
+    sanitizeImportYearBuilt(parseNumber(html.match(/r\.\s*budow[yia][:\s]*([\d]{4})/i)?.[1])) ??
+    sanitizeImportYearBuilt(parseNumber(html.match(/"buildYear"\s*:\s*"?(\d{4})"?/i)?.[1])) ??
+    sanitizeImportYearBuilt(parseNumber(html.match(/"yearBuilt"\s*:\s*"?(\d{4})"?/i)?.[1])) ??
+    resolveYearBuiltFromCharacteristics(new Map(), {
+      title,
+      descriptionText,
+      descriptionHtml: html,
+      features: [],
+    });
   const lat = parseNumber(html.match(/"latitude"\s*:\s*"?(-?\d+(?:\.\d+)?)"?/i)?.[1]);
   const lng = parseNumber(html.match(/"longitude"\s*:\s*"?(-?\d+(?:\.\d+)?)"?/i)?.[1]);
 
@@ -1000,4 +1053,12 @@ export async function importOfferFromUrl(inputUrl: string): Promise<OtodomImport
   const url = normalizeNieruchomosciOnlineUrl(inputUrl);
   const html = await fetchOtodomOfferHtml(url);
   return parseNierOnlineHtml(html, url);
+}
+
+/** Kanoniczny URL portalu do wykrywania duplikatów importu. */
+export function normalizeImportPortalUrl(inputUrl: string): string {
+  const source = detectImportSource(inputUrl);
+  if (source === 'OTODOM') return normalizeOtodomUrl(inputUrl);
+  if (source === 'OLX') return normalizeOlxUrl(inputUrl);
+  return normalizeNieruchomosciOnlineUrl(inputUrl);
 }
