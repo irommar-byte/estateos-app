@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 const APP_STORE_URL = "https://apps.apple.com/us/app/estateos/id6762899098";
-const GOOGLE_PLAY_URL = "https://play.google.com/store/apps/details?id=pl.estateos.app";
+const GOOGLE_PLAY_URL = "https://play.google.com/store/apps/details?id=pl.estateos";
 const APPLE_BADGE_URL = "/badges/app-store-pl-official.png";
 const GOOGLE_PLAY_BADGE_URL =
   "https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg";

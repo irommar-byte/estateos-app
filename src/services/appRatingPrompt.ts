@@ -157,7 +157,7 @@ export async function requestNativeStoreReview(): Promise<boolean> {
 
   if (Platform.OS === 'android') {
     try {
-      await Linking.openURL(`market://details?id=pl.estateos.app`);
+      await Linking.openURL(`market://details?id=pl.estateos`);
       return true;
     } catch {
       // ignore
