@@ -1002,6 +1002,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [offers, setOffers] = useState<MapOffer[]>([]);
   /** Pełny katalog aktywnych ofert (także bez współrzędnych) — do listy państw w wyszukiwaniu rozszerzonym. */
   const [catalogRawOffers, setCatalogRawOffers] = useState<Record<string, unknown>[]>([]);
+  const catalogCountRef = useRef(0);
   const blockedIds = useBlockedUsersStore((s) => s.blockedIds) ?? EMPTY_BLOCKED_ID_SET;
   /** Własne ogłoszenia z `includeAll` — mogą być ACTIVE w profilu, ale poza publicznym feedem Radaru. */
   const [ownerMapOffers, setOwnerMapOffers] = useState<MapOffer[]>([]);
@@ -1011,6 +1012,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [favoriteHydratedOffers, setFavoriteHydratedOffers] = useState<MapOffer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [offersFetchError, setOffersFetchError] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [favorites, setFavorites] = useState<number[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(!!route?.params?.favoritesOnly);
@@ -2089,57 +2091,62 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const fetchOffersOnce = useCallback(
     async (showSpinner: boolean): Promise<boolean> => {
       if (showSpinner) setLoading(true);
-      try {
-        const applyRawOfferList = (rawList: any[]) => {
-          const activeOnly = rawList.filter((o: any) => !isOfferClosed(o));
-          setCatalogRawOffers(activeOnly);
-          const mapped = activeOnly
-            .map((o: any) => mapRawOffer(o))
-            .filter((m: MapOffer | null): m is MapOffer => m !== null);
-          setOffers(mapped);
-        };
+      const fetchHeaders = { Accept: 'application/json', 'Cache-Control': 'no-cache' };
 
-        const res = await fetch(`${API_URL}/api/mobile/v1/offers`);
-        const data = await res.json().catch(() => ({}));
-        const list = Array.isArray(data?.offers)
-          ? data.offers
-          : Array.isArray(data?.data)
-            ? data.data
-            : Array.isArray(data?.items)
-              ? data.items
-              : Array.isArray(data)
-                ? data
-                : null;
-        if (res.ok && Array.isArray(list)) {
-          // KLUCZOWE: filtrujemy oferty zamknięte (ARCHIVED / SOLD / EXPIRED / itp.)
-          // ZANIM zmapujemy je na `MapOffer`. Backend POWINIEN to robić sam,
-          // ale defensywnie nie pokazujemy ich na Radarze, bo można by
-          // klikać w starą ofertę i wchodzić na zaślepkę.
-          applyRawOfferList(list);
-          return true;
-        }
-        // Gdy `/api/mobile/v1/offers` pada (np. drift schematu Prisma vs DB),
-        // publiczne `GET /api/offers` często nadal zwraca tablicę — inaczej Radar
-        // zostaje na zawsze pusty mimo działającej witryny.
-        const webRes = await fetch(`${API_URL}/api/offers`);
-        if (webRes.ok) {
-          const webData = await webRes.json().catch(() => null);
-          if (Array.isArray(webData)) {
-            applyRawOfferList(webData);
-            return true;
+      const parseOfferList = (data: unknown): any[] | null => {
+        if (Array.isArray(data)) return data;
+        if (!data || typeof data !== 'object') return null;
+        const row = data as Record<string, unknown>;
+        if (Array.isArray(row.offers)) return row.offers;
+        if (Array.isArray(row.data)) return row.data;
+        if (Array.isArray(row.items)) return row.items;
+        return null;
+      };
+
+      const applyRawOfferList = (rawList: any[]) => {
+        const activeOnly = rawList.filter((o: any) => !isOfferClosed(o));
+        setCatalogRawOffers(activeOnly);
+        const mapped = activeOnly
+          .map((o: any) => mapRawOffer(o))
+          .filter((m: MapOffer | null): m is MapOffer => m !== null);
+        setOffers(mapped);
+        catalogCountRef.current = mapped.length;
+        setOffersFetchError('');
+      };
+
+      try {
+        const endpoints = [`${API_URL}/api/mobile/v1/offers`, `${API_URL}/api/offers`];
+        let lastError = '';
+
+        for (const url of endpoints) {
+          try {
+            const res = await fetch(url, { headers: fetchHeaders });
+            const data = await res.json().catch(() => null);
+            const list = parseOfferList(data);
+            if (res.ok && Array.isArray(list)) {
+              applyRawOfferList(list);
+              return true;
+            }
+            lastError = `HTTP ${res.status}`;
+          } catch (err) {
+            lastError = err instanceof Error ? err.message : 'network';
           }
         }
-        // Nie czyścimy listy na chwilowym błędzie/back-end drift — lepiej
-        // zostawić ostatni stabilny zestaw niż pokazać „zero ofert".
+
+        if (catalogCountRef.current === 0) {
+          setOffersFetchError(lastError || 'Brak połączenia z katalogiem ofert');
+        }
         return false;
-        } catch {
-        // Sieć chwilowo niedostępna — utrzymujemy poprzedni stan UI.
+      } catch {
+        if (catalogCountRef.current === 0) {
+          setOffersFetchError('Brak połączenia z katalogiem ofert');
+        }
         return false;
-        } finally {
+      } finally {
         if (showSpinner) setLoading(false);
       }
     },
-    [mapRawOffer]
+    [mapRawOffer],
   );
 
   useFocusEffect(
@@ -4814,6 +4821,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             hasActiveFilters={hasActiveGalleryFilters}
             userLocation={userLocation}
             locale={locale}
+            refreshing={loading}
+            onRefresh={() => void fetchOffersOnce(true)}
+            loadError={offers.length === 0 ? offersFetchError : ''}
             onTransactionFilterChange={setGalleryTransactionFilter}
             onCountryFilterChange={setGalleryCountryFilter}
             onPropertyFilterChange={setGalleryPropertyFilter}

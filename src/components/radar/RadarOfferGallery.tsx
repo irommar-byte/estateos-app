@@ -4,6 +4,7 @@ import {
   LayoutAnimation,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -62,6 +63,9 @@ type Props = {
   onClearFilters: () => void;
   onPressOffer: (offer: GalleryOffer) => void;
   onToggleFavorite: (offerId: number) => void;
+  refreshing?: boolean;
+  onRefresh?: () => void;
+  loadError?: string;
   formatPrice: (raw: Record<string, unknown>) => { primary: string };
   formatPublishDate: (raw: Record<string, unknown>) => string;
   isOfferVerified: (offerId: number | string, raw: Record<string, unknown>) => boolean;
@@ -188,6 +192,9 @@ export default function RadarOfferGallery({
   onClearFilters,
   onPressOffer,
   onToggleFavorite,
+  refreshing = false,
+  onRefresh,
+  loadError,
   formatPrice,
   formatPublishDate,
   isOfferVerified,
@@ -666,6 +673,11 @@ export default function RadarOfferGallery({
       ListFooterComponent={listFooter}
       renderItem={renderItem}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GALLERY_ACCENT} />
+        ) : undefined
+      }
       initialNumToRender={10}
       maxToRenderPerBatch={12}
       windowSize={8}
@@ -676,8 +688,25 @@ export default function RadarOfferGallery({
             {t('radar.home.galleryEmptyTitle')}
           </Text>
           <Text style={[styles.emptyBody, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}>
-            {t('radar.home.galleryEmptyBody')}
+            {loadError || t('radar.home.galleryEmptyBody')}
           </Text>
+          {loadError && onRefresh ? (
+            <Pressable
+              onPress={() => {
+                void Haptics.selectionAsync();
+                onRefresh();
+              }}
+              style={({ pressed }) => [
+                styles.emptyResetBtn,
+                {
+                  backgroundColor: isDark ? 'rgba(99,102,241,0.22)' : 'rgba(99,102,241,0.12)',
+                  opacity: pressed ? 0.86 : 1,
+                },
+              ]}
+            >
+              <Text style={[styles.emptyResetText, { color: GALLERY_ACCENT }]}>Odśwież katalog</Text>
+            </Pressable>
+          ) : null}
           {hasActiveFilters ? (
             <Pressable
               onPress={() => {
