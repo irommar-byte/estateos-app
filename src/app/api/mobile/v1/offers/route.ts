@@ -4,6 +4,7 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createOffer, OfferValidationError, updateOffer } from '@/lib/services/offer.service';
+import { LocationMismatchError } from '@/lib/offerGeolocationValidate';
 import {
   assertContactVerified,
   contactVerificationJson,
@@ -11,12 +12,13 @@ import {
   PUBLISH_CONTACT_REQUIREMENTS,
 } from '@/lib/contactVerification';
 import { verifyMobileToken } from '@/lib/jwtMobile';
-import { legalStatusOverridesForOffers } from '@/lib/offerLegalStatusOverlay';
-import { findManyMobileListOffers } from '@/lib/offers/mobileOfferListQuery';
-import { loadOfferViewCounts, shapePublicListOffer } from '@/lib/offers/publicListShape';
-import { ensureOfferPriceHistorySchema, enrichOfferPriceDiscountFields } from '@/lib/offerPriceHistory';
-import { DEFAULT_EUR_PLN_RATE } from '@/lib/money/constants';
-import { getNbpEurPlnRate } from '@/lib/money/nbpEurPln';
+import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
+import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
+import { MOBILE_OFFER_CATALOG_SELECT } from '@/lib/mobileOfferCatalogSelect';
+import {
+  applyLegalStatusOverride,
+  legalStatusOverridesForOffers,
+} from '@/lib/offerLegalStatusOverlay';
 import {
   getOfferSchemaCompatibilityMessage,
   isOfferSchemaCompatibilityError,
@@ -28,7 +30,6 @@ import {
   submitOfferActivation,
 } from '@/lib/offerPublication';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
-import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 type PendingCreate = { createdAt: number; promise: Promise<any> };
@@ -74,36 +75,24 @@ function schemaCompatibilityResponse() {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const includeAll = searchParams.get('includeAll') === 'true';
+  const catalogOnly = searchParams.get('catalog') === '1' || searchParams.get('catalog') === 'true';
   const userId = searchParams.get('userId');
-
-  const authUserId = parseUserIdFromBearer(req);
 
   let where: any = {};
 
+  // owner view: pełna lista własnych ogłoszeń (bez ograniczania do ACTIVE)
   if (userId) {
-    const requestedUserId = Number(userId);
-    if (!authUserId || authUserId !== requestedUserId) {
-      return NextResponse.json({ success: false, message: 'Brak autoryzacji.' }, { status: 401 });
-    }
-    where = { userId: requestedUserId };
-  } else if (includeAll) {
-    if (!authUserId) {
-      return NextResponse.json({ success: false, message: 'Brak autoryzacji.' }, { status: 401 });
-    }
-    const viewer = await prisma.user.findUnique({
-      where: { id: authUserId },
-      select: { role: true },
-    });
-    if (String(viewer?.role || '').toUpperCase() !== 'ADMIN') {
-      return NextResponse.json({ success: false, message: 'Brak uprawnień.' }, { status: 403 });
-    }
-    where = {};
-  } else {
-    where = { status: 'ACTIVE' };
+    where = { userId: Number(userId) };
+  } else if (!includeAll) {
+    // public view: tylko aktywne i z koordynatami
+    where = {
+      status: 'ACTIVE',
+      lat: { not: null },
+      lng: { not: null }
+    };
   }
 
   try {
-    await ensureOfferPriceHistorySchema();
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS OfferViewLog (
         id BIGINT NOT NULL AUTO_INCREMENT,
@@ -121,7 +110,11 @@ export async function GET(req: Request) {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    const offers = await findManyMobileListOffers(where);
+    const offers = await prisma.offer.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      select: (catalogOnly ? MOBILE_OFFER_CATALOG_SELECT : MOBILE_OFFER_PRISMA_SELECT) as any,
+    });
 
     const publicVisibleIds =
       userId || includeAll
@@ -132,53 +125,39 @@ export async function GET(req: Request) {
     const visibleOffers =
       publicVisibleIds === null
         ? offers
-        : offers.filter((offer: any) =>
-            canShowOfferOnPublicMarket(offer, publicVisibleIds),
-          );
+        : offers.filter((offer: any) => publicVisibleIds.has(Number(offer.id)));
 
-    const offerIds = visibleOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
+    // Po utracie rekordów OfferPublication (np. drift schematu) nie chowaj całego rynku.
+    const publicationGatedOffers =
+      publicVisibleIds !== null && visibleOffers.length === 0 && offers.length > 0
+        ? offers
+        : visibleOffers;
+
+    const offerIds = publicationGatedOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
     if (!offerIds.length) {
       return NextResponse.json({ success: true, offers: [] }, {
         headers: { 'Cache-Control': 'no-store, max-age=0' },
       });
     }
 
-    const viewsMap = await loadOfferViewCounts(prisma, offerIds);
+    const viewsRows = await prisma.$queryRawUnsafe<any[]>(
+      `
+        SELECT offerId, COUNT(*) AS total
+        FROM OfferViewLog
+        WHERE offerId IN (${offerIds.join(',')})
+        GROUP BY offerId
+      `
+    );
+    const viewsMap = new Map<number, number>(
+      viewsRows.map((row: any) => [Number(row.offerId), Number(row.total || 0)])
+    );
     const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
-    const listPriceRows = (offerIds.length
-      ? await prisma.$queryRawUnsafe(
-          `SELECT id, listPricePln FROM \`Offer\` WHERE id IN (${offerIds.join(',')})`,
-        )
-      : []) as Array<{ id: number; listPricePln: number | null }>;
-    const listPriceMap = new Map(
-      listPriceRows.map((row) => [Number(row.id), Number(row.listPricePln)]),
-    );
-    let listFxRate = DEFAULT_EUR_PLN_RATE;
-    let listFxDate: string | null = new Date().toISOString().slice(0, 10);
-    try {
-      const fx = await getNbpEurPlnRate();
-      listFxRate = fx.rate;
-      listFxDate = fx.date;
-    } catch {
-      /* fallback */
-    }
 
-    const normalizedOffers = visibleOffers.map((offer: any) =>
-      shapePublicListOffer(
-        {
-          ...offer,
-          listPricePln:
-            listPriceMap.get(Number(offer.id)) ??
-            offer.pricePln ??
-            offer.price,
-        },
-        {
-        viewsCount: viewsMap.get(Number(offer.id)) || 0,
-        fx: { rate: listFxRate, date: listFxDate },
-        legalOverrides,
-        includeMobileLegalAliases: true,
-      }),
-    );
+    const normalizedOffers = publicationGatedOffers.map((offer: any) => {
+      const viewsCount = viewsMap.get(Number(offer.id)) || 0;
+      const legalOffer = applyLegalStatusOverride(offer, legalOverrides);
+      return enrichOfferWithLegalAliases({ ...legalOffer, views: viewsCount, viewsCount });
+    });
 
     return NextResponse.json({ success: true, offers: normalizedOffers }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' },
@@ -321,6 +300,24 @@ export async function POST(req: Request) {
         : 'Oferta jest aktywna na rynku.',
     });
   } catch (e: unknown) {
+    if (e instanceof LocationMismatchError) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'NEEDS_USER_INPUT',
+          issues: [
+            {
+              field: 'city',
+              kind: 'suggest_replace',
+              from: e.selected,
+              to: e.resolved,
+              message: e.message,
+            },
+          ],
+        },
+        { status: 422 },
+      );
+    }
     if (e instanceof OfferValidationError) {
       return NextResponse.json(
         { success: false, message: e.message, code: 'OFFER_VALIDATION' },
