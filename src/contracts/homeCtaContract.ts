@@ -1,4 +1,4 @@
-export type HomeCtaId = 'RADAR' | 'LIST' | 'ACCOUNT' | 'PRO';
+export type HomeCtaId = 'RADAR' | 'LIST' | 'ACCOUNT' | 'PRO' | 'PRIVATE' | 'AGENCY';
 export type HomeCtaMode = 'APP';
 export type HomeCtaAnalyticsEvent =
   | 'home_cta_click'
@@ -21,7 +21,7 @@ export const HOME_CTA_CONTRACT: Record<HomeCtaId, HomeCtaContractEntry> = {
     id: 'RADAR',
     mode: 'APP',
     appRoute: 'MainTabs/Radar',
-    webRoute: '/odkryj-mape',
+    webRoute: '/#map',
   },
   LIST: {
     id: 'LIST',
@@ -40,6 +40,18 @@ export const HOME_CTA_CONTRACT: Record<HomeCtaId, HomeCtaContractEntry> = {
     mode: 'APP',
     appRoute: 'WebOnly/Cennik',
     webRoute: '/cennik',
+  },
+  PRIVATE: {
+    id: 'PRIVATE',
+    mode: 'APP',
+    appRoute: 'WebOnly/DlaPrywatnych',
+    webRoute: '/dla-prywatnych',
+  },
+  AGENCY: {
+    id: 'AGENCY',
+    mode: 'APP',
+    appRoute: 'WebOnly/DlaAgencji',
+    webRoute: '/dla-agencji',
   },
 };
 

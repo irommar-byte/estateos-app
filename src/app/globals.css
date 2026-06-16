@@ -578,6 +578,61 @@ html.light .premium-home-shell {
   color: rgba(255, 255, 255, 0.45) !important;
 }
 
+/* Luksusowy tekst na zdjęciach — czarna obwódka + czytelny kontrast */
+.eos-luxury-media-text {
+  color: #ffffff;
+  -webkit-text-stroke: 0.45px rgba(0, 0, 0, 0.92);
+  paint-order: stroke fill;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    0 2px 10px rgba(0, 0, 0, 0.55),
+    0 0 1px rgba(0, 0, 0, 1);
+}
+
+/* Szklany panel hero / landing */
+.eos-hero-glass {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.06) 48%, rgba(255, 255, 255, 0.1) 100%);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+/* Szklany podpis na kartach ofert — zawsze ciemny na zdjęciu (fix jasnego motywu) */
+.eos-offer-caption-glass {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(8, 8, 10, 0.58);
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+html.light .theme-aware-dashboard .eos-offer-caption-glass,
+html.light .eos-media-chrome .eos-offer-caption-glass {
+  background: rgba(8, 8, 10, 0.72) !important;
+  border-color: rgba(255, 255, 255, 0.24) !important;
+}
+
+html.light .eos-media-chrome [class*="via-black"] {
+  --tw-gradient-via: rgb(0 0 0 / 0.55) var(--tw-gradient-via-position) !important;
+}
+
+html.light .eos-media-chrome [class*="to-black"] {
+  --tw-gradient-to: rgb(0 0 0 / 0) var(--tw-gradient-to-position) !important;
+}
+
+.eos-audience-feature {
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
 /* Przełączniki segmentowe — zawsze czytelny aktywny stan (sprzedaż/wynajem, motyw) */
 .eos-segment-active {
   background-color: var(--eos-accent) !important;
@@ -979,46 +1034,6 @@ html.light .eos-cinematic-dark [class*="text-zinc-"] {
   color: rgb(161 161 170) !important;
 }
 
-/* Tytuł hero oferty — czytelny na jasnych i ciemnych zdjęciach (PL/EN motyw jasny) */
-.eos-offer-hero-vignette {
-  background: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 0.82) 0%,
-    rgba(0, 0, 0, 0.42) 42%,
-    transparent 100%
-  );
-}
-
-html.light .eos-cinematic-dark .eos-offer-hero-vignette {
-  background: linear-gradient(
-    to top,
-    rgba(255, 255, 255, 0.92) 0%,
-    rgba(255, 255, 255, 0.55) 38%,
-    transparent 100%
-  ) !important;
-}
-
-.eos-offer-hero-title {
-  color: #f8fafc;
-  -webkit-text-stroke: 0.85px rgba(15, 23, 42, 0.72);
-  paint-order: stroke fill;
-  text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.82),
-    0 2px 10px rgba(0, 0, 0, 0.58),
-    0 6px 28px rgba(0, 0, 0, 0.42),
-    0 0 1px rgba(255, 255, 255, 0.35);
-}
-
-html.light .eos-cinematic-dark .eos-offer-hero-title {
-  color: #0f172a !important;
-  -webkit-text-stroke: 1.25px rgba(255, 255, 255, 0.96);
-  text-shadow:
-    0 0 16px rgba(255, 255, 255, 0.72),
-    0 1px 0 rgba(255, 255, 255, 0.95),
-    0 2px 10px rgba(15, 23, 42, 0.22),
-    0 4px 22px rgba(15, 23, 42, 0.14);
-}
-
 html.light .eos-media-chrome [class*="border-white/"] {
   border-color: rgba(255, 255, 255, 0.14) !important;
 }
@@ -1184,13 +1199,8 @@ html.light .eos-chip-off {
   color: var(--eos-muted);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  line-height: 1.35;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  hyphens: auto;
 }
 
 .eos-field {
@@ -1572,117 +1582,6 @@ html.light .eos-modal-shell {
 html.light .eos-modal-panel {
   background: rgba(255, 255, 255, 0.92);
   border-color: rgba(15, 23, 42, 0.1);
-}
-
-/* Apple-style etykiety i przyciski w modalach */
-.eos-field-label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--eos-muted);
-}
-
-.eos-tab-pill {
-  border-radius: 9999px;
-  padding: 0.5rem 1rem;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  transition: background-color 0.2s ease, color 0.2s ease;
-}
-
-.eos-primary-cta {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  border-radius: 1rem;
-  padding: 0.875rem 1.25rem;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-  color: #ffffff;
-  transition: opacity 0.2s ease, transform 0.15s ease;
-}
-
-.eos-primary-cta:active {
-  transform: scale(0.98);
-}
-
-.eos-primary-cta:disabled {
-  opacity: 0.45;
-  pointer-events: none;
-}
-
-.eos-stat-card {
-  border-radius: 1rem;
-  border: 1px solid var(--eos-border);
-  background: var(--eos-input);
-  padding: 1rem;
-}
-
-.eos-stat-card-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--eos-muted);
-}
-
-.eos-stat-card-value {
-  margin-top: 0.25rem;
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--eos-text);
-}
-
-.eos-violet-accent {
-  color: #c4b5fd;
-}
-
-html.light .eos-violet-accent {
-  color: #6d28d9;
-}
-
-.eos-violet-accent-strong {
-  color: #a78bfa;
-}
-
-html.light .eos-violet-accent-strong {
-  color: #5b21b6;
-}
-
-.eos-amber-accent {
-  color: #fbbf24;
-}
-
-html.light .eos-amber-accent {
-  color: #d97706;
-}
-
-html.light .eos-themed-modal .text-violet-300,
-html.light .eos-themed-modal .text-violet-200,
-html.light .eos-modal-surface .text-violet-300,
-html.light .eos-modal-surface .text-violet-200 {
-  color: #6d28d9 !important;
-}
-
-html.light .eos-themed-modal [class*="text-violet-200/"],
-html.light .eos-modal-surface [class*="text-violet-200/"] {
-  color: #7c3aed !important;
-}
-
-/* Bannery ofertowe — jasny motyw na jasnym tle */
-html.light .eos-offer-feature-banner--hero .eos-offer-feature-banner-title {
-  color: #6d28d9 !important;
-}
-
-html.light .eos-offer-feature-banner--hero .eos-offer-feature-banner-subtitle {
-  color: var(--eos-text) !important;
 }
 
 @media print {

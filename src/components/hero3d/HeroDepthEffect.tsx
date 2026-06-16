@@ -60,7 +60,7 @@ export default function HeroDepthEffect() {
   return (
     <section
       ref={ref}
-      className="relative h-[100svh] w-full overflow-hidden bg-[#050505]"
+      className="premium-hero-stage relative h-[100svh] w-full overflow-hidden bg-[#050505]"
     >
       <div className="absolute inset-0 h-full w-full overflow-hidden">
         <motion.div
@@ -153,16 +153,18 @@ export default function HeroDepthEffect() {
               <sup className="ml-1 align-super text-[0.18em] font-black tracking-normal text-white/80">TM</sup>
             </motion.h1>
 
-            <motion.p
+            <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, ease: customEase, delay: 0.32 }}
-              className="mt-8 max-w-xl text-sm font-light leading-[1.7] text-white/65 sm:max-w-2xl sm:text-base"
+              className="eos-hero-glass mt-8 max-w-xl rounded-[1.75rem] px-6 py-5 sm:max-w-2xl sm:px-8 sm:py-6"
             >
-              {dict.hero.lead}
-              <span className="font-medium text-white/95">{dict.hero.leadBold}</span>
-              {dict.hero.leadExtra}
-            </motion.p>
+              <p className="eos-luxury-media-text text-sm font-light leading-[1.75] text-white/90 sm:text-base">
+                {dict.hero.lead}
+                <span className="font-semibold text-white">{dict.hero.leadBold}</span>
+                {dict.hero.leadExtra}
+              </p>
+            </motion.div>
 
             <motion.div
               initial={{ opacity: 0, y: 18 }}
@@ -172,18 +174,18 @@ export default function HeroDepthEffect() {
             >
               <button
                 type="button"
-                onClick={() => openHomeCta("RADAR")}
-                className="group relative w-full overflow-hidden rounded-full bg-gradient-to-b from-[#d9b58b] via-[#b98c58] to-[#70451f] px-8 py-4 text-[11px] font-black uppercase tracking-[0.16em] text-black shadow-[0_18px_38px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.02] active:scale-[0.98] sm:w-auto sm:px-10"
+                onClick={() => openHomeCta("PRIVATE")}
+                className="premium-hero-cta-primary group relative w-full overflow-hidden rounded-full bg-gradient-to-b from-[#d9b58b] via-[#b98c58] to-[#70451f] px-8 py-4 text-[11px] font-black uppercase tracking-[0.16em] shadow-[0_18px_38px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.02] active:scale-[0.98] sm:w-auto sm:px-10"
               >
                 <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
-                <span className="relative">{dict.hero.ctaMap}</span>
+                <span className="relative">{dict.hero.ctaPrivate}</span>
               </button>
               <button
                 type="button"
-                onClick={() => openHomeCta("LIST")}
-                className="w-full rounded-full border border-white/18 bg-black/50 px-8 py-4 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_16px_34px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-all hover:border-white/30 hover:bg-white/[0.08] active:scale-[0.98] sm:w-auto sm:px-10"
+                onClick={() => openHomeCta("AGENCY")}
+                className="premium-hero-cta-secondary w-full rounded-full px-8 py-4 text-[11px] font-black uppercase tracking-[0.16em] backdrop-blur-xl transition-all hover:scale-[1.02] active:scale-[0.98] sm:w-auto sm:px-10"
               >
-                {dict.hero.ctaList}
+                {dict.hero.ctaAgency}
               </button>
             </motion.div>
 

@@ -93,8 +93,34 @@ export type Dictionary = {
     leadExtra: string;
     ctaMap: string;
     ctaList: string;
+    ctaPrivate: string;
+    ctaAgency: string;
     exploreMap: string;
     scroll: string;
+  };
+  audiencePrivate: {
+    eyebrow: string;
+    title: string;
+    titleAccent: string;
+    subtitle: string;
+    features: { title: string; body: string }[];
+    ctaPrimary: string;
+    ctaSecondary: string;
+    ctaLogin: string;
+    ctaPricing: string;
+    closing: string;
+  };
+  audienceAgency: {
+    eyebrow: string;
+    title: string;
+    titleAccent: string;
+    subtitle: string;
+    features: { title: string; body: string }[];
+    ctaPrimary: string;
+    ctaSecondary: string;
+    ctaLogin: string;
+    ctaPricing: string;
+    closing: string;
   };
   homeAppPitch: {
     eyebrow: string;
@@ -496,8 +522,88 @@ const pl: Dictionary = {
       ". Przeglądaj oferty na mapie, dodaj ogłoszenie lub włącz Radar Inwestycji — dopasowania trafią do Twojego konta.",
     ctaMap: "Szukaj na mapie",
     ctaList: "Dodaj swoją ofertę",
+    ctaPrivate: "Dla osób prywatnych",
+    ctaAgency: "Dla agencji i pośredników",
     exploreMap: "Mapa ofert",
     scroll: "Przewiń",
+  },
+  audiencePrivate: {
+    eyebrow: "EstateOS™ · osoby prywatne",
+    title: "Twój dom.",
+    titleAccent: "Twoje zasady.",
+    subtitle:
+      "Wystaw mieszkanie, dom lub działkę bez opłat za publikację. Przeglądaj rynek na mapie, włącz Radar dopasowań i negocjuj w Deal Room — wszystko z jednego konta, na stronie i w aplikacji.",
+    features: [
+      {
+        title: "Publikacja bez prowizji platformy",
+        body: "Dodajesz ogłoszenie samodzielnie — bez ukrytych opłat za sam fakt wystawienia oferty na EstateOS™.",
+      },
+      {
+        title: "Mapa i Radar Inwestycji",
+        body: "Szukasz? Ustaw kryteria — system monitoruje rynek i powiadamia o nowych dopasowaniach. Sprzedajesz? Twoja oferta trafia na radary aktywnych kupujących.",
+      },
+      {
+        title: "Deal Room i bezpieczny kontakt",
+        body: "Rozmowy, propozycje cenowe i dokumenty w jednym miejscu — bez rozproszenia na dziesiątkach wiadomości.",
+      },
+      {
+        title: "Weryfikacja i zaufanie",
+        body: "Status dokumentów i przejrzysty profil wystawcy — wiesz, z kim rozmawiasz, zanim przejdziesz do spotkania.",
+      },
+      {
+        title: "Aplikacja z Passkey",
+        body: "Logowanie biometryczne, powiadomienia push i pełna mapa w kieszeni — iOS i Android.",
+      },
+      {
+        title: "Jedno konto wszędzie",
+        body: "Ta sama baza ofert na estateos.pl i w aplikacji mobilnej — bez duplikowania ogłoszeń.",
+      },
+    ],
+    ctaPrimary: "Załóż konto — za darmo",
+    ctaSecondary: "Przeglądaj mapę ofert",
+    ctaLogin: "Mam już konto",
+    ctaPricing: "",
+    closing:
+      "Nie musisz być profesjonalistą rynku, żeby działać jak profesjonalista. EstateOS™ daje Ci narzędzia, które do tej pory były zarezerwowane dla agencji.",
+  },
+  audienceAgency: {
+    eyebrow: "EstateOS™ · agencje i pośrednicy",
+    title: "Biuro, które",
+    titleAccent: "przewodzi rynkowi.",
+    subtitle:
+      "CRM, weryfikacja ofert, Radar klientów i Deal Room w jednej platformie. Publikujesz dla zespołu, śledzisz leady i zamykasz transakcje szybciej — z prestiżem marki EstateOS™ za plecami.",
+    features: [
+      {
+        title: "Centrala i CRM zespołu",
+        body: "Panel zarządzania ofertami, statystykami i użytkownikami — przejrzysty widok całego biura w jednym miejscu.",
+      },
+      {
+        title: "Profil partnerski i wyróżnienie",
+        body: "Oznaczenia zaufania i widoczność na mapie — Twoje ogłoszenia wyróżniają się wśród ofert prywatnych.",
+      },
+      {
+        title: "Radar dopasowań dla klientów",
+        body: "Aktywuj kryteria dla kupujących i wynajmujących — system dostarcza leady, gdy pojawia się idealna oferta.",
+      },
+      {
+        title: "Deal Room transakcyjny",
+        body: "Negocjacje, dokumenty i harmonogram spotkań w zamkniętym pokoju — bez chaosu w mailach i komunikatorach.",
+      },
+      {
+        title: "Import i skalowanie portfela",
+        body: "Narzędzia do masowego zarządzania ogłoszeniami i integracji z procesami biura — mniej ręcznej pracy.",
+      },
+      {
+        title: "Plany Pro dla biur",
+        body: "Rozszerzone limity, priorytet i funkcje premium — dopasowane do skali Twojej agencji.",
+      },
+    ],
+    ctaPrimary: "Zarejestruj biuro",
+    ctaSecondary: "Przeglądaj rynek",
+    ctaLogin: "Logowanie dla zespołu",
+    ctaPricing: "Zobacz plany Pro",
+    closing:
+      "Klienci oczekują doświadczenia na poziomie Apple — Ty możesz je im dać. Dołącz do EstateOS™ i przekształć biuro w nowoczesną centralę nieruchomości.",
   },
   homeAppPitch: {
     eyebrow: "Radar Inwestycji",
@@ -923,8 +1029,88 @@ const en: Dictionary = {
       ". Browse live listings on the map, publish your own, or enable Investment Radar — matches land in your account.",
     ctaMap: "Search on the map",
     ctaList: "Add your listing",
+    ctaPrivate: "For private owners",
+    ctaAgency: "For agencies & brokers",
     exploreMap: "Listing map",
     scroll: "Scroll",
+  },
+  audiencePrivate: {
+    eyebrow: "EstateOS™ · private owners",
+    title: "Your home.",
+    titleAccent: "Your rules.",
+    subtitle:
+      "List a flat, house, or plot with no listing fee. Browse the live map, enable Investment Radar, and negotiate in Deal Room — one account on web and mobile.",
+    features: [
+      {
+        title: "No platform listing fee",
+        body: "Publish on your own — no hidden charge just for going live on EstateOS™.",
+      },
+      {
+        title: "Map & Investment Radar",
+        body: "Buying? Set criteria and get notified. Selling? Your listing reaches active buyer radars.",
+      },
+      {
+        title: "Deal Room & secure contact",
+        body: "Messages, offers, and documents in one place — not scattered across apps.",
+      },
+      {
+        title: "Verification & trust",
+        body: "Document status and a clear seller profile before you meet in person.",
+      },
+      {
+        title: "App with Passkey",
+        body: "Biometric sign-in, push alerts, and the full map in your pocket — iOS and Android.",
+      },
+      {
+        title: "One account everywhere",
+        body: "The same listing database on estateos.pl and in the mobile app.",
+      },
+    ],
+    ctaPrimary: "Create a free account",
+    ctaSecondary: "Explore the map",
+    ctaLogin: "I already have an account",
+    ctaPricing: "",
+    closing:
+      "You do not need to be a market pro to act like one. EstateOS™ gives you tools that used to be reserved for agencies.",
+  },
+  audienceAgency: {
+    eyebrow: "EstateOS™ · agencies & brokers",
+    title: "A brokerage that",
+    titleAccent: "leads the market.",
+    subtitle:
+      "CRM, listing verification, client Radar, and Deal Room in one platform. Publish as a team, track leads, and close faster — with EstateOS™ prestige behind your brand.",
+    features: [
+      {
+        title: "Headquarters & team CRM",
+        body: "Manage listings, stats, and users — a clear view of the whole office.",
+      },
+      {
+        title: "Partner profile & visibility",
+        body: "Trust badges and map prominence — your listings stand out from private ads.",
+      },
+      {
+        title: "Client match Radar",
+        body: "Set buyer and tenant criteria — the system delivers leads when the right listing appears.",
+      },
+      {
+        title: "Transactional Deal Room",
+        body: "Negotiations, documents, and meetings in a private room — no email chaos.",
+      },
+      {
+        title: "Portfolio scale & import",
+        body: "Tools for bulk listing management and office workflows — less manual work.",
+      },
+      {
+        title: "Pro plans for offices",
+        body: "Higher limits, priority, and premium features — scaled to your agency.",
+      },
+    ],
+    ctaPrimary: "Register your agency",
+    ctaSecondary: "Browse the market",
+    ctaLogin: "Team sign-in",
+    ctaPricing: "View Pro plans",
+    closing:
+      "Clients expect an Apple-level experience — you can deliver it. Join EstateOS™ and turn your office into a modern real-estate command center.",
   },
   homeAppPitch: {
     eyebrow: "Investment Radar",

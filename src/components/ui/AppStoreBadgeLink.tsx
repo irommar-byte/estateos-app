@@ -6,8 +6,10 @@ const GOOGLE_PLAY_URL = "https://play.google.com/store/apps/details?id=pl.estate
 const GOOGLE_PLAY_INTERNAL_TEST_URL =
   process.env.NEXT_PUBLIC_ANDROID_INTERNAL_TEST_URL?.trim() ||
   "https://play.google.com/apps/internaltest/4699855385179896044";
-const ANDROID_BETA_APK_URL =
+const ANDROID_BETA_DOWNLOAD_URL =
   process.env.NEXT_PUBLIC_ANDROID_BETA_APK_URL?.trim() || "/downloads/estateos-android.apk";
+const ANDROID_BETA_FILENAME =
+  process.env.NEXT_PUBLIC_ANDROID_BETA_FILENAME?.trim() || "estateos-android.apk";
 const APPLE_BADGE_URL = "/badges/app-store-pl-official.png";
 const GOOGLE_PLAY_BADGE_URL =
   "https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg";
@@ -16,7 +18,7 @@ type Props = {
   className?: string;
   compact?: boolean;
   label?: string;
-  /** Gdy true: APK beta (jeśli skonfigurowane) zamiast szarego „Wkrótce”. */
+  /** Gdy true: plik beta (AAB/APK) zamiast szarego „Wkrótce”. */
   androidComingSoon?: boolean;
   androidSoonLabel?: string;
   androidBetaLabel?: string;
@@ -45,7 +47,7 @@ export default function AppStoreBadgeLink({
   const badgeShell =
     "group relative inline-flex items-center justify-center overflow-hidden border border-white/55 bg-black/90 shadow-[0_10px_28px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all duration-300 hover:-translate-y-[1px] hover:border-white hover:bg-black hover:shadow-[0_16px_34px_rgba(0,0,0,0.55),0_0_28px_rgba(16,185,129,0.22)]";
   const fallbackText = compact ? "text-[10px]" : "text-[11px]";
-  const useAndroidBeta = androidComingSoon && Boolean(ANDROID_BETA_APK_URL);
+  const useAndroidBeta = androidComingSoon && Boolean(ANDROID_BETA_DOWNLOAD_URL);
 
   const googleBadgeInner = googleBadgeError ? (
     <span className={`inline-flex items-center ${fallbackText} font-bold text-white`}>
@@ -65,19 +67,14 @@ export default function AppStoreBadgeLink({
     if (useAndroidBeta) {
       return (
         <a
-          href={ANDROID_BETA_APK_URL}
-          download
+          href={ANDROID_BETA_DOWNLOAD_URL}
+          download={ANDROID_BETA_FILENAME}
           rel="noopener noreferrer"
           aria-label={`${androidBetaLabel} — ${androidBetaBadge}`}
-          className={`${badgeShell} ${shellClass} gap-2 border-emerald-400/40 bg-emerald-950/90 hover:border-emerald-300`}
+          className={`${badgeShell} ${shellClass}`}
         >
           <span className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-white/35 opacity-80" />
-          <span className={`inline-flex items-center gap-2 font-bold text-white ${fallbackText}`}>
-            <span className="text-lg leading-none" aria-hidden>
-              ▶
-            </span>
-            <span>{androidBetaLabel}</span>
-          </span>
+          {googleBadgeInner}
           <span className="absolute bottom-1.5 right-1.5 rounded-md bg-emerald-500/90 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-black shadow-sm">
             {androidBetaBadge}
           </span>
