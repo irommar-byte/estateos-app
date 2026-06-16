@@ -28,6 +28,7 @@ prisma/**/*.db*
 
 # uploads serwowane przez app (binary)
 public/uploads*
+public/downloads/*.apk
 
 # Jednorazowe skrypty łatek w korzeniu projektu
 fix_*.js

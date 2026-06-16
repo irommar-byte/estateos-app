@@ -97,7 +97,15 @@ export default function HomeAppPitch() {
           <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[var(--eos-subtle)]">
             {p.downloadLabel}
           </p>
-          <AppStoreBadgeLink androidComingSoon androidSoonLabel={p.androidSoon} label={dict.footer.appStore} />
+          <AppStoreBadgeLink
+            androidComingSoon
+            androidSoonLabel={p.androidSoon}
+            androidBetaLabel={p.androidBetaLabel}
+            androidBetaBadge={p.androidBetaBadge}
+            showAndroidBetaHint
+            androidBetaHint={p.androidBetaHint}
+            label={dict.footer.appStore}
+          />
         </motion.div>
       </div>
     </section>

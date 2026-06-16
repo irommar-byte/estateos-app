@@ -107,6 +107,9 @@ export type Dictionary = {
     closing: string;
     downloadLabel: string;
     androidSoon: string;
+    androidBetaLabel: string;
+    androidBetaBadge: string;
+    androidBetaHint: string;
   };
   pulse: {
     title: string;
@@ -510,6 +513,10 @@ const pl: Dictionary = {
       "To nie kolejny portal ogłoszeniowy. To nowoczesny system operacyjny nieruchomości — zawsze pod ręką, na telefonie i w przeglądarce.",
     downloadLabel: "Pobierz aplikację",
     androidSoon: "Wkrótce",
+    androidBetaLabel: "Pobierz na Androida",
+    androidBetaBadge: "Beta",
+    androidBetaHint:
+      "Wersja testowa (APK) — po pobraniu zezwól na instalację z tego źródła w ustawieniach telefonu. Alternatywnie dołącz do",
   },
   pulse: {
     title: "Puls rynku",
@@ -933,6 +940,10 @@ const en: Dictionary = {
       "Not another classifieds site. A modern real-estate operating system — in your pocket and in the browser.",
     downloadLabel: "Get the app",
     androidSoon: "Coming soon",
+    androidBetaLabel: "Download for Android",
+    androidBetaBadge: "Beta",
+    androidBetaHint:
+      "Test build (APK) — after download, allow installation from this source in your phone settings. Or join the",
   },
   pulse: {
     title: "Market pulse",
