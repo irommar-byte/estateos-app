@@ -46,6 +46,7 @@ export const auth = {
   joinEcosystem: 'Join the EstateOS™ ecosystem',
   orDivider: 'OR',
   passkeyFaceId: 'Sign in with Face ID',
+  passkeyAndroid: 'Sign in with fingerprint / PIN',
   passkeyLaunchTitle: 'Sign in with Face ID',
   passkeyLaunchBody: 'You have an active Passkey on this device — confirm with biometrics to enter instantly.',
   passkeyLaunchUsePassword: 'Use password instead',

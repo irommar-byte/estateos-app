@@ -22,8 +22,7 @@ import {
   useColorScheme,
   AppState,
 } from 'react-native';
-import ClusteredMapView from 'react-native-map-clustering';
-import MapViewCore, { Marker, Region, Circle } from 'react-native-maps';
+import MapViewCore, { Marker, Region, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import MapGestureHost from '../components/MapGestureHost';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -75,6 +74,8 @@ import { useFloatingChatsLayoutStore } from '../store/useFloatingChatsLayoutStor
 import { getOfferLifecycleState, isOfferClosed } from '../utils/offerLifecycle';
 import { syncRadarLiveActivity } from '../services/radarLiveActivityService';
 import { API_URL } from '../config/network';
+import { mobileFetchJson } from '../utils/mobileFetch';
+import { parseOfferList } from '../utils/offerCatalogPipeline';
 import { findWebOfferById } from '../utils/webOffersFallback';
 import { isOfferLegallyVerified } from '../utils/legalVerificationStatus';
 import CurrencySegmentControl from '../components/CurrencySegmentControl';
@@ -89,6 +90,8 @@ import RadarOfferGallery, {
 } from '../components/radar/RadarOfferGallery';
 import RadarBrowseModeRail from '../components/radar/RadarBrowseModeRail';
 import RadarStatusBulb from '../components/radar/RadarStatusBulb';
+import { OfferMapMarkerPin } from '../components/radar/OfferMapMarkerPin';
+import { AndroidMapPriceMarker } from '../components/radar/AndroidMapPriceMarker';
 import { advancedPriceBoundsToPln, convertBetweenCurrencies } from '../money/convert';
 import { formatCurrencySuffix, formatMarkerPriceCompact, resolveOfferDisplayAmount } from '../money/format';
 import { parseOfferNumericPrice, resolveOfferListingPrice } from '../money/offerPrice';
@@ -212,27 +215,11 @@ function radarPrivacyCircleStyle(accentHex: string, isSelected: boolean) {
   };
 }
 
-function clusterBubbleDimensions(points: number) {
-  if (points >= 50) return { diameter: 64, halo: 82, fontSize: 19 };
-  if (points >= 25) return { diameter: 58, halo: 76, fontSize: 18 };
-  if (points >= 15) return { diameter: 54, halo: 72, fontSize: 17 };
-  if (points >= 10) return { diameter: 50, halo: 68, fontSize: 17 };
-  if (points >= 8) return { diameter: 46, halo: 62, fontSize: 16 };
-  if (points >= 4) return { diameter: 42, halo: 56, fontSize: 16 };
-  return { diameter: 38, halo: 52, fontSize: 15 };
-}
-
 function hasFiniteCoords(lat: unknown, lng: unknown): boolean {
   return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
 }
 
-function formatClusterCount(n: number) {
-  if (n >= 10000) return `${Math.round(n / 1000)}k`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
-  return String(n);
-}
-
-const RadarMapComponent: any = Platform.OS === 'ios' ? MapViewCore : ClusteredMapView;
+const RadarMapComponent: any = MapViewCore;
 const SELL_MARKER_COLOR = '#10b981';
 const RENT_MARKER_COLOR = '#0A84FF';
 
@@ -1947,72 +1934,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       : SELL_MARKER_COLOR;
   const draftModeAccentColor = draftAdvancedFilters.transactionType === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
 
-  const renderLuxuryCluster = useCallback(
-    (clusterData: any) => {
-      const { geometry, properties, onPress, clusterColor } = clusterData;
-      const count = Number(properties.point_count ?? 0);
-      const coords = {
-        longitude: Number(geometry?.coordinates?.[0]),
-        latitude: Number(geometry?.coordinates?.[1]),
-      };
-      if (!hasFiniteCoords(coords.latitude, coords.longitude)) return null;
-      const accent = (clusterColor as string) || modeAccentColor;
-      const luxColors = markerLuxuryGradient(accent);
-      const { diameter, halo, fontSize } = clusterBubbleDimensions(count);
-      const cid = clusterData.id ?? `${coords.latitude}_${coords.longitude}_${count}`;
-      const haloTint = accent.length === 7 ? `${accent}44` : accent;
-      return (
-        <Marker
-          key={`cluster-${cid}`}
-          coordinate={coords}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            onPress?.();
-          }}
-          style={{ zIndex: count + 800 }}
-          tracksViewChanges={false}
-        >
-          <View style={[styles.clusterOuter, { width: halo, height: halo, shadowColor: accent }]}>
-            <View
-              style={[
-                styles.clusterHalo,
-                {
-                  width: halo,
-                  height: halo,
-                  borderRadius: halo / 2,
-                  backgroundColor: haloTint,
-                },
-              ]}
-            />
-            <LinearGradient
-              colors={luxColors}
-              start={{ x: 0.08, y: 0 }}
-              end={{ x: 0.92, y: 1 }}
-              style={[
-                styles.clusterDisk,
-                {
-                  width: diameter,
-                  height: diameter,
-                  borderRadius: diameter / 2,
-                },
-              ]}
-            >
-              <LinearGradient
-                colors={['rgba(255,255,255,0.42)', 'rgba(255,255,255,0)', 'transparent']}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 0.48 }}
-                style={[styles.clusterHighlight, { borderRadius: diameter / 2 }]}
-                pointerEvents="none"
-              />
-              <Text style={[styles.clusterCountText, { fontSize }]}>{formatClusterCount(count)}</Text>
-            </LinearGradient>
-          </View>
-        </Marker>
-      );
-    },
-    [modeAccentColor]
-  );
-
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
@@ -2091,17 +2012,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const fetchOffersOnce = useCallback(
     async (showSpinner: boolean): Promise<boolean> => {
       if (showSpinner) setLoading(true);
-      const fetchHeaders = { Accept: 'application/json', 'Cache-Control': 'no-cache' };
-
-      const parseOfferList = (data: unknown): any[] | null => {
-        if (Array.isArray(data)) return data;
-        if (!data || typeof data !== 'object') return null;
-        const row = data as Record<string, unknown>;
-        if (Array.isArray(row.offers)) return row.offers;
-        if (Array.isArray(row.data)) return row.data;
-        if (Array.isArray(row.items)) return row.items;
-        return null;
-      };
 
       const applyRawOfferList = (rawList: any[]) => {
         const activeOnly = rawList.filter((o: any) => !isOfferClosed(o));
@@ -2115,19 +2025,26 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       };
 
       try {
-        const endpoints = [`${API_URL}/api/mobile/v1/offers`, `${API_URL}/api/offers`];
+        const endpoints = [
+          `${API_URL}/api/mobile/v1/offers?catalog=1`,
+          `${API_URL}/api/mobile/v1/offers`,
+          `${API_URL}/api/offers`,
+        ];
         let lastError = '';
 
         for (const url of endpoints) {
           try {
-            const res = await fetch(url, { headers: fetchHeaders });
-            const data = await res.json().catch(() => null);
+            const { response: res, data } = await mobileFetchJson(url);
             const list = parseOfferList(data);
             if (res.ok && Array.isArray(list)) {
               applyRawOfferList(list);
               return true;
             }
-            lastError = `HTTP ${res.status}`;
+            if (res.ok && list === null) {
+              lastError = 'Nieprawidłowa odpowiedź serwera (brak listy ofert)';
+            } else {
+              lastError = `HTTP ${res.status}`;
+            }
           } catch (err) {
             lastError = err instanceof Error ? err.message : 'network';
           }
@@ -4038,6 +3955,95 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     setActiveIndex(index);
   };
 
+  const offerMapMarkerLayers = useMemo(() => {
+    const circles: React.ReactNode[] = [];
+    const markers: React.ReactNode[] = [];
+
+    activeOffers.forEach((offer, idx) => {
+      const isSelected = activeIndex === idx;
+      const markerAccent = offerMarkerAccent(offer.raw);
+      const luxColors = markerLuxuryGradient(markerAccent);
+      const lat = Number(offer.lat);
+      const lng = Number(offer.lng);
+      if (!hasFiniteCoords(lat, lng)) return;
+
+      const listing = resolveOfferListingPrice(offer.raw, rate);
+      const disp = resolveOfferDisplayAmount({
+        amount: listing.amount,
+        listingCurrency: listing.currency,
+        pricePln: listing.plnAmount,
+        displayPreference: preference,
+        rate,
+      });
+      const markerPriceLabel = formatMarkerPriceCompact(disp.displayAmount, disp.displayCurrency);
+      const isExact = resolveIsExactLocation(offer.raw?.isExactLocation);
+      const presentation = getPublicMapPresentation({
+        lat,
+        lng,
+        offerId: offer.id ?? null,
+        isExactLocation: isExact,
+        viewerIsOwner: false,
+      });
+      const pinCoord = { latitude: presentation.latitude, longitude: presentation.longitude };
+      const circleStyle = presentation.mode === 'circle'
+        ? radarPrivacyCircleStyle(markerAccent, isSelected)
+        : null;
+      const offerKey = String(offer.id ?? idx);
+
+      if (circleStyle) {
+        circles.push(
+          <Circle
+            key={`circle-${offerKey}`}
+            center={pinCoord}
+            radius={presentation.circleRadiusM}
+            strokeColor={circleStyle.strokeColor}
+            fillColor={circleStyle.fillColor}
+            strokeWidth={circleStyle.strokeWidth}
+            zIndex={isSelected ? 2 : 1}
+          />,
+        );
+      }
+
+      markers.push(
+        Platform.OS === 'android' ? (
+          <AndroidMapPriceMarker
+            key={`marker-${offerKey}`}
+            coordinate={pinCoord}
+            label={markerPriceLabel}
+            color={markerAccent}
+            selected={isSelected}
+            onPress={() => {
+              Haptics.selectionAsync();
+              focusOffer(idx);
+              listRef.current?.scrollToIndex({ index: idx, animated: true });
+            }}
+          />
+        ) : (
+          <Marker
+            key={`marker-${offerKey}`}
+            coordinate={pinCoord}
+            anchor={{ x: 0.5, y: 1 }}
+            tracksViewChanges={false}
+            onPress={() => {
+              Haptics.selectionAsync();
+              focusOffer(idx);
+              listRef.current?.scrollToIndex({ index: idx, animated: true });
+            }}
+          >
+            <OfferMapMarkerPin
+              label={markerPriceLabel}
+              luxColors={luxColors}
+              selected={isSelected}
+              accent={markerAccent}
+            />
+          </Marker>
+        ),
+      );
+    });
+
+    return { circles, markers };
+  }, [activeOffers, activeIndex, rate, preference]);
+
   const renderOfferCard = ({ item, index }: any) => {
     const ownVerifiedFromEndpoint = ownerLegalByOfferId[Number(item?.id || 0)] === true;
     const isLegallyVerified = isOfferLegallyVerified(item?.raw, ownVerifiedFromEndpoint);
@@ -4199,6 +4205,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       <MapGestureHost>
       <RadarMapComponent
         ref={mapRef}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+        googleRenderer={Platform.OS === 'android' ? 'LEGACY' : undefined}
         style={[
           StyleSheet.absoluteFillObject,
           isGalleryBrowse && { opacity: 0 },
@@ -4218,22 +4226,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         userInterfaceStyle={isDark ? 'dark' : 'light'}
         showsUserLocation
         showsCompass={false}
-        {...(Platform.OS === 'ios'
-          ? {}
-          : {
-              radius: 52,
-              maxZoom: 20,
-              minZoom: 1,
-              minPoints: 2,
-              extent: 512,
-              animationEnabled: false,
-              clusterColor: modeAccentColor,
-              clusterTextColor: '#FFFFFF',
-              renderCluster: renderLuxuryCluster,
-              spiralEnabled: false,
-              preserveClusterPressBehavior: true,
-              edgePadding: { top: 40, right: 40, bottom: 40, left: 40 },
-            })}
       >
         {activeAdvancedMapBounds ? (
           <Circle
@@ -4265,109 +4257,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             <View style={[styles.searchAreaCenterDot, { borderColor: modeAccentColor, backgroundColor: `${modeAccentColor}33` }]} />
           </Marker>
         ) : null}
-        {activeOffers.map((offer, idx) => {
-          const isSelected = activeIndex === idx;
-          const markerAccent = offerMarkerAccent(offer.raw);
-          const luxColors = markerLuxuryGradient(markerAccent);
-          const lat = Number(offer.lat);
-          const lng = Number(offer.lng);
-          if (!hasFiniteCoords(lat, lng)) return null;
-
-          // Prywatność lokalizacji na publicznej mapie:
-          //  • `isExactLocation === true`  → pełen pin z ceną w dokładnym punkcie
-          //  • `isExactLocation === false` → pin (z ceną) PRZESUNIĘTY deterministycznie
-          //    + delikatny okrąg ~250 m, który komunikuje „obszar". Środek okręgu i pin
-          //    leżą w tym samym, zjitterowanym punkcie — budynek znajduje się gdzieś
-          //    wewnątrz okręgu, ale nigdy w jego centrum.
-          // Helper `getPublicMapPresentation` jest deterministyczny względem `offer.id`,
-          // więc te same coords są zwracane przy każdym renderze (nie da się ich uśrednić
-          // do prawdziwego punktu).
-          const listing = resolveOfferListingPrice(offer.raw, rate);
-          const disp = resolveOfferDisplayAmount({
-            amount: listing.amount,
-            listingCurrency: listing.currency,
-            pricePln: listing.plnAmount,
-            displayPreference: preference,
-            rate,
-          });
-          const markerPriceLabel = formatMarkerPriceCompact(disp.displayAmount, disp.displayCurrency);
-          const isExact = resolveIsExactLocation(offer.raw?.isExactLocation);
-          const presentation = getPublicMapPresentation({
-            lat,
-            lng,
-            offerId: offer.id ?? null,
-            isExactLocation: isExact,
-            viewerIsOwner: false,
-          });
-          const pinCoord = { latitude: presentation.latitude, longitude: presentation.longitude };
-          const circleStyle = presentation.mode === 'circle'
-            ? radarPrivacyCircleStyle(markerAccent, isSelected)
-            : null;
-
-          return (
-            <React.Fragment key={`offer-${String(offer.id ?? idx)}`}>
-              {circleStyle ? (
-                <Circle
-                  center={pinCoord}
-                  radius={presentation.circleRadiusM}
-                  strokeColor={circleStyle.strokeColor}
-                  fillColor={circleStyle.fillColor}
-                  strokeWidth={circleStyle.strokeWidth}
-                  zIndex={isSelected ? 2 : 1}
-                />
-              ) : null}
-            <Marker
-                coordinate={pinCoord}
-                anchor={{ x: 0.5, y: 1 }}
-                tracksViewChanges={false}
-              onPress={() => {
-                Haptics.selectionAsync();
-                focusOffer(idx);
-                listRef.current?.scrollToIndex({ index: idx, animated: true });
-              }}
-            >
-                <View
-                  collapsable={false}
-                  style={[
-                    styles.markerOuter,
-                    Platform.OS === 'android' && styles.markerOuterAndroid,
-                    isSelected && styles.markerOuterSelected,
-                    { shadowColor: markerAccent },
-                  ]}
-                >
-                <LinearGradient
-                  colors={luxColors}
-                  start={{ x: 0.12, y: 0 }}
-                  end={{ x: 0.88, y: 1 }}
-                  style={[
-                    styles.markerCapsule,
-                    Platform.OS === 'android' && styles.markerCapsuleAndroid,
-                    isSelected && styles.markerCapsuleSelected,
-                  ]}
-                >
-                  <LinearGradient
-                    colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0)', 'transparent']}
-                    start={{ x: 0.5, y: 0 }}
-                    end={{ x: 0.5, y: 0.55 }}
-                    style={styles.markerHighlight}
-                    pointerEvents="none"
-                  />
-                    <Text
-                      style={[
-                        styles.mapMarkerText,
-                        Platform.OS === 'android' && styles.mapMarkerTextAndroid,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {markerPriceLabel}
-                    </Text>
-                </LinearGradient>
-                <View style={[styles.markerPinTail, { borderTopColor: luxColors[2] }]} />
-              </View>
-            </Marker>
-            </React.Fragment>
-          );
-        })}
+        {offerMapMarkerLayers.circles}
+        {offerMapMarkerLayers.markers}
       </RadarMapComponent>
       </MapGestureHost>
       </View>

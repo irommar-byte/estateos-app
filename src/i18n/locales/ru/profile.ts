@@ -129,7 +129,12 @@ export const profile = {
     sectionTitle: 'Безопасность',
     passkeyTitle: 'Ключ доступа',
     passkeyActive: 'Активный (Face ID/Touch ID)',
+    passkeyActiveIos: 'Активный (Face ID / Touch ID)',
+    passkeyActiveAndroid: 'Активный (отпечаток / PIN)',
     passkeyInactive: 'Биометрический вход',
+    passkeyInactiveAndroid: 'Отпечаток или PIN устройства',
+    passkeyUnsupportedAndroid:
+      'Passkey на Android требует установки из Google Play (внутренний тест) и Google Play Services.',
     footerActive:
       'Your device key secures this device. You can sign in instantly.',
     footerInactive:

@@ -46,6 +46,7 @@ export const auth = {
   joinEcosystem: 'Dołącz do ekosystemu EstateOS™',
   orDivider: 'LUB',
   passkeyFaceId: 'Zaloguj się z Face ID',
+  passkeyAndroid: 'Zaloguj się odciskiem / PIN',
   passkeyLaunchTitle: 'Zaloguj się Face ID',
   passkeyLaunchBody: 'Masz aktywny klucz Passkey na tym urządzeniu — potwierdź biometrią, aby wejść od razu.',
   passkeyLaunchUsePassword: 'Użyj hasła zamiast tego',

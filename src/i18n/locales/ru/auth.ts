@@ -47,6 +47,7 @@ export const auth = {
   joinEcosystem: 'Присоединяйтесь к экосистеме EstateOS™',
   orDivider: 'ИЛИ',
   passkeyFaceId: 'Войти с Face ID',
+  passkeyAndroid: 'Войти по отпечатку / PIN',
   registerLink: 'Регистрация',
   loginLink: 'Войти',
   changePassword: 'Сменить пароль',

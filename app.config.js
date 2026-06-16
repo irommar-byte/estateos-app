@@ -31,5 +31,6 @@ module.exports = {
         },
       },
     },
+    plugins: [...(appJson.expo.plugins || []), './plugins/withAndroidPlayCompatibility.js', './plugins/withAndroidPasskeyAssetLinks.js'],
   },
 };

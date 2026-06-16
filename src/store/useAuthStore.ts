@@ -5,6 +5,7 @@ import { PasskeyService } from '../services/passkeyService'; // 🔥 IMPORT NASZ
 import { markPasskeyEnabledForUser } from '../utils/passkeyBootstrap';
 import { stopRadarLiveActivity } from '../services/radarLiveActivityService';
 import { API_URL } from '../config/network';
+import { mobileFetchJson } from '../utils/mobileFetch';
 import {
   ALLOWED_PHONE_COUNTRY_SET,
   extractRawPhoneFromApi,
@@ -301,13 +302,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true, error: null });
     const regPhone = options?.registrationPhoneE164;
     try {
-      const response = await fetch(`${API_URL}/api/mobile/v1/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: pass }),
-      });
-      const data = await response.json().catch(() => ({} as any));
-      if (!response.ok) throw new Error(data.error || 'Błąd logowania');
+      const { response, data } = await mobileFetchJson<Record<string, unknown>>(
+        `${API_URL}/api/mobile/v1/auth/login`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: pass }),
+        },
+      );
+      if (!response.ok) throw new Error(String(data?.error || 'Błąd logowania'));
       
       let normUser = await hydrateWithLocalFlags(normalizeUser(data.user));
       normUser = mergePhoneIntoUser(normUser, regPhone);
@@ -351,7 +354,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (/network request failed|failed to fetch|timeout|timed out|przekroczono limit czasu|abort/i.test(lower)) {
         normalizedMessage =
           'Brak połączenia z serwerem EstateOS™. Sprawdź internet i spróbuj ponownie.';
-      } else if (/invalid credentials|wrong password|incorrect password|niepoprawne has\u0142o|z\u0142e has\u0142o|wrong email or password|nieprawid\u0142owe dane/i.test(lower)) {
+      } else if (/invalid credentials|wrong password|incorrect password|niepoprawne has\u0142o|z\u0142e has\u0142o|wrong email or password|nieprawid\u0142owe dane|nieprawid\u0142owy login/i.test(lower)) {
         normalizedMessage = 'Nieprawidłowy e-mail lub hasło. Sprawdź dane i spróbuj ponownie.';
       } else if (/user not found|nie znaleziono u\u017cytkownika|no such user|account not found|brak konta|nie istnieje/i.test(lower)) {
         normalizedMessage = 'Nie znaleziono konta z tym adresem e-mail. Sprawdź pisownię lub załóż nowe konto.';

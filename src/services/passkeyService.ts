@@ -1,8 +1,14 @@
 import { Passkey, type PasskeyGetRequest } from 'react-native-passkey';
 import { Alert, Platform } from 'react-native';
 import { API_URL as API_ORIGIN } from '../config/network';
+import { mobileFetchJson } from '../utils/mobileFetch';
 
 const PASSKEY_RP_ID = 'estateos.pl';
+
+const passkeyUnavailableMessage = () =>
+  Platform.OS === 'android'
+    ? 'Na Androidzie Passkey wymaga powiązania aplikacji z domeną estateos.pl (Digital Asset Links). Zainstaluj najnowszą wersję z Google Play i upewnij się, że masz Google Play Services oraz odblokowaną biometrię (odcisk/PIN). Tymczasem zaloguj się e-mailem i hasłem.'
+    : 'Brak obsługi Passkey na tym urządzeniu.';
 
 const trimmedEmailHint = (email?: string | null) => {
   const e = String(email || '').trim();
@@ -12,21 +18,22 @@ const trimmedEmailHint = (email?: string | null) => {
 const API_URL = `${API_ORIGIN.replace(/\/$/, '')}/api/passkey`;
 const API_URL_MOBILE = `${API_ORIGIN.replace(/\/$/, '')}/api/mobile/v1/passkeys`;
 
-// Timeout dla słabych sieci
-const fetchWithTimeout = async (resource: string, options: any = {}) => {
-  const { timeout = 15000, ...fetchOptions } = options;
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  
-  try {
-    const response = await fetch(resource, { ...fetchOptions, signal: controller.signal });
-    clearTimeout(id);
-    return response;
-  } catch (error: any) {
-    clearTimeout(id);
-    if (error.name === 'AbortError') throw new Error("Przekroczono limit czasu połączenia. Sprawdź internet.");
-    throw error;
-  }
+const fetchWithTimeout = async (resource: string, options: any = {}): Promise<Response> => {
+  const { timeout = 15000, method, headers, body } = options;
+  const { response, data } = await mobileFetchJson(resource, {
+    method: method || 'GET',
+    headers,
+    body,
+    timeoutMs: timeout,
+  });
+  return {
+    ok: response.ok,
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+    json: async () => data ?? {},
+    text: async () => JSON.stringify(data ?? {}),
+  } as Response;
 };
 
 // Bezpieczne wykrywanie anulowania na iOS i Androidzie
@@ -356,7 +363,7 @@ export const PasskeyService = {
     try {
       const supported = await Passkey.isSupported();
       if (!supported) {
-        Alert.alert("Niedostępne", "Brak obsługi Passkey na tym urządzeniu.");
+        Alert.alert('Niedostępne', passkeyUnavailableMessage());
         return false;
       }
 
@@ -393,8 +400,10 @@ export const PasskeyService = {
       console.warn("[Passkey] Register failed:", e?.message, stringifyErrorMeta(e));
       if (isBiometryNotEnrolledError(e)) {
         Alert.alert(
-          "Face ID/Touch ID wyłączone",
-          "Aby dodać klucz Passkey, włącz biometrię w Ustawieniach iOS (Face ID / Touch ID) i ustaw kod dostępu, a następnie spróbuj ponownie.",
+          Platform.OS === 'android' ? 'Biometria wyłączona' : 'Face ID/Touch ID wyłączone',
+          Platform.OS === 'android'
+            ? 'Aby dodać klucz Passkey, włącz odcisk palca lub PIN w ustawieniach Androida i spróbuj ponownie.'
+            : 'Aby dodać klucz Passkey, włącz biometrię w Ustawieniach iOS (Face ID / Touch ID) i ustaw kod dostępu, a następnie spróbuj ponownie.',
         );
       } else if (String(e?.message || '').startsWith('PASSKEY_RPID_MISSING')) {
         Alert.alert(
@@ -457,7 +466,7 @@ export const PasskeyService = {
     try {
       const supported = await Passkey.isSupported();
       if (!supported) {
-        Alert.alert("Niedostępne", "Brak obsługi Passkey na tym urządzeniu.");
+        Alert.alert('Niedostępne', passkeyUnavailableMessage());
         return null;
       }
 

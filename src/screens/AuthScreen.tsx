@@ -1,4 +1,4 @@
-import { useNavigation } from "@react-navigation/native";
+import { authPasskeyButtonLabel } from '../utils/passkeyPlatformCopy';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -697,7 +697,7 @@ export default function AuthScreen({
                 {isPasskeyLoading ? <ActivityIndicator size="small" color={theme.text} /> : (
                   <>
                     <Ionicons name="finger-print" size={24} color={theme.text} style={{ marginRight: 12 }} />
-                    <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>{t('auth.passkeyFaceId')}</Text>
+                    <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>{authPasskeyButtonLabel(t)}</Text>
                   </>
                 )}
               </Pressable>

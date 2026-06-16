@@ -129,7 +129,12 @@ export const profile = {
     sectionTitle: 'Bezpieczeństwo',
     passkeyTitle: 'Klucz Passkey',
     passkeyActive: 'Aktywny (FaceID / TouchID)',
+    passkeyActiveIos: 'Aktywny (Face ID / Touch ID)',
+    passkeyActiveAndroid: 'Aktywny (odcisk / PIN)',
     passkeyInactive: 'Logowanie biometryczne',
+    passkeyInactiveAndroid: 'Odcisk palca lub PIN urządzenia',
+    passkeyUnsupportedAndroid:
+      'Passkey na Androidzie wymaga instalacji z Google Play (test wewnętrzny) oraz Google Play Services. Po aktualizacji z Play włącz przełącznik ponownie.',
     footerActive:
       'Twój klucz sprzętowy zabezpiecza to urządzenie. Możesz logować się natychmiastowo.',
     footerInactive:

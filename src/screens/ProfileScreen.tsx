@@ -16,6 +16,8 @@ import UserRegionFlag from '../components/UserRegionFlag';
 import ProfilePublicHeader from '../components/ProfilePublicHeader';
 import ProfileReputationBlock from '../components/ProfileReputationBlock';
 import { markPasskeyEnabledForUser, clearPasskeyLocalForUser } from '../utils/passkeyBootstrap';
+import { profilePasskeyActiveLabel, profilePasskeyInactiveLabel } from '../utils/passkeyPlatformCopy';
+import { Passkey } from 'react-native-passkey';
 import { getDeviceRegionCountry } from '../utils/phoneRegions';
 import AuthScreen from './AuthScreen';
 import { useThemeStore, ThemeMode } from '../store/useThemeStore';
@@ -2484,6 +2486,7 @@ function ProfileScreenLoggedIn({
 
   // --- LOGIKA KLAWISZA PASSKEY (Z PAMIĘCIĄ LOCALSTORAGE) ---
   const [isPasskeyActive, setIsPasskeyActive] = useState(false);
+  const [passkeyHardwareSupported, setPasskeyHardwareSupported] = useState(Platform.OS === 'ios');
   /**
    * „Przywróć zakupy" — App Store Review Guideline 3.1.1 wymaga
    * widocznego przycisku w każdej aplikacji oferującej IAP. Przycisk
@@ -2526,6 +2529,21 @@ function ProfileScreenLoggedIn({
     
     checkServerPasskeyStatus();
   }, [user?.id, token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const supported = await Passkey.isSupported();
+        if (!cancelled) setPasskeyHardwareSupported(!!supported);
+      } catch {
+        if (!cancelled) setPasskeyHardwareSupported(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const refreshAdminPendingOffers = async () => {
     if (!isZarzad || !token) return;
@@ -2633,6 +2651,10 @@ function ProfileScreenLoggedIn({
   }, [isZarzad, token]);
 
   const togglePasskey = async (value) => {
+    if (value && Platform.OS === 'android' && !passkeyHardwareSupported) {
+      Alert.alert(t('profile.security.passkeyTitle'), t('profile.security.passkeyUnsupportedAndroid'));
+      return;
+    }
     if (value) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       try {
@@ -3617,7 +3639,9 @@ function ProfileScreenLoggedIn({
               
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('profile.security.passkeyTitle')}</Text>
-                <Text style={styles.listSubtitle}>{isPasskeyActive ? t('profile.security.passkeyActive') : t('profile.security.passkeyInactive')}</Text>
+                <Text style={styles.listSubtitle}>
+                  {isPasskeyActive ? profilePasskeyActiveLabel(t) : profilePasskeyInactiveLabel(t)}
+                </Text>
               </View>
               
               <Switch 
@@ -3629,9 +3653,11 @@ function ProfileScreenLoggedIn({
           </ProfileCardShell>
           
           <Text style={styles.sectionFooter}>
-            {isPasskeyActive 
+            {isPasskeyActive
               ? t('profile.security.footerActive')
-              : t('profile.security.footerInactive')}
+              : Platform.OS === 'android' && !passkeyHardwareSupported
+                ? t('profile.security.passkeyUnsupportedAndroid')
+                : t('profile.security.footerInactive')}
           </Text>
         </View>
 

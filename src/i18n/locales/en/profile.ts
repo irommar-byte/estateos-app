@@ -129,7 +129,12 @@ export const profile = {
     sectionTitle: 'Security',
     passkeyTitle: 'Passkey',
     passkeyActive: 'Active (Face ID / Touch ID)',
+    passkeyActiveIos: 'Active (Face ID / Touch ID)',
+    passkeyActiveAndroid: 'Active (fingerprint / PIN)',
     passkeyInactive: 'Biometric sign-in',
+    passkeyInactiveAndroid: 'Fingerprint or device PIN',
+    passkeyUnsupportedAndroid:
+      'Android Passkey requires installation from Google Play (internal test) and Google Play Services. After updating from Play, try enabling again.',
     footerActive:
       'Your device key secures this device. You can sign in instantly.',
     footerInactive:

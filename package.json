@@ -10,6 +10,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test:contracts": "tsx --test tests/contracts/*.test.ts",
+    "test:catalog-pins": "tsx --test tests/utils/offer-catalog-pins.test.ts",
+    "test:android-smoke": "tsx --test tests/utils/offer-catalog-pins.test.ts && tsx scripts/smoke-android-release.mjs",
     "verify:ios-release": "node scripts/embed-git-sha.mjs && node scripts/verify-ios-release-bundle.mjs export",
     "verify:ios-archive": "node scripts/verify-ios-release-bundle.mjs archive",
     "prearchive:ios": "npm run verify:ios-release",

@@ -4,7 +4,7 @@
     "slug": "apple-style-app",
     "scheme": "estateos",
     "version": "1.0.3",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/app.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -23,7 +23,11 @@
         "applinks:estateos.pl"
       ],
       "infoPlist": {
-        "CFBundleLocalizations": ["pl", "en", "ru"],
+        "CFBundleLocalizations": [
+          "pl",
+          "en",
+          "ru"
+        ],
         "ITSAppUsesNonExemptEncryption": false,
         "NSCalendarsUsageDescription": "EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).",
         "NSCalendarsFullAccessUsageDescription": "EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).",
@@ -53,9 +57,9 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
+      "edgeToEdgeEnabled": false,
       "predictiveBackGestureEnabled": false,
-      "package": "pl.estateos",
+      "package": "pl.estateos.mobile",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_COARSE_LOCATION",
