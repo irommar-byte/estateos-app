@@ -166,7 +166,7 @@ export default function FeaturedGallery() {
               >
                 <Link
                   href={`/oferta/${offer.id}`}
-                  className="group relative block aspect-[4/5] overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)]"
+                  className="eos-media-chrome group relative block aspect-[4/5] overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)]"
                 >
                   <div
                     className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-110"
@@ -175,7 +175,7 @@ export default function FeaturedGallery() {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/55 to-black/15" />
                   <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/55 to-transparent" />
 
-                  <div className="absolute left-5 top-5 rounded-full border border-white/25 bg-black/65 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white backdrop-blur-xl shadow-[0_4px_20px_rgba(0,0,0,0.35)]">
+                  <div className="absolute left-5 top-5 rounded-full border border-white/25 bg-black/65 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white backdrop-blur-xl shadow-[0_4px_20px_rgba(0,0,0,0.35)] eos-luxury-media-text">
                     {isRent ? dict.map.forRent : dict.map.forSale}
                   </div>
                   {isKwVerified ? (
@@ -204,26 +204,26 @@ export default function FeaturedGallery() {
                   )}
 
                   <div className="eos-on-media absolute bottom-0 left-0 right-0 p-6 sm:p-7">
-                    <div className="rounded-2xl border border-white/10 bg-black/45 p-4 backdrop-blur-md shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
-                      <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                    <div className="eos-offer-caption-glass rounded-2xl p-4 sm:p-5">
+                      <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300 eos-luxury-media-text">
                         <MapPin className="size-3.5 shrink-0" />
                         <span className="truncate">{location}</span>
                       </div>
-                      <h3 className="line-clamp-2 text-xl font-semibold leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] sm:text-2xl">
+                      <h3 className="eos-luxury-media-text line-clamp-2 text-xl font-semibold leading-snug text-white sm:text-2xl">
                         {offer.title || dict.homePremium.listingFallback}
                       </h3>
-                      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/85">
-                        <span className="text-sm font-bold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
+                      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/90">
+                        <span className="eos-luxury-media-text text-sm font-bold text-white">
                           {parsePrice(offer.price) > 0
                             ? `${priceInfo.primary}${isRent ? ` ${dict.homePremium.pricePerMonth}` : ""}`
                             : dict.homePremium.priceOnRequest}
                         </span>
                         {priceInfo.secondary ? (
-                          <span className="text-white/75">{priceInfo.secondary}</span>
+                          <span className="eos-luxury-media-text text-white/80">{priceInfo.secondary}</span>
                         ) : null}
-                        {offer.area ? <span className="text-white/75">{offer.area} m²</span> : null}
+                        {offer.area ? <span className="eos-luxury-media-text text-white/80">{offer.area} m²</span> : null}
                         {offer.rooms ? (
-                          <span className="text-white/75">
+                          <span className="eos-luxury-media-text text-white/80">
                             {offer.rooms} {dict.homePremium.galleryRoomsLabel}
                           </span>
                         ) : null}

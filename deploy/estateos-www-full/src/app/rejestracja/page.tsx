@@ -13,6 +13,8 @@ function RejestracjaPageInner() {
   const t = dict.auth;
   const searchParams = useSearchParams();
   const afterRegisterPath = searchParams.get('next') || undefined;
+  const kindParam = searchParams.get('kind');
+  const initialAccountKind = kindParam === 'agent' ? 'agent' : 'private';
   const [bannerError] = useState('');
   const [bannerSuccess] = useState('');
 
@@ -49,7 +51,7 @@ function RejestracjaPageInner() {
             .
           </p>
 
-          <RegisterForm afterRegisterPath={afterRegisterPath} />
+          <RegisterForm afterRegisterPath={afterRegisterPath} initialAccountKind={initialAccountKind} />
         </motion.div>
       </div>
     </main>

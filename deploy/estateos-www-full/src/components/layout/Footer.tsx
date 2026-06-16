@@ -20,7 +20,14 @@ export default function Footer() {
             <p className="text-xs font-medium tracking-wide text-white/30">{dict.footer.rights}</p>
             <p className="mt-1 text-[10px] uppercase tracking-[0.2em] text-white/25">{dict.footer.tagline}</p>
             <div className="mt-4 flex justify-center md:justify-start">
-              <AppStoreBadgeLink compact label="Pobierz EstateOS w App Store" />
+              <AppStoreBadgeLink
+                compact
+                label={dict.footer.appStore}
+                androidComingSoon
+                androidSoonLabel={dict.homeAppPitch.androidSoon}
+                androidBetaLabel={dict.homeAppPitch.androidBetaLabel}
+                androidBetaBadge={dict.homeAppPitch.androidBetaBadge}
+              />
             </div>
           </div>
           <div className="flex flex-wrap justify-center gap-6 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 sm:gap-8">

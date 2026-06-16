@@ -14,6 +14,7 @@ import {
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
 import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
+import { MOBILE_OFFER_CATALOG_SELECT } from '@/lib/mobileOfferCatalogSelect';
 import {
   applyLegalStatusOverride,
   legalStatusOverridesForOffers,
@@ -74,6 +75,7 @@ function schemaCompatibilityResponse() {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const includeAll = searchParams.get('includeAll') === 'true';
+  const catalogOnly = searchParams.get('catalog') === '1' || searchParams.get('catalog') === 'true';
   const userId = searchParams.get('userId');
 
   let where: any = {};
@@ -111,7 +113,7 @@ export async function GET(req: Request) {
     const offers = await prisma.offer.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      select: MOBILE_OFFER_PRISMA_SELECT as any,
+      select: (catalogOnly ? MOBILE_OFFER_CATALOG_SELECT : MOBILE_OFFER_PRISMA_SELECT) as any,
     });
 
     const publicVisibleIds =

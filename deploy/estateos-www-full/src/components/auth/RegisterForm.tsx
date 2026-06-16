@@ -31,7 +31,13 @@ function resolveSafeNextPath(raw: string | undefined): string {
   return next;
 }
 
-export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?: string }) {
+export default function RegisterForm({
+  afterRegisterPath,
+  initialAccountKind = 'private',
+}: {
+  afterRegisterPath?: string;
+  initialAccountKind?: AccountKind;
+}) {
   const { dict } = useLocale();
   const t = dict.auth;
   const router = useRouter();
@@ -42,7 +48,7 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [phoneE164, setPhoneE164] = useState('');
-  const [accountKind, setAccountKind] = useState<AccountKind>('private');
+  const [accountKind, setAccountKind] = useState<AccountKind>(initialAccountKind);
   const [companyName, setCompanyName] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [loading, setLoading] = useState(false);

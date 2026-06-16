@@ -23,6 +23,9 @@ const nextConfig: NextConfig = {
     return [
       { source: "/o/:id(\\d+)", destination: "/offer-landing.html" },
       { source: "/o/:id(\\d+)/", destination: "/offer-landing.html" },
+      /** Android beta — serwuj z API (plik lokalny lub redirect). */
+      { source: "/downloads/estateos-android.apk", destination: "/api/downloads/estateos-android" },
+      { source: "/downloads/estateos-android.aab", destination: "/api/downloads/estateos-android" },
     ];
   },
   async headers() {

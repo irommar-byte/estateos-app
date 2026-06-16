@@ -578,6 +578,61 @@ html.light .premium-home-shell {
   color: rgba(255, 255, 255, 0.45) !important;
 }
 
+/* Luksusowy tekst na zdjęciach — czarna obwódka + czytelny kontrast */
+.eos-luxury-media-text {
+  color: #ffffff;
+  -webkit-text-stroke: 0.45px rgba(0, 0, 0, 0.92);
+  paint-order: stroke fill;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    0 2px 10px rgba(0, 0, 0, 0.55),
+    0 0 1px rgba(0, 0, 0, 1);
+}
+
+/* Szklany panel hero / landing */
+.eos-hero-glass {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.06) 48%, rgba(255, 255, 255, 0.1) 100%);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+/* Szklany podpis na kartach ofert — zawsze ciemny na zdjęciu (fix jasnego motywu) */
+.eos-offer-caption-glass {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(8, 8, 10, 0.58);
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+html.light .theme-aware-dashboard .eos-offer-caption-glass,
+html.light .eos-media-chrome .eos-offer-caption-glass {
+  background: rgba(8, 8, 10, 0.72) !important;
+  border-color: rgba(255, 255, 255, 0.24) !important;
+}
+
+html.light .eos-media-chrome [class*="via-black"] {
+  --tw-gradient-via: rgb(0 0 0 / 0.55) var(--tw-gradient-via-position) !important;
+}
+
+html.light .eos-media-chrome [class*="to-black"] {
+  --tw-gradient-to: rgb(0 0 0 / 0) var(--tw-gradient-to-position) !important;
+}
+
+.eos-audience-feature {
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
 /* Przełączniki segmentowe — zawsze czytelny aktywny stan (sprzedaż/wynajem, motyw) */
 .eos-segment-active {
   background-color: var(--eos-accent) !important;
