@@ -5,12 +5,18 @@ import { prisma } from '@/lib/prisma';
 import ClientForm from './ClientForm';
 import { computeListingLimits, isPlusCreditActive } from '@/lib/offerListingLimits';
 import { shapeMobileUser } from '@/lib/mobileUserShape';
+import { isAgentOrAgencySeller } from '@/lib/sellerDisplay';
+import { sellerClientToListingPrefill } from '@/lib/offerAgencyManagement';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
 
-export default async function AddOfferPage() {
+export default async function AddOfferPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ agencyClientId?: string }>;
+}) {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get('estateos_session') || cookieStore.get('luxestate_user');
 
@@ -74,5 +80,34 @@ export default async function AddOfferPage() {
     redirect('/login?next=/dodaj-oferte');
   }
 
-  return <ClientForm initialUser={userData} />;
+  const sp = await searchParams;
+  let crmSellerPrefill: ReturnType<typeof sellerClientToListingPrefill> | null = null;
+  let agencyClientId: number | null = null;
+
+  const clientIdParam = Number(sp?.agencyClientId);
+  if (Number.isFinite(clientIdParam) && clientIdParam > 0 && userData.id) {
+    const agencyUser = await prisma.user.findUnique({ where: { id: userData.id } });
+    if (agencyUser && isAgentOrAgencySeller(agencyUser)) {
+      const client = await prisma.agencyClient.findFirst({
+        where: {
+          id: clientIdParam,
+          agencyUserId: userData.id,
+          type: 'SELLER',
+          status: 'ACTIVE',
+        },
+      });
+      if (client) {
+        agencyClientId = client.id;
+        crmSellerPrefill = sellerClientToListingPrefill(client);
+      }
+    }
+  }
+
+  return (
+    <ClientForm
+      initialUser={userData}
+      agencyClientId={agencyClientId}
+      crmSellerPrefill={crmSellerPrefill}
+    />
+  );
 }

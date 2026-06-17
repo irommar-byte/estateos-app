@@ -25,6 +25,10 @@ import {
 } from '@/lib/money/offerPrice';
 import { DEFAULT_EUR_PLN_RATE } from '@/lib/money/constants';
 import { getNbpEurPlnRate } from '@/lib/money/nbpEurPln';
+import {
+  assertAgencyCanCreateForClient,
+  linkOfferToAgencyClient,
+} from '@/lib/offerAgencyManagement';
 
 export const dynamic = 'force-dynamic';
 
@@ -229,7 +233,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Brak ID użytkownika' }, { status: 401 });
     }
 
+    const agencyClientId = body.agencyClientId != null ? Number(body.agencyClientId) : null;
+    if (agencyClientId != null && Number.isFinite(agencyClientId)) {
+      await assertAgencyCanCreateForClient(resolvedUserId, agencyClientId);
+    }
+
     const offer = await createOffer({ ...body, userId: resolvedUserId });
+    const createdOfferId = Number((offer as { id?: number })?.id);
+
+    if (agencyClientId != null && Number.isFinite(agencyClientId) && Number.isFinite(createdOfferId)) {
+      await linkOfferToAgencyClient({
+        agencyUserId: resolvedUserId,
+        clientId: agencyClientId,
+        offerId: createdOfferId,
+      });
+    }
 
     return NextResponse.json({ success: true, offer });
 

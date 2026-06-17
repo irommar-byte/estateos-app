@@ -24,6 +24,7 @@ import { useLocale } from "@/contexts/LocaleContext";
 import type { AgencyClientListItem } from "@/lib/agencyClientShape";
 
 type ClientDetail = AgencyClientListItem & {
+  linkedOfferId?: number | null;
   notes?: string | null;
   sellerDescription?: string | null;
   sellerArea?: number | null;
@@ -351,11 +352,19 @@ export default function CrmClientsWorkspace() {
                     <p className="text-sm leading-relaxed text-[var(--eos-muted)]">{detail.sellerDescription}</p>
                   ) : null}
                   <Link
-                    href="/dodaj-oferte"
+                    href={`/dodaj-oferte?agencyClientId=${detail.id}`}
                     className="inline-flex items-center gap-2 rounded-full bg-[var(--eos-text)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-bg)]"
                   >
-                    {cl.createListing}
+                    {detail.linkedOfferId ? cl.editListing : cl.createListing}
                   </Link>
+                  {detail.linkedOfferId ? (
+                    <Link
+                      href={`/oferta/${detail.linkedOfferId}`}
+                      className="ml-2 inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-text)]"
+                    >
+                      {cl.viewLinkedListing}
+                    </Link>
+                  ) : null}
                 </div>
               )}
 

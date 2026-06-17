@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma';
 import { requireAgencyUserId } from '@/lib/agencyClientAuth';
 import { shapeClientListItem, webRadarFiltersToBuyerPrefCreate } from '@/lib/agencyClientShape';
 import { refreshAgencyClientMatches, buildAgencyClientReport } from '@/lib/agencyClientMatching';
+import {
+  assertAgencyCanCreateForClient,
+  linkOfferToAgencyClient,
+} from '@/lib/offerAgencyManagement';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
 
 export async function GET(req: Request) {

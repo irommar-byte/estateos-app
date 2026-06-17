@@ -161,6 +161,8 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       viewOffer: "Оголошення",
       sellerLocationEmpty: "Локація до додавання",
       createListing: "Створити оголошення",
+      editListing: "Додати оголошення клієнта",
+      viewLinkedListing: "Переглянути оголошення",
       activityTitle: "Журнал активності",
       reportTopMatches: "Топ збігів офісу",
       matchCountLabel: "{n} збігів",

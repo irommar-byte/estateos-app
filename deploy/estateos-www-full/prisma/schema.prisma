@@ -78,6 +78,7 @@ model User {
   hostedAuctionEvents   AuctionEvent[]         @relation("AuctionHost")
   auctionBids           AuctionBidEntry[]      @relation("AuctionBidder")
   agencyClients        AgencyClient[]           @relation("AgencyClientsOwned")
+  offersAsOriginalOwner Offer[]                 @relation("OfferOriginalOwner")
 }
 
 model Alert {
@@ -204,8 +205,11 @@ model Offer {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   userId          Int
+  originalOwnerUserId Int?
+  managementStatus String @default("SELF") @db.VarChar(24)
   deals           Deal[]
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  originalOwner   User?          @relation("OfferOriginalOwner", fields: [originalOwnerUserId], references: [id], onDelete: SetNull)
   legalVerificationRequests LegalVerificationRequest[]
   openHouseEvents OpenHouseEvent[]
   auctionEvents   AuctionEvent[]
@@ -214,6 +218,7 @@ model Offer {
   agencyClientsLinked AgencyClient[] @relation("AgencyClientLinkedOffer")
 
   @@index([userId], map: "Offer_userId_fkey")
+  @@index([originalOwnerUserId])
   @@index([legalCheckStatus, legalCheckSubmittedAt])
 }
 

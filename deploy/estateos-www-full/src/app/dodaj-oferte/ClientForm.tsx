@@ -154,7 +154,25 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
   );
 };
 
-export default function ClientForm({ initialUser }: { initialUser?: any }) {
+export default function ClientForm({
+  initialUser,
+  agencyClientId = null,
+  crmSellerPrefill = null,
+}: {
+  initialUser?: any;
+  agencyClientId?: number | null;
+  crmSellerPrefill?: {
+    transactionType?: string;
+    propertyType?: string;
+    city?: string;
+    district?: string;
+    price?: number;
+    area?: number;
+    rooms?: number;
+    description?: string;
+    titleHint?: string;
+  } | null;
+}) {
   const { dict } = useLocale();
   const ao = dict.addOffer;
   const PROPERTY_TYPES = useMemo(() => buildPropertyTypes(ao), [ao]);
@@ -261,6 +279,22 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       draftHydratedRef.current = true;
     }
   }, [initialUser?.email, initialUser?.name, initialUser?.phone]);
+
+  useEffect(() => {
+    if (!crmSellerPrefill) return;
+    setData((prev: any) => ({
+      ...prev,
+      transactionType: crmSellerPrefill.transactionType || prev.transactionType,
+      propertyType: crmSellerPrefill.propertyType || prev.propertyType,
+      city: crmSellerPrefill.city || prev.city,
+      district: crmSellerPrefill.district || prev.district,
+      price: crmSellerPrefill.price ? String(crmSellerPrefill.price) : prev.price,
+      area: crmSellerPrefill.area ? String(crmSellerPrefill.area) : prev.area,
+      rooms: crmSellerPrefill.rooms ? String(crmSellerPrefill.rooms) : prev.rooms,
+      description: crmSellerPrefill.description || prev.description,
+      title: crmSellerPrefill.titleHint || prev.title,
+    }));
+  }, [crmSellerPrefill]);
 
   useEffect(() => {
     if (!initialUser?.isLoggedIn) return;
@@ -1139,6 +1173,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       floorPlan: null,
       amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities,
     };
+    if (agencyClientId) {
+      payload.agencyClientId = agencyClientId;
+    }
     return { payload, finalDesc };
   };
 

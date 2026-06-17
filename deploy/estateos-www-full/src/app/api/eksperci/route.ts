@@ -1,25 +1,27 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { listAgenciesWithStats } from "@/lib/offerAgencyManagement";
 
 export const dynamic = 'force-dynamic';
 
+/** Alias kompatybilności — eksperci = agencje z prawdziwymi opiniami. */
 export async function GET() {
   try {
-    const experts = await prisma.user.findMany({
-      where: { OR: [{ role: 'AGENT' }, { planType: 'AGENCY' }] },
-      select: { id: true, name: true, email: true, phone: true, createdAt: true }
-    });
-
-    // Sztuczne doklejenie opinii dla wizualizacji (docelowo z bazy)
-    const expertsWithStats = experts.map(exp => ({
-      ...exp,
-      rating: (Math.random() * (5.0 - 4.5) + 4.5).toFixed(1),
-      reviewsCount: Math.floor(Math.random() * 50) + 5,
-      transactions: Math.floor(Math.random() * 120) + 10
-    })).sort((a, b) => Number(b.rating) - Number(a.rating));
-
-    return NextResponse.json(expertsWithStats);
-  } catch (error) {
+    const agencies = await listAgenciesWithStats();
+    return NextResponse.json(
+      agencies.map((a) => ({
+        id: a.id,
+        name: a.displayName,
+        email: null,
+        phone: a.phone,
+        image: a.image,
+        companyName: a.companyName,
+        rating: a.averageRating != null ? String(a.averageRating) : null,
+        reviewsCount: a.reviewsCount,
+        transactions: a.activeListings,
+        createdAt: a.memberSince,
+      })),
+    );
+  } catch {
     return NextResponse.json([]);
   }
 }
