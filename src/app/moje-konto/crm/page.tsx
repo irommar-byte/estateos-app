@@ -25,6 +25,9 @@ import { buildReviewsModalPayload, EMPTY_REVIEWS_MODAL, type ReviewsModalPayload
 import { getBestUserAvatarUrl } from "@/lib/userAvatar";
 import { resolveProfileHeadlines, isAgentOrAgencySeller } from "@/lib/sellerDisplay";
 import CrmClientsWorkspace from "@/components/crm/CrmClientsWorkspace";
+import CrmLeadInbox from "@/components/crm/CrmLeadInbox";
+import DelegatedOffersPanel from "@/components/crm/DelegatedOffersPanel";
+import AgencyTransferModal from "@/components/crm/AgencyTransferModal";
 import {
   buildLegacyRadarUpdateBody,
   buildRadarPreferencesPostBody,
@@ -557,6 +560,7 @@ export default function CRMDashboard() {
   const [offerToArchive, setOfferToArchive] = useState<any>(null);
   const [renewModalOffer, setRenewModalOffer] = useState<{ id: string; title?: string } | null>(null);
   const [commentModalOffer, setCommentModalOffer] = useState<{ id: number; title?: string } | null>(null);
+  const [transferModalOffer, setTransferModalOffer] = useState<{ id: number; title?: string } | null>(null);
 
   // === ESTATEOS ELITE: NIEZALEŻNY SILNIK POKOI (NIE RUSZA WYGLĄDU) ===
   const [isolatedDeals, setIsolatedDeals] = useState<any[]>([]);
@@ -1114,6 +1118,16 @@ export default function CRMDashboard() {
 
       <div className="max-w-7xl mx-auto">
         <PresentationFlowBanner variant="crm" />
+
+        {!isAgencyWorkspace ? <DelegatedOffersPanel /> : null}
+        <CrmLeadInbox
+          leads={crmData.leadTransfers || []}
+          isAgency={!!isAgencyWorkspace}
+          currentUserId={currentUser?.id}
+          onRefresh={() => {
+            if (currentUser?.id) void fetchData(currentUser.id);
+          }}
+        />
 
         {currentUser &&
         (!currentUser.isEmailVerified || !currentUser.isVerifiedPhone) &&
@@ -1908,6 +1922,15 @@ export default function CRMDashboard() {
                            <ArchiveX size={14} className="text-red-300" /> {c.offers.pause}
                         </button>
                       </div>
+                      {isListingsTab && !isAgencyWorkspace && offerSectionFilter === 'ACTIVE' && !isArchived ? (
+                        <button
+                          type="button"
+                          onClick={() => setTransferModalOffer({ id: Number(offer.id), title: String(offer.title || '') })}
+                          className="mt-2 w-full py-3 rounded-[1.5rem] bg-transparent border border-amber-500/35 text-[10px] font-black uppercase tracking-widest text-amber-300 flex items-center justify-center gap-2 hover:bg-amber-500/12 hover:text-amber-200 transition-all cursor-pointer"
+                        >
+                          <Building2 size={14} className="text-amber-300" /> Oddaj do agencji
+                        </button>
+                      ) : null}
                       {isListingsTab ? (
                         <button
                           type="button"
@@ -2486,6 +2509,15 @@ export default function CRMDashboard() {
         offerId={commentModalOffer?.id ?? null}
         offerTitle={commentModalOffer?.title}
         onClose={() => setCommentModalOffer(null)}
+      />
+      <AgencyTransferModal
+        open={Boolean(transferModalOffer)}
+        offerId={transferModalOffer?.id ?? 0}
+        offerTitle={transferModalOffer?.title}
+        onClose={() => setTransferModalOffer(null)}
+        onSent={() => {
+          if (currentUser?.id) void fetchData(currentUser.id);
+        }}
       />
 </div>
   );

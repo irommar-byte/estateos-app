@@ -9,6 +9,7 @@ import {
 import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
 import { notifyAgencyClientAboutOffer } from '@/lib/agencyClientNotify';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
+import { linkOfferToAgencyClient } from '@/lib/offerAgencyManagement';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
 
 type RouteCtx = { params: Promise<{ id: string }> };
@@ -186,6 +187,15 @@ export async function POST(req: Request, ctx: RouteCtx) {
       channel: body.channel === 'email' ? 'email' : 'manual',
       customMessage: body.message,
     });
+    return NextResponse.json({ success: true, ...result });
+  }
+
+  if (action === 'link_offer') {
+    const offerId = Number(body.offerId);
+    if (!Number.isFinite(offerId)) {
+      return NextResponse.json({ error: 'Brak ID oferty.' }, { status: 400 });
+    }
+    const result = await linkOfferToAgencyClient({ agencyUserId, clientId, offerId });
     return NextResponse.json({ success: true, ...result });
   }
 

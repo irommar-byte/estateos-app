@@ -175,6 +175,12 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   // 🔥 SILNIK FOMO: LOGIKA CZASU I BLOKADY 🔥
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const isOwner = currentUser && (currentUser.id === offer.userId || currentUser.email === offer.user?.email || currentUser.email === offer.contactEmail);
+  const isFormerOwnerViewer =
+    !!currentUser &&
+    offer.managementStatus === 'AGENCY_MANAGED' &&
+    offer.originalOwnerUserId === currentUser.id &&
+    offer.userId !== currentUser.id;
+  const canContactSeller = !isFormerOwnerViewer;
   const isPro = offer._viewerIsPro || currentUser?.role === 'ADMIN';
   
   const unlockTime = offerPremarketUnlockMs(offer.createdAt);
@@ -624,7 +630,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </div>
                 </button>
 
-                {!isOwner && (offer?.user?.id || offer?.userId) ? (
+                {!isOwner && canContactSeller && (offer?.user?.id || offer?.userId) ? (
                   <ProfileWriteMessageButton
                     peerUserId={Number(offer?.user?.id || offer?.userId)}
                     peerName={sellerLabel}
@@ -1161,6 +1167,14 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               </AnimatePresence>
 
               <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-3 backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] relative overflow-hidden">
+                {isFormerOwnerViewer ? (
+                  <div className="rounded-[2rem] border border-blue-500/25 bg-blue-500/10 px-6 py-8 text-center">
+                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-300">Podgląd właściciela</p>
+                    <p className="mt-3 text-sm leading-relaxed text-white/70">
+                      Ta nieruchomość jest zarządzana przez agencję. Widzisz wszystkie zmiany na bieżąco — kontakt z kupującymi i umawianie spotkań obsługuje biuro.
+                    </p>
+                  </div>
+                ) : !isOwner ? (
                 <div className="flex flex-col gap-3 relative z-10">
                   {isArchived ? (
                   <div className="py-8 text-center flex flex-col items-center justify-center">
@@ -1204,6 +1218,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </>
                 )}
                 </div>
+                ) : null}
               </div>
 
             </div>

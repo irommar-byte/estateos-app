@@ -377,6 +377,8 @@ export type Dictionary = {
     viewOffer: string;
     sellerLocationEmpty: string;
     createListing: string;
+    editListing: string;
+    viewLinkedListing: string;
     activityTitle: string;
     reportTopMatches: string;
     matchCountLabel: string;
@@ -938,6 +940,8 @@ const pl: Dictionary = {
     viewOffer: "Oferta",
     sellerLocationEmpty: "Lokalizacja do uzupełnienia",
     createListing: "Utwórz ogłoszenie",
+    editListing: "Dodaj ogłoszenie klienta",
+    viewLinkedListing: "Zobacz ogłoszenie",
     activityTitle: "Historia działań",
     reportTopMatches: "Najlepsze dopasowania w biurze",
     matchCountLabel: "{n} dopasowań",
@@ -1506,6 +1510,8 @@ const en: Dictionary = {
     viewOffer: "Listing",
     sellerLocationEmpty: "Location to be added",
     createListing: "Create listing",
+    editListing: "Add client listing",
+    viewLinkedListing: "View listing",
     activityTitle: "Activity log",
     reportTopMatches: "Top office matches",
     matchCountLabel: "{n} matches",
