@@ -80,40 +80,87 @@ function formatPrice(offer: AgencyOfferRow) {
   return `${Math.round(amount).toLocaleString("pl-PL")} zł`;
 }
 
+function mapCompanyPublicDetail(
+  json: {
+    company: {
+      name: string;
+      slug?: string | null;
+      address: string | null;
+      website: string | null;
+      logoUrl: string | null;
+      officePhone: string | null;
+      officeEmail: string | null;
+    };
+    stats: { averageRating: number | null };
+    offers?: AgencyOfferRow[];
+    reviews?: Array<{
+      id: number;
+      rating: number;
+      comment: string | null;
+      createdAt: string;
+      agent?: { name: string | null };
+    }>;
+  },
+  agency: AgencyCard,
+): AgencyDetail {
+  const firmHref = json.company.slug ? `/firma/${json.company.slug}` : `/profil/${agency.id}`;
+
+  return {
+    displayName: json.company.name,
+    profileId: agency.id,
+    firmHref,
+    address: json.company.address,
+    website: json.company.website,
+    logoUrl: json.company.logoUrl,
+    officePhone: json.company.officePhone,
+    officeEmail: json.company.officeEmail,
+    averageRating: json.stats.averageRating,
+    offers: (json.offers || []).map((o) => ({
+      id: o.id,
+      title: o.title,
+      price: o.price,
+      pricePln: o.pricePln,
+      city: o.city,
+      district: o.district,
+      images: o.images,
+    })),
+    reviews: (json.reviews || []).map((r) => ({
+      id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt,
+      agentName: r.agent?.name ?? null,
+    })),
+  };
+}
+
+async function fetchCompanyPublicDetail(agency: AgencyCard): Promise<AgencyDetail | null> {
+  const urls: string[] = [];
+  if (agency.slug) {
+    urls.push(`/api/agency-company/public/${encodeURIComponent(agency.slug)}`);
+  }
+  if (agency.companyId) {
+    urls.push(`/api/agency-company/public/id/${agency.companyId}`);
+  }
+
+  for (const url of urls) {
+    const res = await fetch(url, { cache: "no-store" });
+    const json = await res.json();
+    if (res.ok && json.success) {
+      return mapCompanyPublicDetail(json, agency);
+    }
+  }
+
+  return null;
+}
+
 async function fetchAgencyDetail(agency: AgencyCard): Promise<AgencyDetail | null> {
   const firmHref = agency.slug ? `/firma/${agency.slug}` : `/profil/${agency.id}`;
 
-  if (agency.slug) {
-    const res = await fetch(`/api/agency-company/public/${encodeURIComponent(agency.slug)}`, { cache: "no-store" });
-    const json = await res.json();
-    if (!res.ok || !json.success) return null;
-    return {
-      displayName: json.company.name,
-      profileId: agency.id,
-      firmHref,
-      address: json.company.address,
-      website: json.company.website,
-      logoUrl: json.company.logoUrl,
-      officePhone: json.company.officePhone,
-      officeEmail: json.company.officeEmail,
-      averageRating: json.stats.averageRating,
-      offers: (json.offers || []).map((o: AgencyOfferRow) => ({
-        id: o.id,
-        title: o.title,
-        price: o.price,
-        pricePln: o.pricePln,
-        city: o.city,
-        district: o.district,
-        images: o.images,
-      })),
-      reviews: (json.reviews || []).map((r: { id: number; rating: number; comment: string | null; createdAt: string; agent?: { name: string | null } }) => ({
-        id: r.id,
-        rating: r.rating,
-        comment: r.comment,
-        createdAt: r.createdAt,
-        agentName: r.agent?.name ?? null,
-      })),
-    };
+  if (agency.slug || agency.companyId) {
+    const companyDetail = await fetchCompanyPublicDetail(agency);
+    if (companyDetail) return companyDetail;
+    if (agency.companyId) return null;
   }
 
   const res = await fetch(`/api/users/${agency.id}/public`, { cache: "no-store" });
@@ -136,7 +183,15 @@ async function fetchAgencyDetail(agency: AgencyCard): Promise<AgencyDetail | nul
     officePhone: json.user.officePhone || json.user.phone,
     officeEmail: json.user.officeEmail,
     averageRating: avg,
-    offers: (json.offers || []).filter((o: { status?: string }) => o.status === "ACTIVE" || o.status === "PENDING"),
+    offers: (json.offers || []).map((o: AgencyOfferRow & { imageUrl?: string | null }) => ({
+      id: o.id,
+      title: o.title,
+      price: o.price,
+      pricePln: o.pricePln,
+      city: o.city,
+      district: o.district,
+      images: o.images ?? (o.imageUrl ? [o.imageUrl] : undefined),
+    })),
     reviews: reviews.map((r: { id: number; rating: number; comment: string | null; createdAt: string | Date; reviewerName?: string }) => ({
       id: r.id,
       rating: r.rating,

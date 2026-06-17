@@ -396,33 +396,50 @@ export async function listAgencyCompaniesWithStats() {
   });
 }
 
-export async function getCompanyPublicBySlug(slug: string) {
-  const normalized = String(slug || '').trim().toLowerCase();
-  if (!normalized) return null;
-
-  const company = await prisma.agencyCompany.findFirst({
-    where: { slug: normalized },
+const companyPublicInclude = {
+  members: {
+    where: { status: 'ACTIVE' as const },
     include: {
-      members: {
-        where: { status: 'ACTIVE' },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-              phone: true,
-              createdAt: true,
-              _count: { select: { offers: { where: { status: 'ACTIVE' } } } },
-            },
-          },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          image: true,
+          phone: true,
+          createdAt: true,
+          _count: { select: { offers: { where: { status: 'ACTIVE' as const } } } },
         },
-        orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
       },
     },
-  });
-  if (!company) return null;
+    orderBy: [{ role: 'asc' as const }, { createdAt: 'asc' as const }],
+  },
+};
 
+async function buildCompanyPublicPayload(company: {
+  id: number;
+  name: string;
+  slug: string | null;
+  address: string | null;
+  website: string | null;
+  logoUrl: string | null;
+  officePhone: string | null;
+  officeEmail: string | null;
+  createdAt: Date;
+  members: Array<{
+    userId: number;
+    role: string;
+    agentTitle: string | null;
+    profilePhotoUrl: string | null;
+    user: {
+      id: number;
+      name: string | null;
+      image: string | null;
+      phone: string | null;
+      createdAt: Date;
+      _count: { offers: number };
+    };
+  }>;
+}) {
   const memberIds = company.members.map((m) => m.userId);
   const offers = memberIds.length
     ? await prisma.offer.findMany({
@@ -520,4 +537,30 @@ export async function getCompanyPublicBySlug(slug: string) {
       agent: r.reviewee,
     })),
   };
+}
+
+export async function getCompanyPublicBySlug(slug: string) {
+  const normalized = String(slug || '').trim().toLowerCase();
+  if (!normalized) return null;
+
+  const company = await prisma.agencyCompany.findFirst({
+    where: { slug: normalized },
+    include: companyPublicInclude,
+  });
+  if (!company) return null;
+
+  return buildCompanyPublicPayload(company);
+}
+
+export async function getCompanyPublicById(companyId: number) {
+  const id = Number(companyId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+
+  const company = await prisma.agencyCompany.findFirst({
+    where: { id },
+    include: companyPublicInclude,
+  });
+  if (!company) return null;
+
+  return buildCompanyPublicPayload(company);
 }
