@@ -18,6 +18,11 @@ model User {
   name                 String?
   image                String?                  @db.Text
   companyName          String?
+  companyAddress       String?                  @db.VarChar(255)
+  companyWebsite       String?                  @db.VarChar(255)
+  companyLogoUrl       String?                  @db.VarChar(512)
+  officePhone          String?                  @db.VarChar(64)
+  officeEmail          String?                  @db.VarChar(191)
   nip                  String?
   role                 Role                     @default(USER)
   planType             PlanType?                @default(NONE)
@@ -78,6 +83,7 @@ model User {
   hostedAuctionEvents   AuctionEvent[]         @relation("AuctionHost")
   auctionBids           AuctionBidEntry[]      @relation("AuctionBidder")
   agencyClients        AgencyClient[]           @relation("AgencyClientsOwned")
+  crmProfiles          AgencyClient[]           @relation("AgencyClientLinkedUser")
   offersAsOriginalOwner Offer[]                 @relation("OfferOriginalOwner")
   ownedAgencyCompany   AgencyCompany?           @relation("AgencyCompanyOwner")
   agencyMembership     AgencyCompanyMember?     @relation("AgencyCompanyMembership")
@@ -923,6 +929,14 @@ enum AgencyMemberStatus {
   SUSPENDED
 }
 
+enum AgencyAgentTitle {
+  DORADCA
+  AGENT
+  BROKER
+  EXPERT
+  LEADER
+}
+
 /// Biuro nieruchomości — jedna firma, wielu agentów.
 model AgencyCompany {
   id            Int       @id @default(autoincrement())
@@ -951,6 +965,8 @@ model AgencyCompanyMember {
   userId       Int                @unique
   role         AgencyMemberRole   @default(AGENT)
   status       AgencyMemberStatus @default(PENDING)
+  agentTitle   AgencyAgentTitle   @default(AGENT)
+  profilePhotoUrl String?         @db.VarChar(512)
   approvedAt   DateTime?
   approvedById Int?
   createdAt    DateTime           @default(now())
@@ -1000,6 +1016,13 @@ model AgencyClient {
   lastName       String             @db.VarChar(96)
   email          String?            @db.VarChar(191)
   phone          String?            @db.VarChar(32)
+  pesel          String?            @db.VarChar(16)
+  emailVerifiedAt DateTime?
+  phoneVerifiedAt DateTime?
+  emailVerifyCode String?           @db.VarChar(16)
+  emailVerifyExpiresAt DateTime?
+  smsVerifyCode   String?           @db.VarChar(16)
+  smsVerifyExpiresAt DateTime?
   notes          String?            @db.Text
   sellerTransactionType TransactionType?
   sellerPropertyType    PropertyType?
@@ -1010,17 +1033,21 @@ model AgencyClient {
   sellerRooms           Int?
   sellerDescription     String?      @db.Text
   linkedOfferId         Int?
+  linkedUserId          Int?
+  portalToken           String?            @unique @db.VarChar(64)
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
   agencyUser User @relation("AgencyClientsOwned", fields: [agencyUserId], references: [id], onDelete: Cascade)
   linkedOffer Offer? @relation("AgencyClientLinkedOffer", fields: [linkedOfferId], references: [id], onDelete: SetNull)
+  linkedUser  User?  @relation("AgencyClientLinkedUser", fields: [linkedUserId], references: [id], onDelete: SetNull)
   buyerPreference AgencyClientBuyerPreference?
   matches         AgencyClientMatch[]
   activities      AgencyClientActivity[]
 
   @@index([agencyUserId, type, status])
   @@index([agencyUserId, updatedAt])
+  @@index([linkedUserId])
 }
 
 model AgencyClientBuyerPreference {
@@ -1053,6 +1080,8 @@ model AgencyClientMatch {
   score      Int
   notifiedAt DateTime?
   sharedAt   DateTime?
+  clientFeedback   String?   @db.Text
+  clientFeedbackAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 

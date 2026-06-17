@@ -10,6 +10,8 @@ import {
   ExternalLink,
   Loader2,
   ShieldCheck,
+  Star,
+  Upload,
   UserCheck,
   UserX,
   Users,
@@ -17,12 +19,16 @@ import {
   X,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import ProfileMediaAvatar from '@/components/profile/ProfileMediaAvatar';
+import { AGENCY_AGENT_TITLES, formatAgentTitle } from '@/lib/agentProfile';
 
 type MemberRow = {
   id: number;
   userId: number;
   role: string;
   status: string;
+  agentTitle: string;
+  profilePhotoUrl: string | null;
   approvedAt: string | null;
   createdAt: string;
   user: {
@@ -35,6 +41,8 @@ type MemberRow = {
     lastLoginAt: string | null;
     activeOffers: number;
     crmClients: number;
+    reviewsCount: number;
+    averageRating: number | null;
   };
 };
 
@@ -89,6 +97,8 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   const [creditAmount, setCreditAmount] = useState('');
   const [creditNote, setCreditNote] = useState('');
   const [creditBusy, setCreditBusy] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [photoBusyId, setPhotoBusyId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -195,6 +205,76 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
     }
   };
 
+  const handleLogoUpload = async (file: File | null) => {
+    if (!file) return;
+    setLogoBusy(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/agency-company/logo', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.message || 'Nie udało się wgrać logo.');
+        return;
+      }
+      await load();
+    } catch {
+      setError('Błąd połączenia.');
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  const handleMemberPhotoUpload = async (memberId: number, file: File | null) => {
+    if (!file) return;
+    setPhotoBusyId(memberId);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`/api/agency-company/members/${memberId}/photo`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.message || 'Nie udało się wgrać zdjęcia.');
+        return;
+      }
+      await load();
+    } catch {
+      setError('Błąd połączenia.');
+    } finally {
+      setPhotoBusyId(null);
+    }
+  };
+
+  const handleTitleChange = async (memberId: number, agentTitle: string) => {
+    setError('');
+    try {
+      const res = await fetch(`/api/agency-company/members/${memberId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentTitle }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.message || 'Nie udało się zapisać stanowiska.');
+        return;
+      }
+      await load();
+    } catch {
+      setError('Błąd połączenia.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
@@ -277,14 +357,21 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       <header className="overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-gradient-to-br from-[var(--eos-card)] to-emerald-500/5 p-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-5">
-            {company.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={company.logoUrl} alt="" className="h-20 w-20 rounded-2xl border border-[var(--eos-border)] object-cover shadow-lg" />
-            ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-500">
-                <Building2 size={36} />
+            <div className="relative">
+              <div className="h-20 w-20 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] shadow-lg">
+                <ProfileMediaAvatar src={company.logoUrl} alt={company.name} iconSize={36} className="size-full object-cover" />
               </div>
-            )}
+              <label className="absolute -bottom-2 -right-2 flex size-9 cursor-pointer items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] text-emerald-500 shadow-md hover:bg-emerald-500/10">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="sr-only"
+                  disabled={logoBusy}
+                  onChange={(e) => void handleLogoUpload(e.target.files?.[0] ?? null)}
+                />
+                {logoBusy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              </label>
+            </div>
             <div>
               <div className="mb-1 flex items-center gap-2">
                 <ShieldCheck size={14} className="text-emerald-500" />
@@ -382,11 +469,11 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
             <thead>
               <tr className="border-b border-[var(--eos-border)] text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">
                 <th className="py-3 pr-4">Agent</th>
-                <th className="py-3 pr-4">Status</th>
+                <th className="py-3 pr-4">Stanowisko</th>
+                <th className="py-3 pr-4">Opinie</th>
                 <th className="py-3 pr-4">Oferty</th>
                 <th className="py-3 pr-4">CRM</th>
                 <th className="py-3 pr-4">Kredyty</th>
-                <th className="py-3 pr-4">Ostatnio online</th>
                 <th className="py-3">Akcje</th>
               </tr>
             </thead>
@@ -396,25 +483,63 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                 .map((m) => (
                   <tr key={m.id} className="border-b border-[var(--eos-border)]/60">
                     <td className="py-4 pr-4">
-                      <p className="font-bold text-[var(--eos-text)]">{m.user.name || '—'}</p>
-                      <p className="eos-muted-copy text-xs">{m.user.email}</p>
-                      {m.role === 'ADMIN' && (
-                        <span className="mt-1 inline-block rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600">
-                          Administrator
-                        </span>
-                      )}
+                      <div className="flex items-center gap-3">
+                        <div className="relative shrink-0">
+                          <div className="size-12 overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
+                            <ProfileMediaAvatar
+                              src={m.profilePhotoUrl || m.user.image}
+                              alt={m.user.name || 'Agent'}
+                              iconSize={18}
+                              className="size-full object-cover"
+                            />
+                          </div>
+                          <label className="absolute -bottom-1 -right-1 flex size-6 cursor-pointer items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] text-[10px] text-emerald-500">
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp,image/gif"
+                              className="sr-only"
+                              disabled={photoBusyId === m.id}
+                              onChange={(e) => void handleMemberPhotoUpload(m.id, e.target.files?.[0] ?? null)}
+                            />
+                            {photoBusyId === m.id ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
+                          </label>
+                        </div>
+                        <div>
+                          <p className="font-bold text-[var(--eos-text)]">{m.user.name || '—'}</p>
+                          <p className="eos-muted-copy text-xs">{m.user.email}</p>
+                          {m.role === 'ADMIN' && (
+                            <span className="mt-1 inline-block rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600">
+                              Administrator
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </td>
-                    <td className="py-4 pr-4 capitalize">{m.status.toLowerCase()}</td>
+                    <td className="py-4 pr-4">
+                      <select
+                        value={m.agentTitle}
+                        onChange={(e) => void handleTitleChange(m.id, e.target.value)}
+                        className="eos-field min-w-[7.5rem] py-1.5 text-xs font-bold"
+                      >
+                        {AGENCY_AGENT_TITLES.map((t) => (
+                          <option key={t} value={t}>
+                            {formatAgentTitle(t)}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="py-4 pr-4">
+                      <Link href={`/profil/${m.user.id}#agent-reviews`} className="inline-flex items-center gap-1 text-xs font-bold text-amber-500 hover:underline">
+                        <Star size={12} className="fill-amber-400 text-amber-400" />
+                        {m.user.averageRating != null ? m.user.averageRating.toFixed(1) : '—'} ({m.user.reviewsCount})
+                      </Link>
+                    </td>
                     <td className="py-4 pr-4">{m.user.activeOffers}</td>
                     <td className="py-4 pr-4">{m.user.crmClients}</td>
                     <td className="py-4 pr-4">{m.user.extraListings}</td>
-                    <td className="py-4 pr-4 text-xs">{fmtDate(m.user.lastLoginAt)}</td>
                     <td className="py-4">
                       <div className="flex flex-wrap gap-2">
-                        <Link
-                          href={`/profil/${m.user.id}`}
-                          className="text-xs font-bold text-emerald-500 hover:underline"
-                        >
+                        <Link href={`/profil/${m.user.id}`} className="text-xs font-bold text-emerald-500 hover:underline">
                           Profil
                         </Link>
                         {m.role === 'AGENT' && (
@@ -423,7 +548,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                             onClick={() => setCreditTarget(m.userId)}
                             className="text-xs font-bold text-amber-500 hover:underline"
                           >
-                            Przydziel kredyty
+                            Kredyty
                           </button>
                         )}
                       </div>

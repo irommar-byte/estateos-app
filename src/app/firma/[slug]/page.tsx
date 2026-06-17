@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { getBestUserAvatarUrl } from "@/lib/userAvatar";
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
+import ProfileMediaAvatar from "@/components/profile/ProfileMediaAvatar";
+import { formatAgentTitle } from "@/lib/agentProfile";
 
 type CompanyPublic = {
   company: {
@@ -43,6 +45,8 @@ type CompanyPublic = {
     image: string | null;
     phone: string | null;
     role: string;
+    agentTitle?: string;
+    profilePhotoUrl?: string | null;
     activeOffers: number;
     memberSince: string;
   }>;
@@ -122,7 +126,7 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
   }
 
   const { company, stats, agents, offers, reviews } = data;
-  const logo = getBestUserAvatarUrl({ image: company.logoUrl });
+  const logo = company.logoUrl;
   const rating = stats.averageRating ?? 0;
 
   return (
@@ -141,11 +145,7 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
           <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-5">
               <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]">
-                {logo ? (
-                  <img src={logo} alt="" className="size-full object-cover" />
-                ) : (
-                  <Building2 className="size-9 text-emerald-500/70" />
-                )}
+                <ProfileMediaAvatar src={logo} alt="" iconSize={36} className="size-full object-cover" />
               </div>
               <div>
                 <p className="mb-1 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-500">
@@ -227,9 +227,7 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
             </span>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {agents.map((agent, i) => {
-              const avatar = getBestUserAvatarUrl({ image: agent.image });
-              return (
+            {agents.map((agent, i) => (
                 <motion.article
                   key={agent.id}
                   initial={{ opacity: 0, y: 8 }}
@@ -238,18 +236,20 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
                   className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="flex size-12 items-center justify-center overflow-hidden rounded-full bg-[var(--eos-input)]">
-                      {avatar ? (
-                        <img src={avatar} alt="" className="size-full object-cover" />
-                      ) : (
-                        <User className="size-5 text-[var(--eos-muted)]" />
-                      )}
+                    <div className="size-12 overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
+                      <ProfileMediaAvatar
+                        src={agent.profilePhotoUrl || agent.image}
+                        alt={agent.name || "Agent"}
+                        iconSize={20}
+                        className="size-full object-cover"
+                      />
                     </div>
                     <div className="min-w-0">
                       <p className="truncate font-bold">{agent.name || "Agent"}</p>
-                      <p className="text-xs text-[var(--eos-muted)]">
-                        {agent.role === "ADMIN" ? "Administrator" : "Agent"} · {agent.activeOffers} ofert
-                      </p>
+                      <span className="mt-1 inline-block rounded-full bg-amber-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-amber-600">
+                        {formatAgentTitle(agent.agentTitle)}
+                      </span>
+                      <p className="mt-1 text-xs text-[var(--eos-muted)]">{agent.activeOffers} aktywnych ofert</p>
                     </div>
                   </div>
                   <Link
@@ -259,8 +259,7 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
                     Profil agenta <ChevronRight size={12} />
                   </Link>
                 </motion.article>
-              );
-            })}
+            ))}
           </div>
         </section>
 

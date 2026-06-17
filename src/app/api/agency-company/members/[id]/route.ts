@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { requireActiveAgencyAdmin, setMemberStatus } from '@/lib/agencyCompany';
+import { requireActiveAgencyAdmin, setMemberStatus, updateMemberProfile } from '@/lib/agencyCompany';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
-import type { AgencyMemberStatus } from '@prisma/client';
+import type { AgencyAgentTitle, AgencyMemberStatus } from '@prisma/client';
+import { AGENCY_AGENT_TITLES } from '@/lib/agentProfile';
 
-const ALLOWED: AgencyMemberStatus[] = ['ACTIVE', 'REJECTED', 'SUSPENDED'];
+const ALLOWED_STATUS: AgencyMemberStatus[] = ['ACTIVE', 'REJECTED', 'SUSPENDED'];
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const userId = await resolveWebUserId(req);
@@ -22,12 +23,30 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
 
   const body = await req.json();
-  const status = String(body.status || '').toUpperCase() as AgencyMemberStatus;
-  if (!ALLOWED.includes(status)) {
-    return NextResponse.json({ success: false, message: 'Nieprawidłowy status.' }, { status: 400 });
-  }
 
   try {
+    if (body.agentTitle) {
+      const title = String(body.agentTitle).toUpperCase() as AgencyAgentTitle;
+      if (!AGENCY_AGENT_TITLES.includes(title)) {
+        return NextResponse.json({ success: false, message: 'Nieprawidłowe stanowisko.' }, { status: 400 });
+      }
+      const updated = await updateMemberProfile({
+        companyId: admin.companyId,
+        adminUserId: userId,
+        memberId,
+        agentTitle: title,
+      });
+      return NextResponse.json({
+        success: true,
+        member: { id: updated.id, agentTitle: updated.agentTitle },
+      });
+    }
+
+    const status = String(body.status || '').toUpperCase() as AgencyMemberStatus;
+    if (!ALLOWED_STATUS.includes(status)) {
+      return NextResponse.json({ success: false, message: 'Nieprawidłowy status.' }, { status: 400 });
+    }
+
     const updated = await setMemberStatus({
       companyId: admin.companyId,
       adminUserId: userId,

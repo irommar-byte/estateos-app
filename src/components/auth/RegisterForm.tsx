@@ -17,6 +17,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import PhoneCountryInput from '@/components/auth/PhoneCountryInput';
+import ProfileMediaAvatar from '@/components/profile/ProfileMediaAvatar';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
 import { useLocale } from '@/contexts/LocaleContext';
 
@@ -593,14 +594,9 @@ export default function RegisterForm({
             {companyFieldsLocked ? (
               companyLogoUrl ? (
                 <div className="flex items-center gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
-                  {companyLogoUrl.toLowerCase().endsWith('.pdf') ? (
-                    <div className="flex size-16 items-center justify-center rounded-xl bg-emerald-500/10 text-[10px] font-black uppercase text-emerald-600">
-                      PDF
-                    </div>
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={companyLogoUrl} alt="" className="size-16 rounded-xl object-cover" />
-                  )}
+                  <div className="size-16 overflow-hidden rounded-xl">
+                    <ProfileMediaAvatar src={companyLogoUrl} alt="" iconSize={24} className="size-full object-cover" />
+                  </div>
                   <p className="eos-muted-copy text-xs">Logo pobrane z profilu wybranego biura.</p>
                 </div>
               ) : (
@@ -631,12 +627,9 @@ export default function RegisterForm({
                 </label>
                 {companyLogoUrl && !logoUploading ? (
                   <div className="flex items-center gap-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-                    {companyLogoUrl.toLowerCase().endsWith('.pdf') ? (
-                      <div className="flex size-14 items-center justify-center rounded-xl bg-white/10 text-[10px] font-black">PDF</div>
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={companyLogoUrl} alt="" className="size-14 rounded-xl object-cover" />
-                    )}
+                    <div className="size-14 overflow-hidden rounded-xl">
+                      <ProfileMediaAvatar src={companyLogoUrl} alt="" iconSize={22} className="size-full object-cover" />
+                    </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-emerald-600">Plik wgrany</p>
                       <p className="eos-muted-copy truncate text-[10px]">{companyLogoUrl}</p>
