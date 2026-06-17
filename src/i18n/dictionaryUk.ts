@@ -21,6 +21,7 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       manageAccount: "Керувати акаунтом",
       discoverMap: "Відкрити карту",
       market: "Ринок нерухомості",
+      agencyCatalog: "Каталог агенцій",
       elite: "EstateOS™ Elite",
       logout: "Вийти",
       langPl: "PL",

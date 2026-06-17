@@ -22,6 +22,7 @@ export type Dictionary = {
     manageAccount: string;
     discoverMap: string;
     market: string;
+    agencyCatalog: string;
     elite: string;
     logout: string;
     langPl: string;
@@ -510,6 +511,7 @@ const pl: Dictionary = {
     manageAccount: "Zarządzaj kontem",
     discoverMap: "Odkryj mapę",
     market: "Rynek nieruchomości",
+    agencyCatalog: "Katalog agencji",
     elite: "EstateOS™ Elite",
     logout: "Wyloguj",
     langPl: "PL",
@@ -1080,6 +1082,7 @@ const en: Dictionary = {
     manageAccount: "Manage account",
     discoverMap: "Discover map",
     market: "Property market",
+    agencyCatalog: "Agency catalog",
     elite: "EstateOS™ Elite",
     logout: "Log out",
     langPl: "PL",

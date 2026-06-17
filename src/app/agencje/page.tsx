@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Building2,
   Star,
@@ -15,8 +15,11 @@ import {
   Globe,
   Phone,
   Mail,
+  MessageSquare,
+  ExternalLink,
 } from "lucide-react";
 import { getBestUserAvatarUrl } from "@/lib/userAvatar";
+import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 
 type AgencyCard = {
   id: number;
@@ -36,35 +39,132 @@ type AgencyCard = {
   officeEmail: string | null;
 };
 
-type AgencyPublicDetail = {
-  user: {
-    id: number;
-    name: string;
-    companyName: string | null;
-    companyAddress: string | null;
-    companyWebsite: string | null;
-    companyLogoUrl: string | null;
-    officePhone: string | null;
-    officeEmail: string | null;
-  };
-  offers: Array<{ id: number; title: string; price: number; city: string; district: string; status: string }>;
-  reviews: Array<{ id: number; rating: number; comment: string | null; createdAt: string }>;
+type DetailTab = "offers" | "reviews";
+
+type AgencyOfferRow = {
+  id: number;
+  title: string;
+  price: number;
+  pricePln?: number | null;
+  city: string;
+  district: string | null;
+  status?: string;
+  images?: unknown;
 };
+
+type AgencyReviewRow = {
+  id: number;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  reviewerName?: string | null;
+  agentName?: string | null;
+};
+
+type AgencyDetail = {
+  displayName: string;
+  profileId: number;
+  firmHref: string;
+  address: string | null;
+  website: string | null;
+  logoUrl: string | null;
+  officePhone: string | null;
+  officeEmail: string | null;
+  averageRating: number | null;
+  offers: AgencyOfferRow[];
+  reviews: AgencyReviewRow[];
+};
+
+function formatPrice(offer: AgencyOfferRow) {
+  const amount = offer.pricePln ?? offer.price;
+  return `${Math.round(amount).toLocaleString("pl-PL")} zł`;
+}
+
+async function fetchAgencyDetail(agency: AgencyCard): Promise<AgencyDetail | null> {
+  const firmHref = agency.slug ? `/firma/${agency.slug}` : `/profil/${agency.id}`;
+
+  if (agency.slug) {
+    const res = await fetch(`/api/agency-company/public/${encodeURIComponent(agency.slug)}`, { cache: "no-store" });
+    const json = await res.json();
+    if (!res.ok || !json.success) return null;
+    return {
+      displayName: json.company.name,
+      profileId: agency.id,
+      firmHref,
+      address: json.company.address,
+      website: json.company.website,
+      logoUrl: json.company.logoUrl,
+      officePhone: json.company.officePhone,
+      officeEmail: json.company.officeEmail,
+      averageRating: json.stats.averageRating,
+      offers: (json.offers || []).map((o: AgencyOfferRow) => ({
+        id: o.id,
+        title: o.title,
+        price: o.price,
+        pricePln: o.pricePln,
+        city: o.city,
+        district: o.district,
+        images: o.images,
+      })),
+      reviews: (json.reviews || []).map((r: { id: number; rating: number; comment: string | null; createdAt: string; agent?: { name: string | null } }) => ({
+        id: r.id,
+        rating: r.rating,
+        comment: r.comment,
+        createdAt: r.createdAt,
+        agentName: r.agent?.name ?? null,
+      })),
+    };
+  }
+
+  const res = await fetch(`/api/users/${agency.id}/public`, { cache: "no-store" });
+  const json = await res.json();
+  if (!res.ok || json.error) return null;
+
+  const reviews = Array.isArray(json.reviews) ? json.reviews : [];
+  const avg =
+    reviews.length > 0
+      ? Number((reviews.reduce((s: number, r: { rating: number }) => s + r.rating, 0) / reviews.length).toFixed(1))
+      : null;
+
+  return {
+    displayName: json.user.companyName || json.user.name || agency.displayName,
+    profileId: json.user.id,
+    firmHref,
+    address: json.user.companyAddress,
+    website: json.user.companyWebsite,
+    logoUrl: json.user.companyLogoUrl || json.user.image,
+    officePhone: json.user.officePhone || json.user.phone,
+    officeEmail: json.user.officeEmail,
+    averageRating: avg,
+    offers: (json.offers || []).filter((o: { status?: string }) => o.status === "ACTIVE" || o.status === "PENDING"),
+    reviews: reviews.map((r: { id: number; rating: number; comment: string | null; createdAt: string | Date; reviewerName?: string }) => ({
+      id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: typeof r.createdAt === "string" ? r.createdAt : new Date(r.createdAt).toISOString(),
+      reviewerName: r.reviewerName,
+    })),
+  };
+}
 
 export default function AgencjePage() {
   const [agencies, setAgencies] = useState<AgencyCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [detail, setDetail] = useState<AgencyPublicDetail | null>(null);
+  const [detail, setDetail] = useState<AgencyDetail | null>(null);
+  const [detailTab, setDetailTab] = useState<DetailTab>("offers");
+  const [detailTitle, setDetailTitle] = useState("");
 
-  const openAgencyDetail = async (agencyId: number) => {
+  const openAgencyDetail = async (agency: AgencyCard, tab: DetailTab) => {
     setDetailOpen(true);
     setDetailLoading(true);
+    setDetail(null);
+    setDetailTab(tab);
+    setDetailTitle(agency.displayName);
     try {
-      const res = await fetch(`/api/users/${agencyId}/public`, { cache: "no-store" });
-      const json = await res.json();
-      if (res.ok) setDetail(json);
+      const payload = await fetchAgencyDetail(agency);
+      if (payload) setDetail(payload);
     } finally {
       setDetailLoading(false);
     }
@@ -78,7 +178,7 @@ export default function AgencjePage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-[var(--eos-bg)] pt-28 pb-32 text-[var(--eos-text)]">
+    <main className="min-h-screen bg-[var(--eos-bg)] pb-32 pt-28 text-[var(--eos-text)]">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-gradient-to-b from-emerald-500/10 to-transparent" />
       <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
         <p className="text-[10px] font-black uppercase tracking-[0.35em] text-emerald-500">
@@ -89,7 +189,7 @@ export default function AgencjePage() {
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)]">
           Zweryfikowane biura nieruchomości z opiniami, aktywnymi ofertami i pełnym wsparciem w CRM.
-          Wybierz agencję, która przejmie sprzedaż Twojej nieruchomości — z pełnym podglądem postępów.
+          Kliknij gwiazdki, aby zobaczyć opinie, lub liczbę ofert, aby przejrzeć portfolio biura.
         </p>
 
         {loading ? (
@@ -104,36 +204,48 @@ export default function AgencjePage() {
               const avatar = getBestUserAvatarUrl({ image: agency.companyLogoUrl || agency.image });
               const ratingValue = agency.averageRating ?? 0;
               const firmHref = agency.slug ? `/firma/${agency.slug}` : `/profil/${agency.id}`;
+              const hasReviews = agency.reviewsCount > 0 && agency.averageRating != null;
+
               return (
                 <motion.article
-                  key={agency.id}
+                  key={`${agency.id}-${agency.slug || "legacy"}`}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.04 }}
-                  className="group rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-6 shadow-[var(--eos-shadow-soft)] backdrop-blur-xl transition hover:border-emerald-500/30"
+                  className="group flex flex-col rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-6 shadow-[var(--eos-shadow-soft)] backdrop-blur-xl transition hover:border-emerald-500/30"
                 >
                   <div className="flex items-start gap-4">
-                    <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]">
+                    <Link
+                      href={firmHref}
+                      className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] transition hover:border-emerald-500/40"
+                    >
                       {avatar ? (
                         <img src={avatar} alt="" className="size-full object-cover" />
                       ) : (
                         <Building2 className="size-6 text-emerald-500/70" />
                       )}
-                    </div>
+                    </Link>
                     <div className="min-w-0 flex-1">
-                      <h2 className="truncate text-lg font-bold">{agency.displayName}</h2>
+                      <Link href={firmHref} className="block truncate text-lg font-bold hover:text-emerald-500">
+                        {agency.displayName}
+                      </Link>
                       <button
                         type="button"
-                        onClick={() => void openAgencyDetail(agency.id)}
-                        className="mt-1 inline-flex items-center gap-1 text-xs text-amber-400 hover:underline"
+                        onClick={() => void openAgencyDetail(agency, "reviews")}
+                        className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-1 py-0.5 text-xs text-amber-400 transition hover:bg-amber-500/10 hover:underline"
+                        aria-label={`Zobacz opinie: ${agency.displayName}`}
                       >
                         {[0, 1, 2, 3, 4].map((idx) => (
                           <Star
                             key={idx}
-                            className={`size-3 ${ratingValue >= idx + 1 ? "fill-amber-400 text-amber-400" : "text-white/20"}`}
+                            className={`size-3.5 ${ratingValue >= idx + 1 ? "fill-amber-400 text-amber-400" : "text-[var(--eos-border)]"}`}
                           />
                         ))}
-                        {agency.averageRating != null ? `${agency.averageRating} · ${agency.reviewsCount} opinii` : "Brak opinii"}
+                        <span className="font-semibold">
+                          {hasReviews
+                            ? `${agency.averageRating} · ${agency.reviewsCount} opinii`
+                            : "Zobacz opinie"}
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -141,8 +253,9 @@ export default function AgencjePage() {
                   <div className="mt-5 flex flex-wrap gap-3 text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
                     <button
                       type="button"
-                      onClick={() => void openAgencyDetail(agency.id)}
-                      className="inline-flex items-center gap-1 rounded-full bg-[var(--eos-input)] px-3 py-1.5 hover:bg-emerald-500/10"
+                      onClick={() => void openAgencyDetail(agency, "offers")}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-[var(--eos-input)] px-3 py-1.5 transition hover:bg-emerald-500/15 hover:text-emerald-600"
+                      aria-label={`Zobacz oferty: ${agency.displayName}`}
                     >
                       <Briefcase className="size-3" />
                       {agency.activeListings} ofert
@@ -182,66 +295,189 @@ export default function AgencjePage() {
         </div>
       </div>
 
-      {detailOpen ? (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-4xl rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-black">Profil agencji · szczegóły</h3>
-              <button type="button" onClick={() => setDetailOpen(false)} className="rounded-full p-2 hover:bg-[var(--eos-input)]">
-                <X className="size-4" />
-              </button>
-            </div>
-            {detailLoading || !detail ? (
-              <div className="py-10 text-center text-sm text-[var(--eos-muted)]">Ładowanie danych agencji…</div>
-            ) : (
-              <div className="space-y-5">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
-                    <p className="text-sm font-bold">{detail.user.companyName || detail.user.name}</p>
-                    {detail.user.companyAddress ? <p className="mt-1 text-xs text-[var(--eos-muted)]">{detail.user.companyAddress}</p> : null}
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                      {detail.user.companyWebsite ? <a href={detail.user.companyWebsite} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] px-2.5 py-1 hover:border-emerald-500/40"><Globe className="size-3" />WWW</a> : null}
-                      {detail.user.officePhone ? <a href={`tel:${detail.user.officePhone}`} className="inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] px-2.5 py-1 hover:border-emerald-500/40"><Phone className="size-3" />Biuro</a> : null}
-                      {detail.user.officeEmail ? <a href={`mailto:${detail.user.officeEmail}`} className="inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] px-2.5 py-1 hover:border-emerald-500/40"><Mail className="size-3" />E-mail</a> : null}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">Ocena i opinie</p>
-                    <div className="mt-2 flex items-center gap-1 text-amber-400">
-                      {[0, 1, 2, 3, 4].map((idx) => {
-                        const avg = detail.reviews.length
-                          ? detail.reviews.reduce((sum, r) => sum + r.rating, 0) / detail.reviews.length
-                          : 0;
-                        return <Star key={idx} className={`size-4 ${avg >= idx + 1 ? "fill-amber-400" : "text-white/20"}`} />;
-                      })}
-                      <span className="ml-2 text-xs text-[var(--eos-muted)]">{detail.reviews.length} opinii</span>
-                    </div>
-                    <Link href={`/profil/${detail.user.id}`} className="mt-3 inline-flex text-xs font-semibold text-emerald-500 hover:underline">
-                      Otwórz pełny profil agencji
-                    </Link>
-                  </div>
+      <AnimatePresence>
+        {detailOpen ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+            onClick={() => setDetailOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 24, scale: 0.98 }}
+              transition={{ type: "spring", damping: 28, stiffness: 320 }}
+              className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-2xl sm:rounded-[1.75rem]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 border-b border-[var(--eos-border)] p-5 sm:p-6">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Szczegóły biura</p>
+                  <h3 className="truncate text-xl font-black">{detail?.displayName || detailTitle}</h3>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailOpen(false)}
+                  className="shrink-0 rounded-full p-2 text-[var(--eos-muted)] hover:bg-[var(--eos-input)]"
+                  aria-label="Zamknij"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
 
-                <div>
-                  <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">Oferty agencji ({detail.offers.length})</p>
-                  <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
-                    {detail.offers.length === 0 ? (
-                      <p className="text-sm text-[var(--eos-muted)]">Ta agencja nie ma aktywnych ofert.</p>
+              {detailLoading ? (
+                <div className="flex flex-1 items-center justify-center py-20">
+                  <Loader2 className="size-8 animate-spin text-emerald-500" />
+                </div>
+              ) : !detail ? (
+                <div className="py-16 text-center text-sm text-[var(--eos-muted)]">Nie udało się wczytać danych agencji.</div>
+              ) : (
+                <>
+                  <div className="grid gap-3 border-b border-[var(--eos-border)] p-5 sm:grid-cols-2 sm:p-6">
+                    <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
+                      {detail.address ? <p className="text-sm text-[var(--eos-muted)]">{detail.address}</p> : null}
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        {detail.website ? (
+                          <a href={detail.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] px-2.5 py-1 hover:border-emerald-500/40">
+                            <Globe className="size-3" /> WWW
+                          </a>
+                        ) : null}
+                        {detail.officePhone ? (
+                          <a href={`tel:${detail.officePhone}`} className="inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] px-2.5 py-1 hover:border-emerald-500/40">
+                            <Phone className="size-3" /> Biuro
+                          </a>
+                        ) : null}
+                        {detail.officeEmail ? (
+                          <a href={`mailto:${detail.officeEmail}`} className="inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] px-2.5 py-1 hover:border-emerald-500/40">
+                            <Mail className="size-3" /> E-mail
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex flex-col justify-between rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">Ocena</p>
+                        <div className="mt-2 flex items-center gap-1 text-amber-400">
+                          {[0, 1, 2, 3, 4].map((idx) => (
+                            <Star
+                              key={idx}
+                              className={`size-4 ${(detail.averageRating ?? 0) >= idx + 1 ? "fill-amber-400" : "text-[var(--eos-border)]"}`}
+                            />
+                          ))}
+                          <span className="ml-2 text-sm font-bold text-[var(--eos-text)]">
+                            {detail.averageRating != null ? detail.averageRating.toFixed(1) : "—"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-[var(--eos-muted)]">{detail.reviews.length} opinii · {detail.offers.length} ofert</p>
+                      </div>
+                      <Link
+                        href={detail.firmHref}
+                        className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-emerald-500 hover:underline"
+                      >
+                        Pełna strona biura <ExternalLink className="size-3" />
+                      </Link>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-1 border-b border-[var(--eos-border)] px-5 sm:px-6">
+                    {(
+                      [
+                        { id: "offers" as const, label: `Oferty (${detail.offers.length})`, icon: Briefcase },
+                        { id: "reviews" as const, label: `Opinie (${detail.reviews.length})`, icon: MessageSquare },
+                      ] as const
+                    ).map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setDetailTab(tab.id)}
+                        className={`flex items-center gap-2 border-b-2 px-4 py-3 text-[10px] font-black uppercase tracking-widest transition ${
+                          detailTab === tab.id
+                            ? "border-emerald-500 text-emerald-500"
+                            : "border-transparent text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+                        }`}
+                      >
+                        <tab.icon className="size-3.5" />
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-5 sm:p-6">
+                    {detailTab === "offers" ? (
+                      detail.offers.length === 0 ? (
+                        <p className="py-8 text-center text-sm text-[var(--eos-muted)]">Brak aktywnych ofert.</p>
+                      ) : (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {detail.offers.map((offer) => {
+                            const thumb = resolveOfferPrimaryImage(offer);
+                            return (
+                              <Link
+                                key={offer.id}
+                                href={`/oferta/${offer.id}`}
+                                className="group overflow-hidden rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/30 transition hover:border-emerald-500/40"
+                              >
+                                <div className="aspect-[16/10] overflow-hidden bg-[var(--eos-input)]">
+                                  {thumb ? (
+                                    <img src={thumb} alt="" className="size-full object-cover transition duration-300 group-hover:scale-105" />
+                                  ) : (
+                                    <div className="flex size-full items-center justify-center">
+                                      <Briefcase className="size-6 text-[var(--eos-muted)]" />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="p-3">
+                                  <p className="font-bold text-emerald-500">{formatPrice(offer)}</p>
+                                  <p className="mt-0.5 line-clamp-2 text-sm font-semibold leading-snug">{offer.title}</p>
+                                  <p className="mt-1 text-xs text-[var(--eos-muted)]">
+                                    {offer.city}
+                                    {offer.district ? ` · ${offer.district}` : ""}
+                                  </p>
+                                </div>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )
+                    ) : detail.reviews.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-[var(--eos-muted)]">Brak opinii od klientów.</p>
                     ) : (
-                      detail.offers.map((offer) => (
-                        <Link key={offer.id} href={`/oferta/${offer.id}`} className="block rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 px-4 py-3 hover:border-emerald-500/40">
-                          <p className="text-sm font-semibold">{offer.title}</p>
-                          <p className="mt-1 text-xs text-[var(--eos-muted)]">{offer.city} · {offer.district} · {Math.round(offer.price).toLocaleString("pl-PL")} zł</p>
-                        </Link>
-                      ))
+                      <div className="space-y-3">
+                        {detail.reviews.map((review) => (
+                          <div key={review.id} className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/30 p-4">
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <div className="flex items-center gap-0.5">
+                                {[0, 1, 2, 3, 4].map((idx) => (
+                                  <Star
+                                    key={idx}
+                                    className={`size-3.5 ${review.rating >= idx + 1 ? "fill-amber-400 text-amber-400" : "text-[var(--eos-border)]"}`}
+                                  />
+                                ))}
+                              </div>
+                              <span className="text-xs text-[var(--eos-muted)]">
+                                {review.reviewerName ? review.reviewerName : "Klient"}
+                                {review.agentName ? ` · agent: ${review.agentName}` : ""}
+                                {" · "}
+                                {new Date(review.createdAt).toLocaleDateString("pl-PL")}
+                              </span>
+                            </div>
+                            {review.comment ? (
+                              <p className="text-sm leading-relaxed text-[var(--eos-muted)]">{review.comment}</p>
+                            ) : (
+                              <p className="text-xs italic text-[var(--eos-subtle)]">Bez komentarza tekstowego.</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </main>
   );
 }
