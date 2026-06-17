@@ -300,6 +300,11 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                     Strona www
                   </a>
                 )}
+                {company.slug ? (
+                  <Link href={`/firma/${company.slug}`} target="_blank" className="inline-flex items-center gap-1 text-emerald-500 hover:underline">
+                    Publiczna strona biura <ExternalLink size={12} />
+                  </Link>
+                ) : null}
               </div>
             </div>
           </div>

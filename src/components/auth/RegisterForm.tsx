@@ -12,6 +12,7 @@ import {
   Loader2,
   Lock,
   Mail,
+  Upload,
   User,
   UserPlus,
 } from 'lucide-react';
@@ -69,6 +70,9 @@ export default function RegisterForm({
   const [companyAddress, setCompanyAddress] = useState('');
   const [companyWebsite, setCompanyWebsite] = useState('');
   const [companyLogoUrl, setCompanyLogoUrl] = useState('');
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoUploadError, setLogoUploadError] = useState('');
+  const [logoFileName, setLogoFileName] = useState('');
   const [officePhone, setOfficePhone] = useState('');
   const [officeEmail, setOfficeEmail] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
@@ -177,6 +181,30 @@ export default function RegisterForm({
     setOfficePhone(selectedCompany.officePhone || '');
     setOfficeEmail(selectedCompany.officeEmail || '');
   }, [companyFieldsLocked, selectedCompany]);
+
+  const handleLogoFile = async (file: File | null) => {
+    if (!file || companyFieldsLocked) return;
+    setLogoUploadError('');
+    setLogoUploading(true);
+    setLogoFileName(file.name);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/upload/agency-branding', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.url) {
+        setLogoUploadError(data.error || 'Nie udało się wgrać pliku.');
+        setCompanyLogoUrl('');
+        return;
+      }
+      setCompanyLogoUrl(String(data.url));
+    } catch {
+      setLogoUploadError('Błąd połączenia podczas uploadu.');
+      setCompanyLogoUrl('');
+    } finally {
+      setLogoUploading(false);
+    }
+  };
 
   const rolePayload = (): {
     role: 'PRIVATE' | 'AGENT';
@@ -561,16 +589,73 @@ export default function RegisterForm({
             />
           </div>
           <div>
-            <label className="eos-label mb-2">Logo agencji (URL)</label>
-            <input
-              type="url"
-              maxLength={512}
-              value={companyLogoUrl}
-              onChange={(e) => setCompanyLogoUrl(e.target.value)}
-              readOnly={companyFieldsLocked}
-              className={`eos-field ${companyFieldsLocked ? 'opacity-80' : ''}`}
-              placeholder="https://.../logo.png"
-            />
+            <label className="eos-label mb-2">Logo lub dokument biura</label>
+            {companyFieldsLocked ? (
+              companyLogoUrl ? (
+                <div className="flex items-center gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
+                  {companyLogoUrl.toLowerCase().endsWith('.pdf') ? (
+                    <div className="flex size-16 items-center justify-center rounded-xl bg-emerald-500/10 text-[10px] font-black uppercase text-emerald-600">
+                      PDF
+                    </div>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={companyLogoUrl} alt="" className="size-16 rounded-xl object-cover" />
+                  )}
+                  <p className="eos-muted-copy text-xs">Logo pobrane z profilu wybranego biura.</p>
+                </div>
+              ) : (
+                <p className="eos-muted-copy text-xs">Wybrane biuro nie ma wgranego logo.</p>
+              )
+            ) : (
+              <div className="space-y-3">
+                <label className="eos-choice-card flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-dashed px-4 py-8 text-center">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                    className="sr-only"
+                    disabled={loading || logoUploading}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      void handleLogoFile(f);
+                    }}
+                  />
+                  {logoUploading ? (
+                    <Loader2 className="animate-spin text-emerald-500" size={24} />
+                  ) : (
+                    <Upload className="text-emerald-500" size={24} />
+                  )}
+                  <span className="text-sm font-bold text-[var(--eos-text)]">
+                    {logoFileName || 'Kliknij, aby wgrać logo lub PDF'}
+                  </span>
+                  <span className="eos-muted-copy text-[10px]">JPG, PNG, WEBP, GIF lub PDF · max 5 MB</span>
+                </label>
+                {companyLogoUrl && !logoUploading ? (
+                  <div className="flex items-center gap-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+                    {companyLogoUrl.toLowerCase().endsWith('.pdf') ? (
+                      <div className="flex size-14 items-center justify-center rounded-xl bg-white/10 text-[10px] font-black">PDF</div>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={companyLogoUrl} alt="" className="size-14 rounded-xl object-cover" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-emerald-600">Plik wgrany</p>
+                      <p className="eos-muted-copy truncate text-[10px]">{companyLogoUrl}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-[10px] font-bold uppercase tracking-widest text-red-500"
+                      onClick={() => {
+                        setCompanyLogoUrl('');
+                        setLogoFileName('');
+                      }}
+                    >
+                      Usuń
+                    </button>
+                  </div>
+                ) : null}
+                {logoUploadError ? <p className="text-xs font-semibold text-red-500">{logoUploadError}</p> : null}
+              </div>
+            )}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -665,7 +750,7 @@ export default function RegisterForm({
 
       <button
         type="submit"
-        disabled={loading || emailStatus === 'taken' || phoneStatus === 'taken' || !acceptTerms}
+        disabled={loading || logoUploading || emailStatus === 'taken' || phoneStatus === 'taken' || !acceptTerms}
         style={{ backgroundColor: '#10b981', color: '#000000' }}
         className="mt-2 flex w-full items-center justify-center gap-3 rounded-full py-6 text-sm font-black uppercase tracking-widest shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
       >
