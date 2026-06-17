@@ -307,6 +307,7 @@ export type Dictionary = {
     accountEyebrow: string;
     userIdLabel: string;
     tabRadar: string;
+    tabClients: string;
     tabMyOffers: string;
     tabFavorites: string;
     tabPlanning: string;
@@ -350,6 +351,65 @@ export type Dictionary = {
     myOffersTitle: string;
     myOffersTitleHighlight: string;
     myOffersDesc: string;
+    clientsTitle: string;
+    clientsTitleHighlight: string;
+    clientsDesc: string;
+  };
+  crmClients: {
+    statsBuyers: string;
+    statsSellers: string;
+    statsMatches: string;
+    statsOutreach: string;
+    segmentBuyers: string;
+    segmentSellers: string;
+    addClient: string;
+    loading: string;
+    emptyTitle: string;
+    emptyBody: string;
+    selectClientTitle: string;
+    selectClientBody: string;
+    buyerBadge: string;
+    sellerBadge: string;
+    refreshMatches: string;
+    matchesTitle: string;
+    noMatches: string;
+    sendEmail: string;
+    viewOffer: string;
+    sellerLocationEmpty: string;
+    createListing: string;
+    activityTitle: string;
+    reportTopMatches: string;
+    matchCountLabel: string;
+    formEyebrow: string;
+    formTitle: string;
+    typeBuyerTitle: string;
+    typeBuyerBody: string;
+    typeSellerTitle: string;
+    typeSellerBody: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    notes: string;
+    buyerCriteriaLead: string;
+    configureCriteria: string;
+    transactionSell: string;
+    transactionRent: string;
+    typeFlat: string;
+    typeHouse: string;
+    typePlot: string;
+    typeCommercial: string;
+    city: string;
+    district: string;
+    price: string;
+    area: string;
+    rooms: string;
+    sellerNotes: string;
+    back: string;
+    next: string;
+    saveClient: string;
+    saving: string;
+    saveError: string;
   };
   catalog: {
     title: string;
@@ -805,6 +865,7 @@ const pl: Dictionary = {
     accountEyebrow: "Moje konto EstateOS™",
     userIdLabel: "ID użytkownika",
     tabRadar: "Radar inwestycji",
+    tabClients: "Klienci",
     tabMyOffers: "Moje ogłoszenia",
     tabFavorites: "Ulubione",
     tabPlanning: "Planowanie",
@@ -850,6 +911,66 @@ const pl: Dictionary = {
     myOffersTitle: "Moje",
     myOffersTitleHighlight: "ogłoszenia",
     myOffersDesc: "Zarządzaj statusami, odnowieniami i statystykami swoich ofert.",
+    clientsTitle: "Twoi",
+    clientsTitleHighlight: "klienci",
+    clientsDesc:
+      "Profesjonalne CRM dla biura — kupujący spoza bazy, dopasowania ofert, powiadomienia w Twoim imieniu i pełna historia współpracy.",
+  },
+  crmClients: {
+    statsBuyers: "Kupujący",
+    statsSellers: "Sprzedający",
+    statsMatches: "Dopasowania",
+    statsOutreach: "Kontakt 30 dni",
+    segmentBuyers: "Kupujący",
+    segmentSellers: "Sprzedający",
+    addClient: "Dodaj klienta",
+    loading: "Ładowanie…",
+    emptyTitle: "Brak klientów w tej sekcji",
+    emptyBody: "Dodaj pierwszego klienta — nawet jeśli nie ma konta w EstateOS, prowadzisz go tutaj jak w premium CRM.",
+    selectClientTitle: "Wybierz klienta",
+    selectClientBody: "Zobacz dopasowania, wyślij ofertę e-mailem podpisanym Twoim imieniem i śledź historię działań.",
+    buyerBadge: "Klient kupujący",
+    sellerBadge: "Klient sprzedający",
+    refreshMatches: "Odśwież dopasowania",
+    matchesTitle: "Dopasowane oferty z bazy",
+    noMatches: "Brak dopasowań — zaktualizuj kryteria lub odśwież skan rynku.",
+    sendEmail: "Wyślij e-mail",
+    viewOffer: "Oferta",
+    sellerLocationEmpty: "Lokalizacja do uzupełnienia",
+    createListing: "Utwórz ogłoszenie",
+    activityTitle: "Historia działań",
+    reportTopMatches: "Najlepsze dopasowania w biurze",
+    matchCountLabel: "{n} dopasowań",
+    formEyebrow: "CRM · nowy klient",
+    formTitle: "Dodaj klienta",
+    typeBuyerTitle: "Kupujący",
+    typeBuyerBody: "Szuka nieruchomości — ustawiasz kryteria i system dopasowuje oferty z bazy EstateOS.",
+    typeSellerTitle: "Sprzedający",
+    typeSellerBody: "Chce sprzedać lub wynająć — zapisujesz parametry i prowadzisz do publikacji oferty.",
+    firstName: "Imię",
+    lastName: "Nazwisko",
+    email: "E-mail",
+    phone: "Telefon",
+    notes: "Notatki wewnętrzne",
+    buyerCriteriaLead: "Kryteria wyszukiwania — ten sam algorytm co Radar Inwestycji.",
+    configureCriteria: "Ustaw kryteria dopasowania",
+    transactionSell: "Sprzedaż",
+    transactionRent: "Wynajem",
+    typeFlat: "Mieszkanie",
+    typeHouse: "Dom",
+    typePlot: "Działka",
+    typeCommercial: "Lokal",
+    city: "Miasto",
+    district: "Dzielnica",
+    price: "Cena (PLN)",
+    area: "Metraż (m²)",
+    rooms: "Pokoje",
+    sellerNotes: "Opis nieruchomości / oczekiwania klienta",
+    back: "Wstecz",
+    next: "Dalej",
+    saveClient: "Zapisz klienta",
+    saving: "Zapisywanie…",
+    saveError: "Nie udało się zapisać klienta.",
   },
   catalog: {
     title: "Katalog",
@@ -1312,6 +1433,7 @@ const en: Dictionary = {
     accountEyebrow: "My EstateOS™ account",
     userIdLabel: "User ID",
     tabRadar: "Investment radar",
+    tabClients: "Clients",
     tabMyOffers: "My listings",
     tabFavorites: "Favorites",
     tabPlanning: "Planning",
@@ -1357,6 +1479,66 @@ const en: Dictionary = {
     myOffersTitle: "My",
     myOffersTitleHighlight: "listings",
     myOffersDesc: "Manage statuses, renewals, and listing statistics.",
+    clientsTitle: "Your",
+    clientsTitleHighlight: "clients",
+    clientsDesc:
+      "Professional office CRM — off-platform buyers, listing matches, outreach in your name, and full activity history.",
+  },
+  crmClients: {
+    statsBuyers: "Buyers",
+    statsSellers: "Sellers",
+    statsMatches: "Matches",
+    statsOutreach: "Outreach 30d",
+    segmentBuyers: "Buyers",
+    segmentSellers: "Sellers",
+    addClient: "Add client",
+    loading: "Loading…",
+    emptyTitle: "No clients in this section",
+    emptyBody: "Add your first client — even without an EstateOS account, manage them here like a premium CRM.",
+    selectClientTitle: "Select a client",
+    selectClientBody: "View matches, email listings signed with your name, and track every touchpoint.",
+    buyerBadge: "Buyer client",
+    sellerBadge: "Seller client",
+    refreshMatches: "Refresh matches",
+    matchesTitle: "Matched listings",
+    noMatches: "No matches — update criteria or rescan the market.",
+    sendEmail: "Send email",
+    viewOffer: "Listing",
+    sellerLocationEmpty: "Location to be added",
+    createListing: "Create listing",
+    activityTitle: "Activity log",
+    reportTopMatches: "Top office matches",
+    matchCountLabel: "{n} matches",
+    formEyebrow: "CRM · new client",
+    formTitle: "Add client",
+    typeBuyerTitle: "Buyer",
+    typeBuyerBody: "Looking for property — set criteria and the system matches EstateOS listings.",
+    typeSellerTitle: "Seller",
+    typeSellerBody: "Wants to sell or rent — capture details and guide them to publication.",
+    firstName: "First name",
+    lastName: "Last name",
+    email: "Email",
+    phone: "Phone",
+    notes: "Internal notes",
+    buyerCriteriaLead: "Search criteria — same algorithm as Investment Radar.",
+    configureCriteria: "Set match criteria",
+    transactionSell: "Sale",
+    transactionRent: "Rent",
+    typeFlat: "Apartment",
+    typeHouse: "House",
+    typePlot: "Plot",
+    typeCommercial: "Commercial",
+    city: "City",
+    district: "District",
+    price: "Price (PLN)",
+    area: "Area (m²)",
+    rooms: "Rooms",
+    sellerNotes: "Property description / client expectations",
+    back: "Back",
+    next: "Next",
+    saveClient: "Save client",
+    saving: "Saving…",
+    saveError: "Could not save client.",
   },
   catalog: {
     title: "Catalog",

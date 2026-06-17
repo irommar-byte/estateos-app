@@ -77,6 +77,7 @@ model User {
   openHouseReservations OpenHouseReservation[] @relation("OpenHouseGuest")
   hostedAuctionEvents   AuctionEvent[]         @relation("AuctionHost")
   auctionBids           AuctionBidEntry[]      @relation("AuctionBidder")
+  agencyClients        AgencyClient[]           @relation("AgencyClientsOwned")
 }
 
 model Alert {
@@ -209,6 +210,8 @@ model Offer {
   openHouseEvents OpenHouseEvent[]
   auctionEvents   AuctionEvent[]
   priceHistory    OfferPriceHistory[]
+  agencyClientMatches AgencyClientMatch[]
+  agencyClientsLinked AgencyClient[] @relation("AgencyClientLinkedOffer")
 
   @@index([userId], map: "Offer_userId_fkey")
   @@index([legalCheckStatus, legalCheckSubmittedAt])
@@ -896,5 +899,104 @@ model DiscoveryProfile {
   createdAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum AgencyClientType {
+  BUYER
+  SELLER
+}
+
+enum AgencyClientStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+/// Klient biura nieruchomości — poza kontem User (CRM agenta).
+model AgencyClient {
+  id             Int                @id @default(autoincrement())
+  agencyUserId   Int
+  type           AgencyClientType
+  status         AgencyClientStatus @default(ACTIVE)
+  firstName      String             @db.VarChar(96)
+  lastName       String             @db.VarChar(96)
+  email          String?            @db.VarChar(191)
+  phone          String?            @db.VarChar(32)
+  notes          String?            @db.Text
+  sellerTransactionType TransactionType?
+  sellerPropertyType    PropertyType?
+  sellerCity            String?      @db.VarChar(128)
+  sellerDistrict        String?      @db.VarChar(128)
+  sellerPrice           Float?
+  sellerArea            Float?
+  sellerRooms           Int?
+  sellerDescription     String?      @db.Text
+  linkedOfferId         Int?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  agencyUser User @relation("AgencyClientsOwned", fields: [agencyUserId], references: [id], onDelete: Cascade)
+  linkedOffer Offer? @relation("AgencyClientLinkedOffer", fields: [linkedOfferId], references: [id], onDelete: SetNull)
+  buyerPreference AgencyClientBuyerPreference?
+  matches         AgencyClientMatch[]
+  activities      AgencyClientActivity[]
+
+  @@index([agencyUserId, type, status])
+  @@index([agencyUserId, updatedAt])
+}
+
+model AgencyClientBuyerPreference {
+  id                Int @id @default(autoincrement())
+  clientId          Int @unique
+  transactionType   TransactionType?
+  propertyType      PropertyType?
+  city              String?   @db.VarChar(128)
+  districts         Json?
+  maxPrice          Float?
+  minArea           Float?
+  minYear           Int?
+  requireBalcony    Boolean @default(false)
+  requireGarden     Boolean @default(false)
+  requireElevator   Boolean @default(false)
+  requireParking    Boolean @default(false)
+  requireFurnished  Boolean @default(false)
+  minMatchThreshold Int     @default(70)
+  lat               Float?
+  lng               Float?
+  radius            Float?
+
+  client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model AgencyClientMatch {
+  id         Int       @id @default(autoincrement())
+  clientId   Int
+  offerId    Int
+  score      Int
+  notifiedAt DateTime?
+  sharedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  offer  Offer        @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, offerId])
+  @@index([clientId, score])
+}
+
+model AgencyClientActivity {
+  id           Int      @id @default(autoincrement())
+  clientId     Int
+  agencyUserId Int
+  kind         String   @db.VarChar(64)
+  title        String?  @db.VarChar(255)
+  body         String?  @db.Text
+  offerId      Int?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, createdAt])
 }
 
