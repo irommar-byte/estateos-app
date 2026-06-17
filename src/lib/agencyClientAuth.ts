@@ -10,6 +10,13 @@ export async function requireAgencyUserId(req?: Request): Promise<number | null>
     select: { id: true, role: true, planType: true, buyerType: true },
   });
   if (!user || !isAgentOrAgencySeller(user)) return null;
+
+  const membership = await prisma.agencyCompanyMember.findUnique({
+    where: { userId: user.id },
+    select: { status: true },
+  });
+  if (membership && membership.status !== 'ACTIVE') return null;
+
   return user.id;
 }
 

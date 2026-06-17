@@ -79,6 +79,11 @@ model User {
   auctionBids           AuctionBidEntry[]      @relation("AuctionBidder")
   agencyClients        AgencyClient[]           @relation("AgencyClientsOwned")
   offersAsOriginalOwner Offer[]                 @relation("OfferOriginalOwner")
+  ownedAgencyCompany   AgencyCompany?           @relation("AgencyCompanyOwner")
+  agencyMembership     AgencyCompanyMember?     @relation("AgencyCompanyMembership")
+  approvedAgencyMembers AgencyCompanyMember[] @relation("AgencyMemberApprover")
+  agencyCreditsReceived AgencyCompanyCreditTransfer[] @relation("AgencyCreditRecipient")
+  agencyCreditsGranted  AgencyCompanyCreditTransfer[] @relation("AgencyCreditCreator")
 }
 
 model Alert {
@@ -904,6 +909,75 @@ model DiscoveryProfile {
   createdAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum AgencyMemberRole {
+  ADMIN
+  AGENT
+}
+
+enum AgencyMemberStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  SUSPENDED
+}
+
+/// Biuro nieruchomości — jedna firma, wielu agentów.
+model AgencyCompany {
+  id            Int       @id @default(autoincrement())
+  name          String    @db.VarChar(191)
+  slug          String?   @unique @db.VarChar(64)
+  address       String?   @db.VarChar(255)
+  website       String?   @db.VarChar(255)
+  logoUrl       String?   @db.VarChar(512)
+  officePhone   String?   @db.VarChar(64)
+  officeEmail   String?   @db.VarChar(191)
+  nip           String?   @db.VarChar(32)
+  extraListings Int       @default(0)
+  plusExpiresAt DateTime?
+  ownerUserId   Int       @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  owner           User                          @relation("AgencyCompanyOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  members         AgencyCompanyMember[]
+  creditTransfers AgencyCompanyCreditTransfer[]
+}
+
+model AgencyCompanyMember {
+  id           Int                @id @default(autoincrement())
+  companyId    Int
+  userId       Int                @unique
+  role         AgencyMemberRole   @default(AGENT)
+  status       AgencyMemberStatus @default(PENDING)
+  approvedAt   DateTime?
+  approvedById Int?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  company    AgencyCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user       User          @relation("AgencyCompanyMembership", fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy User?         @relation("AgencyMemberApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status])
+}
+
+model AgencyCompanyCreditTransfer {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  toUserId    Int
+  amount      Int
+  note        String?  @db.VarChar(255)
+  createdById Int
+  createdAt   DateTime @default(now())
+
+  company   AgencyCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  toUser    User          @relation("AgencyCreditRecipient", fields: [toUserId], references: [id], onDelete: Cascade)
+  createdBy User          @relation("AgencyCreditCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([toUserId])
 }
 
 enum AgencyClientType {

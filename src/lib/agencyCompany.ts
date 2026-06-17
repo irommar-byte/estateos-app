@@ -1,0 +1,333 @@
+import { prisma } from '@/lib/prisma';
+import type { AgencyMemberRole, AgencyMemberStatus } from '@prisma/client';
+
+export function slugifyCompanyName(name: string): string {
+  const base = name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+  return base || `firma-${Date.now()}`;
+}
+
+export async function uniqueCompanySlug(name: string): Promise<string> {
+  const base = slugifyCompanyName(name);
+  let slug = base;
+  let i = 1;
+  while (await prisma.agencyCompany.findUnique({ where: { slug } })) {
+    slug = `${base}-${i}`;
+    i += 1;
+  }
+  return slug;
+}
+
+export type AgencyCompanyPublic = {
+  id: number;
+  name: string;
+  address: string | null;
+  website: string | null;
+  logoUrl: string | null;
+  officePhone: string | null;
+  officeEmail: string | null;
+};
+
+export function shapeCompanyPublic(company: {
+  id: number;
+  name: string;
+  address: string | null;
+  website: string | null;
+  logoUrl: string | null;
+  officePhone: string | null;
+  officeEmail: string | null;
+}): AgencyCompanyPublic {
+  return {
+    id: company.id,
+    name: company.name,
+    address: company.address,
+    website: company.website,
+    logoUrl: company.logoUrl,
+    officePhone: company.officePhone,
+    officeEmail: company.officeEmail,
+  };
+}
+
+export async function getUserAgencyMembership(userId: number) {
+  return prisma.agencyCompanyMember.findUnique({
+    where: { userId },
+    include: {
+      company: {
+        include: {
+          owner: { select: { id: true, name: true, email: true } },
+        },
+      },
+    },
+  });
+}
+
+export async function requireActiveAgencyAdmin(userId: number) {
+  const membership = await getUserAgencyMembership(userId);
+  if (!membership || membership.status !== 'ACTIVE' || membership.role !== 'ADMIN') {
+    return null;
+  }
+  return membership;
+}
+
+export async function requireActiveAgencyMember(userId: number) {
+  const membership = await getUserAgencyMembership(userId);
+  if (!membership || membership.status !== 'ACTIVE') return null;
+  return membership;
+}
+
+export async function listCompaniesForRegistration() {
+  const companies = await prisma.agencyCompany.findMany({
+    orderBy: { name: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      address: true,
+      website: true,
+      logoUrl: true,
+      officePhone: true,
+      officeEmail: true,
+      _count: { select: { members: { where: { status: 'ACTIVE' } } } },
+    },
+    take: 500,
+  });
+  return companies.map((c) => ({
+    ...shapeCompanyPublic(c),
+    activeAgents: c._count.members,
+  }));
+}
+
+export async function getCompanyDashboard(companyId: number) {
+  const company = await prisma.agencyCompany.findUnique({
+    where: { id: companyId },
+    include: {
+      members: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+              extraListings: true,
+              plusExpiresAt: true,
+              createdAt: true,
+              lastLoginAt: true,
+              _count: { select: { offers: { where: { status: 'ACTIVE' } }, agencyClients: true } },
+            },
+          },
+        },
+        orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+      },
+      creditTransfers: {
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: {
+          toUser: { select: { id: true, name: true, email: true } },
+          createdBy: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+  if (!company) return null;
+
+  const memberIds = company.members.filter((m) => m.status === 'ACTIVE').map((m) => m.userId);
+  const totalOffers = memberIds.length
+    ? await prisma.offer.count({ where: { userId: { in: memberIds }, status: 'ACTIVE' } })
+    : 0;
+
+  return {
+    company: {
+      id: company.id,
+      name: company.name,
+      slug: company.slug,
+      address: company.address,
+      website: company.website,
+      logoUrl: company.logoUrl,
+      officePhone: company.officePhone,
+      officeEmail: company.officeEmail,
+      extraListings: company.extraListings,
+      plusExpiresAt: company.plusExpiresAt?.toISOString() ?? null,
+      ownerUserId: company.ownerUserId,
+    },
+    stats: {
+      activeAgents: company.members.filter((m) => m.status === 'ACTIVE').length,
+      pendingAgents: company.members.filter((m) => m.status === 'PENDING').length,
+      totalOffers,
+    },
+    members: company.members.map((m) => ({
+      id: m.id,
+      userId: m.userId,
+      role: m.role,
+      status: m.status,
+      approvedAt: m.approvedAt?.toISOString() ?? null,
+      createdAt: m.createdAt.toISOString(),
+      user: {
+        id: m.user.id,
+        name: m.user.name,
+        email: m.user.email,
+        image: m.user.image,
+        extraListings: m.user.extraListings,
+        plusExpiresAt: m.user.plusExpiresAt?.toISOString() ?? null,
+        lastLoginAt: m.user.lastLoginAt?.toISOString() ?? null,
+        activeOffers: m.user._count.offers,
+        crmClients: m.user._count.agencyClients,
+      },
+    })),
+    creditTransfers: company.creditTransfers.map((t) => ({
+      id: t.id,
+      amount: t.amount,
+      note: t.note,
+      createdAt: t.createdAt.toISOString(),
+      toUser: t.toUser,
+      createdBy: t.createdBy,
+    })),
+  };
+}
+
+export async function transferCompanyCredits(params: {
+  companyId: number;
+  adminUserId: number;
+  toUserId: number;
+  amount: number;
+  note?: string;
+}) {
+  const { companyId, adminUserId, toUserId, amount, note } = params;
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Podaj dodatnią liczbę kredytów.');
+
+  const admin = await requireActiveAgencyAdmin(adminUserId);
+  if (!admin || admin.companyId !== companyId) throw new Error('Brak uprawnień administratora.');
+
+  const target = await prisma.agencyCompanyMember.findFirst({
+    where: { companyId, userId: toUserId, status: 'ACTIVE' },
+  });
+  if (!target) throw new Error('Pracownik nie należy do firmy lub nie jest aktywny.');
+
+  await prisma.$transaction(async (tx) => {
+    const company = await tx.agencyCompany.findUnique({ where: { id: companyId } });
+    if (!company || company.extraListings < amount) throw new Error('Za mało kredytów w puli firmy.');
+
+    const recipient = await tx.user.findUnique({
+      where: { id: toUserId },
+      select: { id: true, extraListings: true, plusExpiresAt: true },
+    });
+    if (!recipient) throw new Error('Nie znaleziono użytkownika.');
+
+    const companyExpiry = company.plusExpiresAt;
+    const recipientExpiry = recipient.plusExpiresAt;
+    const mergedExpiry =
+      companyExpiry && recipientExpiry
+        ? new Date(Math.max(companyExpiry.getTime(), recipientExpiry.getTime()))
+        : companyExpiry || recipientExpiry || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    await tx.agencyCompany.update({
+      where: { id: companyId },
+      data: { extraListings: { decrement: amount } },
+    });
+    await tx.user.update({
+      where: { id: toUserId },
+      data: {
+        extraListings: { increment: amount },
+        plusExpiresAt: mergedExpiry,
+      },
+    });
+    await tx.agencyCompanyCreditTransfer.create({
+      data: {
+        companyId,
+        toUserId,
+        amount,
+        note: note?.trim() || null,
+        createdById: adminUserId,
+      },
+    });
+  });
+}
+
+export async function setMemberStatus(params: {
+  companyId: number;
+  adminUserId: number;
+  memberId: number;
+  status: AgencyMemberStatus;
+}) {
+  const admin = await requireActiveAgencyAdmin(params.adminUserId);
+  if (!admin || admin.companyId !== params.companyId) throw new Error('Brak uprawnień.');
+
+  const member = await prisma.agencyCompanyMember.findFirst({
+    where: { id: params.memberId, companyId: params.companyId },
+  });
+  if (!member) throw new Error('Nie znaleziono pracownika.');
+  if (member.role === 'ADMIN') throw new Error('Nie można zmieniać statusu administratora.');
+
+  return prisma.agencyCompanyMember.update({
+    where: { id: params.memberId },
+    data: {
+      status: params.status,
+      approvedAt: params.status === 'ACTIVE' ? new Date() : null,
+      approvedById: params.status === 'ACTIVE' ? params.adminUserId : null,
+    },
+  });
+}
+
+export async function listAgencyCompaniesWithStats() {
+  const companies = await prisma.agencyCompany.findMany({
+    include: {
+      members: {
+        where: { status: 'ACTIVE' },
+        select: { userId: true },
+      },
+      owner: { select: { id: true, name: true, image: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  });
+
+  const results = await Promise.all(
+    companies.map(async (company) => {
+      const userIds = company.members.map((m) => m.userId);
+      const activeListings = userIds.length
+        ? await prisma.offer.count({ where: { userId: { in: userIds }, status: 'ACTIVE' } })
+        : 0;
+      const reviews = userIds.length
+        ? await prisma.review.findMany({
+            where: { revieweeId: { in: userIds }, isAutoGenerated: false },
+            select: { rating: true },
+          })
+        : [];
+      const reviewsCount = reviews.length;
+      const averageRating =
+        reviewsCount > 0 ? Number((reviews.reduce((s, r) => s + r.rating, 0) / reviewsCount).toFixed(1)) : null;
+
+      return {
+        id: company.ownerUserId,
+        companyId: company.id,
+        displayName: company.name,
+        companyName: company.name,
+        name: company.owner.name,
+        image: company.logoUrl || company.owner.image,
+        companyAddress: company.address,
+        companyWebsite: company.website,
+        companyLogoUrl: company.logoUrl,
+        officePhone: company.officePhone,
+        officeEmail: company.officeEmail,
+        phone: company.officePhone,
+        activeListings,
+        reviewsCount,
+        averageRating,
+        memberCount: userIds.length,
+        isAgency: true,
+        memberSince: company.createdAt.toISOString(),
+      };
+    }),
+  );
+
+  return results.sort((a, b) => {
+    const ra = a.averageRating ?? 0;
+    const rb = b.averageRating ?? 0;
+    if (rb !== ra) return rb - ra;
+    return b.activeListings - a.activeListings;
+  });
+}

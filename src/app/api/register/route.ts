@@ -4,26 +4,49 @@ import bcrypt from 'bcrypt';
 import { encryptSession } from '@/lib/sessionUtils';
 import { cookies } from 'next/headers';
 import { PlanType, Role } from '@prisma/client';
-import { buildWelcomeEmailHtml, sendTransactionalEmail } from '@/lib/email/transactional';
+import { buildWelcomeEmailHtml, buildWelcomeEmailSubject, sendTransactionalEmail } from '@/lib/email/transactional';
 import {
   buildPhoneLookupVariants,
   extractPhoneFromBody,
   normalizePhoneE164,
 } from '@/lib/phoneE164';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
-import { enrichMobileUserWithPublicationFlags } from '@/lib/userPublicationFlags';
-import { ensureWelcomePromoCardForUser } from '@/lib/profilePromoCards';
+import { uniqueCompanySlug } from '@/lib/agencyCompany';
 
 const normalizeEmail = (value: unknown) => String(value || '').toLowerCase().trim();
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { email, password, name, role, companyName, firstName, lastName } = body;
+    const {
+      email,
+      password,
+      name,
+      role,
+      companyName,
+      firstName,
+      lastName,
+      companyAddress,
+      companyWebsite,
+      companyLogoUrl,
+      officePhone,
+      officeEmail,
+      agencyMode,
+      joinCompanyId,
+    } = body;
     const cleanEmail = normalizeEmail(email);
     const phoneE164 = normalizePhoneE164(extractPhoneFromBody(body));
     const companyNameTrimmed =
       typeof companyName === 'string' ? companyName.trim() : String(companyName || '').trim();
+    const companyAddressTrimmed =
+      typeof companyAddress === 'string' ? companyAddress.trim() : String(companyAddress || '').trim();
+    const companyWebsiteTrimmed =
+      typeof companyWebsite === 'string' ? companyWebsite.trim() : String(companyWebsite || '').trim();
+    const companyLogoUrlTrimmed =
+      typeof companyLogoUrl === 'string' ? companyLogoUrl.trim() : String(companyLogoUrl || '').trim();
+    const officePhoneTrimmed =
+      typeof officePhone === 'string' ? officePhone.trim() : String(officePhone || '').trim();
+    const officeEmailTrimmed = normalizeEmail(officeEmail);
     const fullNameFromParts = [String(firstName || '').trim(), String(lastName || '').trim()]
       .filter(Boolean)
       .join(' ');
@@ -80,7 +103,11 @@ export async function POST(req: Request) {
       dbRole = Role.ADMIN;
     }
 
-    if (dbRole === Role.AGENT && !companyNameTrimmed) {
+    const agencyModeNorm = String(agencyMode || 'create').toLowerCase();
+    const joinCompanyIdNum = Number(joinCompanyId);
+    const isJoinAgency = dbRole === Role.AGENT && agencyModeNorm === 'join';
+
+    if (dbRole === Role.AGENT && !isJoinAgency && !companyNameTrimmed) {
       return NextResponse.json(
         {
           success: false,
@@ -90,38 +117,126 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    if (isJoinAgency && !Number.isFinite(joinCompanyIdNum)) {
+      return NextResponse.json(
+        { success: false, message: 'Wybierz istniejącą agencję, do której chcesz dołączyć.' },
+        { status: 400 },
+      );
+    }
+    if (dbRole === Role.AGENT && officeEmailTrimmed && !officeEmailTrimmed.includes('@')) {
+      return NextResponse.json({ success: false, message: 'E-mail biura ma nieprawidłowy format.' }, { status: 400 });
+    }
+    if (dbRole === Role.AGENT && companyWebsiteTrimmed && !/^https?:\/\//i.test(companyWebsiteTrimmed)) {
+      return NextResponse.json(
+        { success: false, message: 'Strona www agencji musi zaczynać się od http:// lub https://.' },
+        { status: 400 },
+      );
+    }
 
-    const user = await prisma.user.create({
-      data: {
-        email: cleanEmail,
-        password: hashed,
-        name: displayName,
-        phone: phoneE164,
-        role: dbRole,
-        planType: userPlanType,
-        companyName: companyNameTrimmed || null,
-        buyerType: dbRole === Role.AGENT ? "agency" : undefined,
-      },
-      select: MOBILE_USER_SELECT,
+    let joinCompany: {
+      id: number;
+      name: string;
+      address: string | null;
+      website: string | null;
+      logoUrl: string | null;
+      officePhone: string | null;
+      officeEmail: string | null;
+    } | null = null;
+    if (isJoinAgency) {
+      joinCompany = await prisma.agencyCompany.findUnique({
+        where: { id: joinCompanyIdNum },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          website: true,
+          logoUrl: true,
+          officePhone: true,
+          officeEmail: true,
+        },
+      });
+      if (!joinCompany) {
+        return NextResponse.json({ success: false, message: 'Wybrana agencja nie istnieje.' }, { status: 400 });
+      }
+    }
+
+    const resolvedCompanyName = isJoinAgency ? joinCompany!.name : companyNameTrimmed;
+    const resolvedCompanyAddress = isJoinAgency ? joinCompany!.address : companyAddressTrimmed || null;
+    const resolvedCompanyWebsite = isJoinAgency ? joinCompany!.website : companyWebsiteTrimmed || null;
+    const resolvedCompanyLogo = isJoinAgency ? joinCompany!.logoUrl : companyLogoUrlTrimmed || null;
+    const resolvedOfficePhone = isJoinAgency ? joinCompany!.officePhone : officePhoneTrimmed || null;
+    const resolvedOfficeEmail = isJoinAgency ? joinCompany!.officeEmail : officeEmailTrimmed || null;
+
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email: cleanEmail,
+          password: hashed,
+          name: displayName,
+          phone: phoneE164,
+          role: dbRole,
+          planType: userPlanType,
+          companyName: resolvedCompanyName || null,
+        },
+        select: MOBILE_USER_SELECT,
+      });
+
+      if (dbRole === Role.AGENT && !isJoinAgency) {
+        const slug = await uniqueCompanySlug(companyNameTrimmed);
+        const company = await tx.agencyCompany.create({
+          data: {
+            name: companyNameTrimmed,
+            slug,
+            address: companyAddressTrimmed || null,
+            website: companyWebsiteTrimmed || null,
+            logoUrl: companyLogoUrlTrimmed || null,
+            officePhone: officePhoneTrimmed || null,
+            officeEmail: officeEmailTrimmed || null,
+            ownerUserId: created.id,
+          },
+        });
+        await tx.agencyCompanyMember.create({
+          data: {
+            companyId: company.id,
+            userId: created.id,
+            role: 'ADMIN',
+            status: 'ACTIVE',
+            approvedAt: new Date(),
+            approvedById: created.id,
+          },
+        });
+      } else if (dbRole === Role.AGENT && isJoinAgency && joinCompany) {
+        await tx.agencyCompanyMember.create({
+          data: {
+            companyId: joinCompany.id,
+            userId: created.id,
+            role: 'AGENT',
+            status: 'PENDING',
+          },
+        });
+      }
+
+      return created;
     });
 
     void sendTransactionalEmail({
       to: user.email,
-      subject: 'Witamy w EstateOS',
+      subject: buildWelcomeEmailSubject({ userName: user.name }),
       html: buildWelcomeEmailHtml({ userName: user.name }),
     });
-
-    try {
-      await ensureWelcomePromoCardForUser(user.id);
-    } catch (welcomeErr) {
-      console.warn('[register] welcome promo card', welcomeErr);
-    }
 
     const session = encryptSession({ id: user.id, email: user.email, role: user.role || 'USER' });
 
     (await cookies()).set('estateos_session', session, { httpOnly: true, path: '/' });
 
-    const shapedUser = await enrichMobileUserWithPublicationFlags(shapeMobileUser(user));
+    const shapedUser = shapeMobileUser(user);
+
+    const membership = dbRole === Role.AGENT
+      ? await prisma.agencyCompanyMember.findUnique({
+          where: { userId: user.id },
+          select: { status: true, role: true },
+        })
+      : null;
 
     return NextResponse.json({
       success: true,
@@ -133,6 +248,9 @@ export async function POST(req: Request) {
       phone: phoneE164,
       contactPhone: phoneE164,
       user: shapedUser,
+      agencyMembership: membership
+        ? { status: membership.status, role: membership.role, pendingApproval: membership.status === 'PENDING' }
+        : null,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);

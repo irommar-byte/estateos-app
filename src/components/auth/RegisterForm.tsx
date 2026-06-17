@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -21,6 +21,18 @@ import { useLocale } from '@/contexts/LocaleContext';
 
 /** Zgodne z aplikacją mobilną: PRIVATE | AGENT (bez PARTNER — partner/Pro tylko przez /cennik). */
 type AccountKind = 'private' | 'agent';
+type AgencySetupMode = 'create' | 'join';
+
+type CompanyOption = {
+  id: number;
+  name: string;
+  address: string | null;
+  website: string | null;
+  logoUrl: string | null;
+  officePhone: string | null;
+  officeEmail: string | null;
+  activeAgents: number;
+};
 
 type FieldStatus = 'idle' | 'checking' | 'available' | 'taken';
 
@@ -49,7 +61,16 @@ export default function RegisterForm({
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [phoneE164, setPhoneE164] = useState('');
   const [accountKind, setAccountKind] = useState<AccountKind>(initialAccountKind);
+  const [agencySetupMode, setAgencySetupMode] = useState<AgencySetupMode>('create');
+  const [joinCompanyId, setJoinCompanyId] = useState<number | null>(null);
+  const [companyOptions, setCompanyOptions] = useState<CompanyOption[]>([]);
+  const [companiesLoading, setCompaniesLoading] = useState(false);
   const [companyName, setCompanyName] = useState('');
+  const [companyAddress, setCompanyAddress] = useState('');
+  const [companyWebsite, setCompanyWebsite] = useState('');
+  const [companyLogoUrl, setCompanyLogoUrl] = useState('');
+  const [officePhone, setOfficePhone] = useState('');
+  const [officeEmail, setOfficeEmail] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -121,9 +142,55 @@ export default function RegisterForm({
 
   const handlePhoneChange = useCallback((v: string) => setPhoneE164(v), []);
 
-  const rolePayload = (): { role: 'PRIVATE' | 'AGENT'; companyName?: string } => {
+  useEffect(() => {
+    if (accountKind !== 'agent') return;
+    let cancelled = false;
+    setCompaniesLoading(true);
+    fetch('/api/agency-company/list')
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data.success) return;
+        setCompanyOptions(data.companies || []);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setCompaniesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountKind]);
+
+  const selectedCompany = useMemo(
+    () => companyOptions.find((c) => c.id === joinCompanyId) ?? null,
+    [companyOptions, joinCompanyId],
+  );
+
+  const companyFieldsLocked = accountKind === 'agent' && agencySetupMode === 'join' && !!selectedCompany;
+
+  useEffect(() => {
+    if (!companyFieldsLocked || !selectedCompany) return;
+    setCompanyName(selectedCompany.name);
+    setCompanyAddress(selectedCompany.address || '');
+    setCompanyWebsite(selectedCompany.website || '');
+    setCompanyLogoUrl(selectedCompany.logoUrl || '');
+    setOfficePhone(selectedCompany.officePhone || '');
+    setOfficeEmail(selectedCompany.officeEmail || '');
+  }, [companyFieldsLocked, selectedCompany]);
+
+  const rolePayload = (): {
+    role: 'PRIVATE' | 'AGENT';
+    companyName?: string;
+    agencyMode?: AgencySetupMode;
+    joinCompanyId?: number;
+  } => {
     if (accountKind === 'agent') {
-      return { role: 'AGENT', companyName: companyName.trim() };
+      return {
+        role: 'AGENT',
+        companyName: companyName.trim(),
+        agencyMode: agencySetupMode,
+        joinCompanyId: agencySetupMode === 'join' && joinCompanyId ? joinCompanyId : undefined,
+      };
     }
     return { role: 'PRIVATE' };
   };
@@ -156,8 +223,20 @@ export default function RegisterForm({
       setError(t.errPasswordMismatch);
       return;
     }
-    if (accountKind === 'agent' && companyName.trim().length < 2) {
+    if (accountKind === 'agent' && agencySetupMode === 'create' && companyName.trim().length < 2) {
       setError(t.errAgencyShort);
+      return;
+    }
+    if (accountKind === 'agent' && agencySetupMode === 'join' && !joinCompanyId) {
+      setError('Wybierz biuro, do którego chcesz dołączyć.');
+      return;
+    }
+    if (accountKind === 'agent' && officeEmail.trim() && !officeEmail.includes('@')) {
+      setError('Podaj poprawny e-mail biura.');
+      return;
+    }
+    if (accountKind === 'agent' && companyWebsite.trim() && !/^https?:\/\//i.test(companyWebsite.trim())) {
+      setError('Strona www musi zaczynać się od http:// lub https://');
       return;
     }
     if (!acceptTerms) {
@@ -188,6 +267,11 @@ export default function RegisterForm({
           phone: e164,
           contactPhone: e164,
           ...rolePayload(),
+          companyAddress: accountKind === 'agent' ? companyAddress.trim() : undefined,
+          companyWebsite: accountKind === 'agent' ? companyWebsite.trim() : undefined,
+          companyLogoUrl: accountKind === 'agent' ? companyLogoUrl.trim() : undefined,
+          officePhone: accountKind === 'agent' ? officePhone.trim() : undefined,
+          officeEmail: accountKind === 'agent' ? officeEmail.trim() : undefined,
         }),
       });
       const data = await res.json();
@@ -198,11 +282,26 @@ export default function RegisterForm({
         return;
       }
 
-      setSuccessMsg(t.successRegister);
+      setSuccessMsg(
+        data.agencyMembership?.pendingApproval
+          ? 'Konto utworzone. Administrator firmy musi zatwierdzić Twoje zgłoszenie.'
+          : t.successRegister,
+      );
       const role = data.role || data.user?.role || 'USER';
       window.setTimeout(() => {
-        window.location.href =
-          role === 'ADMIN' ? '/centrala' : postRegisterPath;
+        if (role === 'ADMIN') {
+          window.location.href = '/centrala';
+          return;
+        }
+        if (data.agencyMembership?.pendingApproval) {
+          window.location.href = '/moje-konto/firma?pending=1';
+          return;
+        }
+        if (data.agencyMembership?.role === 'ADMIN') {
+          window.location.href = '/moje-konto/firma';
+          return;
+        }
+        window.location.href = postRegisterPath;
       }, 400);
     } catch {
       setError(t.errConnection);
@@ -356,19 +455,149 @@ export default function RegisterForm({
       </div>
 
       {accountKind === 'agent' && (
-        <div>
-          <label className="eos-label mb-2 flex items-center gap-2">
-            <Building2 size={14} /> {t.agencyName}
-          </label>
-          <input
-            type="text"
-            required
-            maxLength={80}
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            className="eos-field"
-            placeholder={t.agencyPlaceholder}
-          />
+        <div className="space-y-4">
+          <div>
+            <p className="eos-label mb-2">Typ rejestracji agenta</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  {
+                    id: 'create' as const,
+                    label: 'Zakładam nowe biuro',
+                    desc: 'Pierwsza osoba zostaje administratorem firmy.',
+                  },
+                  {
+                    id: 'join' as const,
+                    label: 'Dołączam do istniejącego biura',
+                    desc: 'Wybierz firmę — administrator zatwierdzi zgłoszenie.',
+                  },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => {
+                    setAgencySetupMode(opt.id);
+                    if (opt.id === 'create') setJoinCompanyId(null);
+                  }}
+                  className={`eos-choice-card rounded-2xl px-4 py-3 text-left ${
+                    agencySetupMode === opt.id ? 'eos-choice-card--active' : ''
+                  }`}
+                >
+                  <span className="block text-sm font-black text-[var(--eos-text)]">{opt.label}</span>
+                  <span className="eos-muted-copy text-[10px] leading-relaxed">{opt.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {agencySetupMode === 'join' && (
+            <div>
+              <label className="eos-label mb-2 flex items-center gap-2">
+                <Building2 size={14} /> Wybierz biuro
+              </label>
+              {companiesLoading ? (
+                <p className="eos-muted-copy text-xs">Ładowanie listy biur…</p>
+              ) : companyOptions.length === 0 ? (
+                <p className="text-xs text-amber-600">
+                  Brak zarejestrowanych biur. Załóż nowe biuro lub poproś administratora o utworzenie firmy.
+                </p>
+              ) : (
+                <select
+                  value={joinCompanyId ?? ''}
+                  onChange={(e) => setJoinCompanyId(e.target.value ? Number(e.target.value) : null)}
+                  className="eos-field w-full"
+                  required
+                >
+                  <option value="">— wybierz biuro —</option>
+                  {companyOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                      {c.activeAgents > 0 ? ` (${c.activeAgents} agentów)` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className="eos-label mb-2 flex items-center gap-2">
+              <Building2 size={14} /> {t.agencyName}
+            </label>
+            <input
+              type="text"
+              required
+              maxLength={80}
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              readOnly={companyFieldsLocked}
+              className={`eos-field ${companyFieldsLocked ? 'opacity-80' : ''}`}
+              placeholder={t.agencyPlaceholder}
+            />
+          </div>
+          <div>
+            <label className="eos-label mb-2">Adres biura (ulica, nr, kod, miasto)</label>
+            <input
+              type="text"
+              maxLength={255}
+              value={companyAddress}
+              onChange={(e) => setCompanyAddress(e.target.value)}
+              readOnly={companyFieldsLocked}
+              className={`eos-field ${companyFieldsLocked ? 'opacity-80' : ''}`}
+              placeholder="np. ul. Marszałkowska 10/4, 00-590 Warszawa"
+            />
+          </div>
+          <div>
+            <label className="eos-label mb-2">Strona internetowa agencji</label>
+            <input
+              type="url"
+              maxLength={255}
+              value={companyWebsite}
+              onChange={(e) => setCompanyWebsite(e.target.value)}
+              readOnly={companyFieldsLocked}
+              className={`eos-field ${companyFieldsLocked ? 'opacity-80' : ''}`}
+              placeholder="https://twoja-agencja.pl"
+            />
+          </div>
+          <div>
+            <label className="eos-label mb-2">Logo agencji (URL)</label>
+            <input
+              type="url"
+              maxLength={512}
+              value={companyLogoUrl}
+              onChange={(e) => setCompanyLogoUrl(e.target.value)}
+              readOnly={companyFieldsLocked}
+              className={`eos-field ${companyFieldsLocked ? 'opacity-80' : ''}`}
+              placeholder="https://.../logo.png"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="eos-label mb-2">Numer kontaktowy biura</label>
+              <input
+                type="text"
+                maxLength={64}
+                value={officePhone}
+                onChange={(e) => setOfficePhone(e.target.value)}
+                readOnly={companyFieldsLocked}
+                className={`eos-field ${companyFieldsLocked ? 'opacity-80' : ''}`}
+                placeholder="+48 500 600 700"
+              />
+            </div>
+            <div>
+              <label className="eos-label mb-2">E-mail biura</label>
+              <input
+                type="email"
+                maxLength={191}
+                value={officeEmail}
+                onChange={(e) => setOfficeEmail(e.target.value)}
+                readOnly={companyFieldsLocked}
+                className={`eos-field ${companyFieldsLocked ? 'opacity-80' : ''}`}
+                placeholder="biuro@agencja.pl"
+              />
+            </div>
+          </div>
         </div>
       )}
 
