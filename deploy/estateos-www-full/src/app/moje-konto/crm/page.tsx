@@ -11,7 +11,7 @@ import ReviewsModal from "@/components/ReviewsModal";
 import OfferRenewalModal from "@/components/offer/OfferRenewalModal";
 import OfferPrivateCommentModal from "@/components/crm/OfferPrivateCommentModal";
 import EliteStatusBadges from "@/components/ui/EliteStatusBadges";
-import { Briefcase, ArrowRight, ShieldCheck, ChevronLeft, ArchiveX, Calendar, Crown, Plus, Phone, CheckCircle, Loader2, Star, ChevronDown, Building2, DollarSign, Wallet, X, Radar, Send, Clock, FileText, Lock, Unlock, Activity, TrendingUp, Wifi, RefreshCcw, Sparkles, Edit2, ExternalLink, Home, Key, LayoutGrid, CalendarDays, SlidersHorizontal, MapPin, Target, MessageSquare } from 'lucide-react';
+import { Briefcase, ArrowRight, ShieldCheck, ChevronLeft, ArchiveX, Calendar, Crown, Plus, Phone, CheckCircle, Loader2, Star, ChevronDown, Building2, DollarSign, Wallet, X, Radar, Send, Clock, FileText, Lock, Unlock, Activity, TrendingUp, Wifi, RefreshCcw, Sparkles, Edit2, ExternalLink, Home, Key, LayoutGrid, CalendarDays, SlidersHorizontal, MapPin, Target, MessageSquare, Users } from 'lucide-react';
 import OfferFavoriteButton from '@/components/offer/OfferFavoriteButton';
 import { useFavorites } from '@/hooks/useFavorites';
 import AppointmentManager from "@/components/AppointmentManager";
@@ -23,7 +23,8 @@ import PresentationFlowBanner from "@/components/presentation/PresentationFlowBa
 import { enrichAppointmentForUi } from "@/lib/crm/planningCalendar";
 import { buildReviewsModalPayload, EMPTY_REVIEWS_MODAL, type ReviewsModalPayload } from "@/lib/reviewsPresentation";
 import { getBestUserAvatarUrl } from "@/lib/userAvatar";
-import { resolveProfileHeadlines } from "@/lib/sellerDisplay";
+import { resolveProfileHeadlines, isAgentOrAgencySeller } from "@/lib/sellerDisplay";
+import CrmClientsWorkspace from "@/components/crm/CrmClientsWorkspace";
 import {
   buildLegacyRadarUpdateBody,
   buildRadarPreferencesPostBody,
@@ -43,6 +44,8 @@ import { fmtDict } from "@/i18n/crmExtendedDictionary";
 import type { CrmExtendedDictionary } from "@/i18n/crmExtendedDictionary";
 import { buildInvestorProPeriodStatus, buildInvestorProBarPalette } from "@/lib/investorProMembership";
 import { isPlusCreditActive } from "@/lib/offerListingLimits";
+
+type CrmTab = "klienci" | "radar" | "my_offers" | "offers" | "planowanie" | "transakcje";
 
 const ProStatusBar = ({ user, compact = false }: { user: any; compact?: boolean }) => {
   const { dict, locale } = useLocale();
@@ -534,7 +537,7 @@ export default function CRMDashboard() {
      }
   }, [crmData]);
 
-  const [activeTab, setActiveTab] = useState<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'>('radar');
+  const [activeTab, setActiveTab] = useState<CrmTab>("radar");
   const [offerSectionFilter, setOfferSectionFilter] = useState<'ACTIVE' | 'PENDING' | 'COMPLETED'>('ACTIVE');
   const [deals, setDeals] = useState<any[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
@@ -782,13 +785,26 @@ export default function CRMDashboard() {
     }
   }, [activeTab, refreshFavorites]);
 
+  const isAgencyWorkspace = isAgentOrAgencySeller(currentUser);
+  const isEmeraldTab = activeTab === "radar" || activeTab === "klienci";
+
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!isAgencyWorkspace) return;
+    const sParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const t = sParams?.get("tab");
+    if (t === "radar" || (!t && activeTab === "radar")) {
+      setActiveTab("klienci");
+    }
+  }, [currentUser, isAgencyWorkspace, activeTab]);
+
   useEffect(() => {
     // Czytamy zakładkę z powiadomienia
     const sParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     if (sParams && sParams.get('tab')) {
         const t = sParams.get('tab');
-        if (['radar', 'my_offers', 'offers', 'planowanie', 'transakcje'].includes(t as string)) {
-            setActiveTab(t as any);
+        if (['klienci', 'radar', 'my_offers', 'offers', 'planowanie', 'transakcje'].includes(t as string)) {
+            setActiveTab(t as CrmTab);
         }
     }
     if (sParams && sParams.get('dealId')) {
@@ -969,7 +985,7 @@ export default function CRMDashboard() {
     window.location.href = "/dodaj-oferte";
   };
 
-  const handleTabSwitch = (tab: 'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje') => {
+  const handleTabSwitch = (tab: CrmTab) => {
     if (tab === activeTab) return;
     const currentY = typeof window !== 'undefined' ? window.scrollY : 0;
     setActiveTab(tab);
@@ -1083,7 +1099,9 @@ export default function CRMDashboard() {
   };
 
   const offersVisibleInSection = isFavoritesTab ? baseOffersForView : offersBySection[offerSectionFilter];
-  const profileTabs: Array<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'> = ['radar', 'my_offers', 'offers', 'planowanie', 'transakcje'];
+  const profileTabs: CrmTab[] = isAgencyWorkspace
+    ? ["klienci", "my_offers", "offers", "planowanie", "transakcje"]
+    : ["radar", "my_offers", "offers", "planowanie", "transakcje"];
 
   return (
     <div className="theme-aware-dashboard crm-dashboard-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pt-14 sm:pt-16 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
@@ -1223,13 +1241,15 @@ export default function CRMDashboard() {
                   />
                 )}
                 <span className="relative z-20">
-                    {tab === 'radar'
+                    {tab === "klienci"
+                        ? c.tabClients
+                        : tab === "radar"
                         ? c.tabRadar
-                        : tab === 'my_offers'
+                        : tab === "my_offers"
                         ? c.tabMyOffers
-                        : tab === 'offers'
+                        : tab === "offers"
                         ? c.tabFavorites
-                        : tab === 'planowanie'
+                        : tab === "planowanie"
                         ? c.tabPlanning
                         : c.tabDeals}
                  </span>
@@ -1244,26 +1264,34 @@ export default function CRMDashboard() {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
           className={`bg-[#111] border rounded-[2rem] sm:rounded-[3rem] p-5 sm:p-8 md:p-12 mb-8 flex flex-col md:flex-row items-center gap-5 sm:gap-8 relative overflow-hidden transition-colors duration-700
-            ${activeTab === 'radar' ? 'border-emerald-500/20 shadow-[0_0_50px_rgba(16,185,129,0.05)]' :
+            ${isEmeraldTab ? 'border-emerald-500/20 shadow-[0_0_50px_rgba(16,185,129,0.05)]' :
               (activeTab === 'offers' || activeTab === 'my_offers') ? 'border-blue-500/20 shadow-[0_0_50px_rgba(59,130,246,0.05)]' :
               activeTab === 'planowanie' ? 'border-purple-500/20 shadow-[0_0_50px_rgba(168,85,247,0.05)]' :
               'border-yellow-500/20 shadow-[0_0_50px_rgba(234,179,8,0.05)]'
             }`}
         >
           <div className={`absolute -top-20 -left-20 w-64 h-64 rounded-full blur-[100px] pointer-events-none transition-colors duration-700
-            ${activeTab === 'radar' ? 'bg-emerald-500/10' :
+            ${isEmeraldTab ? 'bg-emerald-500/10' :
               (activeTab === 'offers' || activeTab === 'my_offers') ? 'bg-blue-500/10' :
               activeTab === 'planowanie' ? 'bg-purple-500/10' :
               'bg-yellow-500/10'
             }`}></div>
 
           <div className={`relative w-20 h-20 sm:w-24 sm:h-24 bg-black/50 border rounded-full flex items-center justify-center shrink-0 transition-colors duration-700
-            ${activeTab === 'radar' ? 'border-emerald-500/50 shadow-[0_0_30px_rgba(16,185,129,0.2)]' :
+            ${isEmeraldTab ? 'border-emerald-500/50 shadow-[0_0_30px_rgba(16,185,129,0.2)]' :
               (activeTab === 'offers' || activeTab === 'my_offers') ? 'border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.2)]' :
               activeTab === 'planowanie' ? 'border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.2)]' :
               'border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.2)]'
             }`}>
               
+             {activeTab === 'klienci' && (
+               <div className="relative w-full h-full flex items-center justify-center">
+                 <div className="absolute inset-0 rounded-full shadow-[inset_0_0_20px_rgba(16,185,129,0.25)] bg-gradient-to-tr from-emerald-950/40 to-transparent" />
+                 <Users size={38} className="relative z-10 text-emerald-400 drop-shadow-[0_0_15px_rgba(16,185,129,0.6)]" strokeWidth={1.5} />
+                 <motion.div animate={{ rotate: 360 }} transition={{ duration: 18, repeat: Infinity, ease: 'linear' }} className="absolute -inset-2 border-2 border-transparent border-t-emerald-500/40 border-b-emerald-500/10 rounded-full" />
+               </div>
+             )}
+
              {activeTab === 'radar' && (
   showDualRadarPro ? (
   <div className="relative w-full h-full flex items-center justify-center overflow-hidden rounded-full perspective-1000">
@@ -1352,6 +1380,11 @@ export default function CRMDashboard() {
 
           <div className="relative z-10 text-center md:text-left">
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tighter mb-2 transition-colors">
+              {activeTab === 'klienci' && (
+                <>
+                  {c.clientsTitle} <span className="text-emerald-500">{c.clientsTitleHighlight}</span>
+                </>
+              )}
               {activeTab === 'radar' && (
                 showDualRadarPro ? (
                   <>
@@ -1389,6 +1422,7 @@ export default function CRMDashboard() {
               )}
             </h2>
             <p className="text-[var(--eos-muted)] text-xs sm:text-sm max-w-2xl leading-relaxed">
+               {activeTab === 'klienci' && c.clientsDesc}
                {activeTab === 'radar' && (showDualRadarPro ? c.radarDescPro : c.radarDesc)}
                {activeTab === 'my_offers' && c.myOffersDesc}
                {activeTab === 'offers' && c.favoritesDesc}
@@ -1397,6 +1431,8 @@ export default function CRMDashboard() {
             </p>
           </div>
         </motion.div>
+
+        {activeTab === 'klienci' && <CrmClientsWorkspace />}
 
         {activeTab === 'radar' && (
           <div className="flex flex-col gap-8 mb-12">

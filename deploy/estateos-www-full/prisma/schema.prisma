@@ -75,6 +75,9 @@ model User {
   discoveryProfile   DiscoveryProfile?
   hostedOpenHouseEvents OpenHouseEvent[]       @relation("OpenHouseHost")
   openHouseReservations OpenHouseReservation[] @relation("OpenHouseGuest")
+  hostedAuctionEvents   AuctionEvent[]         @relation("AuctionHost")
+  auctionBids           AuctionBidEntry[]      @relation("AuctionBidder")
+  agencyClients        AgencyClient[]           @relation("AgencyClientsOwned")
 }
 
 model Alert {
@@ -168,6 +171,8 @@ model Offer {
   hasStorage      Boolean        @default(false)
   hasParking      Boolean        @default(false)
   hasGarden       Boolean        @default(false)
+  hasAirConditioning Boolean     @default(false)
+  isDuplex        Boolean        @default(false)
   isFurnished     Boolean        @default(false)
   heating         String?
   city            String         @default("Warszawa")
@@ -195,6 +200,7 @@ model Offer {
   status          OfferStatus    @default(ACTIVE)
   expiresAt       DateTime?
   promotedUntil   DateTime?
+  listPricePln    Float?         /// Cena wystawienia (PLN) — punkt odniesienia dla przeceny.
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   userId          Int
@@ -202,9 +208,28 @@ model Offer {
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   legalVerificationRequests LegalVerificationRequest[]
   openHouseEvents OpenHouseEvent[]
+  auctionEvents   AuctionEvent[]
+  priceHistory    OfferPriceHistory[]
+  agencyClientMatches AgencyClientMatch[]
+  agencyClientsLinked AgencyClient[] @relation("AgencyClientLinkedOffer")
 
   @@index([userId], map: "Offer_userId_fkey")
   @@index([legalCheckStatus, legalCheckSubmittedAt])
+}
+
+model OfferPriceHistory {
+  id            Int      @id @default(autoincrement())
+  offerId       Int
+  price         Float
+  pricePln      Float
+  priceCurrency String   @default("PLN") @db.VarChar(8)
+  recordedAt    DateTime @default(now())
+  changeType    String   @default("INITIAL") @db.VarChar(16)
+  source        String?  @db.VarChar(32)
+
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([offerId, recordedAt], map: "OfferPriceHistory_offerId_recordedAt_idx")
 }
 
 /// Kolejka / historia zgłoszeń weryfikacji prawnej (mobile). Tabela: `LegalVerificationRequest` (patrz docs/reconciliation/sql/add_legal_verification_request.sql).
@@ -714,6 +739,69 @@ enum OpenHouseReservationStatus {
   CANCELLED
 }
 
+enum AuctionStatus {
+  DRAFT
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+  SETTLED
+}
+
+enum AuctionBidStatus {
+  VALID
+  OUTBID
+  WINNING
+}
+
+model AuctionEvent {
+  id                 Int           @id @default(autoincrement())
+  offerId            Int
+  hostUserId         Int
+  title              String?       @db.VarChar(255)
+  description        String?       @db.Text
+  currency           String        @default("PLN") @db.VarChar(8)
+  startPrice         Float
+  reservePrice       Float?
+  minIncrement       Float?
+  currentPrice       Float         @default(0)
+  currentBidderUserId Int?
+  bidCount           Int           @default(0)
+  startsAt           DateTime
+  endsAt             DateTime
+  extendedEndsAt     DateTime?
+  status             AuctionStatus @default(DRAFT)
+  winnerUserId       Int?
+  publishedAt        DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  offer Offer             @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  host  User              @relation("AuctionHost", fields: [hostUserId], references: [id], onDelete: Cascade)
+  bids  AuctionBidEntry[]
+
+  @@index([offerId])
+  @@index([hostUserId])
+  @@index([status, startsAt])
+  @@index([status, endsAt])
+}
+
+model AuctionBidEntry {
+  id        Int              @id @default(autoincrement())
+  eventId   Int
+  userId    Int
+  amount    Float
+  currency  String           @default("PLN") @db.VarChar(8)
+  status    AuctionBidStatus @default(VALID)
+  createdAt DateTime         @default(now())
+
+  event AuctionEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User         @relation("AuctionBidder", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, createdAt])
+  @@index([userId])
+}
+
 model RadarPreference {
   minMatchThreshold Int @default(70)
   id              Int   @id @default(autoincrement())
@@ -811,5 +899,104 @@ model DiscoveryProfile {
   createdAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum AgencyClientType {
+  BUYER
+  SELLER
+}
+
+enum AgencyClientStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+/// Klient biura nieruchomości — poza kontem User (CRM agenta).
+model AgencyClient {
+  id             Int                @id @default(autoincrement())
+  agencyUserId   Int
+  type           AgencyClientType
+  status         AgencyClientStatus @default(ACTIVE)
+  firstName      String             @db.VarChar(96)
+  lastName       String             @db.VarChar(96)
+  email          String?            @db.VarChar(191)
+  phone          String?            @db.VarChar(32)
+  notes          String?            @db.Text
+  sellerTransactionType TransactionType?
+  sellerPropertyType    PropertyType?
+  sellerCity            String?      @db.VarChar(128)
+  sellerDistrict        String?      @db.VarChar(128)
+  sellerPrice           Float?
+  sellerArea            Float?
+  sellerRooms           Int?
+  sellerDescription     String?      @db.Text
+  linkedOfferId         Int?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  agencyUser User @relation("AgencyClientsOwned", fields: [agencyUserId], references: [id], onDelete: Cascade)
+  linkedOffer Offer? @relation("AgencyClientLinkedOffer", fields: [linkedOfferId], references: [id], onDelete: SetNull)
+  buyerPreference AgencyClientBuyerPreference?
+  matches         AgencyClientMatch[]
+  activities      AgencyClientActivity[]
+
+  @@index([agencyUserId, type, status])
+  @@index([agencyUserId, updatedAt])
+}
+
+model AgencyClientBuyerPreference {
+  id                Int @id @default(autoincrement())
+  clientId          Int @unique
+  transactionType   TransactionType?
+  propertyType      PropertyType?
+  city              String?   @db.VarChar(128)
+  districts         Json?
+  maxPrice          Float?
+  minArea           Float?
+  minYear           Int?
+  requireBalcony    Boolean @default(false)
+  requireGarden     Boolean @default(false)
+  requireElevator   Boolean @default(false)
+  requireParking    Boolean @default(false)
+  requireFurnished  Boolean @default(false)
+  minMatchThreshold Int     @default(70)
+  lat               Float?
+  lng               Float?
+  radius            Float?
+
+  client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model AgencyClientMatch {
+  id         Int       @id @default(autoincrement())
+  clientId   Int
+  offerId    Int
+  score      Int
+  notifiedAt DateTime?
+  sharedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  offer  Offer        @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, offerId])
+  @@index([clientId, score])
+}
+
+model AgencyClientActivity {
+  id           Int      @id @default(autoincrement())
+  clientId     Int
+  agencyUserId Int
+  kind         String   @db.VarChar(64)
+  title        String?  @db.VarChar(255)
+  body         String?  @db.Text
+  offerId      Int?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, createdAt])
 }
 
