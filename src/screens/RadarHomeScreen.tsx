@@ -24,7 +24,6 @@ import {
 } from 'react-native';
 import MapViewCore, { Marker, Region, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import ClusteredMapView from 'react-native-map-clustering';
-import MapGestureHost from '../components/MapGestureHost';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -4234,7 +4233,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       style={[styles.container, isGalleryLightChrome && styles.containerGalleryLight]}
     >
       <View style={styles.mapStage} collapsable={false}>
-      <MapGestureHost>
       <RadarMapComponent
         ref={mapRef}
         provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
@@ -4300,7 +4298,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         {offerMapMarkerLayers.circles}
         {offerMapMarkerLayers.markers}
       </RadarMapComponent>
-      </MapGestureHost>
       </View>
 
       <View style={styles.mapUiChrome} pointerEvents="box-none" collapsable={false}>
