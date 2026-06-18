@@ -1000,8 +1000,3 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 }));
-    } catch (e) {
-      if (__DEV__) console.warn('Restore session error', e);
-    }
-  },
-}));
