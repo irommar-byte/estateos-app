@@ -9,6 +9,9 @@ export type AgencyClientListItem = {
   lastName: string;
   email: string | null;
   phone: string | null;
+  pesel: string | null;
+  emailVerifiedAt: string | null;
+  phoneVerifiedAt: string | null;
   notes: string | null;
   matchCount: number;
   topMatchScore: number | null;
@@ -17,6 +20,9 @@ export type AgencyClientListItem = {
   sellerPrice: number | null;
   buyerCity: string | null;
   buyerMaxPrice: number | null;
+  linkedUserId: number | null;
+  linkedUserEmail: string | null;
+  linkedUserLastLoginAt: string | null;
 };
 
 export function buyerPrefToRadarRecord(pref: AgencyClientBuyerPreference | null): Record<string, unknown> {
@@ -104,6 +110,7 @@ export function shapeClientListItem(
     buyerPreference: AgencyClientBuyerPreference | null;
     _count?: { matches: number };
     matches?: { score: number }[];
+    linkedUser?: { id: number; email: string; lastLoginAt: Date | null } | null;
   },
 ): AgencyClientListItem {
   const top = client.matches?.[0]?.score ?? null;
@@ -114,6 +121,9 @@ export function shapeClientListItem(
     lastName: client.lastName,
     email: client.email,
     phone: client.phone,
+    pesel: client.pesel ?? null,
+    emailVerifiedAt: client.emailVerifiedAt?.toISOString() ?? null,
+    phoneVerifiedAt: client.phoneVerifiedAt?.toISOString() ?? null,
     notes: client.notes,
     matchCount: client._count?.matches ?? client.matches?.length ?? 0,
     topMatchScore: top,
@@ -122,6 +132,9 @@ export function shapeClientListItem(
     sellerPrice: client.sellerPrice,
     buyerCity: client.buyerPreference?.city ?? null,
     buyerMaxPrice: client.buyerPreference?.maxPrice ?? null,
+    linkedUserId: client.linkedUser?.id ?? client.linkedUserId ?? null,
+    linkedUserEmail: client.linkedUser?.email ?? null,
+    linkedUserLastLoginAt: client.linkedUser?.lastLoginAt?.toISOString() ?? null,
   };
 }
 

@@ -7,7 +7,17 @@ import {
   assertAgencyCanCreateForClient,
   linkOfferToAgencyClient,
 } from '@/lib/offerAgencyManagement';
+import { generatePortalToken } from '@/lib/agencyClientNotify';
+import { parsePesel } from '@/lib/pesel';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
+
+function normalizePhone(raw: unknown): string | null {
+  const input = String(raw || '').trim();
+  if (!input) return null;
+  const normalized = input.replace(/[^\d+]/g, '');
+  if (!normalized.startsWith('+') || normalized.length < 8) return null;
+  return normalized;
+}
 
 export async function GET(req: Request) {
   const agencyUserId = await requireAgencyUserId(req);
@@ -32,6 +42,7 @@ export async function GET(req: Request) {
     where,
     orderBy: { updatedAt: 'desc' },
     include: {
+      linkedUser: { select: { id: true, email: true, lastLoginAt: true } },
       buyerPreference: true,
       matches: { orderBy: { score: 'desc' }, take: 1, select: { score: true } },
       _count: { select: { matches: true } },
@@ -62,26 +73,51 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Imię i nazwisko są wymagane.' }, { status: 400 });
   }
 
+  const emailRaw = body.email ? String(body.email).trim().toLowerCase() : null;
+  const phoneRaw = normalizePhone(body.phone);
+  if (body.phone && !phoneRaw) {
+    return NextResponse.json({ error: 'Telefon musi być w formacie międzynarodowym, np. +48501234567.' }, { status: 400 });
+  }
+  const peselRaw = body.pesel ? String(body.pesel).trim() : null;
+  if (peselRaw && !parsePesel(peselRaw)) {
+    return NextResponse.json({ error: 'Nieprawidłowy PESEL.' }, { status: 400 });
+  }
+
+  let linkedUserId: number | null = null;
+  if (emailRaw) {
+    const existingUser = await prisma.user.findUnique({ where: { email: emailRaw }, select: { id: true } });
+    if (existingUser) {
+      linkedUserId = existingUser.id;
+    } else {
+      const createdUser = await prisma.user.create({
+        data: {
+          email: emailRaw,
+          phone: phoneRaw,
+          name: `${firstName} ${lastName}`.trim(),
+          role: 'USER',
+        },
+        select: { id: true },
+      });
+      linkedUserId = createdUser.id;
+    }
+  }
+
   const client = await prisma.agencyClient.create({
     data: {
       agencyUserId,
       type: type as 'BUYER' | 'SELLER',
       firstName,
       lastName,
-      email: body.email ? String(body.email).trim() : null,
-      phone: body.phone ? String(body.phone).trim() : null,
+      email: emailRaw,
+      phone: phoneRaw,
+      pesel: peselRaw ? peselRaw.replace(/\D/g, '') : null,
+      linkedUserId,
+      emailVerifiedAt: body.emailVerified === true ? new Date() : null,
+      phoneVerifiedAt: body.phoneVerified === true ? new Date() : null,
       notes: body.notes ? String(body.notes).trim() : null,
+      portalToken: generatePortalToken(),
       ...(type === 'SELLER'
-        ? {
-            sellerTransactionType: body.sellerTransactionType || 'SELL',
-            sellerPropertyType: body.sellerPropertyType || 'FLAT',
-            sellerCity: body.sellerCity ? String(body.sellerCity).trim() : null,
-            sellerDistrict: body.sellerDistrict ? String(body.sellerDistrict).trim() : null,
-            sellerPrice: body.sellerPrice ? Number(body.sellerPrice) : null,
-            sellerArea: body.sellerArea ? Number(body.sellerArea) : null,
-            sellerRooms: body.sellerRooms ? Number(body.sellerRooms) : null,
-            sellerDescription: body.sellerDescription ? String(body.sellerDescription).trim() : null,
-          }
+        ? {}
         : {}),
       ...(type === 'BUYER' && body.buyerFilters
         ? {
@@ -111,6 +147,7 @@ export async function POST(req: Request) {
   const fresh = await prisma.agencyClient.findUnique({
     where: { id: client.id },
     include: {
+      linkedUser: { select: { id: true, email: true, lastLoginAt: true } },
       buyerPreference: true,
       matches: { orderBy: { score: 'desc' }, take: 1, select: { score: true } },
       _count: { select: { matches: true } },

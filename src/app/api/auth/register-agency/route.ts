@@ -4,7 +4,18 @@ import { prisma } from "@/lib/prisma";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { agencyName, name, email, phone, password } = body;
+    const {
+      agencyName,
+      name,
+      email,
+      phone,
+      password,
+      companyAddress,
+      companyWebsite,
+      companyLogoUrl,
+      officePhone,
+      officeEmail,
+    } = body;
 
     const cleanEmail = email.toLowerCase().trim();
     const cleanPhone = phone.replace(/\D/g, '');
@@ -25,6 +36,11 @@ export async function POST(req: Request) {
         name: name,
         companyName: agencyName,
         phone: finalPhone,
+        companyAddress: companyAddress ? String(companyAddress).trim() : null,
+        companyWebsite: companyWebsite ? String(companyWebsite).trim() : null,
+        companyLogoUrl: companyLogoUrl ? String(companyLogoUrl).trim() : null,
+        officePhone: officePhone ? String(officePhone).trim() : null,
+        officeEmail: officeEmail ? String(officeEmail).trim().toLowerCase() : null,
         isVerified: false,
       }
     });

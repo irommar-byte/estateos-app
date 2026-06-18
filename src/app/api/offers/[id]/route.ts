@@ -35,6 +35,10 @@ import {
 import { resolvePersistedLocalityFieldsAsync } from '@/lib/offerLocalityCountry';
 import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
 import { getOfferMarketListingMeta } from '@/lib/offerPublication';
+import {
+  presentingAgentAsOfferUser,
+  resolvePresentingAgent,
+} from '@/lib/offerPresentingAgent';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -122,6 +126,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     await ensureOfferLocalityCountryColumns();
     await ensureOfferPriceHistorySchema();
     const resolvedParams = await params;
+    const offerId = Number(resolvedParams.id);
+    const reqUrl = new URL(req.url);
+    const portalToken = reqUrl.searchParams.get('portal');
+    const agentUserId = reqUrl.searchParams.get('agent');
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS OfferViewLog (
         id BIGINT NOT NULL AUTO_INCREMENT,
@@ -210,10 +218,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     );
 
     const offerUser = (legalOffer as { user?: Record<string, unknown> }).user;
-    const sellerDisplayName = offerUser ? resolveSellerDisplayName(offerUser) : '';
-    const sellerPersonName = offerUser ? resolveSellerPersonName(offerUser) : null;
-    const servicingCompanyName = resolveServicingCompanyName(offerUser, (legalOffer as { agencyName?: string }).agencyName);
-    const marketListing = await getOfferMarketListingMeta(Number(resolvedParams.id));
+    let sellerDisplayName = offerUser ? resolveSellerDisplayName(offerUser) : '';
+    let sellerPersonName = offerUser ? resolveSellerPersonName(offerUser) : null;
+    let servicingCompanyName = resolveServicingCompanyName(offerUser, (legalOffer as { agencyName?: string }).agencyName);
+
+    const presentingAgent = await resolvePresentingAgent({
+      offerId,
+      portalToken,
+      agentUserId: agentUserId ? Number(agentUserId) : null,
+    });
+    const isPresentedByAgent = Boolean(presentingAgent);
+    if (presentingAgent) {
+      sellerDisplayName = presentingAgent.displayName;
+      sellerPersonName = presentingAgent.personName;
+      servicingCompanyName = presentingAgent.companyName;
+    }
+    const marketListing = await getOfferMarketListingMeta(offerId);
     const localityResolved = await resolvePersistedLocalityFieldsAsync({
       localityCountry: (legalOffer as { localityCountry?: string }).localityCountry,
       localityCountryCode: (legalOffer as { localityCountryCode?: string }).localityCountryCode,
@@ -221,23 +241,38 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       lat: legalOffer.lat,
       lng: legalOffer.lng,
     });
-    const enrichedUser = offerUser
-      ? {
-          ...offerUser,
-          displayName: sellerDisplayName,
-          publicName: sellerDisplayName,
-          personName: sellerPersonName,
-          servicingCompanyName,
-        }
-      : offerUser;
+    const enrichedUserFinal = presentingAgent
+      ? presentingAgentAsOfferUser(presentingAgent)
+      : offerUser
+        ? {
+            ...offerUser,
+            displayName: sellerDisplayName,
+            publicName: sellerDisplayName,
+            personName: sellerPersonName,
+            servicingCompanyName,
+          }
+        : offerUser;
 
     return NextResponse.json(
       enrichOfferPriceDiscountFields({
       ...moneyOffer,
-      user: enrichedUser,
+      user: enrichedUserFinal,
       sellerDisplayName,
       sellerPersonName,
       servicingCompanyName,
+      isPresentedByAgent,
+      presentingAgent: presentingAgent
+        ? {
+            userId: presentingAgent.userId,
+            name: presentingAgent.name,
+            personName: presentingAgent.personName,
+            companyName: presentingAgent.companyName,
+            displayName: presentingAgent.displayName,
+            phone: presentingAgent.phone,
+            email: presentingAgent.email,
+            image: presentingAgent.image,
+          }
+        : null,
       propertyTypeLabel: formatOfferPropertyType((legalOffer as { propertyType?: unknown }).propertyType, 'pl'),
       propertyTypeLabelEn: formatOfferPropertyType((legalOffer as { propertyType?: unknown }).propertyType, 'en'),
       conditionLabel: formatOfferCondition((legalOffer as { condition?: unknown }).condition, 'pl'),

@@ -15,14 +15,21 @@ function resolveOrigin(): string {
 
 type OfferShareLinkProps = {
   offerId: number;
+  presentingAgentId?: number;
+  portalToken?: string | null;
 };
 
-export default function OfferShareLink({ offerId }: OfferShareLinkProps) {
+export default function OfferShareLink({ offerId, presentingAgentId, portalToken }: OfferShareLinkProps) {
   const { locale } = useLocale();
   const copy = getOfferModalsDictionary(locale).shareLink;
   if (!Number.isFinite(offerId)) return null;
   const [copied, setCopied] = useState(false);
-  const shareUrl = useMemo(() => `${resolveOrigin()}/o/${offerId}`, [offerId]);
+  const shareUrl = useMemo(() => {
+    const base = `${resolveOrigin()}/o/${offerId}`;
+    if (portalToken) return `${base}?portal=${encodeURIComponent(portalToken)}`;
+    if (presentingAgentId) return `${base}?agent=${presentingAgentId}`;
+    return base;
+  }, [offerId, presentingAgentId, portalToken]);
 
   const copyLink = async () => {
     try {

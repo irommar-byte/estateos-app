@@ -413,6 +413,27 @@ export type Dictionary = {
     saveClient: string;
     saving: string;
     saveError: string;
+    emailPreviewEyebrow: string;
+    emailPreviewTitle: string;
+    emailPreviewTo: string;
+    emailPreviewNoEmail: string;
+    emailPreviewGreeting: string;
+    emailPreviewOffers: string;
+    emailPreviewHtml: string;
+    confirmSendEmail: string;
+    sendingEmail: string;
+    sentBadge: string;
+    sendSelected: string;
+    scanningMatches: string;
+    scanningTitle: string;
+    scanningBody: string;
+    copyPortalLink: string;
+    portalLinkCopied: string;
+    clientFeedbackLabel: string;
+    addClientListing: string;
+    addOwnLead: string;
+    sellerPanelEmpty: string;
+    sellerPanelLead: string;
   };
   catalog: {
     title: string;
@@ -952,7 +973,7 @@ const pl: Dictionary = {
     typeBuyerTitle: "Kupujący",
     typeBuyerBody: "Szuka nieruchomości — ustawiasz kryteria i system dopasowuje oferty z bazy EstateOS.",
     typeSellerTitle: "Sprzedający",
-    typeSellerBody: "Chce sprzedać lub wynająć — zapisujesz parametry i prowadzisz do publikacji oferty.",
+    typeSellerBody: "Chce sprzedać lub wynająć — zapisujesz kontakt, a ogłoszenie dodajesz później standardowym formularzem.",
     firstName: "Imię",
     lastName: "Nazwisko",
     email: "E-mail",
@@ -977,6 +998,27 @@ const pl: Dictionary = {
     saveClient: "Zapisz klienta",
     saving: "Zapisywanie…",
     saveError: "Nie udało się zapisać klienta.",
+    emailPreviewEyebrow: "Podgląd wiadomości",
+    emailPreviewTitle: "Sprawdź, co wyślesz klientowi",
+    emailPreviewTo: "Do",
+    emailPreviewNoEmail: "Klient nie ma adresu e-mail — dodaj go w profilu.",
+    emailPreviewGreeting: "Tekst powitalny",
+    emailPreviewOffers: "Oferty w wiadomości",
+    emailPreviewHtml: "Podgląd e-maila",
+    confirmSendEmail: "Wyślij do klienta",
+    sendingEmail: "Wysyłanie…",
+    sentBadge: "Wysłano",
+    sendSelected: "Wyślij zaznaczone",
+    scanningMatches: "Skanowanie rynku…",
+    scanningTitle: "System szuka dopasowań",
+    scanningBody: "Przeszukujemy bazę EstateOS według kryteriów klienta — to potrwa kilka sekund.",
+    copyPortalLink: "Link panelu klienta",
+    portalLinkCopied: "Skopiowano!",
+    clientFeedbackLabel: "Uwagi klienta",
+    addClientListing: "Dodaj ogłoszenie klienta",
+    addOwnLead: "Dodaj swój pozysk",
+    sellerPanelEmpty: "Brak ogłoszenia — dodaj je standardowym formularzem.",
+    sellerPanelLead: "Po utworzeniu klienta dodajesz ogłoszenie tak jak każdą inną ofertę w systemie.",
   },
   catalog: {
     title: "Katalog",
@@ -1523,7 +1565,7 @@ const en: Dictionary = {
     typeBuyerTitle: "Buyer",
     typeBuyerBody: "Looking for property — set criteria and the system matches EstateOS listings.",
     typeSellerTitle: "Seller",
-    typeSellerBody: "Wants to sell or rent — capture details and guide them to publication.",
+    typeSellerBody: "Wants to sell or rent — save contact details and add the listing later via the standard form.",
     firstName: "First name",
     lastName: "Last name",
     email: "Email",
@@ -1548,6 +1590,27 @@ const en: Dictionary = {
     saveClient: "Save client",
     saving: "Saving…",
     saveError: "Could not save client.",
+    emailPreviewEyebrow: "Message preview",
+    emailPreviewTitle: "Review before sending",
+    emailPreviewTo: "To",
+    emailPreviewNoEmail: "Client has no email — add it in their profile.",
+    emailPreviewGreeting: "Greeting text",
+    emailPreviewOffers: "Listings in message",
+    emailPreviewHtml: "Email preview",
+    confirmSendEmail: "Send to client",
+    sendingEmail: "Sending…",
+    sentBadge: "Sent",
+    sendSelected: "Send selected",
+    scanningMatches: "Scanning market…",
+    scanningTitle: "Finding matches",
+    scanningBody: "Searching the EstateOS database for listings that match this client's criteria.",
+    copyPortalLink: "Client portal link",
+    portalLinkCopied: "Copied!",
+    clientFeedbackLabel: "Client feedback",
+    addClientListing: "Add client listing",
+    addOwnLead: "Add your lead",
+    sellerPanelEmpty: "No listing yet — add one using the standard form.",
+    sellerPanelLead: "After creating the client, add a listing the same way as any other property in the system.",
   },
   catalog: {
     title: "Catalog",

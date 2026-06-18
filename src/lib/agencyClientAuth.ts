@@ -24,6 +24,7 @@ export async function getAgencyClientForUser(clientId: number, agencyUserId: num
   return prisma.agencyClient.findFirst({
     where: { id: clientId, agencyUserId, status: 'ACTIVE' },
     include: {
+      linkedUser: { select: { id: true, email: true, lastLoginAt: true } },
       buyerPreference: true,
       matches: {
         orderBy: { score: 'desc' },
