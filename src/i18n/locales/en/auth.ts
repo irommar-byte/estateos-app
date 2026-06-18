@@ -56,6 +56,16 @@ export const auth = {
   agencyMissingTitle: 'Agency name required',
   agencyMissingBody:
     'As an agent you must enter your agency / office name. It will appear publicly next to your name on listings and Radar.',
+  agencyModeCreate: 'Create office',
+  agencyModeJoin: 'Join office',
+  agencyPickCompany: 'Select office…',
+  agencyJoinMissingTitle: 'Select an office',
+  agencyJoinMissingBody: 'Choose the office you want to join as an agent.',
+  agencyPendingTitle: 'Waiting for approval',
+  agencyPendingBody:
+    'The administrator of {{company}} must approve your agent account. You will get a notification when it is ready.',
+  agencyPendingHint: 'You can also ask your office admin to approve you at estateos.pl.',
+  agencyPendingLogout: 'Sign out',
   accountCreatedTitle: 'Account created!',
   accountCreatedVerified:
     'We sent a 6-digit verification code to {{email}}.\nCheck your inbox and confirm in “Profile → Edit details”.\n\nAlso verify your phone (SMS) to unlock all features.',

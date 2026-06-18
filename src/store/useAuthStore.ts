@@ -15,6 +15,8 @@ import {
   userHasDialablePhone,
 } from '../utils/phoneRegions';
 import { readUserFirstFreePublicationUsed } from '../utils/userPublicationFlags';
+import type { AgencyMembershipSnapshot } from '../types/agencyMembership';
+import { fetchAgencyMembership } from '../services/agencyCompanyService';
 
 export interface User {
   id: number;
@@ -55,6 +57,7 @@ export interface User {
 interface AuthState {
   user: User | null;
   token: string | null;
+  agencyMembership: AgencyMembershipSnapshot | null;
   isLoading: boolean;
   error: string | null;
   isRadarActive: boolean; // 🔥 Nowość
@@ -78,9 +81,14 @@ interface AuthState {
      * przekazujemy `null` / pomijamy.
      */
     companyName?: string | null,
+    agencyRegistration?: {
+      mode?: 'create' | 'join';
+      joinCompanyId?: number;
+    },
   ) => Promise<boolean>;
   loginWithPasskey: (email?: string | null) => Promise<boolean>;
   refreshUser: () => Promise<void>;
+  refreshAgencyMembership: () => Promise<void>;
   logout: () => Promise<void>;
   restoreSession: () => Promise<void>;
   updateAvatar: (imageOrUrl: string) => Promise<void>;
@@ -278,6 +286,7 @@ const normalizeToken = (rawToken: string | null | undefined) => {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: null,
+  agencyMembership: null,
   isLoading: false,
   error: null,
   isRadarActive: false, // Domyślnie wyłączony
@@ -331,6 +340,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
       }
       await get().refreshUser();
+      await get().refreshAgencyMembership();
       const afterRefresh = get().user;
       const withPhone = mergePhoneIntoUser(afterRefresh, regPhone);
       if (withPhone && withPhone !== afterRefresh) {
@@ -377,13 +387,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  register: async (email, pass, fName, lName, phone, role, companyName = null) => {
+  register: async (email, pass, fName, lName, phone, role, companyName = null, agencyRegistration) => {
     set({ isLoading: true, error: null });
     try {
-      // Kontrakt z backendem: dla role === 'AGENT' wysyłamy dodatkowo
-      // `companyName` (string, wymagane przez backend dla tej roli).
-      // Dla pozostałych ról pole jest pomijane — backend powinien
-      // zwalidować po stronie serwera, że AGENT ma niepuste companyName.
       const phoneE164 = normalizePhoneE164(phone) || String(phone || '').trim();
       const payload: Record<string, unknown> = {
         email,
@@ -393,8 +399,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         contactPhone: phoneE164,
         role,
       };
-      if (role === 'AGENT' && companyName && companyName.trim().length > 0) {
-        payload.companyName = companyName.trim();
+      if (role === 'AGENT') {
+        const mode = agencyRegistration?.mode === 'join' ? 'join' : 'create';
+        payload.agencyMode = mode;
+        if (mode === 'join' && agencyRegistration?.joinCompanyId) {
+          payload.joinCompanyId = agencyRegistration.joinCompanyId;
+        } else if (companyName && companyName.trim().length > 0) {
+          payload.companyName = companyName.trim();
+        }
       }
       const response = await fetch(`${API_URL}/api/register`, {
         method: 'POST',
@@ -517,10 +529,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  refreshAgencyMembership: async () => {
+    const { token, user } = get();
+    if (!token || user?.role !== 'AGENT') {
+      set({ agencyMembership: null });
+      return;
+    }
+    try {
+      const membership = await fetchAgencyMembership(token);
+      set({ agencyMembership: membership });
+    } catch {
+      set({ agencyMembership: null });
+    }
+  },
+
   logout: async () => {
     const { user: prevUser } = get();
     // Najpierw UI/store — unikamy wiszenia na natywnym stop Live Activity przy wylogowaniu.
-    set({ user: null, token: null, isRadarActive: false });
+    set({ user: null, token: null, agencyMembership: null, isRadarActive: false });
     if (prevUser?.id != null) {
       void persistLocalPhoneVerified(prevUser.id, false);
       void persistLocalEmailVerified(prevUser.id, false);
@@ -967,9 +993,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           await stopRadarLiveActivity();
         }
         await get().refreshUser();
+        await get().refreshAgencyMembership();
       }
     } catch (e) {
       if (__DEV__) console.warn('Restore session error', e);
     }
-  }
+  },
+}));
+    } catch (e) {
+      if (__DEV__) console.warn('Restore session error', e);
+    }
+  },
 }));

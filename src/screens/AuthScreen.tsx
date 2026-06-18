@@ -23,6 +23,9 @@ import * as Haptics from 'expo-haptics';
 import type { CountryCode } from 'libphonenumber-js';
 import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
 import PhoneCountryPickerModal from '../components/phone/PhoneCountryPickerModal';
+import { Picker } from '@react-native-picker/picker';
+import { fetchAgencyCompanyList } from '../services/agencyCompanyService';
+import type { AgencyCompanyListItem } from '../types/agencyMembership';
 import { API_URL } from '../config/network';
 import {
   buildE164FromNational,
@@ -281,8 +284,11 @@ export default function AuthScreen({
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  /** Pełna nazwa biura / agencji — widoczna i wymagana TYLKO dla AGENT. */
+  /** Pełna nazwa biura / agencji — widoczna i wymagana TYLKO dla AGENT (tryb create). */
   const [companyName, setCompanyName] = useState('');
+  const [agencySetupMode, setAgencySetupMode] = useState<'create' | 'join'>('create');
+  const [joinCompanyId, setJoinCompanyId] = useState<number | null>(null);
+  const [companyOptions, setCompanyOptions] = useState<AgencyCompanyListItem[]>([]);
   const [phone, setPhone] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   
@@ -374,6 +380,11 @@ export default function AuthScreen({
     if (next) setEmail(next);
   }, [prefillEmail]);
 
+  useEffect(() => {
+    if (isLogin || role !== 'AGENT') return;
+    void fetchAgencyCompanyList().then(setCompanyOptions).catch(() => setCompanyOptions([]));
+  }, [isLogin, role]);
+
   const handleSubmit = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
@@ -392,9 +403,14 @@ export default function AuthScreen({
           Alert.alert(t('common.error'), t('auth.fillBusinessCard'));
           return;
         }
-        if (role === 'AGENT' && companyName.trim().length < 2) {
+        if (role === 'AGENT' && agencySetupMode === 'create' && companyName.trim().length < 2) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
           Alert.alert(t('auth.agencyMissingTitle'), t('auth.agencyMissingBody'));
+          return;
+        }
+        if (role === 'AGENT' && agencySetupMode === 'join' && !joinCompanyId) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          Alert.alert(t('auth.agencyJoinMissingTitle'), t('auth.agencyJoinMissingBody'));
           return;
         }
         if (emailStatus === 'taken') { Alert.alert(t('common.error'), t('auth.emailTaken')); return; }
@@ -413,7 +429,13 @@ export default function AuthScreen({
           lastName,
           regE164,
           role,
-          role === 'AGENT' ? companyName.trim() : null,
+          role === 'AGENT' && agencySetupMode === 'create' ? companyName.trim() : null,
+          role === 'AGENT'
+            ? {
+                mode: agencySetupMode,
+                joinCompanyId: agencySetupMode === 'join' ? joinCompanyId ?? undefined : undefined,
+              }
+            : undefined,
         );
         
         if (isRegistered) {
@@ -596,23 +618,54 @@ export default function AuthScreen({
               {role === 'AGENT' && (
                 <>
                   <View style={[styles.divider, { backgroundColor: dividerColor }]} />
-                  <View style={styles.inputRow}>
-                    <Ionicons
-                      name="business"
-                      size={18}
-                      color="#FF9F0A"
-                      style={{ marginRight: 10 }}
-                    />
-                    <TextInput
-                      style={[styles.input, { color: theme.text, flex: 1 }]}
-                      placeholder={t('auth.agencyName')}
-                      placeholderTextColor={theme.subtitle}
-                      value={companyName}
-                      onChangeText={setCompanyName}
-                      autoCapitalize="words"
-                      maxLength={80}
-                    />
+                  <View style={[styles.roleSwitchContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', marginBottom: 0 }]}>
+                    <Pressable
+                      onPress={() => { Haptics.selectionAsync(); setAgencySetupMode('create'); setJoinCompanyId(null); }}
+                      style={[styles.roleButton, agencySetupMode === 'create' && styles.roleButtonActiveAgent]}
+                    >
+                      <Text style={[styles.roleText, { color: agencySetupMode === 'create' ? '#FFF' : theme.subtitle, fontSize: 13 }]}>
+                        {t('auth.agencyModeCreate')}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => { Haptics.selectionAsync(); setAgencySetupMode('join'); setCompanyName(''); }}
+                      style={[styles.roleButton, agencySetupMode === 'join' && styles.roleButtonActiveAgent]}
+                    >
+                      <Text style={[styles.roleText, { color: agencySetupMode === 'join' ? '#FFF' : theme.subtitle, fontSize: 13 }]}>
+                        {t('auth.agencyModeJoin')}
+                      </Text>
+                    </Pressable>
                   </View>
+                  <View style={[styles.divider, { backgroundColor: dividerColor }]} />
+                  {agencySetupMode === 'create' ? (
+                    <View style={styles.inputRow}>
+                      <Ionicons name="business" size={18} color="#FF9F0A" style={{ marginRight: 10 }} />
+                      <TextInput
+                        style={[styles.input, { color: theme.text, flex: 1 }]}
+                        placeholder={t('auth.agencyName')}
+                        placeholderTextColor={theme.subtitle}
+                        value={companyName}
+                        onChangeText={setCompanyName}
+                        autoCapitalize="words"
+                        maxLength={80}
+                      />
+                    </View>
+                  ) : (
+                    <View style={styles.inputRow}>
+                      <Ionicons name="business" size={18} color="#FF9F0A" style={{ marginRight: 10 }} />
+                      <Picker
+                        selectedValue={joinCompanyId ?? 0}
+                        onValueChange={(v) => setJoinCompanyId(Number(v) || null)}
+                        style={{ flex: 1, color: theme.text }}
+                        dropdownIconColor={theme.subtitle}
+                      >
+                        <Picker.Item label={t('auth.agencyPickCompany')} value={0} />
+                        {companyOptions.map((c) => (
+                          <Picker.Item key={c.id} label={c.city ? `${c.name} · ${c.city}` : c.name} value={c.id} />
+                        ))}
+                      </Picker>
+                    </View>
+                  )}
                 </>
               )}
               <View style={[styles.divider, { backgroundColor: dividerColor }]} />

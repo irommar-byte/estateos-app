@@ -54,6 +54,16 @@ export const auth = {
   agencyMissingTitle: 'Нужно название агентства',
   agencyMissingBody:
     'Как агент укажите агентство / офис. Оно будет видно рядом с вашим именем в объявлениях и на Радаре.',
+  agencyModeCreate: 'Создать офис',
+  agencyModeJoin: 'Вступить в офис',
+  agencyPickCompany: 'Выберите офис…',
+  agencyJoinMissingTitle: 'Выберите офис',
+  agencyJoinMissingBody: 'Укажите офис, к которому хотите присоединиться как агент.',
+  agencyPendingTitle: 'Ожидание одобрения',
+  agencyPendingBody:
+    'Администратор офиса {{company}} должен одобрить ваш аккаунт агента. Вы получите уведомление, когда всё будет готово.',
+  agencyPendingHint: 'Также можно попросить администратора одобрить вас в панели на estateos.pl.',
+  agencyPendingLogout: 'Выйти',
   accountCreatedTitle: 'Аккаунт создан!',
   accountCreatedVerified:
     'Мы отправили 6-значный код на {{email}}.\nПроверьте почту и подтвердите в «Профиль → Изменить данные».\n\nТакже подтвердите телефон (SMS), чтобы открыть все функции.',

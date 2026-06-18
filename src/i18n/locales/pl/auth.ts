@@ -56,6 +56,16 @@ export const auth = {
   agencyMissingTitle: 'Brakuje nazwy biura',
   agencyMissingBody:
     'Jako agent musisz wpisać nazwę swojego biura / agencji. To pole pojawi się publicznie obok Twojego imienia w ofertach i radarze.',
+  agencyModeCreate: 'Załóż biuro',
+  agencyModeJoin: 'Dołącz do biura',
+  agencyPickCompany: 'Wybierz biuro…',
+  agencyJoinMissingTitle: 'Wybierz biuro',
+  agencyJoinMissingBody: 'Wskaż biuro, do którego chcesz dołączyć jako agent.',
+  agencyPendingTitle: 'Oczekujesz na akceptację',
+  agencyPendingBody:
+    'Administrator biura {{company}} musi zatwierdzić Twoje konto agenta. Dostaniesz powiadomienie, gdy będzie gotowe.',
+  agencyPendingHint: 'Możesz też poprosić administratora o zatwierdzenie w panelu firmy na estateos.pl.',
+  agencyPendingLogout: 'Wyloguj się',
   accountCreatedTitle: 'Konto pomyślnie założone!',
   accountCreatedVerified:
     'Wysłaliśmy 6-cyfrowy kod weryfikacyjny na {{email}}.\nOtwórz skrzynkę i potwierdź adres w „Profil → Edytuj dane”.\n\nDodatkowo zweryfikuj numer telefonu (SMS), aby odblokować wszystkie funkcje.',

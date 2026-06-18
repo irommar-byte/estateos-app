@@ -90,6 +90,7 @@ import TermsScreen from './src/screens/TermsScreen';
 import SmsVerificationScreen from './src/screens/SmsVerificationScreen';
 import DealroomListScreen from './src/screens/DealroomListScreen';
 import FloatingChatsDock from './src/components/messaging/FloatingChatsDock';
+import AgencyPendingGate from './src/components/agency/AgencyPendingGate';
 import EstateDiscoveryMode from './src/screens/EstateDiscoveryMode';
 import AdminNativeImportScreen from './src/screens/AdminNativeImportScreen';
 import AdminKeiAmerScreen from './src/screens/AdminKeiAmerScreen';
@@ -1587,6 +1588,7 @@ export default function App() {
         </NavigationContainer>
         {!isSplashVisible ? <AppRatingPromptHost /> : null}
         {!isSplashVisible ? <InvestorProUpsellHost /> : null}
+        {!isSplashVisible ? <AgencyPendingGate /> : null}
         </View>
         </I18nProvider>
       </GestureHandlerRootView>

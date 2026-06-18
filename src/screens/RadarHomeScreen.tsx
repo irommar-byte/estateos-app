@@ -23,6 +23,7 @@ import {
   AppState,
 } from 'react-native';
 import MapViewCore, { Marker, Region, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
+import ClusteredMapView from 'react-native-map-clustering';
 import MapGestureHost from '../components/MapGestureHost';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,6 +57,10 @@ import {
 } from '../utils/radarPreferenceSync';
 import { loadRadarCommittedState, saveRadarCommittedState } from '../utils/radarCommittedStorage';
 import { radarPropertyTypeMatchesFilter } from '../utils/radarPropertyType';
+import {
+  filterOffersInMapRegion,
+  mergeSelectedOfferIntoMapPins,
+} from '../utils/radarMapViewport';
 import { logAdvancedMapSearch, logRadarCalibrationSearch } from '../services/radarSearchHistoryService';
 import CountryChipHangingFlag from '../components/CountryChipHangingFlag';
 import { countryLabelInOwnLanguageUpper } from '../utils/phoneRegions';
@@ -219,7 +224,7 @@ function hasFiniteCoords(lat: unknown, lng: unknown): boolean {
   return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
 }
 
-const RadarMapComponent: any = MapViewCore;
+const RadarMapComponent: any = ClusteredMapView;
 const SELL_MARKER_COLOR = '#10b981';
 const RENT_MARKER_COLOR = '#0A84FF';
 
@@ -1057,6 +1062,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   
   const [isMapMoving, setIsMapMoving] = useState(false);
+  const [mapViewportRegion, setMapViewportRegion] = useState<Region>(DEFAULT_REGION);
 
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>(DEFAULT_ADVANCED_FILTERS);
   const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<AdvancedFilters>(DEFAULT_ADVANCED_FILTERS);
@@ -2283,6 +2289,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   ]);
 
   const activeOffers = filteredOffers;
+
+  const offersForMapPins = useMemo(() => {
+    const inView = filterOffersInMapRegion(activeOffers, mapViewportRegion);
+    return mergeSelectedOfferIntoMapPins(inView, activeOffers[activeIndex] ?? null);
+  }, [activeOffers, activeIndex, mapViewportRegion]);
+
+  const mapClusterColor =
+    advancedFilters.transactionType === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
 
   const galleryOffers = useMemo(() => {
     if (showOnlyFavorites || radarBrowseMode !== 'GALLERY') return [];
@@ -3672,6 +3686,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   };
 
   const handleMapRegionChangeComplete = (region: Region) => {
+    setMapViewportRegion(region);
     if (!showAreaPicker) return;
     areaRegionRef.current = region;
     if (!mapLayout.width || !mapLayout.height) {
@@ -3955,12 +3970,31 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     setActiveIndex(index);
   };
 
+  const focusOfferById = useCallback(
+    (offerId: number | string) => {
+      const index = activeOffers.findIndex((o) => String(o.id) === String(offerId));
+      if (index < 0) return;
+      const offer = activeOffers[index];
+      if (!offer) return;
+      mapRef.current?.animateToRegion({
+        latitude: offer.lat,
+        longitude: offer.lng,
+        latitudeDelta: 0.035,
+        longitudeDelta: 0.02,
+      }, 350);
+      setActiveIndex(index);
+      listRef.current?.scrollToIndex({ index, animated: true });
+    },
+    [activeOffers],
+  );
+
   const offerMapMarkerLayers = useMemo(() => {
     const circles: React.ReactNode[] = [];
     const markers: React.ReactNode[] = [];
+    const selectedOfferId = activeOffers[activeIndex]?.id;
 
-    activeOffers.forEach((offer, idx) => {
-      const isSelected = activeIndex === idx;
+    offersForMapPins.forEach((offer, idx) => {
+      const isSelected = selectedOfferId != null && String(offer.id) === String(selectedOfferId);
       const markerAccent = offerMarkerAccent(offer.raw);
       const luxColors = markerLuxuryGradient(markerAccent);
       const lat = Number(offer.lat);
@@ -4014,8 +4048,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             selected={isSelected}
             onPress={() => {
               Haptics.selectionAsync();
-              focusOffer(idx);
-              listRef.current?.scrollToIndex({ index: idx, animated: true });
+              focusOfferById(offer.id ?? offerKey);
             }}
           />
         ) : (
@@ -4026,8 +4059,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             tracksViewChanges={false}
             onPress={() => {
               Haptics.selectionAsync();
-              focusOffer(idx);
-              listRef.current?.scrollToIndex({ index: idx, animated: true });
+              focusOfferById(offer.id ?? offerKey);
             }}
           >
             <OfferMapMarkerPin
@@ -4042,7 +4074,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     });
 
     return { circles, markers };
-  }, [activeOffers, activeIndex, rate, preference]);
+  }, [offersForMapPins, activeOffers, activeIndex, rate, preference, focusOfferById]);
 
   const renderOfferCard = ({ item, index }: any) => {
     const ownVerifiedFromEndpoint = ownerLegalByOfferId[Number(item?.id || 0)] === true;
@@ -4226,6 +4258,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         userInterfaceStyle={isDark ? 'dark' : 'light'}
         showsUserLocation
         showsCompass={false}
+        clusterColor={mapClusterColor}
+        clusterTextColor="#FFFFFF"
+        animationEnabled={false}
+        radius={52}
+        minPoints={2}
+        onClusterPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }}
       >
         {activeAdvancedMapBounds ? (
           <Circle
