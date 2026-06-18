@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import type { AgencyMemberRole, AgencyMemberStatus, AgencyAgentTitle } from '@prisma/client';
 import { AGENCY_AGENT_TITLES } from '@/lib/agentProfile';
+import { notifyMemberApproved, notifyOffersTransferred } from '@/lib/agencyCompanyNotify';
 
 export function slugifyCompanyName(name: string): string {
   const base = name
@@ -137,9 +138,58 @@ export async function getCompanyDashboard(companyId: number) {
   if (!company) return null;
 
   const memberIds = company.members.filter((m) => m.status === 'ACTIVE').map((m) => m.userId);
+  const allUserIds = company.members.map((m) => m.userId);
   const totalOffers = memberIds.length
     ? await prisma.offer.count({ where: { userId: { in: memberIds }, status: 'ACTIVE' } })
     : 0;
+
+  const offerStatusGroups = allUserIds.length
+    ? await prisma.offer.groupBy({
+        by: ['userId', 'status'],
+        where: { userId: { in: allUserIds } },
+        _count: { id: true },
+      })
+    : [];
+  const offerStatsByUser = new Map<number, { active: number; pending: number; sold: number; inDeal: number }>();
+  for (const row of offerStatusGroups) {
+    const cur = offerStatsByUser.get(row.userId) || { active: 0, pending: 0, sold: 0, inDeal: 0 };
+    const c = row._count.id;
+    if (row.status === 'ACTIVE') cur.active += c;
+    else if (row.status === 'PENDING') cur.pending += c;
+    else if (row.status === 'SOLD') cur.sold += c;
+    else if (row.status === 'IN_DEAL') cur.inDeal += c;
+    offerStatsByUser.set(row.userId, cur);
+  }
+
+  const dealsInProgress = allUserIds.length
+    ? await prisma.deal.groupBy({
+        by: ['sellerId'],
+        where: {
+          sellerId: { in: allUserIds },
+          status: { in: ['INITIATED', 'NEGOTIATION', 'AGREED', 'MEETING'] },
+        },
+        _count: { id: true },
+      })
+    : [];
+  const dealsBySeller = new Map(dealsInProgress.map((d) => [d.sellerId, d._count.id]));
+
+  const recentCompanyOffers = memberIds.length
+    ? await prisma.offer.findMany({
+        where: { userId: { in: memberIds }, status: { in: ['ACTIVE', 'PENDING', 'IN_DEAL'] } },
+        orderBy: { updatedAt: 'desc' },
+        take: 12,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          price: true,
+          city: true,
+          userId: true,
+          updatedAt: true,
+          user: { select: { id: true, name: true } },
+        },
+      })
+    : [];
 
   const reviewAgg = memberIds.length
     ? await prisma.review.groupBy({
@@ -175,7 +225,18 @@ export async function getCompanyDashboard(companyId: number) {
       pendingAgents: company.members.filter((m) => m.status === 'PENDING').length,
       totalOffers,
     },
-    members: company.members.map((m) => ({
+    recentOffers: recentCompanyOffers.map((o) => ({
+      id: o.id,
+      title: o.title,
+      status: o.status,
+      price: o.price,
+      city: o.city,
+      updatedAt: o.updatedAt.toISOString(),
+      agent: o.user,
+    })),
+    members: company.members.map((m) => {
+      const offerStats = offerStatsByUser.get(m.userId) || { active: 0, pending: 0, sold: 0, inDeal: 0 };
+      return {
       id: m.id,
       userId: m.userId,
       role: m.role,
@@ -192,12 +253,18 @@ export async function getCompanyDashboard(companyId: number) {
         extraListings: m.user.extraListings,
         plusExpiresAt: m.user.plusExpiresAt?.toISOString() ?? null,
         lastLoginAt: m.user.lastLoginAt?.toISOString() ?? null,
-        activeOffers: m.user._count.offers,
+        memberSince: m.user.createdAt.toISOString(),
+        activeOffers: offerStats.active,
+        pendingOffers: offerStats.pending,
+        soldOffers: offerStats.sold,
+        inDealOffers: offerStats.inDeal,
+        dealsInProgress: dealsBySeller.get(m.userId) ?? 0,
         crmClients: m.user._count.agencyClients,
         reviewsCount: reviewByUser.get(m.userId)?.count ?? 0,
         averageRating: reviewByUser.get(m.userId)?.avg ?? null,
       },
-    })),
+    };
+    }),
     creditTransfers: company.creditTransfers.map((t) => ({
       id: t.id,
       amount: t.amount,
@@ -278,11 +345,12 @@ export async function setMemberStatus(params: {
 
   const member = await prisma.agencyCompanyMember.findFirst({
     where: { id: params.memberId, companyId: params.companyId },
+    include: { company: { select: { name: true } } },
   });
   if (!member) throw new Error('Nie znaleziono pracownika.');
   if (member.role === 'ADMIN') throw new Error('Nie można zmieniać statusu administratora.');
 
-  return prisma.agencyCompanyMember.update({
+  const updated = await prisma.agencyCompanyMember.update({
     where: { id: params.memberId },
     data: {
       status: params.status,
@@ -290,6 +358,15 @@ export async function setMemberStatus(params: {
       approvedById: params.status === 'ACTIVE' ? params.adminUserId : null,
     },
   });
+
+  if (params.status === 'ACTIVE' && member.status === 'PENDING') {
+    void notifyMemberApproved({
+      userId: member.userId,
+      companyName: member.company.name,
+    });
+  }
+
+  return updated;
 }
 
 export async function updateMemberProfile(params: {
@@ -320,6 +397,190 @@ export async function updateMemberProfile(params: {
   if (!Object.keys(data).length) throw new Error('Brak danych do zapisania.');
 
   return prisma.agencyCompanyMember.update({ where: { id: params.memberId }, data });
+}
+
+export async function getMemberInsights(params: {
+  adminUserId: number;
+  memberId: number;
+}) {
+  const admin = await requireActiveAgencyAdmin(params.adminUserId);
+  if (!admin) throw new Error('Brak uprawnień.');
+
+  const member = await prisma.agencyCompanyMember.findFirst({
+    where: { id: params.memberId, companyId: admin.companyId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+          phone: true,
+          extraListings: true,
+          plusExpiresAt: true,
+          createdAt: true,
+          lastLoginAt: true,
+        },
+      },
+    },
+  });
+  if (!member) throw new Error('Nie znaleziono pracownika.');
+
+  const [offers, clients, activities, dealsCount] = await Promise.all([
+    prisma.offer.findMany({
+      where: { userId: member.userId },
+      orderBy: { updatedAt: 'desc' },
+      take: 80,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        price: true,
+        pricePln: true,
+        city: true,
+        district: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.agencyClient.findMany({
+      where: { agencyUserId: member.userId },
+      orderBy: { updatedAt: 'desc' },
+      take: 25,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        type: true,
+        status: true,
+        email: true,
+        phone: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.agencyClientActivity.findMany({
+      where: { agencyUserId: member.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      include: {
+        client: { select: { firstName: true, lastName: true } },
+      },
+    }),
+    prisma.deal.count({
+      where: {
+        sellerId: member.userId,
+        status: { in: ['INITIATED', 'NEGOTIATION', 'AGREED', 'MEETING'] },
+      },
+    }),
+  ]);
+
+  return {
+    member: {
+      id: member.id,
+      userId: member.userId,
+      role: member.role,
+      status: member.status,
+      agentTitle: member.agentTitle,
+      profilePhotoUrl: member.profilePhotoUrl,
+      approvedAt: member.approvedAt?.toISOString() ?? null,
+      createdAt: member.createdAt.toISOString(),
+      user: {
+        ...member.user,
+        plusExpiresAt: member.user.plusExpiresAt?.toISOString() ?? null,
+        createdAt: member.user.createdAt.toISOString(),
+        lastLoginAt: member.user.lastLoginAt?.toISOString() ?? null,
+      },
+    },
+    dealsInProgress: dealsCount,
+    offers: offers.map((o) => ({
+      id: o.id,
+      title: o.title,
+      status: o.status,
+      price: o.price,
+      pricePln: o.pricePln,
+      city: o.city,
+      district: o.district,
+      createdAt: o.createdAt.toISOString(),
+      updatedAt: o.updatedAt.toISOString(),
+    })),
+    clients: clients.map((c) => ({
+      id: c.id,
+      name: `${c.firstName} ${c.lastName}`.trim(),
+      type: c.type,
+      status: c.status,
+      email: c.email,
+      phone: c.phone,
+      updatedAt: c.updatedAt.toISOString(),
+    })),
+    activities: activities.map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      title: a.title,
+      body: a.body,
+      offerId: a.offerId,
+      createdAt: a.createdAt.toISOString(),
+      clientName: a.client ? `${a.client.firstName} ${a.client.lastName}`.trim() : null,
+    })),
+  };
+}
+
+export async function transferMemberOffers(params: {
+  companyId: number;
+  adminUserId: number;
+  fromUserId: number;
+  toUserId: number;
+  offerIds: number[];
+}) {
+  const admin = await requireActiveAgencyAdmin(params.adminUserId);
+  if (!admin || admin.companyId !== params.companyId) throw new Error('Brak uprawnień.');
+
+  const { fromUserId, toUserId, offerIds } = params;
+  if (fromUserId === toUserId) throw new Error('Wybierz innego agenta docelowego.');
+  if (!offerIds.length) throw new Error('Wybierz co najmniej jedną ofertę.');
+
+  const members = await prisma.agencyCompanyMember.findMany({
+    where: {
+      companyId: params.companyId,
+      userId: { in: [fromUserId, toUserId] },
+      status: 'ACTIVE',
+    },
+    include: { user: { select: { id: true, name: true } } },
+  });
+  const fromMember = members.find((m) => m.userId === fromUserId);
+  const toMember = members.find((m) => m.userId === toUserId);
+  if (!fromMember || !toMember) {
+    throw new Error('Oboje pracownicy muszą być aktywni w firmie.');
+  }
+
+  const offers = await prisma.offer.findMany({
+    where: {
+      id: { in: offerIds },
+      userId: fromUserId,
+      status: { in: ['ACTIVE', 'PENDING', 'IN_DEAL'] },
+    },
+    select: { id: true, title: true },
+  });
+  if (offers.length !== offerIds.length) {
+    throw new Error('Niektóre ogłoszenia nie należą do wybranego agenta lub nie mogą być przeniesione.');
+  }
+
+  await prisma.offer.updateMany({
+    where: { id: { in: offerIds } },
+    data: { userId: toUserId, updatedAt: new Date() },
+  });
+
+  void notifyOffersTransferred({
+    toUserId,
+    fromUserName: fromMember.user.name || 'Agent',
+    count: offers.length,
+  });
+
+  return {
+    transferred: offers.length,
+    offerIds: offers.map((o) => o.id),
+    fromUser: { id: fromUserId, name: fromMember.user.name },
+    toUser: { id: toUserId, name: toMember.user.name },
+  };
 }
 
 export async function updateCompanyLogo(params: {

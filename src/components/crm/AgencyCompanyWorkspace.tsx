@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ProfileMediaAvatar from '@/components/profile/ProfileMediaAvatar';
+import AgencyMemberDetailPanel from '@/components/crm/AgencyMemberDetailPanel';
 import { AGENCY_AGENT_TITLES, formatAgentTitle } from '@/lib/agentProfile';
 
 type MemberRow = {
@@ -39,7 +40,12 @@ type MemberRow = {
     extraListings: number;
     plusExpiresAt: string | null;
     lastLoginAt: string | null;
+    memberSince?: string | null;
     activeOffers: number;
+    pendingOffers: number;
+    soldOffers: number;
+    inDealOffers: number;
+    dealsInProgress: number;
     crmClients: number;
     reviewsCount: number;
     averageRating: number | null;
@@ -65,6 +71,15 @@ type DashboardPayload = {
     pendingAgents: number;
     totalOffers: number;
   };
+  recentOffers: Array<{
+    id: number;
+    title: string;
+    status: string;
+    price: number;
+    city: string;
+    updatedAt: string;
+    agent: { id: number; name: string | null };
+  }>;
   members: MemberRow[];
   creditTransfers: Array<{
     id: number;
@@ -99,6 +114,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   const [creditBusy, setCreditBusy] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
   const [photoBusyId, setPhotoBusyId] = useState<number | null>(null);
+  const [detailMember, setDetailMember] = useState<MemberRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,6 +144,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
             stats: dashData.stats,
             members: dashData.members,
             creditTransfers: dashData.creditTransfers,
+            recentOffers: dashData.recentOffers || [],
           });
         }
       }
@@ -141,6 +158,17 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const scrollToPending = () => {
+      document.getElementById('zgłoszenia')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    if (window.location.hash === '#zgłoszenia' || new URLSearchParams(window.location.search).get('pending') === '1') {
+      const timer = window.setTimeout(scrollToPending, 400);
+      return () => window.clearTimeout(timer);
+    }
+  }, [loading, dashboard?.stats.pendingAgents]);
 
   const pendingMembers = useMemo(
     () => dashboard?.members.filter((m) => m.status === 'PENDING') ?? [],
@@ -419,7 +447,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       )}
 
       {pendingMembers.length > 0 && (
-        <section className="rounded-3xl border border-amber-500/25 bg-amber-500/5 p-6">
+        <section id="zgłoszenia" className="scroll-mt-28 rounded-3xl border border-amber-500/25 bg-amber-500/5 p-6">
           <h2 className="mb-4 flex items-center gap-2 text-lg font-black text-[var(--eos-text)]">
             <UserCheck size={18} className="text-amber-500" /> Zgłoszenia do zatwierdzenia
           </h2>
@@ -463,16 +491,21 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       )}
 
       <section className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
-        <h2 className="mb-4 text-lg font-black text-[var(--eos-text)]">Zespół i aktywność</h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-black text-[var(--eos-text)]">Zespół i aktywność</h2>
+          <p className="eos-muted-copy text-xs">Podgląd logowań, ofert, CRM i przenoszenie ogłoszeń między agentami</p>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[960px] text-left text-sm">
             <thead>
               <tr className="border-b border-[var(--eos-border)] text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">
                 <th className="py-3 pr-4">Agent</th>
                 <th className="py-3 pr-4">Stanowisko</th>
-                <th className="py-3 pr-4">Opinie</th>
+                <th className="py-3 pr-4">Ostatnie logowanie</th>
                 <th className="py-3 pr-4">Oferty</th>
+                <th className="py-3 pr-4">Opinie</th>
                 <th className="py-3 pr-4">CRM</th>
+                <th className="py-3 pr-4">Transakcje</th>
                 <th className="py-3 pr-4">Kredyty</th>
                 <th className="py-3">Akcje</th>
               </tr>
@@ -528,18 +561,32 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                         ))}
                       </select>
                     </td>
+                    <td className="py-4 pr-4 text-xs text-[var(--eos-muted)]">{fmtDate(m.user.lastLoginAt)}</td>
+                    <td className="py-4 pr-4">
+                      <div className="text-xs font-bold text-[var(--eos-text)]">{m.user.activeOffers} aktyw.</div>
+                      <div className="eos-muted-copy text-[10px]">
+                        {m.user.pendingOffers} oczek. · {m.user.soldOffers} sprzed.
+                      </div>
+                    </td>
                     <td className="py-4 pr-4">
                       <Link href={`/profil/${m.user.id}#agent-reviews`} className="inline-flex items-center gap-1 text-xs font-bold text-amber-500 hover:underline">
                         <Star size={12} className="fill-amber-400 text-amber-400" />
                         {m.user.averageRating != null ? m.user.averageRating.toFixed(1) : '—'} ({m.user.reviewsCount})
                       </Link>
                     </td>
-                    <td className="py-4 pr-4">{m.user.activeOffers}</td>
                     <td className="py-4 pr-4">{m.user.crmClients}</td>
+                    <td className="py-4 pr-4">{m.user.dealsInProgress}</td>
                     <td className="py-4 pr-4">{m.user.extraListings}</td>
                     <td className="py-4">
                       <div className="flex flex-wrap gap-2">
-                        <Link href={`/profil/${m.user.id}`} className="text-xs font-bold text-emerald-500 hover:underline">
+                        <button
+                          type="button"
+                          onClick={() => setDetailMember(m)}
+                          className="text-xs font-bold text-emerald-500 hover:underline"
+                        >
+                          Zarządzaj
+                        </button>
+                        <Link href={`/profil/${m.user.id}`} className="text-xs font-bold text-[var(--eos-muted)] hover:underline">
                           Profil
                         </Link>
                         {m.role === 'AGENT' && (
@@ -559,6 +606,38 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
           </table>
         </div>
       </section>
+
+      {(dashboard?.recentOffers.length ?? 0) > 0 && (
+        <section className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
+          <h2 className="mb-4 text-lg font-black text-[var(--eos-text)]">Ostatnie ogłoszenia biura</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {dashboard!.recentOffers.map((offer) => (
+              <Link
+                key={offer.id}
+                href={`/oferta/${offer.id}`}
+                className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/50 p-4 transition hover:border-emerald-500/30"
+              >
+                <p className="truncate font-bold text-[var(--eos-text)]">{offer.title}</p>
+                <p className="eos-muted-copy mt-1 text-xs">
+                  {offer.agent.name || 'Agent'} · {offer.city} · {offer.status}
+                </p>
+                <p className="mt-2 text-[10px] text-[var(--eos-muted)]">Aktualizacja: {fmtDate(offer.updatedAt)}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {detailMember && (
+        <AgencyMemberDetailPanel
+          member={detailMember}
+          transferTargets={dashboard?.members
+            .filter((m) => m.status === 'ACTIVE')
+            .map((m) => ({ userId: m.userId, name: m.user.name })) ?? []}
+          onClose={() => setDetailMember(null)}
+          onTransferred={() => void load()}
+        />
+      )}
 
       {creditTarget != null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">

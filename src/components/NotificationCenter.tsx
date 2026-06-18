@@ -13,6 +13,7 @@ import {
   MessageCircle,
   ShieldAlert,
   Star,
+  Users,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -153,6 +154,9 @@ export default function NotificationCenter() {
     const title = notification.title || "";
     const type = notification.type || "";
 
+    if (title.includes("Nowe zgłoszenie agenta") || title.includes("zgłoszenie agenta")) {
+      return { icon: Users, color: "text-amber-500", bg: "bg-amber-500/10" };
+    }
     if (title.includes("Deal Room") || title.includes("Wiadomość") || type === "DEAL_UPDATE") {
       return { icon: Briefcase, color: "text-emerald-500", bg: "bg-emerald-500/10" };
     }

@@ -12,6 +12,7 @@ import {
 } from '@/lib/phoneE164';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 import { uniqueCompanySlug } from '@/lib/agencyCompany';
+import { notifyCompanyAdminsOfPendingMember } from '@/lib/agencyCompanyNotify';
 
 const normalizeEmail = (value: unknown) => String(value || '').toLowerCase().trim();
 
@@ -177,6 +178,11 @@ export async function POST(req: Request) {
           role: dbRole,
           planType: userPlanType,
           companyName: resolvedCompanyName || null,
+          companyAddress: resolvedCompanyAddress,
+          companyWebsite: resolvedCompanyWebsite,
+          companyLogoUrl: resolvedCompanyLogo,
+          officePhone: resolvedOfficePhone,
+          officeEmail: resolvedOfficeEmail,
         },
         select: MOBILE_USER_SELECT,
       });
@@ -218,6 +224,22 @@ export async function POST(req: Request) {
 
       return created;
     });
+
+    if (dbRole === Role.AGENT && isJoinAgency && joinCompany) {
+      const pendingMembership = await prisma.agencyCompanyMember.findUnique({
+        where: { userId: user.id },
+        select: { id: true },
+      });
+      if (pendingMembership) {
+        void notifyCompanyAdminsOfPendingMember({
+          companyId: joinCompany.id,
+          memberId: pendingMembership.id,
+          companyName: joinCompany.name,
+          applicantName: displayName,
+          applicantEmail: cleanEmail,
+        });
+      }
+    }
 
     void sendTransactionalEmail({
       to: user.email,
