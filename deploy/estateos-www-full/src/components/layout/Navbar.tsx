@@ -156,6 +156,13 @@ export default function Navbar() {
             <button type="button" onClick={() => handleNavClick("/oferty")} className="eos-nav-link-primary shrink min-w-0">
               {dict.nav.market}
             </button>
+            <button
+              type="button"
+              onClick={() => handleNavClick("/agencje")}
+              className={`eos-nav-link-primary shrink min-w-0 ${pathname === "/agencje" ? "eos-nav-link-primary--active" : ""}`}
+            >
+              {dict.nav.agencyCatalog}
+            </button>
           </div>
         </div>
 
@@ -263,6 +270,7 @@ export default function Navbar() {
                     variant="primary"
                   />
                   <MobileNavButton icon={Building2} label={dict.nav.market} onClick={() => handleNavClick("/oferty")} variant="primary" />
+                  <MobileNavButton icon={Building2} label={dict.nav.agencyCatalog} onClick={() => handleNavClick("/agencje")} variant="primary" />
                 </div>
 
                 <div className="h-px bg-[var(--eos-border)]" />
@@ -414,6 +422,11 @@ export default function Navbar() {
           color: var(--eos-accent);
           box-shadow: 0 6px 18px rgba(16, 185, 129, 0.14);
           transform: translateY(-1px);
+        }
+        .eos-nav-link-primary--active {
+          background: var(--eos-accent-soft);
+          color: var(--eos-accent);
+          box-shadow: 0 6px 18px rgba(16, 185, 129, 0.14);
         }
       `}</style>
     </nav>

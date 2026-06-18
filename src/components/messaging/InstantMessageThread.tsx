@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { BlurView } from 'expo-blur';
-import { Check, CheckCheck, Send } from 'lucide-react-native';
+import { Check, CheckCheck, Plus, Send, X } from 'lucide-react-native';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -26,6 +26,12 @@ import MessageReactionPicker, { type ReactionAnchor } from './MessageReactionPic
 import { groupedReactionEmojis } from '../../utils/contactMessageReactions';
 import { parseContactMessageParts } from '../../utils/contactAttachment';
 import ContactMessageAttachment from './ContactMessageAttachment';
+import ContactAttachMenuPopover, { type AttachMenuAnchor } from './ContactAttachMenuPopover';
+import {
+  createContactAttachmentPickers,
+  type ContactAttachLabels,
+  type ContactPendingFile,
+} from '../../utils/contactAttachMenu';
 
 export type IMThreadMessage = {
   id: number | string;
@@ -69,6 +75,20 @@ type Props = {
   placeholder: string;
   onReact?: (messageId: number | string, emoji: string | null) => void;
   isDark?: boolean;
+  attachmentMenu?: {
+    labels: ContactAttachLabels;
+    onPick: (file: ContactPendingFile) => void;
+    usageBytes: number;
+    limitBytes: number;
+    disabled?: boolean;
+  };
+  pendingAttachment?: {
+    name: string;
+    uri: string;
+    mimeType: string;
+    size?: number;
+  } | null;
+  onClearPendingAttachment?: () => void;
 };
 
 export default function InstantMessageThread({
@@ -83,12 +103,37 @@ export default function InstantMessageThread({
   placeholder,
   onReact,
   isDark = true,
+  attachmentMenu,
+  pendingAttachment,
+  onClearPendingAttachment,
 }: Props) {
   const { colors, styles } = useMemo(() => getChatTheme(isDark), [isDark]);
   const scrollRef = useRef<ScrollView>(null);
+  const attachBtnRef = useRef<View>(null);
   const lastAutoScrolledMessageIdRef = useRef<string | number | null>(null);
   const bubbleRefs = useRef<Record<string, View | null>>({});
   const [reactionAnchor, setReactionAnchor] = useState<ReactionAnchor | null>(null);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [attachAnchor, setAttachAnchor] = useState<AttachMenuAnchor | null>(null);
+
+  const pickers = useMemo(() => {
+    if (!attachmentMenu) return null;
+    return createContactAttachmentPickers(
+      attachmentMenu.labels,
+      attachmentMenu.onPick,
+      attachmentMenu.usageBytes,
+      attachmentMenu.limitBytes,
+    );
+  }, [attachmentMenu]);
+
+  const openAttachMenu = () => {
+    if (!attachmentMenu || attachmentMenu.disabled || sending) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    attachBtnRef.current?.measureInWindow((x, y, width, height) => {
+      setAttachAnchor({ x, y, width, height });
+      setAttachMenuOpen(true);
+    });
+  };
 
   useEffect(() => {
     lastAutoScrolledMessageIdRef.current = null;
@@ -105,12 +150,46 @@ export default function InstantMessageThread({
     });
   }, [messages]);
 
-  const canSend = Boolean(draft.trim()) && !sending;
+  const canSend = Boolean((draft.trim() || pendingAttachment) && !sending);
   const reactionsEnabled = Boolean(onReact);
 
   const inputRow = (
-    <View style={styles.inputRow}>
-      <TextInput
+    <View>
+      {pendingAttachment ? (
+        <View style={[styles.pendingChip, { backgroundColor: isDark ? colors.surfaceElevated : '#EFEFF4' }]}>
+          <View style={styles.pendingPreview}>
+            <ContactMessageAttachment
+              attachment={{
+                url: pendingAttachment.uri,
+                name: pendingAttachment.name,
+                mimeType: pendingAttachment.mimeType,
+                size: pendingAttachment.size ?? 0,
+              }}
+              isMe
+              isDark={isDark}
+              compact
+            />
+          </View>
+          {onClearPendingAttachment ? (
+            <Pressable onPress={onClearPendingAttachment} hitSlop={8} style={styles.pendingChipClear}>
+              <X size={14} color={colors.textMuted} />
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+      <View style={styles.inputRow}>
+        {attachmentMenu ? (
+          <View ref={attachBtnRef} collapsable={false}>
+            <Pressable
+              style={[styles.attachBtn, { backgroundColor: isDark ? colors.surfaceElevated : '#E5E5EA' }]}
+              onPress={openAttachMenu}
+              disabled={attachmentMenu.disabled || sending}
+            >
+              <Plus size={20} color={attachmentMenu.disabled ? colors.sendIconIdle : colors.textBase} />
+            </Pressable>
+          </View>
+        ) : null}
+        <TextInput
         style={styles.textInput}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
@@ -139,6 +218,7 @@ export default function InstantMessageThread({
           <Send size={18} color={canSend ? '#fff' : colors.sendIconIdle} />
         )}
       </Pressable>
+      </View>
     </View>
   );
 
@@ -287,6 +367,23 @@ export default function InstantMessageThread({
         onDismiss={closeReactionPicker}
         isDark={isDark}
       />
+
+      {attachmentMenu && pickers ? (
+        <ContactAttachMenuPopover
+          visible={attachMenuOpen}
+          anchor={attachAnchor}
+          labels={{
+            gallery: attachmentMenu.labels.gallery,
+            camera: attachmentMenu.labels.camera,
+            file: attachmentMenu.labels.file,
+          }}
+          onGallery={pickers.pickGallery}
+          onCamera={pickers.pickCamera}
+          onFile={pickers.pickFile}
+          onDismiss={() => setAttachMenuOpen(false)}
+          isDark={isDark}
+        />
+      ) : null}
     </>
   );
 }

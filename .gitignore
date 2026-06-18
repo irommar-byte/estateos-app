@@ -67,4 +67,6 @@ tmp-*
 
 # Osobna kopia serwera w tym repo — nie mieszaj z appką w statusie (commituj tylko celowo)
 estateos-server/
+EstateOS/
+lineage-launcher/
 *.ts.new

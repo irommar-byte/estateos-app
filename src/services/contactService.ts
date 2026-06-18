@@ -1,6 +1,7 @@
 import { API_URL } from '../config/network';
 import { parseContactReactions } from '../utils/contactMessageReactions';
 import { formatContactLastMessagePreview } from '../utils/contactAttachment';
+import type { ContactAttachmentMeta } from '../utils/contactAttachment';
 
 export type ContactThreadRow = {
   id: number;
@@ -25,6 +26,19 @@ export type ContactMessageRow = {
   isRead?: boolean;
   reactions?: ContactReactionsMap;
   createdAt: string;
+};
+
+export type ContactThreadAttachmentsInfo = {
+  usageBytes: number;
+  limitBytes: number;
+  perFileLimitBytes: number;
+  attachments: Array<
+    ContactAttachmentMeta & {
+      messageId: number;
+      senderId: number;
+      createdAt: string;
+    }
+  >;
 };
 
 function authHeaders(token: string): HeadersInit {
@@ -80,16 +94,61 @@ export async function fetchContactMessages(
 export async function sendContactMessage(
   token: string,
   threadId: number,
-  content: string
+  content: string,
+  attachment?: ContactAttachmentMeta | null,
 ): Promise<ContactMessageRow | null> {
   const res = await fetch(`${API_URL}/api/mobile/v1/contact/threads/${threadId}/messages`, {
     method: 'POST',
     headers: authHeaders(token),
-    body: JSON.stringify({ content: content.trim() }),
+    body: JSON.stringify({
+      content: content.trim(),
+      attachment: attachment ?? undefined,
+    }),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(String(json?.error || 'Nie udało się wysłać wiadomości.'));
   return json?.message ?? null;
+}
+
+export async function fetchContactAttachments(
+  token: string,
+  threadId: number,
+): Promise<ContactThreadAttachmentsInfo> {
+  const res = await fetch(`${API_URL}/api/mobile/v1/contact/threads/${threadId}/attachments?t=${Date.now()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(String(json?.error || 'Nie udało się pobrać załączników.'));
+  return {
+    usageBytes: Number(json?.usageBytes) || 0,
+    limitBytes: Number(json?.limitBytes) || 100 * 1024 * 1024,
+    perFileLimitBytes: Number(json?.perFileLimitBytes) || 10 * 1024 * 1024,
+    attachments: Array.isArray(json?.attachments) ? json.attachments : [],
+  };
+}
+
+export async function uploadContactAttachment(
+  token: string,
+  threadId: number,
+  file: { uri: string; name: string; mimeType: string },
+): Promise<ContactAttachmentMeta> {
+  const formData = new FormData();
+  formData.append('file', {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType || 'application/octet-stream',
+  } as unknown as Blob);
+
+  const res = await fetch(`${API_URL}/api/mobile/v1/contact/threads/${threadId}/attachments`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.attachment) {
+    throw new Error(String(json?.error || 'Nie udało się przesłać pliku.'));
+  }
+  return json.attachment as ContactAttachmentMeta;
 }
 
 export async function sendContactTyping(token: string, threadId: number): Promise<void> {

@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@magrinj/expo-quick-look": "^0.4.0",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-masked-view/masked-view": "^0.3.2",
     "@react-native-picker/picker": "2.11.1",
@@ -72,6 +73,7 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-url-polyfill": "^3.0.0",
+    "react-native-webview": "13.15.0",
     "react-native-worklets": "0.5.1",
     "zustand": "^5.0.12"
   },

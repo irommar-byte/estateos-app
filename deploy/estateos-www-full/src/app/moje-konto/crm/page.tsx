@@ -1151,6 +1151,23 @@ export default function CRMDashboard() {
             </Link>
           </div>
         ) : null}
+
+        {isAgencyWorkspace ? (
+          <div className="mb-6 flex flex-col gap-3 rounded-[1.75rem] border border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.25em] text-emerald-400">Biuro nieruchomości</p>
+              <p className="max-w-xl text-sm text-[var(--eos-muted)]">
+                Zarządzaj firmą, zatwierdzaj pracowników i rozdysponuj kredyty publikacji w jednym panelu.
+              </p>
+            </div>
+            <Link
+              href="/moje-konto/firma"
+              className="shrink-0 rounded-xl bg-emerald-500 px-6 py-3 text-center text-[10px] font-black uppercase tracking-[0.2em] text-black hover:bg-emerald-400"
+            >
+              Panel firmy
+            </Link>
+          </div>
+        ) : null}
         
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 px-1 sm:px-2 md:px-4">
           <div>

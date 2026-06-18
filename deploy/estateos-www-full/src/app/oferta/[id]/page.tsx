@@ -1,4 +1,5 @@
 "use client";
+import { useSearchParams } from "next/navigation";
 import PublicProfileModal from "@/components/PublicProfileModal";
 import dynamic from "next/dynamic";
 import { useEffect, useState, useRef, use } from "react";
@@ -589,6 +590,14 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               className="pointer-events-auto flex w-full flex-col gap-3"
               onClick={(e) => e.stopPropagation()}
             >
+              {offer.isPresentedByAgent ? (
+                <p className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-[0.18em] text-emerald-300">
+                  {locale === "en" ? "Listing presented by your agent" : "Oferta prowadzona przez Twojego agenta"}
+                  {offer.presentingAgent?.personName || offer.presentingAgent?.displayName
+                    ? ` · ${offer.presentingAgent.personName || offer.presentingAgent.displayName}`
+                    : ""}
+                </p>
+              ) : null}
               <div className="flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-2.5 rounded-3xl border border-white/10 bg-zinc-950/85 px-3 py-3 shadow-2xl backdrop-blur-3xl sm:gap-x-4 sm:gap-y-3 sm:px-5 sm:py-3.5 hover:border-white/20 transition-all duration-300">
                 <button 
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPublicProfileId(String(offer?.user?.id || offer?.userId)); }} 
@@ -1213,7 +1222,16 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white">{t.securedBy}</span>
                   </div>
 
-                  <OfferShareLink offerId={Number(offer.id ?? offer._id)} />
+                  <OfferShareLink
+                    offerId={Number(offer.id ?? offer._id)}
+                    presentingAgentId={
+                      offer.isPresentedByAgent
+                        ? Number(offer.presentingAgent?.userId ?? offer.user?.id)
+                        : currentUser?.id && isAgentOrAgencySeller(currentUser)
+                          ? Number(currentUser.id)
+                          : undefined
+                    }
+                  />
 
                   </>
                 )}
@@ -1296,39 +1314,45 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
 export default function SingleOfferPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
+  const searchParams = useSearchParams();
   const [offer, setOffer] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   
   useEffect(() => {
     const fetchUserAndOffer = async () => {
-      // 1. Sprawdzamy, czy użytkownik jest PRO / Zalogowany
+      let userData: any = null;
       try {
         const userRes = await fetch('/api/user/profile');
         if (userRes.ok) {
-          const userData = await userRes.json();
-          if (userData && userData.email) setCurrentUser(userData);
+          userData = await userRes.json();
+          if (userData?.email) setCurrentUser(userData);
         }
       } catch (e) {}
 
-      // 2. Pobieramy ofertę
       const id = resolvedParams.id;
       if (!id) return;
+      const portal = searchParams.get("portal");
+      const agent = searchParams.get("agent");
+      const offerQs = new URLSearchParams();
+      if (portal) offerQs.set("portal", portal);
+      else if (agent) offerQs.set("agent", agent);
+      const offerQuery = offerQs.toString() ? `?${offerQs.toString()}` : "";
       try {
         fetch(`/api/offers/${id}/view`, {
           method: 'POST',
           headers: { 'x-client-source': 'web' }
-        }).catch(() => console.log("View count error"));
-        const res = await fetch(`/api/offers/${id}`);
-        if(res.ok) {
-           const data = await res.json();
-           setOffer(data);
+        }).catch(() => {});
+        const res = await fetch(`/api/offers/${id}${offerQuery}`);
+        if (res.ok) {
+          const data = await res.json();
+          setOffer(data);
         }
       } catch (error) {
         console.error("Błąd ładowania oferty:", error);
       }
     };
-    fetchUserAndOffer();
-  }, [resolvedParams]);
+    void fetchUserAndOffer();
+  }, [resolvedParams, searchParams]);
 
   if (!offer) return <div className="min-h-screen bg-[var(--eos-bg)]" />;
   

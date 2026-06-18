@@ -925,7 +925,13 @@
   var path = window.location.pathname || '';
   var m = path.match(/\/o\/(\d+)/);
   var id = m ? m[1] : '';
-  var canonicalHttps = ORIGIN + '/o/' + id;
+  var pageParams = new URLSearchParams(window.location.search || '');
+  var presentationQs = pageParams.get('portal')
+    ? '?portal=' + encodeURIComponent(pageParams.get('portal'))
+    : pageParams.get('agent')
+      ? '?agent=' + encodeURIComponent(pageParams.get('agent'))
+      : '';
+  var canonicalHttps = ORIGIN + '/o/' + id + presentationQs;
 
   function resolvePageLocale() {
     var params = new URLSearchParams(window.location.search);
@@ -972,6 +978,7 @@
       forSale: 'na sprzedaż',
       countryDefault: 'Polska',
       agentKickerAgent: 'Twój doradca · EstateOS™',
+      agentKickerPresented: 'Prowadzi tę ofertę · EstateOS™',
       agentKickerContact: 'Kontakt do oferty · EstateOS™',
       agentBadge: 'WIZYTÓWKA',
       agentTagline: 'Inteligentny rynek nieruchomości — materiał przygotowany do przekazania klientowi.',
@@ -1041,6 +1048,7 @@
       forSale: 'for sale',
       countryDefault: 'Poland',
       agentKickerAgent: 'Your advisor · EstateOS™',
+      agentKickerPresented: 'Presenting this listing · EstateOS™',
       agentKickerContact: 'Offer contact · EstateOS™',
       agentBadge: 'OFFER SHEET',
       agentTagline: 'The intelligent real estate market — material prepared for your client.',
@@ -1110,6 +1118,7 @@
       forSale: 'на продаж',
       countryDefault: 'Польща',
       agentKickerAgent: 'Ваш радник · EstateOS™',
+      agentKickerPresented: 'Веде це оголошення · EstateOS™',
       agentKickerContact: 'Контакт до оголошення · EstateOS™',
       agentBadge: 'ВІЗИТІВКА',
       agentTagline: 'Розумний ринок нерухомості — матеріал для передачі клієнту.',
@@ -1521,7 +1530,9 @@
       var display = data.sellerDisplayName || pub.displayName || offerUser.displayName || offerUser.name || t('agentDefaultName');
       var primary = personName || display;
       var agentLike = isAgentRole(pub.id ? pub : offerUser);
-      var kicker = agentLike ? t('agentKickerAgent') : t('agentKickerContact');
+      var kicker = data.isPresentedByAgent
+        ? t('agentKickerPresented')
+        : (agentLike ? t('agentKickerAgent') : t('agentKickerContact'));
       var phone = fmtPhone(pub.phone || offerUser.phone || '');
       var email = String(offerUser.email || '').trim();
 
@@ -1533,7 +1544,7 @@
       setAgentLine(document.getElementById('agentPhone'), phone ? (t('agentPhonePrefix') + phone) : '');
       setAgentLine(document.getElementById('agentEmail'), email || '');
       var refEl = document.getElementById('agentPrintRef');
-      if (refEl) refEl.textContent = t('refPrefix') + id + ' · estateos.pl/o/' + id;
+      if (refEl) refEl.textContent = t('refPrefix') + id + ' · estateos.pl/o/' + id + presentationQs;
       var photo = absUrl(pub.image || offerUser.image || '');
       var photoEl = document.getElementById('agentPhoto');
       var initialEl = document.getElementById('agentPhotoInitial');
@@ -1878,7 +1889,7 @@
     return lines.join('\n');
   }
 
-  fetch(ORIGIN + '/api/offers/' + encodeURIComponent(id), { credentials: 'omit' })
+  fetch(ORIGIN + '/api/offers/' + encodeURIComponent(id) + presentationQs, { credentials: 'omit' })
     .then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();

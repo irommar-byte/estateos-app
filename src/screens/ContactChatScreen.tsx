@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   BackHandler,
   KeyboardAvoidingView,
   Platform,
@@ -13,18 +14,24 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/useAuthStore';
 import {
+  fetchContactAttachments,
   fetchContactMessages,
   sendContactMessage,
   sendContactTyping,
   setContactMessageReaction,
+  uploadContactAttachment,
   type ContactMessageRow,
+  type ContactThreadAttachmentsInfo,
 } from '../services/contactService';
 import { setActiveContactThread } from '../utils/activeContactPush';
 import { useFloatingChatsStore } from '../store/useFloatingChatsStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { useI18n } from '../i18n';
 import InstantMessageThread, { type IMThreadMessage } from '../components/messaging/InstantMessageThread';
+import ContactChatAttachmentsBar from '../components/messaging/ContactChatAttachmentsBar';
 import { getChatTheme } from '../components/messaging/chatTheme';
+import { MAX_CONTACT_FILE_BYTES, MAX_CONTACT_THREAD_BYTES, CONTACT_ATTACHMENT_PREFIX } from '../utils/contactAttachment';
+import type { ContactPendingFile } from '../utils/contactAttachMenu';
 
 const TYPING_PULSE_MS = 1500;
 
@@ -46,8 +53,31 @@ export default function ContactChatScreen() {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [peerTyping, setPeerTyping] = useState(false);
+  const [pendingFile, setPendingFile] = useState<ContactPendingFile | null>(null);
+  const [attachmentsInfo, setAttachmentsInfo] = useState<ContactThreadAttachmentsInfo | null>(null);
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
   const lastTypingSentRef = useRef(0);
+
+  const loadAttachments = useCallback(async () => {
+    if (!token || !threadId) return;
+    setLoadingAttachments(true);
+    try {
+      const info = await fetchContactAttachments(token, threadId);
+      setAttachmentsInfo(info);
+    } catch {
+      setAttachmentsInfo({
+        usageBytes: 0,
+        limitBytes: MAX_CONTACT_THREAD_BYTES,
+        perFileLimitBytes: MAX_CONTACT_FILE_BYTES,
+        attachments: [],
+      });
+    } finally {
+      setLoadingAttachments(false);
+    }
+  }, [token, threadId]);
 
   const load = useCallback(async () => {
     if (!token || !threadId) return;
@@ -68,13 +98,14 @@ export default function ContactChatScreen() {
       setActiveContactThread(threadId);
       useFloatingChatsStore.getState().setDockSuppressed(true);
       void load();
+      void loadAttachments();
       const poll = setInterval(() => void load(), 2500);
       return () => {
         clearInterval(poll);
         setActiveContactThread(null);
         useFloatingChatsStore.getState().setDockSuppressed(false);
       };
-    }, [threadId, load]),
+    }, [threadId, load, loadAttachments]),
   );
 
   useEffect(() => {
@@ -95,26 +126,72 @@ export default function ContactChatScreen() {
     }
   };
 
+  const attachmentMenuLabels = useMemo(
+    () => ({
+      title: t('contact.attachments.menuTitle'),
+      gallery: t('contact.attachments.gallery'),
+      camera: t('contact.attachments.camera'),
+      file: t('contact.attachments.file'),
+      cancel: t('contact.attachments.cancel'),
+      cameraPermission: t('contact.attachments.cameraPermission'),
+      limitTitle: t('contact.attachments.limitTitle'),
+      fileTooLarge: t('contact.attachments.fileTooLarge'),
+      threadFull: t('contact.attachments.threadFull'),
+      pickFailed: t('contact.attachments.pickFailed'),
+    }),
+    [t],
+  );
+
+  const handleAttachmentPick = useCallback(
+    (file: ContactPendingFile) => {
+      setPendingFile(file);
+      Haptics.selectionAsync();
+    },
+    [],
+  );
+
+  const buildOptimisticContent = (text: string, file: ContactPendingFile | null) => {
+    if (!file) return text;
+    const payload = JSON.stringify({
+      url: file.uri,
+      name: file.name,
+      mimeType: file.mimeType,
+      size: file.size,
+    });
+    const trimmed = text.trim();
+    return trimmed
+      ? `${trimmed}\n${CONTACT_ATTACHMENT_PREFIX}${payload}`
+      : `${CONTACT_ATTACHMENT_PREFIX}${payload}`;
+  };
+
   const onSend = async () => {
     const text = draft.trim();
-    if (!text || !token || sending || !userId) return;
+    const fileSnapshot = pendingFile;
+    if ((!text && !fileSnapshot) || !token || sending || uploading || !userId) return;
 
     const optimistic: ContactMessageRow = {
       id: -Date.now(),
       threadId,
       senderId: userId,
-      content: text,
+      content: buildOptimisticContent(text, fileSnapshot),
       createdAt: new Date().toISOString(),
       isRead: false,
     };
 
     setSending(true);
     setDraft('');
+    setPendingFile(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setMessages((prev) => [...prev, optimistic]);
 
     try {
-      const msg = await sendContactMessage(token, threadId, text);
+      let attachmentMeta = null;
+      if (fileSnapshot) {
+        setUploading(true);
+        attachmentMeta = await uploadContactAttachment(token, threadId, fileSnapshot);
+        setUploading(false);
+      }
+      const msg = await sendContactMessage(token, threadId, text, attachmentMeta);
       if (msg) {
         setMessages((prev) => {
           const withoutTemp = prev.filter((m) => m.id !== optimistic.id);
@@ -124,11 +201,18 @@ export default function ContactChatScreen() {
       } else {
         await load();
       }
-    } catch {
+      await loadAttachments();
+    } catch (err) {
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       setDraft(text);
+      if (fileSnapshot) setPendingFile(fileSnapshot);
+      Alert.alert(
+        t('contact.errors.title'),
+        err instanceof Error ? err.message : t('contact.attachments.sendFailed'),
+      );
     } finally {
       setSending(false);
+      setUploading(false);
     }
   };
 
@@ -206,6 +290,14 @@ export default function ContactChatScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
+      <ContactChatAttachmentsBar
+        info={attachmentsInfo}
+        loading={loadingAttachments}
+        open={attachmentsOpen}
+        onToggle={() => setAttachmentsOpen((v) => !v)}
+        isDark={isDark}
+      />
+
       <InstantMessageThread
         messages={threadMessages}
         currentUserId={userId}
@@ -214,10 +306,19 @@ export default function ContactChatScreen() {
         draft={draft}
         onDraftChange={onDraftChange}
         onSend={() => void onSend()}
-        sending={sending}
+        sending={sending || uploading}
         placeholder={t('contact.chat.placeholder')}
         onReact={(messageId, emoji) => void onReact(messageId, emoji)}
         isDark={isDark}
+        attachmentMenu={{
+          labels: attachmentMenuLabels,
+          onPick: handleAttachmentPick,
+          usageBytes: attachmentsInfo?.usageBytes ?? 0,
+          limitBytes: attachmentsInfo?.limitBytes ?? MAX_CONTACT_THREAD_BYTES,
+          disabled: uploading,
+        }}
+        pendingAttachment={pendingFile}
+        onClearPendingAttachment={() => setPendingFile(null)}
       />
     </KeyboardAvoidingView>
   );

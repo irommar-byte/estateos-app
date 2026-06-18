@@ -165,6 +165,25 @@ export function getChatTheme(isDark: boolean) {
       marginBottom: 2,
     },
     sendBtnActive: { backgroundColor: colors.primary },
+    attachBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 2,
+    },
+    pendingChip: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      borderRadius: 14,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      marginBottom: 8,
+      gap: 8,
+    },
+    pendingPreview: { flex: 1, minWidth: 0 },
+    pendingChipClear: { padding: 4, marginTop: 4 },
     loaderCenter: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
   });
 

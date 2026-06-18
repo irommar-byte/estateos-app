@@ -33,6 +33,7 @@ import {
 } from '../utils/phoneRegions';
 import { useI18n } from '../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import AuthLanguageFlags from '../components/AuthLanguageFlags';
 
 // --- LUKSUSOWE IKONY WALIDACJI ---

@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
 import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
 import { getAuthedUserIdFromRequest } from '@/lib/sessionAuth';
+import { agencyPendingApprovalLink, isAgencyPendingNotification } from '@/lib/agencyCompanyNotify';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,6 +184,17 @@ export async function GET(req: Request) {
         }
       } else if (offerId) {
         message = `Oferta: ${shortOfferTitle}. ${baseBody}`;
+      } else if (isAgencyPendingNotification(n)) {
+        link = agencyPendingApprovalLink();
+        groupKey = `agency-pending:${n.targetId || n.id}`;
+        message = baseBody || 'Nowy agent czeka na zatwierdzenie w panelu biura.';
+      } else if (n.type === 'SYSTEM_ALERT' && n.title === 'Zatwierdzono zgłoszenie do biura') {
+        link = '/moje-konto/crm';
+      } else if (n.type === 'SYSTEM_ALERT' && n.title === 'Przypisano ogłoszenia') {
+        link = '/moje-konto/crm';
+      } else if (n.type === 'SYSTEM_ALERT' && String(n.title || '').includes('zgłoszenie agenta')) {
+        link = agencyPendingApprovalLink();
+        groupKey = `agency-pending:${n.targetId || n.id}`;
       }
 
       return {

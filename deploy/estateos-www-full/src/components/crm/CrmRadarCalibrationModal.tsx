@@ -20,6 +20,18 @@ import {
   type WebRadarFilters,
 } from "@/lib/radarCalibrationWeb";
 import CrmRadarAreaPicker from "@/components/crm/CrmRadarAreaPicker";
+import CrmRadarScrubber from "@/components/crm/CrmRadarScrubber";
+import {
+  RADAR_MAX_AREA,
+  RADAR_MAX_BUDGET,
+  RADAR_MAX_YEAR,
+  RADAR_MIN_AREA,
+  RADAR_MIN_BUDGET,
+  RADAR_MIN_YEAR,
+  formatRadarAreaLabel,
+  formatRadarBudgetLabel,
+  formatRadarYearLabel,
+} from "@/lib/radarScrubberLimits";
 import type { RadarMapAreaSelection } from "@/lib/radarMapArea";
 
 type Catalog = {
@@ -149,7 +161,7 @@ export default function CrmRadarCalibrationModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[99999] overflow-y-auto overscroll-y-contain bg-black/90 backdrop-blur-md"
+          className="fixed inset-0 z-[99999] overflow-y-auto overscroll-y-contain bg-black/60 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
           aria-labelledby="crm-radar-calibration-title"
@@ -159,12 +171,12 @@ export default function CrmRadarCalibrationModal({
             initial={{ scale: 0.96, y: 16 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.96, y: 16 }}
-            className="relative my-auto w-full max-w-2xl max-h-none overflow-visible rounded-[2.5rem] border border-white/10 bg-[#0a0a0a] p-6 shadow-2xl sm:p-8"
+            className="eos-themed-modal relative my-auto w-full max-w-2xl max-h-none overflow-visible rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-2xl sm:p-8"
           >
             <button
               type="button"
               onClick={onClose}
-              className="absolute right-6 top-6 z-50 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white/5 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+              className="absolute right-6 top-6 z-50 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-[var(--eos-input)] text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
             >
               <X size={20} />
             </button>
@@ -174,8 +186,8 @@ export default function CrmRadarCalibrationModal({
                 <Radar className="text-emerald-500" size={22} />
               </div>
               <div>
-                <h3 id="crm-radar-calibration-title" className="text-2xl font-black text-white">Kalibracja radaru</h3>
-                <p className="mt-1 text-xs uppercase tracking-widest text-white/40">
+                <h3 id="crm-radar-calibration-title" className="text-2xl font-black text-[var(--eos-text)]">Kalibracja radaru</h3>
+                <p className="mt-1 text-xs uppercase tracking-widest text-[var(--eos-muted)]">
                   Te same ustawienia co w aplikacji mobilnej
                 </p>
               </div>
@@ -408,61 +420,38 @@ export default function CrmRadarCalibrationModal({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <div>
-                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">
-                        Min. metraż (m²)
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="w-full rounded-xl border border-white/10 bg-[#111] px-4 py-3 font-black text-white outline-none focus:border-emerald-500"
-                        placeholder="np. 40"
-                        value={draft.minArea > 0 ? String(draft.minArea) : ""}
-                        onChange={(e) =>
-                          setDraft((p) => ({
-                            ...p,
-                            minArea: parseInt(e.target.value.replace(/\D/g, ""), 10) || 0,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">
-                        Rok budowy od
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="w-full rounded-xl border border-white/10 bg-[#111] px-4 py-3 font-black text-white outline-none focus:border-emerald-500"
-                        placeholder="np. 2010"
-                        value={draft.minYear > 1900 ? String(draft.minYear) : ""}
-                        onChange={(e) =>
-                          setDraft((p) => ({
-                            ...p,
-                            minYear: parseInt(e.target.value.replace(/\D/g, ""), 10) || 1900,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">
-                        Maks. budżet (PLN)
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="w-full rounded-xl border border-white/10 bg-[#111] px-4 py-3 font-black text-emerald-400 outline-none focus:border-emerald-500"
-                        placeholder="2 500 000"
-                        value={draft.maxPrice > 0 ? draft.maxPrice.toLocaleString("pl-PL") : ""}
-                        onChange={(e) =>
-                          setDraft((p) => ({
-                            ...p,
-                            maxPrice: parseInt(e.target.value.replace(/\D/g, ""), 10) || 0,
-                          }))
-                        }
-                      />
-                    </div>
+                  <div className="space-y-4">
+                    <CrmRadarScrubber
+                      label="Min. metraż"
+                      min={RADAR_MIN_AREA}
+                      max={RADAR_MAX_AREA}
+                      step={1}
+                      value={draft.minArea > 0 ? draft.minArea : RADAR_MIN_AREA}
+                      displayValue={formatRadarAreaLabel(draft.minArea)}
+                      onChange={(v) => setDraft((p) => ({ ...p, minArea: v <= RADAR_MIN_AREA ? 0 : v }))}
+                    />
+                    <CrmRadarScrubber
+                      label="Rok budowy (od)"
+                      min={RADAR_MIN_YEAR}
+                      max={RADAR_MAX_YEAR}
+                      step={1}
+                      value={draft.minYear > RADAR_MIN_YEAR ? draft.minYear : RADAR_MIN_YEAR}
+                      displayValue={formatRadarYearLabel(draft.minYear)}
+                      onChange={(v) =>
+                        setDraft((p) => ({ ...p, minYear: v <= RADAR_MIN_YEAR ? RADAR_MIN_YEAR : v }))
+                      }
+                    />
+                    <CrmRadarScrubber
+                      label="Maks. budżet (PLN)"
+                      min={RADAR_MIN_BUDGET}
+                      max={RADAR_MAX_BUDGET}
+                      step={50_000}
+                      value={draft.maxPrice > 0 ? Math.min(draft.maxPrice, RADAR_MAX_BUDGET) : RADAR_MAX_BUDGET}
+                      displayValue={formatRadarBudgetLabel(draft.maxPrice)}
+                      onChange={(v) =>
+                        setDraft((p) => ({ ...p, maxPrice: v >= RADAR_MAX_BUDGET ? 0 : v }))
+                      }
+                    />
                   </div>
 
                   <div>

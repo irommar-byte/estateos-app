@@ -1,4 +1,4 @@
-image.pngimport React from 'react';
+import React from 'react';
 import { Marker } from 'react-native-maps';
 
 const PIN_IMAGES = {

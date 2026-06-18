@@ -2,6 +2,9 @@ import { API_URL } from '../config/network';
 
 export const CONTACT_ATTACHMENT_PREFIX = '[[CONTACT_ATTACHMENT]]';
 
+export const MAX_CONTACT_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_CONTACT_THREAD_BYTES = 100 * 1024 * 1024;
+
 export type ContactAttachmentMeta = {
   url: string;
   name: string;
@@ -13,7 +16,7 @@ export function normalizeContactMediaUrl(raw: string | null | undefined): string
   if (raw == null) return null;
   const s = String(raw).trim();
   if (!s) return null;
-  if (/^https?:\/\//i.test(s)) return s;
+  if (/^(https?|file|content):\/\//i.test(s)) return s;
   if (s.startsWith('//')) return `https:${s}`;
   if (s.startsWith('/')) return `${API_URL}${s}`;
   return `${API_URL}/${s.replace(/^\//, '')}`;

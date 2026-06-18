@@ -26,6 +26,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
                 email: true,
                 image: true,
                 companyName: true,
+                companyAddress: true,
+                companyWebsite: true,
+                companyLogoUrl: true,
+                officePhone: true,
+                officeEmail: true,
                 phone: true,
             }
         });
@@ -34,8 +39,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
         // 2. Pobieranie ofert (Offer.userId to Int)
         const offers = await prisma.offer.findMany({
-            where: { userId: user.id },
-            select: { id: true, title: true, price: true, images: true, district: true, city: true, street: true, buildingNumber: true }
+            where: { userId: user.id, status: { in: ['ACTIVE', 'PENDING'] } },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, title: true, price: true, status: true, images: true, district: true, city: true, street: true, buildingNumber: true }
         });
 
         // 3. Pobieranie opinii
@@ -68,6 +74,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
                 memberSince: user.createdAt,
                 image: user.image,
                 companyName: user.companyName,
+                companyAddress: user.companyAddress,
+                companyWebsite: user.companyWebsite,
+                companyLogoUrl: user.companyLogoUrl,
+                officePhone: user.officePhone,
+                officeEmail: user.officeEmail,
                 phone: user.phone,
                 badges,
             },

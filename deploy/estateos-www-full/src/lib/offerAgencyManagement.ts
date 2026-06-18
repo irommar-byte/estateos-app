@@ -1,6 +1,7 @@
 import { NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { isAgentOrAgencySeller } from '@/lib/sellerDisplay';
+import { listAgencyCompaniesWithStats } from '@/lib/agencyCompany';
 
 export type OfferManagementStatus = 'SELF' | 'TRANSFER_PENDING' | 'AGENCY_MANAGED';
 
@@ -197,14 +198,39 @@ export function sellerClientToListingPrefill(client: {
 }
 
 export async function listAgenciesWithStats() {
+  const fromCompanies = await listAgencyCompaniesWithStats();
+  if (fromCompanies.length > 0) {
+    const memberRows = await prisma.agencyCompanyMember.findMany({ select: { userId: true } });
+    const memberIds = new Set(memberRows.map((m) => m.userId));
+    const legacyAgencies = await listLegacyAgenciesWithStats(memberIds);
+    return [...fromCompanies, ...legacyAgencies].sort((a, b) => {
+      const ra = a.averageRating ?? 0;
+      const rb = b.averageRating ?? 0;
+      if (rb !== ra) return rb - ra;
+      return b.activeListings - a.activeListings;
+    });
+  }
+
+  return listLegacyAgenciesWithStats(new Set());
+}
+
+async function listLegacyAgenciesWithStats(excludeUserIds: Set<number>) {
   const agencies = await prisma.user.findMany({
-    where: { OR: [{ role: 'AGENT' }, { planType: 'AGENCY' }] },
+    where: {
+      OR: [{ role: 'AGENT' }, { planType: 'AGENCY' }],
+      ...(excludeUserIds.size > 0 ? { id: { notIn: [...excludeUserIds] } } : {}),
+    },
     select: {
       id: true,
       name: true,
       email: true,
       image: true,
       companyName: true,
+      companyAddress: true,
+      companyWebsite: true,
+      companyLogoUrl: true,
+      officePhone: true,
+      officeEmail: true,
       phone: true,
       createdAt: true,
       planType: true,
@@ -250,6 +276,11 @@ export async function listAgenciesWithStats() {
         companyName: agency.companyName,
         displayName,
         image: agency.image,
+        companyAddress: agency.companyAddress,
+        companyWebsite: agency.companyWebsite,
+        companyLogoUrl: agency.companyLogoUrl,
+        officePhone: agency.officePhone,
+        officeEmail: agency.officeEmail,
         phone: agency.phone,
         activeListings: agency._count.offers,
         reviewsCount,

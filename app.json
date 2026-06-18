@@ -144,7 +144,8 @@
           "icon": "./assets/app.png",
           "color": "#ffffff"
         }
-      ]
+      ],
+      "@magrinj/expo-quick-look"
     ]
   }
 }
