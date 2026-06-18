@@ -2,8 +2,8 @@ import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Building2 } from 'lucide-react-native';
-import { useI18n } from '../i18n';
-import { useAuthStore } from '../store/useAuthStore';
+import { useI18n } from '../../i18n';
+import { useAuthStore } from '../../store/useAuthStore';
 
 export default function AgencyPendingGate() {
   const { t } = useI18n();
