@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import { isValidImageMagic } from '@/lib/upload/offerMediaUpload';
 
 export const AGENCY_UPLOAD_BASE_FS =
-  process.env.AGENCY_UPLOAD_ROOT || path.join(process.cwd(), 'public', 'uploads', 'agency');
+  process.env.AGENCY_UPLOAD_ROOT || '/home/rommar/uploads/agency';
 
 export const AGENCY_UPLOAD_PUBLIC_PREFIX = '/uploads/agency';
 

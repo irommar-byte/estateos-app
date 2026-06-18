@@ -42,7 +42,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const mime = String(file.type || '');
   if (!mime.startsWith('image/')) {
-    return NextResponse.json({ success: false, message: 'Zdjęcie agenta musi być plikiem graficznym (JPG, PNG, WEBP).' }, { status: 415 });
+    return NextResponse.json({ success: false, message: 'Zdjęcie agenta musi być plikiem graficznym (JPG, PNG, WEBP, GIF).' }, { status: 415 });
   }
 
   try {
