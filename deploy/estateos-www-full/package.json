@@ -20,6 +20,7 @@
     "test:pakiet-plus": "node scripts/regression-pakiet-plus.cjs",
     "check": "npm run type-check",
     "smoke:postdeploy": "node scripts/postdeploy-smoke.cjs",
+    "agency:backfill": "npx tsx scripts/backfill-agency-offices.ts",
     "verify:recon": "npm run check && node scripts/verify-reconciliation-e2e.cjs",
     "deploy:recon": "node scripts/reconcile-prod-deploy.cjs"
   },

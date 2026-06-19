@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import ProfileMediaAvatar from '@/components/profile/ProfileMediaAvatar';
-import { formatAgentTitle } from '@/lib/agentProfile';
+import { formatAgentTitle, pickTeamMemberAvatar } from '@/lib/agentProfile';
 
 type MemberSummary = {
   id: number;
@@ -166,7 +166,7 @@ export default function AgencyMemberDetailPanel({
           <div className="flex items-center gap-4">
             <div className="size-14 overflow-hidden rounded-2xl border border-[var(--eos-border)]">
               <ProfileMediaAvatar
-                src={member.profilePhotoUrl || member.user.image}
+                src={pickTeamMemberAvatar({ userImage: member.user.image, profilePhotoUrl: member.profilePhotoUrl })}
                 alt={member.user.name || ''}
                 className="size-full object-cover"
               />

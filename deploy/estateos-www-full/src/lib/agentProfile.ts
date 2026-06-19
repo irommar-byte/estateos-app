@@ -44,8 +44,18 @@ export function pickAgentAvatar(params: {
   companyLogoUrl?: string | null;
 }): string | null {
   return (
-    resolveProfileMediaUrl(params.profilePhotoUrl) ||
     resolveProfileMediaUrl(params.userImage) ||
+    resolveProfileMediaUrl(params.profilePhotoUrl) ||
     resolveProfileMediaUrl(params.companyLogoUrl)
+  );
+}
+
+export function pickTeamMemberAvatar(params: {
+  userImage?: string | null;
+  profilePhotoUrl?: string | null;
+}): string | null {
+  return (
+    resolveProfileMediaUrl(params.userImage) ||
+    resolveProfileMediaUrl(params.profilePhotoUrl)
   );
 }

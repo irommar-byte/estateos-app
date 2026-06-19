@@ -25,7 +25,7 @@ import {
 import { motion } from 'framer-motion';
 import ProfileMediaAvatar from '@/components/profile/ProfileMediaAvatar';
 import AgencyMemberDetailPanel from '@/components/crm/AgencyMemberDetailPanel';
-import { AGENCY_AGENT_TITLES, formatAgentTitle } from '@/lib/agentProfile';
+import { AGENCY_AGENT_TITLES, formatAgentTitle, pickTeamMemberAvatar } from '@/lib/agentProfile';
 
 type MemberRow = {
   id: number;
@@ -680,7 +680,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                         <div className="relative shrink-0">
                           <div className="size-12 overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
                             <ProfileMediaAvatar
-                              src={m.profilePhotoUrl || m.user.image}
+                              src={pickTeamMemberAvatar({ userImage: m.user.image, profilePhotoUrl: m.profilePhotoUrl })}
                               alt={m.user.name || 'Agent'}
                               iconSize={18}
                               className="size-full object-cover"
