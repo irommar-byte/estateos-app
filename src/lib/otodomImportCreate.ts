@@ -213,6 +213,24 @@ export type ImportImageProgress = {
   asFloorPlan?: boolean;
 };
 
+function resolveFloorPlanIndexForImport(
+  imageUrls: string[],
+  options?: { lastImageAsFloorPlan?: boolean; floorPlanImageIndex?: number | null },
+): number | null {
+  if (options?.floorPlanImageIndex === null) return null;
+  if (
+    options?.floorPlanImageIndex != null &&
+    options.floorPlanImageIndex >= 0 &&
+    options.floorPlanImageIndex < imageUrls.length
+  ) {
+    return options.floorPlanImageIndex;
+  }
+  if (options?.lastImageAsFloorPlan === true && imageUrls.length > 0) {
+    return imageUrls.length - 1;
+  }
+  return null;
+}
+
 export async function importOtodomImagesForOffer(params: {
   offerId: number;
   ownerUserId: number;
@@ -220,6 +238,7 @@ export async function importOtodomImagesForOffer(params: {
   source: OtodomImportDraft['source'];
   maxImages?: number;
   lastImageAsFloorPlan?: boolean;
+  floorPlanImageIndex?: number | null;
   onProgress?: (progress: ImportImageProgress) => void;
 }): Promise<{ uploaded: number; failed: number; urls: string[]; floorPlanUrl: string | null }> {
   const urls: string[] = [];
@@ -228,10 +247,13 @@ export async function importOtodomImagesForOffer(params: {
   let floorPlanUrl: string | null = null;
   const cap = Math.min(params.maxImages ?? MAX_IMPORT_IMAGES, MAX_IMPORT_IMAGES);
   const allUrls = params.imageUrls.slice(0, cap);
-  const useFloorPlan =
-    params.lastImageAsFloorPlan === true && allUrls.length > 0;
-  const galleryUrls = useFloorPlan && allUrls.length > 1 ? allUrls.slice(0, -1) : allUrls;
-  const floorPlanRemoteUrl = useFloorPlan ? allUrls[allUrls.length - 1] : null;
+  const floorPlanIdx = resolveFloorPlanIndexForImport(allUrls, {
+    lastImageAsFloorPlan: params.lastImageAsFloorPlan,
+    floorPlanImageIndex: params.floorPlanImageIndex,
+  });
+  const galleryUrls =
+    floorPlanIdx != null ? allUrls.filter((_, index) => index !== floorPlanIdx) : allUrls;
+  const floorPlanRemoteUrl = floorPlanIdx != null ? allUrls[floorPlanIdx] : null;
   const totalSteps = galleryUrls.length + (floorPlanRemoteUrl ? 1 : 0);
 
   await acquireOfferUploadLock(params.offerId);
@@ -354,6 +376,7 @@ export async function createOfferFromOtodomDraft(
     agentCommissionPercent?: number | null;
     maxImportImages?: number;
     lastImageFloorPlan?: boolean;
+    floorPlanImageIndex?: number | null;
     onImageProgress?: (progress: ImportImageProgress) => void;
     onCopyProgress?: (label: string, detail?: string, meta?: { rewrittenByAi?: boolean }) => void;
   },
@@ -397,18 +420,21 @@ export async function createOfferFromOtodomDraft(
     draft,
   });
 
-  let lastImageBuffer: Buffer | null = null;
-  if (options?.lastImageFloorPlan === undefined && draft.imageUrls.length > 0) {
+  let floorPlanImageIndex: number | null = null;
+  if (options?.floorPlanImageIndex !== undefined) {
+    floorPlanImageIndex = options.floorPlanImageIndex;
+  } else if (options?.lastImageFloorPlan === false) {
+    floorPlanImageIndex = null;
+  } else if (options?.lastImageFloorPlan === true && draft.imageUrls.length > 0) {
+    floorPlanImageIndex = draft.imageUrls.length - 1;
+  } else if (options?.lastImageFloorPlan === undefined && draft.imageUrls.length > 0) {
+    let lastImageBuffer: Buffer | null = null;
     const lastUrl = draft.imageUrls[draft.imageUrls.length - 1];
     const lastFile = await downloadRemoteImage(lastUrl, draft.source);
     lastImageBuffer = lastFile?.buffer ?? null;
+    const autoLast = await resolveLastImageIsFloorPlan(draft, undefined, lastImageBuffer);
+    floorPlanImageIndex = autoLast ? draft.imageUrls.length - 1 : null;
   }
-
-  const lastImageAsFloorPlan = await resolveLastImageIsFloorPlan(
-    draft,
-    options?.lastImageFloorPlan,
-    lastImageBuffer,
-  );
 
   const imageResult = await importOtodomImagesForOffer({
     offerId,
@@ -416,7 +442,7 @@ export async function createOfferFromOtodomDraft(
     imageUrls: draft.imageUrls,
     source: draft.source,
     maxImages: options?.maxImportImages,
-    lastImageAsFloorPlan,
+    floorPlanImageIndex,
     onProgress: options?.onImageProgress,
   });
 

@@ -16,6 +16,22 @@ function parseFloorPlanOverrides(raw: unknown): Record<string, boolean> | undefi
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+function parseFloorPlanSelections(raw: unknown) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: Record<string, { enabled: boolean; imageIndex: number }> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue;
+    const row = value as Record<string, unknown>;
+    const enabled = row.enabled === true;
+    const imageIndex = Number(row.imageIndex);
+    out[key] = {
+      enabled,
+      imageIndex: Number.isFinite(imageIndex) && imageIndex >= 0 ? Math.floor(imageIndex) : 0,
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function parseExportBody(body: Record<string, unknown>) {
   const selections = Array.isArray(body?.selections)
     ? body.selections
@@ -40,6 +56,7 @@ function parseExportBody(body: Record<string, unknown>) {
     transactionKind: body?.transactionKind === 'rent' ? ('rent' as const) : ('sale' as const),
     selections,
     floorPlanOverrides: parseFloorPlanOverrides(body?.floorPlanOverrides),
+    floorPlanSelections: parseFloorPlanSelections(body?.floorPlanSelections),
   };
 }
 

@@ -61,6 +61,45 @@ function resolveFloorPlanOverride(
   return undefined;
 }
 
+export type KeiFloorPlanSelection = {
+  enabled: boolean;
+  imageIndex: number;
+};
+
+function resolveFloorPlanSelectionForExport(
+  portalUrl: string,
+  draft: OtodomImportDraft,
+  options?: {
+    floorPlanSelections?: Record<string, KeiFloorPlanSelection>;
+    floorPlanOverrides?: Record<string, boolean>;
+  },
+): { enabled: boolean; imageIndex: number | null } {
+  const selection = options?.floorPlanSelections?.[portalUrl];
+  if (selection) {
+    if (!selection.enabled) return { enabled: false, imageIndex: null };
+    const idx =
+      selection.imageIndex >= 0 && selection.imageIndex < draft.imageUrls.length
+        ? selection.imageIndex
+        : null;
+    return { enabled: true, imageIndex: idx };
+  }
+
+  const legacy = resolveFloorPlanOverride(portalUrl, options?.floorPlanOverrides);
+  if (legacy === false) return { enabled: false, imageIndex: null };
+  if (legacy === true) {
+    return {
+      enabled: true,
+      imageIndex: draft.imageUrls.length > 0 ? draft.imageUrls.length - 1 : null,
+    };
+  }
+
+  const peek = peekLastImageInfo(draft);
+  return {
+    enabled: peek.suggestedFloorPlanIndex !== null,
+    imageIndex: peek.suggestedFloorPlanIndex,
+  };
+}
+
 function alignDraftWithKeiExportFilters(
   draft: OtodomImportDraft,
   propertyKind: KeiPropertyKind,
@@ -98,7 +137,9 @@ export async function peekKeiPortalListing(portalUrl: string) {
     imageCount: peek.imageCount,
     lastImageUrl: peek.lastImageUrl,
     suggestedFloorPlan: peek.suggestedFloorPlan,
-    previewUrls: draft.imageUrls.slice(-3),
+    suggestedFloorPlanIndex: peek.suggestedFloorPlanIndex,
+    imageUrls: peek.imageUrls,
+    previewUrls: peek.imageUrls.slice(-3),
   };
 }
 
@@ -110,6 +151,7 @@ export async function exportKeiListingsToEstateOS(options?: {
   transactionKind?: KeiTransactionKind;
   selections?: Array<{ keiId?: string; portalUrl: string; address?: string }>;
   floorPlanOverrides?: Record<string, boolean>;
+  floorPlanSelections?: Record<string, KeiFloorPlanSelection>;
   onProgress?: KeiExportProgressEmitter;
 }): Promise<{
   ok: true;
@@ -291,18 +333,24 @@ export async function exportKeiListingsToEstateOS(options?: {
         continue;
       }
 
-      const floorPlanOverride = resolveFloorPlanOverride(portalUrl, options?.floorPlanOverrides);
+      const floorPlanChoice = resolveFloorPlanSelectionForExport(portalUrl, draft, {
+        floorPlanSelections: options?.floorPlanSelections,
+        floorPlanOverrides: options?.floorPlanOverrides,
+      });
       const peek = peekLastImageInfo(draft);
-      const lastAsFloorPlan =
-        floorPlanOverride === true || (floorPlanOverride !== false && peek.suggestedFloorPlan);
+      const floorPlanUrl =
+        floorPlanChoice.imageIndex != null ? draft.imageUrls[floorPlanChoice.imageIndex] ?? null : null;
 
       emit?.({
         type: 'floor_plan_decision',
         index: currentIndex,
         portalUrl,
-        lastImageUrl: peek.lastImageUrl,
-        asFloorPlan: lastAsFloorPlan,
-        source: floorPlanOverride !== undefined ? 'override' : 'auto',
+        lastImageUrl: floorPlanUrl ?? peek.lastImageUrl,
+        asFloorPlan: floorPlanChoice.enabled && floorPlanChoice.imageIndex != null,
+        source:
+          options?.floorPlanSelections?.[portalUrl] || options?.floorPlanOverrides?.[portalUrl] !== undefined
+            ? 'override'
+            : 'auto',
       });
 
       emit?.({
@@ -318,7 +366,7 @@ export async function exportKeiListingsToEstateOS(options?: {
       const created = await createOfferFromOtodomDraft(draft, targetUserId, undefined, {
         agentCommissionPercent,
         maxImportImages: KEI_MAX_IMPORT_IMAGES,
-        lastImageFloorPlan: floorPlanOverride,
+        floorPlanImageIndex: floorPlanChoice.enabled ? floorPlanChoice.imageIndex : null,
         onCopyProgress: (label, detail, meta) => {
           emit?.({
             type: 'step',

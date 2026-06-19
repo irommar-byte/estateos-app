@@ -11,14 +11,21 @@ export async function GET(req: Request) {
   const gate = await requireMobileAdmin(req);
   if (!gate.ok) return gate.response;
 
-  const portalUrl = new URL(req.url).searchParams.get('portalUrl')?.trim() || '';
+  const url = new URL(req.url);
+  const portalUrl = url.searchParams.get('portalUrl')?.trim() || '';
+  const imageIndexRaw = url.searchParams.get('imageIndex');
+  const imageIndex = imageIndexRaw != null && imageIndexRaw !== '' ? Number(imageIndexRaw) : null;
+
   if (!portalUrl || !isSupportedImportOfferUrl(portalUrl)) {
     return NextResponse.json({ ok: false, error: 'Nieobsługiwany URL.' }, { status: 422 });
   }
 
   try {
     const peek = await peekKeiPortalListing(portalUrl);
-    const imageUrl = peek.lastImageUrl;
+    const imageUrl =
+      imageIndex != null && Number.isFinite(imageIndex) && imageIndex >= 0
+        ? peek.imageUrls[imageIndex] ?? null
+        : peek.lastImageUrl;
     if (!imageUrl) {
       return NextResponse.json({ ok: false, error: 'Brak zdjęcia.' }, { status: 404 });
     }
