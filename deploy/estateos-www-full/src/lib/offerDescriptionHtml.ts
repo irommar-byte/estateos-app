@@ -46,8 +46,15 @@ export function shouldRenderOfferDescriptionAsHtml(value: string): boolean {
   return /<\s*\/?[a-z][a-z0-9]*\b/i.test(trimmed);
 }
 
-export function looksLikeOfferDescriptionHtml(value: string): boolean {
-  return shouldRenderOfferDescriptionAsHtml(value);
+export function descriptionForEditForm(raw: unknown): string {
+  return stripHtmlToPlain(stripInternalOfferDescriptionMarkers(String(raw ?? '')));
+}
+
+export function descriptionForStorageFromEdit(raw: unknown): string {
+  const value = String(raw ?? '').trim();
+  if (!value) return '';
+  if (shouldRenderOfferDescriptionAsHtml(value)) return sanitizeOfferDescriptionHtml(value);
+  return value;
 }
 
 /** Prosta sanityzacja HTML opisu oferty przed renderem na stronie. */

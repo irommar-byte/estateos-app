@@ -182,7 +182,7 @@ export default function ProOpenHouseManageModal({
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-500 dark:text-amber-400">
                   <DoorOpen size={20} />
                 </div>
-                <h3 className="text-lg font-black text-[var(--eos-text)]">{copy.openHouseModalTitle}</h3>
+                <h3 className="text-[17px] font-semibold tracking-tight text-[var(--eos-text)]">{copy.openHouseModalTitle}</h3>
               </div>
               <button type="button" onClick={onClose} className="eos-pro-muted rounded-full bg-[var(--eos-input)] p-2 transition hover:bg-[var(--eos-border)]">
                 <X size={18} />
@@ -195,8 +195,8 @@ export default function ProOpenHouseManageModal({
                   key={key}
                   type="button"
                   onClick={() => setTab(key)}
-                  className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-widest ${
-                    tab === key ? "bg-amber-500/20 text-amber-600 dark:text-amber-300" : "eos-pro-muted"
+                  className={`eos-tab-pill ${
+                    tab === key ? "bg-amber-500/15 eos-amber-accent" : "text-[var(--eos-muted)]"
                   }`}
                 >
                   {key === "create" ? copy.openHouseCreateTab : copy.openHouseListTab}
@@ -212,9 +212,7 @@ export default function ProOpenHouseManageModal({
                 activeOffers.length ? (
                   <>
                     <div>
-                      <p className="eos-pro-muted mb-2 text-[10px] font-black uppercase tracking-widest">
-                        {copy.openHousePickOffer}
-                      </p>
+                      <p className="eos-field-label">{copy.openHousePickOffer}</p>
                       <div className="space-y-2">
                         {activeOffers.map((offer) => (
                           <button
@@ -248,10 +246,10 @@ export default function ProOpenHouseManageModal({
                           key={mode}
                           type="button"
                           onClick={() => setVisitMode(mode)}
-                          className={`rounded-xl border px-2 py-2 text-[10px] font-bold leading-snug ${
+                          className={`rounded-xl border px-2 py-2.5 text-[12px] font-semibold leading-snug ${
                             visitMode === mode
-                              ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
-                              : "border-[var(--eos-border)] eos-pro-muted"
+                              ? "border-amber-500/50 bg-amber-500/10 eos-amber-accent"
+                              : "border-[var(--eos-border)] text-[var(--eos-muted)]"
                           }`}
                         >
                           {label}
@@ -261,9 +259,7 @@ export default function ProOpenHouseManageModal({
 
                     <div className="grid grid-cols-2 gap-3">
                       <label className="block">
-                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-white/40">
-                          {copy.slotDay}
-                        </span>
+                        <span className="eos-field-label">{copy.slotDay}</span>
                         <input
                           type="date"
                           value={day}
@@ -272,9 +268,7 @@ export default function ProOpenHouseManageModal({
                         />
                       </label>
                       <label className="block">
-                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-white/40">
-                          {copy.slotCapacity}
-                        </span>
+                        <span className="eos-field-label">{copy.slotCapacity}</span>
                         <input
                           type="number"
                           min={1}
@@ -285,9 +279,7 @@ export default function ProOpenHouseManageModal({
                         />
                       </label>
                       <label className="block">
-                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-white/40">
-                          {copy.slotFrom}
-                        </span>
+                        <span className="eos-field-label">{copy.slotFrom}</span>
                         <select
                           value={startHour}
                           onChange={(e) => setStartHour(e.target.value)}
@@ -301,9 +293,7 @@ export default function ProOpenHouseManageModal({
                         </select>
                       </label>
                       <label className="block">
-                        <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-white/40">
-                          {copy.slotTo}
-                        </span>
+                        <span className="eos-field-label">{copy.slotTo}</span>
                         <select
                           value={endHour}
                           onChange={(e) => setEndHour(e.target.value)}
@@ -336,7 +326,7 @@ export default function ProOpenHouseManageModal({
                       type="button"
                       disabled={submitting || !offerId}
                       onClick={() => void publish()}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 py-4 text-xs font-black uppercase tracking-widest text-white disabled:opacity-50"
+                      className="eos-primary-cta bg-amber-500 hover:bg-amber-400"
                     >
                       {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
                       {copy.openHousePublish}
@@ -365,7 +355,7 @@ export default function ProOpenHouseManageModal({
                         </div>
                         <Link
                           href={`/oferta/${event.offerId}`}
-                          className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-400"
+                          className="inline-flex items-center gap-1 text-[12px] font-semibold eos-amber-accent"
                         >
                           {copy.openHouseViewOffer} <ExternalLink size={12} />
                         </Link>
@@ -375,7 +365,7 @@ export default function ProOpenHouseManageModal({
                           type="button"
                           disabled={submitting}
                           onClick={() => void cancelEvent(event.id)}
-                          className="mt-3 text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-red-400"
+                          className="mt-3 text-[13px] font-medium text-red-500 hover:text-red-600"
                         >
                           {copy.openHouseCancel}
                         </button>

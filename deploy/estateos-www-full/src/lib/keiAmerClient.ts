@@ -27,14 +27,32 @@ export function keiTypForPropertyKind(kind: KeiPropertyKind): string {
   return kind === 'house' ? '2' : '1';
 }
 
+/** KEI `rodzaj` w wierszu: 1 = sprzedaż, 2 = wynajem (czasem tekst). */
 export function keiTransactionKindFromRow(row: Pick<KeiListingRow, 'rodzaj'>): KeiTransactionKind {
-  const hay = String(row.rodzaj || '').toLowerCase();
-  if (hay.includes('wynaj')) return 'rent';
+  const hay = String(row.rodzaj || '').trim().toLowerCase();
+  if (!hay) return 'sale';
+  if (hay === '2' || hay.includes('wynaj') || hay.includes('najem')) return 'rent';
+  if (hay === '1' || hay.includes('sprzed')) return 'sale';
   return 'sale';
 }
 
+/** KEI `typ` w wierszu: 1 = mieszkanie, 2 = dom (czasem tekst). */
 export function keiPropertyKindFromRow(row: Pick<KeiListingRow, 'typ'>): KeiPropertyKind {
-  return String(row.typ || '').toLowerCase() === 'dom' ? 'house' : 'apartment';
+  const hay = String(row.typ || '').trim().toLowerCase();
+  if (hay === '2' || hay.includes('dom')) return 'house';
+  if (hay === '1' || hay.includes('miesz')) return 'apartment';
+  return 'apartment';
+}
+
+export function rowMatchesKeiFilters(
+  row: Pick<KeiListingRow, 'rodzaj' | 'typ'>,
+  propertyKind: KeiPropertyKind,
+  transactionKind: KeiTransactionKind,
+): boolean {
+  return (
+    keiPropertyKindFromRow(row) === propertyKind &&
+    keiTransactionKindFromRow(row) === transactionKind
+  );
 }
 
 export function keiPropertyKindLabel(kind: KeiPropertyKind): string {
@@ -277,6 +295,7 @@ export async function findWarsawPortalListings(options?: {
       transactionKind,
     });
     for (const row of rows) {
+      if (!rowMatchesKeiFilters(row, propertyKind, transactionKind)) continue;
       if (!isWarsawListing(row)) continue;
       if (!isSupportedKeiPortalUrl(row.www || '')) continue;
       results.push(row);

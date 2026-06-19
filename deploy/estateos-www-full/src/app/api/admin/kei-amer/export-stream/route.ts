@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin/requireAdmin';
 import { exportKeiListingsToEstateOS } from '@/lib/keiAmerExport';
 import type { KeiExportProgressEvent } from '@/lib/keiAmerExportProgress';
-import { encodeKeiSseEvent, KEI_SSE_HEADERS } from '@/lib/keiAmerSse';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -24,54 +23,65 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({}));
+  const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const send = (event: KeiExportProgressEvent) => {
-        controller.enqueue(encodeKeiSseEvent(event));
+    async start(controller) {
+      const send = (event: KeiExportProgressEvent | Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
 
-      send({ type: 'connected', message: 'Połączono — import w toku…' });
+      send({ type: 'connected', message: 'Połączono — rozpoczynam import…' });
 
-      void (async () => {
+      const heartbeat = setInterval(() => {
         try {
-          const selections = Array.isArray(body?.selections)
-            ? body.selections
-                .map((row: Record<string, unknown>) => ({
-                  keiId: String(row?.keiId || ''),
-                  portalUrl: String(row?.portalUrl || ''),
-                  address: String(row?.address || '').trim() || undefined,
-                }))
-                .filter((row: { portalUrl: string }) => row.portalUrl)
-            : undefined;
-
-          const result = await exportKeiListingsToEstateOS({
-            targetUserId: body?.targetUserId,
-            agentCommissionPercent: body?.agentCommissionPercent,
-            count: body?.count,
-            propertyKind: body?.propertyKind === 'house' ? 'house' : 'apartment',
-            transactionKind: body?.transactionKind === 'rent' ? 'rent' : 'sale',
-            selections,
-            floorPlanOverrides: parseFloorPlanOverrides(body?.floorPlanOverrides),
-            onProgress: send,
-          });
-
-          send({
-            type: 'result',
-            ok: true,
-            exported: result.exported,
-            skipped: result.skipped,
-            message: result.message,
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Eksport KEI nie powiódł się.';
-          send({ type: 'error', message });
-        } finally {
-          controller.close();
+          controller.enqueue(encoder.encode(': ping\n\n'));
+        } catch {
+          clearInterval(heartbeat);
         }
-      })();
+      }, 4000);
+
+      try {
+        const selections = Array.isArray(body?.selections)
+          ? body.selections
+              .map((row: Record<string, unknown>) => ({
+                keiId: String(row?.keiId || ''),
+                portalUrl: String(row?.portalUrl || ''),
+              }))
+              .filter((row: { portalUrl: string }) => row.portalUrl)
+          : undefined;
+
+        const result = await exportKeiListingsToEstateOS({
+          targetUserId: body?.targetUserId,
+          agentCommissionPercent: body?.agentCommissionPercent,
+          count: body?.count,
+          propertyKind: body?.propertyKind === 'house' ? 'house' : 'apartment',
+          selections,
+          floorPlanOverrides: parseFloorPlanOverrides(body?.floorPlanOverrides),
+          onProgress: send,
+        });
+
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: 'result', ok: true, exported: result.exported, skipped: result.skipped, message: result.message })}\n\n`,
+          ),
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Eksport KEI nie powiódł się.';
+        send({ type: 'error', message });
+      } finally {
+        clearInterval(heartbeat);
+        controller.close();
+      }
     },
   });
 
-  return new Response(stream, { headers: KEI_SSE_HEADERS });
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  });
 }

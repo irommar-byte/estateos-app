@@ -7,6 +7,7 @@ import {
   getOfferSchemaCompatibilityMessage,
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
+import { endOfferPublication } from '@/lib/offerPublication';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -37,13 +38,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: 'Brak dostępu do tej oferty' }, { status: 403 });
     }
 
-    // Przesuwamy czas w przeszłość i nadajemy status archiwum
-    await prisma.offer.update({
-      where: { id: offerId },
-      data: {
-        status: 'ARCHIVED',
-        expiresAt: new Date(Date.now() - 1000)
-      }
+    await endOfferPublication({
+      offerId,
+      endReason: 'MANUAL_ARCHIVE',
+      offerStatus: 'ARCHIVED',
     });
 
     return NextResponse.json({ success: true });

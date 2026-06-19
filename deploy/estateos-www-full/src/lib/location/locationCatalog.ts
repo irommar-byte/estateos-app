@@ -83,6 +83,39 @@ const DISTRICT_ALIAS_RULES: Array<{ city: string; patterns: string[]; district: 
     patterns: ["zoliborz", "żoliborz", "stary zoliborz", "stary żoliborz"],
     district: "Żoliborz",
   },
+  {
+    city: "Poznań",
+    patterns: [
+      "ogrody", "goplana", "osiedle goplana", "sw wawrzynca", "sw. wawrzyńca", "wawrzynca", "wawrzyńca",
+      "strzeszyn", "podolany", "sołacz", "solacz", "winogrady", "wola poznan", "wola poznań",
+    ],
+    district: "Jeżyce",
+  },
+  {
+    city: "Poznań",
+    patterns: ["lazarz", "łazarz", "górczyn", "gorczyn", "sw lazara", "sw. Łazarza"],
+    district: "Grunwald",
+  },
+  {
+    city: "Poznań",
+    patterns: ["rataje", "starołęka", "staroleka", "chartowo", "minikowo", "marlewo"],
+    district: "Nowe Miasto",
+  },
+  {
+    city: "Poznań",
+    patterns: ["jezyce", "jeżyce", "golęcin", "golecin"],
+    district: "Jeżyce",
+  },
+  {
+    city: "Kraków",
+    patterns: ["kazimierz", "salwator", "salwatora", "dębniki", "debniki", "piasek", "podgórze", "podgorze"],
+    district: "Dębniki",
+  },
+  {
+    city: "Wrocław",
+    patterns: ["krzyki", "gaj", "partynice", "przedmieście oławskie", "przedmiescie olawskie"],
+    district: "Krzyki",
+  },
 ];
 
 const CITY_ALIASES: Record<string, string> = {
@@ -103,6 +136,19 @@ export function normalizeText(value: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+/** Puste placeholdery z OtoDom / formularzy — nie traktujemy jako nazwy dzielnicy. */
+export function isPlaceholderDistrict(value?: string | null): boolean {
+  const raw = String(value ?? "").trim();
+  if (!raw) return true;
+  const normalized = normalizeText(raw);
+  if (!normalized) return true;
+  if (["-", "--", "—", ".", "..", "x", "xx", "brak", "unknown", "n/a", "na", "none", "null"].includes(normalized)) {
+    return true;
+  }
+  if (normalized === "inny obszar") return true;
+  return false;
 }
 
 export function getStrictDistrictCatalog(): DistrictCatalog {
@@ -192,7 +238,7 @@ export function pickDistrictFromPlaceName(city: string, text: string, allowedDis
 
 export function canonicalizeDistrict(city: string, district?: string | null): string {
   const value = String(district || "").trim();
-  if (!value) {
+  if (isPlaceholderDistrict(value)) {
     return "";
   }
 
@@ -235,6 +281,15 @@ export function validateCityDistrict(city?: string | null, district?: string | n
     const allowed = getDistrictsForCity(canonicalCity);
     const aliasDistrict = matchDistrictAlias(canonicalCity, canonicalDistrict);
     const districtToCheck = aliasDistrict || canonicalDistrict;
+    if (isPlaceholderDistrict(districtToCheck)) {
+      return {
+        valid: false,
+        strictCity,
+        city: canonicalCity,
+        district: "",
+        message: `Wybierz dzielnicę z listy dla miasta ${canonicalCity}.`,
+      };
+    }
     const allowedHit = allowed.some((entry) => normalizeText(entry) === normalizeText(districtToCheck));
     if (!allowedHit) {
       return {
@@ -339,7 +394,7 @@ export function inferCityFromMapboxFeature(feature: {
     for (let i = parts.length - 1; i >= 0; i--) {
       const segment = parts[i].replace(/^\d{2}-\d{3}\s+/i, "").trim();
       if (!segment) continue;
-      if (/województwo|polska|poland|^pl$/i.test(segment)) continue;
+      if (/województwo|polska|poland|^pl$|niemcy|germany|deutschland|^de$|bayern|bavaria|czechy|czechia|slovakia|austria|ukraina|ukraine/i.test(segment)) continue;
       const c = canonicalizeCity(segment);
       if (c) return c;
     }

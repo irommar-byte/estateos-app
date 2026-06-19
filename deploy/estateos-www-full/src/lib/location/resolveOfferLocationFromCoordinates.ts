@@ -14,7 +14,6 @@ import {
   resolveStrictDistrictForForm,
   resolveStrictDistrictFromPin,
 } from "@/lib/location/strictDistrictFromPin";
-import { isOutsidePolandBounds, locationNamesEquivalent } from "@/lib/location/locationNameMatch";
 
 export type ResolvedOfferLocation = {
   city: string;
@@ -32,9 +31,7 @@ export async function fetchMapboxReverseFeature(lat: number, lng: number) {
   const token = getMapboxToken();
   if (!token) return null;
 
-  const inPoland = !isOutsidePolandBounds(lat, lng);
-  const countryParam = inPoland ? "&country=pl" : "";
-  const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=pl&limit=1${countryParam}&types=address,place,locality,neighborhood,district`;
+  const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=pl&limit=1&types=address,place,locality,neighborhood,district,region,country`;
 
   try {
     const response = await fetch(endpoint, { cache: "no-store" });
@@ -168,26 +165,6 @@ export async function resolveOtodomImportLocationFields(draft: {
     preferredCity: draft.city,
     streetHint: draft.street,
   });
-
-  const draftCity = canonicalizeCity(draft.city || "");
-  const mapCity = canonicalizeCity(resolved?.city || "");
-  const trustDraftLocality =
-    draftCity &&
-    !isStrictCity(draftCity) &&
-    (isOutsidePolandBounds(draft.lat, draft.lng) ||
-      !mapCity ||
-      locationNamesEquivalent(mapCity, draftCity));
-
-  if (trustDraftLocality) {
-    const district =
-      String(draft.district || draft.neighborhood || resolved?.district || "").trim() ||
-      "Inny obszar";
-    return {
-      city: draftCity,
-      district,
-      street: String(draft.street || resolved?.street || "").trim(),
-    };
-  }
 
   const city = canonicalizeCity(resolved?.city || draft.city);
   if (!city) {

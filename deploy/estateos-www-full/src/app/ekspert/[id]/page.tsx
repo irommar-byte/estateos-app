@@ -1,7 +1,9 @@
 "use client";
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { ShieldCheck, Star, MapPin, Award, Phone, Mail, CheckCircle, Crown, Loader2, ShieldAlert } from "lucide-react";
+import { ShieldCheck, Star, MapPin, Award, Phone, Mail, CheckCircle, Crown, Loader2, ShieldAlert, Briefcase } from "lucide-react";
+import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
+import { resolveProfileHeadlines } from "@/lib/sellerDisplay";
 
 export default function ExpertProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -20,6 +22,8 @@ export default function ExpertProfilePage({ params }: { params: Promise<{ id: st
     </div>
   );
 
+  const headlines = resolveProfileHeadlines(data.user);
+
   return (
     <main className="min-h-screen bg-[#050505] text-white pt-32 pb-40 relative selection:bg-orange-500 selection:text-black">
       <div className="absolute top-0 right-0 w-[800px] h-[600px] bg-orange-500/10 rounded-full blur-[150px] pointer-events-none z-0"></div>
@@ -32,7 +36,7 @@ export default function ExpertProfilePage({ params }: { params: Promise<{ id: st
            <div className="absolute -left-20 -top-20 w-64 h-64 bg-white/5 rounded-full blur-3xl pointer-events-none"></div>
            
            <div className="w-32 h-32 md:w-40 md:h-40 bg-[#111] border border-white/10 rounded-[2rem] flex items-center justify-center text-5xl font-black text-white shadow-inner shrink-0 relative">
-             {data.user?.name ? data.user.name[0] : '?'}
+             {headlines.secondary ? <Briefcase size={52} className="text-orange-400/80" /> : (data.user?.name ? data.user.name[0] : '?')}
              <div className="absolute -bottom-4 -right-4 w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center text-black shadow-[0_0_20px_rgba(249,115,22,0.5)]"><Award size={24}/></div>
            </div>
            
@@ -41,7 +45,10 @@ export default function ExpertProfilePage({ params }: { params: Promise<{ id: st
                  <ShieldCheck size={18} className="text-emerald-500" />
                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Zweryfikowany Agent</span>
               </div>
-              <h1 className="text-4xl md:text-6xl font-black tracking-tighter mb-4">{data.user?.name}</h1>
+              <h1 className="text-4xl md:text-6xl font-black tracking-tighter mb-2">{headlines.primary}</h1>
+              {headlines.secondary ? (
+                <p className="text-lg font-semibold text-white/55 mb-4">{headlines.secondary}</p>
+              ) : null}
               
               <div className="flex flex-wrap justify-center md:justify-start gap-4 mb-8">
                  {(data.reviews?.length || 0) > 0 && data.avgRating ? (
@@ -71,6 +78,9 @@ export default function ExpertProfilePage({ params }: { params: Promise<{ id: st
                 <div className="h-48 overflow-hidden relative">
                    <img src={o.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                    <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-[9px] font-black uppercase tracking-widest text-orange-500 flex items-center gap-1.5"><Crown size={10}/> Premium</div>
+                   {o.isLegalSafeVerified === true ? (
+                     <LegalVerifiedShieldBadge variant="card" active className="absolute left-4 top-[3.25rem] z-10" />
+                   ) : null}
                 </div>
                 <div className="p-6">
                    <h3 className="font-bold text-lg mb-1 truncate group-hover:text-orange-400 transition-colors">{o.title}</h3>

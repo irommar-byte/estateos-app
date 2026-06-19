@@ -15,6 +15,23 @@ function parseFloorPlanOverrides(raw: unknown): Record<string, boolean> | undefi
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+function parseFloorPlanSelections(raw: unknown) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: Record<string, { enabled: boolean; imageIndex: number }> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue;
+    const row = value as Record<string, unknown>;
+    out[key] = {
+      enabled: row.enabled === true,
+      imageIndex:
+        Number.isFinite(Number(row.imageIndex)) && Number(row.imageIndex) >= 0
+          ? Math.floor(Number(row.imageIndex))
+          : 0,
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export async function POST(req: Request) {
   const gate = await requireMobileAdmin(req);
   if (!gate.ok) return gate.response;
@@ -39,6 +56,7 @@ export async function POST(req: Request) {
       transactionKind: body?.transactionKind === 'rent' ? 'rent' : 'sale',
       selections,
       floorPlanOverrides: parseFloorPlanOverrides(body?.floorPlanOverrides),
+      floorPlanSelections: parseFloorPlanSelections(body?.floorPlanSelections),
     });
 
     return NextResponse.json(result);

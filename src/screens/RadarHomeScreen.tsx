@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 import MapViewCore, { Marker, Region, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import ClusteredMapView from 'react-native-map-clustering';
+import MapGestureHost from '../components/MapGestureHost';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -223,7 +224,8 @@ function hasFiniteCoords(lat: unknown, lng: unknown): boolean {
   return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
 }
 
-const RadarMapComponent: any = ClusteredMapView;
+const MAP_CLUSTERING_ENABLED = Platform.OS === 'android';
+const RadarMapComponent: any = MAP_CLUSTERING_ENABLED ? ClusteredMapView : MapViewCore;
 const SELL_MARKER_COLOR = '#10b981';
 const RENT_MARKER_COLOR = '#0A84FF';
 
@@ -1062,6 +1064,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   
   const [isMapMoving, setIsMapMoving] = useState(false);
   const [mapViewportRegion, setMapViewportRegion] = useState<Region>(DEFAULT_REGION);
+  /** iOS AIRMap: nie montuj pinów zanim natywna mapa nie będzie gotowa. */
+  const [iosMapPinsReady, setIosMapPinsReady] = useState(Platform.OS !== 'ios');
 
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>(DEFAULT_ADVANCED_FILTERS);
   const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<AdvancedFilters>(DEFAULT_ADVANCED_FILTERS);
@@ -2290,6 +2294,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const activeOffers = filteredOffers;
 
   const offersForMapPins = useMemo(() => {
+    if (Platform.OS === 'ios') return activeOffers;
     const inView = filterOffersInMapRegion(activeOffers, mapViewportRegion);
     return mergeSelectedOfferIntoMapPins(inView, activeOffers[activeIndex] ?? null);
   }, [activeOffers, activeIndex, mapViewportRegion]);
@@ -3991,6 +3996,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     const circles: React.ReactNode[] = [];
     const markers: React.ReactNode[] = [];
     const selectedOfferId = activeOffers[activeIndex]?.id;
+    const iosMap = Platform.OS === 'ios';
 
     offersForMapPins.forEach((offer, idx) => {
       const isSelected = selectedOfferId != null && String(offer.id) === String(selectedOfferId);
@@ -4038,24 +4044,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       }
 
       markers.push(
-        Platform.OS === 'android' ? (
-          <AndroidMapPriceMarker
-            key={`marker-${offerKey}`}
-            coordinate={pinCoord}
-            label={markerPriceLabel}
-            color={markerAccent}
-            selected={isSelected}
-            onPress={() => {
-              Haptics.selectionAsync();
-              focusOfferById(offer.id ?? offerKey);
-            }}
-          />
-        ) : (
+        iosMap ? (
           <Marker
             key={`marker-${offerKey}`}
+            identifier={`marker-${offerKey}`}
             coordinate={pinCoord}
             anchor={{ x: 0.5, y: 1 }}
             tracksViewChanges={false}
+            zIndex={isSelected ? 3 : 2}
             onPress={() => {
               Haptics.selectionAsync();
               focusOfferById(offer.id ?? offerKey);
@@ -4068,12 +4064,26 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               accent={markerAccent}
             />
           </Marker>
+        ) : (
+          <AndroidMapPriceMarker
+            key={`marker-${offerKey}`}
+            coordinate={pinCoord}
+            label={markerPriceLabel}
+            color={markerAccent}
+            selected={isSelected}
+            onPress={() => {
+              Haptics.selectionAsync();
+              focusOfferById(offer.id ?? offerKey);
+            }}
+          />
         ),
       );
     });
 
     return { circles, markers };
   }, [offersForMapPins, activeOffers, activeIndex, rate, preference, focusOfferById]);
+
+  const mapPinChildrenReady = Platform.OS !== 'ios' || (iosMapPinsReady && !loading);
 
   const renderOfferCard = ({ item, index }: any) => {
     const ownVerifiedFromEndpoint = ownerLegalByOfferId[Number(item?.id || 0)] === true;
@@ -4233,71 +4243,84 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       style={[styles.container, isGalleryLightChrome && styles.containerGalleryLight]}
     >
       <View style={styles.mapStage} collapsable={false}>
-      <RadarMapComponent
-        ref={mapRef}
-        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-        googleRenderer={Platform.OS === 'android' ? 'LEGACY' : undefined}
-        style={[
-          StyleSheet.absoluteFillObject,
-          isGalleryBrowse && { opacity: 0 },
-        ]}
-        scrollEnabled={mapInteract && !isGalleryBrowse}
-        zoomEnabled={mapInteract && !isGalleryBrowse}
-        zoomTapEnabled={mapInteract && !isGalleryBrowse}
-        rotateEnabled={false}
-        onLayout={(e: any) => {
-          const { width: w, height: h } = e.nativeEvent.layout;
-          setMapLayout({ width: w, height: h });
-        }}
-        initialRegion={DEFAULT_REGION}
-        onRegionChange={handleMapRegionChange}
-        onRegionChangeComplete={handleMapRegionChangeComplete}
-        mapType={mapType}
-        userInterfaceStyle={isDark ? 'dark' : 'light'}
-        showsUserLocation
-        showsCompass={false}
-        clusterColor={mapClusterColor}
-        clusterTextColor="#FFFFFF"
-        animationEnabled={false}
-        radius={52}
-        minPoints={2}
-        onClusterPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        }}
-      >
-        {activeAdvancedMapBounds ? (
-          <Circle
-            center={{
-              latitude: activeAdvancedMapBounds.centerLat,
-              longitude: activeAdvancedMapBounds.centerLng,
+        <MapGestureHost>
+          <RadarMapComponent
+            ref={mapRef}
+            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+            googleRenderer={Platform.OS === 'android' ? 'LEGACY' : undefined}
+            style={[
+              StyleSheet.absoluteFillObject,
+              isGalleryBrowse && { opacity: 0 },
+            ]}
+            scrollEnabled={mapInteract && !isGalleryBrowse}
+            zoomEnabled={mapInteract && !isGalleryBrowse}
+            zoomTapEnabled={mapInteract && !isGalleryBrowse}
+            rotateEnabled={false}
+            onLayout={(e: any) => {
+              const { width: w, height: h } = e.nativeEvent.layout;
+              setMapLayout({ width: w, height: h });
             }}
-            radius={Math.max(200, activeAdvancedMapBounds.radiusKm * 1000)}
-            strokeColor={modeAccentColor}
-            fillColor={
-              advancedFilters.transactionType === 'RENT'
-                ? 'rgba(10,132,255,0.14)'
-                : 'rgba(16,185,129,0.14)'
-            }
-            strokeWidth={2.5}
-            zIndex={0}
-          />
-        ) : null}
-        {activeAdvancedMapBounds ? (
-          <Marker
-            coordinate={{
-              latitude: activeAdvancedMapBounds.centerLat,
-              longitude: activeAdvancedMapBounds.centerLng,
+            initialRegion={DEFAULT_REGION}
+            onMapReady={() => {
+              if (Platform.OS !== 'ios' || iosMapPinsReady) return;
+              InteractionManager.runAfterInteractions(() => {
+                requestAnimationFrame(() => setIosMapPinsReady(true));
+              });
             }}
-            tracksViewChanges={false}
-            zIndex={1}
-            anchor={{ x: 0.5, y: 0.5 }}
+            onRegionChange={handleMapRegionChange}
+            onRegionChangeComplete={handleMapRegionChangeComplete}
+            mapType={mapType}
+            userInterfaceStyle={isDark ? 'dark' : 'light'}
+            showsUserLocation
+            showsCompass={false}
+            {...(MAP_CLUSTERING_ENABLED
+              ? {
+                  clusterColor: mapClusterColor,
+                  clusterTextColor: '#FFFFFF',
+                  animationEnabled: false,
+                  radius: 52,
+                  minPoints: 2,
+                  onClusterPress: () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  },
+                }
+              : {})}
           >
-            <View style={[styles.searchAreaCenterDot, { borderColor: modeAccentColor, backgroundColor: `${modeAccentColor}33` }]} />
-          </Marker>
-        ) : null}
-        {offerMapMarkerLayers.circles}
-        {offerMapMarkerLayers.markers}
-      </RadarMapComponent>
+            {mapPinChildrenReady && activeAdvancedMapBounds ? (
+              <Circle
+                center={{
+                  latitude: activeAdvancedMapBounds.centerLat,
+                  longitude: activeAdvancedMapBounds.centerLng,
+                }}
+                radius={Math.max(200, activeAdvancedMapBounds.radiusKm * 1000)}
+                strokeColor={modeAccentColor}
+                fillColor={
+                  advancedFilters.transactionType === 'RENT'
+                    ? 'rgba(10,132,255,0.14)'
+                    : 'rgba(16,185,129,0.14)'
+                }
+                strokeWidth={2.5}
+                zIndex={0}
+              />
+            ) : null}
+            {mapPinChildrenReady && activeAdvancedMapBounds ? (
+              <Marker
+                coordinate={{
+                  latitude: activeAdvancedMapBounds.centerLat,
+                  longitude: activeAdvancedMapBounds.centerLng,
+                }}
+                cluster={MAP_CLUSTERING_ENABLED ? false : undefined}
+                tracksViewChanges={false}
+                zIndex={1}
+                anchor={{ x: 0.5, y: 0.5 }}
+              >
+                <View style={[styles.searchAreaCenterDot, { borderColor: modeAccentColor, backgroundColor: `${modeAccentColor}33` }]} />
+              </Marker>
+            ) : null}
+            {mapPinChildrenReady ? offerMapMarkerLayers.circles : null}
+            {mapPinChildrenReady ? offerMapMarkerLayers.markers : null}
+          </RadarMapComponent>
+        </MapGestureHost>
       </View>
 
       <View style={styles.mapUiChrome} pointerEvents="box-none" collapsable={false}>

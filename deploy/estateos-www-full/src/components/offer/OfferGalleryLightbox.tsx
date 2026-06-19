@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Image as ImageIcon, Minus, Plus, RotateCcw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Image as ImageIcon, Minus, Plus, RotateCw, X } from "lucide-react";
 
 type Props = {
   images: string[];
@@ -31,19 +31,22 @@ export default function OfferGalleryLightbox({
   glowActiveClass = "shadow-[0_0_40px_rgba(16,185,129,0.3)]",
 }: Props) {
   const [scale, setScale] = useState(1);
+  const [rotation, setRotation] = useState(0);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
-  const resetZoom = useCallback(() => {
+  const resetView = useCallback(() => {
     setScale(1);
+    setRotation(0);
     setOffset({ x: 0, y: 0 });
   }, []);
 
   useEffect(() => {
     if (!isOpen) return;
-    resetZoom();
-  }, [index, isOpen, resetZoom]);
+    resetView();
+  }, [index, isOpen, resetView]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -53,11 +56,12 @@ export default function OfferGalleryLightbox({
       if (e.key === "ArrowLeft") onIndexChange(index <= 0 ? images.length - 1 : index - 1);
       if (e.key === "+" || e.key === "=") setScale((s) => Math.min(MAX_SCALE, s + 0.25));
       if (e.key === "-") setScale((s) => Math.max(MIN_SCALE, s - 0.25));
-      if (e.key === "0") resetZoom();
+      if (e.key === "0") resetView();
+      if (e.key === "r" || e.key === "R") setRotation((r) => (r + 90) % 360);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isOpen, index, images.length, onClose, onIndexChange, resetZoom]);
+  }, [isOpen, index, images.length, onClose, onIndexChange, resetView]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -81,10 +85,17 @@ export default function OfferGalleryLightbox({
   const zoomBy = (delta: number) => {
     setScale((prev) => {
       const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev + delta));
-      if (next <= 1) setOffset({ x: 0, y: 0 });
-      else setOffset((o) => clampOffset(o.x, o.y, next));
+      if (next <= 1) {
+        setOffset({ x: 0, y: 0 });
+      } else {
+        setOffset((o) => clampOffset(o.x, o.y, next));
+      }
       return next;
     });
+  };
+
+  const rotateBy = () => {
+    setRotation((r) => (r + 90) % 360);
   };
 
   if (!isOpen) return null;
@@ -105,6 +116,9 @@ export default function OfferGalleryLightbox({
             <span className="text-[10px] font-black uppercase tracking-widest text-white">
               {index + 1} / {images.length}
             </span>
+            {scale > 1 ? (
+              <span className="text-[10px] font-bold text-white/50">{Math.round(scale * 100)}%</span>
+            ) : null}
           </div>
           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
             <button
@@ -125,11 +139,11 @@ export default function OfferGalleryLightbox({
             </button>
             <button
               type="button"
-              onClick={resetZoom}
-              className="hidden rounded-full border border-white/10 bg-white/10 p-3 text-white transition-colors hover:bg-white/20 sm:block"
-              aria-label="Reset zoom"
+              onClick={rotateBy}
+              className="rounded-full border border-white/10 bg-white/10 p-3 text-white transition-colors hover:bg-white/20"
+              aria-label="Obróć o 90°"
             >
-              <RotateCcw size={18} />
+              <RotateCw size={18} />
             </button>
             <button
               type="button"
@@ -170,7 +184,7 @@ export default function OfferGalleryLightbox({
 
           <div
             ref={viewportRef}
-            className="flex h-full w-full items-center justify-center overflow-hidden px-3 py-4 sm:px-8 sm:py-6"
+            className="flex h-full w-full touch-none items-center justify-center overflow-hidden px-3 py-4 sm:px-8 sm:py-6"
             onClick={(e) => e.stopPropagation()}
             onWheel={(e) => {
               e.preventDefault();
@@ -179,7 +193,8 @@ export default function OfferGalleryLightbox({
             onPointerDown={(e) => {
               if (scale <= 1) return;
               dragRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
-              (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+              setIsDragging(true);
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
             }}
             onPointerMove={(e) => {
               if (!dragRef.current || scale <= 1) return;
@@ -189,33 +204,41 @@ export default function OfferGalleryLightbox({
             }}
             onPointerUp={() => {
               dragRef.current = null;
+              setIsDragging(false);
             }}
             onPointerCancel={() => {
               dragRef.current = null;
+              setIsDragging(false);
             }}
           >
             <AnimatePresence mode="wait">
-              <motion.img
+              <motion.div
                 key={`${index}-${images[index]}`}
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 1.02 }}
-                transition={{ duration: 0.22 }}
-                src={images[index]}
-                alt=""
-                draggable={false}
-                className="max-h-[min(82vh,920px)] w-auto max-w-[min(96vw,1280px)] select-none rounded-xl object-contain shadow-[0_0_80px_rgba(0,0,0,0.85)]"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex items-center justify-center"
                 style={{
-                  transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+                  transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale}) rotate(${rotation}deg)`,
                   transformOrigin: "center center",
-                  filter: "contrast(1.06) saturate(1.12) brightness(1.04)",
-                  transition: dragRef.current ? "none" : "transform 0.15s ease-out",
+                  transition: isDragging ? "none" : "transform 0.18s ease-out",
                 }}
                 onDoubleClick={() => {
-                  if (scale > 1) resetZoom();
+                  if (scale > 1 || rotation !== 0) resetView();
                   else setScale(2);
                 }}
-              />
+              >
+                <img
+                  src={images[index]}
+                  alt=""
+                  draggable={false}
+                  className="max-h-[min(82vh,920px)] w-auto max-w-[min(96vw,1280px)] select-none rounded-xl object-contain shadow-[0_0_80px_rgba(0,0,0,0.85)]"
+                  style={{
+                    filter: "contrast(1.06) saturate(1.12) brightness(1.04)",
+                  }}
+                />
+              </motion.div>
             </AnimatePresence>
           </div>
         </div>
@@ -228,7 +251,7 @@ export default function OfferGalleryLightbox({
                   key={`${idx}-${img}`}
                   type="button"
                   onClick={() => onIndexChange(idx)}
-                  className={`h-16 w-16 shrink-0 overflow-hidden rounded-xl border-2 transition-all sm:h-20 sm:w-20 ${
+                  className={`h-16 w-20 shrink-0 overflow-hidden rounded-xl border-2 bg-zinc-900 transition-all sm:h-20 sm:w-24 ${
                     index === idx
                       ? `${borderActiveClass} scale-105 brightness-110 ${glowActiveClass}`
                       : "border-transparent opacity-45 hover:opacity-100"

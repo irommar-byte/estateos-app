@@ -29,69 +29,31 @@ import {
   KEI_PAGE_SIZE,
   KEI_STEP_LABELS,
   type KeiAiRewriteProgress,
-  type KeiExportProgressEvent,
-  type KeiExportResultItem,
-  type KeiImportStepId,
+  type KeiFloorPlanSelection,
   type KeiPreviewListing,
   type KeiPropertyKind,
   type KeiTransactionKind,
 } from '../contracts/keiAmerContract';
 import {
-  keiAmerExportStream,
   keiAmerFetchPreview,
   keiAmerPeekImageUrl,
   keiAmerPeekListing,
   keiAmerRefreshSession,
-  reconcileExportItemsFromResult,
 } from '../services/keiAmerService';
+import {
+  computeKeiOverallPercent,
+  computeKeiItemPercent,
+  useKeiAmerExportStore,
+} from '../store/useKeiAmerExportStore';
 
 type LastImagePeek = {
   loading: boolean;
   error: string;
-  lastImageUrl: string | null;
+  imageUrls: string[];
+  suggestedFloorPlanIndex: number | null;
   suggestedFloorPlan: boolean;
   imageCount: number;
 };
-
-type ItemProgress = {
-  index: number;
-  keiListingId: string;
-  portalUrl: string;
-  address?: string;
-  status: 'pending' | 'active' | 'done' | 'skipped';
-  completedSteps: KeiImportStepId[];
-  currentStep: KeiImportStepId | null;
-  stepLabel: string;
-  stepDetail?: string;
-  imageProgress?: { index: number; total: number; label: string; asFloorPlan: boolean };
-  offerId?: number;
-  publicUrl?: string;
-  editUrl?: string;
-  reason?: string;
-  aiRewrite?: KeiAiRewriteProgress;
-};
-
-function completedStepsForStep(step: KeiImportStepId): KeiImportStepId[] {
-  const idx = KEI_IMPORT_STEPS.indexOf(step);
-  return idx <= 0 ? [] : KEI_IMPORT_STEPS.slice(0, idx);
-}
-
-function computeItemPercent(item: ItemProgress): number {
-  if (item.status === 'done' || item.status === 'skipped') return 100;
-  if (item.status === 'pending') return 3;
-  const stepIdx = item.currentStep ? KEI_IMPORT_STEPS.indexOf(item.currentStep) : 0;
-  const base = (Math.max(stepIdx, 0) + 0.35) / KEI_IMPORT_STEPS.length;
-  let imagePart = 0;
-  if (item.currentStep === 'images' && item.imageProgress && item.imageProgress.total > 0) {
-    imagePart = item.imageProgress.index / item.imageProgress.total / KEI_IMPORT_STEPS.length;
-  }
-  return Math.min(98, Math.round((base + imagePart) * 100));
-}
-
-function computeOverallPercent(items: ItemProgress[]): number {
-  if (items.length === 0) return 0;
-  return Math.round(items.reduce((acc, item) => acc + computeItemPercent(item), 0) / items.length);
-}
 
 function useKeiTheme() {
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
@@ -163,19 +125,21 @@ function StepPill({
   label,
   done,
   active,
+  pulsate,
   accentColor,
   colors,
 }: {
   label: string;
   done: boolean;
   active: boolean;
+  pulsate?: boolean;
   accentColor: string;
   colors: ReturnType<typeof useKeiTheme>;
 }) {
   const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (!active || done) {
+    if (!pulsate || done) {
       pulse.setValue(1);
       return;
     }
@@ -187,14 +151,14 @@ function StepPill({
     );
     anim.start();
     return () => anim.stop();
-  }, [active, done, pulse]);
+  }, [pulsate, done, pulse]);
 
   return (
     <Animated.View
       style={[
         styles.stepPill,
         {
-          opacity: active && !done ? pulse : 1,
+          opacity: pulsate && !done ? pulse : 1,
           backgroundColor: done
             ? 'rgba(52,199,89,0.2)'
             : active
@@ -319,16 +283,18 @@ export default function AdminKeiAmerScreen() {
   const [listings, setListings] = useState<KeiPreviewListing[]>([]);
 
   const [selected, setSelected] = useState<Record<string, KeiPreviewListing>>({});
-  const [floorPlanOverrides, setFloorPlanOverrides] = useState<Record<string, boolean>>({});
+  const [floorPlanSelections, setFloorPlanSelections] = useState<Record<string, KeiFloorPlanSelection>>({});
   const [lastImagePeeks, setLastImagePeeks] = useState<Record<string, LastImagePeek>>({});
   const [importedExpanded, setImportedExpanded] = useState(false);
 
-  const [exportVisible, setExportVisible] = useState(false);
-  const [exportRunning, setExportRunning] = useState(false);
-  const [exportMessage, setExportMessage] = useState('');
-  const [exportItems, setExportItems] = useState<ItemProgress[]>([]);
-  const [exportResults, setExportResults] = useState<KeiExportResultItem[]>([]);
-  const [exportSkipped, setExportSkipped] = useState(0);
+  const exportRunning = useKeiAmerExportStore((s) => s.running);
+  const exportVisible = useKeiAmerExportStore((s) => s.modalVisible);
+  const exportMessage = useKeiAmerExportStore((s) => s.message);
+  const exportItems = useKeiAmerExportStore((s) => s.items);
+  const exportResults = useKeiAmerExportStore((s) => s.results);
+  const exportSkipped = useKeiAmerExportStore((s) => s.skipped);
+  const setExportVisible = useKeiAmerExportStore((s) => s.setModalVisible);
+  const startKeiExport = useKeiAmerExportStore((s) => s.startExport);
 
   const peekInflight = useRef(new Set<string>());
   const exportScrollRef = useRef<ScrollView>(null);
@@ -337,13 +303,17 @@ export default function AdminKeiAmerScreen() {
   const availableListings = useMemo(() => listings.filter((l) => !l.alreadyImported), [listings]);
   const importedListings = useMemo(() => listings.filter((l) => l.alreadyImported), [listings]);
 
-  const resolveFloorPlan = useCallback(
-    (portalUrl: string) => {
-      if (portalUrl in floorPlanOverrides) return floorPlanOverrides[portalUrl];
+  const resolveFloorPlanSelection = useCallback(
+    (portalUrl: string): KeiFloorPlanSelection => {
+      if (portalUrl in floorPlanSelections) return floorPlanSelections[portalUrl];
       const peek = lastImagePeeks[portalUrl];
-      return peek?.suggestedFloorPlan === true;
+      const idx = peek?.suggestedFloorPlanIndex;
+      return {
+        enabled: idx != null,
+        imageIndex: idx ?? 0,
+      };
     },
-    [floorPlanOverrides, lastImagePeeks],
+    [floorPlanSelections, lastImagePeeks],
   );
 
   const loadSession = useCallback(async () => {
@@ -362,7 +332,7 @@ export default function AdminKeiAmerScreen() {
   }, [token]);
 
   const loadPreview = useCallback(
-    async (nextPage = page) => {
+    async (nextPage = 1) => {
       if (!token || !sessionOk) return;
       setPreviewLoading(true);
       setPreviewError('');
@@ -383,7 +353,7 @@ export default function AdminKeiAmerScreen() {
         setPreviewLoading(false);
       }
     },
-    [token, sessionOk, propertyKind, transactionKind, page],
+    [token, sessionOk, propertyKind, transactionKind],
   );
 
   const peekLastImage = useCallback(
@@ -392,22 +362,29 @@ export default function AdminKeiAmerScreen() {
       peekInflight.current.add(portalUrl);
       setLastImagePeeks((prev) => ({
         ...prev,
-        [portalUrl]: { loading: true, error: '', lastImageUrl: null, suggestedFloorPlan: false, imageCount: 0 },
+        [portalUrl]: { loading: true, error: '', imageUrls: [], suggestedFloorPlanIndex: null, suggestedFloorPlan: false, imageCount: 0 },
       }));
       try {
         const res = await keiAmerPeekListing(token, portalUrl);
+        const suggestedIdx =
+          res.suggestedFloorPlanIndex ??
+          (res.suggestedFloorPlan && res.imageUrls?.length ? res.imageUrls.length - 1 : null);
         setLastImagePeeks((prev) => ({
           ...prev,
           [portalUrl]: {
             loading: false,
             error: '',
-            lastImageUrl: res.lastImageUrl,
-            suggestedFloorPlan: res.suggestedFloorPlan,
+            imageUrls: res.imageUrls || [],
+            suggestedFloorPlanIndex: suggestedIdx,
+            suggestedFloorPlan: suggestedIdx != null,
             imageCount: res.imageCount,
           },
         }));
-        if (res.suggestedFloorPlan && !(portalUrl in floorPlanOverrides)) {
-          setFloorPlanOverrides((prev) => ({ ...prev, [portalUrl]: true }));
+        if (suggestedIdx != null && !(portalUrl in floorPlanSelections)) {
+          setFloorPlanSelections((prev) => ({
+            ...prev,
+            [portalUrl]: { enabled: true, imageIndex: suggestedIdx },
+          }));
         }
       } catch (e) {
         setLastImagePeeks((prev) => ({
@@ -415,7 +392,8 @@ export default function AdminKeiAmerScreen() {
           [portalUrl]: {
             loading: false,
             error: e instanceof Error ? e.message : 'Błąd podglądu',
-            lastImageUrl: null,
+            imageUrls: [],
+            suggestedFloorPlanIndex: null,
             suggestedFloorPlan: false,
             imageCount: 0,
           },
@@ -424,7 +402,7 @@ export default function AdminKeiAmerScreen() {
         peekInflight.current.delete(portalUrl);
       }
     },
-    [token, floorPlanOverrides],
+    [token, floorPlanSelections],
   );
 
   const toggleSelection = useCallback(
@@ -475,8 +453,8 @@ export default function AdminKeiAmerScreen() {
     }
   }, [token, propertyKind, transactionKind, autoCount, peekLastImage]);
 
-  const handleExport = useCallback(async () => {
-    if (!token || selectedList.length === 0) return;
+  const handleExport = useCallback(() => {
+    if (!token || selectedList.length === 0 || exportRunning) return;
     const userId = Number(targetUserId);
     const comm = Number(commission);
     if (!Number.isFinite(userId) || userId <= 0) {
@@ -493,197 +471,75 @@ export default function AdminKeiAmerScreen() {
       return;
     }
 
-    const initialItems: ItemProgress[] = selectedList.map((row, index) => ({
+    const floorPlanPayload: Record<string, KeiFloorPlanSelection> = {};
+    for (const row of selectedList) {
+      floorPlanPayload[row.portalUrl] = resolveFloorPlanSelection(row.portalUrl);
+    }
+
+    const initialItems = selectedList.map((row, index) => ({
       index,
       keiListingId: row.keiId,
       portalUrl: row.portalUrl,
       address: row.address,
-      status: index === 0 ? 'active' : 'pending',
+      status: index === 0 ? ('active' as const) : ('pending' as const),
       completedSteps: [],
-      currentStep: index === 0 ? 'check_duplicate' : null,
+      currentStep: index === 0 ? ('check_duplicate' as const) : null,
       stepLabel: index === 0 ? 'Sprawdzanie duplikatu…' : 'Oczekuje w kolejce…',
     }));
 
-    setExportVisible(true);
-    setExportRunning(true);
-    setExportMessage('Rozpoczynam import…');
-    setExportItems(initialItems);
-    setExportResults([]);
-    setExportSkipped(0);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-
-    const updateItem = (index: number, patch: Partial<ItemProgress>) => {
-      setExportItems((prev) => prev.map((item) => (item.index === index ? { ...item, ...patch } : item)));
-      requestAnimationFrame(() => exportScrollRef.current?.scrollToEnd({ animated: true }));
-    };
-
-    try {
-      await keiAmerExportStream(
-        token,
-        {
-          targetUserId: userId,
-          agentCommissionPercent: Number.isFinite(comm) ? comm : 2,
-          propertyKind,
-          transactionKind,
-          selections: selectedList.map((row) => ({
-            keiId: row.keiId,
-            portalUrl: row.portalUrl,
-            address: row.address,
-          })),
-          floorPlanOverrides,
-        },
-        (event: KeiExportProgressEvent) => {
-          if (event.type === 'connected') {
-            setExportMessage(event.message);
-            return;
-          }
-          if (event.type === 'batch_start') {
-            setExportMessage(`Import ${event.total} ogłoszeń…`);
-            return;
-          }
-          if (event.type === 'item_start') {
-            updateItem(event.index, {
-              status: 'active',
-              keiListingId: event.keiListingId,
-              portalUrl: event.portalUrl,
-              address: event.address,
-              stepLabel: 'Start…',
-            });
-            return;
-          }
-          if (event.type === 'step') {
-            updateItem(event.index, {
-              status: 'active',
-              currentStep: event.step,
-              stepLabel: event.label,
-              stepDetail: event.detail,
-              completedSteps: completedStepsForStep(event.step),
-            });
-            return;
-          }
-          if (event.type === 'ai_rewrite') {
-            updateItem(event.index, {
-              status: 'active',
-              currentStep: 'create_offer',
-              stepLabel: event.rewrite.working ? 'AI przepisuje opis…' : 'Opis gotowy',
-              stepDetail: event.rewrite.working ? 'GPT' : event.rewrite.rewrittenByAi ? 'AI ✓' : 'reguły',
-              completedSteps: completedStepsForStep('create_offer'),
-              aiRewrite: event.rewrite,
-            });
-            return;
-          }
-          if (event.type === 'image_progress') {
-            updateItem(event.index, {
-              status: 'active',
-              currentStep: 'images',
-              stepLabel: event.asFloorPlan ? `Zdjęcie ${event.imageIndex}/${event.imageTotal} (rzut)` : event.label,
-              stepDetail: event.asFloorPlan ? 'Ostatnie zdjęcie zapisywane jako rzut mieszkania' : undefined,
-              completedSteps: completedStepsForStep('images'),
-              imageProgress: {
-                index: event.imageIndex,
-                total: event.imageTotal,
-                label: event.label,
-                asFloorPlan: event.asFloorPlan,
-              },
-            });
-            return;
-          }
-          if (event.type === 'floor_plan_decision') {
-            updateItem(event.index, {
-              stepDetail: event.asFloorPlan
-                ? 'Ostatnie zdjęcie zostanie zapisane jako rzut'
-                : 'Ostatnie zdjęcie trafi do galerii',
-            });
-            return;
-          }
-          if (event.type === 'item_done') {
-            updateItem(event.index, {
-              status: 'done',
-              currentStep: null,
-              stepLabel: 'Gotowe',
-              offerId: event.offerId,
-              publicUrl: event.publicUrl,
-              editUrl: event.editUrl,
-              completedSteps: [...KEI_IMPORT_STEPS],
-            });
-            setExportResults((prev) => [
-              ...prev,
-              {
-                offerId: event.offerId,
-                portalUrl: event.portalUrl,
-                publicUrl: event.publicUrl,
-                editUrl: event.editUrl,
-                keiListingId: event.keiListingId,
-              },
-            ]);
-            return;
-          }
-          if (event.type === 'item_skip') {
-            updateItem(event.index, {
-              status: 'skipped',
-              currentStep: null,
-              stepLabel: 'Pominięto',
-              reason: event.existingOfferId
-                ? `${event.reason} (oferta #${event.existingOfferId})`
-                : event.reason,
-              completedSteps: [],
-            });
-            setExportSkipped((n) => n + 1);
-            return;
-          }
-          if (event.type === 'batch_done') {
-            setExportMessage(event.message);
-            return;
-          }
-          if (event.type === 'result') {
-            setExportItems((prev) => {
-              const patches = reconcileExportItemsFromResult(prev, event);
-              if (patches.length === 0) return prev;
-              return prev.map((item) => {
-                const patch = patches.find((p) => p.index === item.index)?.patch;
-                return patch ? { ...item, ...(patch as Partial<ItemProgress>) } : item;
-              });
-            });
-            setExportResults(event.exported || []);
-            setExportSkipped(event.skipped?.length || 0);
-            setExportMessage(event.message || 'Import zakończony.');
-            setExportRunning(false);
-            setSelected({});
-            void loadPreview(page);
-            if ((event.exported?.length || 0) > 0) {
-              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            } else {
-              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            }
-            return;
-          }
-          if (event.type === 'error') {
-            setExportMessage(event.message);
-            setExportRunning(false);
-          }
-        },
-      );
-      setExportRunning(false);
-    } catch (e) {
-      setExportRunning(false);
-      setExportMessage(e instanceof Error ? e.message : 'Eksport nie powiódł się');
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    }
-  }, [token, selectedList, targetUserId, commission, propertyKind, transactionKind, floorPlanOverrides, loadPreview, page]);
+    startKeiExport(
+      token,
+      {
+        targetUserId: userId,
+        agentCommissionPercent: Number.isFinite(comm) ? comm : 2,
+        propertyKind,
+        transactionKind,
+        selections: selectedList.map((row) => ({
+          keiId: row.keiId,
+          portalUrl: row.portalUrl,
+          address: row.address,
+        })),
+        floorPlanSelections: floorPlanPayload,
+      },
+      initialItems,
+      () => {
+        setSelected({});
+        void loadPreview(page);
+      },
+    );
+  }, [
+    token,
+    selectedList,
+    exportRunning,
+    targetUserId,
+    commission,
+    propertyKind,
+    transactionKind,
+    resolveFloorPlanSelection,
+    startKeiExport,
+    loadPreview,
+    page,
+  ]);
 
   useEffect(() => {
     void loadSession();
   }, [loadSession]);
 
   useEffect(() => {
-    if (sessionOk) {
+    if (sessionOk && !exportRunning) {
       setSelected({});
       setPage(1);
       void loadPreview(1);
     }
-  }, [sessionOk, propertyKind, transactionKind]);
+  }, [sessionOk, propertyKind, transactionKind, exportRunning, loadPreview]);
 
-  const overallPercent = computeOverallPercent(exportItems);
+  const overallPercent = computeKeiOverallPercent(exportItems);
+
+  useEffect(() => {
+    if (exportVisible) {
+      requestAnimationFrame(() => exportScrollRef.current?.scrollToEnd({ animated: true }));
+    }
+  }, [exportVisible, exportItems, exportMessage]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
@@ -866,7 +722,8 @@ export default function AdminKeiAmerScreen() {
           {availableListings.map((item) => {
             const isSelected = Boolean(selected[item.portalUrl]);
             const peek = lastImagePeeks[item.portalUrl];
-            const asFloorPlan = resolveFloorPlan(item.portalUrl);
+            const floorPlanSel = resolveFloorPlanSelection(item.portalUrl);
+            const asFloorPlan = floorPlanSel.enabled;
             return (
               <View key={item.portalUrl}>
               <Pressable
@@ -931,49 +788,95 @@ export default function AdminKeiAmerScreen() {
                     },
                   ]}
                 >
-                  {!peek || peek.loading ? (
-                    <View style={styles.peekPlaceholder}>
-                      <ActivityIndicator color={colors.accentBlue} />
-                    </View>
-                  ) : peek.lastImageUrl && token ? (
-                    <Image
-                      source={{
-                        uri: keiAmerPeekImageUrl(item.portalUrl),
-                        headers: { Authorization: `Bearer ${token}` },
-                      }}
-                      style={[styles.peekImage, asFloorPlan && styles.peekImageFloorPlan]}
-                      contentFit="cover"
-                    />
-                  ) : (
-                    <View style={styles.peekPlaceholder}>
-                      <Ionicons name="image-outline" size={28} color={colors.tertiary} />
-                    </View>
-                  )}
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.floorPlanTitle, { color: colors.text }]}>
-                      Ostatnie zdjęcie = rzut?
-                    </Text>
+                    <Text style={[styles.floorPlanTitle, { color: colors.text }]}>Które zdjęcie to rzut?</Text>
                     <Text style={[styles.floorPlanHint, { color: colors.secondary }]}>
-                      {peek?.suggestedFloorPlan
-                        ? 'Wykryto plan mieszkania — zalecane włączenie'
-                        : peek?.imageCount
-                          ? `${peek.imageCount} zdj. · ostatnie można zapisać jako rzut`
-                          : peek?.error || 'Ładowanie podglądu…'}
+                      {peek?.loading
+                        ? 'Ładowanie zdjęć z portalu…'
+                        : peek?.error
+                          ? peek.error
+                          : peek?.imageCount
+                            ? `${peek.imageCount} zdj. · dotknij miniaturę z planem (żółte = sugerowane)`
+                            : 'Brak podglądu zdjęć'}
                     </Text>
+
+                    {!peek || peek.loading ? (
+                      <View style={[styles.peekPlaceholder, { width: '100%', height: 72, marginTop: 10 }]}>
+                        <ActivityIndicator color={colors.accentBlue} />
+                      </View>
+                    ) : (peek.imageUrls?.length ?? 0) > 0 && token ? (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.floorPlanStrip}
+                      >
+                        {peek.imageUrls.map((_, imageIndex) => {
+                          const picked = floorPlanSel.enabled && floorPlanSel.imageIndex === imageIndex;
+                          const suggested = peek.suggestedFloorPlanIndex === imageIndex;
+                          return (
+                            <Pressable
+                              key={`${item.portalUrl}-${imageIndex}`}
+                              onPress={() => {
+                                void Haptics.selectionAsync();
+                                setFloorPlanSelections((prev) => ({
+                                  ...prev,
+                                  [item.portalUrl]: { enabled: true, imageIndex },
+                                }));
+                              }}
+                              style={[
+                                styles.floorPlanThumbWrap,
+                                picked && styles.floorPlanThumbPicked,
+                                suggested && !picked && styles.floorPlanThumbSuggested,
+                              ]}
+                            >
+                              <Image
+                                source={{
+                                  uri: keiAmerPeekImageUrl(item.portalUrl, imageIndex),
+                                  headers: { Authorization: `Bearer ${token}` },
+                                }}
+                                style={styles.floorPlanThumb}
+                                contentFit="cover"
+                              />
+                              <Text style={styles.floorPlanThumbLabel}>{imageIndex + 1}</Text>
+                              {suggested ? (
+                                <View style={styles.floorPlanSuggestedBadge}>
+                                  <Text style={styles.floorPlanSuggestedText}>?</Text>
+                                </View>
+                              ) : null}
+                            </Pressable>
+                          );
+                        })}
+                      </ScrollView>
+                    ) : (
+                      <View style={[styles.peekPlaceholder, { width: '100%', height: 72, marginTop: 10 }]}>
+                        <Ionicons name="image-outline" size={28} color={colors.tertiary} />
+                      </View>
+                    )}
+
                     <View style={styles.switchRow}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: colors.text, fontWeight: '600' }}>Zapisz jako rzut</Text>
+                        <Text style={{ color: colors.text, fontWeight: '600' }}>Zapisz jako rzut (plan)</Text>
                         {asFloorPlan ? (
                           <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '700', marginTop: 2 }}>
-                            WŁĄCZONE
+                            Zdjęcie #{floorPlanSel.imageIndex + 1} → sekcja planu
                           </Text>
-                        ) : null}
+                        ) : (
+                          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+                            Tylko galeria — bez planu
+                          </Text>
+                        )}
                       </View>
                       <Switch
                         value={asFloorPlan}
-                        onValueChange={(v) => {
+                        onValueChange={(enabled) => {
                           void Haptics.selectionAsync();
-                          setFloorPlanOverrides((prev) => ({ ...prev, [item.portalUrl]: v }));
+                          setFloorPlanSelections((prev) => ({
+                            ...prev,
+                            [item.portalUrl]: {
+                              enabled,
+                              imageIndex: floorPlanSel.imageIndex,
+                            },
+                          }));
                         }}
                         trackColor={{ false: colors.segmentBg, true: colors.accent }}
                       />
@@ -1012,17 +915,29 @@ export default function AdminKeiAmerScreen() {
         )}
         <Pressable
           disabled={selectedList.length === 0 || exportRunning || !sessionOk}
-          onPress={() => void handleExport()}
+          onPress={() => {
+            if (exportRunning) {
+              setExportVisible(true);
+              return;
+            }
+            void handleExport();
+          }}
           style={[
             styles.exportBtn,
             {
-              backgroundColor: selectedList.length > 0 && sessionOk ? colors.accent : colors.cardSecondary,
-              opacity: selectedList.length === 0 || !sessionOk ? 0.5 : 1,
+              backgroundColor:
+                exportRunning || (selectedList.length > 0 && sessionOk) ? colors.accent : colors.cardSecondary,
+              opacity: selectedList.length === 0 && !exportRunning ? 0.5 : 1,
             },
           ]}
         >
           {exportRunning ? (
-            <ActivityIndicator color="#000" />
+            <>
+              <ActivityIndicator color="#000" />
+              <Text style={styles.exportBtnText}>
+                Import w toku ({overallPercent}%) — dotknij, aby otworzyć
+              </Text>
+            </>
           ) : (
             <>
               <Ionicons name="cloud-upload-outline" size={20} color="#000" />
@@ -1032,15 +947,20 @@ export default function AdminKeiAmerScreen() {
         </Pressable>
       </View>
 
-      <Modal visible={exportVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => !exportRunning && setExportVisible(false)}>
+      <Modal
+        visible={exportVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setExportVisible(false)}
+      >
         <View style={[styles.modalRoot, { backgroundColor: colors.bg }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.separator, paddingTop: insets.top + 8 }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Import KEI</Text>
-            {!exportRunning ? (
-              <Pressable onPress={() => setExportVisible(false)}>
-                <Text style={{ color: colors.accentBlue, fontSize: 17, fontWeight: '600' }}>Zamknij</Text>
-              </Pressable>
-            ) : null}
+            <Pressable onPress={() => setExportVisible(false)}>
+              <Text style={{ color: colors.accentBlue, fontSize: 17, fontWeight: '600' }}>
+                {exportRunning ? 'Zminimalizuj' : 'Zamknij'}
+              </Text>
+            </Pressable>
           </View>
           <ScrollView ref={exportScrollRef} contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24 }}>
             <Text style={[styles.exportSummary, { color: colors.secondary }]}>{exportMessage}</Text>
@@ -1070,7 +990,7 @@ export default function AdminKeiAmerScreen() {
                       : item.status === 'skipped'
                         ? 'POMINIĘTO'
                         : item.status === 'active'
-                          ? `${computeItemPercent(item)}%`
+                          ? `${computeKeiItemPercent(item)}%`
                           : '…'}
                   </Text>
                 </View>
@@ -1092,6 +1012,7 @@ export default function AdminKeiAmerScreen() {
                         }
                         done={done}
                         active={active}
+                        pulsate={exportRunning && active && !done}
                         accentColor={accentColor}
                         colors={colors}
                       />
@@ -1194,7 +1115,39 @@ const styles = StyleSheet.create({
   listingPrice: { fontSize: 13, marginTop: 4 },
   importedBadge: { fontSize: 12, fontWeight: '700', marginTop: 6 },
   externalBtn: { padding: 6 },
-  floorPlanCard: { flexDirection: 'row', gap: 12, padding: 12, borderRadius: 14, marginBottom: 10, marginTop: -4 },
+  floorPlanCard: { padding: 12, borderRadius: 14, marginBottom: 10, marginTop: -4 },
+  floorPlanStrip: { gap: 8, paddingVertical: 10 },
+  floorPlanThumbWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  floorPlanThumbPicked: { borderColor: '#FF9500', borderWidth: 3 },
+  floorPlanThumbSuggested: { borderColor: 'rgba(255,149,0,0.45)' },
+  floorPlanThumb: { width: '100%', height: '100%' },
+  floorPlanThumbLabel: {
+    position: 'absolute',
+    bottom: 2,
+    right: 4,
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowRadius: 4,
+  },
+  floorPlanSuggestedBadge: {
+    position: 'absolute',
+    top: 2,
+    left: 4,
+    backgroundColor: '#FF9500',
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  floorPlanSuggestedText: { color: '#000', fontSize: 9, fontWeight: '900' },
   peekImage: { width: 72, height: 72, borderRadius: 12 },
   peekImageFloorPlan: { borderWidth: 2, borderColor: '#FF9500' },
   peekPlaceholder: { width: 72, height: 72, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

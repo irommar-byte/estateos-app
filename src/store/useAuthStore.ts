@@ -531,7 +531,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   refreshAgencyMembership: async () => {
     const { token, user } = get();
-    if (!token || user?.role !== 'AGENT') {
+    const isAgentLike =
+      user?.role === 'AGENT' || String(user?.planType || '').toUpperCase() === 'AGENCY';
+    if (!token || !isAgentLike) {
       set({ agencyMembership: null });
       return;
     }

@@ -6,6 +6,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import FloatingPreferencesDock from "@/components/layout/FloatingPreferencesDock";
+import WebNotificationPrompt from "@/components/layout/WebNotificationPrompt";
 import SkipToContent from "@/components/layout/SkipToContent";
 import LocaleDocumentMeta from "@/components/layout/LocaleDocumentMeta";
 import Tracker from "@/components/Tracker";
@@ -79,7 +80,7 @@ export default async function RootLayout({
   const locale = resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value);
 
   return (
-    <html suppressHydrationWarning lang={locale} className="light" data-theme="light">
+    <html suppressHydrationWarning lang={locale} className="dark" data-theme="dark">
       <body suppressHydrationWarning className={inter.className}>
         <ThemeInitScript />
         <ThemeProvider>
@@ -93,6 +94,7 @@ export default async function RootLayout({
                     <Tracker />
                     <Navbar />
                     <FloatingPreferencesDock />
+                    <WebNotificationPrompt />
                     <div id="main-content" tabIndex={-1} className="outline-none">
                       {children}
                     </div>

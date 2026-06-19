@@ -4,9 +4,11 @@ import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 import { applyLegalStatusOverride, type LegalStatusOverride } from '@/lib/offerLegalStatusOverlay';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { enrichOfferMoneyFieldsWithRate } from '@/lib/money/offerPrice';
+import { enrichOfferPriceDiscountFields } from '@/lib/offerPriceHistory';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
 import { resolveSellerDisplayName, resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
+import { resolvePersistedLocalityFields } from '@/lib/offerLocalityCountry';
 
 export type PublicListOffer = Record<string, unknown> & {
   id: number;
@@ -57,8 +59,18 @@ export function shapePublicListOffer(
     isLegalSafeVerified: rest.isLegalSafeVerified as boolean | null | undefined,
   });
 
+  const localityResolved = resolvePersistedLocalityFields({
+    localityCountry: rest.localityCountry,
+    localityCountryCode: rest.localityCountryCode,
+    city: rest.city,
+    lat: rest.lat,
+    lng: rest.lng,
+  });
+
   const base = {
     ...rest,
+    localityCountry: localityResolved.localityCountry,
+    localityCountryCode: localityResolved.localityCountryCode,
     sellerDisplayName,
     sellerPersonName,
     propertyTypeLabel: formatOfferPropertyType(rest.propertyType, 'pl'),
@@ -80,10 +92,10 @@ export function shapePublicListOffer(
     : base;
 
   if (options.includeMobileLegalAliases) {
-    return enrichOfferWithLegalAliases(withMoney) as unknown as PublicListOffer;
+    return enrichOfferWithLegalAliases(enrichOfferPriceDiscountFields(withMoney)) as unknown as PublicListOffer;
   }
 
-  return withMoney as unknown as PublicListOffer;
+  return enrichOfferPriceDiscountFields(withMoney) as unknown as PublicListOffer;
 }
 
 export async function loadOfferViewCounts(

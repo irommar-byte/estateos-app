@@ -77,16 +77,35 @@ export async function resolveLastImageIsFloorPlan(
   return false;
 }
 
+/** Indeks zdjęcia-rzutu (0-based) — URL z „plan/rzut” lub heurystyka ostatniego. */
+export function suggestFloorPlanIndex(
+  draft: Pick<OtodomImportDraft, 'imageUrls' | 'title' | 'descriptionText' | 'features'>,
+): number | null {
+  const urls = draft.imageUrls || [];
+  for (let i = 0; i < urls.length; i += 1) {
+    if (suggestFloorPlanFromUrl(urls[i])) return i;
+  }
+  if (suggestLastImageIsFloorPlan(draft) && urls.length > 0) {
+    return urls.length - 1;
+  }
+  return null;
+}
+
 export function peekLastImageInfo(draft: OtodomImportDraft): {
   lastImageUrl: string | null;
   imageCount: number;
   suggestedFloorPlan: boolean;
+  imageUrls: string[];
+  suggestedFloorPlanIndex: number | null;
 } {
   const urls = draft.imageUrls || [];
+  const suggestedFloorPlanIndex = suggestFloorPlanIndex(draft);
   const lastImageUrl = urls.length > 0 ? urls[urls.length - 1] : null;
   return {
     lastImageUrl,
     imageCount: urls.length,
-    suggestedFloorPlan: suggestLastImageIsFloorPlan(draft),
+    suggestedFloorPlan: suggestedFloorPlanIndex !== null,
+    imageUrls: urls.slice(0, 15),
+    suggestedFloorPlanIndex,
   };
 }

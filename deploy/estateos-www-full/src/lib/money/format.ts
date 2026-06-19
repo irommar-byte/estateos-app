@@ -98,6 +98,19 @@ export function formatApproxLine(
   return `≈ ${formatAmountWithCurrency(pln, 'PLN', locale)}`;
 }
 
+export function formatOfferSecondaryAmount(params: {
+  amount: number;
+  listingCurrency?: unknown;
+  pricePln?: number | null;
+  displayPreference: DisplayCurrencyPreference;
+  rate: number;
+  locale?: 'pl' | 'en';
+}): string {
+  const locale = params.locale ?? 'pl';
+  const resolved = resolveOfferDisplayAmount(params);
+  return formatAmountWithCurrency(resolved.displayAmount, resolved.displayCurrency, locale);
+}
+
 export type FormattedOfferPrice = {
   primary: string;
   secondary: string | null;

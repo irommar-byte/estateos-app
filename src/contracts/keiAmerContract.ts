@@ -40,7 +40,14 @@ export type KeiPeekResponse = {
   imageCount: number;
   lastImageUrl: string | null;
   suggestedFloorPlan: boolean;
+  suggestedFloorPlanIndex: number | null;
+  imageUrls: string[];
   previewUrls: string[];
+};
+
+export type KeiFloorPlanSelection = {
+  enabled: boolean;
+  imageIndex: number;
 };
 
 export type KeiExportSelection = {
@@ -67,6 +74,7 @@ export type KeiExportRequest = {
   transactionKind?: KeiTransactionKind;
   selections?: KeiExportSelection[];
   floorPlanOverrides?: Record<string, boolean>;
+  floorPlanSelections?: Record<string, KeiFloorPlanSelection>;
 };
 
 export type KeiImportStepId = 'check_duplicate' | 'fetch_portal' | 'create_offer' | 'images' | 'activate';

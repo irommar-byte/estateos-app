@@ -53,3 +53,27 @@ export function mergeSelectedOfferIntoMapPins<T extends MappableOffer>(
   if (offers.some((o) => String(o.id) === String(selected.id))) return offers;
   return [...offers, selected];
 }
+
+/** iOS AIRMap crashes when too many subviews mount at once — keep a safe cap. */
+export function capMapPinsNearCenter<T extends MappableOffer>(
+  offers: T[],
+  region: Region,
+  maxPins: number,
+): T[] {
+  if (maxPins <= 0 || offers.length <= maxPins) return offers;
+  const centerLat = region.latitude;
+  const centerLng = region.longitude;
+  return [...offers]
+    .sort((a, b) => {
+      const aLat = Number(a.lat);
+      const aLng = Number(a.lng);
+      const bLat = Number(b.lat);
+      const bLng = Number(b.lng);
+      const aDist =
+        (aLat - centerLat) * (aLat - centerLat) + (aLng - centerLng) * (aLng - centerLng);
+      const bDist =
+        (bLat - centerLat) * (bLat - centerLat) + (bLng - centerLng) * (bLng - centerLng);
+      return aDist - bDist;
+    })
+    .slice(0, maxPins);
+}

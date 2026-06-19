@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Eye, Building2, TrendingDown, Loader2 } from "lucide-react";
+import { Eye, Building2, TrendingDown, Calendar, Loader2 } from "lucide-react";
 
 type DelegatedOffer = {
   id: number;

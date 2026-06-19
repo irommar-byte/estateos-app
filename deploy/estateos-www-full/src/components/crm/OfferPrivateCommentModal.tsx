@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ExternalLink, Loader2, Save } from "lucide-react";
-import BaseModal from "@/components/ui/BaseModal";
+import EosModal from "@/components/ui/EosModal";
 
 type Props = {
   open: boolean;
@@ -89,15 +89,13 @@ export default function OfferPrivateCommentModal({ open, offerId, offerTitle, on
   };
 
   return (
-    <BaseModal
-      isOpen={open}
+    <EosModal
+      open={open}
       onClose={onClose}
       title={offerTitle ? `Komentarz · ${offerTitle}` : "Komentarz oferty"}
+      badge="Prywatne notatki właściciela"
       maxWidth="max-w-4xl"
     >
-      <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)] mb-4">
-        Prywatne notatki właściciela
-      </p>
       <div className="space-y-4">
         {loading ? (
           <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-6 flex items-center justify-center">
@@ -199,6 +197,6 @@ export default function OfferPrivateCommentModal({ open, offerId, offerTitle, on
           </>
         ) : null}
       </div>
-    </BaseModal>
+    </EosModal>
   );
 }

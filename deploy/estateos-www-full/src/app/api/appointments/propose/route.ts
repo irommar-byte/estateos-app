@@ -119,7 +119,7 @@ export async function POST(req: Request) {
       console.warn('[APPOINTMENT PROPOSE PUSH WARN]', pushError);
     }
 
-    const [buyer, seller, offerMeta] = await Promise.all([
+    const [buyerContact, sellerContact, offerMeta] = await Promise.all([
       prisma.user.findUnique({ where: { id: buyerId }, select: { email: true, name: true } }),
       prisma.user.findUnique({ where: { id: resolvedSellerId }, select: { email: true, name: true } }),
       prisma.offer.findUnique({ where: { id: parsedOfferId }, select: { title: true } }),
@@ -129,13 +129,13 @@ export async function POST(req: Request) {
     const note = message ? String(message).trim().slice(0, 500) : '';
     await Promise.all(
       [
-        buyer?.email
+        buyerContact?.email
           ? sendTransactionalEmail({
-              to: buyer.email,
+              to: buyerContact.email,
               subject: `Wysłano ${statusLabel.toLowerCase()}`,
               html: buildAppointmentUpdateEmailHtml({
-                recipientName: buyer.name,
-                otherPartyName: seller?.name,
+                recipientName: buyerContact.name,
+                otherPartyName: sellerContact?.name,
                 offerTitle: offerMeta?.title,
                 proposedDate: parsedDate,
                 statusLabel,
@@ -144,13 +144,13 @@ export async function POST(req: Request) {
               }),
             })
           : Promise.resolve(false),
-        seller?.email
+        sellerContact?.email
           ? sendTransactionalEmail({
-              to: seller.email,
+              to: sellerContact.email,
               subject: `Aktualizacja prezentacji: ${statusLabel}`,
               html: buildAppointmentUpdateEmailHtml({
-                recipientName: seller.name,
-                otherPartyName: buyer?.name,
+                recipientName: sellerContact.name,
+                otherPartyName: buyerContact?.name,
                 offerTitle: offerMeta?.title,
                 proposedDate: parsedDate,
                 statusLabel,

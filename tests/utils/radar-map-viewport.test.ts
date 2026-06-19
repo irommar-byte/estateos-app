@@ -4,6 +4,7 @@ import {
   filterOffersInMapRegion,
   isCoordinateInMapRegion,
   mergeSelectedOfferIntoMapPins,
+  capMapPinsNearCenter,
 } from '../../src/utils/radarMapViewport';
 
 describe('radarMapViewport', () => {
@@ -34,5 +35,17 @@ describe('radarMapViewport', () => {
   it('detects coordinate inside region', () => {
     assert.equal(isCoordinateInMapRegion(52.23, 21.01, region), true);
     assert.equal(isCoordinateInMapRegion(40, 10, region), false);
+  });
+
+  it('caps pins near map center', () => {
+    const offers = [
+      { id: 1, lat: 52.23, lng: 21.01 },
+      { id: 2, lat: 52.24, lng: 21.02 },
+      { id: 3, lat: 50.0, lng: 19.0 },
+    ];
+    const capped = capMapPinsNearCenter(offers, region, 2);
+    assert.equal(capped.length, 2);
+    assert.ok(capped.some((o) => o.id === 1));
+    assert.ok(capped.some((o) => o.id === 2));
   });
 });

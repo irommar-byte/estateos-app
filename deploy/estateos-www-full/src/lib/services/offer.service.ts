@@ -17,6 +17,7 @@ import {
   extractVerificationMeta,
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
+import { syncOfferPriceHistory } from '@/lib/offerPriceHistory';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
 import {
   isOfferAlterPrivilegeError,
@@ -93,6 +94,8 @@ let offerMoneyColumnsEnsured = false;
 let offerMoneyColumnsPromise: Promise<void> | null = null;
 let offerLocalityColumnsEnsured = false;
 let offerLocalityColumnsPromise: Promise<void> | null = null;
+let extendedAmenityColumnsEnsured = false;
+let extendedAmenityColumnsPromise: Promise<void> | null = null;
 
 function isIgnorableAddColumnError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -213,6 +216,21 @@ export async function ensureOfferMoneyColumns() {
   }
 }
 
+export async function ensureOfferExtendedAmenityColumns() {
+  if (extendedAmenityColumnsEnsured) return;
+  if (extendedAmenityColumnsPromise) return extendedAmenityColumnsPromise;
+  extendedAmenityColumnsPromise = (async () => {
+    await ensureOfferColumn("hasAirConditioning", "BOOLEAN NOT NULL DEFAULT false");
+    await ensureOfferColumn("isDuplex", "BOOLEAN NOT NULL DEFAULT false");
+    extendedAmenityColumnsEnsured = true;
+  })();
+  try {
+    await extendedAmenityColumnsPromise;
+  } finally {
+    extendedAmenityColumnsPromise = null;
+  }
+}
+
 export async function ensureOfferLocalityCountryColumns() {
   if (offerLocalityColumnsEnsured) return;
   if (offerLocalityColumnsPromise) return offerLocalityColumnsPromise;
@@ -227,9 +245,16 @@ export async function ensureOfferLocalityCountryColumns() {
       `UPDATE \`Offer\` SET \`localityCountryCode\` = 'PL' WHERE \`localityCountryCode\` IS NULL OR TRIM(\`localityCountryCode\`) = ''`
     );
 
-    const batch = await prisma.offer.findMany({
-      select: { id: true, city: true, lat: true, lng: true, localityCountry: true, localityCountryCode: true },
-    });
+    const batch = await prisma.$queryRaw<
+      Array<{
+        id: number;
+        city: string | null;
+        lat: number | null;
+        lng: number | null;
+        localityCountry: string | null;
+        localityCountryCode: string | null;
+      }>
+    >`SELECT id, city, lat, lng, localityCountry, localityCountryCode FROM Offer`;
     for (const row of batch) {
       let resolved = resolvePersistedLocalityFields({
         localityCountry: row.localityCountry,
@@ -245,13 +270,12 @@ export async function ensureOfferLocalityCountryColumns() {
         resolved.localityCountryCode !== String(row.localityCountryCode || '').trim().toUpperCase() ||
         resolved.localityCountry !== String(row.localityCountry || '').trim()
       ) {
-        await prisma.offer.update({
-          where: { id: row.id },
-          data: {
-            localityCountry: resolved.localityCountry,
-            localityCountryCode: resolved.localityCountryCode,
-          },
-        });
+        await prisma.$executeRawUnsafe(
+          'UPDATE `Offer` SET `localityCountry` = ?, `localityCountryCode` = ? WHERE `id` = ?',
+          resolved.localityCountry,
+          resolved.localityCountryCode,
+          row.id,
+        );
       }
     }
 
@@ -325,6 +349,7 @@ export async function createOffer(body: any) {
   await ensureOfferLegalColumns();
   await ensureOfferMoneyColumns();
   await ensureOfferLocalityCountryColumns();
+  await ensureOfferExtendedAmenityColumns();
   const resolvedPrice = await resolveOfferPriceFromBody(body);
 
   if (body.landRegistryNumber !== undefined && body.landRegistryNumber !== null) {
@@ -394,7 +419,12 @@ export async function createOffer(body: any) {
 
       floor: body.floor !== undefined && body.floor !== null ? Number(body.floor) : null,
       totalFloors: body.totalFloors !== undefined && body.totalFloors !== null ? Number(body.totalFloors) : null,
-      yearBuilt: body.yearBuilt !== undefined && body.yearBuilt !== null ? Number(body.yearBuilt) : null,
+      yearBuilt: (() => {
+        const raw = body.yearBuilt ?? body.buildYear ?? body.year;
+        if (raw === undefined || raw === null || raw === "") return null;
+        const n = Number(raw);
+        return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+      })(),
 
       city: locationValidation.city,
       district: locationValidation.district,
@@ -424,6 +454,8 @@ export async function createOffer(body: any) {
       hasStorage: !!body.hasStorage,
       hasParking: !!body.hasParking,
       hasGarden: !!body.hasGarden,
+      hasAirConditioning: !!body.hasAirConditioning,
+      isDuplex: !!body.isDuplex,
       isFurnished: !!body.isFurnished,
       heating: body.heating ? String(body.heating).trim() : null,
 
@@ -447,7 +479,20 @@ export async function createOffer(body: any) {
   };
 
   try {
-    return await createOfferRecord(createData, MOBILE_OFFER_WRITE_RESPONSE_SELECT as any);
+    const created = await createOfferRecord(createData, MOBILE_OFFER_WRITE_RESPONSE_SELECT as any);
+    const pln = getCanonicalOfferPricePln(created);
+    if (pln > 0) {
+      await syncOfferPriceHistory({
+        offerId: Number(created.id),
+        price: Number(created.price),
+        pricePln: pln,
+        priceCurrency: String((created as { priceCurrency?: string }).priceCurrency || 'PLN'),
+        previousPricePln: 0,
+        previousListPricePln: null,
+        source: 'offer_create',
+      });
+    }
+    return created;
   } catch (error) {
     if (
       !isOfferLegalColumnMissingError(error) &&
@@ -461,7 +506,20 @@ export async function createOffer(body: any) {
     stripLegacyLegalColumns(fallbackData);
     stripMoneyColumns(fallbackData);
     stripLocalityColumns(fallbackData);
-    return createOfferRecord(fallbackData, MOBILE_OFFER_PRISMA_SELECT as any);
+    const fallbackCreated = await createOfferRecord(fallbackData, MOBILE_OFFER_PRISMA_SELECT as any);
+    const pln = getCanonicalOfferPricePln(fallbackCreated);
+    if (pln > 0) {
+      await syncOfferPriceHistory({
+        offerId: Number(fallbackCreated.id),
+        price: Number(fallbackCreated.price),
+        pricePln: pln,
+        priceCurrency: String((fallbackCreated as { priceCurrency?: string }).priceCurrency || 'PLN'),
+        previousPricePln: 0,
+        previousListPricePln: null,
+        source: 'offer_create',
+      });
+    }
+    return fallbackCreated;
   }
 }
 
@@ -473,6 +531,7 @@ export async function updateOffer(body: any) {
   await ensureOfferLegalColumns();
   await ensureOfferMoneyColumns();
   await ensureOfferLocalityCountryColumns();
+  await ensureOfferExtendedAmenityColumns();
 
   if (body.landRegistryNumber !== undefined && body.landRegistryNumber !== null) {
     validateLandRegistryNumberInput(body.landRegistryNumber);
@@ -658,6 +717,9 @@ export async function updateOffer(body: any) {
       ...(body.yearBuilt !== undefined && {
         yearBuilt: body.yearBuilt === null ? null : Number(body.yearBuilt)
       }),
+      ...(body.buildYear !== undefined && body.yearBuilt === undefined && {
+        yearBuilt: body.buildYear === null || body.buildYear === '' ? null : Number(body.buildYear),
+      }),
       ...(body.city !== undefined && {
         city: locationValidation?.city
       }),
@@ -676,6 +738,8 @@ export async function updateOffer(body: any) {
       ...(body.hasStorage !== undefined && { hasStorage: !!body.hasStorage }),
       ...(body.hasParking !== undefined && { hasParking: !!body.hasParking }),
       ...(body.hasGarden !== undefined && { hasGarden: !!body.hasGarden }),
+      ...(body.hasAirConditioning !== undefined && { hasAirConditioning: !!body.hasAirConditioning }),
+      ...(body.isDuplex !== undefined && { isDuplex: !!body.isDuplex }),
       ...(body.isFurnished !== undefined && { isFurnished: !!body.isFurnished }),
       ...(body.heating !== undefined && {
         heating: body.heating ? String(body.heating).trim() : null
@@ -753,6 +817,20 @@ export async function updateOffer(body: any) {
     });
   }
   const newPrice = getCanonicalOfferPricePln(updatedOffer);
+  if (Number.isFinite(oldPrice) && Number.isFinite(newPrice)) {
+    await syncOfferPriceHistory({
+      offerId: Number(updatedOffer.id),
+      price: Number(updatedOffer.price),
+      pricePln: newPrice,
+      priceCurrency: String((updatedOffer as { priceCurrency?: string }).priceCurrency || 'PLN'),
+      previousPricePln: oldPrice,
+      previousListPricePln:
+        (existing as { listPricePln?: number | null }).listPricePln != null
+          ? Number((existing as { listPricePln?: number | null }).listPricePln)
+          : null,
+      source: 'mobile_offers_put',
+    });
+  }
   if (Number.isFinite(oldPrice) && Number.isFinite(newPrice) && oldPrice !== newPrice) {
     await dispatchFavoritesPriceChangePush({
       offerId: Number(updatedOffer.id),

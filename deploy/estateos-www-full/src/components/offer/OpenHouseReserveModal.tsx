@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, DoorOpen, Loader2, X } from "lucide-react";
+import { CheckCircle2, DoorOpen, Loader2 } from "lucide-react";
 import type { Locale } from "@/i18n/config";
 import type { OpenHouseEventRecord, OpenHouseSlotRecord, OpenHouseVisitMode } from "@/lib/openHouseTypes";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
+import EosModal from "@/components/ui/EosModal";
 
 type Props = {
   isOpen: boolean;
@@ -72,7 +71,6 @@ export default function OpenHouseReserveModal({
 }: Props) {
   const t = getOfferPageCopy(locale);
   const oh = t.openHouse;
-  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [event, setEvent] = useState<OpenHouseEventRecord | null>(null);
@@ -80,8 +78,6 @@ export default function OpenHouseReserveModal({
   const [guestCount, setGuestCount] = useState(1);
   const [note, setNote] = useState("");
   const [success, setSuccess] = useState(false);
-
-  useEffect(() => setMounted(true), []);
 
   const load = useCallback(async () => {
     if (!eventId) {
@@ -180,94 +176,54 @@ export default function OpenHouseReserveModal({
     }
   };
 
-  if (!mounted) return null;
-
   const isTimedBooking = event?.visitMode !== "FLEX";
   const upcomingSlots =
     event?.slots.filter((s) => new Date(s.endsAt).getTime() > Date.now()) ?? [];
   const myReservation = selectedSlot?.myReservation;
 
-  const modalContent = (
-    <AnimatePresence>
-      {isOpen ? (
-        <div className="fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto p-4 pb-10 pt-10 sm:pt-16">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 bg-black/80 backdrop-blur-md"
-          />
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 16 }}
-            onClick={(e) => e.stopPropagation()}
-            className="relative my-auto flex max-h-[90vh] w-full max-w-lg shrink-0 flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#0a0a0a] shadow-2xl"
-          >
-            <div className="flex shrink-0 items-center justify-between border-b border-white/5 bg-[#050505] px-6 py-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400">
-                  <DoorOpen size={20} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black uppercase tracking-tight text-white">{oh.modalTitle}</h3>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">{oh.modalSubtitle}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/5 text-white/50 transition hover:bg-white/10"
-              >
-                <X size={20} />
-              </button>
-            </div>
+  const body = loading ? (
+    <div className="flex flex-col items-center justify-center py-16">
+      <Loader2 className="h-10 w-10 animate-spin text-amber-500" />
+    </div>
+  ) : !event ? (
+    <div className="py-12 text-center">
+      <p className="text-[17px] font-semibold text-[var(--eos-text)]">{oh.loadError}</p>
+      <p className="mt-2 text-[13px] leading-relaxed text-[var(--eos-muted)]">{oh.loadErrorHint}</p>
+    </div>
+  ) : success ? (
+    <div className="flex flex-col items-center py-10 text-center">
+      <CheckCircle2 className="mb-5 h-16 w-16 text-emerald-500" />
+      <p className="text-[17px] font-semibold text-[var(--eos-text)]">{oh.reserveSuccess}</p>
+      <p className="mt-2 text-[13px] leading-relaxed text-[var(--eos-muted)]">{oh.reserveSuccessHint}</p>
+      <button
+        type="button"
+        onClick={onClose}
+        className="eos-primary-cta mt-8 max-w-xs bg-[var(--eos-text)] text-[var(--eos-bg)]"
+      >
+        {oh.close}
+      </button>
+    </div>
+  ) : (
+    <div className="space-y-5">
+      <div className="eos-stat-card">
+        <p className="text-[15px] font-semibold text-[var(--eos-text)]">{event.title}</p>
+        <p className="mt-1 text-[13px] text-[var(--eos-muted)]">
+          {event.offer.city} · {event.offer.district}
+        </p>
+        {event.description ? (
+          <p className="mt-3 text-[13px] leading-relaxed text-[var(--eos-muted)]">{event.description}</p>
+        ) : null}
+      </div>
 
-            <div className="custom-scrollbar flex-1 overflow-y-auto px-6 py-5">
-              {loading ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <Loader2 className="h-10 w-10 animate-spin text-amber-500" />
-                </div>
-              ) : !event ? (
-                <div className="py-12 text-center">
-                  <p className="text-lg font-bold text-white">{oh.loadError}</p>
-                  <p className="mt-2 text-sm text-white/45">{oh.loadErrorHint}</p>
-                </div>
-              ) : success ? (
-                <div className="flex flex-col items-center py-10 text-center">
-                  <CheckCircle2 className="mb-5 h-16 w-16 text-emerald-500" />
-                  <p className="text-2xl font-black text-white">{oh.reserveSuccess}</p>
-                  <p className="mt-2 text-sm text-white/45">{oh.reserveSuccessHint}</p>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="mt-8 rounded-2xl bg-white px-6 py-3 text-xs font-black uppercase tracking-widest text-black"
-                  >
-                    {oh.close}
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-5">
-                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                    <p className="text-base font-semibold text-white">{event.title}</p>
-                    <p className="mt-1 text-sm text-white/50">
-                      {event.offer.city} · {event.offer.district}
-                    </p>
-                    {event.description ? (
-                      <p className="mt-3 text-sm leading-relaxed text-white/55">{event.description}</p>
-                    ) : null}
-                  </div>
-
-                  <div>
-                    <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-white/40">
-                      {isTimedBooking ? oh.pickHourSection : oh.slotsSection}
-                    </p>
-                    {isTimedBooking ? (
-                      <p className="mb-3 text-xs leading-relaxed text-white/45">{oh.pickHourHint}</p>
-                    ) : event.visitMode === "FLEX" && event.slots.length === 1 ? (
-                      <p className="mb-3 text-xs leading-relaxed text-white/45">{oh.flexWindowHint}</p>
-                    ) : null}
+      <div>
+        <p className="eos-field-label">
+          {isTimedBooking ? oh.pickHourSection : oh.slotsSection}
+        </p>
+        {isTimedBooking ? (
+          <p className="mb-3 text-[12px] leading-relaxed text-[var(--eos-muted)]">{oh.pickHourHint}</p>
+        ) : event.visitMode === "FLEX" && event.slots.length === 1 ? (
+          <p className="mb-3 text-[12px] leading-relaxed text-[var(--eos-muted)]">{oh.flexWindowHint}</p>
+        ) : null}
 
                     {isTimedBooking ? (
                       <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
@@ -284,14 +240,14 @@ export default function OpenHouseReserveModal({
                               onClick={() => setSelectedSlotId(slot.id)}
                               className={`min-w-[5.5rem] shrink-0 rounded-xl border px-3 py-3 text-left transition ${
                                 selected
-                                  ? "border-amber-500 bg-amber-500/15"
+                                  ? "border-amber-500/50 bg-amber-500/12"
                                   : markedTaken
-                                    ? "border-white/10 bg-white/[0.03] opacity-70"
-                                    : "border-white/10 bg-white/[0.03] hover:border-white/20"
+                                    ? "border-[var(--eos-border)] bg-[var(--eos-input)] opacity-60"
+                                    : "border-[var(--eos-border)] bg-[var(--eos-input)] hover:border-amber-500/30"
                               }`}
                             >
-                              <p className="text-sm font-black text-white">{formatSlotChip(slot, locale)}</p>
-                              <p className="mt-1 text-[11px] text-white/45">
+                              <p className="text-[14px] font-semibold text-[var(--eos-text)]">{formatSlotChip(slot, locale)}</p>
+                              <p className="mt-1 text-[11px] text-[var(--eos-muted)]">
                                 {booked
                                   ? oh.reservedCta
                                   : markedTaken
@@ -317,17 +273,17 @@ export default function OpenHouseReserveModal({
                               onClick={() => setSelectedSlotId(slot.id)}
                               className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition ${
                                 selected
-                                  ? "border-amber-500 bg-amber-500/10"
+                                  ? "border-amber-500/50 bg-amber-500/10"
                                   : markedTaken
-                                    ? "border-white/10 bg-white/[0.03] opacity-75"
-                                    : "border-white/10 bg-white/[0.03] hover:border-white/20"
+                                    ? "border-[var(--eos-border)] bg-[var(--eos-input)] opacity-60"
+                                    : "border-[var(--eos-border)] bg-[var(--eos-input)] hover:border-amber-500/30"
                               }`}
                             >
                               <div>
-                                <p className="text-sm font-semibold text-white">
+                                <p className="text-[14px] font-semibold text-[var(--eos-text)]">
                                   {formatSlot(slot, event.visitMode, locale)}
                                 </p>
-                                <p className="mt-0.5 text-xs text-white/45">
+                                <p className="mt-0.5 text-[12px] text-[var(--eos-muted)]">
                                   {booked
                                     ? oh.reservedCta
                                     : markedTaken
@@ -336,7 +292,7 @@ export default function OpenHouseReserveModal({
                                 </p>
                               </div>
                               {booked ? (
-                                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                                <span className="text-[12px] font-semibold text-emerald-600">
                                   {oh.reservedCta}
                                 </span>
                               ) : null}
@@ -347,76 +303,78 @@ export default function OpenHouseReserveModal({
                     )}
                   </div>
 
-                  {selectedSlot && !myReservation ? (
-                    <div className="space-y-4 rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-                      <div>
-                        <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-white/40">
-                          {oh.guestCount}
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          {guestOptions.map((n) => (
-                            <button
-                              key={n}
-                              type="button"
-                              onClick={() => setGuestCount(n)}
-                              className={`rounded-xl border px-4 py-2 text-sm font-bold ${
-                                guestCount === n
-                                  ? "border-amber-500 bg-amber-500/15 text-amber-300"
-                                  : "border-white/10 text-white/80"
-                              }`}
-                            >
-                              {n}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-white/40">
-                          {oh.note}
-                        </label>
-                        <textarea
-                          value={note}
-                          onChange={(e) => setNote(e.target.value)}
-                          rows={3}
-                          className="w-full resize-none rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white outline-none focus:border-amber-500/50"
-                          placeholder={oh.notePlaceholder}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {myReservation ? (
-                    <button
-                      type="button"
-                      disabled={submitting}
-                      onClick={() => void cancelMyReservation(myReservation.id)}
-                      className="w-full rounded-2xl border border-white/10 py-4 text-xs font-black uppercase tracking-widest text-white/70"
-                    >
-                      {oh.cancelReservation}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={submitting || !selectedSlotId}
-                      onClick={() => void reserve()}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 py-4 text-xs font-black uppercase tracking-widest text-white shadow-[0_0_30px_rgba(245,158,11,0.25)] transition hover:bg-amber-400 disabled:opacity-50"
-                    >
-                      {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      {oh.reserveCta}
-                    </button>
-                  )}
-
-                  {!currentUser ? (
-                    <p className="text-center text-xs text-white/40">{oh.loginRequired}</p>
-                  ) : null}
-                </div>
-              )}
+      {selectedSlot && !myReservation ? (
+        <div className="space-y-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/50 p-4">
+          <div>
+            <label className="eos-field-label">{oh.guestCount}</label>
+            <div className="flex flex-wrap gap-2">
+              {guestOptions.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setGuestCount(n)}
+                  className={`rounded-xl border px-4 py-2 text-[14px] font-semibold ${
+                    guestCount === n
+                      ? "border-amber-500/50 bg-amber-500/12 text-amber-600"
+                      : "border-[var(--eos-border)] text-[var(--eos-text)]"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
             </div>
-          </motion.div>
+          </div>
+          <div>
+            <label className="eos-field-label">{oh.note}</label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              className="w-full resize-none rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[14px] text-[var(--eos-text)] outline-none focus:border-amber-500/45"
+              placeholder={oh.notePlaceholder}
+            />
+          </div>
         </div>
       ) : null}
-    </AnimatePresence>
+
+      {myReservation ? (
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={() => void cancelMyReservation(myReservation.id)}
+          className="w-full rounded-2xl border border-[var(--eos-border)] py-3.5 text-[15px] font-semibold text-[var(--eos-muted)] transition hover:bg-[var(--eos-input)]"
+        >
+          {oh.cancelReservation}
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={submitting || !selectedSlotId}
+          onClick={() => void reserve()}
+          className="eos-primary-cta bg-amber-500 hover:bg-amber-400"
+        >
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {oh.reserveCta}
+        </button>
+      )}
+
+      {!currentUser ? (
+        <p className="text-center text-[12px] text-[var(--eos-muted)]">{oh.loginRequired}</p>
+      ) : null}
+    </div>
   );
 
-  return createPortal(modalContent, document.body);
+  return (
+    <EosModal
+      open={isOpen}
+      onClose={onClose}
+      title={oh.modalTitle}
+      subtitle={oh.modalSubtitle}
+      icon={<DoorOpen size={20} />}
+      iconWrapClassName="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-amber-500/25 bg-amber-500/10 text-amber-500 shadow-[0_8px_24px_rgba(245,158,11,0.14)]"
+      maxWidth="max-w-lg"
+    >
+      {body}
+    </EosModal>
+  );
 }

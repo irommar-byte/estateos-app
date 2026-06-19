@@ -28,7 +28,6 @@ export async function POST(req: Request) {
       agentCommissionPercent: body?.agentCommissionPercent,
       count: body?.count,
       propertyKind: body?.propertyKind === 'house' ? 'house' : 'apartment',
-      transactionKind: body?.transactionKind === 'rent' ? 'rent' : 'sale',
       selections,
     });
     return NextResponse.json(result);

@@ -6,6 +6,8 @@ export const AGENCY_AGENT_TITLES: AgencyAgentTitle[] = [
   'BROKER',
   'EXPERT',
   'LEADER',
+  'KIEROWNIK_BIURO',
+  'ZASTEPCA_KIEROWNIKA',
 ];
 
 const TITLE_LABELS: Record<AgencyAgentTitle, string> = {
@@ -14,6 +16,8 @@ const TITLE_LABELS: Record<AgencyAgentTitle, string> = {
   BROKER: 'Broker',
   EXPERT: 'Expert',
   LEADER: 'Leader',
+  KIEROWNIK_BIURO: 'Kierownik biura',
+  ZASTEPCA_KIEROWNIKA: 'Zastępca kierownika biura',
 };
 
 export function formatAgentTitle(title: string | null | undefined): string {

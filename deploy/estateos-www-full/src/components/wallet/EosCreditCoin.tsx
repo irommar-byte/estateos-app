@@ -8,7 +8,7 @@ type Props = {
 };
 
 export default function EosCreditCoin({ count, loading, spinning, size = "sm" }: Props) {
-  const dim = size === "md" ? 44 : 38;
+  const dim = size === "md" ? 44 : 36;
   const label = loading ? "…" : String(Math.max(0, count ?? 0));
 
   return (
@@ -32,20 +32,19 @@ export default function EosCreditCoin({ count, loading, spinning, size = "sm" }:
 
       <style jsx>{`
         .eos-coin-scene {
-          perspective: 520px;
+          perspective: 480px;
         }
         .eos-coin {
           position: relative;
           width: 100%;
           height: 100%;
           transform-style: preserve-3d;
-          will-change: transform;
         }
         .eos-coin-idle {
-          animation: eosCoinFloat 3.6s ease-in-out infinite;
+          animation: eosCoinFloat 4.2s ease-in-out infinite;
         }
         .eos-coin-spin {
-          animation: eosCoinSpin3d 1.15s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
+          animation: eosCoinSpin3d 1.4s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
         }
         .eos-coin-face {
           position: absolute;
@@ -58,98 +57,93 @@ export default function EosCreditCoin({ count, loading, spinning, size = "sm" }:
           justify-content: center;
           overflow: hidden;
           box-shadow:
-            inset 0 2px 4px rgba(255, 255, 255, 0.55),
-            inset 0 -3px 8px rgba(120, 53, 15, 0.45),
-            0 8px 18px rgba(180, 83, 9, 0.35),
-            0 0 24px rgba(251, 191, 36, 0.22);
+            inset 0 1px 2px rgba(255, 255, 255, 0.35),
+            inset 0 -2px 5px rgba(120, 53, 15, 0.28),
+            0 2px 6px rgba(0, 0, 0, 0.22);
         }
         .eos-coin-front {
-          transform: translateZ(2px);
+          transform: translateZ(1.5px);
           background:
-            radial-gradient(circle at 30% 25%, #fff7cc 0%, transparent 42%),
-            radial-gradient(circle at 70% 78%, rgba(120, 53, 15, 0.35) 0%, transparent 48%),
-            conic-gradient(from 210deg, #fde68a, #f59e0b, #fbbf24, #d97706, #fcd34d, #f59e0b);
-          border: 1.5px solid rgba(255, 237, 170, 0.85);
+            radial-gradient(circle at 32% 28%, #fff9e6 0%, transparent 38%),
+            conic-gradient(from 210deg, #fde68a, #eab308, #fbbf24, #ca8a04, #fde68a);
+          border: 1px solid rgba(234, 179, 8, 0.55);
         }
         .eos-coin-back {
-          transform: rotateY(180deg) translateZ(2px);
+          transform: rotateY(180deg) translateZ(1.5px);
           background:
-            radial-gradient(circle at 35% 30%, #fef3c7 0%, transparent 40%),
-            conic-gradient(from 30deg, #eab308, #ca8a04, #facc15, #a16207, #fde047, #eab308);
-          border: 1.5px solid rgba(254, 240, 138, 0.75);
+            radial-gradient(circle at 35% 30%, #fef3c7 0%, transparent 38%),
+            conic-gradient(from 30deg, #eab308, #ca8a04, #facc15, #a16207, #eab308);
+          border: 1px solid rgba(202, 138, 4, 0.5);
         }
         .eos-coin-rim {
           position: absolute;
-          inset: -1px;
+          inset: -0.5px;
           border-radius: 999px;
-          transform: translateZ(-1px);
-          background: linear-gradient(135deg, #78350f, #b45309 40%, #fcd34d 55%, #92400e);
-          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+          transform: translateZ(-0.5px);
+          background: linear-gradient(135deg, #92400e, #b45309 45%, #fcd34d 58%, #78350f);
         }
         .eos-coin-shine {
           position: absolute;
-          inset: -40%;
+          inset: -30%;
           border-radius: 999px;
           background: linear-gradient(
             115deg,
-            transparent 42%,
-            rgba(255, 255, 255, 0.65) 50%,
-            transparent 58%
+            transparent 44%,
+            rgba(255, 255, 255, 0.28) 50%,
+            transparent 56%
           );
-          transform: translateZ(3px);
-          animation: eosCoinShine 2.8s ease-in-out infinite;
+          transform: translateZ(2px);
+          animation: eosCoinShine 4.5s ease-in-out infinite;
           pointer-events: none;
         }
         .eos-coin-brand {
-          font-size: 7px;
+          font-size: 6px;
           font-weight: 900;
-          letter-spacing: 0.22em;
+          letter-spacing: 0.2em;
           color: #78350f;
-          text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
           line-height: 1;
         }
         .eos-coin-count {
           margin-top: 1px;
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 900;
           line-height: 1;
           color: #451a03;
-          text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
           font-variant-numeric: tabular-nums;
         }
         .eos-coin-sub {
           margin-top: 1px;
-          font-size: 6px;
+          font-size: 5px;
           font-weight: 900;
-          letter-spacing: 0.18em;
+          letter-spacing: 0.16em;
           color: #713f12;
         }
         @keyframes eosCoinFloat {
           0%,
           100% {
-            transform: translateY(0) rotateX(10deg) rotateY(-8deg);
+            transform: translateY(0) rotateX(8deg) rotateY(-6deg);
           }
           50% {
-            transform: translateY(-2px) rotateX(12deg) rotateY(8deg);
+            transform: translateY(-1px) rotateX(9deg) rotateY(6deg);
           }
         }
         @keyframes eosCoinSpin3d {
           0% {
-            transform: rotateX(14deg) rotateY(0deg);
+            transform: rotateX(10deg) rotateY(0deg);
           }
           100% {
-            transform: rotateX(14deg) rotateY(360deg);
+            transform: rotateX(10deg) rotateY(360deg);
           }
         }
         @keyframes eosCoinShine {
           0%,
           100% {
-            opacity: 0.15;
-            transform: translateZ(3px) translateX(-18%) rotate(0deg);
+            opacity: 0.08;
+            transform: translateZ(2px) translateX(-12%) rotate(0deg);
           }
-          45% {
-            opacity: 0.85;
-            transform: translateZ(3px) translateX(18%) rotate(8deg);
+          50% {
+            opacity: 0.35;
+            transform: translateZ(2px) translateX(12%) rotate(4deg);
           }
         }
       `}</style>

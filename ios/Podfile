@@ -59,5 +59,9 @@ target 'EstateOS' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    # Incomplete pod installs (Xcode 26 / CocoaPods) may skip Headers/Public symlinks.
+    fix_headers = File.expand_path('../scripts/fix-ios-pod-headers.sh', __dir__)
+    system('bash', fix_headers) if File.exist?(fix_headers)
   end
 end

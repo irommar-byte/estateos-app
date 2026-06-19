@@ -204,6 +204,10 @@ export type AddOfferFormExtended = {
   plusReachBadge: string;
   plusActivatedBody: string;
   plusViewStats: string;
+  locationInputHint: string;
+  locationMapHint: string;
+  locationGeocoding: string;
+  locationPreviewLabel: string;
 };
 
 const pl: AddOfferFormExtended = {
@@ -423,6 +427,12 @@ const pl: AddOfferFormExtended = {
   plusReachBadge: "Zasięg zwielokrotniony",
   plusActivatedBody: "Aktywowana. Twoje ogłoszenie trafia właśnie do tysięcy inwestorów.",
   plusViewStats: "Zobacz statystyki",
+  locationInputHint:
+    "Wpisz ulicę z numerem, miasto i opcjonalnie kraj — np. „Hauptstraße 12, Berlin, Niemcy” lub „Bernardyńska 8, Kraków”. Naciśnij Enter, aby ustawić pinezkę.",
+  locationMapHint:
+    "Kliknij mapę lub przeciągnij zieloną pinezkę — kraj, miejscowość i ulica uzupełnią się automatycznie.",
+  locationGeocoding: "Szukam lokalizacji…",
+  locationPreviewLabel: "Podgląd lokalizacji",
 };
 
 const en: AddOfferFormExtended = {
@@ -642,6 +652,12 @@ const en: AddOfferFormExtended = {
   plusReachBadge: "Reach multiplied",
   plusActivatedBody: "Activated. Your listing is reaching thousands of investors.",
   plusViewStats: "View statistics",
+  locationInputHint:
+    "Enter street with number, city and optional country — e.g. “Main St 12, Berlin, Germany” or “Bernardyńska 8, Kraków”. Press Enter to place the pin.",
+  locationMapHint:
+    "Click the map or drag the green pin — country, locality and street fill in automatically.",
+  locationGeocoding: "Searching location…",
+  locationPreviewLabel: "Location preview",
 };
 
 const uk: AddOfferFormExtended = {
@@ -862,6 +878,12 @@ const uk: AddOfferFormExtended = {
   plusReachBadge: "Охоплення помножене",
   plusActivatedBody: "Активовано. Ваше оголошення потрапляє до тисяч інвесторів.",
   plusViewStats: "Переглянути статистику",
+  locationInputHint:
+    "Введіть вулицю з номером, місто та за бажанням країну — напр. «Hauptstraße 12, Berlin, Niemcy» або «Bernardyńska 8, Kraków». Натисніть Enter, щоб поставити шпильку.",
+  locationMapHint:
+    "Клікніть на карту або перетягніть зелену шпильку — країна, населений пункт і вулиця заповняться автоматично.",
+  locationGeocoding: "Пошук локації…",
+  locationPreviewLabel: "Попередній перегляд локації",
 };
 
 export function getAddOfferFormExtended(locale: Locale): AddOfferFormExtended {

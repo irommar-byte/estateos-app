@@ -4,8 +4,9 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
-import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { verifyMobileToken } from '@/lib/jwtMobile';
+import { resolvePersistedLocalityFields } from '@/lib/offerLocalityCountry';
+import { findUniqueMobileListOffer } from '@/lib/offers/mobileOfferListQuery';
 import { OfferValidationError, updateOffer } from '@/lib/services/offer.service';
 import {
   applyLegalStatusOverride,
@@ -16,6 +17,8 @@ import {
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
 import { endOfferPublication } from '@/lib/offerPublication';
+import { resolveOfferDetailAccess } from '@/lib/offerPublicAccess';
+import { ensureOfferPriceHistorySchema, enrichOfferPriceDiscountFields } from '@/lib/offerPriceHistory';
 
 type RouteContext = {
   params: Promise<{ offerId: string }> | { offerId: string };
@@ -31,7 +34,7 @@ function parseUserIdFromBearer(req: Request): number | null {
   return Number.isFinite(userId) && userId > 0 ? userId : null;
 }
 
-export async function GET(_req: Request, context: RouteContext) {
+export async function GET(req: Request, context: RouteContext) {
   const params = await context.params;
   const offerId = Number(params.offerId);
   if (!Number.isFinite(offerId) || offerId <= 0) {
@@ -39,19 +42,57 @@ export async function GET(_req: Request, context: RouteContext) {
   }
 
   try {
-    const offer = await prisma.offer.findUnique({
-      where: { id: offerId },
-      select: MOBILE_OFFER_PRISMA_SELECT as any,
-    });
+    await ensureOfferPriceHistorySchema();
+    const authUserId = parseUserIdFromBearer(req);
+    let viewerRole: string | null = null;
+    if (authUserId) {
+      const viewer = await prisma.user.findUnique({
+        where: { id: authUserId },
+        select: { id: true, role: true },
+      });
+      viewerRole = viewer?.role ?? null;
+    }
 
-    if (!offer) {
+    const offer = await findUniqueMobileListOffer(offerId);
+
+    const access = await resolveOfferDetailAccess(prisma, offer as any, {
+      userId: authUserId,
+      role: viewerRole,
+    });
+    if (access.notFound || !offer) {
       return NextResponse.json({ success: false, message: 'Nie znaleziono oferty' }, { status: 404 });
+    }
+    if (!access.allowed) {
+      return NextResponse.json({ success: false, message: 'Oferta niedostępna' }, { status: 404 });
     }
 
     const legalOverrides = await legalStatusOverridesForOffers(prisma, [offerId]);
     const legalOffer = applyLegalStatusOverride(offer as any, legalOverrides);
+    const localityResolved = resolvePersistedLocalityFields({
+      localityCountry: legalOffer.localityCountry,
+      localityCountryCode: legalOffer.localityCountryCode,
+      city: legalOffer.city,
+      lat: legalOffer.lat,
+      lng: legalOffer.lng,
+    });
+    const shapedOffer = enrichOfferPriceDiscountFields({
+      ...legalOffer,
+      localityCountry: localityResolved.localityCountry,
+      localityCountryCode: localityResolved.localityCountryCode,
+      listPricePln:
+        Number(
+          (
+            await prisma.$queryRawUnsafe<Array<{ listPricePln: number | null }>>(
+              `SELECT listPricePln FROM \`Offer\` WHERE id = ? LIMIT 1`,
+              offerId,
+            )
+          )[0]?.listPricePln,
+        ) ||
+        legalOffer.pricePln ||
+        legalOffer.price,
+    });
 
-    return NextResponse.json({ success: true, offer: enrichOfferWithLegalAliases(legalOffer) }, {
+    return NextResponse.json({ success: true, offer: enrichOfferWithLegalAliases(shapedOffer) }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' },
     });
   } catch (error) {

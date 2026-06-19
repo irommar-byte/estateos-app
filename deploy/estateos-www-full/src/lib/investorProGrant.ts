@@ -1,34 +1,19 @@
 import { PlanType } from '@prisma/client';
-import {
-  INVESTOR_PRO_MONTHLY_CREDITS,
-  INVESTOR_PRO_SUBSCRIPTION_FALLBACK_DAYS,
-} from '@/lib/mobileIapEntitlements';
 
-/** Kredyty publikacji w pakiecie Investor Pro (zgodne z IAP). */
-export const INVESTOR_PRO_PUBLICATION_CREDITS = INVESTOR_PRO_MONTHLY_CREDITS;
+export const INVESTOR_PRO_PUBLICATION_CREDITS = 5;
+const DEFAULT_PRO_DAYS = 30;
 
 /** Jednolite nadanie Investor Pro — admin, Stripe webhook, force-sync. */
-export function buildInvestorProGrantData(
-  days = INVESTOR_PRO_SUBSCRIPTION_FALLBACK_DAYS,
-  options?: { grantPublicationCredits?: boolean },
-) {
-  const now = new Date();
-  const proExpiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-  const base = {
+export function buildInvestorProGrantData(days = DEFAULT_PRO_DAYS) {
+  const proExpiresAt = new Date();
+  proExpiresAt.setDate(proExpiresAt.getDate() + days);
+  return {
     isPro: true,
     planType: PlanType.PRO,
     proExpiresAt,
-  } as const;
-
-  if (options?.grantPublicationCredits === false) {
-    return base;
-  }
-
-  return {
-    ...base,
-    extraListings: { increment: INVESTOR_PRO_MONTHLY_CREDITS },
+    extraListings: INVESTOR_PRO_PUBLICATION_CREDITS,
     plusExpiresAt: proExpiresAt,
-  };
+  } as const;
 }
 
 export function buildInvestorProRevokeData() {
@@ -48,7 +33,7 @@ export function isStripeInvestorProPlan(raw: unknown): boolean {
   return p === 'investor' || p === 'pro' || p === 'investor_pro' || p === 'investor-pro';
 }
 
-/** Aktywni PRO bez puli kredytów (np. grant sprzed migracji) — uzupełnij przy odczycie portfela. */
+/** Użytkownicy PRO sprzed migracji slotów → kredytów (jednorazowo, bez nadpisywania zużytych pul). */
 export function shouldBackfillInvestorProCredits(user: {
   isPro?: boolean | null;
   proExpiresAt?: Date | string | null;
@@ -63,10 +48,12 @@ export function shouldBackfillInvestorProCredits(user: {
   return new Date(user.plusExpiresAt).getTime() <= Date.now();
 }
 
-export function buildInvestorProCreditsBackfillData(user: { proExpiresAt: Date | string }) {
+export function buildInvestorProCreditsBackfillData(user: {
+  proExpiresAt: Date | string;
+}) {
   const proExpiresAt = new Date(user.proExpiresAt);
   return {
-    extraListings: INVESTOR_PRO_MONTHLY_CREDITS,
+    extraListings: INVESTOR_PRO_PUBLICATION_CREDITS,
     plusExpiresAt: proExpiresAt,
   } as const;
 }

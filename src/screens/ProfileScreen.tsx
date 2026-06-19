@@ -50,6 +50,7 @@ import AdminUsersModal from '../components/admin/AdminUsersModal';
 import ProfileShopSection from '../components/profile/ProfileShopSection';
 import InvestorProTrialIntroHost from '../components/profile/InvestorProTrialIntroHost';
 import ProfileCardShell from '../components/profile/ProfileCardShell';
+import ProfileAgencyOfficeCard from '../components/agency/ProfileAgencyOfficeCard';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
 import {
   dismissProfilePromoCardForever,
@@ -2401,7 +2402,7 @@ function ProfileScreenLoggedIn({
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const isProfileTabFocused = useIsFocused();
-  const { user, logout, updateAvatar, token, deleteAccount, refreshUser } = useAuthStore();
+  const { user, logout, updateAvatar, token, deleteAccount, refreshUser, agencyMembership, refreshAgencyMembership } = useAuthStore();
   const themeMode = useThemeStore(s => s.themeMode);
   const setThemeMode = useThemeStore(s => s.setThemeMode);
   const displayCurrency = useDisplayCurrencyStore((s) => s.preference);
@@ -2817,6 +2818,17 @@ function ProfileScreenLoggedIn({
     useCallback(() => {
       void reloadUserPromoCards();
     }, [reloadUserPromoCards]),
+  );
+
+  const isAgentProfile =
+    String(user?.role || '').trim().toUpperCase() === 'AGENT' ||
+    String(user?.planType || '').trim().toUpperCase() === 'AGENCY';
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!token || !isAgentProfile) return;
+      void refreshAgencyMembership();
+    }, [token, isAgentProfile, refreshAgencyMembership]),
   );
 
   useFocusEffect(
@@ -3365,6 +3377,19 @@ function ProfileScreenLoggedIn({
   })();
 
   const profileScreenBg = isDark ? '#000' : '#F2F2F7';
+  const agencyCompanyName =
+    agencyMembership?.companyName ||
+    agencyMembership?.company?.name ||
+    String(user?.companyName || '').trim() ||
+    '';
+  const personName = `${user?.firstName || user?.email || ''} ${user?.lastName || ''}`.trim();
+  const headerPrimary =
+    isAgentProfile && agencyCompanyName ? agencyCompanyName : personName || user?.email || '';
+  const headerSecondary =
+    isAgentProfile && agencyCompanyName && personName && personName !== agencyCompanyName
+      ? personName
+      : null;
+  const showAgencyOfficeCard = isAgentProfile && Boolean(agencyMembership);
 
   return (
     <>
@@ -3400,7 +3425,7 @@ function ProfileScreenLoggedIn({
                 minimumFontScale={0.7}
                 allowFontScaling={false}
               >
-                {user?.firstName || user?.email} {user?.lastName || ''}
+                {headerPrimary}
               </Text>
             <Pressable
                 onPress={handleHeaderEditName}
@@ -3422,6 +3447,12 @@ function ProfileScreenLoggedIn({
                 </View>
               </Pressable>
             </View>
+            {headerSecondary ? (
+              <Text style={[styles.headerRole, { color: theme.subtitle, marginTop: 2 }]} numberOfLines={1}>
+                {headerSecondary}
+                {agencyMembership?.titleLabel ? ` · ${agencyMembership.titleLabel}` : ''}
+              </Text>
+            ) : null}
             <EliteStatusBadges subject={user} isDark={isDark} compact />
             <Pressable
               onPress={() => openPublicProfileModal()}
@@ -3462,8 +3493,8 @@ function ProfileScreenLoggedIn({
             >
               {isZarzad
                 ? 'Zarząd EstateOS™'
-                : String(user?.role || '').trim().toUpperCase() === 'AGENT'
-                  ? t('profile.header.roleAgent')
+                : isAgentProfile
+                  ? agencyMembership?.titleLabel || t('profile.header.roleAgent')
                   : t('profile.header.rolePrivate')}
             </Text>
             <Text
@@ -3492,6 +3523,12 @@ function ProfileScreenLoggedIn({
             />
           </View>
         </ProfileCardShell>
+
+        {showAgencyOfficeCard ? (
+          <View style={[styles.section, { paddingHorizontal: 16, marginTop: -8 }]}>
+            <ProfileAgencyOfficeCard membership={agencyMembership} isDark={isDark} />
+          </View>
+        ) : null}
 
         <View style={styles.section}>
             <ProfileProExtrasSection

@@ -3,9 +3,11 @@ import {
   ensureKeiAmerSession,
   findWarsawPortalListingsPaged,
   isSupportedKeiPortalUrl,
+  keiPropertyKindFromRow,
   keiPropertyKindLabel,
   keiTransactionKindFromRow,
   keiTransactionKindLabel,
+  rowMatchesKeiFilters,
   type KeiPropertyKind,
   type KeiTransactionKind,
 } from '@/lib/keiAmerClient';
@@ -42,10 +44,13 @@ function sourceLabelFromHost(host: string): string {
 
 async function mapRowsToPreviewListings(
   rows: Awaited<ReturnType<typeof findWarsawPortalListingsPaged>>['rows'],
+  filters: { propertyKind: KeiPropertyKind; transactionKind: KeiTransactionKind },
 ): Promise<KeiPreviewListing[]> {
   const listings: KeiPreviewListing[] = [];
 
   for (const row of rows) {
+    if (!rowMatchesKeiFilters(row, filters.propertyKind, filters.transactionKind)) continue;
+
     const portalUrl = String(row.www || '').trim();
     if (!portalUrl || !isSupportedKeiPortalUrl(portalUrl)) continue;
 
@@ -101,7 +106,7 @@ export async function previewKeiExportListings(options?: {
     : Math.max(1, Math.min(Math.floor(options?.pageSize ?? 20), 30));
 
   const paged = await findWarsawPortalListingsPaged({ propertyKind, transactionKind, page, pageSize });
-  const listings = await mapRowsToPreviewListings(paged.rows);
+  const listings = await mapRowsToPreviewListings(paged.rows, { propertyKind, transactionKind });
 
   const kindLabel = keiPropertyKindLabel(propertyKind);
   const txLabel = keiTransactionKindLabel(transactionKind);

@@ -69,8 +69,10 @@ export async function keiAmerPeekListing(token: string, portalUrl: string): Prom
   return parseJson<KeiPeekResponse>(res);
 }
 
-export function keiAmerPeekImageUrl(portalUrl: string): string {
-  return `${API_URL}/api/mobile/v1/admin/kei-amer/peek-image?${new URLSearchParams({ portalUrl })}`;
+export function keiAmerPeekImageUrl(portalUrl: string, imageIndex?: number): string {
+  const q = new URLSearchParams({ portalUrl });
+  if (imageIndex != null && imageIndex >= 0) q.set('imageIndex', String(imageIndex));
+  return `${API_URL}/api/mobile/v1/admin/kei-amer/peek-image?${q}`;
 }
 
 /** Normalizuje końcówki linii SSE (iOS/nginx często wysyła \r\n). */
@@ -109,16 +111,13 @@ function keiAmerExportStreamXHR(
     const xhr = new XMLHttpRequest();
     let buffer = '';
     let lastLen = 0;
+    let settled = false;
 
     xhr.open('POST', url);
     xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.setRequestHeader('Accept', 'text/event-stream');
     xhr.setRequestHeader('Cache-Control', 'no-cache');
-
-    const pollId = setInterval(flushNewText, 120);
-
-    const stopPoll = () => clearInterval(pollId);
 
     const flushNewText = () => {
       const text = xhr.responseText || '';
@@ -133,19 +132,20 @@ function keiAmerExportStreamXHR(
       if (xhr.readyState >= XMLHttpRequest.LOADING) flushNewText();
     };
     xhr.onload = () => {
-      stopPoll();
       flushNewText();
       if (buffer.trim()) parseSseEvents(`${buffer}\n\n`, onEvent);
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`Eksport nie powiódł się (HTTP ${xhr.status})`));
+      if (xhr.status >= 200 && xhr.status < 300) {
+        settled = true;
+        resolve();
+      } else if (!settled) {
+        reject(new Error(`Eksport nie powiódł się (HTTP ${xhr.status})`));
+      }
     };
     xhr.onerror = () => {
-      stopPoll();
-      reject(new Error('Błąd sieci podczas importu KEI'));
+      if (!settled) reject(new Error('Błąd sieci podczas importu KEI'));
     };
     xhr.ontimeout = () => {
-      stopPoll();
-      reject(new Error('Przekroczono czas oczekiwania importu KEI'));
+      if (!settled) reject(new Error('Przekroczono czas oczekiwania importu KEI'));
     };
     xhr.timeout = 300000;
     xhr.send(JSON.stringify(body));

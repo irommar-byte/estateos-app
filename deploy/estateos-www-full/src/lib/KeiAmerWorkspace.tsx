@@ -832,12 +832,13 @@ export default function KeiAmerWorkspace() {
         updateProgressFromEvent(payload);
       });
 
-      if (!finalResult?.ok) {
+      const exportDone = finalResult as { ok?: boolean; exported?: unknown[]; message?: string; skipped?: unknown[] } | null;
+      if (!exportDone?.ok) {
         throw new Error("Brak wyniku eksportu.");
       }
 
-      const exported = Array.isArray(finalResult.exported) ? finalResult.exported : [];
-      const items: ExportResultItem[] = exported.map((item: Record<string, unknown>) => ({
+      const exported = Array.isArray(exportDone.exported) ? exportDone.exported : [];
+      const items: ExportResultItem[] = (exported as Record<string, unknown>[]).map((item) => ({
         offerId: Number(item.offerId) || 0,
         portalUrl: String(item.portalUrl || ""),
         publicUrl: String(item.publicUrl || ""),
@@ -846,10 +847,10 @@ export default function KeiAmerWorkspace() {
 
       setExportState({
         loading: false,
-        message: String(finalResult.message || "Eksport zakończony."),
+        message: String(exportDone.message || "Eksport zakończony."),
         error: "",
         items: items.filter((item) => item.offerId > 0),
-        skippedCount: Array.isArray(finalResult.skipped) ? finalResult.skipped.length : 0,
+        skippedCount: Array.isArray(exportDone.skipped) ? exportDone.skipped.length : 0,
       });
 
       setImportProgress((prev) => ({ ...prev, active: false }));

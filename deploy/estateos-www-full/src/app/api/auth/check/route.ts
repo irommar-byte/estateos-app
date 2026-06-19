@@ -29,7 +29,8 @@ export async function GET() {
       loggedIn: true, 
       user: {
         ...shaped,
-        advertiserType: user.planType === 'AGENCY' ? 'agency' : 'private',
+        advertiserType:
+          user.role === 'AGENT' || user.planType === 'AGENCY' ? 'agency' : 'private',
       },
     });
   } catch {

@@ -94,6 +94,7 @@ import AgencyPendingGate from './src/components/agency/AgencyPendingGate';
 import EstateDiscoveryMode from './src/screens/EstateDiscoveryMode';
 import AdminNativeImportScreen from './src/screens/AdminNativeImportScreen';
 import AdminKeiAmerScreen from './src/screens/AdminKeiAmerScreen';
+import AgencyOfficeScreen from './src/screens/AgencyOfficeScreen';
 import OfferCommentsScreen from './src/screens/OfferCommentsScreen';
 import { extractIdFromDeeplink } from './src/utils/deeplinkParse';
 import {
@@ -1565,6 +1566,11 @@ export default function App() {
             <AppStack.Screen
               name="AdminKeiAmer"
               component={AdminKeiAmerScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="AgencyOffice"
+              component={AgencyOfficeScreen}
               options={{ headerShown: false, animation: 'slide_from_right' }}
             />
             <AppStack.Screen

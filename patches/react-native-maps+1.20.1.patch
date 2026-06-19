@@ -1,0 +1,52 @@
+diff --git a/node_modules/react-native-maps/ios/AirMaps/AIRMap.m b/node_modules/react-native-maps/ios/AirMaps/AIRMap.m
+index 07a4638..464bfc4 100644
+--- a/node_modules/react-native-maps/ios/AirMaps/AIRMap.m
++++ b/node_modules/react-native-maps/ios/AirMaps/AIRMap.m
+@@ -104,6 +104,9 @@ -(void)addSubview:(UIView *)view {
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wobjc-missing-super-calls"
+ - (void)insertReactSubview:(id<RCTComponent>)subview atIndex:(NSInteger)atIndex {
++    if (subview == nil) {
++        return;
++    }
+     // Our desired API is to pass up markers/overlays as children to the mapview component.
+     // This is where we intercept them and do the appropriate underlying mapview action.
+     if ([subview isKindOfClass:[AIRMapMarker class]]) {
+@@ -132,16 +135,23 @@ - (void)insertReactSubview:(id<RCTComponent>)subview atIndex:(NSInteger)atIndex
+     } else {
+         NSArray<id<RCTComponent>> *childSubviews = [subview reactSubviews];
+         for (int i = 0; i < childSubviews.count; i++) {
+-            [self insertReactSubview:(UIView *)childSubviews[i] atIndex:atIndex];
++            id<RCTComponent> child = childSubviews[i];
++            if (child != nil) {
++                [self insertReactSubview:(UIView *)child atIndex:atIndex];
++            }
+         }
+     }
+-    [_reactSubviews insertObject:(UIView *)subview atIndex:(NSUInteger) atIndex];
++    NSUInteger safeIndex = MIN(MAX(atIndex, 0), _reactSubviews.count);
++    [_reactSubviews insertObject:(UIView *)subview atIndex:safeIndex];
+ }
+ #pragma clang diagnostic pop
+ 
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wobjc-missing-super-calls"
+ - (void)removeReactSubview:(id<RCTComponent>)subview {
++    if (subview == nil) {
++        return;
++    }
+     // similarly, when the children are being removed we have to do the appropriate
+     // underlying mapview action here.
+     if ([subview isKindOfClass:[AIRMapMarker class]]) {
+@@ -163,7 +173,10 @@ - (void)removeReactSubview:(id<RCTComponent>)subview {
+     } else {
+         NSArray<id<RCTComponent>> *childSubviews = [subview reactSubviews];
+         for (int i = 0; i < childSubviews.count; i++) {
+-            [self removeReactSubview:(UIView *)childSubviews[i]];
++            id<RCTComponent> child = childSubviews[i];
++            if (child != nil) {
++                [self removeReactSubview:(UIView *)child];
++            }
+         }
+     }
+     [_reactSubviews removeObject:(UIView *)subview];

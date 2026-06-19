@@ -1,46 +1,187 @@
-import { fetchMapboxReverseFeature } from '@/lib/location/resolveOfferLocationFromCoordinates';
-import {
-  isInternationalCountryCode,
-  isOutsidePolandBounds,
-} from '@/lib/location/locationNameMatch';
+/**
+ * Państwo oferty — zapis w DB + wnioskowanie z współrzędnych / miasta gdy brak jawnych pól.
+ */
 
-const COUNTRY_LABELS_PL: Record<string, string> = {
-  PL: 'Polska',
-  JP: 'Japonia',
-  DE: 'Niemcy',
-  CZ: 'Czechy',
-  SK: 'Słowacja',
-  UA: 'Ukraina',
-  GB: 'Wielka Brytania',
-  US: 'Stany Zjednoczone',
-  FR: 'Francja',
-  ES: 'Hiszpania',
-  IT: 'Włochy',
-  NL: 'Holandia',
-  AT: 'Austria',
-  BE: 'Belgia',
-  CH: 'Szwajcaria',
-  SE: 'Szwecja',
-  NO: 'Norwegia',
-  LT: 'Litwa',
-  LV: 'Łotwa',
-  EE: 'Estonia',
-  HR: 'Chorwacja',
-  RO: 'Rumunia',
-  BG: 'Bułgaria',
-  GR: 'Grecja',
-  PT: 'Portugalia',
-  IE: 'Irlandia',
-  HU: 'Węgry',
+import { fetchMapboxReverseFeature } from '@/lib/location/resolveOfferLocationFromCoordinates';
+
+const DEFAULT_COUNTRY_LABEL = 'Polska';
+const DEFAULT_COUNTRY_CODE = 'PL';
+
+const PL_COUNTRY_TO_ISO: Record<string, string> = {
+  Polska: 'PL',
+  Niemcy: 'DE',
+  Czechy: 'CZ',
+  Słowacja: 'SK',
+  Ukraina: 'UA',
+  Białoruś: 'BY',
+  Litwa: 'LT',
+  'Stany Zjednoczone': 'US',
+  Australia: 'AU',
+  'Wielka Brytania': 'GB',
+  Kanada: 'CA',
+  Francja: 'FR',
+  Hiszpania: 'ES',
+  Włochy: 'IT',
+  Holandia: 'NL',
+  Belgia: 'BE',
+  Szwajcaria: 'CH',
+  Austria: 'AT',
 };
 
-function countryLabelFromCode(code: string, mapboxName?: string): string {
-  const norm = String(code || '').trim().toUpperCase();
-  const fromMapbox = String(mapboxName || '').trim();
-  if (fromMapbox) return fromMapbox;
-  return COUNTRY_LABELS_PL[norm] || norm;
+const ENGLISH_COUNTRY_TO_PL: Record<string, string> = {
+  poland: 'Polska',
+  germany: 'Niemcy',
+  czechia: 'Czechy',
+  'czech republic': 'Czechy',
+  slovakia: 'Słowacja',
+  ukraine: 'Ukraina',
+  belarus: 'Białoruś',
+  lithuania: 'Litwa',
+  austria: 'Austria',
+  france: 'Francja',
+  spain: 'Hiszpania',
+  italy: 'Włochy',
+  netherlands: 'Holandia',
+  belgium: 'Belgia',
+  'united kingdom': 'Wielka Brytania',
+  'united states': 'Stany Zjednoczone',
+  usa: 'Stany Zjednoczone',
+};
+
+const METRO_PL_CITIES = new Set([
+  'warszawa',
+  'warsaw',
+  'krakow',
+  'kraków',
+  'wroclaw',
+  'wrocław',
+  'poznan',
+  'poznań',
+  'lodz',
+  'łódź',
+  'lublin',
+  'gdansk',
+  'gdańsk',
+  'gdynia',
+  'sopot',
+  'katowice',
+  'rybnik',
+  'bialystok',
+  'białystok',
+  'zamosc',
+  'zamość',
+]);
+
+const KNOWN_FOREIGN_CITY_ISO: Record<string, string> = {
+  berlin: 'DE',
+  hamburg: 'DE',
+  munchen: 'DE',
+  muenchen: 'DE',
+  frankfurt: 'DE',
+  koln: 'DE',
+  cologne: 'DE',
+  dresden: 'DE',
+  wien: 'AT',
+  vienna: 'AT',
+  praha: 'CZ',
+  prague: 'CZ',
+  bratislava: 'SK',
+  kyiv: 'UA',
+  kiev: 'UA',
+  london: 'GB',
+  paris: 'FR',
+  paryz: 'FR',
+  madryt: 'ES',
+  lizbona: 'PT',
+  lisboa: 'PT',
+  rzym: 'IT',
+  monachium: 'DE',
+  wieden: 'AT',
+  praga: 'CZ',
+  budapeszt: 'HU',
+  bukareszt: 'RO',
+  ateny: 'GR',
+  londyn: 'GB',
+  sztokholm: 'SE',
+  kopenhaga: 'DK',
+  'nowy jork': 'US',
+  amsterdam: 'NL',
+  brussels: 'BE',
+  bruxelles: 'BE',
+  rome: 'IT',
+  roma: 'IT',
+  madrid: 'ES',
+};
+
+const COUNTRY_BBOXES: Array<{
+  iso: string;
+  latMin: number;
+  latMax: number;
+  lngMin: number;
+  lngMax: number;
+}> = [
+  { iso: 'DE', latMin: 47.2, latMax: 55.2, lngMin: 5.8, lngMax: 15.1 },
+  { iso: 'CZ', latMin: 48.5, latMax: 51.1, lngMin: 12.0, lngMax: 18.9 },
+  { iso: 'SK', latMin: 47.7, latMax: 49.6, lngMin: 16.8, lngMax: 22.6 },
+  { iso: 'UA', latMin: 44.3, latMax: 52.4, lngMin: 22.1, lngMax: 40.2 },
+  { iso: 'AT', latMin: 46.3, latMax: 49.1, lngMin: 9.5, lngMax: 17.2 },
+];
+
+function normalizeMatch(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .trim();
 }
 
+export function isDefaultCountryPlaceholder(code: unknown, label: unknown): boolean {
+  const iso = String(code || '').trim().toUpperCase();
+  const lbl = normalizeMatch(String(label || ''));
+  const isoIsDefault = !iso || iso === DEFAULT_COUNTRY_CODE;
+  const lblIsDefault = !lbl || lbl === 'polska' || lbl === 'poland';
+  return isoIsDefault && lblIsDefault;
+}
+
+export function countryLabelFromIso(iso: string): string {
+  const code = String(iso || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return DEFAULT_COUNTRY_LABEL;
+  try {
+    const dn = new Intl.DisplayNames(['pl-PL'], { type: 'region' });
+    return dn.of(code) || code;
+  } catch {
+    const fromMap = Object.entries(PL_COUNTRY_TO_ISO).find(([, v]) => v === code)?.[0];
+    return fromMap || code;
+  }
+}
+
+export function countryLabelForLocale(iso: string, locale: 'pl' | 'en' = 'pl'): string {
+  const code = String(iso || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) {
+    return locale === 'en' ? 'Poland' : DEFAULT_COUNTRY_LABEL;
+  }
+  try {
+    const dn = new Intl.DisplayNames([locale === 'en' ? 'en-US' : 'pl-PL'], { type: 'region' });
+    return dn.of(code) || countryLabelFromIso(code);
+  } catch {
+    return countryLabelFromIso(code);
+  }
+}
+
+export function isCoordinatesInPoland(lat: number, lng: number): boolean {
+  return lat >= 49.0 && lat <= 54.95 && lng >= 14.05 && lng <= 24.25;
+}
+
+function inferCountryIsoFromCoordinates(lat: number, lng: number): string | null {
+  for (const box of COUNTRY_BBOXES) {
+    if (lat >= box.latMin && lat <= box.latMax && lng >= box.lngMin && lng <= box.lngMax) {
+      return box.iso;
+    }
+  }
+  return null;
+}
+
+/** Async — Mapbox reverse gdy bbox nie obejmuje kraju (np. Japonia). */
 export async function inferCountryFromCoordinates(
   lat: number | null | undefined,
   lng: number | null | undefined,
@@ -48,93 +189,165 @@ export async function inferCountryFromCoordinates(
   const latN = Number(lat);
   const lngN = Number(lng);
   if (!Number.isFinite(latN) || !Number.isFinite(lngN)) {
-    return { localityCountry: 'Polska', localityCountryCode: 'PL' };
+    return { localityCountry: DEFAULT_COUNTRY_LABEL, localityCountryCode: DEFAULT_COUNTRY_CODE };
   }
-
-  if (!isOutsidePolandBounds(latN, lngN)) {
-    return { localityCountry: 'Polska', localityCountryCode: 'PL' };
+  if (isCoordinatesInPoland(latN, lngN)) {
+    return { localityCountry: DEFAULT_COUNTRY_LABEL, localityCountryCode: DEFAULT_COUNTRY_CODE };
   }
-
+  const fromBbox = inferCountryIsoFromCoordinates(latN, lngN);
+  if (fromBbox) {
+    return {
+      localityCountry: countryLabelFromIso(fromBbox),
+      localityCountryCode: fromBbox,
+    };
+  }
   const feature = await fetchMapboxReverseFeature(latN, lngN);
   const context = Array.isArray(feature?.context) ? feature.context : [];
   const countryItem = context.find((item: { id?: string }) =>
     String(item?.id || '').startsWith('country'),
   ) as { text?: string; text_pl?: string; short_code?: string } | undefined;
-
   const code = String(countryItem?.short_code || '')
     .trim()
     .toUpperCase()
     .replace(/^COUNTRY:/, '');
   const name = String(countryItem?.text_pl || countryItem?.text || '').trim();
-
   if (code) {
-    return {
-      localityCountry: countryLabelFromCode(code, name),
-      localityCountryCode: code,
-    };
+    return { localityCountry: name || countryLabelFromIso(code), localityCountryCode: code };
   }
-
   return { localityCountry: name || 'Inny kraj', localityCountryCode: 'XX' };
 }
 
-/**
- * Ujednolica zapis kraju — gdy pinezka jest poza Polską, nie wymuszaj PL.
- */
-export function resolvePersistedLocalityFields(params: {
-  localityCountry?: string | null;
-  localityCountryCode?: string | null;
-  city?: string | null;
-  lat?: number | null;
-  lng?: number | null;
-}): { localityCountry: string; localityCountryCode: string } {
-  const lat = Number(params.lat);
-  const lng = Number(params.lng);
-  const storedCode = String(params.localityCountryCode || '')
-    .trim()
-    .toUpperCase()
-    .replace(/^COUNTRY:/, '');
-  const storedCountry = String(params.localityCountry || '').trim();
-
-  const pinOutsidePl =
-    Number.isFinite(lat) && Number.isFinite(lng) && isOutsidePolandBounds(lat, lng);
-
-  if (pinOutsidePl) {
-    if (isInternationalCountryCode(storedCode) && storedCountry) {
-      return { localityCountry: storedCountry, localityCountryCode: storedCode };
-    }
-    if (isInternationalCountryCode(storedCode)) {
-      return {
-        localityCountry: countryLabelFromCode(storedCode),
-        localityCountryCode: storedCode,
-      };
-    }
-    return { localityCountry: '', localityCountryCode: '' };
+/** Publiczne — do geokodowania forward (np. Berlin → DE). */
+export function inferCountryIsoFromCity(city: string): string | null {
+  const norm = normalizeMatch(city);
+  if (!norm) return null;
+  if (METRO_PL_CITIES.has(norm) || [...METRO_PL_CITIES].some((c) => norm.includes(c))) {
+    return DEFAULT_COUNTRY_CODE;
   }
-
-  if (storedCountry && storedCode) {
-    return { localityCountry: storedCountry, localityCountryCode: storedCode };
-  }
-
-  return { localityCountry: 'Polska', localityCountryCode: 'PL' };
+  if (KNOWN_FOREIGN_CITY_ISO[norm]) return KNOWN_FOREIGN_CITY_ISO[norm];
+  return null;
 }
 
-export async function resolvePersistedLocalityFieldsAsync(params: {
-  localityCountry?: string | null;
-  localityCountryCode?: string | null;
-  city?: string | null;
-  lat?: number | null;
-  lng?: number | null;
-}): Promise<{ localityCountry: string; localityCountryCode: string }> {
-  const sync = resolvePersistedLocalityFields(params);
-  if (sync.localityCountryCode && sync.localityCountry) {
+function labelFromExplicit(code: string, label: string): { code: string; label: string } | null {
+  const iso = String(code || '').trim().toUpperCase();
+  const lbl = String(label || '').trim();
+  if (/^[A-Z]{2}$/.test(iso) && iso !== DEFAULT_COUNTRY_CODE) {
+    return { code: iso, label: lbl || countryLabelFromIso(iso) };
+  }
+  if (lbl && !/^polska$/i.test(lbl) && !/^poland$/i.test(lbl)) {
+    const fromPl = PL_COUNTRY_TO_ISO[lbl];
+    if (fromPl && fromPl !== DEFAULT_COUNTRY_CODE) {
+      return { code: fromPl, label: lbl };
+    }
+    const fromEn = ENGLISH_COUNTRY_TO_PL[lbl.toLowerCase()];
+    if (fromEn) {
+      const fromEnIso = PL_COUNTRY_TO_ISO[fromEn];
+      if (fromEnIso) return { code: fromEnIso, label: fromEn };
+    }
+  }
+  if (/^[A-Z]{2}$/.test(iso)) {
+    return { code: iso, label: lbl || countryLabelFromIso(iso) };
+  }
+  return null;
+}
+
+export type LocalityPersistInput = {
+  localityCountry?: unknown;
+  localityCountryCode?: unknown;
+  city?: unknown;
+  lat?: unknown;
+  lng?: unknown;
+};
+
+/** Kanoniczny kraj do zapisu w `Offer.localityCountry*`. */
+export function resolvePersistedLocalityFields(input: LocalityPersistInput): {
+  localityCountry: string;
+  localityCountryCode: string;
+} {
+  const lat = Number(input.lat);
+  const lng = Number(input.lng);
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+
+  if (hasCoords) {
+    if (isCoordinatesInPoland(lat, lng)) {
+      return { localityCountry: DEFAULT_COUNTRY_LABEL, localityCountryCode: DEFAULT_COUNTRY_CODE };
+    }
+    const fromCoords = inferCountryIsoFromCoordinates(lat, lng);
+    if (fromCoords) {
+      return { localityCountry: countryLabelFromIso(fromCoords), localityCountryCode: fromCoords };
+    }
+  }
+
+  const fromCity = inferCountryIsoFromCity(String(input.city ?? ''));
+  if (fromCity) {
+    return { localityCountry: countryLabelFromIso(fromCity), localityCountryCode: fromCity };
+  }
+
+  const explicit = labelFromExplicit(
+    String(input.localityCountryCode ?? ''),
+    String(input.localityCountry ?? ''),
+  );
+  if (explicit && !isDefaultCountryPlaceholder(input.localityCountryCode, input.localityCountry)) {
+    return { localityCountry: explicit.label, localityCountryCode: explicit.code };
+  }
+
+  return { localityCountry: DEFAULT_COUNTRY_LABEL, localityCountryCode: DEFAULT_COUNTRY_CODE };
+}
+
+export function resolveOfferDisplayCountry(
+  raw: Record<string, unknown>,
+  locale: 'pl' | 'en' = 'pl',
+): { name: string; code: string } {
+  const resolved = resolvePersistedLocalityFields({
+    localityCountry: raw.localityCountry,
+    localityCountryCode: raw.localityCountryCode,
+    city: raw.city,
+    lat: raw.lat,
+    lng: raw.lng,
+  });
+  return {
+    code: resolved.localityCountryCode,
+    name: countryLabelForLocale(resolved.localityCountryCode, locale),
+  };
+}
+
+/** Odczyt kraju oferty z API (z fallbackiem na współrzędne). */
+export function offerListingCountryIso(raw: Record<string, unknown>): string {
+  return resolvePersistedLocalityFields({
+    localityCountry: raw.localityCountry,
+    localityCountryCode: raw.localityCountryCode,
+    city: raw.city,
+    lat: raw.lat,
+    lng: raw.lng,
+  }).localityCountryCode;
+}
+
+export function offerListingCountryLabel(raw: Record<string, unknown>): string {
+  return resolvePersistedLocalityFields({
+    localityCountry: raw.localityCountry,
+    localityCountryCode: raw.localityCountryCode,
+    city: raw.city,
+    lat: raw.lat,
+    lng: raw.lng,
+  }).localityCountry;
+}
+
+export async function resolvePersistedLocalityFieldsAsync(
+  input: LocalityPersistInput,
+): Promise<{ localityCountry: string; localityCountryCode: string }> {
+  const sync = resolvePersistedLocalityFields(input);
+  const lat = Number(input.lat);
+  const lng = Number(input.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return sync;
   }
-
-  const lat = Number(params.lat);
-  const lng = Number(params.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return { localityCountry: 'Polska', localityCountryCode: 'PL' };
+  if (
+    isCoordinatesInPoland(lat, lng) ||
+    (sync.localityCountryCode &&
+      sync.localityCountryCode !== DEFAULT_COUNTRY_CODE &&
+      !isDefaultCountryPlaceholder(sync.localityCountryCode, sync.localityCountry))
+  ) {
+    return sync;
   }
-
   return inferCountryFromCoordinates(lat, lng);
 }

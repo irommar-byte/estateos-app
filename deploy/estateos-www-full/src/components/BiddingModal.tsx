@@ -48,7 +48,7 @@ export default function BiddingModal({ offerId, currentPrice, onClose }: { offer
       
       <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} className="eos-modal-surface eos-modal-shell eos-themed-modal relative my-auto w-full max-w-md shrink-0 overflow-hidden rounded-[2.5rem]" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-[var(--eos-border)] p-6">
-          <h3 className="text-sm font-black uppercase tracking-widest text-[var(--eos-text)]">{m.bidding.title}</h3>
+          <h3 className="text-[17px] font-semibold tracking-tight text-[var(--eos-text)]">{m.bidding.title}</h3>
           <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--eos-input)] text-[var(--eos-muted)] hover:bg-[var(--eos-border)]"><X size={16} /></button>
         </div>
 

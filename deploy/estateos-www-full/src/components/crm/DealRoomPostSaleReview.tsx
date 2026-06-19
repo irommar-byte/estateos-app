@@ -6,11 +6,19 @@ import {
   buildDealReviewPayload,
   encodeDealReviewMessage,
 } from "@/lib/dealroomReviewMessage";
+import { resolveCounterpartyLabel } from "@/lib/sellerDisplay";
 
 type Props = {
   dealId: number;
   currentUserId: number;
-  counterparty: { id: number; name?: string | null; email?: string | null };
+  counterparty: {
+    id: number;
+    name?: string | null;
+    email?: string | null;
+    companyName?: string | null;
+    role?: string | null;
+    planType?: string | null;
+  };
   myReviewSubmitted: boolean;
   partnerReviewVisible: boolean;
   partnerReview: { rating: number; comment?: string | null } | null;
@@ -35,13 +43,10 @@ export default function DealRoomPostSaleReview({
   const [submitting, setSubmitting] = useState(false);
   const [localSubmitted, setLocalSubmitted] = useState(false);
 
-  const counterpartyLabel = useMemo(() => {
-    const name = String(counterparty?.name || "").trim();
-    if (name) return name;
-    const email = String(counterparty?.email || "").trim();
-    if (email.includes("@")) return email.split("@")[0];
-    return "Kontrahent";
-  }, [counterparty?.name, counterparty?.email]);
+  const counterpartyLabel = useMemo(
+    () => resolveCounterpartyLabel(counterparty),
+    [counterparty],
+  );
 
   const submitted = myReviewSubmitted || localSubmitted;
 

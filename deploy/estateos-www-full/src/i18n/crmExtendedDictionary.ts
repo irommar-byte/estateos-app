@@ -55,7 +55,58 @@ export type CrmExtendedDictionary = {
     exclusiveBadge: string;
     auctionTitle: string;
     auctionSubtitle: string;
-    auctionSoon: string;
+    auctionModalTitle: string;
+    auctionCreateTab: string;
+    auctionListTab: string;
+    auctionGuideTab: string;
+    auctionGuideLead: string;
+    auctionGuideStartPrice: string;
+    auctionGuideReserve: string;
+    auctionGuideIncrement: string;
+    auctionGuideAntiSnipe: string;
+    auctionGuideWinner: string;
+    auctionPickOffer: string;
+    auctionStartPrice: string;
+    auctionReservePrice: string;
+    auctionOptional: string;
+    auctionMinIncrement: string;
+    auctionAutoIncrement: string;
+    auctionStartsAt: string;
+    auctionEndsAt: string;
+    auctionOptionalTitle: string;
+    auctionOptionalDescription: string;
+    auctionPublish: string;
+    auctionNoOffers: string;
+    auctionBidsCount: string;
+    auctionViewOffer: string;
+    auctionCancel: string;
+    auctionEmpty: string;
+    auctionPublishError: string;
+    auctionCancelConfirm: string;
+    auctionCancelError: string;
+    auctionSuccess: string;
+    auctionStatusLive: string;
+    auctionStatusScheduled: string;
+    auctionStatusEnded: string;
+    auctionStatusCancelled: string;
+    auctionCreateIntro: string;
+    auctionPickOfferHint: string;
+    auctionStartPriceHint: string;
+    auctionReservePriceHint: string;
+    auctionMinIncrementHint: string;
+    auctionStartsAtHint: string;
+    auctionEndsAtHint: string;
+    auctionOptionalTitleHint: string;
+    auctionOptionalDescriptionHint: string;
+    auctionGuideWhere: string;
+    auctionGuideWho: string;
+    auctionGuideFlow: string;
+    auctionGuideNotifications: string;
+    auctionPublishSuccessTitle: string;
+    auctionPublishSuccessBody: string;
+    auctionViewPublishedOffer: string;
+    auctionValidationStartPast: string;
+    auctionValidationDuration: string;
     openHouseSpotsLeft: string;
     importModalLead: string;
     importLinkLabel: string;
@@ -123,6 +174,57 @@ export type CrmExtendedDictionary = {
     deposit: string;
     adminFee: string;
     investmentHighlight: string;
+    calibration: {
+      title: string;
+      subtitle: string;
+      activeTitle: string;
+      activeHint: string;
+      enabled: string;
+      disabled: string;
+      locationMode: string;
+      modeCity: string;
+      modeMap: string;
+      pickMapTitle: string;
+      pickMapHint: string;
+      mapRequired: string;
+      metropolis: string;
+      districts: string;
+      districtsOptional: string;
+      wholeCity: string;
+      purposeType: string;
+      buy: string;
+      rent: string;
+      minArea: string;
+      minYear: string;
+      maxBudget: string;
+      amenities: string;
+      radarOffHint: string;
+      save: string;
+      saving: string;
+      matchScale: string;
+      areaPickerTitle: string;
+      areaPickerSubtitle: string;
+      resolvingLocation: string;
+      radius: string;
+      cancel: string;
+      applyArea: string;
+      radiusKmLabel: string;
+      types: { flat: string; house: string; plot: string; commercial: string };
+      amenitiesList: {
+        balcony: string;
+        garden: string;
+        twoLevel: string;
+        elevator: string;
+        parking: string;
+        furnished: string;
+      };
+      intelligence: {
+        sniper: { title: string; desc: string };
+        selective: { title: string; desc: string };
+        balanced: { title: string; desc: string };
+        wide: { title: string; desc: string };
+      };
+    };
   };
   offers: {
     emptyActive: string;
@@ -316,8 +418,76 @@ const pl: CrmExtendedDictionary = {
     openHouseOptionalDescription: "Informacje dla gości (opcjonalnie)",
     exclusiveBadge: "Ekskluzywne narzędzie Pro",
     auctionTitle: "Licytacje online",
-    auctionSubtitle: "Transparentne licytacje ofert — moduł aktywujemy w najbliższym czasie.",
-    auctionSoon: "Wkrótce",
+    auctionSubtitle: "Uruchom transparentną licytację — cena startowa, rezerwa i ochrona przed snajpingiem.",
+    auctionModalTitle: "Licytacja online",
+    auctionCreateTab: "Nowa",
+    auctionListTab: "Moje licytacje",
+    auctionGuideTab: "Instrukcja",
+    auctionGuideLead: "Jak działa licytacja EstateOS:",
+    auctionGuideStartPrice:
+      "Cena startowa — minimalna kwota pierwszej oferty. Kupujący mogą licytować tylko powyżej aktualnej ceny + krok.",
+    auctionGuideReserve:
+      "Cena rezerwy (opcjonalnie) — sprzedaż finalizuje się tylko gdy najwyższa oferta osiągnie rezerwę. Kupujący nie widzą kwoty rezerwy.",
+    auctionGuideIncrement:
+      "Krok licytacji — minimalna różnica między kolejnymi ofertami. Pusty = automatyczny krok (~1–2% ceny).",
+    auctionGuideAntiSnipe:
+      "Ochrona przed snajpingiem — oferta w ostatnich 2 minutach przedłuża licytację o 2 minuty.",
+    auctionGuideWinner:
+      "Po zakończeniu zwycięzca i sprzedający otrzymują powiadomienie push i mogą przejść do negocjacji w Dealroom.",
+    auctionPickOffer: "Wybierz ogłoszenie",
+    auctionStartPrice: "Cena startowa (PLN)",
+    auctionReservePrice: "Cena rezerwy (opcjonalnie)",
+    auctionOptional: "Opcjonalnie",
+    auctionMinIncrement: "Minimalny krok (PLN)",
+    auctionAutoIncrement: "Auto — system dobierze krok",
+    auctionStartsAt: "Start licytacji",
+    auctionEndsAt: "Koniec licytacji",
+    auctionOptionalTitle: "Tytuł licytacji (opcjonalnie)",
+    auctionOptionalDescription: "Opis dla licytujących (opcjonalnie)",
+    auctionPublish: "Opublikuj licytację",
+    auctionNoOffers: "Brak aktywnych ogłoszeń do przypisania.",
+    auctionBidsCount: "ofert",
+    auctionViewOffer: "Zobacz ogłoszenie",
+    auctionCancel: "Anuluj licytację",
+    auctionEmpty: "Nie masz jeszcze opublikowanych licytacji.",
+    auctionPublishError: "Nie udało się opublikować licytacji.",
+    auctionCancelConfirm: "Anulować tę licytację? Aktywne oferty zostaną unieważnione.",
+    auctionCancelError: "Nie udało się anulować licytacji.",
+    auctionSuccess: "Licytacja opublikowana — widoczna na ogłoszeniu i w hubie.",
+    auctionStatusLive: "Na żywo",
+    auctionStatusScheduled: "Zaplanowana",
+    auctionStatusEnded: "Zakończona",
+    auctionStatusCancelled: "Anulowana",
+    auctionCreateIntro:
+      "Po publikacji licytacja pojawi się na Twoim ogłoszeniu (fioletowy baner), w hubie „Na żywo” oraz w aplikacji mobilnej. Każdy zalogowany kupujący może składać oferty — Ty otrzymujesz powiadomienia o każdej nowej kwocie.",
+    auctionPickOfferHint: "Wybierz ogłoszenie, które chcesz wystawić na licytację. Może być aktywna tylko jedna licytacja na ofertę.",
+    auctionStartPriceHint:
+      "Minimalna kwota pierwszej oferty. Np. przy cenie 450 000 zł często ustawia się 400 000–430 000 zł, aby przyciągnąć licytujących.",
+    auctionReservePriceHint:
+      "Ukryta kwota, od której sprzedaż ma sens. Jeśli najwyższa oferta jej nie osiągnie, nie finalizujesz transakcji — kupujący tej kwoty nie widzą.",
+    auctionMinIncrementHint:
+      "O ile musi wzrosnąć każda kolejna oferta. Zostaw puste — system ustawi krok automatycznie (ok. 1–2% aktualnej ceny).",
+    auctionStartsAtHint:
+      "Godzina, od której można składać oferty. Musi być co najmniej 1 godzina w przyszłości (liczone wg Twojej strefy czasowej).",
+    auctionEndsAtHint:
+      "Moment zamknięcia licytacji (min. 1 h, max. 14 dni od startu). Oferta w ostatnich 2 min przedłuża czas o 2 min.",
+    auctionOptionalTitleHint: "Krótki nagłówek na banerze, np. „Licytacja 3-pokojowego mieszkania na Pradze”.",
+    auctionOptionalDescriptionHint:
+      "Informacje dla licytujących: termin oględzin, warunki wpłaty wadium, kontakt po wygranej itd.",
+    auctionGuideWhere:
+      "Gdzie licytować: na stronie ogłoszenia (baner „Licytuj”), w aplikacji mobilnej EstateOS (Profil → Licytacja → Na żywo) oraz z powiadomień push.",
+    auctionGuideWho:
+      "Kto widzi licytację: wszyscy użytkownicy przeglądający Twoje ogłoszenie. Licytować mogą zalogowani kupujący (nie Ty jako organizator).",
+    auctionGuideFlow:
+      "Przebieg: publikujesz → kupujący składają rosnące oferty → po zakończeniu zwycięzca i Ty dostajecie push → kontaktujecie się i możecie przejść do Dealroom.",
+    auctionGuideNotifications:
+      "Powiadomienia: dostajesz push przy każdej nowej ofercie; licytujący dostają push gdy ktoś ich przebije; po wygranej obie strony dostają informację o wyniku.",
+    auctionPublishSuccessTitle: "Licytacja opublikowana",
+    auctionPublishSuccessBody:
+      "Baner licytacji jest już widoczny na ogłoszeniu. Możesz śledzić oferty w zakładce „Moje licytacje”.",
+    auctionViewPublishedOffer: "Zobacz ogłoszenie z banerem",
+    auctionValidationStartPast: "Ustaw start licytacji co najmniej godzinę w przyszłości.",
+    auctionValidationDuration: "Licytacja musi trwać od 1 godziny do 14 dni.",
     openHouseSpotsLeft: "wolnych miejsc",
     importModalLead:
       "Wklej link do ogłoszenia — kliknij w pole, a adres ze schowka wklei się automatycznie. Przed konwersją wybierzesz kupon lub kredyt Plus. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją.",
@@ -402,6 +572,74 @@ const pl: CrmExtendedDictionary = {
     deposit: "Kaucja:",
     adminFee: "Czynsz adm:",
     investmentHighlight: "inwestycji",
+    calibration: {
+      title: "Kalibracja radaru",
+      subtitle: "Te same ustawienia co w aplikacji mobilnej",
+      activeTitle: "Aktywny radar",
+      activeHint: "Powiadomienia push o dopasowanych ofertach",
+      enabled: "Włączony",
+      disabled: "Wyłączony",
+      locationMode: "Lokalizacja · wybierz sposób",
+      modeCity: "Miasto i dzielnice",
+      modeMap: "Obszar na mapie",
+      pickMapTitle: "Wybierz obszar na mapie",
+      pickMapHint: "Przesuń mapę i ustaw promień — tak jak w aplikacji mobilnej.",
+      mapRequired: "Ustaw obszar na mapie, aby zapisać kalibrację w trybie MAP.",
+      metropolis: "Metropolia",
+      districts: "Dzielnice",
+      districtsOptional: "(opcjonalnie — puste = całe miasto)",
+      wholeCity: "Bez zaznaczenia dzielnic radar obejmuje całe {city}.",
+      purposeType: "Przeznaczenie i typ",
+      buy: "Kupno",
+      rent: "Wynajem",
+      minArea: "Min. metraż (m²)",
+      minYear: "Rok budowy od",
+      maxBudget: "Maks. budżet (PLN)",
+      amenities: "Wymagane udogodnienia",
+      radarOffHint: "Radar jest wyłączony — zapisz, aby zatrzymać powiadomienia (jak wyłącznik w aplikacji).",
+      save: "Zastosuj kalibrację",
+      saving: "Zapisywanie…",
+      matchScale: "Skala dopasowania",
+      areaPickerTitle: "Wybierz obszar na mapie",
+      areaPickerSubtitle: "Przesuń mapę · okrąg = zasięg radaru",
+      resolvingLocation: "Ustalam lokalizację…",
+      radius: "Promień",
+      cancel: "Anuluj",
+      applyArea: "Zastosuj obszar",
+      radiusKmLabel: "promień {km} km",
+      types: {
+        flat: "Mieszkanie",
+        house: "Dom",
+        plot: "Działka",
+        commercial: "Lokal",
+      },
+      amenitiesList: {
+        balcony: "Balkon",
+        garden: "Ogródek",
+        twoLevel: "Dwupoziomowe",
+        elevator: "Winda",
+        parking: "Parking",
+        furnished: "Umeblowane",
+      },
+      intelligence: {
+        sniper: {
+          title: "Snajperski",
+          desc: "Tylko niemal idealne dopasowania — mniej alertów, wyższa precyzja.",
+        },
+        selective: {
+          title: "Wyselekcjonowany",
+          desc: "Silne dopasowanie lokalizacji, budżetu i parametrów.",
+        },
+        balanced: {
+          title: "Zbalansowany",
+          desc: "Równowaga między liczbą alertów a trafnością.",
+        },
+        wide: {
+          title: "Szeroki zasięg",
+          desc: "Więcej propozycji — niższy próg dopasowania.",
+        },
+      },
+    },
   },
   offers: {
     emptyActive: "Brak aktywnych ogłoszeń.",
@@ -600,8 +838,76 @@ const en: CrmExtendedDictionary = {
     openHouseOptionalDescription: "Notes for guests (optional)",
     exclusiveBadge: "Exclusive Pro tool",
     auctionTitle: "Online auctions",
-    auctionSubtitle: "Transparent listing auctions — module coming soon.",
-    auctionSoon: "Coming soon",
+    auctionSubtitle: "Run a transparent auction — starting price, reserve, and anti-snipe protection.",
+    auctionModalTitle: "Online auction",
+    auctionCreateTab: "New",
+    auctionListTab: "My auctions",
+    auctionGuideTab: "Guide",
+    auctionGuideLead: "How EstateOS auctions work:",
+    auctionGuideStartPrice:
+      "Starting price — minimum for the first bid. Bidders must exceed current price plus increment.",
+    auctionGuideReserve:
+      "Reserve price (optional) — sale completes only if the top bid meets reserve. Bidders never see the reserve.",
+    auctionGuideIncrement:
+      "Bid increment — minimum gap between bids. Leave empty for automatic step (~1–2% of price).",
+    auctionGuideAntiSnipe:
+      "Anti-snipe — a bid in the last 2 minutes extends the auction by 2 minutes.",
+    auctionGuideWinner:
+      "When it ends, winner and seller get push notifications and can continue in Dealroom.",
+    auctionPickOffer: "Select listing",
+    auctionStartPrice: "Starting price (PLN)",
+    auctionReservePrice: "Reserve price (optional)",
+    auctionOptional: "Optional",
+    auctionMinIncrement: "Min increment (PLN)",
+    auctionAutoIncrement: "Auto — system picks increment",
+    auctionStartsAt: "Auction starts",
+    auctionEndsAt: "Auction ends",
+    auctionOptionalTitle: "Auction title (optional)",
+    auctionOptionalDescription: "Description for bidders (optional)",
+    auctionPublish: "Publish auction",
+    auctionNoOffers: "No active listings to assign.",
+    auctionBidsCount: "bids",
+    auctionViewOffer: "View listing",
+    auctionCancel: "Cancel auction",
+    auctionEmpty: "You have no published auctions yet.",
+    auctionPublishError: "Could not publish auction.",
+    auctionCancelConfirm: "Cancel this auction? Active bids will be voided.",
+    auctionCancelError: "Could not cancel auction.",
+    auctionSuccess: "Auction published — visible on the listing and in the hub.",
+    auctionStatusLive: "Live",
+    auctionStatusScheduled: "Scheduled",
+    auctionStatusEnded: "Ended",
+    auctionStatusCancelled: "Cancelled",
+    auctionCreateIntro:
+      "After publishing, the auction appears on your listing (purple banner), in the Live hub, and in the mobile app. Any signed-in buyer can bid — you get notified on every new amount.",
+    auctionPickOfferHint: "Pick the listing to auction. Only one active auction per listing is allowed.",
+    auctionStartPriceHint:
+      "Minimum first bid. E.g. for a 450,000 PLN listing, hosts often set 400,000–430,000 PLN to attract bidders.",
+    auctionReservePriceHint:
+      "Hidden minimum you would accept. If the top bid does not reach it, you do not finalize — bidders never see this amount.",
+    auctionMinIncrementHint:
+      "How much each next bid must increase by. Leave empty — the system sets a step automatically (~1–2% of current price).",
+    auctionStartsAtHint:
+      "When bidding opens. Must be in the future (your local timezone).",
+    auctionEndsAtHint:
+      "When bidding closes (min. 1 h, max. 14 days from start). A bid in the last 2 minutes extends the end by 2 minutes.",
+    auctionOptionalTitleHint: "Short banner headline, e.g. “Auction: 3-room flat in Praga”.",
+    auctionOptionalDescriptionHint:
+      "Info for bidders: viewing times, deposit terms, contact after winning, etc.",
+    auctionGuideWhere:
+      "Where to bid: on the listing page (Bid banner), in the EstateOS mobile app (Profile → Auction → Live), and via push notifications.",
+    auctionGuideWho:
+      "Who sees it: anyone viewing your listing. Only signed-in buyers can bid (not you as the host).",
+    auctionGuideFlow:
+      "Flow: you publish → buyers place rising bids → when it ends, winner and you get a push → you contact each other and can move to Dealroom.",
+    auctionGuideNotifications:
+      "Notifications: you get a push on every new bid; bidders get a push when outbid; both sides get the result after close.",
+    auctionPublishSuccessTitle: "Auction published",
+    auctionPublishSuccessBody:
+      "The auction banner is live on your listing. Track bids under My auctions.",
+    auctionViewPublishedOffer: "View listing with banner",
+    auctionValidationStartPast: "Set the auction start at least a few minutes in the future.",
+    auctionValidationDuration: "The auction must last between 1 hour and 14 days.",
     openHouseSpotsLeft: "spots left",
     importModalLead:
       "Paste a listing link — click the field and the URL from your clipboard fills in automatically. Before conversion you choose a coupon or Plus credit. After payment the listing goes to review with publication reserved.",
@@ -686,6 +992,74 @@ const en: CrmExtendedDictionary = {
     deposit: "Deposit:",
     adminFee: "Admin fee:",
     investmentHighlight: "investment",
+    calibration: {
+      title: "Radar calibration",
+      subtitle: "Same settings as the mobile app",
+      activeTitle: "Active radar",
+      activeHint: "Push notifications for matched listings",
+      enabled: "On",
+      disabled: "Off",
+      locationMode: "Location · choose method",
+      modeCity: "City and districts",
+      modeMap: "Map area",
+      pickMapTitle: "Pick area on map",
+      pickMapHint: "Pan the map and set radius — same as in the mobile app.",
+      mapRequired: "Set a map area to save calibration in MAP mode.",
+      metropolis: "Metro area",
+      districts: "Districts",
+      districtsOptional: "(optional — empty = whole city)",
+      wholeCity: "With no districts selected, radar covers all of {city}.",
+      purposeType: "Purpose and type",
+      buy: "Buy",
+      rent: "Rent",
+      minArea: "Min. area (m²)",
+      minYear: "Built from year",
+      maxBudget: "Max budget (PLN)",
+      amenities: "Required amenities",
+      radarOffHint: "Radar is off — save to stop notifications (same as the app toggle).",
+      save: "Apply calibration",
+      saving: "Saving…",
+      matchScale: "Match scale",
+      areaPickerTitle: "Pick area on map",
+      areaPickerSubtitle: "Pan the map · circle = radar range",
+      resolvingLocation: "Resolving location…",
+      radius: "Radius",
+      cancel: "Cancel",
+      applyArea: "Apply area",
+      radiusKmLabel: "radius {km} km",
+      types: {
+        flat: "Apartment",
+        house: "House",
+        plot: "Plot",
+        commercial: "Commercial",
+      },
+      amenitiesList: {
+        balcony: "Balcony",
+        garden: "Garden",
+        twoLevel: "Duplex",
+        elevator: "Elevator",
+        parking: "Parking",
+        furnished: "Furnished",
+      },
+      intelligence: {
+        sniper: {
+          title: "Sniper",
+          desc: "Near-perfect matches only — fewer alerts, higher precision.",
+        },
+        selective: {
+          title: "Selective",
+          desc: "Strong match on location, budget, and parameters.",
+        },
+        balanced: {
+          title: "Balanced",
+          desc: "Balance between alert volume and relevance.",
+        },
+        wide: {
+          title: "Wide range",
+          desc: "More suggestions — lower match threshold.",
+        },
+      },
+    },
   },
   offers: {
     emptyActive: "No active listings.",
@@ -873,8 +1247,76 @@ const uk: CrmExtendedDictionary = {
     openHouseOptionalDescription: "Інформація для гостей (необов'язково)",
     exclusiveBadge: "Ексклюзивний інструмент Pro",
     auctionTitle: "Онлайн-аукціони",
-    auctionSubtitle: "Прозорі аукціони оголошень — модуль незабаром.",
-    auctionSoon: "Незабаром",
+    auctionSubtitle: "Запустіть прозорий аукціон — стартова ціна, резерв і захист від снайпінгу.",
+    auctionModalTitle: "Онлайн-аукціон",
+    auctionCreateTab: "Новий",
+    auctionListTab: "Мої аукціони",
+    auctionGuideTab: "Інструкція",
+    auctionGuideLead: "Як працює аукціон EstateOS:",
+    auctionGuideStartPrice:
+      "Стартова ціна — мінімум першої ставки. Ставки лише вище поточної ціни + крок.",
+    auctionGuideReserve:
+      "Резервна ціна (опційно) — продаж завершується лише якщо ставка досягне резерву. Резерв прихований.",
+    auctionGuideIncrement:
+      "Крок ставки — мінімальна різниця між ставками. Порожньо = автоматичний крок (~1–2%).",
+    auctionGuideAntiSnipe:
+      "Захист від снайпінгу — ставка в останні 2 хв продовжує аукціон на 2 хв.",
+    auctionGuideWinner:
+      "Після завершення переможець і продавець отримують push і можуть перейти в Dealroom.",
+    auctionPickOffer: "Оберіть оголошення",
+    auctionStartPrice: "Стартова ціна (PLN)",
+    auctionReservePrice: "Резервна ціна (опційно)",
+    auctionOptional: "Опційно",
+    auctionMinIncrement: "Мін. крок (PLN)",
+    auctionAutoIncrement: "Авто — система підбере крок",
+    auctionStartsAt: "Початок аукціону",
+    auctionEndsAt: "Кінець аукціону",
+    auctionOptionalTitle: "Назва аукціону (опційно)",
+    auctionOptionalDescription: "Опис для учасників (опційно)",
+    auctionPublish: "Опублікувати аукціон",
+    auctionNoOffers: "Немає активних оголошень для призначення.",
+    auctionBidsCount: "ставок",
+    auctionViewOffer: "Переглянути оголошення",
+    auctionCancel: "Скасувати аукціон",
+    auctionEmpty: "У вас ще немає опублікованих аукціонів.",
+    auctionPublishError: "Не вдалося опублікувати аукціон.",
+    auctionCancelConfirm: "Скасувати цей аукціон? Активні ставки будуть анульовані.",
+    auctionCancelError: "Не вдалося скасувати аукціон.",
+    auctionSuccess: "Аукціон опубліковано — видно в оголошенні та в хабі.",
+    auctionStatusLive: "Наживо",
+    auctionStatusScheduled: "Заплановано",
+    auctionStatusEnded: "Завершено",
+    auctionStatusCancelled: "Скасовано",
+    auctionCreateIntro:
+      "Після публікації аукціон з’явиться в оголошенні (фіолетовий банер), у хабі «Наживо» та в мобільному застосунку. Будь-який авторизований покупець може ставити — ви отримуєте сповіщення про кожну нову суму.",
+    auctionPickOfferHint: "Оберіть оголошення для аукціону. Лише один активний аукціон на оголошення.",
+    auctionStartPriceHint:
+      "Мінімальна перша ставка. Напр., для 450 000 PLN часто ставлять 400 000–430 000 PLN, щоб залучити учасників.",
+    auctionReservePriceHint:
+      "Прихований мінімум, від якого продаж має сенс. Якщо найвища ставка його не досягне — угоду не фіналізуєте; покупці цю суму не бачать.",
+    auctionMinIncrementHint:
+      "На скільки має зрости кожна наступна ставка. Залиште порожнім — система встановить крок автоматично (~1–2% поточної ціни).",
+    auctionStartsAtHint:
+      "Час відкриття ставок. Має бути у майбутньому (ваш локальний час).",
+    auctionEndsAtHint:
+      "Час закриття (мін. 1 год, макс. 14 днів від старту). Ставка в останні 2 хв продовжує час на 2 хв.",
+    auctionOptionalTitleHint: "Короткий заголовок банера, напр. «Аукціон 3-кімнатної на Празі».",
+    auctionOptionalDescriptionHint:
+      "Інформація для учасників: перегляди, умови застави, контакт після перемоги тощо.",
+    auctionGuideWhere:
+      "Де ставити: на сторінці оголошення (банер «Ставка»), у мобільному EstateOS (Профіль → Аукціон → Наживо) та через push.",
+    auctionGuideWho:
+      "Хто бачить: усі, хто переглядає оголошення. Ставити можуть лише авторизовані покупці (не ви як організатор).",
+    auctionGuideFlow:
+      "Процес: публікуєте → покупці підвищують ставки → після завершення переможець і ви отримуєте push → контакт і можливий Dealroom.",
+    auctionGuideNotifications:
+      "Сповіщення: push при кожній новій ставці; учасники — коли їх перебили; обидві сторони — результат після закриття.",
+    auctionPublishSuccessTitle: "Аукціон опубліковано",
+    auctionPublishSuccessBody:
+      "Банер аукціону вже на оголошенні. Ставки — у вкладці «Мої аукціони».",
+    auctionViewPublishedOffer: "Переглянути оголошення з банером",
+    auctionValidationStartPast: "Встановіть старт аукціону хоча б на кілька хвилин у майбутньому.",
+    auctionValidationDuration: "Аукціон має тривати від 1 години до 14 днів.",
     openHouseSpotsLeft: "вільних місць",
     importModalLead:
       "Вставте посилання на оголошення — натисніть поле, і адреса з буфера вставиться автоматично. Перед конверсією оберіть купон або кредит Plus. Після оплати оголошення потрапить на перевірку з зарезервованою публікацією.",
@@ -946,6 +1388,80 @@ const uk: CrmExtendedDictionary = {
     confirmPhone: "Підтвердити телефон SMS",
   },
   welcome: "Вітаємо",
+  radar: {
+    ...en.radar,
+    recalibratingTitle: "Рекалібрування радара…",
+    recalibratingSub: "Оновлюємо критерії • Шукаємо приховані оголошення",
+    emptyHint: "Налаштуйте радар — підходящі оголошення з'являться тут.",
+    calibration: {
+      title: "Калібрування радара",
+      subtitle: "Ті самі налаштування, що в мобільному застосунку",
+      activeTitle: "Активний радар",
+      activeHint: "Push-сповіщення про підходящі оголошення",
+      enabled: "Увімкнено",
+      disabled: "Вимкнено",
+      locationMode: "Локація · оберіть спосіб",
+      modeCity: "Місто та райони",
+      modeMap: "Область на мапі",
+      pickMapTitle: "Оберіть область на мапі",
+      pickMapHint: "Пересуньте мапу та встановіть радіус — як у мобільному застосунку.",
+      mapRequired: "Встановіть область на мапі, щоб зберегти калібрування в режимі MAP.",
+      metropolis: "Мегаполіс",
+      districts: "Райони",
+      districtsOptional: "(необов'язково — порожньо = все місто)",
+      wholeCity: "Без обраних районів радар охоплює все {city}.",
+      purposeType: "Призначення та тип",
+      buy: "Купівля",
+      rent: "Оренда",
+      minArea: "Мін. площа (м²)",
+      minYear: "Рік будівництва від",
+      maxBudget: "Макс. бюджет (PLN)",
+      amenities: "Обов'язкові зручності",
+      radarOffHint: "Radar вимкнено — збережіть, щоб зупинити сповіщення (як перемикач у застосунку).",
+      save: "Застосувати калібрування",
+      saving: "Збереження…",
+      matchScale: "Шкала відповідності",
+      areaPickerTitle: "Оберіть область на мапі",
+      areaPickerSubtitle: "Пересуньте мапу · коло = зона радара",
+      resolvingLocation: "Визначаю локацію…",
+      radius: "Радіус",
+      cancel: "Скасувати",
+      applyArea: "Застосувати область",
+      radiusKmLabel: "радіус {km} км",
+      types: {
+        flat: "Квартира",
+        house: "Будинок",
+        plot: "Ділянка",
+        commercial: "Приміщення",
+      },
+      amenitiesList: {
+        balcony: "Балкон",
+        garden: "Сад",
+        twoLevel: "Дворівневе",
+        elevator: "Ліфт",
+        parking: "Паркінг",
+        furnished: "Мебльоване",
+      },
+      intelligence: {
+        sniper: {
+          title: "Снайперський",
+          desc: "Лише майже ідеальні збіги — менше сповіщень, вища точність.",
+        },
+        selective: {
+          title: "Вибірковий",
+          desc: "Сильний збіг локації, бюджету та параметрів.",
+        },
+        balanced: {
+          title: "Збалансований",
+          desc: "Баланс між кількістю сповіщень і релевантністю.",
+        },
+        wide: {
+          title: "Широкий охоплення",
+          desc: "Більше пропозицій — нижчий поріг відповідності.",
+        },
+      },
+    },
+  },
   alerts: {
     ...en.alerts,
     network: "Помилка з'єднання з сервером.",

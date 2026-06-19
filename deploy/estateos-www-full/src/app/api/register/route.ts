@@ -207,6 +207,7 @@ export async function POST(req: Request) {
             userId: created.id,
             role: 'ADMIN',
             status: 'ACTIVE',
+            agentTitle: 'KIEROWNIK_BIURO',
             approvedAt: new Date(),
             approvedById: created.id,
           },

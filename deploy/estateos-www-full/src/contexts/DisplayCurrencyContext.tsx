@@ -31,7 +31,7 @@ function setPreferenceCookie(next: DisplayCurrencyPreference) {
 }
 
 export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
-  const [preference, setPreferenceState] = useState<DisplayCurrencyPreference>("PLN");
+  const [preference, setPreferenceState] = useState<DisplayCurrencyPreference>("LISTING");
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -40,6 +40,10 @@ export function DisplayCurrencyProvider({ children }: { children: ReactNode }) {
       if (isPreference(saved)) {
         setPreferenceState(saved);
         setPreferenceCookie(saved);
+      } else {
+        setPreferenceState("LISTING");
+        setPreferenceCookie("LISTING");
+        window.localStorage.setItem(STORAGE_KEY, "LISTING");
       }
     } catch {
       /* noop */

@@ -46,6 +46,10 @@ type AdminOffer = {
   } | null;
   images?: unknown;
   imageUrl?: unknown;
+  importExternalUrl?: string | null;
+  sourceIsActive?: boolean | null;
+  sourceListingExpired?: boolean;
+  sourceLastCheckAt?: string | null;
 };
 
 function isArchived(offer: AdminOffer) {
@@ -293,6 +297,7 @@ export default function AdminOffersWorkspace() {
                   const verify = verificationMeta(offer.verificationStatus);
                   const selected = selectedId === offer.id;
                   const ownerId = Number(offer.user?.id ?? offer.userId ?? 0);
+                  const sourceExpired = offer.sourceListingExpired === true || offer.sourceIsActive === false;
 
                   return (
                     <li key={offer.id}>
@@ -300,7 +305,13 @@ export default function AdminOffersWorkspace() {
                         type="button"
                         onClick={() => setSelectedId(offer.id)}
                         className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors sm:gap-3.5 sm:px-3.5 ${
-                          selected ? "bg-emerald-500/8" : "hover:bg-[var(--eos-bg)]"
+                          sourceExpired
+                            ? selected
+                              ? "bg-red-500/12 border-l-2 border-red-500"
+                              : "bg-red-500/[0.06] border-l-2 border-red-500/70 hover:bg-red-500/10"
+                            : selected
+                              ? "bg-emerald-500/8"
+                              : "hover:bg-[var(--eos-bg)]"
                         }`}
                       >
                         <div className="relative size-14 shrink-0 overflow-hidden rounded-lg border border-[var(--eos-border)] bg-[var(--eos-bg)] sm:size-16">
@@ -315,7 +326,9 @@ export default function AdminOffersWorkspace() {
 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
-                            <p className="line-clamp-1 text-[13px] font-bold leading-snug text-[var(--eos-text)] sm:text-sm">
+                            <p className={`line-clamp-1 text-[13px] font-bold leading-snug sm:text-sm ${
+                              sourceExpired ? "text-red-700 dark:text-red-300" : "text-[var(--eos-text)]"
+                            }`}>
                               {offer.title || `Oferta #${offer.id}`}
                             </p>
                             <span className="shrink-0 font-mono text-[10px] font-bold text-[var(--eos-subtle)]">#{offer.id}</span>
@@ -330,6 +343,11 @@ export default function AdminOffersWorkspace() {
                             <span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${verify.cls}`}>
                               {verify.label}
                             </span>
+                            {sourceExpired ? (
+                              <span className="rounded-md border border-red-500/40 bg-red-500/12 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-red-600 dark:text-red-300">
+                                Oryginał nieaktualny
+                              </span>
+                            ) : null}
                             {ownerId > 0 ? (
                               <Link
                                 href={`/centrala/uzytkownicy?userId=${ownerId}`}

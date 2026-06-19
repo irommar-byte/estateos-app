@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { getPasskeyRpId } from '@/lib/env.server';
+import { passkeyChallengeCookieOptions } from '@/lib/passkeyCookies';
 
 export async function GET(req: Request) {
   const ip = getClientIp(req);
@@ -20,11 +21,7 @@ export async function GET(req: Request) {
     });
 
     const cookieStore = await cookies();
-    cookieStore.set('passkey_auth_challenge', options.challenge, {
-      httpOnly: true,
-      maxAge: 60 * 5,
-      path: '/',
-    });
+    cookieStore.set('passkey_auth_challenge', options.challenge, passkeyChallengeCookieOptions());
 
     return NextResponse.json(options);
   } catch (error) {
