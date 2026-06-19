@@ -44,18 +44,19 @@ export function pickAgentAvatar(params: {
   companyLogoUrl?: string | null;
 }): string | null {
   return (
-    resolveProfileMediaUrl(params.userImage) ||
     resolveProfileMediaUrl(params.profilePhotoUrl) ||
+    resolveProfileMediaUrl(params.userImage) ||
     resolveProfileMediaUrl(params.companyLogoUrl)
   );
 }
 
+/** Zdjęcie ustawione przez kierownika w zespole ma pierwszeństwo; brak → awatar konta. */
 export function pickTeamMemberAvatar(params: {
   userImage?: string | null;
   profilePhotoUrl?: string | null;
 }): string | null {
   return (
-    resolveProfileMediaUrl(params.userImage) ||
-    resolveProfileMediaUrl(params.profilePhotoUrl)
+    resolveProfileMediaUrl(params.profilePhotoUrl) ||
+    resolveProfileMediaUrl(params.userImage)
   );
 }

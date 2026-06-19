@@ -561,7 +561,16 @@ export async function updateMemberProfile(params: {
   }
   if (!Object.keys(data).length) throw new Error('Brak danych do zapisania.');
 
-  return prisma.agencyCompanyMember.update({ where: { id: params.memberId }, data });
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.agencyCompanyMember.update({ where: { id: params.memberId }, data });
+    if (data.profilePhotoUrl !== undefined) {
+      await tx.user.update({
+        where: { id: member.userId },
+        data: { image: data.profilePhotoUrl },
+      });
+    }
+    return updated;
+  });
 }
 
 export async function getMemberInsights(params: {
@@ -922,28 +931,15 @@ export async function backfillAgencyOfficesForLegacyAgents(): Promise<AgencyOffi
   });
 
   for (const member of membersWithPhotos) {
-    const userImage = member.user.image || null;
-    const isCustomMemberUpload = String(member.profilePhotoUrl || '').includes('/uploads/agency-member/');
-    const isCompanyLogo =
-      member.profilePhotoUrl &&
-      member.company.logoUrl &&
-      member.profilePhotoUrl === member.company.logoUrl;
-
-    if (isCustomMemberUpload) continue;
-
-    if (member.profilePhotoUrl !== userImage) {
-      await prisma.agencyCompanyMember.update({
-        where: { id: member.id },
-        data: { profilePhotoUrl: userImage },
-      });
-      report.photosSynced += 1;
-    } else if (isCompanyLogo && userImage) {
-      await prisma.agencyCompanyMember.update({
-        where: { id: member.id },
-        data: { profilePhotoUrl: userImage },
-      });
-      report.photosSynced += 1;
-    }
+    const teamPhoto = member.profilePhotoUrl?.trim() || null;
+    const logo = member.company.logoUrl?.trim() || null;
+    if (!teamPhoto || (logo && teamPhoto === logo)) continue;
+    if (member.user.image === teamPhoto) continue;
+    await prisma.user.update({
+      where: { id: member.userId },
+      data: { image: teamPhoto },
+    });
+    report.photosSynced += 1;
   }
 
   return report;
