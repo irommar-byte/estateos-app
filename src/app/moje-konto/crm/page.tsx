@@ -28,6 +28,7 @@ import CrmClientsWorkspace from "@/components/crm/CrmClientsWorkspace";
 import CrmLeadInbox from "@/components/crm/CrmLeadInbox";
 import DelegatedOffersPanel from "@/components/crm/DelegatedOffersPanel";
 import AgencyTransferModal from "@/components/crm/AgencyTransferModal";
+import ProfileAgencyOfficeCard, { type AgencyMembershipUi } from "@/components/crm/ProfileAgencyOfficeCard";
 import {
   buildLegacyRadarUpdateBody,
   buildRadarPreferencesPostBody,
@@ -326,6 +327,7 @@ export default function CRMDashboard() {
   const c = dict.crm;
   const { favoriteOffers, refresh: refreshFavorites } = useFavorites();
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [agencyMembership, setAgencyMembership] = useState<AgencyMembershipUi | null>(null);
   const { mode, initModeFromUser } = useUserMode();
 
   const [managingApp, setManagingApp] = useState<any>(null);
@@ -764,6 +766,22 @@ export default function CRMDashboard() {
       await fetchRadarCatalog();
       setRadarDisplayFilters(await loadRadarFiltersForUser(uData));
 
+      if (isAgentOrAgencySeller(uData)) {
+        try {
+          const meRes = await fetch('/api/agency-company/me', { credentials: 'include', cache: 'no-store' });
+          const meJson = await meRes.json().catch(() => ({}));
+          if (meRes.ok && meJson?.membership) {
+            setAgencyMembership(meJson.membership as AgencyMembershipUi);
+          } else {
+            setAgencyMembership(null);
+          }
+        } catch {
+          setAgencyMembership(null);
+        }
+      } else {
+        setAgencyMembership(null);
+      }
+
       await Promise.all([fetchData(uData.id), fetchRadarData()]);
 
       if (uData.isPro && !sessionStorage.getItem('pro_booted')) {
@@ -933,7 +951,20 @@ export default function CRMDashboard() {
   const personName = currentUser?.firstName
     ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim()
     : (currentUser?.name || (currentUser?.email ? currentUser.email.split('@')[0] : c.welcome));
-  const accountHeadlines = resolveProfileHeadlines(currentUser);
+  const accountHeadlines = (() => {
+    const base = resolveProfileHeadlines(currentUser);
+    const agencyCompany =
+      agencyMembership?.companyName || agencyMembership?.company?.name || null;
+    if (!agencyCompany) return base;
+    const secondaryParts = [
+      personName && personName !== agencyCompany ? personName : null,
+      agencyMembership?.titleLabel || null,
+    ].filter(Boolean);
+    return {
+      primary: agencyCompany,
+      secondary: secondaryParts.length ? secondaryParts.join(' · ') : base.secondary,
+    };
+  })();
   const avatarSrcRaw = currentUser?.image || '';
   const avatarSrc = avatarSrcRaw
     ? (avatarSrcRaw.startsWith('http') ? avatarSrcRaw : avatarSrcRaw)
@@ -1152,7 +1183,9 @@ export default function CRMDashboard() {
           </div>
         ) : null}
 
-        {isAgencyWorkspace ? (
+        {isAgencyWorkspace && agencyMembership ? (
+          <ProfileAgencyOfficeCard membership={agencyMembership} personName={personName} />
+        ) : isAgencyWorkspace ? (
           <div className="mb-6 flex flex-col gap-3 rounded-[1.75rem] border border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="mb-1 text-[10px] font-black uppercase tracking-[0.25em] text-emerald-400">Biuro nieruchomości</p>

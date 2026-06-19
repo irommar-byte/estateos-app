@@ -935,6 +935,8 @@ enum AgencyAgentTitle {
   BROKER
   EXPERT
   LEADER
+  KIEROWNIK_BIURO
+  ZASTEPCA_KIEROWNIKA
 }
 
 /// Biuro nieruchomości — jedna firma, wielu agentów.

@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import type { AgencyMemberRole, AgencyMemberStatus, AgencyAgentTitle } from '@prisma/client';
-import { AGENCY_AGENT_TITLES } from '@/lib/agentProfile';
+import { AGENCY_AGENT_TITLES, formatAgentTitle } from '@/lib/agentProfile';
 import { notifyMemberApproved, notifyOffersTransferred } from '@/lib/agencyCompanyNotify';
 
 export function slugifyCompanyName(name: string): string {
@@ -66,6 +66,162 @@ export async function getUserAgencyMembership(userId: number) {
       },
     },
   });
+}
+
+type AgencyMembershipWithCompany = NonNullable<Awaited<ReturnType<typeof getUserAgencyMembership>>>;
+
+/** Zakłada brakującą firmę dla agenta z companyName (legacy / samotny kierownik). */
+export async function ensureAgencyCompanyForAgentUser(userId: number): Promise<AgencyMembershipWithCompany | null> {
+  const existing = await getUserAgencyMembership(userId);
+  if (existing) return existing;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      role: true,
+      planType: true,
+      companyName: true,
+      companyAddress: true,
+      companyWebsite: true,
+      companyLogoUrl: true,
+      officePhone: true,
+      officeEmail: true,
+      ownedAgencyCompany: { select: { id: true } },
+    },
+  });
+  if (!user) return null;
+
+  const isAgentLike = user.role === 'AGENT' || user.planType === 'AGENCY';
+  if (!isAgentLike) return null;
+
+  const companyName = String(user.companyName || '').trim();
+  if (!companyName) return null;
+
+  if (user.ownedAgencyCompany) {
+    return prisma.agencyCompanyMember.create({
+      data: {
+        companyId: user.ownedAgencyCompany.id,
+        userId,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        agentTitle: 'KIEROWNIK_BIURO',
+        approvedAt: new Date(),
+        approvedById: userId,
+      },
+      include: {
+        company: { include: { owner: { select: { id: true, name: true, email: true } } } },
+      },
+    });
+  }
+
+  const slug = await uniqueCompanySlug(companyName);
+  return prisma.$transaction(async (tx) => {
+    const company = await tx.agencyCompany.create({
+      data: {
+        name: companyName,
+        slug,
+        address: user.companyAddress,
+        website: user.companyWebsite,
+        logoUrl: user.companyLogoUrl,
+        officePhone: user.officePhone,
+        officeEmail: user.officeEmail,
+        ownerUserId: userId,
+      },
+    });
+    return tx.agencyCompanyMember.create({
+      data: {
+        companyId: company.id,
+        userId,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        agentTitle: 'KIEROWNIK_BIURO',
+        approvedAt: new Date(),
+        approvedById: userId,
+      },
+      include: {
+        company: { include: { owner: { select: { id: true, name: true, email: true } } } },
+      },
+    });
+  });
+}
+
+export async function getAgencyTeamForViewer(userId: number) {
+  const membership = await getUserAgencyMembership(userId);
+  if (!membership || membership.status !== 'ACTIVE') return { membership, team: [] };
+
+  const isAdmin = membership.role === 'ADMIN';
+  const members = await prisma.agencyCompanyMember.findMany({
+    where: {
+      companyId: membership.companyId,
+      status: isAdmin ? { in: ['ACTIVE', 'PENDING'] } : 'ACTIVE',
+    },
+    include: {
+      user: { select: { id: true, name: true, image: true, email: true } },
+    },
+    orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+  });
+
+  return {
+    membership,
+    team: members.map((m) => ({
+      id: m.id,
+      userId: m.userId,
+      role: m.role,
+      status: m.status,
+      agentTitle: m.agentTitle,
+      titleLabel: formatAgentTitle(m.agentTitle),
+      name: m.user.name,
+      image: m.user.image,
+      email: isAdmin ? m.user.email : null,
+      isSelf: m.userId === userId,
+    })),
+  };
+}
+
+export function shapeAgencyMembershipResponse(
+  membership: AgencyMembershipWithCompany,
+  team: Array<{
+    id: number;
+    userId: number;
+    role: string;
+    status: string;
+    agentTitle: string;
+    titleLabel: string;
+    name: string | null;
+    image: string | null;
+    email: string | null;
+    isSelf: boolean;
+  }>,
+) {
+  return {
+    id: membership.id,
+    role: membership.role,
+    status: membership.status,
+    agentTitle: membership.agentTitle,
+    titleLabel: formatAgentTitle(membership.agentTitle),
+    pendingApproval: membership.status === 'PENDING',
+    companyId: membership.company.id,
+    companyName: membership.company.name,
+    company: {
+      id: membership.company.id,
+      name: membership.company.name,
+      slug: membership.company.slug,
+      address: membership.company.address,
+      website: membership.company.website,
+      logoUrl: membership.company.logoUrl,
+      officePhone: membership.company.officePhone,
+      officeEmail: membership.company.officeEmail,
+      extraListings: membership.company.extraListings,
+      plusExpiresAt: membership.company.plusExpiresAt?.toISOString() ?? null,
+      ownerUserId: membership.company.ownerUserId,
+    },
+    team,
+    stats: {
+      activeMembers: team.filter((m) => m.status === 'ACTIVE').length,
+      pendingMembers: team.filter((m) => m.status === 'PENDING').length,
+    },
+  };
 }
 
 export async function requireActiveAgencyAdmin(userId: number) {
