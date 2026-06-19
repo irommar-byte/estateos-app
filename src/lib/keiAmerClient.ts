@@ -2,6 +2,7 @@ const KEI_BASE = 'https://amer.kei.pl/newAmer';
 const KEI_ORIGIN = 'https://amer.kei.pl';
 
 export type KeiPropertyKind = 'apartment' | 'house';
+export type KeiTransactionKind = 'sale' | 'rent';
 
 export type KeiListingRow = {
   id: string;
@@ -16,12 +17,54 @@ export type KeiListingRow = {
   tekst?: string;
 };
 
-export function keiRodzajForPropertyKind(kind: KeiPropertyKind): string {
+/** KEI query `rodzaj`: 1 = sprzedaż, 2 = wynajem */
+export function keiRodzajForTransactionKind(kind: KeiTransactionKind): string {
+  return kind === 'rent' ? '2' : '1';
+}
+
+/** KEI query `typ`: 1 = mieszkanie, 2 = dom */
+export function keiTypForPropertyKind(kind: KeiPropertyKind): string {
   return kind === 'house' ? '2' : '1';
+}
+
+/** KEI `rodzaj` w wierszu: 1 = sprzedaż, 2 = wynajem (czasem tekst). */
+export function keiTransactionKindFromRow(row: Pick<KeiListingRow, 'rodzaj'>): KeiTransactionKind {
+  const hay = String(row.rodzaj || '').trim().toLowerCase();
+  if (!hay) return 'sale';
+  if (hay === '2' || hay.includes('wynaj') || hay.includes('najem')) return 'rent';
+  if (hay === '1' || hay.includes('sprzed')) return 'sale';
+  return 'sale';
+}
+
+/** KEI `typ` w wierszu: 1 = mieszkanie, 2 = dom (czasem tekst). */
+export function keiPropertyKindFromRow(row: Pick<KeiListingRow, 'typ'>): KeiPropertyKind {
+  const hay = String(row.typ || '').trim().toLowerCase();
+  if (hay === '2' || hay.includes('dom')) return 'house';
+  if (hay === '1' || hay.includes('miesz')) return 'apartment';
+  return 'apartment';
+}
+
+export function rowMatchesKeiFilters(
+  row: Pick<KeiListingRow, 'rodzaj' | 'typ'>,
+  propertyKind: KeiPropertyKind,
+  transactionKind: KeiTransactionKind,
+): boolean {
+  return (
+    keiPropertyKindFromRow(row) === propertyKind &&
+    keiTransactionKindFromRow(row) === transactionKind
+  );
 }
 
 export function keiPropertyKindLabel(kind: KeiPropertyKind): string {
   return kind === 'house' ? 'dom' : 'mieszkanie';
+}
+
+export function keiTransactionKindLabel(kind: KeiTransactionKind): string {
+  return kind === 'rent' ? 'wynajem' : 'sprzedaż';
+}
+
+export function resolveKeiTransactionKind(raw?: unknown): KeiTransactionKind {
+  return raw === 'rent' ? 'rent' : 'sale';
 }
 
 type KeiListingsResponse = {
@@ -205,10 +248,11 @@ export async function fetchKeiListingsPage(params: {
   sort?: string;
   dir?: 'ASC' | 'DESC';
   propertyKind?: KeiPropertyKind;
+  transactionKind?: KeiTransactionKind;
 }): Promise<{ total: number; rows: KeiListingRow[] }> {
   const qs = new URLSearchParams({
-    rodzaj: keiRodzajForPropertyKind(params.propertyKind ?? 'apartment'),
-    typ: '1',
+    rodzaj: keiRodzajForTransactionKind(params.transactionKind ?? 'sale'),
+    typ: keiTypForPropertyKind(params.propertyKind ?? 'apartment'),
     okres: '1',
     wystapienia: '1',
     miasto: '1',
@@ -230,10 +274,12 @@ export async function fetchKeiListingsPage(params: {
 
 export async function findWarsawPortalListings(options?: {
   propertyKind?: KeiPropertyKind;
+  transactionKind?: KeiTransactionKind;
   maxResults?: number;
   maxPages?: number;
 }): Promise<KeiListingRow[]> {
   const propertyKind = options?.propertyKind ?? 'apartment';
+  const transactionKind = options?.transactionKind ?? 'sale';
   const maxResults = Math.max(1, options?.maxResults ?? 1);
   const maxPages = options?.maxPages ?? 8;
   const limit = 50;
@@ -246,8 +292,10 @@ export async function findWarsawPortalListings(options?: {
       sort: 'data',
       dir: 'DESC',
       propertyKind,
+      transactionKind,
     });
     for (const row of rows) {
+      if (!rowMatchesKeiFilters(row, propertyKind, transactionKind)) continue;
       if (!isWarsawListing(row)) continue;
       if (!isSupportedKeiPortalUrl(row.www || '')) continue;
       results.push(row);
@@ -261,6 +309,7 @@ export async function findWarsawPortalListings(options?: {
 
 export async function findWarsawPortalListingsPaged(options?: {
   propertyKind?: KeiPropertyKind;
+  transactionKind?: KeiTransactionKind;
   page?: number;
   pageSize?: number;
 }): Promise<{
@@ -276,6 +325,7 @@ export async function findWarsawPortalListingsPaged(options?: {
 
   const collected = await findWarsawPortalListings({
     propertyKind: options?.propertyKind,
+    transactionKind: options?.transactionKind,
     maxResults: need,
     maxPages: Math.min(Math.ceil(need / 6) + 4, 24),
   });
@@ -290,9 +340,10 @@ export async function findWarsawPortalListingsPaged(options?: {
 
 export async function findLatestWarsawPortalListing(
   propertyKind: KeiPropertyKind = 'apartment',
+  transactionKind: KeiTransactionKind = 'sale',
   maxPages = 8,
 ): Promise<KeiListingRow | null> {
-  const rows = await findWarsawPortalListings({ propertyKind, maxResults: 1, maxPages });
+  const rows = await findWarsawPortalListings({ propertyKind, transactionKind, maxResults: 1, maxPages });
   return rows[0] ?? null;
 }
 

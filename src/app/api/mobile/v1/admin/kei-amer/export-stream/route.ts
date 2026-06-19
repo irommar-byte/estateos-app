@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
 import { exportKeiListingsToEstateOS } from '@/lib/keiAmerExport';
 import type { KeiExportProgressEvent } from '@/lib/keiAmerExportProgress';
+import { encodeKeiSseEvent, KEI_SSE_HEADERS } from '@/lib/keiAmerSse';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -22,6 +22,7 @@ function parseExportBody(body: Record<string, unknown>) {
         .map((row: Record<string, unknown>) => ({
           keiId: String(row?.keiId || ''),
           portalUrl: String(row?.portalUrl || ''),
+          address: String(row?.address || '').trim() || undefined,
         }))
         .filter((row: { portalUrl: string }) => row.portalUrl)
     : undefined;
@@ -36,6 +37,7 @@ function parseExportBody(body: Record<string, unknown>) {
       Number.isFinite(agentCommissionPercent) && agentCommissionPercent >= 0 ? agentCommissionPercent : undefined,
     count: Number.isFinite(count) && count > 0 ? count : undefined,
     propertyKind: body?.propertyKind === 'house' ? ('house' as const) : ('apartment' as const),
+    transactionKind: body?.transactionKind === 'rent' ? ('rent' as const) : ('sale' as const),
     selections,
     floorPlanOverrides: parseFloorPlanOverrides(body?.floorPlanOverrides),
   };
@@ -46,39 +48,39 @@ export async function POST(req: Request) {
   if (!gate.ok) return gate.response;
 
   const body = await req.json().catch(() => ({}));
-  const encoder = new TextEncoder();
+  const parsed = parseExportBody(body as Record<string, unknown>);
 
   const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
+    start(controller) {
       const send = (event: KeiExportProgressEvent) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        controller.enqueue(encodeKeiSseEvent(event));
       };
 
-      try {
-        const result = await exportKeiListingsToEstateOS({
-          ...parseExportBody(body as Record<string, unknown>),
-          onProgress: send,
-        });
+      send({ type: 'connected', message: 'Połączono — import w toku…' });
 
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ type: 'result', ok: true, exported: result.exported, skipped: result.skipped, message: result.message })}\n\n`,
-          ),
-        );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Eksport KEI nie powiódł się.';
-        send({ type: 'error', message });
-      } finally {
-        controller.close();
-      }
+      void (async () => {
+        try {
+          const result = await exportKeiListingsToEstateOS({
+            ...parsed,
+            onProgress: send,
+          });
+
+          send({
+            type: 'result',
+            ok: true,
+            exported: result.exported,
+            skipped: result.skipped,
+            message: result.message,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Eksport KEI nie powiódł się.';
+          send({ type: 'error', message });
+        } finally {
+          controller.close();
+        }
+      })();
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-    },
-  });
+  return new Response(stream, { headers: KEI_SSE_HEADERS });
 }

@@ -3,8 +3,13 @@ import {
   ensureKeiAmerSession,
   findWarsawPortalListingsPaged,
   isSupportedKeiPortalUrl,
+  keiPropertyKindFromRow,
   keiPropertyKindLabel,
+  keiTransactionKindFromRow,
+  keiTransactionKindLabel,
+  rowMatchesKeiFilters,
   type KeiPropertyKind,
+  type KeiTransactionKind,
 } from '@/lib/keiAmerClient';
 
 export type KeiPreviewListing = {
@@ -16,6 +21,8 @@ export type KeiPreviewListing = {
   portalUrl: string;
   portalHost: string;
   sourceLabel: string;
+  transactionKind: KeiTransactionKind;
+  transactionLabel: string;
   alreadyImported: boolean;
   existingOfferId: number | null;
 };
@@ -37,15 +44,19 @@ function sourceLabelFromHost(host: string): string {
 
 async function mapRowsToPreviewListings(
   rows: Awaited<ReturnType<typeof findWarsawPortalListingsPaged>>['rows'],
+  filters: { propertyKind: KeiPropertyKind; transactionKind: KeiTransactionKind },
 ): Promise<KeiPreviewListing[]> {
   const listings: KeiPreviewListing[] = [];
 
   for (const row of rows) {
+    if (!rowMatchesKeiFilters(row, filters.propertyKind, filters.transactionKind)) continue;
+
     const portalUrl = String(row.www || '').trim();
     if (!portalUrl || !isSupportedKeiPortalUrl(portalUrl)) continue;
 
     const existing = await findExistingImportedOfferByPortalUrl(portalUrl);
     const host = portalHostFromUrl(portalUrl);
+    const transactionKind = keiTransactionKindFromRow(row);
     listings.push({
       keiId: row.id,
       date: row.data || '',
@@ -55,6 +66,8 @@ async function mapRowsToPreviewListings(
       portalUrl,
       portalHost: host,
       sourceLabel: sourceLabelFromHost(host),
+      transactionKind,
+      transactionLabel: keiTransactionKindLabel(transactionKind),
       alreadyImported: Boolean(existing),
       existingOfferId: existing?.id ?? null,
     });
@@ -65,6 +78,7 @@ async function mapRowsToPreviewListings(
 
 export async function previewKeiExportListings(options?: {
   propertyKind?: KeiPropertyKind;
+  transactionKind?: KeiTransactionKind;
   page?: number;
   pageSize?: number;
   /** Pula do auto-zaznaczenia (strona 1, do 25 pozycji). */
@@ -72,6 +86,7 @@ export async function previewKeiExportListings(options?: {
 }): Promise<{
   ok: true;
   propertyKind: KeiPropertyKind;
+  transactionKind: KeiTransactionKind;
   page: number;
   pageSize: number;
   hasNextPage: boolean;
@@ -84,24 +99,27 @@ export async function previewKeiExportListings(options?: {
   }
 
   const propertyKind = options?.propertyKind === 'house' ? 'house' : 'apartment';
+  const transactionKind = options?.transactionKind === 'rent' ? 'rent' : 'sale';
   const page = options?.selectionPool ? 1 : Math.max(1, Math.floor(options?.page ?? 1));
   const pageSize = options?.selectionPool
     ? 25
     : Math.max(1, Math.min(Math.floor(options?.pageSize ?? 20), 30));
 
-  const paged = await findWarsawPortalListingsPaged({ propertyKind, page, pageSize });
-  const listings = await mapRowsToPreviewListings(paged.rows);
+  const paged = await findWarsawPortalListingsPaged({ propertyKind, transactionKind, page, pageSize });
+  const listings = await mapRowsToPreviewListings(paged.rows, { propertyKind, transactionKind });
 
   const kindLabel = keiPropertyKindLabel(propertyKind);
+  const txLabel = keiTransactionKindLabel(transactionKind);
   const freshCount = listings.filter((item) => !item.alreadyImported).length;
   const message =
     listings.length === 0
-      ? `Brak ogłoszeń (${kindLabel}) na stronie ${page}.`
-      : `Strona ${page}: ${listings.length} ogłoszeń (${kindLabel}), ${freshCount} nowych.`;
+      ? `Brak ogłoszeń (${kindLabel}, ${txLabel}) na stronie ${page}.`
+      : `Strona ${page}: ${listings.length} ogłoszeń (${kindLabel}, ${txLabel}), ${freshCount} nowych.`;
 
   return {
     ok: true,
     propertyKind,
+    transactionKind,
     page: paged.page,
     pageSize: paged.pageSize,
     hasNextPage: paged.hasNextPage,

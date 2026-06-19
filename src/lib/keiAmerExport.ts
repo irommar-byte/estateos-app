@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
+import { importOfferFromUrl, isSupportedImportOfferUrl, type OtodomImportDraft } from '@/lib/otodomImport';
 import { createOfferFromOtodomDraft, findExistingImportedOffer, findExistingImportedOfferByPortalUrl } from '@/lib/otodomImportCreate';
 import { isOtodomImportAiConfigured } from '@/lib/otodomImportRewrite';
 import { peekLastImageInfo } from '@/lib/otodomImportFloorPlan';
@@ -9,8 +9,11 @@ import {
   findWarsawPortalListings,
   ensureKeiAmerSession,
   keiPropertyKindLabel,
+  keiTransactionKindLabel,
+  resolveKeiTransactionKind,
   type KeiListingRow,
   type KeiPropertyKind,
+  type KeiTransactionKind,
 } from '@/lib/keiAmerClient';
 
 const DEFAULT_EXPORT_USER_ID = 55;
@@ -58,6 +61,18 @@ function resolveFloorPlanOverride(
   return undefined;
 }
 
+function alignDraftWithKeiExportFilters(
+  draft: OtodomImportDraft,
+  propertyKind: KeiPropertyKind,
+  transactionKind: KeiTransactionKind,
+): OtodomImportDraft {
+  return {
+    ...draft,
+    transactionType: transactionKind === 'rent' ? 'RENT' : 'SALE',
+    propertyType: propertyKind === 'house' ? 'HOUSE' : 'FLAT',
+  };
+}
+
 export type KeiExportItemResult = {
   keiListingId: string;
   portalUrl: string;
@@ -92,7 +107,8 @@ export async function exportKeiListingsToEstateOS(options?: {
   agentCommissionPercent?: number;
   count?: number;
   propertyKind?: KeiPropertyKind;
-  selections?: Array<{ keiId?: string; portalUrl: string }>;
+  transactionKind?: KeiTransactionKind;
+  selections?: Array<{ keiId?: string; portalUrl: string; address?: string }>;
   floorPlanOverrides?: Record<string, boolean>;
   onProgress?: KeiExportProgressEmitter;
 }): Promise<{
@@ -102,6 +118,7 @@ export async function exportKeiListingsToEstateOS(options?: {
   targetUserId: number;
   agentCommissionPercent: number;
   propertyKind: KeiPropertyKind;
+  transactionKind: KeiTransactionKind;
   offerId: number | null;
   portalUrl: string;
   publicUrl: string;
@@ -118,6 +135,7 @@ export async function exportKeiListingsToEstateOS(options?: {
   const targetUserId = resolveExportUserId(options?.targetUserId);
   const agentCommissionPercent = resolveCommissionPercent(options?.agentCommissionPercent);
   const propertyKind = resolvePropertyKind(options?.propertyKind);
+  const transactionKind = resolveKeiTransactionKind(options?.transactionKind);
 
   const rawSelections = Array.isArray(options?.selections) ? options.selections : [];
   const selections = rawSelections
@@ -149,13 +167,14 @@ export async function exportKeiListingsToEstateOS(options?: {
   } else {
     const listings = await findWarsawPortalListings({
       propertyKind,
+      transactionKind,
       maxResults: Math.max(count * 5, 30),
       maxPages: 12,
     });
 
     if (listings.length === 0) {
       throw new Error(
-        `Nie znaleziono ogłoszeń (${keiPropertyKindLabel(propertyKind)}) w Warszawie z linkiem OtoDom / OLX / Nieruchomosci-Online.`,
+        `Nie znaleziono ogłoszeń (${keiPropertyKindLabel(propertyKind)}, ${keiTransactionKindLabel(transactionKind)}) w Warszawie z linkiem OtoDom / OLX / Nieruchomosci-Online.`,
       );
     }
 
@@ -248,7 +267,11 @@ export async function exportKeiListingsToEstateOS(options?: {
         label: 'Pobieranie danych z portalu',
       });
 
-      const draft = await importOfferFromUrl(portalUrl);
+      const draft = alignDraftWithKeiExportFilters(
+        await importOfferFromUrl(portalUrl),
+        propertyKind,
+        transactionKind,
+      );
       const existing = await findExistingImportedOffer(draft);
       if (existing) {
         skipped.push({
@@ -410,12 +433,13 @@ export async function exportKeiListingsToEstateOS(options?: {
   }
 
   const kindLabel = keiPropertyKindLabel(propertyKind);
+  const txLabel = keiTransactionKindLabel(transactionKind);
   const skippedNote =
     skipped.length > 0 ? ` Pominięto ${skipped.length} (w tym już zaimportowane).` : '';
   const message =
     exported.length === 1
-      ? `Utworzono i aktywowano ofertę #${exported[0].offerId} (${kindLabel}) dla użytkownika #${targetUserId} (${agentCommissionPercent}% prowizji).${skippedNote}`
-      : `Utworzono i aktywowano ${exported.length} ofert (${kindLabel}) dla użytkownika #${targetUserId} (${agentCommissionPercent}% prowizji).${skippedNote}`;
+      ? `Utworzono i aktywowano ofertę #${exported[0].offerId} (${kindLabel}, ${txLabel}) dla użytkownika #${targetUserId} (${agentCommissionPercent}% prowizji).${skippedNote}`
+      : `Utworzono i aktywowano ${exported.length} ofert (${kindLabel}, ${txLabel}) dla użytkownika #${targetUserId} (${agentCommissionPercent}% prowizji).${skippedNote}`;
 
   emit?.({
     type: 'batch_done',
@@ -433,6 +457,7 @@ export async function exportKeiListingsToEstateOS(options?: {
     targetUserId,
     agentCommissionPercent,
     propertyKind,
+    transactionKind,
     offerId: first?.offerId ?? null,
     portalUrl: first?.portalUrl ?? '',
     publicUrl: first?.publicUrl ?? '',

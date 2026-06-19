@@ -1,4 +1,15 @@
+export type KeiAiRewriteProgress = {
+  working: boolean;
+  rewrittenByAi: boolean;
+  titleBefore: string;
+  titleAfter: string;
+  descriptionBefore: string;
+  descriptionAfter: string;
+  skipReason?: string;
+};
+
 export type KeiExportProgressEvent =
+  | { type: 'connected'; message: string }
   | { type: 'batch_start'; total: number }
   | {
       type: 'item_start';
@@ -14,6 +25,11 @@ export type KeiExportProgressEvent =
       step: 'check_duplicate' | 'fetch_portal' | 'create_offer' | 'images' | 'activate';
       label: string;
       detail?: string;
+    }
+  | {
+      type: 'ai_rewrite';
+      index: number;
+      rewrite: KeiAiRewriteProgress;
     }
   | {
       type: 'image_progress';
@@ -49,7 +65,24 @@ export type KeiExportProgressEvent =
       existingOfferId?: number;
     }
   | { type: 'batch_done'; message: string; exportedCount: number; skippedCount: number }
-  | { type: 'connected'; message: string }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | {
+      type: 'result';
+      ok: boolean;
+      exported: Array<{
+        keiListingId?: string;
+        offerId: number;
+        portalUrl: string;
+        publicUrl: string;
+        editUrl: string;
+      }>;
+      skipped: Array<{
+        keiListingId?: string;
+        portalUrl: string;
+        reason: string;
+        existingOfferId?: number;
+      }>;
+      message: string;
+    };
 
 export type KeiExportProgressEmitter = (event: KeiExportProgressEvent) => void;
