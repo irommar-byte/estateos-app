@@ -8,7 +8,11 @@ import {
   Clock,
   Coins,
   ExternalLink,
+  Globe,
   Loader2,
+  Mail,
+  Phone,
+  Pencil,
   ShieldCheck,
   Star,
   Upload,
@@ -113,6 +117,13 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   const [creditNote, setCreditNote] = useState('');
   const [creditBusy, setCreditBusy] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
+  const [contactBusy, setContactBusy] = useState(false);
+  const [contactDraft, setContactDraft] = useState({
+    website: '',
+    officePhone: '',
+    officeEmail: '',
+  });
+  const [contactEditing, setContactEditing] = useState(false);
   const [photoBusyId, setPhotoBusyId] = useState<number | null>(null);
   const [detailMember, setDetailMember] = useState<MemberRow | null>(null);
 
@@ -158,6 +169,16 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const company = dashboard?.company ?? membership?.company;
+    if (!company) return;
+    setContactDraft({
+      website: company.website || '',
+      officePhone: company.officePhone || '',
+      officeEmail: company.officeEmail || '',
+    });
+  }, [dashboard?.company, membership?.company]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -280,6 +301,34 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       setError('Błąd połączenia.');
     } finally {
       setPhotoBusyId(null);
+    }
+  };
+
+  const handleContactSave = async () => {
+    setContactBusy(true);
+    setError('');
+    try {
+      const res = await fetch('/api/agency-company/profile', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          website: contactDraft.website.trim() || null,
+          officePhone: contactDraft.officePhone.trim() || null,
+          officeEmail: contactDraft.officeEmail.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.message || 'Nie udało się zapisać danych biura.');
+        return;
+      }
+      setContactEditing(false);
+      await load();
+    } catch {
+      setError('Błąd połączenia.');
+    } finally {
+      setContactBusy(false);
     }
   };
 
@@ -439,6 +488,117 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
           </div>
         </div>
       </header>
+
+      <section className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-black text-[var(--eos-text)]">
+              <Globe size={18} className="text-emerald-500" />
+              Dane kontaktowe biura
+            </h2>
+            <p className="eos-muted-copy mt-1 text-xs">
+              Widoczne na publicznej stronie biura i w katalogu agencji
+            </p>
+          </div>
+          {!contactEditing ? (
+            <button
+              type="button"
+              onClick={() => setContactEditing(true)}
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-500 hover:bg-emerald-500/10"
+            >
+              <Pencil size={14} /> Edytuj
+            </button>
+          ) : null}
+        </div>
+
+        {contactEditing ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block sm:col-span-2">
+              <span className="mb-1.5 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">
+                <Globe size={12} /> Strona internetowa
+              </span>
+              <input
+                type="url"
+                value={contactDraft.website}
+                onChange={(e) => setContactDraft((d) => ({ ...d, website: e.target.value }))}
+                placeholder="https://twoje-biuro.pl"
+                className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">
+                <Phone size={12} /> Telefon biura
+              </span>
+              <input
+                type="tel"
+                value={contactDraft.officePhone}
+                onChange={(e) => setContactDraft((d) => ({ ...d, officePhone: e.target.value }))}
+                placeholder="+48 22 000 00 00"
+                className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">
+                <Mail size={12} /> E-mail biura
+              </span>
+              <input
+                type="email"
+                value={contactDraft.officeEmail}
+                onChange={(e) => setContactDraft((d) => ({ ...d, officeEmail: e.target.value }))}
+                placeholder="biuro@twoje-biuro.pl"
+                className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
+              />
+            </label>
+            <div className="flex flex-wrap gap-2 sm:col-span-2">
+              <button
+                type="button"
+                disabled={contactBusy}
+                onClick={() => void handleContactSave()}
+                className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-xs font-black uppercase tracking-widest text-black disabled:opacity-50"
+              >
+                {contactBusy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                Zapisz
+              </button>
+              <button
+                type="button"
+                disabled={contactBusy}
+                onClick={() => {
+                  setContactEditing(false);
+                  setContactDraft({
+                    website: company.website || '',
+                    officePhone: company.officePhone || '',
+                    officeEmail: company.officeEmail || '',
+                  });
+                }}
+                className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-5 py-2.5 text-xs font-black uppercase tracking-widest text-[var(--eos-muted)]"
+              >
+                <X size={14} /> Anuluj
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3 text-sm text-[var(--eos-muted)]">
+            <p className="flex items-center gap-2">
+              <Globe size={14} className="shrink-0 text-emerald-500" />
+              {company.website ? (
+                <a href={company.website} target="_blank" rel="noreferrer" className="text-emerald-500 hover:underline">
+                  {company.website}
+                </a>
+              ) : (
+                <span className="italic">Brak strony www</span>
+              )}
+            </p>
+            <p className="flex items-center gap-2">
+              <Phone size={14} className="shrink-0 text-emerald-500" />
+              {company.officePhone || <span className="italic">Brak telefonu</span>}
+            </p>
+            <p className="flex items-center gap-2">
+              <Mail size={14} className="shrink-0 text-emerald-500" />
+              {company.officeEmail || <span className="italic">Brak e-maila</span>}
+            </p>
+          </div>
+        )}
+      </section>
 
       {error && (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-500">
