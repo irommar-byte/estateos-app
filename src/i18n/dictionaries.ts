@@ -98,7 +98,6 @@ export type Dictionary = {
     ctaAgency: string;
     exploreMap: string;
     scroll: string;
-    cooperationNote: string;
     privateCard: {
       title: string;
       subtitle: string;
@@ -624,29 +623,29 @@ const pl: Dictionary = {
     ctaAgency: "Dla agencji i pośredników",
     exploreMap: "Mapa ofert",
     scroll: "Przewiń",
-    cooperationNote:
-      "Agencje i osoby prywatne mogą współpracować na jednej platformie — na przejrzystych zasadach, w Deal Room i na mapie ofert.",
     privateCard: {
       title: "Dla osób prywatnych",
       subtitle:
-        "Wystaw mieszkanie, dom lub działkę bez opłat za publikację. Przeglądaj rynek na mapie i negocjuj w Deal Room.",
+        "Wystaw mieszkanie, dom lub działkę bez opłat. Przeglądaj mapę ofert i — gdy chcesz — współpracuj z biurem na przejrzystych zasadach.",
       bullets: [
         "Publikacja ogłoszenia bez prowizji platformy",
         "Mapa ofert i Radar dopasowań na Twoim koncie",
-        "Współpraca z agencją — jeśli chcesz, na jasno ustalonych zasadach",
-        "Bezpieczny kontakt i Deal Room w jednym miejscu",
+        "Współpraca z agencjami na jednej platformie — przejrzyste zasady",
+        "Ten sam Deal Room i mapa ofert — z biurem lub samodzielnie",
+        "Bezpieczny kontakt w jednym miejscu",
       ],
       cta: "Załóż konto — za darmo",
     },
     agencyCard: {
       title: "Dla biur i agencji",
       subtitle:
-        "Profesjonalne narzędzia dla zespołu — od pierwszego ogłoszenia po zamknięcie transakcji.",
+        "Profesjonalne narzędzia dla zespołu i współpraca z osobami prywatnymi — jedna platforma, mapa ofert i Deal Room.",
       bullets: [
         "Załóż swoje biuro i publiczny profil firmy",
         "Zarządzaj CRM, klientami i zadaniami zespołu",
         "Wystawiaj wszystkie ogłoszenia z jednego panelu",
-        "Współpracuj z właścicielami na przejrzystych zasadach",
+        "Współpraca z właścicielami prywatnymi — przejrzyste zasady",
+        "Ten sam Deal Room i mapa ofert co dla osób prywatnych",
         "Dodawaj pracowników i zarządzaj stanowiskami w zespole",
       ],
       cta: "Załóż biuro nieruchomości",
@@ -1243,29 +1242,29 @@ const en: Dictionary = {
     ctaAgency: "For agencies & brokers",
     exploreMap: "Listing map",
     scroll: "Scroll",
-    cooperationNote:
-      "Agencies and private owners can work together on one platform — transparent terms, Deal Room, and the live listing map.",
     privateCard: {
       title: "For private owners",
       subtitle:
-        "List a flat, house, or plot with no listing fee. Browse the live map and negotiate in Deal Room.",
+        "List with no listing fee, browse the map — and when you want, work with an agency on transparent terms.",
       bullets: [
         "Publish with no platform listing fee",
         "Live map and Investment Radar on your account",
-        "Optional agency partnership on clear, agreed terms",
-        "Secure contact and Deal Room in one place",
+        "Collaborate with agencies on one platform — transparent terms",
+        "The same Deal Room and listing map — with an office or on your own",
+        "Secure contact in one place",
       ],
       cta: "Create a free account",
     },
     agencyCard: {
       title: "For agencies & offices",
       subtitle:
-        "Professional tools for your team — from the first listing to closing the deal.",
+        "Professional team tools and collaboration with private owners — one platform, listing map, and Deal Room.",
       bullets: [
         "Set up your office and public company profile",
         "Manage CRM, clients, and team tasks",
         "Publish all listings from one dashboard",
-        "Collaborate with owners on transparent terms",
+        "Work with private owners on transparent terms",
+        "The same Deal Room and listing map as for private users",
         "Add employees and manage roles in your team",
       ],
       cta: "Register your agency office",

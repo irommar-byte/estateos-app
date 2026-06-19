@@ -233,27 +233,18 @@ export default function HeroDepthEffect() {
               initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
               animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
               transition={{ duration: 1.05, ease: customEase, delay: 0.1 }}
-              className="hero-wordmark shrink-0 text-[clamp(3.75rem,16vw,10rem)] font-light leading-[0.82] tracking-[-0.075em] text-white drop-shadow-[0_18px_60px_rgba(0,0,0,0.9)] sm:text-[clamp(4rem,14vw,10rem)]"
+              className="hero-wordmark shrink-0 text-[clamp(5.5rem,28vw,16rem)] font-light leading-[0.8] tracking-[-0.075em] text-white drop-shadow-[0_18px_60px_rgba(0,0,0,0.9)] md:text-[clamp(6.5rem,24vw,18rem)]"
             >
               <span className="font-semibold text-emerald-400">E</span>state
               <span className="font-semibold text-emerald-400">OS</span>
               <sup className="ml-1 align-super text-[0.18em] font-black tracking-normal text-white/80">TM</sup>
             </motion.h1>
 
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.85, ease: customEase, delay: 0.24 }}
-              className="hero-cooperation-note eos-hero-glass mt-4 max-w-2xl shrink-0 rounded-2xl px-5 py-3.5 text-sm font-light leading-relaxed text-white/88 sm:mt-5 sm:px-6 sm:text-[15px]"
-            >
-              {dict.hero.cooperationNote}
-            </motion.p>
-
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, ease: customEase, delay: 0.32 }}
-              className="hero-audience-grid mt-4 grid w-full max-w-5xl gap-3 sm:mt-6 md:mt-7 md:grid-cols-2 md:gap-5"
+              className="hero-audience-grid mt-5 grid w-full max-w-5xl gap-3 sm:mt-6 md:mt-8 md:grid-cols-2 md:gap-5"
             >
               <HeroAudienceCard
                 variant="private"

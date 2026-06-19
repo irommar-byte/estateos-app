@@ -580,15 +580,8 @@ html.light .premium-home-shell {
 
 @media (max-height: 860px) {
   .premium-hero-stage .hero-wordmark {
-    font-size: clamp(3rem, 12vw, 7.25rem) !important;
-    line-height: 0.84 !important;
-  }
-
-  .premium-hero-stage .hero-cooperation-note {
-    margin-top: 0.85rem !important;
-    padding: 0.65rem 0.85rem !important;
-    font-size: 12px !important;
-    line-height: 1.45 !important;
+    font-size: clamp(4.25rem, 20vw, 11rem) !important;
+    line-height: 0.82 !important;
   }
 
   .premium-hero-stage .hero-eyebrow {
@@ -634,7 +627,7 @@ html.light .premium-home-shell {
   }
 
   .premium-hero-stage .hero-wordmark {
-    font-size: clamp(2.65rem, 10.5vw, 5.75rem) !important;
+    font-size: clamp(3.5rem, 16vw, 8rem) !important;
   }
 
   .premium-hero-stage .hero-audience-bullets li:nth-child(n + 4) {
