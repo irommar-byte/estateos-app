@@ -36,11 +36,11 @@ function HeroAudienceCard({
   return (
     <article
       className={[
-        "eos-hero-glass flex h-full flex-col rounded-[1.75rem] p-6 text-left sm:p-7",
+        "hero-audience-card eos-hero-glass flex h-full flex-col rounded-[1.75rem] p-5 text-left sm:p-6",
         isPrivate ? "ring-1 ring-[#d9b58b]/40" : "ring-1 ring-emerald-400/30",
       ].join(" ")}
     >
-      <div className="mb-4 flex items-start gap-3">
+      <div className="mb-3 flex items-start gap-3 sm:mb-4">
         <div
           className={[
             "flex size-11 shrink-0 items-center justify-center rounded-2xl",
@@ -56,16 +56,16 @@ function HeroAudienceCard({
           )}
         </div>
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-white sm:text-xl">{title}</h2>
-          <p className="eos-luxury-media-text mt-2 text-sm font-light leading-relaxed text-white/75">
+          <h2 className="text-base font-semibold tracking-tight text-white sm:text-lg lg:text-xl">{title}</h2>
+          <p className="hero-audience-subtitle eos-luxury-media-text mt-1.5 text-xs font-light leading-relaxed text-white/75 sm:mt-2 sm:text-sm">
             {subtitle}
           </p>
         </div>
       </div>
 
-      <ul className="mb-6 flex flex-1 flex-col gap-2.5">
+      <ul className="hero-audience-bullets mb-5 flex flex-1 flex-col gap-2 sm:mb-6 sm:gap-2.5">
         {bullets.map((item) => (
-          <li key={item} className="flex items-start gap-2.5 text-sm text-white/88">
+          <li key={item} className="flex items-start gap-2 text-xs text-white/88 sm:text-sm">
             <CheckCircle2
               className={[
                 "mt-0.5 size-4 shrink-0",
@@ -147,7 +147,7 @@ export default function HeroDepthEffect() {
   return (
     <section
       ref={ref}
-      className="premium-hero-stage relative h-[100svh] w-full overflow-hidden bg-[#050505]"
+      className="premium-hero-stage relative min-h-[100svh] w-full overflow-hidden bg-[#050505]"
     >
       <div className="absolute inset-0 h-full w-full overflow-hidden">
         <motion.div
@@ -214,17 +214,17 @@ export default function HeroDepthEffect() {
 
         <motion.div
           style={{ y: contentY }}
-          className="relative z-20 flex h-full items-center justify-center overflow-y-auto px-4 pb-[calc(4rem+env(safe-area-inset-bottom))] pt-[calc(4.5rem+env(safe-area-inset-top))] text-center"
+          className="relative z-20 flex min-h-[100svh] w-full items-start justify-center overflow-x-hidden px-4 pb-[calc(3rem+env(safe-area-inset-bottom))] pt-[calc(5.25rem+env(safe-area-inset-top))] text-center sm:pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pt-[calc(5.75rem+env(safe-area-inset-top))]"
         >
           <motion.div
             style={{ opacity: opacityFade }}
-            className="flex w-full max-w-6xl flex-col items-center"
+            className="flex w-full max-w-6xl shrink-0 flex-col items-center"
           >
             <motion.p
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, ease: customEase, delay: 0.18 }}
-              className="mb-4 text-[10px] font-black uppercase tracking-[0.32em] text-emerald-400/95 sm:text-xs"
+              className="hero-eyebrow mb-3 shrink-0 text-[10px] font-black uppercase tracking-[0.32em] text-emerald-400/95 sm:mb-4 sm:text-xs"
             >
               {dict.hero.eyebrow}
             </motion.p>
@@ -233,7 +233,7 @@ export default function HeroDepthEffect() {
               initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
               animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
               transition={{ duration: 1.05, ease: customEase, delay: 0.1 }}
-              className="text-[14vw] font-light leading-[0.82] tracking-[-0.075em] text-white drop-shadow-[0_18px_60px_rgba(0,0,0,0.9)] sm:text-[10vw] lg:text-[7.5rem]"
+              className="hero-wordmark shrink-0 text-[clamp(2.85rem,11vw,7.25rem)] font-light leading-[0.84] tracking-[-0.075em] text-white drop-shadow-[0_18px_60px_rgba(0,0,0,0.9)]"
             >
               <span className="font-semibold text-emerald-400">E</span>state
               <span className="font-semibold text-emerald-400">OS</span>
@@ -244,7 +244,7 @@ export default function HeroDepthEffect() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, ease: customEase, delay: 0.32 }}
-              className="mt-6 grid w-full max-w-5xl gap-4 md:mt-8 md:grid-cols-2 md:gap-5"
+              className="hero-audience-grid mt-5 grid w-full max-w-5xl gap-3 md:mt-7 md:grid-cols-2 md:gap-5"
             >
               <HeroAudienceCard
                 variant="private"
@@ -268,7 +268,7 @@ export default function HeroDepthEffect() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, ease: customEase, delay: 0.58 }}
-              className="mt-6 md:mt-8"
+              className="hero-app-badges mt-5 md:mt-7"
             >
               <AppStoreBadgeLink
                 label={dict.footer.appStore}

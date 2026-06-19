@@ -578,6 +578,63 @@ html.light .premium-home-shell {
   color: rgba(255, 255, 255, 0.45) !important;
 }
 
+@media (max-height: 860px) {
+  .premium-hero-stage .hero-wordmark {
+    font-size: clamp(2.35rem, 9.5vw, 5.5rem) !important;
+    line-height: 0.88 !important;
+  }
+
+  .premium-hero-stage .hero-eyebrow {
+    margin-bottom: 0.5rem !important;
+    font-size: 9px !important;
+    letter-spacing: 0.26em !important;
+  }
+
+  .premium-hero-stage .hero-audience-grid {
+    margin-top: 1rem !important;
+    gap: 0.65rem !important;
+  }
+
+  .premium-hero-stage .hero-audience-card {
+    padding: 0.95rem 1rem !important;
+    border-radius: 1.35rem !important;
+  }
+
+  .premium-hero-stage .hero-audience-subtitle {
+    display: none;
+  }
+
+  .premium-hero-stage .hero-audience-bullets {
+    margin-bottom: 0.85rem !important;
+    gap: 0.35rem !important;
+  }
+
+  .premium-hero-stage .hero-audience-bullets li {
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+  }
+
+  .premium-hero-stage .hero-app-badges {
+    margin-top: 1rem !important;
+    transform: scale(0.92);
+    transform-origin: center top;
+  }
+}
+
+@media (max-height: 720px) {
+  .premium-hero-stage .hero-eyebrow {
+    display: none;
+  }
+
+  .premium-hero-stage .hero-wordmark {
+    font-size: clamp(2rem, 8.5vw, 4.25rem) !important;
+  }
+
+  .premium-hero-stage .hero-audience-bullets li:nth-child(n + 4) {
+    display: none;
+  }
+}
+
 /* Luksusowy tekst na zdjęciach — czarna obwódka + czytelny kontrast */
 .eos-luxury-media-text {
   color: #ffffff;
