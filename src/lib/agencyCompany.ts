@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import type { AgencyMemberRole, AgencyMemberStatus, AgencyAgentTitle } from '@prisma/client';
-import { AGENCY_AGENT_TITLES, formatAgentTitle } from '@/lib/agentProfile';
+import { AGENCY_AGENT_TITLES, formatAgentTitle, pickTeamMemberAvatar } from '@/lib/agentProfile';
 import { notifyMemberApproved, notifyOffersTransferred } from '@/lib/agencyCompanyNotify';
 
 export function slugifyCompanyName(name: string): string {
@@ -81,6 +81,8 @@ export async function ensureAgencyCompanyForAgentUser(userId: number): Promise<A
       id: true,
       role: true,
       planType: true,
+      name: true,
+      email: true,
       companyName: true,
       companyAddress: true,
       companyWebsite: true,
@@ -96,7 +98,8 @@ export async function ensureAgencyCompanyForAgentUser(userId: number): Promise<A
   if (!isAgentLike) return null;
 
   const companyName = String(user.companyName || '').trim();
-  if (!companyName) return null;
+  const resolvedCompanyName =
+    companyName || String(user.name || '').trim() || String(user.email || '').split('@')[0] || `Biuro agenta ${user.id}`;
 
   if (user.ownedAgencyCompany) {
     return prisma.agencyCompanyMember.create({
@@ -115,11 +118,17 @@ export async function ensureAgencyCompanyForAgentUser(userId: number): Promise<A
     });
   }
 
-  const slug = await uniqueCompanySlug(companyName);
+  const slug = await uniqueCompanySlug(resolvedCompanyName);
   return prisma.$transaction(async (tx) => {
+    if (!companyName) {
+      await tx.user.update({
+        where: { id: userId },
+        data: { companyName: resolvedCompanyName },
+      });
+    }
     const company = await tx.agencyCompany.create({
       data: {
-        name: companyName,
+        name: resolvedCompanyName,
         slug,
         address: user.companyAddress,
         website: user.companyWebsite,
@@ -172,7 +181,7 @@ export async function getAgencyTeamForViewer(userId: number) {
       agentTitle: m.agentTitle,
       titleLabel: formatAgentTitle(m.agentTitle),
       name: m.user.name,
-      image: m.user.image,
+      image: pickTeamMemberAvatar({ userImage: m.user.image, profilePhotoUrl: m.profilePhotoUrl }),
       email: isAdmin ? m.user.email : null,
       isSelf: m.userId === userId,
     })),
@@ -813,6 +822,133 @@ export async function updateCompanyContact(params: {
   });
 }
 
+export type AgencyOfficeBackfillReport = {
+  scannedAgents: number;
+  officesCreated: number;
+  membershipsLinked: number;
+  managersPromoted: number;
+  photosSynced: number;
+  skipped: number;
+  errors: string[];
+};
+
+/** Migracja legacy: każdy agent dostaje biuro (nazwa z companyName) i rolę kierownika gdy jest jedynym członkiem. */
+export async function backfillAgencyOfficesForLegacyAgents(): Promise<AgencyOfficeBackfillReport> {
+  const report: AgencyOfficeBackfillReport = {
+    scannedAgents: 0,
+    officesCreated: 0,
+    membershipsLinked: 0,
+    managersPromoted: 0,
+    photosSynced: 0,
+    skipped: 0,
+    errors: [],
+  };
+
+  const agents = await prisma.user.findMany({
+    where: { OR: [{ role: 'AGENT' }, { planType: 'AGENCY' }] },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      companyName: true,
+      companyAddress: true,
+      companyWebsite: true,
+      companyLogoUrl: true,
+      officePhone: true,
+      officeEmail: true,
+      image: true,
+    },
+    orderBy: { id: 'asc' },
+  });
+
+  report.scannedAgents = agents.length;
+
+  for (const agent of agents) {
+    try {
+      const beforeMembership = await prisma.agencyCompanyMember.findUnique({ where: { userId: agent.id } });
+      const ensured = await ensureAgencyCompanyForAgentUser(agent.id);
+      if (!beforeMembership && ensured) {
+        if (ensured.company.ownerUserId === agent.id) report.officesCreated += 1;
+        else report.membershipsLinked += 1;
+      } else if (!ensured) {
+        report.skipped += 1;
+      }
+    } catch (e) {
+      report.errors.push(`user ${agent.id}: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  }
+
+  const companies = await prisma.agencyCompany.findMany({
+    include: {
+      members: {
+        where: { status: 'ACTIVE' },
+        select: { id: true, userId: true, role: true, agentTitle: true },
+      },
+    },
+  });
+
+  for (const company of companies) {
+    const active = company.members;
+    if (active.length !== 1) continue;
+    const sole = active[0];
+    if (sole.role === 'ADMIN' && sole.agentTitle === 'KIEROWNIK_BIURO') continue;
+    try {
+      await prisma.agencyCompanyMember.update({
+        where: { id: sole.id },
+        data: {
+          role: 'ADMIN',
+          agentTitle: 'KIEROWNIK_BIURO',
+          approvedAt: new Date(),
+          approvedById: sole.userId,
+        },
+      });
+      if (company.ownerUserId !== sole.userId) {
+        await prisma.agencyCompany.update({
+          where: { id: company.id },
+          data: { ownerUserId: sole.userId },
+        });
+      }
+      report.managersPromoted += 1;
+    } catch (e) {
+      report.errors.push(`company ${company.id}: ${e instanceof Error ? e.message : 'unknown'}`);
+    }
+  }
+
+  const membersWithPhotos = await prisma.agencyCompanyMember.findMany({
+    include: {
+      user: { select: { image: true } },
+      company: { select: { logoUrl: true } },
+    },
+  });
+
+  for (const member of membersWithPhotos) {
+    const userImage = member.user.image || null;
+    const isCustomMemberUpload = String(member.profilePhotoUrl || '').includes('/uploads/agency-member/');
+    const isCompanyLogo =
+      member.profilePhotoUrl &&
+      member.company.logoUrl &&
+      member.profilePhotoUrl === member.company.logoUrl;
+
+    if (isCustomMemberUpload) continue;
+
+    if (member.profilePhotoUrl !== userImage) {
+      await prisma.agencyCompanyMember.update({
+        where: { id: member.id },
+        data: { profilePhotoUrl: userImage },
+      });
+      report.photosSynced += 1;
+    } else if (isCompanyLogo && userImage) {
+      await prisma.agencyCompanyMember.update({
+        where: { id: member.id },
+        data: { profilePhotoUrl: userImage },
+      });
+      report.photosSynced += 1;
+    }
+  }
+
+  return report;
+}
+
 export async function listAgencyCompaniesWithStats() {
   const companies = await prisma.agencyCompany.findMany({
     include: {
@@ -985,7 +1121,7 @@ async function buildCompanyPublicPayload(company: {
     agents: company.members.map((m) => ({
       id: m.user.id,
       name: m.user.name,
-      image: m.profilePhotoUrl || m.user.image,
+      image: pickTeamMemberAvatar({ userImage: m.user.image, profilePhotoUrl: m.profilePhotoUrl }),
       phone: m.user.phone,
       role: m.role,
       agentTitle: m.agentTitle,

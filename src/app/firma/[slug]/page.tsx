@@ -19,7 +19,7 @@ import {
 import { getBestUserAvatarUrl } from "@/lib/userAvatar";
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 import ProfileMediaAvatar from "@/components/profile/ProfileMediaAvatar";
-import { formatAgentTitle } from "@/lib/agentProfile";
+import { formatAgentTitle, pickTeamMemberAvatar } from "@/lib/agentProfile";
 
 type CompanyPublic = {
   company: {
@@ -238,7 +238,7 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
                   <div className="flex items-center gap-4">
                     <div className="size-12 overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
                       <ProfileMediaAvatar
-                        src={agent.profilePhotoUrl || agent.image}
+                        src={pickTeamMemberAvatar({ userImage: agent.image, profilePhotoUrl: agent.profilePhotoUrl })}
                         alt={agent.name || "Agent"}
                         iconSize={20}
                         className="size-full object-cover"
