@@ -132,7 +132,7 @@ export default function Navbar() {
           className="group relative z-20 flex shrink-0 items-center gap-3 rounded-full px-1 text-left"
           aria-label="EstateOS home"
         >
-          <span className="eos-nav-mark flex size-9 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] text-[10px] font-black">
+          <span className="eos-nav-mark flex size-10 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] text-[11px] font-black sm:size-11 sm:text-xs">
             EOS
           </span>
           <span className="eos-nav-wordmark hidden sm:block">
@@ -337,7 +337,7 @@ export default function Navbar() {
           display: inline-block;
           overflow: visible;
           padding-right: 0.08em;
-          font-size: clamp(1.02rem, 1.28vw, 1.28rem);
+          font-size: clamp(1.14rem, 1.55vw, 1.48rem);
           font-weight: 800;
           font-style: normal;
           letter-spacing: 0.04em;

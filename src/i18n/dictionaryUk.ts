@@ -231,6 +231,8 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       ctaAgency: "Для агентств і посередників",
       exploreMap: "Карта оголошень",
       scroll: "Гортати",
+      cooperationNote:
+        "Агентства та приватні власники можуть співпрацювати на одній платформі — на прозорих умовах, у Deal Room і на карті оголошень.",
       privateCard: {
         title: "Для приватних осіб",
         subtitle:
@@ -238,6 +240,7 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
         bullets: [
           "Публікація без комісії платформи",
           "Карта оголошень і Radar на вашому акаунті",
+          "Співпраця з агентством — за бажанням, на чітких умовах",
           "Безпечний контакт і Deal Room в одному місці",
         ],
         cta: "Створити акаунт — безкоштовно",

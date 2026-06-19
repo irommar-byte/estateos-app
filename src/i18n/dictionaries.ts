@@ -98,6 +98,7 @@ export type Dictionary = {
     ctaAgency: string;
     exploreMap: string;
     scroll: string;
+    cooperationNote: string;
     privateCard: {
       title: string;
       subtitle: string;
@@ -623,6 +624,8 @@ const pl: Dictionary = {
     ctaAgency: "Dla agencji i pośredników",
     exploreMap: "Mapa ofert",
     scroll: "Przewiń",
+    cooperationNote:
+      "Agencje i osoby prywatne mogą współpracować na jednej platformie — na przejrzystych zasadach, w Deal Room i na mapie ofert.",
     privateCard: {
       title: "Dla osób prywatnych",
       subtitle:
@@ -630,6 +633,7 @@ const pl: Dictionary = {
       bullets: [
         "Publikacja ogłoszenia bez prowizji platformy",
         "Mapa ofert i Radar dopasowań na Twoim koncie",
+        "Współpraca z agencją — jeśli chcesz, na jasno ustalonych zasadach",
         "Bezpieczny kontakt i Deal Room w jednym miejscu",
       ],
       cta: "Załóż konto — za darmo",
@@ -1239,6 +1243,8 @@ const en: Dictionary = {
     ctaAgency: "For agencies & brokers",
     exploreMap: "Listing map",
     scroll: "Scroll",
+    cooperationNote:
+      "Agencies and private owners can work together on one platform — transparent terms, Deal Room, and the live listing map.",
     privateCard: {
       title: "For private owners",
       subtitle:
@@ -1246,6 +1252,7 @@ const en: Dictionary = {
       bullets: [
         "Publish with no platform listing fee",
         "Live map and Investment Radar on your account",
+        "Optional agency partnership on clear, agreed terms",
         "Secure contact and Deal Room in one place",
       ],
       cta: "Create a free account",
