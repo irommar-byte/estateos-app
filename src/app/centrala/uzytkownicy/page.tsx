@@ -19,14 +19,22 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { AdminUserDetail } from "@/lib/adminUserDetail";
+import type { AdminAgencyListItem } from "@/lib/adminAgencyDetail";
 import AdminUserDetailPanel from "@/components/admin/AdminUserDetailPanel";
+import AdminAgencyDetailPanel from "@/components/admin/AdminAgencyDetailPanel";
 
 type TabType = "PRIVATE" | "AGENCIES" | "PARTNER";
 
+function isAgentLikeUser(u: { role?: string | null; planType?: string | null }) {
+  if (String(u.role || "").toUpperCase() === "AGENT") return true;
+  if (String(u.planType || "").toUpperCase() === "AGENCY") return true;
+  return false;
+}
+
+/** Agenci widoczni tylko w segmencie Agencje (jako członkowie biura). */
 function classifyUser(u: { isPro?: boolean; planType?: string | null; role?: string | null }) {
+  if (isAgentLikeUser(u)) return null;
   if (u.isPro) return "PARTNER" as const;
-  if (String(u.role || "").toUpperCase() === "AGENT") return "AGENCIES" as const;
-  if (String(u.planType || "").toUpperCase() === "AGENCY") return "AGENCIES" as const;
   return "PRIVATE" as const;
 }
 
@@ -43,17 +51,24 @@ export default function AdminUsers() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [users, setUsers] = useState<AdminUserDetail[]>([]);
+  const [agencies, setAgencies] = useState<AdminAgencyListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<AdminUserDetail | null>(null);
+  const [selectedAgencyId, setSelectedAgencyId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>("PRIVATE");
   const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch("/api/admin/users");
-      const data = await res.json();
-      if (data.success) setUsers(data.users);
+      const [usersRes, agenciesRes] = await Promise.all([
+        fetch("/api/admin/users"),
+        fetch("/api/admin/agencies"),
+      ]);
+      const usersData = await usersRes.json();
+      const agenciesData = await agenciesRes.json();
+      if (usersData.success) setUsers(usersData.users);
+      if (agenciesData.success) setAgencies(agenciesData.agencies);
     } catch (err) {
       console.error(err);
     } finally {
@@ -67,20 +82,49 @@ export default function AdminUsers() {
 
   useEffect(() => {
     const userId = Number(searchParams.get("userId"));
+    const agencyId = Number(searchParams.get("agencyId"));
+    if (Number.isFinite(agencyId) && agencyId > 0) {
+      setActiveTab("AGENCIES");
+      setSelectedAgencyId(agencyId);
+      setSelectedUser(null);
+      return;
+    }
     if (!Number.isFinite(userId) || userId <= 0 || users.length === 0) return;
     const match = users.find((u) => u.id === userId);
     if (!match) return;
-    setActiveTab(classifyUser(match));
+    const seg = classifyUser(match);
+    if (seg) setActiveTab(seg);
     setSelectedUser(match);
+    setSelectedAgencyId(null);
   }, [searchParams, users]);
 
   const segmentCounts = useMemo(() => {
-    const counts: Record<TabType, number> = { PRIVATE: 0, AGENCIES: 0, PARTNER: 0 };
+    const counts: Record<TabType, number> = { PRIVATE: 0, AGENCIES: agencies.length, PARTNER: 0 };
     for (const u of users) {
-      counts[classifyUser(u)] += 1;
+      const seg = classifyUser(u);
+      if (seg) counts[seg] += 1;
     }
     return counts;
-  }, [users]);
+  }, [users, agencies.length]);
+
+  const filteredAgencies = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    const qId = Number(q);
+    return agencies
+      .filter((a) => {
+        if (!q) return true;
+        if (Number.isFinite(qId) && qId > 0 && a.id === qId) return true;
+        return (
+          String(a.id).includes(q) ||
+          String(a.name || "").toLowerCase().includes(q) ||
+          String(a.slug || "").toLowerCase().includes(q) ||
+          String(a.ownerName || "").toLowerCase().includes(q) ||
+          String(a.managerName || "").toLowerCase().includes(q) ||
+          String(a.officeEmail || "").toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  }, [agencies, searchTerm]);
 
   const filteredUsers = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -88,7 +132,7 @@ export default function AdminUsers() {
     return users
       .filter((u) => {
         const seg = classifyUser(u);
-        if (seg !== activeTab) return false;
+        if (!seg || seg !== activeTab) return false;
         if (!q) return true;
         if (Number.isFinite(qId) && qId > 0 && u.id === qId) return true;
         return (
@@ -250,6 +294,7 @@ export default function AdminUsers() {
                       onClick={() => {
                         setActiveTab(tab.id);
                         setSelectedUser(null);
+                        setSelectedAgencyId(null);
                       }}
                       title={tab.hint}
                       className={`flex shrink-0 items-center gap-2.5 rounded-xl border px-4 py-3 transition-all ${
@@ -286,7 +331,7 @@ export default function AdminUsers() {
                 })}
               </div>
               <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--eos-subtle)]">
-                {filteredUsers.length} w segmencie · {segmentLabel}
+                {activeTab === "AGENCIES" ? filteredAgencies.length : filteredUsers.length} w segmencie · {segmentLabel}
                 {searchTerm ? ` · filtr „${searchTerm}"` : ""}
               </p>
             </nav>
@@ -300,6 +345,69 @@ export default function AdminUsers() {
                 <Loader2 className="animate-spin text-emerald-500" size={20} />
                 <span className="text-sm font-medium">Wczytywanie użytkowników…</span>
               </div>
+            ) : activeTab === "AGENCIES" ? (
+              filteredAgencies.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-[var(--eos-border)] bg-[var(--eos-card)]/50 p-12 text-center">
+                  <Building2 className="mx-auto mb-4 text-[var(--eos-muted)]" size={36} />
+                  <p className="text-sm font-semibold">Brak zarejestrowanych biur</p>
+                  <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-[var(--eos-muted)]">
+                    {searchTerm
+                      ? "Zmień wyszukiwanie lub wyczyść filtr."
+                      : "Biura powstają przy rejestracji agenta lub automatycznie z profilu kierownika."}
+                  </p>
+                </div>
+              ) : (
+                filteredAgencies.map((a) => {
+                  const selected = selectedAgencyId === a.id;
+                  return (
+                    <motion.button
+                      type="button"
+                      key={a.id}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      onClick={() => {
+                        setSelectedAgencyId(a.id);
+                        setSelectedUser(null);
+                      }}
+                      className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-left transition-all md:p-5 ${
+                        selected
+                          ? "border-emerald-500/40 bg-emerald-500/5 shadow-sm"
+                          : "border-[var(--eos-border)] bg-[var(--eos-card)] hover:border-[var(--eos-border-strong)]"
+                      }`}
+                    >
+                      <div className="flex min-w-0 items-center gap-4">
+                        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                          <Building2 size={20} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="truncate font-bold">{a.name}</span>
+                            <span className="rounded-md bg-[var(--eos-bg)] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[var(--eos-subtle)]">
+                              #{a.id}
+                            </span>
+                            {a.managerName ? (
+                              <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400">
+                                {a.managerName}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="truncate text-xs text-[var(--eos-muted)]">
+                            {a.slug ? `/firma/${a.slug}` : "Bez slug"} · właściciel: {a.ownerName || `#${a.ownerUserId}`}
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-[var(--eos-subtle)]">
+                            <span>{a.stats.activeMembers} prac.</span>
+                            {a.stats.pendingMembers > 0 ? <span>{a.stats.pendingMembers} oczek.</span> : null}
+                            <span>{a.stats.activeOffers} ofert</span>
+                            <span>{a.extraListings} kred. puli</span>
+                            <span>od {new Date(a.createdAt).toLocaleDateString("pl-PL")}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronRight size={18} className={selected ? "text-emerald-500" : "text-[var(--eos-subtle)]"} />
+                    </motion.button>
+                  );
+                })
+              )
             ) : filteredUsers.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-[var(--eos-border)] bg-[var(--eos-card)]/50 p-12 text-center">
                 <p className="text-sm font-semibold">Brak użytkowników w tym segmencie</p>
@@ -320,7 +428,10 @@ export default function AdminUsers() {
                     key={u.id}
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    onClick={() => setSelectedUser(u)}
+                    onClick={() => {
+                      setSelectedUser(u);
+                      setSelectedAgencyId(null);
+                    }}
                     className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-left transition-all md:p-5 ${
                       selected
                         ? "border-emerald-500/40 bg-emerald-500/5 shadow-sm"
@@ -332,9 +443,7 @@ export default function AdminUsers() {
                         className={`flex size-11 shrink-0 items-center justify-center rounded-xl text-base font-black ${
                           seg === "PARTNER"
                             ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                            : seg === "AGENCIES"
-                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                              : "bg-[var(--eos-border)] text-[var(--eos-muted)]"
+                            : "bg-[var(--eos-border)] text-[var(--eos-muted)]"
                         }`}
                       >
                         {(u.name || u.email || "?").charAt(0).toUpperCase()}
@@ -393,7 +502,16 @@ export default function AdminUsers() {
           </div>
 
           <AnimatePresence>
-            {selectedUser ? (
+            {selectedAgencyId ? (
+              <motion.div initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 24 }}>
+                <AdminAgencyDetailPanel
+                  agencyId={selectedAgencyId}
+                  onClose={() => setSelectedAgencyId(null)}
+                  onOpenMessages={(userId, name) => void openContact(userId, name)}
+                  onUpdated={() => void fetchUsers()}
+                />
+              </motion.div>
+            ) : selectedUser ? (
               <motion.div initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 24 }}>
                 <AdminUserDetailPanel
                   user={selectedUser}
