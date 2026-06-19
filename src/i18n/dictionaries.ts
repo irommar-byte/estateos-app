@@ -98,6 +98,18 @@ export type Dictionary = {
     ctaAgency: string;
     exploreMap: string;
     scroll: string;
+    privateCard: {
+      title: string;
+      subtitle: string;
+      bullets: string[];
+      cta: string;
+    };
+    agencyCard: {
+      title: string;
+      subtitle: string;
+      bullets: string[];
+      cta: string;
+    };
   };
   audiencePrivate: {
     eyebrow: string;
@@ -611,6 +623,30 @@ const pl: Dictionary = {
     ctaAgency: "Dla agencji i pośredników",
     exploreMap: "Mapa ofert",
     scroll: "Przewiń",
+    privateCard: {
+      title: "Dla osób prywatnych",
+      subtitle:
+        "Wystaw mieszkanie, dom lub działkę bez opłat za publikację. Przeglądaj rynek na mapie i negocjuj w Deal Room.",
+      bullets: [
+        "Publikacja ogłoszenia bez prowizji platformy",
+        "Mapa ofert i Radar dopasowań na Twoim koncie",
+        "Bezpieczny kontakt i Deal Room w jednym miejscu",
+      ],
+      cta: "Załóż konto — za darmo",
+    },
+    agencyCard: {
+      title: "Dla biur i agencji",
+      subtitle:
+        "Profesjonalne narzędzia dla zespołu — od pierwszego ogłoszenia po zamknięcie transakcji.",
+      bullets: [
+        "Załóż swoje biuro i publiczny profil firmy",
+        "Zarządzaj CRM, klientami i zadaniami zespołu",
+        "Wystawiaj wszystkie ogłoszenia z jednego panelu",
+        "Współpracuj z właścicielami na przejrzystych zasadach",
+        "Dodawaj pracowników i zarządzaj stanowiskami w zespole",
+      ],
+      cta: "Załóż biuro nieruchomości",
+    },
   },
   audiencePrivate: {
     eyebrow: "EstateOS™ · osoby prywatne",
@@ -1203,6 +1239,30 @@ const en: Dictionary = {
     ctaAgency: "For agencies & brokers",
     exploreMap: "Listing map",
     scroll: "Scroll",
+    privateCard: {
+      title: "For private owners",
+      subtitle:
+        "List a flat, house, or plot with no listing fee. Browse the live map and negotiate in Deal Room.",
+      bullets: [
+        "Publish with no platform listing fee",
+        "Live map and Investment Radar on your account",
+        "Secure contact and Deal Room in one place",
+      ],
+      cta: "Create a free account",
+    },
+    agencyCard: {
+      title: "For agencies & offices",
+      subtitle:
+        "Professional tools for your team — from the first listing to closing the deal.",
+      bullets: [
+        "Set up your office and public company profile",
+        "Manage CRM, clients, and team tasks",
+        "Publish all listings from one dashboard",
+        "Collaborate with owners on transparent terms",
+        "Add employees and manage roles in your team",
+      ],
+      cta: "Register your agency office",
+    },
   },
   audiencePrivate: {
     eyebrow: "EstateOS™ · private owners",
