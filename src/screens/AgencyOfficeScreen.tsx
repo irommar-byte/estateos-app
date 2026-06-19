@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -17,7 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { API_URL } from '../config/network';
-import { fetchAgencyMembership, patchAgencyMember } from '../services/agencyCompanyService';
+import { fetchAgencyMembership, patchAgencyMember, patchAgencyCompanyContact } from '../services/agencyCompanyService';
 import type { AgencyTeamMember } from '../types/agencyMembership';
 import { AGENCY_TITLE_OPTIONS } from '../types/agencyMembership';
 
@@ -54,6 +55,9 @@ export default function AgencyOfficeScreen() {
 
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [contactBusy, setContactBusy] = useState(false);
+  const [contactEditing, setContactEditing] = useState(false);
+  const [contactDraft, setContactDraft] = useState({ website: '', officePhone: '', officeEmail: '' });
 
   const colors = useMemo(
     () => ({
@@ -73,6 +77,16 @@ export default function AgencyOfficeScreen() {
   const isAdmin = membership?.role === 'ADMIN' && membership?.status === 'ACTIVE';
   const companyName = membership?.companyName || membership?.company?.name || user?.companyName || 'Biuro';
   const team = membership?.team || [];
+
+  React.useEffect(() => {
+    const company = membership?.company;
+    if (!company) return;
+    setContactDraft({
+      website: company.website || '',
+      officePhone: company.officePhone || '',
+      officeEmail: company.officeEmail || '',
+    });
+  }, [membership?.company]);
 
   const reload = useCallback(async () => {
     if (!token) return;
@@ -159,6 +173,27 @@ export default function AgencyOfficeScreen() {
     [token, isAdmin, refreshAgencyMembership],
   );
 
+  const handleContactSave = useCallback(async () => {
+    if (!token || !isAdmin) return;
+    setContactBusy(true);
+    try {
+      const res = await patchAgencyCompanyContact(token, {
+        website: contactDraft.website.trim() || null,
+        officePhone: contactDraft.officePhone.trim() || null,
+        officeEmail: contactDraft.officeEmail.trim() || null,
+      });
+      if (!res.ok) {
+        Alert.alert('Dane biura', res.message || 'Nie udało się zapisać.');
+        return;
+      }
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setContactEditing(false);
+      await refreshAgencyMembership();
+    } finally {
+      setContactBusy(false);
+    }
+  }, [token, isAdmin, contactDraft, refreshAgencyMembership]);
+
   const activeTeam = team.filter((m) => m.status === 'ACTIVE');
   const pendingTeam = team.filter((m) => m.status === 'PENDING');
 
@@ -199,6 +234,90 @@ export default function AgencyOfficeScreen() {
             <Text style={[styles.heroMeta, { color: colors.secondary }]}>{membership.company.address}</Text>
           ) : null}
         </View>
+
+        {isAdmin ? (
+          <View style={[styles.contactCard, { backgroundColor: colors.card, borderColor: colors.separator }]}>
+            <View style={styles.contactHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.secondary, marginBottom: 0 }]}>DANE KONTAKTOWE</Text>
+              {!contactEditing ? (
+                <Pressable onPress={() => setContactEditing(true)} hitSlop={8}>
+                  <Text style={{ color: colors.accentBlue, fontSize: 13, fontWeight: '700' }}>Edytuj</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            {contactEditing ? (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.secondary }]}>Strona www</Text>
+                <TextInput
+                  value={contactDraft.website}
+                  onChangeText={(website) => setContactDraft((d) => ({ ...d, website }))}
+                  placeholder="https://twoje-biuro.pl"
+                  placeholderTextColor={colors.secondary}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                  style={[styles.input, { color: colors.text, borderColor: colors.separator, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
+                />
+                <Text style={[styles.fieldLabel, { color: colors.secondary }]}>Telefon biura</Text>
+                <TextInput
+                  value={contactDraft.officePhone}
+                  onChangeText={(officePhone) => setContactDraft((d) => ({ ...d, officePhone }))}
+                  placeholder="+48 22 000 00 00"
+                  placeholderTextColor={colors.secondary}
+                  keyboardType="phone-pad"
+                  style={[styles.input, { color: colors.text, borderColor: colors.separator, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
+                />
+                <Text style={[styles.fieldLabel, { color: colors.secondary }]}>E-mail biura</Text>
+                <TextInput
+                  value={contactDraft.officeEmail}
+                  onChangeText={(officeEmail) => setContactDraft((d) => ({ ...d, officeEmail }))}
+                  placeholder="biuro@twoje-biuro.pl"
+                  placeholderTextColor={colors.secondary}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  style={[styles.input, { color: colors.text, borderColor: colors.separator, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
+                />
+                <View style={styles.contactActions}>
+                  <Pressable
+                    onPress={() => void handleContactSave()}
+                    disabled={contactBusy}
+                    style={[styles.saveBtn, { opacity: contactBusy ? 0.6 : 1 }]}
+                  >
+                    {contactBusy ? (
+                      <ActivityIndicator color="#000" />
+                    ) : (
+                      <Text style={styles.saveBtnText}>Zapisz</Text>
+                    )}
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setContactEditing(false);
+                      setContactDraft({
+                        website: membership?.company?.website || '',
+                        officePhone: membership?.company?.officePhone || '',
+                        officeEmail: membership?.company?.officeEmail || '',
+                      });
+                    }}
+                    disabled={contactBusy}
+                  >
+                    <Text style={{ color: colors.secondary, fontWeight: '700' }}>Anuluj</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <View style={{ gap: 8, marginTop: 10 }}>
+                <Text style={{ color: colors.text, fontSize: 14 }}>
+                  {membership?.company?.website || 'Brak strony www'}
+                </Text>
+                <Text style={{ color: colors.text, fontSize: 14 }}>
+                  {membership?.company?.officePhone || 'Brak telefonu'}
+                </Text>
+                <Text style={{ color: colors.text, fontSize: 14 }}>
+                  {membership?.company?.officeEmail || 'Brak e-maila'}
+                </Text>
+              </View>
+            )}
+          </View>
+        ) : null}
 
         {isAdmin && pendingTeam.length > 0 ? (
           <View style={styles.section}>
@@ -352,4 +471,29 @@ const styles = StyleSheet.create({
   memberName: { fontSize: 16, fontWeight: '700' },
   adminActions: { flexDirection: 'row', gap: 8 },
   actionBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  contactCard: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+    marginBottom: 18,
+  },
+  contactHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  fieldLabel: { fontSize: 11, fontWeight: '700', marginTop: 10, marginBottom: 6, letterSpacing: 0.3 },
+  input: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+  },
+  contactActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 14 },
+  saveBtn: {
+    backgroundColor: '#34C759',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+    minWidth: 88,
+    alignItems: 'center',
+  },
+  saveBtnText: { color: '#000', fontWeight: '800', fontSize: 14 },
 });

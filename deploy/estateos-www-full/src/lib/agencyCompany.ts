@@ -752,6 +752,67 @@ export async function updateCompanyLogo(params: {
   });
 }
 
+function normalizeCompanyWebsite(value: unknown): string | null {
+  let w = String(value ?? '').trim();
+  if (!w) return null;
+  if (!/^https?:\/\//i.test(w)) w = `https://${w}`;
+  return w;
+}
+
+function normalizeOfficeEmail(value: unknown): string | null {
+  const e = String(value ?? '').toLowerCase().trim();
+  if (!e) return null;
+  if (!e.includes('@')) throw new Error('Podaj prawidłowy adres e-mail biura.');
+  return e;
+}
+
+/** Kierownik biura (ADMIN) — strona www, telefon i e-mail widoczne na profilu publicznym biura. */
+export async function updateCompanyContact(params: {
+  companyId: number;
+  adminUserId: number;
+  website?: string | null;
+  officePhone?: string | null;
+  officeEmail?: string | null;
+}) {
+  const admin = await requireActiveAgencyAdmin(params.adminUserId);
+  if (!admin || admin.companyId !== params.companyId) throw new Error('Brak uprawnień.');
+
+  const data: { website?: string | null; officePhone?: string | null; officeEmail?: string | null } = {};
+  if (params.website !== undefined) data.website = normalizeCompanyWebsite(params.website);
+  if (params.officePhone !== undefined) {
+    data.officePhone = String(params.officePhone ?? '').trim() || null;
+  }
+  if (params.officeEmail !== undefined) data.officeEmail = normalizeOfficeEmail(params.officeEmail);
+  if (!Object.keys(data).length) throw new Error('Brak danych do zapisania.');
+
+  return prisma.$transaction(async (tx) => {
+    const company = await tx.agencyCompany.update({
+      where: { id: params.companyId },
+      data,
+    });
+
+    const userPatch: { companyWebsite?: string | null; officePhone?: string | null; officeEmail?: string | null } = {};
+    if (data.website !== undefined) userPatch.companyWebsite = data.website;
+    if (data.officePhone !== undefined) userPatch.officePhone = data.officePhone;
+    if (data.officeEmail !== undefined) userPatch.officeEmail = data.officeEmail;
+
+    if (Object.keys(userPatch).length) {
+      const members = await tx.agencyCompanyMember.findMany({
+        where: { companyId: params.companyId, status: 'ACTIVE' },
+        select: { userId: true },
+      });
+      if (members.length) {
+        await tx.user.updateMany({
+          where: { id: { in: members.map((m) => m.userId) } },
+          data: userPatch,
+        });
+      }
+    }
+
+    return company;
+  });
+}
+
 export async function listAgencyCompaniesWithStats() {
   const companies = await prisma.agencyCompany.findMany({
     include: {

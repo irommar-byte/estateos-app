@@ -75,3 +75,19 @@ export async function patchAgencyMember(
   }
   return { ok: true };
 }
+
+export async function patchAgencyCompanyContact(
+  token: string,
+  body: { website?: string | null; officePhone?: string | null; officeEmail?: string | null },
+): Promise<{ ok: boolean; message?: string }> {
+  const res = await fetch(`${API_URL}/api/agency-company/profile`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false, message: String(json?.message || 'Nie udało się zapisać danych biura.') };
+  }
+  return { ok: true };
+}
