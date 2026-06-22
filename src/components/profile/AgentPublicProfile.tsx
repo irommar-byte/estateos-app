@@ -44,6 +44,7 @@ type AgentProfilePayload = {
     reviewsCount: number;
     averageRating: number | null;
     activeOffers: number;
+    offersPreviewLimit?: number;
   };
   offers: Array<{
     id: number;
@@ -76,9 +77,14 @@ function formatPrice(offer: AgentProfilePayload["offers"][number]) {
   }).format(amount);
 }
 
+function formatCount(n: number) {
+  return n.toLocaleString("pl-PL");
+}
+
 export default function AgentPublicProfile({ data }: { data: AgentProfilePayload }) {
   const { agent, company, stats, offers, reviews } = data;
   const rating = stats.averageRating ?? 0;
+  const hasMoreOffers = stats.activeOffers > offers.length;
 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] pb-32 pt-28 text-[var(--eos-text)]">
@@ -133,7 +139,7 @@ export default function AgentPublicProfile({ data }: { data: AgentProfilePayload
                   </span>
                 </button>
                 <span className="rounded-full bg-[var(--eos-input)] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">
-                  {stats.activeOffers} aktywnych ofert
+                  {formatCount(stats.activeOffers)} aktywnych ofert
                 </span>
               </div>
               <p className="mt-3 text-xs text-[var(--eos-muted)]">
@@ -199,9 +205,17 @@ export default function AgentPublicProfile({ data }: { data: AgentProfilePayload
 
         {offers.length > 0 ? (
           <section className="mt-12">
-            <h2 className="mb-5 flex items-center gap-2 text-xl font-black">
-              <Briefcase className="text-emerald-500" size={20} /> Oferty agenta ({offers.length})
-            </h2>
+            <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <h2 className="flex items-center gap-2 text-xl font-black">
+                <Briefcase className="text-emerald-500" size={20} />
+                Oferty agenta ({formatCount(stats.activeOffers)})
+              </h2>
+              {hasMoreOffers ? (
+                <p className="text-xs font-medium text-[var(--eos-muted)]">
+                  Najnowsze {formatCount(offers.length)} z {formatCount(stats.activeOffers)} aktywnych ogłoszeń
+                </p>
+              ) : null}
+            </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {offers.map((offer) => (
                 <Link

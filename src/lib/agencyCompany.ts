@@ -1051,28 +1051,33 @@ async function buildCompanyPublicPayload(company: {
   }>;
 }) {
   const memberIds = company.members.map((m) => m.userId);
-  const offers = memberIds.length
-    ? await prisma.offer.findMany({
-        where: { userId: { in: memberIds }, status: 'ACTIVE' },
-        select: {
-          id: true,
-          title: true,
-          price: true,
-          pricePln: true,
-          priceCurrency: true,
-          city: true,
-          district: true,
-          area: true,
-          rooms: true,
-          images: true,
-          transactionType: true,
-          userId: true,
-          user: { select: { id: true, name: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 120,
-      })
-    : [];
+  const [activeListingsCount, offers] = await Promise.all([
+    memberIds.length
+      ? prisma.offer.count({ where: { userId: { in: memberIds }, status: 'ACTIVE' } })
+      : Promise.resolve(0),
+    memberIds.length
+      ? prisma.offer.findMany({
+          where: { userId: { in: memberIds }, status: 'ACTIVE' },
+          select: {
+            id: true,
+            title: true,
+            price: true,
+            pricePln: true,
+            priceCurrency: true,
+            city: true,
+            district: true,
+            area: true,
+            rooms: true,
+            images: true,
+            transactionType: true,
+            userId: true,
+            user: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 120,
+        })
+      : Promise.resolve([]),
+  ]);
 
   const reviews = memberIds.length
     ? await prisma.review.findMany({
@@ -1110,7 +1115,7 @@ async function buildCompanyPublicPayload(company: {
     },
     stats: {
       activeAgents: company.members.length,
-      activeListings: offers.length,
+      activeListings: activeListingsCount,
       reviewsCount,
       averageRating,
     },
