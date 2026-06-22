@@ -109,6 +109,7 @@ export async function fetchAgencyDashboard(token: string): Promise<AgencyDashboa
     members: Array.isArray(json.members) ? json.members : [],
     creditTransfers: Array.isArray(json.creditTransfers) ? json.creditTransfers : [],
     recentOffers: Array.isArray(json.recentOffers) ? json.recentOffers : [],
+    partnerPlan: json.partnerPlan ?? null,
   };
 }
 

@@ -102,6 +102,15 @@ export type AgencyDashboardPayload = {
     updatedAt: string;
     agent: { id: number; name: string | null };
   }>;
+  partnerPlan?: {
+    currentPlanId: 'start' | 'pro' | 'enterprise' | null;
+    isSubscriptionActive: boolean;
+    plusExpiresAt: string | null;
+    poolCredits: number;
+    activeAgents: number;
+    agentsLimit: number | null;
+    daysRemaining: number | null;
+  } | null;
 };
 
 export const AGENCY_TITLE_OPTIONS = [

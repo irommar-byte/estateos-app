@@ -25,6 +25,9 @@ import {
 import { motion } from 'framer-motion';
 import ProfileMediaAvatar from '@/components/profile/ProfileMediaAvatar';
 import AgencyMemberDetailPanel from '@/components/crm/AgencyMemberDetailPanel';
+import AgencyPartnerPlanSection, {
+  type AgencyPartnerPlanPayload,
+} from '@/components/crm/AgencyPartnerPlanSection';
 import { AGENCY_AGENT_TITLES, formatAgentTitle, pickTeamMemberAvatar } from '@/lib/agentProfile';
 
 type MemberRow = {
@@ -93,6 +96,7 @@ type DashboardPayload = {
     toUser: { id: number; name: string | null; email: string };
     createdBy: { id: number; name: string | null };
   }>;
+  partnerPlan?: AgencyPartnerPlanPayload | null;
 };
 
 type MembershipPayload = {
@@ -126,6 +130,8 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   const [contactEditing, setContactEditing] = useState(false);
   const [photoBusyId, setPhotoBusyId] = useState<number | null>(null);
   const [detailMember, setDetailMember] = useState<MemberRow | null>(null);
+  const [partnerCheckoutLoading, setPartnerCheckoutLoading] = useState<string | null>(null);
+  const [partnerCheckoutError, setPartnerCheckoutError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -156,6 +162,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
             members: dashData.members,
             creditTransfers: dashData.creditTransfers,
             recentOffers: dashData.recentOffers || [],
+            partnerPlan: dashData.partnerPlan ?? null,
           });
         }
       }
@@ -301,6 +308,33 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       setError('Błąd połączenia.');
     } finally {
       setPhotoBusyId(null);
+    }
+  };
+
+  const handlePartnerCheckout = async (stripePlanCode: string) => {
+    setPartnerCheckoutError('');
+    setPartnerCheckoutLoading(stripePlanCode);
+    try {
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          returnUrl: `${window.location.origin}/moje-konto/firma`,
+          cancelUrl: `${window.location.origin}/moje-konto/firma`,
+          plan: stripePlanCode,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPartnerCheckoutError(data?.error || data?.message || 'Nie udało się rozpocząć płatności.');
+        return;
+      }
+      if (data.url) window.location.href = data.url;
+    } catch {
+      setPartnerCheckoutError('Błąd połączenia z płatnością.');
+    } finally {
+      setPartnerCheckoutLoading(null);
     }
   };
 
@@ -488,6 +522,15 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
           </div>
         </div>
       </header>
+
+      {dashboard?.partnerPlan ? (
+        <AgencyPartnerPlanSection
+          partnerPlan={dashboard.partnerPlan}
+          onCheckout={(code) => void handlePartnerCheckout(code)}
+          checkoutLoading={partnerCheckoutLoading}
+          checkoutError={partnerCheckoutError}
+        />
+      ) : null}
 
       <section className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

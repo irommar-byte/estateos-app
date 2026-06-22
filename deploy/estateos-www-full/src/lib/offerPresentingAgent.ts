@@ -6,6 +6,7 @@ import {
   resolveServicingCompanyName,
 } from '@/lib/sellerDisplay';
 import { getBestUserAvatarUrl } from '@/lib/userAvatar';
+import { getUserDisplayAvatar } from '@/lib/agencyCompany';
 
 export type PresentingAgentProfile = {
   userId: number;
@@ -20,7 +21,7 @@ export type PresentingAgentProfile = {
   planType: string | null;
 };
 
-function shapePresentingAgent(user: {
+async function shapePresentingAgent(user: {
   id: number;
   name: string | null;
   email: string | null;
@@ -30,11 +31,12 @@ function shapePresentingAgent(user: {
   planType: string | null;
   companyName: string | null;
   buyerType?: string | null;
-}): PresentingAgentProfile {
+}): Promise<PresentingAgentProfile> {
   const userLike = user;
   const personName = resolveSellerPersonName(userLike);
   const companyName = resolveServicingCompanyName(userLike);
   const displayName = resolveSellerDisplayName(userLike, user.name || 'Agent');
+  const displayImage = (await getUserDisplayAvatar(user.id)) || getBestUserAvatarUrl(user) || user.image;
   return {
     userId: user.id,
     name: user.name || displayName,
@@ -43,7 +45,7 @@ function shapePresentingAgent(user: {
     displayName,
     phone: user.phone,
     email: user.email,
-    image: getBestUserAvatarUrl(user) || user.image,
+    image: displayImage,
     role: user.role,
     planType: user.planType,
   };
@@ -94,7 +96,7 @@ export async function resolvePresentingAgent(params: {
       },
     });
     if (!user || !isAgentOrAgencySeller(user)) return null;
-    return shapePresentingAgent(user);
+    return await shapePresentingAgent(user);
   }
 
   const agentId = Number(params.agentUserId);
@@ -115,7 +117,7 @@ export async function resolvePresentingAgent(params: {
     },
   });
   if (!user || !isAgentOrAgencySeller(user)) return null;
-  return shapePresentingAgent(user);
+  return await shapePresentingAgent(user);
 }
 
 export function appendPresentationQuery(

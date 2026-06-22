@@ -265,6 +265,13 @@ export default function AgencyOfficeScreen() {
   const dashboardMembers = dashboard?.members.filter((m) => m.status === 'ACTIVE') ?? [];
   const recentOffers = dashboard?.recentOffers ?? [];
   const creditTransfers = dashboard?.creditTransfers ?? [];
+  const partnerPlan = dashboard?.partnerPlan ?? null;
+
+  const PLAN_LABELS: Record<string, string> = {
+    start: 'Partner Start',
+    pro: 'Partner Pro',
+    enterprise: 'Partner Enterprise',
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
@@ -318,6 +325,34 @@ export default function AgencyOfficeScreen() {
                 <Text style={[styles.kpiLabel, { color: colors.secondary }]}>{kpi.label}</Text>
               </View>
             ))}
+          </View>
+        ) : null}
+
+        {isAdmin && partnerPlan ? (
+          <View style={[styles.contactCard, { backgroundColor: colors.card, borderColor: colors.separator }]}>
+            <Text style={[styles.sectionTitle, { color: colors.secondary }]}>PAKIET AGENCJI</Text>
+            <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 8 }}>
+              {partnerPlan.currentPlanId
+                ? PLAN_LABELS[partnerPlan.currentPlanId] || 'Partner'
+                : partnerPlan.isSubscriptionActive
+                  ? 'Aktywna pula Partner'
+                  : 'Brak aktywnego pakietu'}
+            </Text>
+            <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 6 }}>
+              {partnerPlan.poolCredits} kredytów w puli
+              {partnerPlan.agentsLimit != null
+                ? ` · ${partnerPlan.activeAgents}/${partnerPlan.agentsLimit} agentów`
+                : ` · ${partnerPlan.activeAgents} agentów`}
+            </Text>
+            {partnerPlan.plusExpiresAt ? (
+              <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4 }}>
+                Ważność: {fmtDate(partnerPlan.plusExpiresAt)}
+                {partnerPlan.daysRemaining != null ? ` (${partnerPlan.daysRemaining} dni)` : ''}
+              </Text>
+            ) : null}
+            <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 10 }}>
+              Pełny wybór i zmiana pakietu — w panelu na estateos.pl → Moje biuro.
+            </Text>
           </View>
         ) : null}
 

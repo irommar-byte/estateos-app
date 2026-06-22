@@ -7,6 +7,7 @@ import {
   pickTeamMemberAvatar,
   resolveProfileMediaUrl,
 } from '@/lib/agentProfile';
+import { resolveCompanyPartnerPlanStatus } from '@/lib/partnerPlanStatus';
 import { notifyMemberApproved, notifyOffersTransferred } from '@/lib/agencyCompanyNotify';
 
 export function slugifyCompanyName(name: string): string {
@@ -400,6 +401,14 @@ export async function getCompanyDashboard(companyId: number) {
     ]),
   );
 
+  const activeAgentCount = company.members.filter((m) => m.status === 'ACTIVE').length;
+  const partnerPlan = await resolveCompanyPartnerPlanStatus({
+    ownerUserId: company.ownerUserId,
+    extraListings: company.extraListings,
+    plusExpiresAt: company.plusExpiresAt,
+    activeAgents: activeAgentCount,
+  });
+
   return {
     company: {
       id: company.id,
@@ -467,6 +476,7 @@ export async function getCompanyDashboard(companyId: number) {
       toUser: t.toUser,
       createdBy: t.createdBy,
     })),
+    partnerPlan,
   };
 }
 
