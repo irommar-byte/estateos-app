@@ -37,6 +37,7 @@ import {
 } from '../../constants/locationEcosystem';
 import { flagEmojiFromIso2 } from '../../utils/phoneRegions';
 import { coordKeyForCityDistrict } from './districtCoordKeys';
+import { WARSZAWA_DISTRICT_SEEDS } from '../../constants/warsawDistrictSeeds';
 import { useI18n } from '../../i18n';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -219,92 +220,6 @@ function s8LatitudeAtLongitude(lng: number): number | null {
  * Współrzędne wybrane ręcznie — środki osiedli i charakterystyczne lokacje,
  * NIE czyste centroidy geometryczne (które zawodzą dla dzielnic L-shaped).
  */
-const WARSZAWA_DISTRICT_SEEDS: Record<string, Array<{ lat: number; lng: number }>> = {
-  // Białołęka — olbrzymia dzielnica, 8 zarodków
-  'Białołęka': [
-    { lat: 52.3450, lng: 20.9750 }, // Tarchomin
-    { lat: 52.3550, lng: 20.9850 }, // Nowodwory
-    { lat: 52.3500, lng: 21.0200 }, // Henryków
-    { lat: 52.3580, lng: 21.0450 }, // Białołęka Dworska
-    { lat: 52.3650, lng: 21.0300 }, // Choszczówka
-    { lat: 52.3200, lng: 20.9850 }, // Brzeziny / Marywilska N
-    { lat: 52.3100, lng: 20.9800 }, // Marywilska / Echa Leśne S
-    { lat: 52.3050, lng: 21.0050 }, // Annopol / Żerań
-  ],
-  // Targówek — 4 zarodki, dzielnica L-shaped
-  'Targówek': [
-    { lat: 52.3000, lng: 21.0430 }, // Bródno-Podgrodzie
-    { lat: 52.2920, lng: 21.0500 }, // Targówek Mieszkaniowy
-    { lat: 52.2950, lng: 21.0700 }, // Zacisze
-    { lat: 52.2820, lng: 21.0750 }, // Targówek Fabryczny
-  ],
-  // Praga-Północ — 3 zarodki
-  'Praga-Północ': [
-    { lat: 52.2600, lng: 21.0400 }, // Stara Praga
-    { lat: 52.2660, lng: 21.0550 }, // Szmulowizna
-    { lat: 52.2540, lng: 21.0350 }, // Nowa Praga
-  ],
-  // Praga-Południe — 5 zarodków, rozciągnięta na E
-  'Praga-Południe': [
-    { lat: 52.2470, lng: 21.0750 }, // Saska Kępa
-    { lat: 52.2450, lng: 21.0950 }, // Grochów
-    { lat: 52.2380, lng: 21.0700 }, // Kamionek
-    { lat: 52.2280, lng: 21.1050 }, // Gocław
-    { lat: 52.2540, lng: 21.0820 }, // Kępa Gocławska
-  ],
-  // Mokotów — 4 zarodki
-  'Mokotów': [
-    { lat: 52.1980, lng: 21.0190 }, // Stary Mokotów
-    { lat: 52.1850, lng: 21.0250 }, // Stegny
-    { lat: 52.1900, lng: 21.0450 }, // Sadyba
-    { lat: 52.1950, lng: 21.0050 }, // Mokotów Górny
-  ],
-  // Wola — 3 zarodki
-  'Wola': [
-    { lat: 52.2380, lng: 20.9580 }, // Centrum Woli
-    { lat: 52.2260, lng: 20.9700 }, // Mirów
-    { lat: 52.2480, lng: 20.9500 }, // Ulrychów
-  ],
-  // Bielany — 3 zarodki
-  'Bielany': [
-    { lat: 52.2900, lng: 20.9450 }, // Centrum Bielan
-    { lat: 52.3000, lng: 20.9100 }, // Wrzeciono
-    { lat: 52.2800, lng: 20.9550 }, // Marymont
-  ],
-  // Bemowo — 3 zarodki
-  'Bemowo': [
-    { lat: 52.2520, lng: 20.9100 }, // Bemowo Centrum
-    { lat: 52.2400, lng: 20.8950 }, // Jelonki
-    { lat: 52.2620, lng: 20.9050 }, // Boernerowo
-  ],
-  // Ursynów — 3 zarodki
-  'Ursynów': [
-    { lat: 52.1480, lng: 21.0450 }, // Imielin
-    { lat: 52.1380, lng: 21.0300 }, // Kabaty
-    { lat: 52.1600, lng: 21.0500 }, // Stokłosy
-  ],
-  // Wawer — 4 zarodki, ogromna dzielnica
-  'Wawer': [
-    { lat: 52.2200, lng: 21.1400 }, // Marysin
-    { lat: 52.1950, lng: 21.1850 }, // Anin
-    { lat: 52.2050, lng: 21.1700 }, // Międzylesie
-    { lat: 52.2300, lng: 21.1550 }, // Gocławek
-  ],
-  // Pojedyncze centroidy wystarczą dla małych dzielnic
-  'Śródmieście': [{ lat: 52.2310, lng: 21.0120 }, { lat: 52.2400, lng: 21.0080 }],
-  'Ochota': [{ lat: 52.2110, lng: 20.9850 }, { lat: 52.2200, lng: 20.9900 }],
-  'Włochy': [
-    { lat: 52.1960, lng: 20.9450 },
-    { lat: 52.1860, lng: 20.9250 },
-    { lat: 52.1785, lng: 20.9850 }, // Okęcie / Raków — granica z Mokotowem
-  ],
-  'Ursus': [{ lat: 52.1960, lng: 20.8860 }],
-  'Wilanów': [{ lat: 52.1660, lng: 21.0900 }, { lat: 52.1550, lng: 21.0950 }],
-  'Żoliborz': [{ lat: 52.2730, lng: 20.9840 }, { lat: 52.2680, lng: 20.9900 }],
-  'Rembertów': [{ lat: 52.2650, lng: 21.1900 }],
-  'Wesoła': [{ lat: 52.2470, lng: 21.2300 }, { lat: 52.2550, lng: 21.2200 }],
-};
-
 const DISTRICT_CITY_USAGE = Object.values(STRICT_CITY_DISTRICTS).reduce<Record<string, number>>((acc, districts) => {
   districts.forEach((district) => {
     acc[district] = (acc[district] || 0) + 1;
@@ -941,11 +856,13 @@ export default function Step2_Location({ theme }: { theme: any }) {
       : null;
   const safeDraftCity = (() => {
     if (!isPolandLocation) return REST_OF_COUNTRY_CITY;
-    if (satelliteMunicipality || rawDraftCity === REST_OF_COUNTRY_CITY) {
-      return REST_OF_COUNTRY_CITY;
-    }
+    if (rawDraftCity === REST_OF_COUNTRY_CITY) return REST_OF_COUNTRY_CITY;
+    // Ufaj miastu strict zapisanemu w drafcie — resolver już rozstrzygnął spór
+    // „dzielnica vs gmina satelicka" (np. Targówek przy granicy Ząbek = Warszawa).
+    // Pochopny override satelitą degradował poprawną Warszawę do „Reszta kraju".
     if (STRICT_CITY_SET.has(rawDraftCity)) return rawDraftCity;
     if (rawDraftCity) return REST_OF_COUNTRY_CITY;
+    if (satelliteMunicipality) return REST_OF_COUNTRY_CITY;
     if (coordStrictCity) return coordStrictCity;
     if (hasCoords) return REST_OF_COUNTRY_CITY;
     return DEFAULT_STRICT_CITY;

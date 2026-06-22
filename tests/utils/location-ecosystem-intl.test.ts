@@ -387,6 +387,87 @@ describe('locationEcosystem international', () => {
     }
   });
 
+  it('Bródno pin with geocoder Ząbki stays Warszawa (Świętego Wincentego)', () => {
+    const lat = 52.2839;
+    const lng = 21.0434;
+    const resolution = resolvePinLocationFromGeocodedPlace(
+      {
+        city: 'Ząbki',
+        street: 'Świętego Wincentego',
+        subregion: 'Ząbki',
+        isoCountryCode: 'PL',
+      },
+      { streetHint: 'Świętego Wincentego 103', lat, lng },
+    );
+    assert.equal(resolution.mode, 'strict');
+    if (resolution.mode === 'strict') {
+      assert.equal(resolution.strictCity, 'Warszawa');
+    }
+  });
+
+  it('Wawer pin with geocoder Józefów stays Warszawa (Liliowa)', () => {
+    const lat = 52.184;
+    const lng = 21.118;
+    const resolution = resolvePinLocationFromGeocodedPlace(
+      {
+        city: 'Józefów',
+        street: 'Liliowa',
+        subregion: 'Józefów',
+        isoCountryCode: 'PL',
+      },
+      { streetHint: 'Liliowa 5', lat, lng },
+    );
+    assert.equal(resolution.mode, 'strict');
+    if (resolution.mode === 'strict') {
+      assert.equal(resolution.strictCity, 'Warszawa');
+    }
+  });
+
+  it('repair patch does not demote Warszawa Targówek to Ząbki at Bródno pin', () => {
+    const patch = getLocationDraftRepairPatch(
+      {
+        city: 'Warszawa',
+        district: 'Targówek',
+        localityCountry: 'Polska',
+        localityCountryCode: 'PL',
+      },
+      { lat: 52.2839, lng: 21.0434 },
+    );
+    assert.equal(patch, null);
+  });
+
+  it('repair patch promotes stale "Reszta kraju + Targówek" to Warszawa district', () => {
+    const patch = getLocationDraftRepairPatch(
+      {
+        city: REST_OF_COUNTRY_CITY,
+        district: 'Targówek',
+        localityCountry: 'Polska',
+        localityCountryCode: 'PL',
+      },
+      { lat: 52.2966, lng: 21.056 },
+    );
+    assert.ok(patch);
+    assert.equal(patch?.city, 'Warszawa');
+    assert.equal(patch?.district, 'Targówek');
+    assert.equal(patch?.localityCountryCode, 'PL');
+  });
+
+  it('repair patch keeps a real satellite locality (Ząbki) as Reszta kraju', () => {
+    const patch = getLocationDraftRepairPatch(
+      {
+        city: REST_OF_COUNTRY_CITY,
+        district: 'Ząbki',
+        localityCountry: 'Polska',
+        localityCountryCode: 'PL',
+      },
+      { lat: 52.292, lng: 21.111 },
+    );
+    // Ząbki nie jest dzielnicą Warszawy — nie promujemy do miasta strict.
+    if (patch) {
+      assert.equal(patch.city, REST_OF_COUNTRY_CITY);
+    }
+  });
+
   it('Pruszków pin is not classified as Warszawa (Wiśniowa area)', () => {
     const lat = 52.1617;
     const lng = 20.8101;

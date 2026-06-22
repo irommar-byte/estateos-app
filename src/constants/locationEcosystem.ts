@@ -1,4 +1,9 @@
 /** Oferty spoza listy głównych aglomeracji — miejscowość trzymamy w `district` (np. „Przemyśl”). */
+import {
+  inferWarsawDistrictFromCoordinates,
+  minDistanceToWarsawDistrictSeeds,
+} from './warsawDistrictSeeds';
+
 export const REST_OF_COUNTRY_CITY = 'Reszta kraju' as const;
 
 /** Miejscowości podmiejskie często błędnie przypisywane do miast strict (np. Sitaniec → Zamość). */
@@ -39,6 +44,96 @@ const METRO_SATELLITE_MUNICIPALITIES: Array<{
   { name: 'Zielonki', lat: 50.115, lng: 19.932, radiusKm: 5 },
   { name: 'Mogilany', lat: 49.938, lng: 19.889, radiusKm: 5 },
 ];
+
+/** Gminy w pierścieniu wokół Warszawy — promień satelity nie może nadpisać dzielnicy z pinezki. */
+const WARSAW_INNER_BORDER_SATELLITE_NAMES = new Set([
+  'zabki',
+  'marki',
+  'sulejowek',
+  'jozefow',
+  'wolomin',
+  'lomianki',
+  'otwock',
+  'legionowo',
+]);
+
+type MetroSatelliteDef = (typeof METRO_SATELLITE_MUNICIPALITIES)[number];
+
+function getMetroSatelliteDefinition(name: string): MetroSatelliteDef | null {
+  const norm = normalizeLocationMatch(name);
+  return (
+    METRO_SATELLITE_MUNICIPALITIES.find((item) => normalizeLocationMatch(item.name) === norm) ??
+    null
+  );
+}
+
+function isWarsawInnerBorderSatellite(name: string): boolean {
+  return WARSAW_INNER_BORDER_SATELLITE_NAMES.has(normalizeLocationMatch(name));
+}
+
+function isOuterMetroSatellite(name: string): boolean {
+  const norm = normalizeLocationMatch(name);
+  return (
+    METRO_SATELLITE_MUNICIPALITIES.some((item) => normalizeLocationMatch(item.name) === norm) &&
+    !isWarsawInnerBorderSatellite(name)
+  );
+}
+
+/** Pinezka bliżej zarodków dzielnicy Warszawy niż centrum satelity — administracyjnie miasto, nie gmina obok. */
+function warsawDistrictDominatesSatellite(
+  district: string,
+  lat: number,
+  lng: number,
+  satellite: MetroSatelliteDef | null,
+): boolean {
+  const districtKm = minDistanceToWarsawDistrictSeeds(district, lat, lng);
+  if (!Number.isFinite(districtKm)) return false;
+  if (!satellite) return districtKm <= 4.5;
+  const satelliteKm = haversineKm(lat, lng, satellite.lat, satellite.lng);
+  return districtKm + 1.2 < satelliteKm;
+}
+
+function tryResolveWarsawStrictFromPin(
+  lat: number,
+  lng: number,
+  place: GeocodedPlaceInput,
+  streetHint: string,
+  satellite: string | null,
+): PinLocationResolution | null {
+  if (!isPinWithinStrictCityEnvelope('Warszawa', lat, lng)) return null;
+  const inferredDistrict = inferWarsawDistrictFromCoordinates(lat, lng);
+  if (!inferredDistrict) return null;
+
+  const satelliteDef = satellite ? getMetroSatelliteDefinition(satellite) : null;
+  if (
+    satellite &&
+    isOuterMetroSatellite(satellite) &&
+    shouldUseSatelliteOverGeocoder(place, satellite, streetHint, lat, lng)
+  ) {
+    return null;
+  }
+
+  if (warsawDistrictDominatesSatellite(inferredDistrict, lat, lng, satelliteDef)) {
+    return { mode: 'strict', strictCity: 'Warszawa' };
+  }
+
+  if (geocoderConfirmsStrictCity('Warszawa', place, streetHint)) {
+    return { mode: 'strict', strictCity: 'Warszawa' };
+  }
+
+  if (
+    satellite &&
+    isWarsawInnerBorderSatellite(satellite) &&
+    satelliteDef &&
+    normalizeLocationMatch(String(place.city ?? '')) === normalizeLocationMatch(satellite)
+  ) {
+    const districtKm = minDistanceToWarsawDistrictSeeds(inferredDistrict, lat, lng);
+    const satelliteKm = haversineKm(lat, lng, satelliteDef.lat, satelliteDef.lng);
+    if (satelliteKm <= districtKm) return null;
+  }
+
+  return null;
+}
 
 function isKnownStandaloneLocality(name: unknown): boolean {
   const norm = normalizeLocationMatch(String(name ?? '').trim());
@@ -417,11 +512,36 @@ export function getLocationDraftRepairPatch(
     const satellite = detectSatelliteMunicipalityFromCoordinates(lat, lng);
     const city = String(draft.city ?? '').trim();
     const district = String(draft.district ?? '').trim();
+
+    // Stała: „Reszta kraju" + nazwa = dzielnica miasta strict, a pinezka leży w jego
+    // obwiedni ⇒ to dzielnica tego miasta, nie osobna miejscowość (np. zapisany
+    // wcześniej REST + „Targówek" przy Świętego Wincentego ⇒ Warszawa + Targówek).
+    if (city === REST_OF_COUNTRY_CITY && district) {
+      const promoteCity = detectStrictCityFromCoordinates(lat, lng);
+      if (
+        promoteCity &&
+        isPinWithinStrictCityEnvelope(promoteCity, lat, lng) &&
+        isStrictCityDistrictName(promoteCity, district)
+      ) {
+        const promoteDistricts = STRICT_CITY_DISTRICTS[promoteCity] || [];
+        const matchedDistrict =
+          promoteDistricts.find(
+            (d) => normalizeLocationMatch(d) === normalizeLocationMatch(district),
+          ) || district;
+        return {
+          city: promoteCity,
+          district: matchedDistrict,
+          localityCountry: DEFAULT_LOCALITY_COUNTRY,
+          localityCountryCode: DEFAULT_LOCALITY_COUNTRY_CODE,
+        };
+      }
+    }
+
     const envelopeCity = detectStrictCityFromCoordinates(lat, lng);
     const cityIsMetro =
       envelopeCity &&
       (city === envelopeCity || detectStrictCityFromGeocodeText(city) === envelopeCity);
-    if (satellite && cityIsMetro) {
+    if (satellite && cityIsMetro && isOuterMetroSatellite(satellite)) {
       return {
         city: REST_OF_COUNTRY_CITY,
         district: satellite,
@@ -1009,6 +1129,35 @@ function shouldUseSatelliteOverGeocoder(
   if (!envelopeCity) return false;
   if (geocoderNamesDistinctMunicipality(place, satellite)) return false;
 
+  if (envelopeCity === 'Warszawa' && isWarsawInnerBorderSatellite(satellite)) {
+    if (geocoderConfirmsStrictCity(envelopeCity, place, streetHint)) return false;
+    if (detectStrictCityFromGeocodeText(String(place.subregion ?? '')) === envelopeCity) {
+      return false;
+    }
+    const geoStrict = detectStrictCityFromGeocodeText(String(place.city ?? ''));
+    if (geoStrict === envelopeCity) return false;
+    const inferredDistrict = inferWarsawDistrictFromCoordinates(lat, lng);
+    const satelliteDef = getMetroSatelliteDefinition(satellite);
+    if (
+      inferredDistrict &&
+      warsawDistrictDominatesSatellite(inferredDistrict, lat, lng, satelliteDef)
+    ) {
+      return false;
+    }
+    const normDistrict = normalizeLocationMatch(String(place.district ?? ''));
+    if (isStrictCityDistrictName(envelopeCity, String(place.district ?? ''))) return false;
+    if (
+      normalizeLocationMatch(String(place.city ?? '')) === normalizeLocationMatch(satellite) &&
+      inferredDistrict &&
+      satelliteDef
+    ) {
+      const districtKm = minDistanceToWarsawDistrictSeeds(inferredDistrict, lat, lng);
+      const satelliteKm = haversineKm(lat, lng, satelliteDef.lat, satelliteDef.lng);
+      return satelliteKm <= districtKm;
+    }
+    return false;
+  }
+
   const geoCity = String(place.city ?? '').trim();
   const geoStrict = detectStrictCityFromGeocodeText(geoCity);
   if (
@@ -1044,6 +1193,17 @@ function shouldTrustGeocoderMunicipalityOverCoords(
 
   const envelopeCity = detectStrictCityFromCoordinates(lat, lng);
   if (!envelopeCity) return true;
+
+  if (envelopeCity === 'Warszawa') {
+    const inferredDistrict = inferWarsawDistrictFromCoordinates(lat, lng);
+    const satelliteDef = satellite ? getMetroSatelliteDefinition(satellite) : null;
+    if (
+      inferredDistrict &&
+      warsawDistrictDominatesSatellite(inferredDistrict, lat, lng, satelliteDef)
+    ) {
+      return false;
+    }
+  }
 
   if (!isPinWithinStrictCityEnvelope(envelopeCity, lat, lng)) return true;
 
@@ -1499,7 +1659,25 @@ function coordStrictCityConfirmedByGeocoder(
   lat: number,
   lng: number,
 ): boolean {
-  if (detectSatelliteMunicipalityFromCoordinates(lat, lng)) return false;
+  const satellite = detectSatelliteMunicipalityFromCoordinates(lat, lng);
+  if (
+    satellite &&
+    isOuterMetroSatellite(satellite) &&
+    shouldUseSatelliteOverGeocoder(place, satellite, streetHint, lat, lng)
+  ) {
+    return false;
+  }
+
+  if (strictCity === 'Warszawa') {
+    const inferredDistrict = inferWarsawDistrictFromCoordinates(lat, lng);
+    const satelliteDef = satellite ? getMetroSatelliteDefinition(satellite) : null;
+    if (
+      inferredDistrict &&
+      warsawDistrictDominatesSatellite(inferredDistrict, lat, lng, satelliteDef)
+    ) {
+      return true;
+    }
+  }
 
   const geocodeStrict = detectStrictCityFromGeocodeText(String(place.city ?? ''));
   if (geocodeStrict === strictCity) return true;
@@ -1605,6 +1783,9 @@ export function resolvePinLocationFromGeocodedPlace(
   // Pinezka w granicach miasta strict — tylko gdy geokoder / miejscowość to potwierdzają.
   if (hasCoords) {
     const satellite = detectSatelliteMunicipalityFromCoordinates(lat, lng);
+    const warsawStrict = tryResolveWarsawStrictFromPin(lat, lng, place, streetHint, satellite);
+    if (warsawStrict) return warsawStrict;
+
     const geoMunicipality = extractIndependentMunicipalityFromGeocodedPlace(place);
     if (
       geoMunicipality &&
