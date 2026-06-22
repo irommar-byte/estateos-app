@@ -124,22 +124,25 @@ function PartnerPlanCard({
   return (
     <article
       className={[
-        "flex flex-col rounded-[2rem] border p-8 md:p-9 relative overflow-hidden transition-colors",
+        "flex flex-col rounded-[2rem] border p-6 sm:p-8 md:p-9 relative overflow-hidden transition-colors min-w-0",
         highlighted
           ? "border-emerald-500/35 bg-gradient-to-b from-emerald-500/[0.08] to-[var(--eos-card)] shadow-[0_0_50px_rgba(16,185,129,0.08)] dark:from-emerald-500/10"
           : "border-[var(--eos-border)] bg-[var(--eos-card)] hover:border-emerald-500/25",
       ].join(" ")}
     >
       {highlighted ? (
-        <>
-          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-600 via-emerald-400 to-emerald-600" />
-          <div className="absolute top-5 right-5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full flex items-center gap-1">
-            <Crown size={12} /> {badgeLabel}
-          </div>
-        </>
+        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-600 via-emerald-400 to-emerald-600" />
       ) : null}
 
-      <div className="mb-6 pr-8">
+      {highlighted ? (
+        <div className="mb-4 flex justify-start sm:justify-end">
+          <span className="eos-pricing-badge">
+            <Crown size={12} /> {badgeLabel}
+          </span>
+        </div>
+      ) : null}
+
+      <div className="mb-6">
         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-600 dark:text-emerald-400 mb-2">
           EstateOS™ Partner
         </p>
@@ -267,7 +270,7 @@ export default function Pricing() {
   const activeSubtitle = isAgency ? p.subtitleAgency : p.subtitlePrivate;
 
   return (
-    <section className="theme-aware-dashboard relative py-24 bg-[var(--eos-bg)] text-[var(--eos-text)] overflow-hidden font-sans min-h-screen flex items-center">
+    <section className="theme-aware-dashboard relative bg-[var(--eos-bg)] text-[var(--eos-text)] overflow-hidden font-sans min-h-[calc(100dvh-var(--eos-nav-height))] py-10 sm:py-14 lg:py-20">
       <motion.div
         className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-[#D4AF37]/5 dark:bg-[#D4AF37]/5 rounded-full blur-[120px] pointer-events-none"
         aria-hidden
@@ -285,9 +288,9 @@ export default function Pricing() {
       )}
 
       <div className="max-w-7xl mx-auto px-6 relative z-10 w-full">
-        <motion.div className="text-center mb-16">
+        <motion.div className="text-center mb-10 sm:mb-14 px-2">
           <h2 className="text-sm font-black text-[#D4AF37] tracking-[0.2em] uppercase mb-4">{p.eyebrow}</h2>
-          <h3 className="text-4xl md:text-6xl font-black text-[var(--eos-text)] tracking-tighter mb-6">
+          <h3 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-[var(--eos-text)] tracking-tighter mb-4 sm:mb-6 leading-tight">
             {p.title}{" "}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] to-[#F9E498]">
               {p.titleHighlight}
@@ -297,29 +300,29 @@ export default function Pricing() {
           <p className="text-[var(--eos-muted)] text-lg max-w-2xl mx-auto leading-relaxed">{activeSubtitle}</p>
         </motion.div>
 
-        <div className="flex justify-center mb-16">
-          <div className="bg-[var(--eos-card)] p-1.5 rounded-full border border-[var(--eos-border)] flex items-center relative w-full max-w-md shadow-[var(--eos-shadow-soft)]">
+        <div className="flex justify-center mb-10 sm:mb-14 px-2">
+          <div className="eos-pricing-toggle bg-[var(--eos-card)] p-1.5 rounded-full border border-[var(--eos-border)] flex items-center relative w-full max-w-md shadow-[var(--eos-shadow-soft)]">
             <div
-              className="absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-[var(--eos-bg-elevated)] border border-[var(--eos-border)] rounded-full transition-transform duration-500 ease-out shadow-sm"
+              className="eos-pricing-toggle-pill absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-[var(--eos-bg-elevated)] border border-[var(--eos-border)] rounded-full transition-transform duration-500 ease-out shadow-sm hidden sm:block"
               style={{ transform: isAgency ? "translateX(100%)" : "translateX(0)" }}
             />
             <button
               type="button"
               onClick={() => setIsAgency(false)}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-full relative z-10 font-bold text-sm transition-colors duration-300 ${
-                !isAgency ? "text-[var(--eos-text)]" : "text-[var(--eos-subtle)] hover:text-[var(--eos-muted)]"
+              className={`flex-1 flex items-center justify-center gap-2 py-3 px-3 rounded-full relative z-10 font-bold text-xs sm:text-sm transition-colors duration-300 min-w-0 ${
+                !isAgency ? "text-[var(--eos-text)] sm:bg-transparent bg-[var(--eos-bg-elevated)] shadow-sm sm:shadow-none" : "text-[var(--eos-subtle)] hover:text-[var(--eos-muted)]"
               }`}
             >
-              <User size={16} /> {p.tabPrivate}
+              <User size={16} className="shrink-0" /> <span className="truncate">{p.tabPrivate}</span>
             </button>
             <button
               type="button"
               onClick={() => setIsAgency(true)}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-full relative z-10 font-bold text-sm transition-colors duration-300 ${
-                isAgency ? "text-[var(--eos-text)]" : "text-[var(--eos-subtle)] hover:text-[var(--eos-muted)]"
+              className={`flex-1 flex items-center justify-center gap-2 py-3 px-3 rounded-full relative z-10 font-bold text-xs sm:text-sm transition-colors duration-300 min-w-0 ${
+                isAgency ? "text-[var(--eos-text)] sm:bg-transparent bg-[var(--eos-bg-elevated)] shadow-sm sm:shadow-none" : "text-[var(--eos-subtle)] hover:text-[var(--eos-muted)]"
               }`}
             >
-              <Building2 size={16} /> {p.tabAgency}
+              <Building2 size={16} className="shrink-0" /> <span className="truncate">{p.tabAgency}</span>
             </button>
           </div>
         </div>
@@ -370,10 +373,12 @@ export default function Pricing() {
                 </button>
               </div>
 
-              <div className="bg-gradient-to-b from-amber-50 to-[var(--eos-card)] dark:from-[#1a150b] dark:to-[var(--eos-card)] border border-amber-400/35 dark:border-[#D4AF37]/30 rounded-[2.5rem] p-10 flex flex-col relative overflow-hidden group shadow-[var(--eos-shadow-soft)] dark:shadow-[0_0_50px_rgba(212,175,55,0.05)]">
+              <div className="bg-gradient-to-b from-amber-50 to-[var(--eos-card)] dark:from-[#1a150b] dark:to-[var(--eos-card)] border border-amber-400/35 dark:border-[#D4AF37]/30 rounded-[2.5rem] p-8 sm:p-10 flex flex-col relative overflow-hidden group shadow-[var(--eos-shadow-soft)] dark:shadow-[0_0_50px_rgba(212,175,55,0.05)]">
                 <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-[#8A6E2F] via-[#F9E498] to-[#8A6E2F]" />
-                <div className="absolute top-6 right-6 bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#B8860B] dark:text-[#D4AF37] text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full flex items-center gap-1">
-                  <Crown size={12} /> {p.proBadge}
+                <div className="mb-4 flex justify-start sm:justify-end">
+                  <span className="eos-pricing-badge border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#B8860B] dark:text-[#D4AF37]">
+                    <Crown size={12} /> {p.proBadge}
+                  </span>
                 </div>
 
                 <div className="mb-8">
@@ -433,7 +438,7 @@ export default function Pricing() {
 
         {isAgency && (
           <div className="animate-in fade-in duration-700 space-y-10">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 xl:gap-8">
+            <div className="grid eos-pricing-grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 xl:gap-8">
               {PARTNER_PLANS.map((plan) => {
                 const copy = partnerCopyForPlan(plan, p);
                 const stripePlanCode = partnerStripePlanCodeFromId(plan.id);
