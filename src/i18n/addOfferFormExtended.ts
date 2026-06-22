@@ -86,6 +86,13 @@ export type AddOfferFormExtended = {
   processing: string;
   fillMissingData: string;
   stepRequiredHint: string;
+  stepNavFixNeeded: string;
+  stepNavPublish: string;
+  stepNavShort1: string;
+  stepNavShort2: string;
+  stepNavShort3: string;
+  stepNavShort4: string;
+  stepNavShort5: string;
   addressCityConflict: string;
   geocodeCityHint: string;
   mapTokenMissing: string;
@@ -300,6 +307,13 @@ const pl: AddOfferFormExtended = {
   processing: "Przetwarzanie...",
   fillMissingData: "Uzupełnij brakujące dane",
   stepRequiredHint: "Uzupełnij wymagane pola tego kroku, aby przejść dalej.",
+  stepNavFixNeeded: "Poprawka potrzebna",
+  stepNavPublish: "Publikacja",
+  stepNavShort1: "Rodzaj",
+  stepNavShort2: "Lokalizacja",
+  stepNavShort3: "Cena i parametry",
+  stepNavShort4: "Zdjęcia",
+  stepNavShort5: "Konto",
   addressCityConflict:
     "Adres wskazuje inne miasto niż wybrane. Wybierz adres z listy podpowiedzi lub zmień miasto.",
   geocodeCityHint:
@@ -528,6 +542,13 @@ const en: AddOfferFormExtended = {
   processing: "Processing…",
   fillMissingData: "Complete missing fields",
   stepRequiredHint: "Complete required fields in this step to continue.",
+  stepNavFixNeeded: "Fix required",
+  stepNavPublish: "Publish",
+  stepNavShort1: "Type",
+  stepNavShort2: "Location",
+  stepNavShort3: "Price & details",
+  stepNavShort4: "Photos",
+  stepNavShort5: "Account",
   addressCityConflict:
     "The address points to a different city than selected. Pick from suggestions or change the city.",
   geocodeCityHint:
@@ -756,6 +777,13 @@ const uk: AddOfferFormExtended = {
   processing: "Обробка…",
   fillMissingData: "Заповніть відсутні дані",
   stepRequiredHint: "Заповніть обов'язкові поля цього кроку, щоб продовжити.",
+  stepNavFixNeeded: "Потрібна правка",
+  stepNavPublish: "Публікація",
+  stepNavShort1: "Тип",
+  stepNavShort2: "Локація",
+  stepNavShort3: "Ціна",
+  stepNavShort4: "Фото",
+  stepNavShort5: "Акаунт",
   addressCityConflict:
     "Адреса вказує на інше місто, ніж обране. Оберіть з підказок або змініть місто.",
   geocodeCityHint:

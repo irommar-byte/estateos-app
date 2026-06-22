@@ -447,7 +447,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
       : null,
   ].filter(Boolean) as Array<{ icon: typeof Home; label: string }>;
 
-  const agentCommissionInfo = describeOfferAgentCommission(offer, offer.price);
+  const agentCommissionInfo = isAgentOrAgencySeller(offer?.user)
+    ? describeOfferAgentCommission(offer, offer.price)
+    : null;
   const agentCommissionAmountLabel = agentCommissionInfo
     ? formatCommissionAmountForDisplay(
         agentCommissionInfo.amount,
