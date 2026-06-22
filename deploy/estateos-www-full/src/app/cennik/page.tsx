@@ -7,7 +7,7 @@ export const metadata = {
 
 export default function PricingPage() {
   return (
-    <main className="theme-aware-dashboard bg-[var(--eos-bg)] min-h-screen pt-20">
+    <main className="theme-aware-dashboard eos-page-shell bg-[var(--eos-bg)]">
       <Pricing />
     </main>
   );

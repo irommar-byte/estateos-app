@@ -1150,7 +1150,7 @@ export default function CRMDashboard() {
     : ["radar", "my_offers", "offers", "planowanie", "transakcje"];
 
   return (
-    <div className="theme-aware-dashboard crm-dashboard-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pt-14 sm:pt-16 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
+    <div className="theme-aware-dashboard crm-dashboard-shell eos-page-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
       <AnimatePresence>
         {wowPlusType && <WowPlusOverlay wowPlus={c.wowPlus} />}
         {wowType && wowType !== "plus" && (
