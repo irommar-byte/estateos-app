@@ -35,6 +35,7 @@ import {
 import { resolvePersistedLocalityFieldsAsync } from '@/lib/offerLocalityCountry';
 import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
 import { getOfferMarketListingMeta } from '@/lib/offerPublication';
+import { getUserDisplayAvatar } from '@/lib/agencyCompany';
 import {
   presentingAgentAsOfferUser,
   resolvePresentingAgent,
@@ -253,10 +254,25 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           }
         : offerUser;
 
+    const sellerUserId = presentingAgent?.userId ?? Number((offerUser as { id?: number })?.id ?? offerRow.userId);
+    const userWithAvatar =
+      sellerUserId > 0 && enrichedUserFinal
+        ? await (async () => {
+            const displayImage = await getUserDisplayAvatar(sellerUserId);
+            if (!displayImage) return enrichedUserFinal;
+            return {
+              ...enrichedUserFinal,
+              image: displayImage,
+              avatar: displayImage,
+              displayAvatarUrl: displayImage,
+            };
+          })()
+        : enrichedUserFinal;
+
     return NextResponse.json(
       enrichOfferPriceDiscountFields({
       ...moneyOffer,
-      user: enrichedUserFinal,
+      user: userWithAvatar,
       sellerDisplayName,
       sellerPersonName,
       servicingCompanyName,
