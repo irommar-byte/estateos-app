@@ -2,8 +2,9 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { Audio } from 'expo-av';
 import { View, Text, StyleSheet, Dimensions, Image, Pressable, Platform, ScrollView, Modal, Switch, Animated, useColorScheme, LayoutAnimation, UIManager, TextInput } from 'react-native';
-import MapViewCore, { Marker } from 'react-native-maps';
-import ClusteredMapView from 'react-native-map-clustering';
+import { Marker } from 'react-native-maps';
+import { RadarMapView } from '../components/MapGestureHost';
+import { AppleMapClusterMarker } from '../components/radar/AppleMapClusterMarker';
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -22,7 +23,9 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 const { width, height } = Dimensions.get('window');
-const RadarMapComponent: any = Platform.OS === 'ios' ? MapViewCore : ClusteredMapView;
+const RadarMapComponent: any = RadarMapView;
+const SELL_MARKER_COLOR = '#34C759';
+const RENT_MARKER_COLOR = '#0A84FF';
 
 const BaseColors = { dark: '#1C1C1E', light: '#FFFFFF', subtitle: '#8E8E93', danger: '#FF3B30' }; 
 const ThemeColors = { RENT: '#0A84FF', SELL: '#34C759' };
@@ -436,6 +439,38 @@ export default function Radar({ theme, route }: any) {
   
   const isFilterActive = JSON.stringify(filters) !== JSON.stringify(defaultFilters);
 
+  const mapClusterColor =
+    filters.transactionType === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
+  const mapClusterGradient: [string, string, string] =
+    filters.transactionType === 'RENT'
+      ? ['#8ECBFF', '#3DA3FF', '#0066CC']
+      : ['#6EE7B7', '#22C993', '#0A9F6E'];
+
+  const renderMapCluster = useCallback(
+    (cluster: {
+      id?: number | string;
+      geometry: { coordinates: [number, number] };
+      properties: { point_count: number; cluster_id?: number };
+      onPress: () => void;
+    }) => {
+      const clusterKey =
+        cluster.properties?.cluster_id ??
+        cluster.id ??
+        `${cluster.geometry.coordinates[0]}-${cluster.geometry.coordinates[1]}`;
+      return (
+        <AppleMapClusterMarker
+          key={`cluster-${clusterKey}`}
+          geometry={cluster.geometry}
+          properties={cluster.properties}
+          onPress={cluster.onPress}
+          accentColor={mapClusterColor}
+          gradient={mapClusterGradient}
+        />
+      );
+    },
+    [mapClusterColor, mapClusterGradient],
+  );
+
   return (
     <View style={styles.container}>
       <RadarMapComponent
@@ -452,14 +487,16 @@ export default function Radar({ theme, route }: any) {
         pitchEnabled={true}
         rotateEnabled={false}
         initialRegion={{ latitude: 52.2297, longitude: 21.0122, latitudeDelta: 0.1, longitudeDelta: 0.1 }}
-        {...(Platform.OS === 'ios'
-          ? {}
-          : {
-              clusterColor: ThemeColors[filters.transactionType],
-              clusterTextColor: '#FFFFFF',
-              animationEnabled: false,
-              radius: 45,
-            })}
+        renderCluster={renderMapCluster}
+        clusterColor={mapClusterColor}
+        clusterTextColor="#FFFFFF"
+        animationEnabled={Platform.OS === 'ios'}
+        radius={58}
+        minPoints={2}
+        spiralEnabled={false}
+        onClusterPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }}
       >
         {filteredOffers.map((offer, index) => {
           const isSelected = activeIndex === index;

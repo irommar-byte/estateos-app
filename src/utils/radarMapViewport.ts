@@ -54,6 +54,12 @@ export function mergeSelectedOfferIntoMapPins<T extends MappableOffer>(
   return [...offers, selected];
 }
 
+/** Approximate-location rings are only useful when zoomed in; hide at city/region scale. */
+export function shouldShowMapPrivacyCircles(region: Region | null | undefined): boolean {
+  if (!region) return false;
+  return region.latitudeDelta < 0.065;
+}
+
 /** iOS AIRMap crashes when too many subviews mount at once — keep a safe cap. */
 export function capMapPinsNearCenter<T extends MappableOffer>(
   offers: T[],

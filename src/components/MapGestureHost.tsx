@@ -1,20 +1,18 @@
 import React from 'react';
-import { Platform } from 'react-native';
-import { NativeViewGestureHandler } from 'react-native-gesture-handler';
+import ClusteredMapView from 'react-native-map-clustering';
+
+/**
+ * Clustered map for Radar. ClusteredMapView is a functional forwardRef wrapper
+ * around MapView — it cannot be wrapped in NativeViewGestureHandler (RNGH crash).
+ * Gesture priority vs. bottom carousel is handled by map scrollEnabled / z-order.
+ */
+export const RadarMapView: React.ComponentType<any> = ClusteredMapView;
 
 type Props = {
   children: React.ReactElement;
 };
 
-/** iOS: Handler musi owijać MapView bezpośrednio (bez pośredniego View). */
+/** @deprecated Use <RadarMapView /> directly. */
 export default function MapGestureHost({ children }: Props) {
-  if (Platform.OS === 'ios') {
-    return (
-      <NativeViewGestureHandler disallowInterruption shouldActivateOnStart>
-        {children}
-      </NativeViewGestureHandler>
-    );
-  }
-
   return children;
 }

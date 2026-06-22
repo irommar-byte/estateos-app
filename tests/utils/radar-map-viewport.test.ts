@@ -5,6 +5,7 @@ import {
   isCoordinateInMapRegion,
   mergeSelectedOfferIntoMapPins,
   capMapPinsNearCenter,
+  shouldShowMapPrivacyCircles,
 } from '../../src/utils/radarMapViewport';
 
 describe('radarMapViewport', () => {
@@ -47,5 +48,17 @@ describe('radarMapViewport', () => {
     assert.equal(capped.length, 2);
     assert.ok(capped.some((o) => o.id === 1));
     assert.ok(capped.some((o) => o.id === 2));
+  });
+
+  it('hides privacy circles when map is zoomed out', () => {
+    assert.equal(shouldShowMapPrivacyCircles(region), false);
+    assert.equal(
+      shouldShowMapPrivacyCircles({
+        ...region,
+        latitudeDelta: 0.03,
+        longitudeDelta: 0.03,
+      }),
+      true,
+    );
   });
 });

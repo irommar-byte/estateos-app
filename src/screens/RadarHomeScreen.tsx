@@ -23,8 +23,7 @@ import {
   AppState,
 } from 'react-native';
 import MapViewCore, { Marker, Region, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
-import ClusteredMapView from 'react-native-map-clustering';
-import MapGestureHost from '../components/MapGestureHost';
+import { RadarMapView } from '../components/MapGestureHost';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -60,6 +59,8 @@ import { radarPropertyTypeMatchesFilter } from '../utils/radarPropertyType';
 import {
   filterOffersInMapRegion,
   mergeSelectedOfferIntoMapPins,
+  capMapPinsNearCenter,
+  shouldShowMapPrivacyCircles,
 } from '../utils/radarMapViewport';
 import { logAdvancedMapSearch, logRadarCalibrationSearch } from '../services/radarSearchHistoryService';
 import CountryChipHangingFlag from '../components/CountryChipHangingFlag';
@@ -97,6 +98,7 @@ import RadarBrowseModeRail from '../components/radar/RadarBrowseModeRail';
 import RadarStatusBulb from '../components/radar/RadarStatusBulb';
 import { OfferMapMarkerPin } from '../components/radar/OfferMapMarkerPin';
 import { AndroidMapPriceMarker } from '../components/radar/AndroidMapPriceMarker';
+import { AppleMapClusterMarker } from '../components/radar/AppleMapClusterMarker';
 import { advancedPriceBoundsToPln, convertBetweenCurrencies } from '../money/convert';
 import { formatCurrencySuffix, formatMarkerPriceCompact, resolveOfferDisplayAmount } from '../money/format';
 import { parseOfferNumericPrice, resolveOfferListingPrice } from '../money/offerPrice';
@@ -224,8 +226,9 @@ function hasFiniteCoords(lat: unknown, lng: unknown): boolean {
   return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
 }
 
-const MAP_CLUSTERING_ENABLED = Platform.OS === 'android';
-const RadarMapComponent: any = MAP_CLUSTERING_ENABLED ? ClusteredMapView : MapViewCore;
+const MAP_CLUSTERING_ENABLED = true;
+const MAP_MAX_PINS_IN_VIEW = 420;
+const RadarMapComponent: any = RadarMapView;
 const SELL_MARKER_COLOR = '#10b981';
 const RENT_MARKER_COLOR = '#0A84FF';
 
@@ -2294,13 +2297,44 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const activeOffers = filteredOffers;
 
   const offersForMapPins = useMemo(() => {
-    if (Platform.OS === 'ios') return activeOffers;
     const inView = filterOffersInMapRegion(activeOffers, mapViewportRegion);
-    return mergeSelectedOfferIntoMapPins(inView, activeOffers[activeIndex] ?? null);
+    const capped = capMapPinsNearCenter(inView, mapViewportRegion, MAP_MAX_PINS_IN_VIEW);
+    return mergeSelectedOfferIntoMapPins(capped, activeOffers[activeIndex] ?? null);
   }, [activeOffers, activeIndex, mapViewportRegion]);
+
+  const showMapPrivacyCircles = shouldShowMapPrivacyCircles(mapViewportRegion);
 
   const mapClusterColor =
     advancedFilters.transactionType === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
+  const mapClusterGradient = useMemo(
+    () => markerLuxuryGradient(mapClusterColor),
+    [mapClusterColor],
+  );
+
+  const renderMapCluster = useCallback(
+    (cluster: {
+      id?: number | string;
+      geometry: { coordinates: [number, number] };
+      properties: { point_count: number; cluster_id?: number };
+      onPress: () => void;
+    }) => {
+      const clusterKey =
+        cluster.properties?.cluster_id ??
+        cluster.id ??
+        `${cluster.geometry.coordinates[0]}-${cluster.geometry.coordinates[1]}`;
+      return (
+        <AppleMapClusterMarker
+          key={`cluster-${clusterKey}`}
+          geometry={cluster.geometry}
+          properties={cluster.properties}
+          onPress={cluster.onPress}
+          accentColor={mapClusterColor}
+          gradient={mapClusterGradient}
+        />
+      );
+    },
+    [mapClusterColor, mapClusterGradient],
+  );
 
   const galleryOffers = useMemo(() => {
     if (showOnlyFavorites || radarBrowseMode !== 'GALLERY') return [];
@@ -4029,7 +4063,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         : null;
       const offerKey = String(offer.id ?? idx);
 
-      if (circleStyle) {
+      if (circleStyle && showMapPrivacyCircles) {
         circles.push(
           <Circle
             key={`circle-${offerKey}`}
@@ -4081,7 +4115,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     });
 
     return { circles, markers };
-  }, [offersForMapPins, activeOffers, activeIndex, rate, preference, focusOfferById]);
+  }, [offersForMapPins, activeOffers, activeIndex, rate, preference, focusOfferById, showMapPrivacyCircles]);
 
   const mapPinChildrenReady = Platform.OS !== 'ios' || (iosMapPinsReady && !loading);
 
@@ -4243,7 +4277,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       style={[styles.container, isGalleryLightChrome && styles.containerGalleryLight]}
     >
       <View style={styles.mapStage} collapsable={false}>
-        <MapGestureHost>
           <RadarMapComponent
             ref={mapRef}
             provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
@@ -4275,11 +4308,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             showsCompass={false}
             {...(MAP_CLUSTERING_ENABLED
               ? {
+                  renderCluster: renderMapCluster,
                   clusterColor: mapClusterColor,
                   clusterTextColor: '#FFFFFF',
-                  animationEnabled: false,
-                  radius: 52,
+                  animationEnabled: Platform.OS === 'ios',
+                  radius: 58,
                   minPoints: 2,
+                  spiralEnabled: false,
                   onClusterPress: () => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   },
@@ -4320,7 +4355,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             {mapPinChildrenReady ? offerMapMarkerLayers.circles : null}
             {mapPinChildrenReady ? offerMapMarkerLayers.markers : null}
           </RadarMapComponent>
-        </MapGestureHost>
       </View>
 
       <View style={styles.mapUiChrome} pointerEvents="box-none" collapsable={false}>
