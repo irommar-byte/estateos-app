@@ -31,7 +31,7 @@ export function computeIsProActive(user: { role: string; isPro: boolean; proExpi
  * email-verify confirm). Wylicza `emailVerified` jako `isVerified === true || !!emailVerifiedAt`,
  * żeby uniknąć rozjazdu „isVerified=true ale emailVerified=false”.
  */
-export function shapeMobileUser(user: MobileUserCore) {
+export function shapeMobileUser(user: MobileUserCore, opts?: { displayImage?: string | null }) {
   const fullName = String(user.name || '').trim();
   const parts = fullName ? fullName.split(/\s+/) : [];
   const firstName = parts[0] || '';
@@ -43,6 +43,7 @@ export function shapeMobileUser(user: MobileUserCore) {
   const lockedRole = user.role === 'AGENT' || user.role === 'ADMIN';
 
   const phone = user.phone;
+  const image = opts?.displayImage ?? user.image;
 
   return {
     id: user.id,
@@ -54,8 +55,8 @@ export function shapeMobileUser(user: MobileUserCore) {
     contactPhone: phone,
     phoneNumber: phone,
     mobile: phone,
-    image: user.image,
-    avatar: user.image,
+    image,
+    avatar: image,
     role: user.role,
     planType: user.planType,
     extraListings: user.extraListings ?? 0,

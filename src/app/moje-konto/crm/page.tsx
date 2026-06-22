@@ -972,7 +972,11 @@ export default function CRMDashboard() {
       secondary: secondaryParts.length ? secondaryParts.join(' · ') : base.secondary,
     };
   })();
-  const avatarSrcRaw = currentUser?.image || '';
+  const avatarSrcRaw =
+    agencyMembership?.displayAvatarUrl ||
+    agencyMembership?.team?.find((m) => m.isSelf)?.image ||
+    currentUser?.image ||
+    '';
   const avatarSrc = avatarSrcRaw
     ? (avatarSrcRaw.startsWith('http') ? avatarSrcRaw : avatarSrcRaw)
     : '';

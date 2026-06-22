@@ -10,7 +10,7 @@ export function resolveMediaUrl(value: unknown, origin = ''): string | null {
 export function getBestUserAvatarUrl(userLike: unknown, origin = ''): string | null {
   if (!userLike || typeof userLike !== 'object') return null;
   const u = userLike as Record<string, unknown>;
-  const candidates = [u.image, u.avatar, u.avatarUrl, u.profileImage, u.profileImageUrl, u.photo];
+  const candidates = [u.profilePhotoUrl, u.displayAvatarUrl, u.image, u.avatar, u.avatarUrl, u.profileImage, u.profileImageUrl, u.photo];
   for (const c of candidates) {
     const uri = resolveMediaUrl(c, origin);
     if (uri) return uri;

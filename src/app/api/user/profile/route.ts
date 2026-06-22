@@ -10,6 +10,7 @@ import type { RadarPreference } from '@prisma/client';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
 import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 import { shapeMatchedOfferForCrm } from '@/lib/crmMatchedOffer';
+import { getUserDisplayAvatar } from '@/lib/agencyCompany';
 import {
   buildRadarScoreInputFromUser,
   MATCHED_OFFER_SELECT,
@@ -262,7 +263,8 @@ export async function GET() {
     }
 
     const passkeyCount = await prisma.authenticator.count({ where: { userId: user.id } });
-    const shaped = { ...shapeMobileUser(user), hasPasskey: passkeyCount > 0 };
+    const displayImage = await getUserDisplayAvatar(user.id);
+    const shaped = { ...shapeMobileUser(user, { displayImage }), hasPasskey: passkeyCount > 0 };
     const elite = resolveEliteBadges(user);
     const badges = { ...elite, isPartner: elite.isProgramPartner };
 
