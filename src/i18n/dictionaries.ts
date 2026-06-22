@@ -23,6 +23,10 @@ export type Dictionary = {
     discoverMap: string;
     market: string;
     agencyCatalog: string;
+    discoverMapShort: string;
+    marketShort: string;
+    agencyCatalogShort: string;
+    manageCentralShort: string;
     elite: string;
     logout: string;
     langPl: string;
@@ -574,6 +578,10 @@ const pl: Dictionary = {
     discoverMap: "Odkryj mapę",
     market: "Rynek nieruchomości",
     agencyCatalog: "Katalog agencji",
+    discoverMapShort: "Mapa",
+    marketShort: "Rynek",
+    agencyCatalogShort: "Agencje",
+    manageCentralShort: "Centrala",
     elite: "EstateOS™ Elite",
     logout: "Wyloguj",
     langPl: "PL",
@@ -1224,6 +1232,10 @@ const en: Dictionary = {
     discoverMap: "Discover map",
     market: "Property market",
     agencyCatalog: "Agency catalog",
+    discoverMapShort: "Map",
+    marketShort: "Market",
+    agencyCatalogShort: "Agencies",
+    manageCentralShort: "Central",
     elite: "EstateOS™ Elite",
     logout: "Log out",
     langPl: "PL",
