@@ -98,6 +98,19 @@ export type Dictionary = {
     ctaAgency: string;
     exploreMap: string;
     scroll: string;
+    privateCard: {
+      title: string;
+      subtitle: string;
+      bullets: string[];
+      cta: string;
+    };
+    agencyCard: {
+      title: string;
+      subtitle: string;
+      bullets: string[];
+      cta: string;
+      footnote: string;
+    };
   };
   audiencePrivate: {
     eyebrow: string;
@@ -481,7 +494,8 @@ export type Dictionary = {
     title: string;
     titleHighlight: string;
     titleSuffix: string;
-    subtitle: string;
+    subtitlePrivate: string;
+    subtitleAgency: string;
     tabPrivate: string;
     tabAgency: string;
     basicName: string;
@@ -497,6 +511,7 @@ export type Dictionary = {
     proDesc: string;
     proWas: string;
     proPrice: string;
+    proPeriod: string;
     proF1: string;
     proF2: string;
     proF3: string;
@@ -504,9 +519,35 @@ export type Dictionary = {
     proF5: string;
     proCta: string;
     proCtaLoading: string;
-    agencySoon: string;
-    agencySoonTitle: string;
-    agencySoonDesc: string;
+    pakietPlusFootnote: string;
+    partnerPeriod: string;
+    partnerAgentsUnlimited: string;
+    partnerCta: string;
+    partnerCtaActivate: string;
+    partnerActivationNote: string;
+    partnerPoolBadge: string;
+    partnerStartName: string;
+    partnerStartDesc: string;
+    partnerStartF1: string;
+    partnerStartF2: string;
+    partnerStartF3: string;
+    partnerStartF4: string;
+    partnerStartF5: string;
+    partnerProName: string;
+    partnerProDesc: string;
+    partnerProF1: string;
+    partnerProF2: string;
+    partnerProF3: string;
+    partnerProF4: string;
+    partnerProF5: string;
+    partnerProF6: string;
+    partnerEnterpriseName: string;
+    partnerEnterpriseDesc: string;
+    partnerEnterpriseF1: string;
+    partnerEnterpriseF2: string;
+    partnerEnterpriseF3: string;
+    partnerEnterpriseF4: string;
+    partnerEnterpriseF5: string;
     modalTitle: string;
     modalSubtitle: string;
     modalBuy: string;
@@ -611,6 +652,34 @@ const pl: Dictionary = {
     ctaAgency: "Dla agencji i pośredników",
     exploreMap: "Mapa ofert",
     scroll: "Przewiń",
+    privateCard: {
+      title: "Dla osób prywatnych",
+      subtitle:
+        "Wystaw mieszkanie, dom lub działkę bez opłat. Przeglądaj mapę ofert i — gdy chcesz — współpracuj z biurem na przejrzystych zasadach.",
+      bullets: [
+        "Publikacja ogłoszenia bez prowizji platformy",
+        "Mapa ofert i Radar dopasowań na Twoim koncie",
+        "Współpraca z agencjami na jednej platformie — przejrzyste zasady",
+        "Ten sam Deal Room i mapa ofert — z biurem lub samodzielnie",
+        "Bezpieczny kontakt w jednym miejscu",
+      ],
+      cta: "Załóż konto — za darmo",
+    },
+    agencyCard: {
+      title: "Dla biur i agencji",
+      subtitle:
+        "CRM, zespół w jednym panelu i leady od prywatnych sprzedawców — publikacje z puli kredytów, którą kontrolujesz jako administrator.",
+      bullets: [
+        "Załóż profil firmy i dodawaj agentów do zespołu",
+        "CRM, klienci, Deal Room — ten sam ekosystem co dla osób prywatnych",
+        "Administrator rozdziela kredyty publikacji między agentów",
+        "Concierge — prywatni właściciele proszą biuro o pomoc przy sprzedaży",
+        "Współpraca z właścicielami na przejrzystych warunkach",
+        "Mapa ofert i rynek — widoczność jak u prywatnych inwestorów",
+      ],
+      cta: "Zobacz pakiety Partner",
+      footnote: "Bezpłatna rejestracja biura — na stronie Dla agencji",
+    },
   },
   audiencePrivate: {
     eyebrow: "EstateOS™ · osoby prywatne",
@@ -1066,12 +1135,15 @@ const pl: Dictionary = {
     title: "Inwestuj",
     titleHighlight: "mądrzej",
     titleSuffix: ", nie ciężej.",
-    subtitle:
-      "Niezależnie od tego, czy sprzedajesz swoje pierwsze mieszkanie, polujesz na okazje zanim pojawią się na szerokim rynku, czy zarządzasz agencją – mamy plan skrojony pod Ciebie.",
+    subtitlePrivate:
+      "Konto za darmo albo przewaga czasowa na rynku. Publikujesz wtedy, kiedy chcesz — kuponem, kredytem z PRO albo Pakietem +.",
+    subtitleAgency:
+      "Abonament platformowy + pula kredytów dla całego biura. Administrator aktywuje plan i przydziela publikacje agentom.",
     tabPrivate: "Prywatni & Inwestorzy",
     tabAgency: "EstateOS™ Partner",
     basicName: "Basic",
-    basicDesc: "Darmowe konto — przeglądasz mapę i rynek, ustawiasz Radar i dodajesz własną ofertę.",
+    basicDesc:
+      "Darmowe konto na start. Mapa, rynek i Radar — publikujesz, gdy potrzebujesz (kupon, Pakiet + lub kredyty z PRO).",
     basicPrice: "0 PLN",
     basicF1:
       "Jedna aktywna oferta w panelu. Publikacja na mapie i rynku (30 dni): kupon powitalny, Pakiet + (49 zł) lub kredyty z PRO.",
@@ -1082,9 +1154,11 @@ const pl: Dictionary = {
     basicCta: "Załóż darmowe konto",
     proBadge: "Rekomendowane",
     proName: "Investor PRO",
-    proDesc: "Abonament 30 dni: 5 kredytów publikacji i wczesny podgląd rynku. Aktywacja tylko na stronie.",
+    proDesc:
+      "Dla aktywnych inwestorów i sprzedawców: 5 publikacji w cenie + podgląd rynku i Radar bez 24-godzinnego oczekiwania. Odnowienie co 30 dni na stronie.",
     proWas: "299 PLN",
     proPrice: "249",
+    proPeriod: "PLN / msc",
     proF1:
       "Wczesny podgląd nowych ofert — adres, galeria i parametry od razu (Basic: te same dane po 24 h od publikacji).",
     proF2:
@@ -1095,10 +1169,35 @@ const pl: Dictionary = {
     proF5: "Po wykorzystaniu puli PRO — Pakiet + (1 kredyt / 30 dni, 49 zł).",
     proCta: "Wybieram PRO",
     proCtaLoading: "Przetwarzam...",
-    agencySoon: "Wkrótce",
-    agencySoonTitle: "EstateOS™ Partner",
-    agencySoonDesc:
-      "Pakiet dla biur nieruchomości przygotowujemy — CRM, import XML i leady Concierge. Wróć za chwilę.",
+    pakietPlusFootnote: "Potrzebujesz tylko jednej publikacji? Pakiet + — 49 zł / 30 dni (także w aplikacji mobilnej).",
+    partnerPeriod: "PLN / msc",
+    partnerAgentsUnlimited: "bez limitu",
+    partnerCta: "Załóż biuro",
+    partnerCtaActivate: "Aktywuj plan",
+    partnerActivationNote: "Wymaga konta administratora biura. Nie masz biura? Załóż je bezpłatnie przed aktywacją.",
+    partnerPoolBadge: "CRM · pula kredytów",
+    partnerStartName: "Partner Start",
+    partnerStartDesc: "Małe biuro lub jednoosobowa agencja — CRM, profil firmy i pula publikacji dla zespołu.",
+    partnerStartF1: "{credits} kredytów publikacji miesięcznie na pulę firmową — administrator rozdziela agentom.",
+    partnerStartF2: "Do {agents} aktywnych agentów w zespole.",
+    partnerStartF3: "CRM klientów, Deal Room i mapa ofert — ten sam ekosystem co dla osób prywatnych.",
+    partnerStartF4: "Dostęp do Concierge — leady od prywatnych sprzedawców szukających biura.",
+    partnerStartF5: "Profil firmy, import pojedynczej oferty (link z portalu). Po wyczerpaniu puli — dokup paczki lub Pakiet + (49 zł).",
+    partnerProName: "Partner Pro",
+    partnerProDesc: "Biuro z zespołem agentów — większa pula publikacji i priorytet w katalogu oraz Concierge.",
+    partnerProF1: "{credits} kredytów publikacji miesięcznie na pulę firmową.",
+    partnerProF2: "Do {agents} aktywnych agentów.",
+    partnerProF3: "Wszystko ze Start + priorytet w Katalogu agencji.",
+    partnerProF4: "Concierge priorytetowy — pierwszeństwo przy leadach od prywatnych właścicieli.",
+    partnerProF5: "Statystyki zespołu, transfer ofert między agentami, portal klienta CRM.",
+    partnerProF6: "Około {unitPrice} zł za kredyt w abonamencie (detal: Pakiet + 49 zł).",
+    partnerEnterpriseName: "Partner Enterprise",
+    partnerEnterpriseDesc: "Duże biura i sieci — wolumen publikacji, rozbudowany zespół i wdrożenie pod klucz.",
+    partnerEnterpriseF1: "{credits} kredytów publikacji miesięcznie na pulę firmową.",
+    partnerEnterpriseF2: "Agenci: {agents} — bez sztucznego limitu miejsc w zespole.",
+    partnerEnterpriseF3: "Priorytetowy Concierge i wyróżnienie w katalogu agencji.",
+    partnerEnterpriseF4: "Docelowo: synchronizacja XML / feed ofert (w przygotowaniu).",
+    partnerEnterpriseF5: "Dedykowany onboarding i możliwość negocjacji rocznych pakietów kredytów.",
     modalTitle: "Jaki jest Twój Cel?",
     modalSubtitle: "Wybierz odpowiednią ścieżkę, abyśmy mogli dopasować narzędzia do Twoich potrzeb.",
     modalBuy: "Chcę Kupić",
@@ -1203,6 +1302,34 @@ const en: Dictionary = {
     ctaAgency: "For agencies & brokers",
     exploreMap: "Listing map",
     scroll: "Scroll",
+    privateCard: {
+      title: "For private owners",
+      subtitle:
+        "List with no listing fee, browse the map — and when you want, work with an agency on transparent terms.",
+      bullets: [
+        "Publish with no platform listing fee",
+        "Live map and Investment Radar on your account",
+        "Collaborate with agencies on one platform — transparent terms",
+        "The same Deal Room and listing map — with an office or on your own",
+        "Secure contact in one place",
+      ],
+      cta: "Create a free account",
+    },
+    agencyCard: {
+      title: "For agencies & offices",
+      subtitle:
+        "CRM, your team in one panel, and leads from private sellers — publications from a credit pool you control as administrator.",
+      bullets: [
+        "Set up your company profile and add agents to the team",
+        "CRM, clients, Deal Room — the same ecosystem as for private users",
+        "The administrator distributes publication credits among agents",
+        "Concierge — private owners ask your office for help selling",
+        "Collaboration with owners on transparent terms",
+        "Listing map and market — visibility like for private investors",
+      ],
+      cta: "See Partner plans",
+      footnote: "Free office registration — on the For agencies page",
+    },
   },
   audiencePrivate: {
     eyebrow: "EstateOS™ · private owners",
@@ -1658,12 +1785,15 @@ const en: Dictionary = {
     title: "Invest",
     titleHighlight: "smarter",
     titleSuffix: ", not harder.",
-    subtitle:
-      "Whether you are selling your first home, hunting deals before they hit the open market, or running an agency — we have a plan built for you.",
+    subtitlePrivate:
+      "A free account or a time advantage on the market. Publish when you need — welcome coupon, PRO credits, or Pakiet +.",
+    subtitleAgency:
+      "Platform subscription + a publication credit pool for the whole office. The administrator activates the plan and assigns credits to agents.",
     tabPrivate: "Private & Investors",
     tabAgency: "EstateOS™ Partner",
     basicName: "Basic",
-    basicDesc: "Free account — browse the map and market, set up Radar, and add your own listing.",
+    basicDesc:
+      "Free account to start. Map, market, and Radar — publish when you need (coupon, Pakiet +, or PRO credits).",
     basicPrice: "0 PLN",
     basicF1:
       "One active listing slot in your panel. Market publication (30 days): welcome coupon, Pakiet + (49 PLN), or PRO credits.",
@@ -1674,9 +1804,11 @@ const en: Dictionary = {
     basicCta: "Create free account",
     proBadge: "Recommended",
     proName: "Investor PRO",
-    proDesc: "30-day subscription: 5 publication credits and early market preview. Web activation only.",
+    proDesc:
+      "For active investors and sellers: 5 publications included + market preview and Radar without the 24-hour wait. Renew every 30 days on the website.",
     proWas: "299 PLN",
     proPrice: "249",
+    proPeriod: "PLN / mo",
     proF1:
       "Early preview of new listings — address, gallery, and details right away (Basic: same data after 24 h from publication).",
     proF2:
@@ -1687,10 +1819,35 @@ const en: Dictionary = {
     proF5: "After using the PRO pool — Pakiet + (1 credit / 30 days, 49 PLN).",
     proCta: "Choose PRO",
     proCtaLoading: "Processing...",
-    agencySoon: "Coming soon",
-    agencySoonTitle: "EstateOS™ Partner",
-    agencySoonDesc:
-      "The agency package is in preparation — CRM, XML import, and Concierge leads. Check back soon.",
+    pakietPlusFootnote: "Need just one publication? Pakiet + — 49 PLN / 30 days (also in the mobile app).",
+    partnerPeriod: "PLN / mo",
+    partnerAgentsUnlimited: "unlimited",
+    partnerCta: "Register your office",
+    partnerCtaActivate: "Activate plan",
+    partnerActivationNote: "Requires a company administrator account. No office yet? Register for free before activating.",
+    partnerPoolBadge: "CRM · credit pool",
+    partnerStartName: "Partner Start",
+    partnerStartDesc: "Small office or solo agency — CRM, company profile, and a publication pool for the team.",
+    partnerStartF1: "{credits} publication credits per month in the company pool — the administrator assigns them to agents.",
+    partnerStartF2: "Up to {agents} active agents on the team.",
+    partnerStartF3: "Client CRM, Deal Room, and listing map — the same ecosystem as for private users.",
+    partnerStartF4: "Concierge access — leads from private sellers looking for an agency.",
+    partnerStartF5: "Company profile, single-listing import (portal link). After the pool runs out — buy packs or Pakiet + (49 PLN).",
+    partnerProName: "Partner Pro",
+    partnerProDesc: "Office with a team of agents — larger publication pool and priority in the catalog and Concierge.",
+    partnerProF1: "{credits} publication credits per month in the company pool.",
+    partnerProF2: "Up to {agents} active agents.",
+    partnerProF3: "Everything in Start + priority in the agency catalog.",
+    partnerProF4: "Priority Concierge — first access to leads from private owners.",
+    partnerProF5: "Team stats, offer transfers between agents, CRM client portal.",
+    partnerProF6: "About {unitPrice} PLN per credit in the subscription (retail: Pakiet + 49 PLN).",
+    partnerEnterpriseName: "Partner Enterprise",
+    partnerEnterpriseDesc: "Large offices and networks — publication volume, expanded team, and tailored onboarding.",
+    partnerEnterpriseF1: "{credits} publication credits per month in the company pool.",
+    partnerEnterpriseF2: "Agents: {agents} — no artificial cap on team seats.",
+    partnerEnterpriseF3: "Priority Concierge and featured placement in the agency catalog.",
+    partnerEnterpriseF4: "Coming soon: XML / listing feed sync.",
+    partnerEnterpriseF5: "Dedicated onboarding and optional annual credit packages.",
     modalTitle: "What is your goal?",
     modalSubtitle: "Pick a path so we can tailor tools to your needs.",
     modalBuy: "I want to buy",

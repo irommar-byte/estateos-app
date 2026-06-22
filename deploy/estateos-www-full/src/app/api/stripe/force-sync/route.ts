@@ -3,9 +3,12 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import Stripe from 'stripe';
-import { PlanType } from '@prisma/client';
 import { buildInvestorProGrantData, isStripeInvestorProPlan } from '@/lib/investorProGrant';
 import { grantPlusCreditFromStripeCheckout } from '@/lib/stripePublication';
+import {
+  grantPartnerPlanFromStripeCheckout,
+  isStripePartnerPlan,
+} from '@/lib/partnerStripeGrant';
 
 function getStripeClient() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -27,7 +30,8 @@ export async function POST(req: Request) {
 
     const sessionData = decryptSession(sessionCookie.value);
     const email = sessionData?.email || null;
-    if (!email) {
+    const userId = Number(sessionData?.id || 0);
+    if (!email || !userId) {
       return NextResponse.json({ error: 'Nieprawidłowa sesja' }, { status: 401 });
     }
 
@@ -94,12 +98,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, planType: 'PAKIET_PLUS', plusCreditGranted: true });
     }
 
-    if (normalizedPlan === 'agency') {
-      await prisma.user.updateMany({
-        where: { email },
-        data: { isPro: false, planType: PlanType.AGENCY, proExpiresAt: null },
+    if (isStripePartnerPlan(normalizedPlan)) {
+      if (!sessionId) {
+        return NextResponse.json({ error: 'Brak session_id dla pakietu Partner' }, { status: 400 });
+      }
+      const stripe = getStripeClient();
+      const session = await stripe.checkout.sessions.retrieve(String(sessionId), { expand: ['payment_intent'] });
+      const paymentStatus = session.payment_status;
+      const stripePlan = String(session.metadata?.plan_type || '').trim().toLowerCase();
+      if (paymentStatus !== 'paid' || stripePlan !== normalizedPlan) {
+        return NextResponse.json({ error: 'Płatność Partner niepotwierdzona' }, { status: 409 });
+      }
+
+      const grant = await grantPartnerPlanFromStripeCheckout({
+        userId,
+        checkoutSessionId: String(sessionId),
+        stripePlanType: normalizedPlan,
       });
-      return NextResponse.json({ success: true, planType: 'AGENCY' });
+
+      return NextResponse.json({
+        success: true,
+        planType: 'AGENCY',
+        partnerPlanId: grant.partnerPlanId,
+        creditsAdded: grant.creditsAdded,
+        companyId: grant.companyId,
+        alreadyGranted: grant.alreadyGranted,
+      });
     }
 
     if (isStripeInvestorProPlan(normalizedPlan)) {

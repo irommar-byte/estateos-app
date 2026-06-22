@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { useRouter } from "next/navigation";
+import { Building2, CheckCircle2, Home } from "lucide-react";
 import {
   HOME_CTA_CONTRACT,
   HomeCtaAnalyticsEvent,
@@ -12,6 +13,97 @@ import { useLocale } from "@/contexts/LocaleContext";
 import AppStoreBadgeLink from "@/components/ui/AppStoreBadgeLink";
 const HERO_IMAGE =
   "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop";
+
+type HeroCardVariant = "private" | "agency";
+
+function HeroAudienceCard({
+  variant,
+  title,
+  subtitle,
+  bullets,
+  cta,
+  footnote,
+  onCta,
+}: {
+  variant: HeroCardVariant;
+  title: string;
+  subtitle: string;
+  bullets: string[];
+  cta: string;
+  footnote?: string;
+  onCta: () => void;
+}) {
+  const isPrivate = variant === "private";
+
+  return (
+    <article
+      className={[
+        "hero-audience-card eos-hero-glass flex h-full flex-col rounded-[1.75rem] p-5 text-left sm:p-6",
+        isPrivate ? "ring-1 ring-[#d9b58b]/40" : "ring-1 ring-emerald-400/30",
+      ].join(" ")}
+    >
+      <div className="mb-3 flex items-start gap-3 sm:mb-4">
+        <div
+          className={[
+            "flex size-11 shrink-0 items-center justify-center rounded-2xl",
+            isPrivate
+              ? "bg-gradient-to-br from-[#d9b58b]/35 to-[#70451f]/25"
+              : "bg-emerald-500/15",
+          ].join(" ")}
+        >
+          {isPrivate ? (
+            <Home className="size-5 text-[#f0d4a8]" aria-hidden />
+          ) : (
+            <Building2 className="size-5 text-emerald-400" aria-hidden />
+          )}
+        </div>
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-white sm:text-lg lg:text-xl">{title}</h2>
+          <p className="hero-audience-subtitle eos-luxury-media-text mt-1.5 text-xs font-light leading-relaxed text-white/75 sm:mt-2 sm:text-sm">
+            {subtitle}
+          </p>
+        </div>
+      </div>
+
+      <ul className="hero-audience-bullets mb-5 flex flex-1 flex-col gap-2 sm:mb-6 sm:gap-2.5">
+        {bullets.map((item) => (
+          <li key={item} className="flex items-start gap-2 text-xs text-white/88 sm:text-sm">
+            <CheckCircle2
+              className={[
+                "mt-0.5 size-4 shrink-0",
+                isPrivate ? "text-[#d9b58b]" : "text-emerald-400",
+              ].join(" ")}
+              aria-hidden
+            />
+            <span className="leading-snug">{item}</span>
+          </li>
+        ))}
+      </ul>
+
+      <button
+        type="button"
+        onClick={onCta}
+        className={
+          isPrivate
+            ? "premium-hero-cta-primary group relative w-full overflow-hidden rounded-full bg-gradient-to-b from-[#d9b58b] via-[#b98c58] to-[#70451f] px-6 py-3.5 text-[10px] font-black uppercase tracking-[0.14em] shadow-[0_14px_32px_rgba(0,0,0,0.42),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.02] active:scale-[0.98] sm:text-[11px]"
+            : "premium-hero-cta-secondary w-full rounded-full px-6 py-3.5 text-[10px] font-black uppercase tracking-[0.14em] backdrop-blur-xl transition-all hover:scale-[1.02] active:scale-[0.98] sm:text-[11px]"
+        }
+      >
+        {isPrivate ? (
+          <>
+            <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
+            <span className="relative">{cta}</span>
+          </>
+        ) : (
+          cta
+        )}
+      </button>
+      {footnote ? (
+        <p className="mt-3 text-center text-[10px] leading-relaxed text-white/55 sm:text-[11px]">{footnote}</p>
+      ) : null}
+    </article>
+  );
+}
 
 export default function HeroDepthEffect() {
   const { dict } = useLocale();
@@ -57,10 +149,16 @@ export default function HeroDepthEffect() {
     trackHomeCta("home_cta_flow_opened", ctaId);
   };
 
+  const openPartnerPricing = () => {
+    trackHomeCta("home_cta_click", "AGENCY");
+    router.push("/cennik?tab=partner");
+    trackHomeCta("home_cta_flow_opened", "AGENCY");
+  };
+
   return (
     <section
       ref={ref}
-      className="premium-hero-stage relative h-[100svh] w-full overflow-hidden bg-[#050505]"
+      className="premium-hero-stage relative min-h-[100svh] w-full overflow-hidden bg-[#050505]"
     >
       <div className="absolute inset-0 h-full w-full overflow-hidden">
         <motion.div
@@ -127,17 +225,17 @@ export default function HeroDepthEffect() {
 
         <motion.div
           style={{ y: contentY }}
-          className="relative z-20 flex h-full items-center justify-center px-4 pb-[calc(4rem+env(safe-area-inset-bottom))] text-center"
+          className="relative z-20 flex min-h-[100svh] w-full items-start justify-center overflow-x-hidden px-4 pb-[calc(3rem+env(safe-area-inset-bottom))] pt-[calc(5.25rem+env(safe-area-inset-top))] text-center sm:pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pt-[calc(5.75rem+env(safe-area-inset-top))]"
         >
           <motion.div
             style={{ opacity: opacityFade }}
-            className="flex w-full max-w-6xl flex-col items-center"
+            className="flex w-full max-w-6xl shrink-0 flex-col items-center"
           >
             <motion.p
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, ease: customEase, delay: 0.18 }}
-              className="mb-4 text-[10px] font-black uppercase tracking-[0.32em] text-emerald-400/95 sm:text-xs"
+              className="hero-eyebrow mb-3 shrink-0 text-[10px] font-black uppercase tracking-[0.32em] text-emerald-400/95 sm:mb-4 sm:text-xs"
             >
               {dict.hero.eyebrow}
             </motion.p>
@@ -146,7 +244,7 @@ export default function HeroDepthEffect() {
               initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
               animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
               transition={{ duration: 1.05, ease: customEase, delay: 0.1 }}
-              className="text-[17vw] font-light leading-[0.82] tracking-[-0.075em] text-white drop-shadow-[0_18px_60px_rgba(0,0,0,0.9)] sm:text-[13vw] lg:text-[9.5rem]"
+              className="hero-wordmark shrink-0 text-[clamp(5.5rem,28vw,16rem)] font-light leading-[0.8] tracking-[-0.075em] text-white drop-shadow-[0_18px_60px_rgba(0,0,0,0.9)] md:text-[clamp(6.5rem,24vw,18rem)]"
             >
               <span className="font-semibold text-emerald-400">E</span>state
               <span className="font-semibold text-emerald-400">OS</span>
@@ -157,43 +255,32 @@ export default function HeroDepthEffect() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, ease: customEase, delay: 0.32 }}
-              className="eos-hero-glass mt-8 max-w-xl rounded-[1.75rem] px-6 py-5 sm:max-w-2xl sm:px-8 sm:py-6"
+              className="hero-audience-grid mt-5 grid w-full max-w-5xl gap-3 sm:mt-6 md:mt-8 md:grid-cols-2 md:gap-5"
             >
-              <p className="eos-luxury-media-text text-sm font-light leading-[1.75] text-white/90 sm:text-base">
-                {dict.hero.lead}
-                <span className="font-semibold text-white">{dict.hero.leadBold}</span>
-                {dict.hero.leadExtra}
-              </p>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, ease: customEase, delay: 0.48 }}
-              className="mt-12 flex w-full max-w-md flex-col justify-center gap-3 sm:max-w-none sm:flex-row sm:gap-4"
-            >
-              <button
-                type="button"
-                onClick={() => openHomeCta("PRIVATE")}
-                className="premium-hero-cta-primary group relative w-full overflow-hidden rounded-full bg-gradient-to-b from-[#d9b58b] via-[#b98c58] to-[#70451f] px-8 py-4 text-[11px] font-black uppercase tracking-[0.16em] shadow-[0_18px_38px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.02] active:scale-[0.98] sm:w-auto sm:px-10"
-              >
-                <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
-                <span className="relative">{dict.hero.ctaPrivate}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => openHomeCta("AGENCY")}
-                className="premium-hero-cta-secondary w-full rounded-full px-8 py-4 text-[11px] font-black uppercase tracking-[0.16em] backdrop-blur-xl transition-all hover:scale-[1.02] active:scale-[0.98] sm:w-auto sm:px-10"
-              >
-                {dict.hero.ctaAgency}
-              </button>
+              <HeroAudienceCard
+                variant="private"
+                title={dict.hero.privateCard.title}
+                subtitle={dict.hero.privateCard.subtitle}
+                bullets={dict.hero.privateCard.bullets}
+                cta={dict.hero.privateCard.cta}
+                onCta={() => openHomeCta("PRIVATE")}
+              />
+              <HeroAudienceCard
+                variant="agency"
+                title={dict.hero.agencyCard.title}
+                subtitle={dict.hero.agencyCard.subtitle}
+                bullets={dict.hero.agencyCard.bullets}
+                cta={dict.hero.agencyCard.cta}
+                footnote={dict.hero.agencyCard.footnote}
+                onCta={openPartnerPricing}
+              />
             </motion.div>
 
             <motion.div
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, ease: customEase, delay: 0.58 }}
-              className="mt-6"
+              className="hero-app-badges mt-5 md:mt-7"
             >
               <AppStoreBadgeLink
                 label={dict.footer.appStore}
