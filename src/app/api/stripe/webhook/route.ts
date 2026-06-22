@@ -2,11 +2,14 @@ import { radarService } from '@/lib/services/radar.service';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
-import { PlanType } from '@prisma/client';
 import type { PropertyType, TransactionType } from '@prisma/client';
 import { buildInvestorProGrantData, isStripeInvestorProPlan } from '@/lib/investorProGrant';
 import { grantPlusCreditFromStripeCheckout } from '@/lib/stripePublication';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
+import {
+  grantPartnerPlanFromStripeCheckout,
+  isStripePartnerPlan,
+} from '@/lib/partnerStripeGrant';
 
 function coercePropertyType(raw: unknown): PropertyType {
   const s = String(raw || '').toLowerCase();
@@ -98,16 +101,25 @@ export async function POST(req: Request) {
             });
             console.log(`[stripe:webhook] pakiet_plus credit granted email=${customerEmail} session=${checkoutSessionId}`);
           }
-        } else if (rawPlanType === 'agency') {
-          await prisma.user.updateMany({
+        } else if (isStripePartnerPlan(rawPlanType)) {
+          const user = await prisma.user.findUnique({
             where: { email: customerEmail },
-            data: {
-              isPro: false,
-              planType: PlanType.AGENCY,
-              proExpiresAt: null,
-            },
+            select: { id: true },
           });
-          console.log(`[stripe:webhook] agency_plan email=${customerEmail} session=${checkoutSessionId}`);
+          if (!user?.id) {
+            console.warn(
+              `[stripe:webhook] partner_plan user not found email=${customerEmail} session=${checkoutSessionId}`,
+            );
+          } else {
+            const grant = await grantPartnerPlanFromStripeCheckout({
+              userId: Number(user.id),
+              checkoutSessionId,
+              stripePlanType: rawPlanType,
+            });
+            console.log(
+              `[stripe:webhook] partner_plan email=${customerEmail} session=${checkoutSessionId} plan=${rawPlanType} granted=${grant.granted} credits=${grant.creditsAdded} company=${grant.companyId}`,
+            );
+          }
         } else if (isStripeInvestorProPlan(rawPlanType)) {
           const grant = buildInvestorProGrantData();
           await prisma.user.updateMany({

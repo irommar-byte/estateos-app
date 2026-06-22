@@ -848,7 +848,7 @@ export default function CRMDashboard() {
          return;
        }
        if (plan === 'pakiet_plus') setWowType('plus');
-       else if (plan === 'agency') setWowType('agency');
+       else if (plan === 'agency' || plan?.startsWith('partner_')) setWowType('agency');
        else if (plan === 'renewal') setWowType('renewal');
        else setWowType('investor');
        
@@ -856,7 +856,14 @@ export default function CRMDashboard() {
        
        const syncPromise = plan === 'renewal'
          ? syncRenewalAfterPayment(searchParams)
-         : fetch('/api/stripe/force-sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }) }).then(async () => {
+         : fetch('/api/stripe/force-sync', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({
+               plan,
+               sessionId: searchParams.get('session_id'),
+             }),
+           }).then(async () => {
              const renewalOfferId = searchParams.get('renewalOfferId');
              if (plan === 'pakiet_plus' && renewalOfferId) {
                await fetch(`/api/offers/${renewalOfferId}/activate`, {

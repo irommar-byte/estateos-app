@@ -22,6 +22,7 @@ function HeroAudienceCard({
   subtitle,
   bullets,
   cta,
+  footnote,
   onCta,
 }: {
   variant: HeroCardVariant;
@@ -29,6 +30,7 @@ function HeroAudienceCard({
   subtitle: string;
   bullets: string[];
   cta: string;
+  footnote?: string;
   onCta: () => void;
 }) {
   const isPrivate = variant === "private";
@@ -96,6 +98,9 @@ function HeroAudienceCard({
           cta
         )}
       </button>
+      {footnote ? (
+        <p className="mt-3 text-center text-[10px] leading-relaxed text-white/55 sm:text-[11px]">{footnote}</p>
+      ) : null}
     </article>
   );
 }
@@ -142,6 +147,12 @@ export default function HeroDepthEffect() {
     router.push(entry.webRoute);
 
     trackHomeCta("home_cta_flow_opened", ctaId);
+  };
+
+  const openPartnerPricing = () => {
+    trackHomeCta("home_cta_click", "AGENCY");
+    router.push("/cennik?tab=partner");
+    trackHomeCta("home_cta_flow_opened", "AGENCY");
   };
 
   return (
@@ -260,7 +271,8 @@ export default function HeroDepthEffect() {
                 subtitle={dict.hero.agencyCard.subtitle}
                 bullets={dict.hero.agencyCard.bullets}
                 cta={dict.hero.agencyCard.cta}
-                onCta={() => openHomeCta("AGENCY")}
+                footnote={dict.hero.agencyCard.footnote}
+                onCta={openPartnerPricing}
               />
             </motion.div>
 
