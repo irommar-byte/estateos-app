@@ -1375,18 +1375,31 @@ export default function ClientForm({
       if (!res.ok || !data?.success) {
         throw new Error(String(data?.error || data?.message || ao.walletFetchFailed));
       }
-      const coupons = Array.isArray(data.publicationCoupons) ? data.publicationCoupons : [];
+      const coupons = Array.isArray(data.publicationCoupons)
+        ? data.publicationCoupons
+        : Array.isArray(data.coupons)
+          ? data.coupons
+          : [];
       setWalletCoupons(coupons);
       setWalletPlusCredits(Number(data.plusCredits || 0));
       setWalletHasPlusCredit(Boolean(data.hasPlusCredit));
       setWalletPlusExpiresAt(data.plusExpiresAt ? String(data.plusExpiresAt) : null);
-      setPublicationSelection((prev) =>
-        prev ??
-        defaultPublicationSelection({
-          couponIds: coupons.map((c: PublicationCouponOption) => c.id),
+      setPublicationSelection((prev) => {
+        const couponIds = coupons.map((c: PublicationCouponOption) => c.id);
+        const preferred = defaultPublicationSelection({
+          couponIds,
           hasPlusCredit: Boolean(data.hasPlusCredit),
-        }),
-      );
+        });
+        if (!prev) return preferred;
+        if (couponIds.length > 0 && (prev === "buy_plus" || prev === "pay_renewal")) {
+          return preferred;
+        }
+        if (prev.startsWith("coupon:")) {
+          const id = prev.replace("coupon:", "");
+          if (!couponIds.includes(id)) return preferred;
+        }
+        return prev;
+      });
     } finally {
       setWalletLoading(false);
     }
@@ -2333,6 +2346,7 @@ export default function ClientForm({
                       title: c.title,
                       subtitle: c.subtitle,
                       pillLabel: c.pillLabel,
+                      meta: c.meta,
                     })),
                     plusCredits: walletPlusCredits,
                     hasPlusCredit: walletHasPlusCredit,

@@ -57,7 +57,11 @@ export default function OfferRenewalModal({
       if (!res.ok || !data?.success) {
         throw new Error(String(data?.error || data?.message || "Nie udało się załadować portfela."));
       }
-      const coupons = Array.isArray(data.publicationCoupons) ? data.publicationCoupons : [];
+      const coupons = Array.isArray(data.publicationCoupons)
+        ? data.publicationCoupons
+        : Array.isArray(data.coupons)
+          ? data.coupons
+          : [];
       const hasPlusCredit = Boolean(data.hasPlusCredit);
       setWallet({
         coupons,
