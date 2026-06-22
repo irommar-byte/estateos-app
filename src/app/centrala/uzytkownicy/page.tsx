@@ -197,6 +197,14 @@ export default function AdminUsers() {
     }
   };
 
+  const patchUserVerification = (
+    userId: number,
+    patch: Pick<AdminUserDetail, "isVerified" | "emailVerifiedAt" | "phoneVerifiedAt">,
+  ) => {
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...patch } : u)));
+    setSelectedUser((prev) => (prev?.id === userId ? { ...prev, ...patch } : prev));
+  };
+
   const openContact = async (peerUserId: number, peerName?: string | null) => {
     try {
       const res = await fetch("/api/contact/threads", {
@@ -522,6 +530,7 @@ export default function AdminUsers() {
                   onTogglePro={() => void togglePro(selectedUser.id, selectedUser.isPro)}
                   onDelete={() => void handleDelete(selectedUser.id)}
                   onOpenMessages={() => void openContact(selectedUser.id, selectedUser.name)}
+                  onVerificationChange={(patch) => patchUserVerification(selectedUser.id, patch)}
                 />
               </motion.div>
             ) : null}

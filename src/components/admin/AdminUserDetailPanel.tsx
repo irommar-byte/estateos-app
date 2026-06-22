@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   Activity,
@@ -84,6 +85,57 @@ function formatMoney(value: number | null | undefined) {
   return `${new Intl.NumberFormat("pl-PL").format(value)} PLN`;
 }
 
+function VerificationActionRow({
+  label,
+  verified,
+  verifiedAt,
+  disabledReason,
+  busy,
+  onVerify,
+  onUnverify,
+}: {
+  label: string;
+  verified: boolean;
+  verifiedAt: string | null;
+  disabledReason?: string | null;
+  busy: boolean;
+  onVerify: () => void;
+  onUnverify: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-[var(--eos-text)]">{label}</p>
+        <p className="mt-0.5 text-xs text-[var(--eos-muted)]">
+          {verified ? `Potwierdzono: ${formatDate(verifiedAt)}` : "Niepotwierdzone"}
+        </p>
+        {disabledReason ? <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">{disabledReason}</p> : null}
+      </div>
+      <div className="flex shrink-0 gap-2">
+        {verified ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onUnverify}
+            className="rounded-xl border border-[var(--eos-border)] px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] transition hover:border-red-500/35 hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400"
+          >
+            Cofnij
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busy || Boolean(disabledReason)}
+            onClick={onVerify}
+            className="inline-flex min-w-[9.5rem] items-center justify-center gap-1.5 rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:bg-emerald-500/15 disabled:opacity-50 dark:text-emerald-400"
+          >
+            {busy ? <Loader2 size={12} className="animate-spin" /> : "Potwierdź ręcznie"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminUserDetailPanel({
   user,
   segmentLabel,
@@ -93,6 +145,7 @@ export default function AdminUserDetailPanel({
   onTogglePro,
   onDelete,
   onOpenMessages,
+  onVerificationChange,
 }: {
   user: AdminUserDetail;
   segmentLabel: string;
@@ -102,10 +155,40 @@ export default function AdminUserDetailPanel({
   onTogglePro: () => void;
   onDelete: () => void;
   onOpenMessages: () => void;
+  onVerificationChange?: (patch: Pick<AdminUserDetail, "isVerified" | "emailVerifiedAt" | "phoneVerifiedAt">) => void;
 }) {
+  const [verifyBusy, setVerifyBusy] = useState<"email" | "phone" | null>(null);
   const legacyDistricts = parseDistrictList(user.legacyPreferences.searchDistricts);
-  const emailOk = Boolean(user.emailVerifiedAt);
+  const emailOk = Boolean(user.emailVerifiedAt || user.isVerified);
   const phoneOk = Boolean(user.phoneVerifiedAt);
+
+  const runVerification = async (channel: "email" | "phone", action: "verify" | "unverify") => {
+    const channelLabel = channel === "email" ? "e-mail" : "telefon (SMS)";
+    const actionLabel = action === "verify" ? "potwierdzić" : "cofnąć potwierdzenie";
+    if (!confirm(`Czy na pewno chcesz ${actionLabel} ${channelLabel} użytkownika ${user.name || user.email}?`)) {
+      return;
+    }
+
+    setVerifyBusy(channel);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ channel, action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        alert(data?.error || "Nie udało się zmienić statusu weryfikacji.");
+        return;
+      }
+      onVerificationChange?.(data.verification);
+    } catch {
+      alert("Błąd sieci przy zmianie weryfikacji.");
+    } finally {
+      setVerifyBusy(null);
+    }
+  };
 
   const copyId = async () => {
     try {
@@ -168,9 +251,26 @@ export default function AdminUserDetailPanel({
       </Section>
 
       <Section title="Weryfikacja" icon={<ShieldCheck size={12} className="text-emerald-500" />}>
-        <InfoRow label="E-mail potwierdzony" value={formatDate(user.emailVerifiedAt)} />
-        <InfoRow label="Telefon potwierdzony" value={formatDate(user.phoneVerifiedAt)} />
-        <InfoRow label="Status konta" value={user.isVerified ? "Zweryfikowane" : "Niezweryfikowane"} />
+        <VerificationActionRow
+          label="E-mail"
+          verified={emailOk}
+          verifiedAt={user.emailVerifiedAt}
+          disabledReason={!user.email?.trim() ? "Brak adresu e-mail w profilu" : null}
+          busy={verifyBusy === "email"}
+          onVerify={() => void runVerification("email", "verify")}
+          onUnverify={() => void runVerification("email", "unverify")}
+        />
+        <VerificationActionRow
+          label="Telefon (SMS)"
+          verified={phoneOk}
+          verifiedAt={user.phoneVerifiedAt}
+          disabledReason={!user.phone?.trim() ? "Brak numeru telefonu w profilu" : null}
+          busy={verifyBusy === "phone"}
+          onVerify={() => void runVerification("phone", "verify")}
+          onUnverify={() => void runVerification("phone", "unverify")}
+        />
+        <InfoRow label="Status konta (e-mail)" value={emailOk ? "Zweryfikowane" : "Niezweryfikowane"} />
+        <InfoRow label="Status telefonu" value={phoneOk ? "Zweryfikowany" : "Niezweryfikowany"} />
       </Section>
 
       <Section title="Radar / Inteligentny Radar" icon={<Radar size={12} className="text-emerald-500" />}>
