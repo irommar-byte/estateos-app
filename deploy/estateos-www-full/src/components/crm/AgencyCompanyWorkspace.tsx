@@ -110,6 +110,91 @@ function fmtDate(iso: string | null) {
   return new Date(iso).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+function memberDisplayName(member: Pick<MemberRow, 'userId' | 'user'> | null | undefined) {
+  if (!member?.user) return `Użytkownik #${member?.userId ?? '?'}`;
+  return member.user.name || member.user.email || `Użytkownik #${member.userId}`;
+}
+
+function normalizeMemberRow(raw: unknown): MemberRow | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Partial<MemberRow>;
+  if (typeof row.id !== 'number' || typeof row.userId !== 'number') return null;
+  const user = row.user;
+  if (!user || typeof user !== 'object' || typeof user.id !== 'number') return null;
+
+  return {
+    id: row.id,
+    userId: row.userId,
+    role: String(row.role || 'AGENT'),
+    status: String(row.status || 'PENDING'),
+    agentTitle: String(row.agentTitle || 'AGENT'),
+    profilePhotoUrl: row.profilePhotoUrl ?? null,
+    approvedAt: row.approvedAt ?? null,
+    createdAt: row.createdAt ?? new Date().toISOString(),
+    user: {
+      id: user.id,
+      name: user.name ?? null,
+      email: String(user.email || ''),
+      image: user.image ?? null,
+      extraListings: Number(user.extraListings ?? 0),
+      plusExpiresAt: user.plusExpiresAt ?? null,
+      lastLoginAt: user.lastLoginAt ?? null,
+      memberSince: user.memberSince ?? null,
+      activeOffers: Number(user.activeOffers ?? 0),
+      pendingOffers: Number(user.pendingOffers ?? 0),
+      soldOffers: Number(user.soldOffers ?? 0),
+      inDealOffers: Number(user.inDealOffers ?? 0),
+      dealsInProgress: Number(user.dealsInProgress ?? 0),
+      crmClients: Number(user.crmClients ?? 0),
+      reviewsCount: Number(user.reviewsCount ?? 0),
+      averageRating:
+        user.averageRating == null || Number.isNaN(Number(user.averageRating))
+          ? null
+          : Number(user.averageRating),
+    },
+  };
+}
+
+function normalizeDashboardPayload(raw: Record<string, unknown>): DashboardPayload {
+  const members = (Array.isArray(raw.members) ? raw.members : [])
+    .map(normalizeMemberRow)
+    .filter((m): m is MemberRow => m != null);
+
+  const recentOffers = (Array.isArray(raw.recentOffers) ? raw.recentOffers : [])
+    .filter((offer): offer is DashboardPayload['recentOffers'][number] => {
+      if (!offer || typeof offer !== 'object') return false;
+      const o = offer as DashboardPayload['recentOffers'][number];
+      return typeof o.id === 'number' && typeof o.title === 'string';
+    })
+    .map((offer) => ({
+      ...offer,
+      agent: offer.agent ?? { id: 0, name: null },
+    }));
+
+  const creditTransfers = (Array.isArray(raw.creditTransfers) ? raw.creditTransfers : [])
+    .filter((row): row is DashboardPayload['creditTransfers'][number] => {
+      if (!row || typeof row !== 'object') return false;
+      const t = row as DashboardPayload['creditTransfers'][number];
+      return typeof t.id === 'number' && t.toUser != null;
+    });
+
+  const statsRaw = (raw.stats ?? {}) as DashboardPayload['stats'];
+  const companyRaw = raw.company as DashboardPayload['company'];
+
+  return {
+    company: companyRaw,
+    stats: {
+      activeAgents: Number(statsRaw?.activeAgents ?? 0),
+      pendingAgents: Number(statsRaw?.pendingAgents ?? 0),
+      totalOffers: Number(statsRaw?.totalOffers ?? 0),
+    },
+    members,
+    recentOffers,
+    creditTransfers,
+    partnerPlan: (raw.partnerPlan as DashboardPayload['partnerPlan']) ?? null,
+  };
+}
+
 export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendingOnly?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [membership, setMembership] = useState<MembershipPayload | null>(null);
@@ -156,14 +241,9 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         const dashRes = await fetch('/api/agency-company/dashboard', { credentials: 'include' });
         const dashData = await dashRes.json();
         if (dashRes.ok && dashData.success) {
-          setDashboard({
-            company: dashData.company,
-            stats: dashData.stats,
-            members: Array.isArray(dashData.members) ? dashData.members : [],
-            creditTransfers: Array.isArray(dashData.creditTransfers) ? dashData.creditTransfers : [],
-            recentOffers: Array.isArray(dashData.recentOffers) ? dashData.recentOffers : [],
-            partnerPlan: dashData.partnerPlan ?? null,
-          });
+          setDashboard(normalizeDashboardPayload(dashData as Record<string, unknown>));
+        } else if (dashRes.status === 403 || dashRes.status === 404) {
+          setError(dashData.message || 'Panel administratora jest chwilowo niedostępny.');
         }
       }
     } catch {
@@ -658,12 +738,13 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
             {pendingMembers.map((m) => (
               <motion.div
                 key={m.id}
-                layout
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
                 className="flex flex-col gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
-                  <p className="font-bold text-[var(--eos-text)]">{m.user.name || m.user.email}</p>
-                  <p className="eos-muted-copy text-xs">{m.user.email}</p>
+                  <p className="font-bold text-[var(--eos-text)]">{memberDisplayName(m)}</p>
+                  <p className="eos-muted-copy text-xs">{m.user?.email || '—'}</p>
                   <p className="mt-1 text-[10px] uppercase tracking-widest text-[var(--eos-muted)]">
                     Zgłoszono: {fmtDate(m.createdAt)}
                   </p>
@@ -723,8 +804,8 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                         <div className="relative shrink-0">
                           <div className="size-12 overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
                             <ProfileMediaAvatar
-                              src={pickTeamMemberAvatar({ userImage: m.user.image, profilePhotoUrl: m.profilePhotoUrl })}
-                              alt={m.user.name || 'Agent'}
+                              src={pickTeamMemberAvatar({ userImage: m.user?.image, profilePhotoUrl: m.profilePhotoUrl })}
+                              alt={memberDisplayName(m)}
                               iconSize={18}
                               className="size-full object-cover"
                             />
@@ -741,8 +822,8 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                           </label>
                         </div>
                         <div>
-                          <p className="font-bold text-[var(--eos-text)]">{m.user.name || '—'}</p>
-                          <p className="eos-muted-copy text-xs">{m.user.email}</p>
+                          <p className="font-bold text-[var(--eos-text)]">{memberDisplayName(m)}</p>
+                          <p className="eos-muted-copy text-xs">{m.user?.email || '—'}</p>
                           {m.role === 'ADMIN' && (
                             <span className="mt-1 inline-block rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600">
                               Administrator
@@ -764,22 +845,26 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                         ))}
                       </select>
                     </td>
-                    <td className="py-4 pr-4 text-xs text-[var(--eos-muted)]">{fmtDate(m.user.lastLoginAt)}</td>
+                    <td className="py-4 pr-4 text-xs text-[var(--eos-muted)]">{fmtDate(m.user?.lastLoginAt ?? null)}</td>
                     <td className="py-4 pr-4">
-                      <div className="text-xs font-bold text-[var(--eos-text)]">{m.user.activeOffers} aktyw.</div>
+                      <div className="text-xs font-bold text-[var(--eos-text)]">{m.user?.activeOffers ?? 0} aktyw.</div>
                       <div className="eos-muted-copy text-[10px]">
-                        {m.user.pendingOffers} oczek. · {m.user.soldOffers} sprzed.
+                        {m.user?.pendingOffers ?? 0} oczek. · {m.user?.soldOffers ?? 0} sprzed.
                       </div>
                     </td>
                     <td className="py-4 pr-4">
-                      <Link href={`/profil/${m.user.id}#agent-reviews`} className="inline-flex items-center gap-1 text-xs font-bold text-amber-500 hover:underline">
-                        <Star size={12} className="fill-amber-400 text-amber-400" />
-                        {m.user.averageRating != null ? m.user.averageRating.toFixed(1) : '—'} ({m.user.reviewsCount})
-                      </Link>
+                      {m.user?.id ? (
+                        <Link href={`/profil/${m.user.id}#agent-reviews`} className="inline-flex items-center gap-1 text-xs font-bold text-amber-500 hover:underline">
+                          <Star size={12} className="fill-amber-400 text-amber-400" />
+                          {m.user.averageRating != null ? m.user.averageRating.toFixed(1) : '—'} ({m.user.reviewsCount ?? 0})
+                        </Link>
+                      ) : (
+                        '—'
+                      )}
                     </td>
-                    <td className="py-4 pr-4">{m.user.crmClients}</td>
-                    <td className="py-4 pr-4">{m.user.dealsInProgress}</td>
-                    <td className="py-4 pr-4">{m.user.extraListings}</td>
+                    <td className="py-4 pr-4">{m.user?.crmClients ?? 0}</td>
+                    <td className="py-4 pr-4">{m.user?.dealsInProgress ?? 0}</td>
+                    <td className="py-4 pr-4">{m.user?.extraListings ?? 0}</td>
                     <td className="py-4">
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -789,9 +874,11 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                         >
                           Zarządzaj
                         </button>
-                        <Link href={`/profil/${m.user.id}`} className="text-xs font-bold text-[var(--eos-muted)] hover:underline">
-                          Profil
-                        </Link>
+                        {m.user?.id ? (
+                          <Link href={`/profil/${m.user.id}`} className="text-xs font-bold text-[var(--eos-muted)] hover:underline">
+                            Profil
+                          </Link>
+                        ) : null}
                         {m.role === 'AGENT' && (
                           <button
                             type="button"
@@ -822,7 +909,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
               >
                 <p className="truncate font-bold text-[var(--eos-text)]">{offer.title}</p>
                 <p className="eos-muted-copy mt-1 text-xs">
-                  {offer.agent.name || 'Agent'} · {offer.city} · {offer.status}
+                  {offer.agent?.name || 'Agent'} · {offer.city || '—'} · {offer.status}
                 </p>
                 <p className="mt-2 text-[10px] text-[var(--eos-muted)]">Aktualizacja: {fmtDate(offer.updatedAt)}</p>
               </Link>
@@ -835,8 +922,8 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         <AgencyMemberDetailPanel
           member={detailMember}
           transferTargets={(dashboard?.members ?? [])
-            .filter((m) => m.status === 'ACTIVE')
-            .map((m) => ({ userId: m.userId, name: m.user.name }))}
+            .filter((m) => m.status === 'ACTIVE' && m.user)
+            .map((m) => ({ userId: m.userId, name: memberDisplayName(m) }))}
           onClose={() => setDetailMember(null)}
           onTransferred={() => void load()}
         />
@@ -854,7 +941,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
               </button>
             </div>
             <p className="eos-muted-copy mb-4 text-sm">
-              Pula firmy: <strong>{company.extraListings}</strong> kredytów
+              Pula firmy: <strong>{company.extraListings ?? 0}</strong> kredytów
             </p>
             <input
               type="number"
@@ -894,7 +981,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                 className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--eos-border)]/60 px-4 py-3 text-sm"
               >
                 <span>
-                  <strong>{t.amount}</strong> kredytów → {t.toUser.name || t.toUser.email}
+                  <strong>{t.amount}</strong> kredytów → {t.toUser?.name || t.toUser?.email || 'Agent'}
                 </span>
                 <span className="eos-muted-copy text-xs">{fmtDate(t.createdAt)}</span>
               </div>

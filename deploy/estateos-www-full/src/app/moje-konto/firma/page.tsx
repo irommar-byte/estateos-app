@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import AgencyCompanyWorkspace from '@/components/crm/AgencyCompanyWorkspace';
+import AgencyWorkspaceErrorBoundary from '@/components/crm/AgencyWorkspaceErrorBoundary';
 
 function FirmaPageInner() {
   const searchParams = useSearchParams();
@@ -19,7 +20,9 @@ function FirmaPageInner() {
         >
           <ChevronLeft size={14} /> Wróć do CRM
         </Link>
-        <AgencyCompanyWorkspace pendingOnly={pendingOnly} />
+        <AgencyWorkspaceErrorBoundary>
+          <AgencyCompanyWorkspace pendingOnly={pendingOnly} />
+        </AgencyWorkspaceErrorBoundary>
       </div>
     </div>
   );
