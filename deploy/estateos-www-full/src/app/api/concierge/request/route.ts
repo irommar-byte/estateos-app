@@ -1,34 +1,59 @@
-import { encryptSession, decryptSession } from '@/lib/sessionUtils';
 import { NextResponse } from 'next/server';
-import { NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { cookies } from 'next/headers';
+import { resolveWebUserId } from '@/lib/webSessionAuth';
+import { notifyLeadTransfer } from '@/lib/leadTransfer';
 
 export async function POST(req: Request) {
   try {
+    const userId = await resolveWebUserId(req);
+    if (!userId) {
+      return NextResponse.json({ error: 'Musisz być zalogowany.' }, { status: 401 });
+    }
+
     const { offerId, agencyId } = await req.json();
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('luxestate_user') || cookieStore.get('estateos_session');
-    
-    if (!sessionCookie) return NextResponse.json({ error: 'Musisz być zalogowany' }, { status: 401 });
-    let sessionData: any = {}; try { sessionData = decryptSession(sessionCookie.value); } catch(e) {}
-    const ownerId = sessionData.id || sessionCookie.value;
+    const oid = Number(offerId);
+    const aid = Number(agencyId);
+    if (!Number.isFinite(oid) || !Number.isFinite(aid)) {
+      return NextResponse.json({ error: 'Wybierz ofertę i agencję.' }, { status: 400 });
+    }
+
+    const offer = await prisma.offer.findFirst({
+      where: { id: oid, userId },
+      select: { id: true, title: true, managementStatus: true },
+    });
+    if (!offer) {
+      return NextResponse.json({ error: 'Oferta nie należy do Twojego konta.' }, { status: 403 });
+    }
+    if (String(offer.managementStatus || 'SELF').toUpperCase() === 'AGENCY_MANAGED') {
+      return NextResponse.json({ error: 'Ta oferta jest już zarządzana przez agencję.' }, { status: 400 });
+    }
+
+    const existing = await prisma.leadTransfer.findFirst({
+      where: {
+        offerId: oid,
+        ownerId: userId,
+        status: { in: ['PENDING', 'TERMS_PROPOSED', 'USER_COUNTER'] },
+      },
+    });
+    if (existing) {
+      return NextResponse.json({ error: 'Masz już aktywne zapytanie o przekazanie tej oferty.' }, { status: 409 });
+    }
 
     const lead = await prisma.leadTransfer.create({
-      data: { offerId: Number(offerId), ownerId: Number(ownerId), agencyId: Number(agencyId) }
+      data: { offerId: oid, ownerId: userId, agencyId: aid },
     });
 
-    await prisma.notification.create({
-      data: {
-        userId: Number(agencyId),
-        title: '💎 Nowy Gorący Lead (Concierge)',
-        body:
-          'Zapytanie Concierge: Prywatny inwestor prosi o wycenę i przejęcie oferty. Zaproponuj swoją prowizję w panelu CRM. ' +
-          'https://estateos.pl/moje-konto/crm',
-        type: NotificationType.SYSTEM_ALERT,
-      }
+    await notifyLeadTransfer({
+      userId: aid,
+      title: 'Nowe zapytanie o przejęcie sprzedaży',
+      body:
+        `Właściciel prosi o profesjonalną obsługę oferty „${offer.title}”. ` +
+        'Przejrzyj ogłoszenie i prześlij warunki w panelu CRM. https://estateos.pl/moje-konto/crm',
+      offerId: oid,
     });
 
     return NextResponse.json({ success: true, lead });
-  } catch(e) { return NextResponse.json({ error: 'Błąd serwera' }, { status: 500 }); }
+  } catch {
+    return NextResponse.json({ error: 'Błąd serwera.' }, { status: 500 });
+  }
 }

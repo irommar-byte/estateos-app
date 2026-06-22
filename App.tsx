@@ -95,6 +95,7 @@ import EstateDiscoveryMode from './src/screens/EstateDiscoveryMode';
 import AdminNativeImportScreen from './src/screens/AdminNativeImportScreen';
 import AdminKeiAmerScreen from './src/screens/AdminKeiAmerScreen';
 import AgencyOfficeScreen from './src/screens/AgencyOfficeScreen';
+import AgencyLeadInboxScreen from './src/screens/AgencyLeadInboxScreen';
 import OfferCommentsScreen from './src/screens/OfferCommentsScreen';
 import { extractIdFromDeeplink } from './src/utils/deeplinkParse';
 import {
@@ -1571,6 +1572,11 @@ export default function App() {
             <AppStack.Screen
               name="AgencyOffice"
               component={AgencyOfficeScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="AgencyLeadInbox"
+              component={AgencyLeadInboxScreen}
               options={{ headerShown: false, animation: 'slide_from_right' }}
             />
             <AppStack.Screen

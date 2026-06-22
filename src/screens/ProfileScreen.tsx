@@ -51,6 +51,8 @@ import ProfileShopSection from '../components/profile/ProfileShopSection';
 import InvestorProTrialIntroHost from '../components/profile/InvestorProTrialIntroHost';
 import ProfileCardShell from '../components/profile/ProfileCardShell';
 import ProfileAgencyOfficeCard from '../components/agency/ProfileAgencyOfficeCard';
+import ProfileConciergeCard from '../components/agency/ProfileConciergeCard';
+import AgencyTransferModal from '../components/agency/AgencyTransferModal';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
 import {
   dismissProfilePromoCardForever,
@@ -598,6 +600,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   const [reactivationChoiceCoupons, setReactivationChoiceCoupons] = useState([]);
   const [reactivationChoicePlusSlots, setReactivationChoicePlusSlots] = useState(0);
   const [reactivationChoiceHasPlus, setReactivationChoiceHasPlus] = useState(false);
+  const [transferModalVisible, setTransferModalVisible] = useState(false);
   const pendingReactivationRef = useRef<{ offerId: number; offerTitle: string } | null>(null);
   const recentlyReactivatedUntilRef = useRef<Record<number, number>>({});
   
@@ -943,6 +946,9 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         }}
         ]
       );
+    } else if (actionType === 'AGENCY_TRANSFER') {
+      if (!selectedOffer?.id || normalizeOfferTabStatus(selectedOffer.status) !== 'ACTIVE') return;
+      setTransferModalVisible(true);
     } else if (actionType === 'REACTIVATE_30D') {
       if (!selectedOffer?.id || !token || reactivating) return;
       const offerId = Number(selectedOffer.id);
@@ -1044,6 +1050,17 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           <PremiumActionButton onPress={() => handleAction('PREVIEW')} icon="search" color={{ bg: 'rgba(0,122,255,0.1)', icon: '#007AFF' }} title={t('profile.myOffers.preview')} subtitle={t('profile.myOffers.previewSubtitle')} theme={theme} isDark={isDark} />
           <PremiumActionButton onPress={() => handleAction('EDIT')} icon="pencil" color={{ bg: 'rgba(255,159,10,0.1)', icon: '#FF9F0A' }} title={t('profile.myOffers.edit')} subtitle={t('profile.myOffers.editSubtitle')} theme={theme} isDark={isDark} />
           <PremiumActionButton onPress={() => handleAction('COMMENTS')} icon="chatbubbles" color={{ bg: 'rgba(175,82,222,0.12)', icon: '#AF52DE' }} title={t('profile.myOffers.comments')} subtitle={t('profile.myOffers.commentsSubtitle')} theme={theme} isDark={isDark} />
+          {selSt === 'ACTIVE' ? (
+            <PremiumActionButton
+              onPress={() => handleAction('AGENCY_TRANSFER')}
+              icon="business"
+              color={{ bg: 'rgba(255,149,0,0.12)', icon: '#FF9500' }}
+              title="Oddaj do agencji"
+              subtitle="Concierge — profesjonalna obsługa sprzedaży"
+              theme={theme}
+              isDark={isDark}
+            />
+          ) : null}
           <PremiumActionButton disabled={selSt === 'ARCHIVED' || archiving} onPress={() => handleAction('ARCHIVE')} icon="archive" color={{ bg: selSt === 'ARCHIVED' ? 'rgba(142,142,147,0.1)' : 'rgba(255,59,48,0.1)', icon: selSt === 'ARCHIVED' ? '#8E8E93' : '#FF3B30' }} title={archiving ? t('profile.myOffers.withdrawing') : t('profile.myOffers.withdraw')} subtitle={t('profile.myOffers.withdrawSubtitle')} theme={theme} isDark={isDark} />
           {selSt === 'ARCHIVED' && (
             <PremiumActionButton
@@ -1135,6 +1152,12 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           hasPlusCredit={reactivationChoiceHasPlus}
           onConfirm={handleReactivationPublicationChoice}
           onClose={dismissReactivationChoice}
+        />
+        <AgencyTransferModal
+          visible={transferModalVisible}
+          offerId={Number(selectedOffer?.id || 0)}
+          offerTitle={String(selectedOffer?.title || '')}
+          onClose={() => setTransferModalVisible(false)}
         />
       </View>
     </Modal>
@@ -3530,6 +3553,10 @@ function ProfileScreenLoggedIn({
             <ProfileAgencyOfficeCard membership={agencyMembership} isDark={isDark} />
           </View>
         ) : null}
+
+        <View style={[styles.section, { paddingHorizontal: 16, marginTop: -4 }]}>
+          <ProfileConciergeCard isDark={isDark} isAgency={isAgentProfile} />
+        </View>
 
         <View style={styles.section}>
             <ProfileProExtrasSection

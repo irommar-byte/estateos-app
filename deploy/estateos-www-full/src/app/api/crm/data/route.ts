@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 import { readPendingPublication } from "@/lib/offerPendingPublication";
+import { listEnrichedLeadTransfersForUser } from "@/lib/leadTransfer";
 
 export async function GET(req: Request) {
   try {
@@ -118,15 +119,7 @@ export async function GET(req: Request) {
     // ==========================================
     // LEADY
     // ==========================================
-    const leads = await prisma.leadTransfer.findMany({
-      where: {
-        OR: [
-          { agencyId: finalUserId },
-          { ownerId: finalUserId }
-        ]
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const leads = await listEnrichedLeadTransfersForUser(finalUserId);
 
     // ==========================================
     // BIDS
