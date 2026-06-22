@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   getAdditionalListingSlots,
   hasAdditionalPlusPublication,
+  hasUnlimitedListingAccess,
   isPlusCreditActive,
   userAfterPakietPlusPurchase,
   applyOptimisticPlusPublicationSlot,
@@ -23,6 +24,13 @@ test('applyOptimisticPlusPublicationSlot increments counter', () => {
   const next = applyOptimisticPlusPublicationSlot({ id: 1, extraListings: 0 });
   assert.equal(getAdditionalListingSlots(next), 1);
   assert.ok(next?.plusExpiresAt);
+});
+
+test('AGENCY planType no longer grants unlimited listing access', () => {
+  assert.equal(
+    hasUnlimitedListingAccess({ planType: 'AGENCY', role: 'AGENT', extraListings: 0 }),
+    false,
+  );
 });
 
 test('userAfterPakietPlusPurchase uses server extraListings', () => {

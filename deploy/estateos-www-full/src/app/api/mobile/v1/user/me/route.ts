@@ -7,6 +7,7 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 import { extractPhoneFromBody, normalizePhoneE164 } from '@/lib/phoneE164';
+import { reconcileFreeAgencyPlanTypeIfNeeded } from '@/lib/partnerPlanReconcile';
 
 const PROFILE_SELECT = MOBILE_USER_SELECT;
 const shapeProfileResponse = shapeMobileUser;
@@ -165,6 +166,8 @@ export async function DELETE(req: Request) {
 export async function GET(req: Request) {
   const auth = await authorize(req);
   if (!auth.ok) return auth.response;
+
+  await reconcileFreeAgencyPlanTypeIfNeeded(auth.userId);
 
   const [user, passkeyCount] = await Promise.all([
     prisma.user.findUnique({

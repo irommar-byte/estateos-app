@@ -5,6 +5,7 @@ export const PRO_BASE_LISTING_SLOTS = 0;
 export type ListingLimitsUser = {
   isPro?: boolean | string | null;
   planType?: string | null;
+  role?: string | null;
   extraListings?: number | null;
   plusExpiresAt?: Date | string | null;
   proExpiresAt?: Date | string | null;
@@ -18,9 +19,15 @@ export function isPlusCreditActive(user: ListingLimitsUser): boolean {
   return new Date(expiry).getTime() > Date.now();
 }
 
+export function isAgentListingAccount(user: ListingLimitsUser | null | undefined): boolean {
+  const role = String(user?.role || '').toUpperCase();
+  return role === 'AGENT' || role === 'AGENCY';
+}
+
 export function computeListingLimits(user: ListingLimitsUser | null | undefined) {
   const plan = String(user?.planType || '').toUpperCase();
-  const isAgency = plan === 'AGENCY';
+  const isAgencyPartner = plan === 'AGENCY';
+  const isAgentAccount = isAgentListingAccount(user);
   const isPro = Boolean(
     user?.isPro === true ||
       user?.isPro === 'true' ||
@@ -29,13 +36,17 @@ export function computeListingLimits(user: ListingLimitsUser | null | undefined)
   );
 
   const publishCredits = isPlusCreditActive(user || {}) ? Number(user?.extraListings || 0) : 0;
-  const basicSlots = !isPro && !isAgency ? FREE_BASE_LISTING_SLOTS : 0;
-  const totalSlots = isAgency ? Number.POSITIVE_INFINITY : basicSlots + publishCredits;
+  /** Konta agentów i PRO publikują wyłącznie z aktywnych kredytów (pula admina / IAP / PRO). */
+  const basicSlots = !isPro && !isAgentAccount ? FREE_BASE_LISTING_SLOTS : 0;
+  const totalSlots = basicSlots + publishCredits;
 
   return {
-    isAgency,
+    /** Aktywny pakiet Partner (planType) — bez nielimitowanych slotów. */
+    isAgency: isAgencyPartner,
+    isAgencyPartner,
+    isAgentAccount,
     isPro,
-    baseSlots: isAgency ? null : basicSlots,
+    baseSlots: basicSlots,
     plusCredits: publishCredits,
     publishCredits,
     totalSlots,

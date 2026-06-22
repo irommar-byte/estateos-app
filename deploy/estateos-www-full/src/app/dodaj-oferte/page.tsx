@@ -52,10 +52,8 @@ export default async function AddOfferPage({
 
         const limits = computeListingLimits(realUser);
         const activePlusCredits = limits.plusCredits;
-        const limit = limits.isAgency ? 999999 : limits.totalSlots;
-
-        // Twarda blokada - przekazujemy do formularza
-        const limitReached = activeOffersCount >= limit;
+        const limit = Math.max(limits.totalSlots, 0);
+        const limitReached = limit <= 0 ? true : activeOffersCount >= limit;
 
         const shaped = shapeMobileUser(realUser);
         userData = {

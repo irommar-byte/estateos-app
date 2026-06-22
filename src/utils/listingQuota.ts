@@ -12,7 +12,12 @@ export type MinimalUser = {
   extraListings?: number | null;
 };
 
-/** Zgodnie z OfferDetail — pełny dostęp bez limitu prostych ogłoszeń */
+export function isAgencyAgentAccount(user: MinimalUser | null): boolean {
+  const role = String(user?.role || '').trim().toUpperCase();
+  return role === 'AGENT' || role === 'AGENCY';
+}
+
+/** Zgodnie z OfferDetail — pełny dostęp bez limitu prostych ogłoszeń (tylko admin / legacy PRO bez kredytów). */
 export function hasUnlimitedListingAccess(user: MinimalUser | null): boolean {
   if (!user) return false;
   if (user.role === 'ADMIN') return true;
@@ -20,12 +25,7 @@ export function hasUnlimitedListingAccess(user: MinimalUser | null): boolean {
   if (planType === 'PLUS') return false;
   const proExpiryMs = user.proExpiresAt ? new Date(user.proExpiresAt).getTime() : null;
   const proStillActive = Boolean(!proExpiryMs || proExpiryMs > Date.now());
-  return Boolean(
-    (user.isPro && proStillActive) ||
-    planType === 'PRO' ||
-    planType === 'AGENCY' ||
-    user.role === 'AGENCY'
-  );
+  return Boolean((user.isPro && proStillActive) || planType === 'PRO');
 }
 
 /** Zgodne z backendem `hasPlusCreditOnUser` — slot + ważny termin kredytu. */
@@ -85,11 +85,19 @@ export function userAfterPakietPlusPurchase(
 
 /**
  * Konto standardowe: 1 darmowa publikacja + dokupione dodatkowe publikacje.
- * PRO/AGENCY/ADMIN mają nielimitowany dostęp.
+ * Konta agentów (biuro): wyłącznie aktywne kredyty z puli / Pakiet +.
  */
 export function canPublishCountableListing(user: MinimalUser | null, existingCount: number): boolean {
   if (allowsMultipleCountableListings(user)) return true;
-  const totalAllowed = 1 + getAdditionalListingSlots(user);
+
+  const slots = getAdditionalListingSlots(user);
+  const creditsActive = isPlusCreditActive(user);
+
+  if (isAgencyAgentAccount(user)) {
+    return creditsActive && existingCount < slots;
+  }
+
+  const totalAllowed = 1 + slots;
   return existingCount < totalAllowed;
 }
 
@@ -135,4 +143,3 @@ export async function fetchCountableUserOffers(
     return 0;
   }
 }
-
