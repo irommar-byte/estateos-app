@@ -155,7 +155,11 @@ function normalizeMemberRow(raw: unknown): MemberRow | null {
   };
 }
 
-function normalizeDashboardPayload(raw: Record<string, unknown>): DashboardPayload {
+function normalizeDashboardPayload(raw: Record<string, unknown>): DashboardPayload | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const companyRaw = raw.company;
+  if (!companyRaw || typeof companyRaw !== 'object') return null;
+
   const members = (Array.isArray(raw.members) ? raw.members : [])
     .map(normalizeMemberRow)
     .filter((m): m is MemberRow => m != null);
@@ -179,10 +183,10 @@ function normalizeDashboardPayload(raw: Record<string, unknown>): DashboardPaylo
     });
 
   const statsRaw = (raw.stats ?? {}) as DashboardPayload['stats'];
-  const companyRaw = raw.company as DashboardPayload['company'];
+  const company = companyRaw as DashboardPayload['company'];
 
   return {
-    company: companyRaw,
+    company,
     stats: {
       activeAgents: Number(statsRaw?.activeAgents ?? 0),
       pendingAgents: Number(statsRaw?.pendingAgents ?? 0),
@@ -241,7 +245,12 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         const dashRes = await fetch('/api/agency-company/dashboard', { credentials: 'include' });
         const dashData = await dashRes.json();
         if (dashRes.ok && dashData.success) {
-          setDashboard(normalizeDashboardPayload(dashData as Record<string, unknown>));
+          const normalized = normalizeDashboardPayload(dashData as Record<string, unknown>);
+          if (normalized) {
+            setDashboard(normalized);
+          } else {
+            setError('Nie udało się wczytać pełnych danych panelu biura.');
+          }
         } else if (dashRes.status === 403 || dashRes.status === 404) {
           setError(dashData.message || 'Panel administratora jest chwilowo niedostępny.');
         }
@@ -489,9 +498,23 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
     );
   }
 
-  const company = dashboard?.company ?? membership.company;
+  const company = dashboard?.company ?? membership?.company ?? null;
   const isPending = membership.status === 'PENDING';
   const isAdmin = membership.role === 'ADMIN' && membership.status === 'ACTIVE';
+
+  if (!company) {
+    return (
+      <div className="rounded-3xl border border-red-500/30 bg-red-500/5 p-8 text-center sm:p-10">
+        <h1 className="text-xl font-black text-[var(--eos-text)]">Brak danych biura</h1>
+        <p className="eos-muted-copy mt-2 text-sm">
+          Nie udało się wczytać informacji o firmie. Odśwież stronę lub wróć do CRM.
+        </p>
+        <Link href="/moje-konto/crm" className="mt-6 inline-block text-sm font-bold text-emerald-500 hover:underline">
+          Wróć do CRM
+        </Link>
+      </div>
+    );
+  }
 
   if (isPending || pendingOnly) {
     return (
