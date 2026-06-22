@@ -917,6 +917,18 @@ export default function CRMDashboard() {
     [crmData.offers],
   );
 
+  const crmTabLabels = useMemo(
+    () => ({
+      klienci: { full: c.tabClients, short: isAgencyWorkspace ? "Agenci" : "Klienci" },
+      radar: { full: c.tabRadar, short: "Radar" },
+      my_offers: { full: c.tabMyOffers, short: "Ogłoszenia" },
+      offers: { full: c.tabFavorites, short: "Ulubione" },
+      planowanie: { full: c.tabPlanning, short: "Plan" },
+      transakcje: { full: c.tabDeals, short: "Deale" },
+    }),
+    [c.tabClients, c.tabRadar, c.tabMyOffers, c.tabFavorites, c.tabPlanning, c.tabDeals, isAgencyWorkspace],
+  );
+
   if (loading) return <div className="min-h-screen bg-[var(--eos-bg)] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
 
   
@@ -1149,18 +1161,6 @@ export default function CRMDashboard() {
   const profileTabs: CrmTab[] = isAgencyWorkspace
     ? ["klienci", "my_offers", "offers", "planowanie", "transakcje"]
     : ["radar", "my_offers", "offers", "planowanie", "transakcje"];
-
-  const crmTabLabels = useMemo(
-    () => ({
-      klienci: { full: c.tabClients, short: isAgencyWorkspace ? "Agenci" : "Klienci" },
-      radar: { full: c.tabRadar, short: "Radar" },
-      my_offers: { full: c.tabMyOffers, short: "Ogłoszenia" },
-      offers: { full: c.tabFavorites, short: "Ulubione" },
-      planowanie: { full: c.tabPlanning, short: "Plan" },
-      transakcje: { full: c.tabDeals, short: "Deale" },
-    }),
-    [c.tabClients, c.tabRadar, c.tabMyOffers, c.tabFavorites, c.tabPlanning, c.tabDeals, isAgencyWorkspace],
-  );
 
   return (
     <div className="theme-aware-dashboard crm-dashboard-shell eos-page-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
