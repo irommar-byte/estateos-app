@@ -125,6 +125,8 @@ export type AddOfferFormExtended = {
   aiGenPropertyFallback: string;
   aiGenLocationFallback: string;
   aiGenTemplate: string;
+  aiGenInsufficientData: string;
+  aiGenFailed: string;
   commissionEditorNote: string;
   commissionPercentField: string;
   commissionAmountField: string;
@@ -342,6 +344,9 @@ const pl: AddOfferFormExtended = {
   aiGenLocationFallback: "wybranej lokalizacji",
   aiGenTemplate:
     "Przedstawiamy wyjątkową ofertę: {hint} Komfortowy układ pomieszczeń, funkcjonalna przestrzeń oraz doskonała lokalizacja czynią tę nieruchomość idealną zarówno do zamieszkania, jak i inwestycji.",
+  aiGenInsufficientData:
+    "Uzupełnij typ nieruchomości, lokalizację lub podstawowe parametry (metraż, cena), aby wygenerować opis.",
+  aiGenFailed: "Nie udało się wygenerować opisu AI. Spróbuj ponownie za chwilę.",
   commissionEditorNote:
     "Cena z ogłoszenia pozostaje finalną kwotą brutto — bez dopłaty ponad to, co widzi klient. Wpisz prowizję procentowo albo kwotowo; oba pola synchronizują się ze sobą.",
   commissionPercentField: "Procent prowizji",
@@ -567,6 +572,9 @@ const en: AddOfferFormExtended = {
   aiGenLocationFallback: "selected location",
   aiGenTemplate:
     "We present an exceptional offer: {hint} A comfortable layout, functional space and excellent location make this property ideal for living or investment.",
+  aiGenInsufficientData:
+    "Fill in property type, location or basic parameters (area, price) before generating a description.",
+  aiGenFailed: "Could not generate the AI description. Please try again in a moment.",
   commissionEditorNote:
     "The listing price remains the final gross amount — no extra charge for the buyer. Enter commission as percent or amount; both fields stay in sync.",
   commissionPercentField: "Commission percent",
@@ -793,6 +801,9 @@ const uk: AddOfferFormExtended = {
   aiGenLocationFallback: "обраної локації",
   aiGenTemplate:
     "Пропонуємо унікальну пропозицію: {hint} Зручне планування, функціональний простір і чудова локація роблять цю нерухомість ідеальною для проживання чи інвестиції.",
+  aiGenInsufficientData:
+    "Заповніть тип нерухомості, локацію або основні параметри (площа, ціна), щоб згенерувати опис.",
+  aiGenFailed: "Не вдалося згенерувати опис AI. Спробуйте ще раз за хвилину.",
   commissionEditorNote:
     "Ціна в оголошенні залишається фінальною брутто — без доплат для покупця. Вкажіть комісію у відсотках або сумою; обидва поля синхронізуються.",
   commissionPercentField: "Відсоток комісії",

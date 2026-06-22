@@ -144,22 +144,22 @@ export default function Navbar() {
           </span>
         </button>
 
-        <div className="hidden min-w-0 flex-1 items-center justify-center overflow-hidden lg:flex">
-          <div className="eos-nav-primary-group flex min-w-0 items-center gap-1 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 shadow-[var(--eos-shadow-soft)] xl:gap-1.5 xl:p-1.5">
+        <div className="hidden min-w-0 flex-1 items-center justify-center overflow-hidden xl:flex">
+          <div className="eos-nav-primary-group flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 shadow-[var(--eos-shadow-soft)] [scrollbar-width:none] xl:gap-1.5 xl:p-1.5 [&::-webkit-scrollbar]:hidden">
             <button
               type="button"
               onClick={() => handleNavClick("/odkryj-mape", true)}
-              className="eos-nav-link-primary shrink min-w-0"
+              className="eos-nav-link-primary shrink-0"
             >
               {dict.nav.discoverMap}
             </button>
-            <button type="button" onClick={() => handleNavClick("/oferty")} className="eos-nav-link-primary shrink min-w-0">
+            <button type="button" onClick={() => handleNavClick("/oferty")} className="eos-nav-link-primary shrink-0">
               {dict.nav.market}
             </button>
             <button
               type="button"
               onClick={() => handleNavClick("/agencje")}
-              className={`eos-nav-link-primary shrink min-w-0 ${pathname === "/agencje" ? "eos-nav-link-primary--active" : ""}`}
+              className={`eos-nav-link-primary shrink-0 ${pathname === "/agencje" ? "eos-nav-link-primary--active" : ""}`}
             >
               {dict.nav.agencyCatalog}
             </button>
@@ -172,7 +172,7 @@ export default function Navbar() {
           </div>
         )}
 
-        <div className="hidden min-w-0 items-center justify-end gap-1.5 lg:flex xl:gap-2 2xl:gap-3">
+        <div className="hidden min-w-0 items-center justify-end gap-1.5 xl:flex xl:gap-2 2xl:gap-3">
           {user && (
             <>
               <PublicationWalletNavButton />
@@ -214,7 +214,7 @@ export default function Navbar() {
           )}
         </div>
 
-        <div className="relative z-40 flex min-w-0 items-center justify-end gap-2 lg:hidden">
+        <div className="relative z-40 flex min-w-0 items-center justify-end gap-1.5 xl:hidden">
           {user && (
             <>
               <PublicationWalletNavButton />
