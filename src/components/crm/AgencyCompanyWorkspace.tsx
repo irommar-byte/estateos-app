@@ -159,9 +159,9 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
           setDashboard({
             company: dashData.company,
             stats: dashData.stats,
-            members: dashData.members,
-            creditTransfers: dashData.creditTransfers,
-            recentOffers: dashData.recentOffers || [],
+            members: Array.isArray(dashData.members) ? dashData.members : [],
+            creditTransfers: Array.isArray(dashData.creditTransfers) ? dashData.creditTransfers : [],
+            recentOffers: Array.isArray(dashData.recentOffers) ? dashData.recentOffers : [],
             partnerPlan: dashData.partnerPlan ?? null,
           });
         }
@@ -196,14 +196,14 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       const timer = window.setTimeout(scrollToPending, 400);
       return () => window.clearTimeout(timer);
     }
-  }, [loading, dashboard?.stats.pendingAgents]);
+  }, [loading, dashboard?.stats?.pendingAgents]);
 
   const pendingMembers = useMemo(
-    () => dashboard?.members.filter((m) => m.status === 'PENDING') ?? [],
+    () => (dashboard?.members ?? []).filter((m) => m.status === 'PENDING'),
     [dashboard],
   );
   const activeAgents = useMemo(
-    () => dashboard?.members.filter((m) => m.status === 'ACTIVE' && m.role === 'AGENT') ?? [],
+    () => (dashboard?.members ?? []).filter((m) => m.status === 'ACTIVE' && m.role === 'AGENT'),
     [dashboard],
   );
 
@@ -508,9 +508,9 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              { label: 'Aktywni agenci', value: dashboard?.stats.activeAgents ?? 0, icon: Users },
-              { label: 'Oczekujący', value: dashboard?.stats.pendingAgents ?? 0, icon: Clock },
-              { label: 'Oferty firmy', value: dashboard?.stats.totalOffers ?? 0, icon: Building2 },
+              { label: 'Aktywni agenci', value: dashboard?.stats?.activeAgents ?? 0, icon: Users },
+              { label: 'Oczekujący', value: dashboard?.stats?.pendingAgents ?? 0, icon: Clock },
+              { label: 'Oferty firmy', value: dashboard?.stats?.totalOffers ?? 0, icon: Building2 },
               { label: 'Kredyty w puli', value: company.extraListings, icon: Wallet },
             ].map((kpi) => (
               <div key={kpi.label} className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/60 px-4 py-3">
@@ -714,7 +714,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
               </tr>
             </thead>
             <tbody>
-              {dashboard?.members
+              {(dashboard?.members ?? [])
                 .filter((m) => m.status === 'ACTIVE')
                 .map((m) => (
                   <tr key={m.id} className="border-b border-[var(--eos-border)]/60">
@@ -810,11 +810,11 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         </div>
       </section>
 
-      {(dashboard?.recentOffers.length ?? 0) > 0 && (
+      {(dashboard?.recentOffers ?? []).length > 0 && (
         <section className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
           <h2 className="mb-4 text-lg font-black text-[var(--eos-text)]">Ostatnie ogłoszenia biura</h2>
           <div className="grid gap-3 sm:grid-cols-2">
-            {dashboard!.recentOffers.map((offer) => (
+            {(dashboard?.recentOffers ?? []).map((offer) => (
               <Link
                 key={offer.id}
                 href={`/oferta/${offer.id}`}
@@ -834,9 +834,9 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       {detailMember && (
         <AgencyMemberDetailPanel
           member={detailMember}
-          transferTargets={dashboard?.members
+          transferTargets={(dashboard?.members ?? [])
             .filter((m) => m.status === 'ACTIVE')
-            .map((m) => ({ userId: m.userId, name: m.user.name })) ?? []}
+            .map((m) => ({ userId: m.userId, name: m.user.name }))}
           onClose={() => setDetailMember(null)}
           onTransferred={() => void load()}
         />
@@ -884,11 +884,11 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         </div>
       )}
 
-      {(dashboard?.creditTransfers.length ?? 0) > 0 && (
+      {(dashboard?.creditTransfers ?? []).length > 0 && (
         <section className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
           <h2 className="mb-4 text-lg font-black text-[var(--eos-text)]">Historia przydziałów kredytów</h2>
           <div className="space-y-2">
-            {dashboard!.creditTransfers.map((t) => (
+            {(dashboard?.creditTransfers ?? []).map((t) => (
               <div
                 key={t.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--eos-border)]/60 px-4 py-3 text-sm"
