@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { reconcileFreeAgencyPlanTypeIfNeeded } from '@/lib/partnerPlanReconcile';
 
 export async function GET() {
   try {
@@ -16,13 +17,22 @@ export async function GET() {
     const userIdFromToken = Number(parsedSession?.id);
     const emailFromToken = String(parsedSession?.email || '').trim().toLowerCase();
 
-    const user = Number.isFinite(userIdFromToken) && userIdFromToken > 0
+    let user = Number.isFinite(userIdFromToken) && userIdFromToken > 0
       ? await prisma.user.findUnique({ where: { id: userIdFromToken }, select: MOBILE_USER_SELECT })
       : emailFromToken
         ? await prisma.user.findUnique({ where: { email: emailFromToken }, select: MOBILE_USER_SELECT })
         : null;
 
     if (!user) return NextResponse.json({ success: true, loggedIn: false, user: null });
+
+    if (Number.isFinite(userIdFromToken) && userIdFromToken > 0) {
+      const downgraded = await reconcileFreeAgencyPlanTypeIfNeeded(userIdFromToken);
+      if (downgraded) {
+        user =
+          (await prisma.user.findUnique({ where: { id: userIdFromToken }, select: MOBILE_USER_SELECT })) ?? user;
+      }
+    }
+
     const shaped = shapeMobileUser(user);
     return NextResponse.json({
       success: true,

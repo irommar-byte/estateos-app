@@ -164,7 +164,7 @@ export async function POST(req: Request) {
           name: fullName || normalizedEmail,
           phone: phoneE164,
           role: 'USER',
-          planType: isPartner ? 'AGENCY' : 'NONE',
+          planType: 'NONE',
         },
         select: MOBILE_USER_SELECT,
       });

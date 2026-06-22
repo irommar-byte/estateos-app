@@ -8,6 +8,7 @@ import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 
 type OfferListingSlotsProps = {
   user: {
+    role?: string | null;
     isPro?: boolean | string | null;
     planType?: string | null;
     extraListings?: number | null;
@@ -20,10 +21,9 @@ type OfferListingSlotsProps = {
 
 export default function OfferListingSlots({ user, activeOffers, onAddOffer }: OfferListingSlotsProps) {
   const limits = computeListingLimits(user);
-  if (limits.isAgency) return null;
-
   const credits = limits.publishCredits;
   const isPro = limits.isPro;
+  const isAgent = limits.isAgentAccount;
 
   const goCennik = () => {
     window.location.href = '/cennik';
@@ -50,7 +50,9 @@ export default function OfferListingSlots({ user, activeOffers, onAddOffer }: Of
             </h3>
           </div>
           <p className="text-xs text-white/55 max-w-md leading-relaxed">
-            {isPro
+            {isAgent
+              ? 'Biuro publikuje z kredytów przydzielonych przez administratora (pula Partner) lub z Pakietu +.'
+              : isPro
               ? `Investor PRO daje ${INVESTOR_PRO_PUBLICATION_CREDITS} kredytów publikacji na okres subskrypcji. Każde wystawienie zużywa 1 kredyt (30 dni na rynku).`
               : 'Basic: pierwsza publikacja może być darmowa (kupon powitalny). Kolejne — Pakiet + lub Investor PRO (5 kredytów).'}
           </p>
@@ -61,7 +63,9 @@ export default function OfferListingSlots({ user, activeOffers, onAddOffer }: Of
             <Sparkles className="mx-auto mb-3 text-amber-400/70" size={28} />
             <p className="text-sm font-bold text-white/80 mb-2">Brak aktywnych kredytów publikacji</p>
             <p className="text-xs text-white/45 mb-4">
-              {isPro
+              {isAgent
+                ? 'Poproś administratora biura o kredyty z puli Partner albo dokup Pakiet +.'
+                : isPro
                 ? 'Wykorzystałeś pulę PRO — dokup Pakiet + lub odnow subskrypcję Investor PRO.'
                 : 'Aktywuj Investor PRO (5 kredytów) albo Pakiet + (1 kredyt).'}
             </p>
