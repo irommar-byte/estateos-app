@@ -1,5 +1,9 @@
 import { API_URL } from '../config/network';
-import type { AgencyCompanyListItem, AgencyMembershipSnapshot } from '../types/agencyMembership';
+import type {
+  AgencyCompanyListItem,
+  AgencyDashboardPayload,
+  AgencyMembershipSnapshot,
+} from '../types/agencyMembership';
 
 function authHeaders(token: string) {
   return { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache' };
@@ -29,6 +33,7 @@ function mapMembership(raw: Record<string, unknown>): AgencyMembershipSnapshot {
     role: String(raw.role || ''),
     agentTitle: raw.agentTitle != null ? String(raw.agentTitle) : undefined,
     titleLabel: raw.titleLabel != null ? String(raw.titleLabel) : undefined,
+    displayAvatarUrl: raw.displayAvatarUrl != null ? String(raw.displayAvatarUrl) : undefined,
     pendingApproval: Boolean(raw.pendingApproval ?? raw.status === 'PENDING'),
     companyId:
       raw.companyId != null
@@ -88,6 +93,37 @@ export async function patchAgencyCompanyContact(
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     return { ok: false, message: String(json?.message || 'Nie udało się zapisać danych biura.') };
+  }
+  return { ok: true };
+}
+
+export async function fetchAgencyDashboard(token: string): Promise<AgencyDashboardPayload | null> {
+  const res = await fetch(`${API_URL}/api/agency-company/dashboard?t=${Date.now()}`, {
+    headers: authHeaders(token),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.success) return null;
+  return {
+    company: json.company,
+    stats: json.stats,
+    members: Array.isArray(json.members) ? json.members : [],
+    creditTransfers: Array.isArray(json.creditTransfers) ? json.creditTransfers : [],
+    recentOffers: Array.isArray(json.recentOffers) ? json.recentOffers : [],
+  };
+}
+
+export async function transferAgencyCredits(
+  token: string,
+  body: { toUserId: number; amount: number; note?: string },
+): Promise<{ ok: boolean; message?: string }> {
+  const res = await fetch(`${API_URL}/api/agency-company/credits`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.success) {
+    return { ok: false, message: String(json?.message || 'Transfer nie powiódł się.') };
   }
   return { ok: true };
 }

@@ -1,6 +1,12 @@
 import { prisma } from '@/lib/prisma';
 import type { AgencyMemberRole, AgencyMemberStatus, AgencyAgentTitle } from '@prisma/client';
-import { AGENCY_AGENT_TITLES, formatAgentTitle, pickTeamMemberAvatar } from '@/lib/agentProfile';
+import {
+  AGENCY_AGENT_TITLES,
+  formatAgentTitle,
+  pickAgentAvatar,
+  pickTeamMemberAvatar,
+  resolveProfileMediaUrl,
+} from '@/lib/agentProfile';
 import { notifyMemberApproved, notifyOffersTransferred } from '@/lib/agencyCompanyNotify';
 
 export function slugifyCompanyName(name: string): string {
@@ -66,6 +72,27 @@ export async function getUserAgencyMembership(userId: number) {
       },
     },
   });
+}
+
+/** Zdjęcie widoczne na profilu — upload kierownika w zespole ma pierwszeństwo. */
+export async function getUserDisplayAvatar(userId: number): Promise<string | null> {
+  const membership = await prisma.agencyCompanyMember.findUnique({
+    where: { userId },
+    select: {
+      profilePhotoUrl: true,
+      user: { select: { image: true } },
+      company: { select: { logoUrl: true } },
+    },
+  });
+  if (membership) {
+    return pickAgentAvatar({
+      profilePhotoUrl: membership.profilePhotoUrl,
+      userImage: membership.user.image,
+      companyLogoUrl: membership.company.logoUrl,
+    });
+  }
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { image: true } });
+  return resolveProfileMediaUrl(user?.image);
 }
 
 type AgencyMembershipWithCompany = NonNullable<Awaited<ReturnType<typeof getUserAgencyMembership>>>;
@@ -203,12 +230,14 @@ export function shapeAgencyMembershipResponse(
     isSelf: boolean;
   }>,
 ) {
+  const selfTeam = team.find((m) => m.isSelf);
   return {
     id: membership.id,
     role: membership.role,
     status: membership.status,
     agentTitle: membership.agentTitle,
     titleLabel: formatAgentTitle(membership.agentTitle),
+    displayAvatarUrl: selfTeam?.image ?? null,
     pendingApproval: membership.status === 'PENDING',
     companyId: membership.company.id,
     companyName: membership.company.name,

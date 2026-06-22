@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveEliteBadges } from '@/lib/eliteStatus';
 import { shapePublicReviewForApi } from '@/lib/shapePublicReviews';
+import { getUserDisplayAvatar } from '@/lib/agencyCompany';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
@@ -62,6 +63,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         });
 
         const badges = resolveEliteBadges(user);
+        const displayImage = await getUserDisplayAvatar(userIdNum);
 
         return NextResponse.json({
             user: {
@@ -72,7 +74,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
                 isPro: user.isPro,
                 proExpiresAt: user.proExpiresAt,
                 memberSince: user.createdAt,
-                image: user.image,
+                image: displayImage,
+                avatar: displayImage,
+                avatarUrl: displayImage,
                 companyName: user.companyName,
                 companyAddress: user.companyAddress,
                 companyWebsite: user.companyWebsite,

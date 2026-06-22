@@ -18,8 +18,13 @@ import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { API_URL } from '../config/network';
-import { fetchAgencyMembership, patchAgencyMember, patchAgencyCompanyContact } from '../services/agencyCompanyService';
-import type { AgencyTeamMember } from '../types/agencyMembership';
+import {
+  fetchAgencyDashboard,
+  patchAgencyMember,
+  patchAgencyCompanyContact,
+  transferAgencyCredits,
+} from '../services/agencyCompanyService';
+import type { AgencyDashboardMember, AgencyDashboardPayload, AgencyTeamMember } from '../types/agencyMembership';
 import { AGENCY_TITLE_OPTIONS } from '../types/agencyMembership';
 
 const TITLE_LABELS: Record<string, string> = {
@@ -32,16 +37,24 @@ const TITLE_LABELS: Record<string, string> = {
   ZASTEPCA_KIEROWNIKA: 'Zastępca kierownika biura',
 };
 
-function avatarUrl(image?: string | null) {
-  const raw = String(image || '').trim();
+function mediaUrl(value?: string | null) {
+  const raw = String(value || '').trim();
   if (!raw) return null;
   return raw.startsWith('/') ? `${API_URL}${raw}` : raw;
 }
 
-function logoUrl(logo?: string | null) {
-  const raw = String(logo || '').trim();
-  if (!raw) return null;
-  return raw.startsWith('/') ? `${API_URL}${raw}` : raw;
+function memberAvatarUrl(profilePhotoUrl?: string | null, userImage?: string | null) {
+  return mediaUrl(profilePhotoUrl || userImage);
+}
+
+function fmtDate(iso?: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function fmtPrice(value: number) {
+  if (!Number.isFinite(value)) return '—';
+  return `${value.toLocaleString('pl-PL')} zł`;
 }
 
 export default function AgencyOfficeScreen() {
@@ -58,6 +71,11 @@ export default function AgencyOfficeScreen() {
   const [contactBusy, setContactBusy] = useState(false);
   const [contactEditing, setContactEditing] = useState(false);
   const [contactDraft, setContactDraft] = useState({ website: '', officePhone: '', officeEmail: '' });
+  const [dashboard, setDashboard] = useState<AgencyDashboardPayload | null>(null);
+  const [creditTarget, setCreditTarget] = useState<AgencyDashboardMember | null>(null);
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditNote, setCreditNote] = useState('');
+  const [creditBusy, setCreditBusy] = useState(false);
 
   const colors = useMemo(
     () => ({
@@ -77,6 +95,7 @@ export default function AgencyOfficeScreen() {
   const isAdmin = membership?.role === 'ADMIN' && membership?.status === 'ACTIVE';
   const companyName = membership?.companyName || membership?.company?.name || user?.companyName || 'Biuro';
   const team = membership?.team || [];
+  const companyCredits = dashboard?.company?.extraListings ?? membership?.company?.extraListings ?? 0;
 
   React.useEffect(() => {
     const company = membership?.company;
@@ -88,15 +107,29 @@ export default function AgencyOfficeScreen() {
     });
   }, [membership?.company]);
 
+  const loadDashboard = useCallback(async () => {
+    if (!token || !isAdmin) {
+      setDashboard(null);
+      return;
+    }
+    const data = await fetchAgencyDashboard(token);
+    setDashboard(data);
+  }, [token, isAdmin]);
+
   const reload = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
       await refreshAgencyMembership();
+      await loadDashboard();
     } finally {
       setLoading(false);
     }
-  }, [token, refreshAgencyMembership]);
+  }, [token, refreshAgencyMembership, loadDashboard]);
+
+  React.useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
 
   const handleApprove = useCallback(
     async (member: AgencyTeamMember) => {
@@ -110,11 +143,12 @@ export default function AgencyOfficeScreen() {
         }
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         await refreshAgencyMembership();
+        await loadDashboard();
       } finally {
         setBusyId(null);
       }
     },
-    [token, refreshAgencyMembership],
+    [token, refreshAgencyMembership, loadDashboard],
   );
 
   const handleReject = useCallback(
@@ -135,6 +169,7 @@ export default function AgencyOfficeScreen() {
                   return;
                 }
                 await refreshAgencyMembership();
+                await loadDashboard();
               } finally {
                 setBusyId(null);
               }
@@ -143,7 +178,7 @@ export default function AgencyOfficeScreen() {
         },
       ]);
     },
-    [token, refreshAgencyMembership],
+    [token, refreshAgencyMembership, loadDashboard],
   );
 
   const handleChangeTitle = useCallback(
@@ -162,6 +197,7 @@ export default function AgencyOfficeScreen() {
               }
               void Haptics.selectionAsync();
               await refreshAgencyMembership();
+              await loadDashboard();
             } finally {
               setBusyId(null);
             }
@@ -170,7 +206,7 @@ export default function AgencyOfficeScreen() {
       }));
       Alert.alert('Stanowisko w biurze', member.name || 'Pracownik', [...options, { text: 'Anuluj', style: 'cancel' }]);
     },
-    [token, isAdmin, refreshAgencyMembership],
+    [token, isAdmin, refreshAgencyMembership, loadDashboard],
   );
 
   const handleContactSave = useCallback(async () => {
@@ -189,13 +225,46 @@ export default function AgencyOfficeScreen() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setContactEditing(false);
       await refreshAgencyMembership();
+      await loadDashboard();
     } finally {
       setContactBusy(false);
     }
-  }, [token, isAdmin, contactDraft, refreshAgencyMembership]);
+  }, [token, isAdmin, contactDraft, refreshAgencyMembership, loadDashboard]);
+
+  const handleCreditTransfer = useCallback(async () => {
+    if (!token || !creditTarget) return;
+    const amount = Number(creditAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      Alert.alert('Kredyty', 'Podaj dodatnią liczbę kredytów.');
+      return;
+    }
+    setCreditBusy(true);
+    try {
+      const res = await transferAgencyCredits(token, {
+        toUserId: creditTarget.userId,
+        amount: Math.floor(amount),
+        note: creditNote.trim() || undefined,
+      });
+      if (!res.ok) {
+        Alert.alert('Kredyty', res.message || 'Transfer nie powiódł się.');
+        return;
+      }
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setCreditTarget(null);
+      setCreditAmount('');
+      setCreditNote('');
+      await refreshAgencyMembership();
+      await loadDashboard();
+    } finally {
+      setCreditBusy(false);
+    }
+  }, [token, creditTarget, creditAmount, creditNote, refreshAgencyMembership, loadDashboard]);
 
   const activeTeam = team.filter((m) => m.status === 'ACTIVE');
   const pendingTeam = team.filter((m) => m.status === 'PENDING');
+  const dashboardMembers = dashboard?.members.filter((m) => m.status === 'ACTIVE') ?? [];
+  const recentOffers = dashboard?.recentOffers ?? [];
+  const creditTransfers = dashboard?.creditTransfers ?? [];
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
@@ -214,9 +283,9 @@ export default function AgencyOfficeScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} />}
       >
         <View style={[styles.hero, { backgroundColor: colors.card, borderColor: colors.separator }]}>
-          {logoUrl(membership?.company?.logoUrl || user?.companyLogoUrl) ? (
+          {mediaUrl(membership?.company?.logoUrl || user?.companyLogoUrl) ? (
             <Image
-              source={{ uri: logoUrl(membership?.company?.logoUrl || user?.companyLogoUrl)! }}
+              source={{ uri: mediaUrl(membership?.company?.logoUrl || user?.companyLogoUrl)! }}
               style={styles.heroLogo}
               contentFit="cover"
             />
@@ -234,6 +303,23 @@ export default function AgencyOfficeScreen() {
             <Text style={[styles.heroMeta, { color: colors.secondary }]}>{membership.company.address}</Text>
           ) : null}
         </View>
+
+        {isAdmin && dashboard ? (
+          <View style={styles.kpiRow}>
+            {[
+              { label: 'Aktywni', value: dashboard.stats.activeAgents, icon: 'people' as const },
+              { label: 'Oczekujący', value: dashboard.stats.pendingAgents, icon: 'time' as const },
+              { label: 'Oferty', value: dashboard.stats.totalOffers, icon: 'home' as const },
+              { label: 'Kredyty w puli', value: companyCredits, icon: 'wallet' as const },
+            ].map((kpi) => (
+              <View key={kpi.label} style={[styles.kpiCard, { backgroundColor: colors.card, borderColor: colors.separator }]}>
+                <Ionicons name={kpi.icon} size={16} color={colors.accent} />
+                <Text style={[styles.kpiValue, { color: colors.text }]}>{kpi.value}</Text>
+                <Text style={[styles.kpiLabel, { color: colors.secondary }]}>{kpi.label}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         {isAdmin ? (
           <View style={[styles.contactCard, { backgroundColor: colors.card, borderColor: colors.separator }]}>
@@ -339,9 +425,38 @@ export default function AgencyOfficeScreen() {
 
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.secondary }]}>
-            ZESPÓŁ ({activeTeam.length})
+            ZESPÓŁ I AKTYWNOŚĆ ({isAdmin && dashboardMembers.length ? dashboardMembers.length : activeTeam.length})
           </Text>
-          {activeTeam.length === 0 ? (
+          {isAdmin && dashboardMembers.length > 0 ? (
+            dashboardMembers.map((member) => (
+              <AdminMemberRow
+                key={member.id}
+                member={member}
+                colors={colors}
+                busy={busyId === member.id}
+                isAdmin={isAdmin}
+                onChangeTitle={() => {
+                  const stub: AgencyTeamMember = {
+                    id: member.id,
+                    userId: member.userId,
+                    role: member.role,
+                    status: member.status,
+                    agentTitle: member.agentTitle,
+                    titleLabel: TITLE_LABELS[member.agentTitle] || member.agentTitle,
+                    name: member.user.name,
+                    image: memberAvatarUrl(member.profilePhotoUrl, member.user.image),
+                    isSelf: member.userId === user?.id,
+                  };
+                  handleChangeTitle(stub);
+                }}
+                onTransferCredits={() => {
+                  setCreditTarget(member);
+                  setCreditAmount('');
+                  setCreditNote('');
+                }}
+              />
+            ))
+          ) : activeTeam.length === 0 ? (
             <Text style={{ color: colors.secondary, paddingVertical: 12 }}>Brak aktywnych pracowników.</Text>
           ) : (
             activeTeam.map((member) => (
@@ -358,7 +473,99 @@ export default function AgencyOfficeScreen() {
             ))
           )}
         </View>
+
+        {isAdmin && creditTransfers.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.secondary }]}>HISTORIA KREDYTÓW</Text>
+            {creditTransfers.slice(0, 12).map((transfer) => (
+              <View
+                key={transfer.id}
+                style={[styles.transferRow, { backgroundColor: colors.card, borderColor: colors.separator }]}
+              >
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>
+                    +{transfer.amount} kredytów → {transfer.toUser.name || transfer.toUser.email}
+                  </Text>
+                  <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4 }}>
+                    {fmtDate(transfer.createdAt)}
+                    {transfer.note ? ` · ${transfer.note}` : ''}
+                  </Text>
+                  <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+                    Przez: {transfer.createdBy.name || 'Administrator'}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {isAdmin && recentOffers.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.secondary }]}>OSTATNIE OGŁOSZENIA BIURA</Text>
+            {recentOffers.slice(0, 8).map((offer) => (
+              <View
+                key={offer.id}
+                style={[styles.offerRow, { backgroundColor: colors.card, borderColor: colors.separator }]}
+              >
+                <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={2}>
+                  {offer.title}
+                </Text>
+                <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 4 }}>
+                  {offer.agent.name || 'Agent'} · {offer.city} · {fmtPrice(offer.price)}
+                </Text>
+                <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+                  {offer.status} · {fmtDate(offer.updatedAt)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
+
+      {creditTarget ? (
+        <View style={[styles.creditSheet, { backgroundColor: colors.card, borderColor: colors.separator, paddingBottom: insets.bottom + 16 }]}>
+          <Text style={[styles.creditSheetTitle, { color: colors.text }]}>
+            Przydziel kredyty — {creditTarget.user.name || 'Pracownik'}
+          </Text>
+          <Text style={{ color: colors.secondary, fontSize: 12, marginBottom: 10 }}>
+            W puli biura: {companyCredits} kredytów · u pracownika: {creditTarget.user.extraListings}
+          </Text>
+          <TextInput
+            value={creditAmount}
+            onChangeText={setCreditAmount}
+            placeholder="Liczba kredytów"
+            placeholderTextColor={colors.secondary}
+            keyboardType="number-pad"
+            style={[styles.input, { color: colors.text, borderColor: colors.separator, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
+          />
+          <TextInput
+            value={creditNote}
+            onChangeText={setCreditNote}
+            placeholder="Notatka (opcjonalnie)"
+            placeholderTextColor={colors.secondary}
+            style={[styles.input, { color: colors.text, borderColor: colors.separator, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', marginTop: 8 }]}
+          />
+          <View style={styles.contactActions}>
+            <Pressable
+              onPress={() => void handleCreditTransfer()}
+              disabled={creditBusy}
+              style={[styles.saveBtn, { opacity: creditBusy ? 0.6 : 1 }]}
+            >
+              {creditBusy ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>Przydziel</Text>}
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setCreditTarget(null);
+                setCreditAmount('');
+                setCreditNote('');
+              }}
+              disabled={creditBusy}
+            >
+              <Text style={{ color: colors.secondary, fontWeight: '700' }}>Anuluj</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -380,7 +587,7 @@ function MemberRow({
   onReject: () => void;
   onChangeTitle: () => void;
 }) {
-  const uri = avatarUrl(member.image);
+  const uri = mediaUrl(member.image);
   const statusColor =
     member.status === 'ACTIVE' ? colors.accent : member.status === 'PENDING' ? colors.accentOrange : colors.secondary;
 
@@ -426,6 +633,82 @@ function MemberRow({
   );
 }
 
+function AdminMemberRow({
+  member,
+  colors,
+  busy,
+  isAdmin,
+  onChangeTitle,
+  onTransferCredits,
+}: {
+  member: AgencyDashboardMember;
+  colors: Record<string, string>;
+  busy: boolean;
+  isAdmin: boolean;
+  onChangeTitle: () => void;
+  onTransferCredits: () => void;
+}) {
+  const uri = memberAvatarUrl(member.profilePhotoUrl, member.user.image);
+  const u = member.user;
+
+  return (
+    <View style={[styles.adminMemberCard, { backgroundColor: colors.card, borderColor: colors.separator }]}>
+      <View style={styles.adminMemberHeader}>
+        {uri ? (
+          <Image source={{ uri }} style={styles.memberAvatar} contentFit="cover" />
+        ) : (
+          <View style={[styles.memberAvatar, { backgroundColor: '#2C2C2E', alignItems: 'center', justifyContent: 'center' }]}>
+            <Ionicons name="person" size={20} color="#8E8E93" />
+          </View>
+        )}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[styles.memberName, { color: colors.text }]} numberOfLines={1}>
+            {u.name || 'Pracownik'}
+          </Text>
+          <Text style={{ color: colors.secondary, fontSize: 12 }}>
+            {TITLE_LABELS[member.agentTitle] || member.agentTitle}
+            {member.role === 'ADMIN' ? ' · Administrator' : ''}
+          </Text>
+          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
+            Ostatnie logowanie: {fmtDate(u.lastLoginAt)}
+          </Text>
+        </View>
+        {busy ? <ActivityIndicator color={colors.accentBlue} /> : null}
+      </View>
+
+      <View style={styles.statsGrid}>
+        {[
+          { label: 'Oferty', value: `${u.activeOffers} aktyw.` },
+          { label: 'CRM', value: String(u.crmClients) },
+          { label: 'Transakcje', value: String(u.dealsInProgress) },
+          { label: 'Kredyty', value: String(u.extraListings) },
+        ].map((stat) => (
+          <View key={stat.label} style={[styles.statCell, { backgroundColor: colors.bg }]}>
+            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>{stat.value}</Text>
+            <Text style={{ color: colors.secondary, fontSize: 10, fontWeight: '700', marginTop: 2 }}>{stat.label}</Text>
+          </View>
+        ))}
+      </View>
+
+      <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 8 }}>
+        {u.pendingOffers} oczekujących · {u.soldOffers} sprzedanych · {u.reviewsCount} opinii
+        {u.averageRating != null ? ` · ★ ${u.averageRating}` : ''}
+      </Text>
+
+      {isAdmin && member.role !== 'ADMIN' ? (
+        <View style={[styles.adminActions, { marginTop: 10, justifyContent: 'flex-end' }]}>
+          <Pressable onPress={onChangeTitle} style={[styles.inlineBtn, { borderColor: colors.separator }]}>
+            <Text style={{ color: colors.accentBlue, fontWeight: '700', fontSize: 12 }}>Stanowisko</Text>
+          </Pressable>
+          <Pressable onPress={onTransferCredits} style={[styles.inlineBtn, { borderColor: colors.accent, backgroundColor: 'rgba(52,199,89,0.1)' }]}>
+            <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 12 }}>Przydziel kredyty</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
   nav: {
@@ -456,6 +739,17 @@ const styles = StyleSheet.create({
   heroTitle: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
   heroSubtitle: { fontSize: 14, marginTop: 6, textAlign: 'center' },
   heroMeta: { fontSize: 12, marginTop: 8, textAlign: 'center' },
+  kpiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 },
+  kpiCard: {
+    width: '48%',
+    flexGrow: 1,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 12,
+    gap: 4,
+  },
+  kpiValue: { fontSize: 22, fontWeight: '900' },
+  kpiLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
   section: { marginBottom: 16 },
   sectionTitle: { fontSize: 12, fontWeight: '800', letterSpacing: 0.5, marginBottom: 8 },
   memberRow: {
@@ -467,10 +761,43 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     marginBottom: 8,
   },
+  adminMemberCard: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
+    marginBottom: 10,
+  },
+  adminMemberHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   memberAvatar: { width: 44, height: 44, borderRadius: 12 },
   memberName: { fontSize: 16, fontWeight: '700' },
   adminActions: { flexDirection: 'row', gap: 8 },
   actionBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  inlineBtn: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  statCell: {
+    width: '47%',
+    flexGrow: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  transferRow: {
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 12,
+    marginBottom: 8,
+  },
+  offerRow: {
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 12,
+    marginBottom: 8,
+  },
   contactCard: {
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
@@ -496,4 +823,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveBtnText: { color: '#000', fontWeight: '800', fontSize: 14 },
+  creditSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  creditSheetTitle: { fontSize: 17, fontWeight: '800', marginBottom: 4 },
 });

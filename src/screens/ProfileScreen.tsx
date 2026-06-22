@@ -3407,7 +3407,8 @@ function ProfileScreenLoggedIn({
         <ProfileCardShell isDark={isDark} variant="header" style={styles.headerCardShell} faceStyle={styles.headerCard}>
           <Pressable onPress={handleAvatarPick} style={({ pressed }) => [styles.avatarWrapper, { opacity: pressed ? 0.8 : 1 }]}>
             {(() => {
-              const rawAvatar = user?.avatar || user?.image;
+              const selfTeamAvatar = agencyMembership?.team?.find((m) => m.isSelf)?.image;
+              const rawAvatar = selfTeamAvatar || user?.avatar || user?.image;
               const finalAvatar = rawAvatar ? (rawAvatar.startsWith('/') ? `${API_URL}${rawAvatar}` : rawAvatar) : null;
               return finalAvatar ? <Image source={{ uri: finalAvatar }} style={styles.avatarImage} /> : <View style={styles.avatarPlaceholder}><Ionicons name="person" size={36} color="#fff" /></View>;
             })()}

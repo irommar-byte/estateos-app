@@ -7,13 +7,14 @@ export type AgencyMembershipUi = {
   status: string;
   role: string;
   titleLabel?: string | null;
+  displayAvatarUrl?: string | null;
   pendingApproval?: boolean;
   companyName?: string | null;
   company?: {
     name?: string | null;
     logoUrl?: string | null;
   } | null;
-  team?: Array<{ status: string }>;
+  team?: Array<{ status: string; isSelf?: boolean; image?: string | null }>;
   stats?: {
     activeMembers?: number;
     pendingMembers?: number;

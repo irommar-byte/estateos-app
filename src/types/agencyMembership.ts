@@ -31,6 +31,7 @@ export type AgencyMembershipSnapshot = {
   role: 'ADMIN' | 'AGENT' | string;
   agentTitle?: string;
   titleLabel?: string;
+  displayAvatarUrl?: string | null;
   pendingApproval: boolean;
   companyId?: number | null;
   companyName?: string | null;
@@ -48,6 +49,59 @@ export type AgencyCompanyListItem = {
   slug?: string | null;
   city?: string | null;
   activeAgents?: number;
+};
+
+export type AgencyDashboardMember = {
+  id: number;
+  userId: number;
+  role: string;
+  status: string;
+  agentTitle: string;
+  profilePhotoUrl: string | null;
+  user: {
+    id: number;
+    name: string | null;
+    email: string;
+    image: string | null;
+    extraListings: number;
+    plusExpiresAt: string | null;
+    lastLoginAt: string | null;
+    activeOffers: number;
+    pendingOffers: number;
+    soldOffers: number;
+    inDealOffers: number;
+    dealsInProgress: number;
+    crmClients: number;
+    reviewsCount: number;
+    averageRating: number | null;
+  };
+};
+
+export type AgencyDashboardPayload = {
+  company: AgencyCompanySnapshot & { slug: string | null; ownerUserId: number };
+  stats: {
+    activeAgents: number;
+    pendingAgents: number;
+    totalOffers: number;
+  };
+  members: AgencyDashboardMember[];
+  creditTransfers: Array<{
+    id: number;
+    amount: number;
+    note: string | null;
+    createdAt: string;
+    toUser: { id: number; name: string | null; email: string };
+    createdBy: { id: number; name: string | null };
+  }>;
+  recentOffers: Array<{
+    id: number;
+    title: string;
+    status: string;
+    price: number;
+    city: string;
+    updatedAt: string;
+    agent: { id: number; name: string | null };
+  }>;
 };
 
 export const AGENCY_TITLE_OPTIONS = [

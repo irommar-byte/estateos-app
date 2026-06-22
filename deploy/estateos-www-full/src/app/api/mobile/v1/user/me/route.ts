@@ -7,6 +7,7 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 import { extractPhoneFromBody, normalizePhoneE164 } from '@/lib/phoneE164';
+import { getUserDisplayAvatar } from '@/lib/agencyCompany';
 import { reconcileFreeAgencyPlanTypeIfNeeded } from '@/lib/partnerPlanReconcile';
 
 const PROFILE_SELECT = MOBILE_USER_SELECT;
@@ -169,12 +170,13 @@ export async function GET(req: Request) {
 
   await reconcileFreeAgencyPlanTypeIfNeeded(auth.userId);
 
-  const [user, passkeyCount] = await Promise.all([
+  const [user, passkeyCount, displayImage] = await Promise.all([
     prisma.user.findUnique({
       where: { id: auth.userId },
       select: PROFILE_SELECT,
     }),
     prisma.authenticator.count({ where: { userId: auth.userId } }),
+    getUserDisplayAvatar(auth.userId),
   ]);
   if (!user) {
     return NextResponse.json({ success: false, message: 'Użytkownik nie istnieje' }, { status: 404 });
@@ -182,7 +184,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     success: true,
-    user: { ...shapeProfileResponse(user), hasPasskey: passkeyCount > 0 },
+    user: { ...shapeProfileResponse(user, { displayImage }), hasPasskey: passkeyCount > 0 },
   });
 }
 

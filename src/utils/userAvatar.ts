@@ -55,6 +55,8 @@ export function getBestUserAvatarUrl(userLike: unknown): string | null {
   if (!userLike || typeof userLike !== 'object') return null;
   const u = userLike as Record<string, unknown>;
   const candidates = [
+    u.profilePhotoUrl,
+    u.displayAvatarUrl,
     u.image,
     u.avatar,
     u.avatarUrl,
