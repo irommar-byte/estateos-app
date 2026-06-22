@@ -81,6 +81,7 @@ import {
   inferCountryFromCoordinates,
   isCoordinatesInPoland,
 } from "@/lib/offerLocalityCountry";
+import { isAgentOrAgencySeller } from "@/lib/sellerDisplay";
 import AddOfferDocVerificationPanel from "@/components/offer/AddOfferDocVerificationPanel";
 import { normalizeLandRegistryInput, isValidLandRegistryNumber } from "@/lib/landRegistryInput";
 
@@ -387,6 +388,11 @@ export default function ClientForm({
   }, [crmSellerPrefill]);
 
 
+
+  const isAgencyAdvertiser = useMemo(() => {
+    if (initialUser?.isLoggedIn) return isAgentOrAgencySeller(initialUser);
+    return data.advertiserType === "agency";
+  }, [initialUser, data.advertiserType]);
 
   useEffect(() => {
     if (!initialUser?.isLoggedIn) return;
@@ -1364,6 +1370,35 @@ export default function ClientForm({
     return true;
   };
 
+  const isStepDone = (step: number) => {
+    if (step === 1) return isStep1Done;
+    if (step === 2) return isStep2Done;
+    if (step === 3) return isStep3Done;
+    if (step === 4) return isStep4Done;
+    if (step === 5 && !initialUser?.isLoggedIn) return isStep5Done;
+    if (step === totalSteps) return canPublish;
+    return true;
+  };
+
+  const stepNeedsFix = (step: number) => {
+    if (isStepDone(step)) return false;
+    return currentStep > step || currentStep === totalSteps;
+  };
+
+  const stepNavItems = useMemo(() => {
+    const items = [
+      { step: 1, label: ao.stepNavShort1 },
+      { step: 2, label: ao.stepNavShort2 },
+      { step: 3, label: ao.stepNavShort3 },
+      { step: 4, label: ao.stepNavShort4 },
+    ];
+    if (!initialUser?.isLoggedIn) {
+      items.push({ step: 5, label: ao.stepNavShort5 });
+    }
+    items.push({ step: totalSteps, label: ao.stepNavPublish });
+    return items;
+  }, [ao.stepNavShort1, ao.stepNavShort2, ao.stepNavShort3, ao.stepNavShort4, ao.stepNavShort5, ao.stepNavPublish, initialUser?.isLoggedIn, totalSteps]);
+
   const focusFieldTarget = (target: FormFieldTarget) => {
     if (!target) return;
     const byTarget: Record<Exclude<FormFieldTarget, null>, { step: number; node: HTMLElement | null }> = {
@@ -1392,6 +1427,10 @@ export default function ClientForm({
   };
 
   const applyAgentCommissionToPayload = (payload: Record<string, unknown>): boolean => {
+    if (!isAgencyAdvertiser) {
+      payload.agentCommissionPercent = 0;
+      return true;
+    }
     const raw = String(data.agentCommissionPercent ?? "").trim();
     if (!raw) {
       // Jeśli użytkownik nie poda prowizji, zapisujemy jawnie 0% (bez prowizji).
@@ -1567,29 +1606,55 @@ export default function ClientForm({
           </h1>
         </div>
 
-        <div className="sticky top-24 z-40 mb-8 bg-white/[0.03] border border-white/10 rounded-[1.75rem] px-5 py-4 backdrop-blur-2xl shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-black uppercase tracking-[0.26em] text-[var(--eos-muted)]">
+        <div className="sticky top-[calc(var(--eos-nav-height)+0.5rem)] z-40 mb-8 rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/95 px-4 py-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl md:px-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <span className="text-[10px] font-black uppercase tracking-[0.22em] text-[var(--eos-muted)]">
               {ao.stepLabel} {currentStep} {ao.stepOf} {totalSteps}
             </span>
-            <span className="text-[10px] font-black uppercase tracking-[0.26em] text-emerald-300">{Math.round((currentStep / totalSteps) * 100)}%</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-500">
+              {Math.round((currentStep / totalSteps) * 100)}%
+            </span>
           </div>
-          <div className="flex gap-2 h-1.5 mb-3">
-            {Array.from({ length: totalSteps }).map((_, i) => (
-              <button
-                type="button"
-                key={i}
-                onClick={() => {
-                  const target = i + 1;
-                  if (target <= currentStep || canAdvanceStep(currentStep)) setCurrentStep(target);
-                }}
-                className={`flex-1 rounded-full transition-all duration-300 ${i + 1 <= currentStep ? 'bg-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.5)]' : 'bg-white/10'}`}
-              />
-            ))}
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {stepNavItems.map((item) => {
+              const active = currentStep === item.step;
+              const done = isStepDone(item.step);
+              const needsFix = stepNeedsFix(item.step);
+              return (
+                <button
+                  key={item.step}
+                  type="button"
+                  onClick={() => setCurrentStep(item.step)}
+                  title={item.label}
+                  className={`min-w-[7.5rem] shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-all ${
+                    active
+                      ? "border-emerald-500/60 bg-emerald-500/10 shadow-[0_0_18px_rgba(16,185,129,0.12)]"
+                      : needsFix
+                        ? "border-red-500/45 bg-red-500/10"
+                        : done
+                          ? "border-emerald-500/25 bg-emerald-500/5"
+                          : "border-[var(--eos-border)] bg-[var(--eos-input)] hover:border-[var(--eos-border-strong)]"
+                  }`}
+                >
+                  <span className="block text-[9px] font-black uppercase tracking-[0.14em] text-[var(--eos-subtle)]">
+                    {ao.stepLabel} {item.step}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] font-bold leading-snug text-[var(--eos-text)]">
+                    {item.label}
+                  </span>
+                  {needsFix ? (
+                    <span className="mt-1 block text-[9px] font-black uppercase tracking-[0.08em] text-red-500">
+                      {ao.stepNavFixNeeded}
+                    </span>
+                  ) : done ? (
+                    <span className="mt-1 block text-[9px] font-bold uppercase tracking-[0.08em] text-emerald-600 dark:text-emerald-400">
+                      OK
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
-          <p className="text-[10px] text-white/35 tracking-[0.12em] uppercase font-bold">
-            {ao.stepExperience}
-          </p>
         </div>
 
         {/* NOWY PRZEŁĄCZNIK KUPNO / WYNAJEM */}
@@ -2029,22 +2094,24 @@ export default function ClientForm({
                   </>
                 )}
 
-                <div ref={agentCommissionInputRef} className="lg:col-span-4 rounded-2xl border border-orange-500/25 bg-orange-500/5 p-5">
-                  <label className={labelPremium}>{ao.commissionBlockTitle}</label>
-                  <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
-                    {ao.commissionBlockIntro.replace("{min}", String(AGENT_COMMISSION_MIN_NONZERO))}
-                  </p>
-                  <AgentCommissionEditor
-                    ao={ao}
-                    priceRaw={data.price || 0}
-                    percentValue={String(data.agentCommissionPercent ?? "")}
-                    onPercentChange={(value) =>
-                      updateData({
-                        agentCommissionPercent: value,
-                      })
-                    }
-                  />
-                </div>
+                {isAgencyAdvertiser ? (
+                  <div ref={agentCommissionInputRef} className="lg:col-span-4 rounded-2xl border border-orange-500/25 bg-orange-500/5 p-5">
+                    <label className={labelPremium}>{ao.commissionBlockTitle}</label>
+                    <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
+                      {ao.commissionBlockIntro.replace("{min}", String(AGENT_COMMISSION_MIN_NONZERO))}
+                    </p>
+                    <AgentCommissionEditor
+                      ao={ao}
+                      priceRaw={data.price || 0}
+                      percentValue={String(data.agentCommissionPercent ?? "")}
+                      onPercentChange={(value) =>
+                        updateData({
+                          agentCommissionPercent: value,
+                        })
+                      }
+                    />
+                  </div>
+                ) : null}
                 
                 {/* AI Monitor Przelicznik */}
                 {(() => {
@@ -2114,6 +2181,9 @@ export default function ClientForm({
                   </DndContext>
                 </div>
                 <p className="text-[10px] text-zinc-500 mt-3 text-center">{ao.photoGalleryHint}</p>
+                {imagesList.length === 0 ? (
+                  <p className="mt-2 text-center text-[11px] font-bold text-red-500">{ao.sumNoPhotos}</p>
+                ) : null}
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
@@ -2270,7 +2340,7 @@ export default function ClientForm({
                 </div>
 
                 <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 w-full max-w-md mb-8">
-                  <button onClick={() => updateData({ advertiserType: 'private' })} className={`flex-1 py-4 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${data.advertiserType === 'private' ? 'bg-[#10b981] text-black shadow-md' : 'text-zinc-400 hover:text-white'}`}>{ao.advertiserPrivate}</button>
+                  <button onClick={() => updateData({ advertiserType: 'private', agentCommissionPercent: '' })} className={`flex-1 py-4 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${data.advertiserType === 'private' ? 'bg-[#10b981] text-black shadow-md' : 'text-zinc-400 hover:text-white'}`}>{ao.advertiserPrivate}</button>
                   <button onClick={() => updateData({ advertiserType: 'agency' })} className={`flex-1 py-4 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${data.advertiserType === 'agency' ? 'bg-[#10b981] text-black shadow-md' : 'text-zinc-400 hover:text-white'}`}>{ao.advertiserAgency}</button>
                 </div>
 
@@ -2360,13 +2430,17 @@ export default function ClientForm({
                     </p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">{ao.sumCostsCommission}</p>
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">
+                      {isAgencyAdvertiser ? ao.sumCostsCommission : ao.sumRent}
+                    </p>
                     <p className="text-white/80">
                       {ao.sumRent}: {String(data.rent || '').trim() ? `${String(data.rent).trim()} PLN` : '-'}
                     </p>
-                    <p className="text-white/60 mt-1">
-                      {ao.sumCommission}: {String(data.agentCommissionPercent || '').trim() ? `${String(data.agentCommissionPercent).trim()}%` : ao.sumCommissionZero}
-                    </p>
+                    {isAgencyAdvertiser ? (
+                      <p className="text-white/60 mt-1">
+                        {ao.sumCommission}: {String(data.agentCommissionPercent || '').trim() ? `${String(data.agentCommissionPercent).trim()}%` : ao.sumCommissionZero}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 
@@ -2375,14 +2449,16 @@ export default function ClientForm({
                   <p className="text-white/80 mb-2">
                     {Array.isArray(data.amenities) && data.amenities.length > 0 ? data.amenities.join(', ') : ao.sumNoAmenities}
                   </p>
-                  <div className="mb-2 text-[10px] uppercase tracking-wider text-white/45">
-                    {ao.sumPhotos}: {finalImages.length} · {ao.sumFloorPlan}: {finalFloorPlan ? '1' : '0'}
-                  </div>
+                  {finalImages.length > 0 ? (
+                    <div className="mb-2 text-[10px] uppercase tracking-wider text-white/45">
+                      {ao.sumPhotos}: {finalImages.length} · {ao.sumFloorPlan}: {finalFloorPlan ? '1' : '0'}
+                    </div>
+                  ) : null}
                   <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
                     {finalImages.length > 0 ? finalImages.map((img, idx) => (
                       <img key={`${img}-${idx}`} src={img} alt={ao.sumPhotoPreviewAlt.replace("{n}", String(idx + 1))} className="h-14 w-14 rounded-lg object-cover border border-white/15" />
                     )) : (
-                      <div className="col-span-full rounded-lg border border-dashed border-white/20 px-3 py-2 text-[11px] text-white/50">
+                      <div className="col-span-full rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-[11px] font-semibold text-red-500">
                         {ao.sumNoPhotos}
                       </div>
                     )}
@@ -2503,7 +2579,7 @@ export default function ClientForm({
                 </button>
               </div>
               {!canAdvanceStep(currentStep) && (
-                <p className="mt-3 text-[10px] text-red-400/80 font-bold uppercase tracking-[0.16em] text-center">
+                <p className="mt-3 text-center text-[10px] font-bold uppercase tracking-[0.16em] text-red-500">
                   {ao.stepRequiredHint}
                 </p>
               )}
