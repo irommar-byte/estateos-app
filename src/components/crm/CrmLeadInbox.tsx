@@ -1,10 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Briefcase, CheckCircle2, Loader2, Percent, Send, XCircle } from "lucide-react";
+import {
+  Briefcase,
+  Building2,
+  CheckCircle2,
+  ChevronRight,
+  ExternalLink,
+  Home,
+  Loader2,
+  MapPin,
+  Percent,
+  Phone,
+  Send,
+  Shield,
+  User,
+  XCircle,
+} from "lucide-react";
+import { LEAD_SERVICE_PRESETS } from "@/lib/leadTransferShared";
 
-type Lead = {
+export type EnrichedLead = {
   id: number;
   offerId: number;
   ownerId: number;
@@ -13,39 +29,137 @@ type Lead = {
   commissionRate: number | null;
   commissionTerms: string | null;
   createdAt: string;
+  updatedAt: string;
+  statusMeta: { label: string; step: number; hint: string };
+  offer: {
+    id: number;
+    title: string;
+    price: number;
+    pricePln?: number;
+    city: string | null;
+    district: string | null;
+    area: string | null;
+    rooms: number | null;
+    propertyType: string | null;
+    transactionType: string | null;
+    status: string;
+    imageUrl: string;
+    locationLabel: string;
+    href: string;
+  };
+  owner: { id: number; name: string; email: string; phone: string | null; image: string | null };
+  agency: { id: number; name: string; image: string | null; phone: string | null };
 };
 
 type Props = {
-  leads: Lead[];
+  leads: EnrichedLead[];
   isAgency: boolean;
   currentUserId?: number;
   onRefresh?: () => void;
 };
 
+const STEPS = ["Zapytanie", "Analiza", "Warunki", "Przekazanie"];
+
+function fmtPrice(value: number) {
+  if (!Number.isFinite(value)) return "—";
+  return `${Math.round(value).toLocaleString("pl-PL")} zł`;
+}
+
+function OfferPreviewCard({ offer }: { offer: EnrichedLead["offer"] }) {
+  return (
+    <Link
+      href={offer.href}
+      target="_blank"
+      className="group flex gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/50 p-3 transition hover:border-emerald-500/30"
+    >
+      <div
+        className="size-24 shrink-0 rounded-xl bg-cover bg-center sm:size-28"
+        style={{ backgroundImage: `url(${offer.imageUrl || "/placeholder.jpg"})` }}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="line-clamp-2 text-base font-black text-[var(--eos-text)] group-hover:text-emerald-500">
+          {offer.title}
+        </p>
+        <p className="mt-1 flex items-center gap-1.5 text-sm text-[var(--eos-muted)]">
+          <MapPin className="size-3.5 shrink-0 text-emerald-500" />
+          <span className="truncate">{offer.locationLabel}</span>
+        </p>
+        <p className="mt-2 text-lg font-black text-[var(--eos-text)]">{fmtPrice(offer.pricePln ?? offer.price)}</p>
+        <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">
+          {offer.area ? <span>{offer.area} m²</span> : null}
+          {offer.rooms ? <span>{offer.rooms} pok.</span> : null}
+          <span>{offer.status}</span>
+        </div>
+        <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-emerald-500">
+          Podgląd ogłoszenia <ExternalLink className="size-3" />
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+function Stepper({ step }: { step: number }) {
+  return (
+    <ol className="mb-4 flex flex-wrap gap-2">
+      {STEPS.map((label, i) => {
+        const idx = i + 1;
+        const active = step >= idx;
+        const current = step === idx;
+        return (
+          <li
+            key={label}
+            className={[
+              "rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-widest",
+              active ? "bg-emerald-500/15 text-emerald-500" : "bg-[var(--eos-input)] text-[var(--eos-subtle)]",
+              current ? "ring-1 ring-emerald-500/40" : "",
+            ].join(" ")}
+          >
+            {idx}. {label}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh }: Props) {
   const [busy, setBusy] = useState<number | null>(null);
   const [commission, setCommission] = useState<Record<number, string>>({});
   const [terms, setTerms] = useState<Record<number, string>>({});
+  const [error, setError] = useState("");
 
-  const pending = leads.filter((l) =>
-    isAgency
-      ? ["PENDING", "USER_COUNTER"].includes(l.status)
-      : ["TERMS_PROPOSED", "USER_COUNTER"].includes(l.status),
+  const pending = useMemo(
+    () =>
+      leads.filter((l) =>
+        isAgency
+          ? ["PENDING", "USER_COUNTER"].includes(l.status)
+          : ["TERMS_PROPOSED", "USER_COUNTER"].includes(l.status),
+      ),
+    [leads, isAgency],
   );
 
-  const proposeTerms = async (leadId: number) => {
-    setBusy(leadId);
+  const proposeTerms = async (lead: EnrichedLead) => {
+    setBusy(lead.id);
+    setError("");
     try {
-      await fetch("/api/concierge/respond", {
+      const res = await fetch("/api/concierge/respond", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
-          leadId,
+          leadId: lead.id,
           status: "TERMS_PROPOSED",
-          commissionRate: commission[leadId] || "2.5",
-          commissionTerms: terms[leadId] || "Pełna obsługa sprzedaży, sesja zdjęciowa, prezentacje.",
+          commissionRate: commission[lead.id] || "2.5",
+          commissionTerms:
+            terms[lead.id] ||
+            "Pełna obsługa sprzedaży: wycena, sesja zdjęciowa, publikacja, prezentacje i negocjacje.",
         }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Nie udało się wysłać warunków.");
+        return;
+      }
       onRefresh?.();
     } finally {
       setBusy(null);
@@ -54,14 +168,40 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
 
   const acceptTransfer = async (leadId: number) => {
     setBusy(leadId);
+    setError("");
     try {
       const res = await fetch("/api/concierge/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ leadId }),
       });
       const data = await res.json();
-      if (!res.ok) alert(data.error || "Nie udało się zaakceptować.");
+      if (!res.ok) {
+        setError(data.error || "Nie udało się zaakceptować.");
+        return;
+      }
+      onRefresh?.();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const rejectLead = async (leadId: number) => {
+    setBusy(leadId);
+    setError("");
+    try {
+      const res = await fetch("/api/concierge/reject", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ leadId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Nie udało się odrzucić.");
+        return;
+      }
       onRefresh?.();
     } finally {
       setBusy(null);
@@ -71,87 +211,213 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
   if (pending.length === 0) return null;
 
   return (
-    <div className="mb-8 rounded-[2rem] border border-amber-500/25 bg-gradient-to-br from-amber-500/10 to-transparent p-6 sm:p-8">
-      <div className="mb-4 flex items-center gap-3">
-        <Briefcase className="size-5 text-amber-400" />
-        <h3 className="text-lg font-black tracking-tight text-white">
-          {isAgency ? "Zapytania o przejęcie ofert" : "Przekazanie do agencji"}
-        </h3>
-      </div>
-      <div className="space-y-4">
-        {pending.map((lead) => (
-          <div
-            key={lead.id}
-            className="rounded-2xl border border-white/10 bg-black/40 p-4 sm:p-5"
-          >
-            <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
-              Oferta #{lead.offerId} · {lead.status}
+    <div className="mb-8 overflow-hidden rounded-[2rem] border border-amber-500/25 bg-gradient-to-br from-amber-500/[0.08] to-[var(--eos-card)]">
+      <div className="border-b border-amber-500/15 px-6 py-5 sm:px-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <Briefcase className="size-5 text-amber-500" />
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-500">
+                Concierge · przekazanie sprzedaży
+              </p>
+            </div>
+            <h3 className="text-xl font-black tracking-tight text-[var(--eos-text)] sm:text-2xl">
+              {isAgency ? "Zapytania o przejęcie ofert" : "Przekazanie do agencji"}
+            </h3>
+            <p className="eos-muted-copy mt-2 max-w-2xl text-sm leading-relaxed">
+              {isAgency
+                ? "Właściciel prosi o profesjonalną obsługę. Przejrzyj ogłoszenie, zaproponuj prowizję i zakres usług — klient dostanie powiadomienie natychmiast."
+                : "Agencja przygotowała warunki. Po akceptacji przejmuje kontakt z kupującymi — Ty zachowujesz podgląd statystyk i zmian ceny bez obowiązku odbierania telefonów."}
             </p>
+          </div>
+          <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/60 px-4 py-3 text-xs text-[var(--eos-muted)]">
+            <p className="flex items-center gap-2 font-bold text-[var(--eos-text)]">
+              <Shield className="size-4 text-emerald-500" />
+              Jak to działa?
+            </p>
+            <ul className="mt-2 space-y-1.5 leading-relaxed">
+              <li>1. Wybierasz zaufaną agencję</li>
+              <li>2. Biuro analizuje ofertę i proponuje warunki</li>
+              <li>3. Akceptujesz — sprzedażą zajmuje się ekspert</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {error ? (
+        <p className="mx-6 mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400 sm:mx-8">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="space-y-5 p-6 sm:p-8">
+        {pending.map((lead) => (
+          <article
+            key={lead.id}
+            className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 shadow-[var(--eos-shadow-soft)] sm:p-6"
+          >
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
+                  Zapytanie #{lead.id} · {new Date(lead.createdAt).toLocaleDateString("pl-PL")}
+                </p>
+                <p className="mt-1 text-sm font-bold text-emerald-500">{lead.statusMeta.label}</p>
+                <p className="eos-muted-copy mt-1 text-xs">{lead.statusMeta.hint}</p>
+              </div>
+              <div className="flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">
+                <Home className="size-3.5" />
+                Oferta #{lead.offerId}
+              </div>
+            </div>
+
+            <Stepper step={lead.statusMeta.step} />
+
+            <OfferPreviewCard offer={lead.offer} />
+
+            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/40 px-4 py-3">
+              {isAgency ? (
+                <>
+                  <User className="size-4 text-emerald-500" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">Właściciel</p>
+                    <p className="font-bold text-[var(--eos-text)]">{lead.owner.name}</p>
+                    {lead.owner.phone ? (
+                      <p className="flex items-center gap-1 text-xs text-[var(--eos-muted)]">
+                        <Phone className="size-3" /> {lead.owner.phone}
+                      </p>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Building2 className="size-4 text-emerald-500" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">Agencja</p>
+                    <p className="font-bold text-[var(--eos-text)]">{lead.agency.name}</p>
+                  </div>
+                </>
+              )}
+            </div>
+
             {isAgency ? (
-              <div className="mt-3 space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  <input
-                    type="number"
-                    step="0.25"
-                    min="0"
-                    max="10"
-                    placeholder="Prowizja %"
-                    value={commission[lead.id] ?? ""}
-                    onChange={(e) => setCommission((p) => ({ ...p, [lead.id]: e.target.value }))}
-                    className="w-28 rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Zakres usług"
-                    value={terms[lead.id] ?? ""}
-                    onChange={(e) => setTerms((p) => ({ ...p, [lead.id]: e.target.value }))}
-                    className="min-w-[200px] flex-1 rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-sm"
-                  />
+              <div className="mt-5 space-y-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
+                  Twoja propozycja współpracy
+                </p>
+                <div className="grid gap-3 sm:grid-cols-[120px_1fr]">
+                  <label className="block">
+                    <span className="mb-1.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[var(--eos-muted)]">
+                      <Percent className="size-3" /> Prowizja
+                    </span>
+                    <input
+                      type="number"
+                      step="0.25"
+                      min="0"
+                      max="10"
+                      placeholder="2.5"
+                      value={commission[lead.id] ?? ""}
+                      onChange={(e) => setCommission((p) => ({ ...p, [lead.id]: e.target.value }))}
+                      className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm"
+                    />
+                  </label>
+                  <label className="block sm:col-span-1">
+                    <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wide text-[var(--eos-muted)]">
+                      Zakres usług dla klienta
+                    </span>
+                    <textarea
+                      rows={3}
+                      placeholder="Opisz co obejmuje obsługa…"
+                      value={terms[lead.id] ?? ""}
+                      onChange={(e) => setTerms((p) => ({ ...p, [lead.id]: e.target.value }))}
+                      className="w-full resize-none rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm"
+                    />
+                  </label>
                 </div>
-                <button
-                  type="button"
-                  disabled={busy === lead.id}
-                  onClick={() => void proposeTerms(lead.id)}
-                  className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
-                >
-                  {busy === lead.id ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
-                  Wyślij warunki
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  {LEAD_SERVICE_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setTerms((p) => ({ ...p, [lead.id]: preset }))}
+                      className="rounded-full border border-[var(--eos-border)] px-3 py-1.5 text-left text-[10px] font-semibold text-[var(--eos-muted)] hover:border-emerald-500/30 hover:text-emerald-500"
+                    >
+                      {preset.slice(0, 48)}…
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={busy === lead.id}
+                    onClick={() => void proposeTerms(lead)}
+                    className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                  >
+                    {busy === lead.id ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                    Wyślij warunki do klienta
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy === lead.id}
+                    onClick={() => void rejectLead(lead.id)}
+                    className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]"
+                  >
+                    <XCircle className="size-3.5" />
+                    Odrzuć zapytanie
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="mt-3">
+              <div className="mt-5">
                 {lead.commissionRate != null ? (
-                  <p className="flex items-center gap-2 text-sm text-white">
-                    <Percent className="size-4 text-emerald-400" />
-                    Propozycja prowizji: <strong>{lead.commissionRate}%</strong>
-                  </p>
+                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                    <p className="flex items-center gap-2 text-sm font-bold text-[var(--eos-text)]">
+                      <Percent className="size-4 text-emerald-500" />
+                      Prowizja agencji: {lead.commissionRate}%
+                    </p>
+                    {lead.commissionTerms ? (
+                      <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{lead.commissionTerms}</p>
+                    ) : null}
+                  </div>
                 ) : null}
-                {lead.commissionTerms ? (
-                  <p className="mt-2 text-sm text-[var(--eos-muted)]">{lead.commissionTerms}</p>
-                ) : null}
+
+                <div className="mt-4 rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 text-xs leading-relaxed text-[var(--eos-muted)]">
+                  <p className="font-bold text-[var(--eos-text)]">Co oznacza akceptacja?</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-4">
+                    <li>Agencja przejmuje publikację, kontakt z kupującymi i negocjacje.</li>
+                    <li>Ty widzisz podgląd oferty, statystyki i zmiany ceny — bez obowiązku odbierania telefonów.</li>
+                    <li>Warunki prowizji obowiązują przy udanej transakcji zgodnie z umową z biurem.</li>
+                  </ul>
+                </div>
+
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     type="button"
                     disabled={busy === lead.id}
                     onClick={() => void acceptTransfer(lead.id)}
-                    className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black"
+                    className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-black"
                   >
-                    <CheckCircle2 className="size-3.5" />
-                    Akceptuję — przekazuję agencji
+                    <CheckCircle2 className="size-4" />
+                    Akceptuję — przekazuję sprzedaż agencji
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy === lead.id}
+                    onClick={() => void rejectLead(lead.id)}
+                    className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]"
+                  >
+                    <XCircle className="size-3.5" />
+                    Odrzuć propozycję
                   </button>
                   <Link
-                    href={`/oferta/${lead.offerId}`}
-                    className="rounded-full border border-white/15 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-white/80"
+                    href={lead.offer.href}
+                    className="inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-[var(--eos-text)]"
                   >
-                    Podgląd oferty
+                    Podgląd ogłoszenia <ChevronRight className="size-3.5" />
                   </Link>
                 </div>
-                <p className="mt-3 text-[11px] leading-relaxed text-[var(--eos-subtle)]">
-                  Po akceptacji agencja przejmuje kontakt z kupującymi. Ty zachowujesz podgląd statystyk i zmian ceny.
-                </p>
               </div>
             )}
-          </div>
+          </article>
         ))}
       </div>
     </div>

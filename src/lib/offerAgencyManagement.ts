@@ -1,4 +1,3 @@
-import { NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { isAgentOrAgencySeller } from '@/lib/sellerDisplay';
 import { listAgencyCompaniesWithStats } from '@/lib/agencyCompany';
@@ -145,17 +144,6 @@ export async function transferOfferManagementFromLead(leadId: number, ownerUserI
     }
 
     return { offerId: lead.offerId, agencyClientId: agencyClient.id };
-  });
-
-  await prisma.notification.create({
-    data: {
-      userId: lead.agencyId,
-      title: '✅ Przekazano zarządzanie ofertą',
-      body:
-        `Właściciel zaakceptował warunki. Oferta „${lead.offer.title}” jest teraz w Twoim CRM. ` +
-        'https://estateos.pl/moje-konto/crm?tab=klienci',
-      type: NotificationType.SYSTEM_ALERT,
-    },
   });
 
   return result;
