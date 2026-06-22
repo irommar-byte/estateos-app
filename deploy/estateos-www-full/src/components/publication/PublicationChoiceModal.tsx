@@ -16,6 +16,7 @@ export type PublicationCouponOption = {
   title: string;
   subtitle: string;
   pillLabel?: string;
+  meta?: string;
 };
 
 type Props = {

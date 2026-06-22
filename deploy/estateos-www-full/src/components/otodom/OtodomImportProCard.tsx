@@ -66,7 +66,11 @@ export default function OtodomImportProCard() {
     if (!res.ok || !data?.success) {
       throw new Error(String(data?.error || data?.message || copy.importWalletError));
     }
-    const coupons = Array.isArray(data.publicationCoupons) ? data.publicationCoupons : [];
+    const coupons = Array.isArray(data.publicationCoupons)
+      ? data.publicationCoupons
+      : Array.isArray(data.coupons)
+        ? data.coupons
+        : [];
     setWalletCoupons(coupons);
     setWalletPlusCredits(Number(data.plusCredits || 0));
     setWalletHasPlusCredit(Boolean(data.hasPlusCredit));

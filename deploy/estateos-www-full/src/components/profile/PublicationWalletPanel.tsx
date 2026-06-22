@@ -48,7 +48,9 @@ function SelectRing({ active }: { active: boolean }) {
   return (
     <div
       className={`h-5 w-5 shrink-0 rounded-full border-2 transition-all ${
-        active ? "border-emerald-400 bg-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.55)]" : "border-white/25 bg-transparent"
+        active
+          ? "border-emerald-400 bg-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.55)]"
+          : "border-[color:var(--eos-border-strong)] bg-transparent"
       }`}
     >
       {active ? <CheckCircle2 size={14} className="m-[1px] text-black" /> : null}
@@ -200,7 +202,7 @@ export default function PublicationWalletPanel({
         <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
           {isRenew ? ao.walletRenewMethod : ao.walletPublishMethod}
         </p>
-        <p className="mt-1 text-sm text-white/50">
+        <p className="mt-1 text-sm text-[color:var(--eos-muted)]">
           {isRenew ? ao.walletRenewHint : ao.walletPublishHint}
         </p>
       </div>
@@ -227,7 +229,7 @@ export default function PublicationWalletPanel({
                       className={`flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-all ${
                         active
                           ? "border-orange-400/60 bg-orange-500/10 shadow-[0_0_24px_rgba(251,146,60,0.12)]"
-                          : "border-white/10 bg-white/[0.03] hover:border-white/20"
+                          : "border-[color:var(--eos-border)] bg-[color:var(--eos-input)] hover:border-[color:var(--eos-border-strong)]"
                       }`}
                     >
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-500/20 text-blue-400">
@@ -235,14 +237,14 @@ export default function PublicationWalletPanel({
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-bold text-white">{coupon.title}</p>
+                          <p className="font-bold text-[color:var(--eos-text)]">{coupon.title}</p>
                           {coupon.pillLabel ? (
                             <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-blue-300">
                               {coupon.pillLabel}
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-1 text-xs text-white/50">{coupon.subtitle}</p>
+                        <p className="mt-1 text-xs text-[color:var(--eos-muted)]">{coupon.subtitle}</p>
                         {coupon.meta ? (
                           <p className="mt-1 text-[10px] font-medium text-emerald-400/85">{coupon.meta}</p>
                         ) : null}
@@ -267,7 +269,7 @@ export default function PublicationWalletPanel({
                   className={`flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-all ${
                     resolvedSelection === "plus_credit"
                       ? "border-emerald-400/60 bg-emerald-500/10 shadow-[0_0_24px_rgba(16,185,129,0.15)]"
-                      : "border-white/10 bg-white/[0.03] hover:border-white/20"
+                      : "border-[color:var(--eos-border)] bg-[color:var(--eos-input)] hover:border-[color:var(--eos-border-strong)]"
                   }`}
                 >
                   <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10">
@@ -275,8 +277,8 @@ export default function PublicationWalletPanel({
                     <span className="text-[8px] font-black uppercase tracking-widest text-emerald-500/70">Plus</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-white">{ao.walletUsePlusCredit}</p>
-                    <p className="mt-1 text-xs text-white/45">
+                    <p className="text-sm font-bold text-[color:var(--eos-text)]">{ao.walletUsePlusCredit}</p>
+                    <p className="mt-1 text-xs text-[color:var(--eos-muted)]">
                       {ao.walletPlusCreditLine
                         .replace("{count}", String(plusCredits))
                         .replace("{days}", String(PUBLICATION_DURATION_DAYS))
@@ -286,7 +288,7 @@ export default function PublicationWalletPanel({
                   <SelectRing active={resolvedSelection === "plus_credit"} />
                 </button>
               ) : (
-                <p className="rounded-2xl border border-dashed border-white/10 bg-black/25 px-4 py-3 text-xs text-white/40">
+                <p className="rounded-2xl border border-dashed border-[color:var(--eos-border)] bg-[color:var(--eos-input)] px-4 py-3 text-xs text-[color:var(--eos-subtle)]">
                   {ao.walletNoPlusOnAccount}
                 </p>
               )}
@@ -297,17 +299,17 @@ export default function PublicationWalletPanel({
                 className={`flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-all ${
                   resolvedSelection === paySelection
                     ? "border-emerald-400/60 bg-emerald-500/10 shadow-[0_0_24px_rgba(16,185,129,0.15)]"
-                    : "border-white/10 bg-white/[0.03] hover:border-white/20"
+                    : "border-[color:var(--eos-border)] bg-[color:var(--eos-input)] hover:border-[color:var(--eos-border-strong)]"
                 }`}
               >
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white">
                   <ShoppingBag size={18} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-white">
+                  <p className="text-sm font-bold text-[color:var(--eos-text)]">
                     {isRenew ? ao.walletPayRenewal : ao.walletBuyPlusAction}
                   </p>
-                  <p className="mt-1 text-xs text-white/45">
+                  <p className="mt-1 text-xs text-[color:var(--eos-muted)]">
                     {isRenew
                       ? ao.walletRenewPaymentDesc
                           .replace("{days}", String(PUBLICATION_DURATION_DAYS))

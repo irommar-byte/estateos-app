@@ -53,8 +53,7 @@ export async function getPublicationWallet(userId: number, locale: Locale = "pl"
   const promoCards = await listProfilePromoCardsForUser(userId);
   const allVisibleCoupons = promoCards.filter((c) => !c.couponUsed);
 
-  const publicationCoupons = promoCards.filter((c) => {
-    if (c.couponUsed) return false;
+  const isPublicationCoupon = (c: (typeof allVisibleCoupons)[number]) => {
     if (c.purpose === "off_market_preview") return false;
     if (c.kind === "welcome_coupon" || c.kind === "birthday_coupon" || c.kind === "admin_promo") {
       return true;
@@ -62,7 +61,7 @@ export async function getPublicationWallet(userId: number, locale: Locale = "pl"
     const templateId = String((c as { templateId?: string }).templateId || "").toLowerCase();
     if (templateId.includes("free_listing") || templateId.includes("welcome")) return true;
     return c.grantsFreeListing || c.purpose === "publication";
-  });
+  };
 
   const coupons = [...allVisibleCoupons];
   const welcomeUsedOnServer =
@@ -93,6 +92,8 @@ export async function getPublicationWallet(userId: number, locale: Locale = "pl"
       createdAt: new Date().toISOString(),
     });
   }
+
+  const publicationCoupons = coupons.filter(isPublicationCoupon);
 
   const plusActive = hasPlusCredit(user);
   const credits = plusActive ? Number(user.extraListings ?? 0) : 0;
