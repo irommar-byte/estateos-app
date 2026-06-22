@@ -67,37 +67,4 @@ export async function resolveCompanyPartnerPlanStatus(params: {
   };
 }
 
-export function describePartnerPlanChange(params: {
-  from: PartnerPlanConfig | null;
-  to: PartnerPlanConfig;
-}): string[] {
-  const { from, to } = params;
-  const lines: string[] = [];
-
-  lines.push(`+${to.creditsPerMonth} kredytów trafi na pulę firmy (okres 30 dni).`);
-
-  const fromAgents = from?.maxAgents ?? null;
-  const toAgents = to.maxAgents;
-  if (fromAgents !== toAgents) {
-    const fmt = (n: number | null) => (n == null ? 'bez limitu' : `do ${n}`);
-    lines.push(`Limit agentów: ${fmt(fromAgents)} → ${fmt(toAgents)}.`);
-  }
-
-  if (!from || from.pricePln !== to.pricePln) {
-    lines.push(`Abonament: ${to.pricePln} zł / 30 dni (${Math.round(to.pricePln / to.creditsPerMonth)} zł za kredyt).`);
-  }
-
-  if (from && from.id === to.id) {
-    return [`Odnowienie tego samego pakietu — kolejna porcja ${to.creditsPerMonth} kredytów i przedłużenie ważności puli.`];
-  }
-
-  if (from && to.pricePln > from.pricePln) {
-    lines.push('Wyższy pakiet — więcej kredytów i szerszy zespół w jednym panelu.');
-  } else if (from && to.pricePln < from.pricePln) {
-    lines.push('Niższy pakiet — sprawdź limit agentów przed zmianą.');
-  } else if (!from) {
-    lines.push('Aktywacja Partner — CRM, zespół, pula kredytów i Concierge w jednym miejscu.');
-  }
-
-  return lines;
-}
+export { describePartnerPlanChange } from '@/lib/partnerPricing';

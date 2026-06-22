@@ -16,11 +16,11 @@ import { useLocale } from '@/contexts/LocaleContext';
 import {
   PARTNER_PLANS,
   type PartnerPlanId,
+  describePartnerPlanChange,
   partnerCreditUnitPrice,
   partnerStripePlanCodeFromId,
   formatAgentsLimit,
 } from '@/lib/partnerPricing';
-import { describePartnerPlanChange } from '@/lib/partnerPlanStatus';
 
 export type AgencyPartnerPlanPayload = {
   currentPlanId: PartnerPlanId | null;
