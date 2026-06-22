@@ -116,11 +116,30 @@ export default function Navbar() {
 
   const isAdmin = user?.role === "ADMIN";
   const manageLabel = dict.nav.manageCentral;
+  const manageLabelShort = dict.nav.manageCentralShort;
+
+  const primaryNavLinks: Array<{
+    path: string;
+    isMap: boolean;
+    short: string;
+    full: string;
+    active?: boolean;
+  }> = [
+    { path: "/odkryj-mape", isMap: true, short: dict.nav.discoverMapShort, full: dict.nav.discoverMap },
+    { path: "/oferty", isMap: false, short: dict.nav.marketShort, full: dict.nav.market },
+    {
+      path: "/agencje",
+      isMap: false,
+      short: dict.nav.agencyCatalogShort,
+      full: dict.nav.agencyCatalog,
+      active: pathname === "/agencje",
+    },
+  ];
 
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-[var(--eos-border)] bg-[var(--eos-glass)] font-sans text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl [padding-top:env(safe-area-inset-top)]">
       <div
-        className="relative z-[100] mx-auto grid h-20 max-w-[1400px] grid-cols-[auto_1fr_auto] items-center gap-3 px-4 md:px-6"
+        className="relative mx-auto flex h-20 max-w-[1400px] items-center justify-between gap-2 px-4 md:px-6"
         style={{
           paddingLeft: "max(1rem, env(safe-area-inset-left))",
           paddingRight: "max(1rem, env(safe-area-inset-right))",
@@ -129,13 +148,13 @@ export default function Navbar() {
         <button
           type="button"
           onClick={() => router.push("/")}
-          className="group relative z-20 flex shrink-0 items-center gap-3 rounded-full px-1 text-left"
+          className="group relative z-20 flex shrink-0 items-center gap-2 rounded-full px-1 text-left sm:gap-3"
           aria-label="EstateOS home"
         >
           <span className="eos-nav-mark flex size-10 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] text-[11px] font-black sm:size-11 sm:text-xs">
             EOS
           </span>
-          <span className="eos-nav-wordmark hidden sm:block">
+          <span className="eos-nav-wordmark hidden md:block">
             <span className="eos-nav-wordmark-body">
               <span className="eos-nav-wordmark-accent">E</span>state
               <span className="eos-nav-wordmark-accent">OS</span>
@@ -144,25 +163,18 @@ export default function Navbar() {
           </span>
         </button>
 
-        <div className="hidden min-w-0 flex-1 items-center justify-center overflow-hidden xl:flex">
-          <div className="eos-nav-primary-group flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 shadow-[var(--eos-shadow-soft)] [scrollbar-width:none] xl:gap-1.5 xl:p-1.5 [&::-webkit-scrollbar]:hidden">
-            <button
-              type="button"
-              onClick={() => handleNavClick("/odkryj-mape", true)}
-              className="eos-nav-link-primary shrink-0"
-            >
-              {dict.nav.discoverMap}
-            </button>
-            <button type="button" onClick={() => handleNavClick("/oferty")} className="eos-nav-link-primary shrink-0">
-              {dict.nav.market}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNavClick("/agencje")}
-              className={`eos-nav-link-primary shrink-0 ${pathname === "/agencje" ? "eos-nav-link-primary--active" : ""}`}
-            >
-              {dict.nav.agencyCatalog}
-            </button>
+        <div className="pointer-events-none absolute inset-0 hidden items-center justify-center px-[9.5rem] lg:flex xl:px-[12rem] 2xl:px-[15rem]">
+          <div className="eos-nav-primary-group pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 shadow-[var(--eos-shadow-soft)] [scrollbar-width:none] lg:gap-1 lg:p-1.5 [&::-webkit-scrollbar]:hidden">
+            {primaryNavLinks.map((link) => (
+              <button
+                key={link.path}
+                type="button"
+                onClick={() => handleNavClick(link.path, link.isMap)}
+                className={`eos-nav-link-primary shrink-0 ${link.active ? "eos-nav-link-primary--active" : ""}`}
+              >
+                <NavResponsiveLabel short={link.short} full={link.full} />
+              </button>
+            ))}
           </div>
         </div>
 
@@ -172,7 +184,7 @@ export default function Navbar() {
           </div>
         )}
 
-        <div className="hidden min-w-0 items-center justify-end gap-1.5 xl:flex xl:gap-2 2xl:gap-3">
+        <div className="relative z-20 hidden min-w-0 shrink-0 items-center justify-end gap-1 lg:flex lg:gap-1.5 2xl:gap-2">
           {user && (
             <>
               <PublicationWalletNavButton />
@@ -182,15 +194,16 @@ export default function Navbar() {
           )}
 
           {user ? (
-            <div className="ml-0.5 flex min-w-0 items-center gap-1 lg:gap-1.5 xl:gap-2">
+            <div className="ml-0.5 flex min-w-0 items-center gap-1 2xl:gap-2">
               <NavbarProfileChip user={user} />
               {isAdmin && (
                 <button
                   type="button"
                   onClick={() => router.push("/centrala")}
-                  className="eos-nav-admin shrink rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black xl:px-5 xl:py-2.5 xl:text-[10px] xl:tracking-[0.18em]"
+                  className="eos-nav-admin shrink-0 rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black lg:px-3 2xl:px-5 2xl:py-2.5 2xl:text-[10px] 2xl:tracking-[0.18em]"
                 >
-                  {manageLabel}
+                  <span className="2xl:hidden">{manageLabelShort}</span>
+                  <span className="hidden 2xl:inline">{manageLabel}</span>
                 </button>
               )}
               <button
@@ -206,7 +219,7 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => router.push("/login")}
-              className="inline-flex shrink items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-text)] transition-all hover:border-[var(--eos-accent)]/40 hover:text-[var(--eos-accent)] xl:px-5 xl:py-2.5 xl:text-[10px] xl:tracking-[0.18em]"
+              className="inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-text)] transition-all hover:border-[var(--eos-accent)]/40 hover:text-[var(--eos-accent)] 2xl:px-5 2xl:py-2.5 2xl:text-[10px] 2xl:tracking-[0.18em]"
             >
               {dict.nav.login}
               <LogIn className="size-4" />
@@ -214,7 +227,7 @@ export default function Navbar() {
           )}
         </div>
 
-        <div className="relative z-40 flex min-w-0 items-center justify-end gap-1.5 xl:hidden">
+        <div className="relative z-20 flex shrink-0 items-center justify-end gap-1.5 lg:hidden">
           {user && (
             <>
               <PublicationWalletNavButton />
@@ -244,20 +257,25 @@ export default function Navbar() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+5rem)] z-30 bg-black/45 backdrop-blur-sm lg:hidden"
+              className="fixed inset-0 z-[55] bg-black/50 backdrop-blur-sm lg:hidden"
+              style={{ top: "var(--eos-nav-height)" }}
               onClick={() => setIsOpen(false)}
             />
             <motion.div
               key="mobile-nav-panel"
-              initial={{ opacity: 0, y: -12, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: "auto" }}
-              exit={{ opacity: 0, y: -12, height: 0 }}
+              initial={{ opacity: 0, y: -16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-              className="relative z-40 overflow-hidden border-b border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] shadow-[var(--eos-shadow-strong)] lg:hidden"
+              className="fixed inset-x-0 z-[60] overflow-y-auto border-b border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] shadow-[var(--eos-shadow-strong)] lg:hidden"
+              style={{
+                top: "var(--eos-nav-height)",
+                maxHeight: "calc(100dvh - var(--eos-nav-height))",
+              }}
             >
               <div className="space-y-6 p-5 pb-8">
                 {user && (
-                  <div className="flex justify-center rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3 xl:hidden">
+                  <div className="flex justify-center rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3">
                     <PremiumModeToggle currentUser={user} />
                   </div>
                 )}
@@ -389,11 +407,11 @@ export default function Navbar() {
         }
         .eos-nav-link-primary {
           border-radius: 999px;
-          padding: 0.62rem 0.85rem;
+          padding: 0.5rem 0.65rem;
           color: var(--eos-text);
-          font-size: clamp(10px, 0.78vw, 13px);
+          font-size: 10px;
           font-weight: 800;
-          letter-spacing: 0.12em;
+          letter-spacing: 0.08em;
           line-height: 1.15;
           text-transform: uppercase;
           transition:
@@ -406,15 +424,16 @@ export default function Navbar() {
         }
         @media (min-width: 1280px) {
           .eos-nav-link-primary {
-            padding: 0.72rem 1.05rem;
-            font-size: 12px;
-            letter-spacing: 0.14em;
+            padding: 0.62rem 0.85rem;
+            font-size: 11px;
+            letter-spacing: 0.1em;
           }
         }
         @media (min-width: 1536px) {
           .eos-nav-link-primary {
             padding: 0.78rem 1.2rem;
             font-size: 13px;
+            letter-spacing: 0.14em;
           }
         }
         .eos-nav-link-primary:hover {
@@ -430,6 +449,15 @@ export default function Navbar() {
         }
       `}</style>
     </nav>
+  );
+}
+
+function NavResponsiveLabel({ short, full }: { short: string; full: string }) {
+  return (
+    <>
+      <span className="2xl:hidden">{short}</span>
+      <span className="hidden 2xl:inline">{full}</span>
+    </>
   );
 }
 
