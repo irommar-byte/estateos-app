@@ -25,6 +25,7 @@ import { buildReviewsModalPayload, EMPTY_REVIEWS_MODAL, type ReviewsModalPayload
 import { getBestUserAvatarUrl } from "@/lib/userAvatar";
 import { resolveProfileHeadlines, isAgentOrAgencySeller } from "@/lib/sellerDisplay";
 import CrmClientsWorkspace from "@/components/crm/CrmClientsWorkspace";
+import CrmSectionTabBar, { type CrmSectionTabId } from "@/components/crm/CrmSectionTabBar";
 import CrmLeadInbox from "@/components/crm/CrmLeadInbox";
 import DelegatedOffersPanel from "@/components/crm/DelegatedOffersPanel";
 import AgencyTransferModal from "@/components/crm/AgencyTransferModal";
@@ -1149,6 +1150,18 @@ export default function CRMDashboard() {
     ? ["klienci", "my_offers", "offers", "planowanie", "transakcje"]
     : ["radar", "my_offers", "offers", "planowanie", "transakcje"];
 
+  const crmTabLabels = useMemo(
+    () => ({
+      klienci: { full: c.tabClients, short: isAgencyWorkspace ? "Agenci" : "Klienci" },
+      radar: { full: c.tabRadar, short: "Radar" },
+      my_offers: { full: c.tabMyOffers, short: "Ogłoszenia" },
+      offers: { full: c.tabFavorites, short: "Ulubione" },
+      planowanie: { full: c.tabPlanning, short: "Plan" },
+      transakcje: { full: c.tabDeals, short: "Deale" },
+    }),
+    [c.tabClients, c.tabRadar, c.tabMyOffers, c.tabFavorites, c.tabPlanning, c.tabDeals, isAgencyWorkspace],
+  );
+
   return (
     <div className="theme-aware-dashboard crm-dashboard-shell eos-page-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
       <AnimatePresence>
@@ -1297,47 +1310,20 @@ export default function CRMDashboard() {
           />
         ) : null}
 
-        <div className="flex justify-center mb-8 sm:mb-10 relative z-20">
-          <div className="w-full md:w-auto max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="bg-[#111] border border-[var(--eos-border)] p-1.5 rounded-full inline-flex md:flex relative shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] min-w-max md:min-w-0">
-            {profileTabs.map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => handleTabSwitch(tab)}
-                className={`relative px-4 sm:px-5 md:px-10 py-3 sm:py-3.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-[0.18em] sm:tracking-[0.2em] transition-colors z-10 whitespace-nowrap ${activeTab === tab ? 'text-black' : 'text-[var(--eos-subtle)] hover:text-white/80'}`}
-              >
-                {activeTab === tab && (
-                  <motion.div
-                    layoutId="activeTabPill"
-                    className="absolute inset-0 bg-emerald-500 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)]"
-                    initial={false}
-                    transition={{ type: "spring" as any, stiffness: 500, damping: 30 }}
-                  />
-                )}
-                <span className="relative z-20">
-                    {tab === "klienci"
-                        ? c.tabClients
-                        : tab === "radar"
-                        ? c.tabRadar
-                        : tab === "my_offers"
-                        ? c.tabMyOffers
-                        : tab === "offers"
-                        ? c.tabFavorites
-                        : tab === "planowanie"
-                        ? c.tabPlanning
-                        : c.tabDeals}
-                 </span>
-              </button>
-            ))}
-          </div>
-          </div>
-        </div>
+        <CrmSectionTabBar
+          tabs={profileTabs as CrmSectionTabId[]}
+          activeTab={activeTab as CrmSectionTabId}
+          labels={crmTabLabels}
+          onChange={(tab) => handleTabSwitch(tab as CrmTab)}
+        />
 
         <motion.div
-          initial={false}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.22, ease: "easeOut" }}
+          key={activeTab}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+        >
+        <motion.div
           className={`bg-[#111] border rounded-[2rem] sm:rounded-[3rem] p-5 sm:p-8 md:p-12 mb-8 flex flex-col md:flex-row items-center gap-5 sm:gap-8 relative overflow-hidden transition-colors duration-700
             ${isEmeraldTab ? 'border-emerald-500/20 shadow-[0_0_50px_rgba(16,185,129,0.05)]' :
               (activeTab === 'offers' || activeTab === 'my_offers') ? 'border-blue-500/20 shadow-[0_0_50px_rgba(59,130,246,0.05)]' :
@@ -2119,6 +2105,7 @@ export default function CRMDashboard() {
             />
           </motion.div>
         )}
+        </motion.div>
 </div>
     
           <AnimatePresence>

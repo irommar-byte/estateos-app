@@ -1851,3 +1851,18 @@ html.light .eos-modal-panel {
   }
 }
 
+.eos-crm-tab-scroller {
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 12px;
+}
+
+.eos-crm-tab-scroller [role='tablist'] > button {
+  scroll-snap-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eos-crm-tab-scroller {
+    scroll-behavior: auto;
+  }
+}
+

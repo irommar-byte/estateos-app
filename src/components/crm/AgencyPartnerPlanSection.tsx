@@ -57,6 +57,10 @@ export default function AgencyPartnerPlanSection({
 }) {
   const { dict } = useLocale();
   const p = dict.pricing;
+  const partnerAgentsUnlimited = p?.partnerAgentsUnlimited ?? 'bez limitu';
+  const partnerActivationNote =
+    p?.partnerActivationNote ??
+    'Wymaga konta administratora biura. Nie masz biura? Załóż je bezpłatnie przed aktywacją.';
   const [selectedId, setSelectedId] = useState<PartnerPlanId>(
     partnerPlan.currentPlanId ?? 'pro',
   );
@@ -70,11 +74,11 @@ export default function AgencyPartnerPlanSection({
 
   const agentsLimitLabel =
     partnerPlan.agentsLimit == null
-      ? p.partnerAgentsUnlimited
+      ? partnerAgentsUnlimited
       : `${partnerPlan.activeAgents} / ${partnerPlan.agentsLimit}`;
 
   const statusLabel = partnerPlan.isSubscriptionActive
-    ? partnerPlan.currentPlanId
+    ? partnerPlan.currentPlanId && PLAN_LABELS[partnerPlan.currentPlanId]
       ? PLAN_LABELS[partnerPlan.currentPlanId]
       : 'Aktywna pula Partner'
     : 'Brak aktywnego pakietu';
@@ -133,7 +137,7 @@ export default function AgencyPartnerPlanSection({
         {PARTNER_PLANS.map((plan) => {
           const isCurrent = partnerPlan.currentPlanId === plan.id;
           const isSelected = selectedId === plan.id;
-          const agents = formatAgentsLimit(plan.maxAgents, p.partnerAgentsUnlimited);
+          const agents = formatAgentsLimit(plan.maxAgents, partnerAgentsUnlimited);
           return (
             <button
               key={plan.id}
@@ -223,7 +227,7 @@ export default function AgencyPartnerPlanSection({
               {partnerPlan.currentPlanId === selectedPlan.id ? 'Odnów pakiet' : 'Aktywuj pakiet'}
             </button>
             <p className="text-center text-[10px] leading-relaxed text-[var(--eos-muted)]">
-              {p.partnerActivationNote}
+              {partnerActivationNote}
             </p>
             {checkoutError ? (
               <p className="text-center text-xs font-semibold text-red-500">{checkoutError}</p>
