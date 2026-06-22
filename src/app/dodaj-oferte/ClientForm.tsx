@@ -129,6 +129,60 @@ function buildHeatingTypes(ao: AddOfferDictionary) {
   return HEATING_DICT_KEYS.map((key) => ao[key]);
 }
 
+function plainTextToEditorHtml(text: string): string {
+  const paragraphs = String(text || "")
+    .trim()
+    .split(/\n\s*\n/)
+    .filter(Boolean);
+  if (paragraphs.length === 0) return "";
+  return paragraphs.map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
+}
+
+function buildDescriptionDraftFromForm(
+  data: Record<string, unknown>,
+  locale: string,
+  amenities: { id: string; label: string }[],
+): Record<string, unknown> {
+  const selectedLabels = Array.isArray(data.amenities) ? (data.amenities as string[]) : [];
+  const selectedIds = amenities
+    .filter((item) => selectedLabels.includes(item.label))
+    .map((item) => item.id) as OfferAmenityId[];
+  const amenityPatch = amenityBooleanPatch(selectedIds);
+
+  return {
+    locale,
+    title: data.title,
+    transactionType: data.transactionType,
+    propertyType: data.propertyType,
+    condition: data.condition,
+    city: data.city,
+    district: data.district,
+    localityCountry: data.localityCountry,
+    street: data.street,
+    lat: data.lat,
+    lng: data.lng,
+    isExactLocation: data.locationType !== "approximate",
+    priceCurrency: data.priceCurrency,
+    price: data.price,
+    adminFee: data.rentAdminFee,
+    deposit: data.deposit,
+    area: data.area,
+    plotArea: data.plotArea,
+    rooms: data.rooms,
+    floor: data.floor,
+    yearBuilt: data.buildYear,
+    heating: data.heating,
+    isFurnished: data.furnished === "yes" || data.furnished === true,
+    agentCommissionPercent: data.agentCommissionPercent,
+    hasBalcony: amenityPatch.hasBalcony,
+    hasParking: amenityPatch.hasParking,
+    hasStorage: amenityPatch.hasStorage,
+    hasGarden: amenityPatch.hasGarden,
+    isTwoLevel: amenityPatch.isDuplex,
+    hasElevator: amenityPatch.hasElevator,
+  };
+}
+
 type DistrictCatalogResponse = {
   strictCities: string[];
   strictCityDistricts: Record<string, string[]>;
@@ -698,12 +752,33 @@ export default function ClientForm({
   };
 
   const handleGenerateAI = async () => {
+    const hasBasics =
+      String(data.propertyType || "").trim() ||
+      String(data.city || "").trim() ||
+      String(data.area || "").trim() ||
+      String(data.price || "").trim();
+    if (!hasBasics) {
+      alert(ao.aiGenInsufficientData);
+      return;
+    }
+
     setIsGeneratingAI(true);
     try {
-      const hint = `${propertyTypeLabel || ao.aiGenPropertyFallback} w ${data.district || data.city || ao.aiGenLocationFallback} o metrażu ${data.area || '?'} m2.`;
-      const generated = ao.aiGenTemplate.replace("{hint}", hint);
-      updateData({ description: generated });
-      if (editorRef.current) editorRef.current.innerHTML = generated;
+      const res = await fetch("/api/user/offers/description/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(buildDescriptionDraftFromForm(data, locale, AMENITIES)),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.success || !String(payload?.description || "").trim()) {
+        throw new Error(String(payload?.error || ao.aiGenFailed));
+      }
+      const html = plainTextToEditorHtml(String(payload.description).trim());
+      updateData({ description: html });
+      if (editorRef.current) editorRef.current.innerHTML = html;
+    } catch (err) {
+      alert(err instanceof Error ? err.message : ao.aiGenFailed);
     } finally {
       setIsGeneratingAI(false);
     }

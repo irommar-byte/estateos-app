@@ -228,7 +228,7 @@ export default function AdminUsers() {
   const segmentLabel = tabs.find((t) => t.id === activeTab)?.label ?? "";
 
   return (
-    <div className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] px-4 pb-16 pt-32 text-[var(--eos-text)] sm:px-6 md:px-12 md:pt-36">
+    <div className="theme-aware-dashboard eos-page-shell min-h-screen bg-[var(--eos-bg)] px-4 pb-16 text-[var(--eos-text)] sm:px-6 md:px-12">
       <div className="mx-auto max-w-7xl">
         <Link
           href="/centrala"
@@ -281,10 +281,14 @@ export default function AdminUsers() {
               <p className="text-3xl font-black tabular-nums">{totalOffers}</p>
             </div>
             <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5">
-              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">Szac. portfele</p>
-              <p className="truncate text-2xl font-black tabular-nums md:text-3xl">
-                {new Intl.NumberFormat("pl-PL").format(totalCapital)} <span className="text-sm text-[var(--eos-muted)]">PLN</span>
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[var(--eos-muted)]">Szac. portfele</p>
+              <p
+                className="text-xl font-black tabular-nums leading-tight sm:text-2xl lg:text-3xl"
+                title={`${new Intl.NumberFormat("pl-PL").format(totalCapital)} PLN`}
+              >
+                {new Intl.NumberFormat("pl-PL").format(totalCapital)}
               </p>
+              <p className="mt-0.5 text-sm font-semibold text-[var(--eos-muted)]">PLN</p>
             </div>
           </div>
 
@@ -346,7 +350,7 @@ export default function AdminUsers() {
           )}
         </header>
 
-        <div className="flex flex-col gap-8 lg:flex-row">
+        <div className="flex flex-col gap-8 xl:flex-row">
           <div className="min-w-0 flex-1 space-y-2">
             {loading ? (
               <div className="flex items-center gap-3 py-16 text-[var(--eos-muted)]">
@@ -388,8 +392,10 @@ export default function AdminUsers() {
                           <Building2 size={20} />
                         </div>
                         <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="truncate font-bold">{a.name}</span>
+                          <p className="font-bold leading-snug break-words" title={a.name}>
+                            {a.name}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span className="rounded-md bg-[var(--eos-bg)] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[var(--eos-subtle)]">
                               #{a.id}
                             </span>
@@ -399,7 +405,7 @@ export default function AdminUsers() {
                               </span>
                             ) : null}
                           </div>
-                          <p className="truncate text-xs text-[var(--eos-muted)]">
+                          <p className="mt-1 break-all text-xs text-[var(--eos-muted)]">
                             {a.slug ? `/firma/${a.slug}` : "Bez slug"} · właściciel: {a.ownerName || `#${a.ownerUserId}`}
                           </p>
                           <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-[var(--eos-subtle)]">
@@ -456,9 +462,11 @@ export default function AdminUsers() {
                       >
                         {(u.name || u.email || "?").charAt(0).toUpperCase()}
                       </div>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="truncate font-bold">{u.name || "Bez nazwy"}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold leading-snug break-words" title={u.name || u.email || undefined}>
+                          {u.name || "Bez nazwy"}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
                           <span className="rounded-md bg-[var(--eos-bg)] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[var(--eos-subtle)]">
                             #{u.id}
                           </span>
@@ -480,7 +488,7 @@ export default function AdminUsers() {
                             </span>
                           ) : null}
                         </div>
-                        <p className="truncate text-xs text-[var(--eos-muted)]">{u.email}</p>
+                        <p className="mt-1 break-all text-xs text-[var(--eos-muted)]">{u.email}</p>
                         <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-[var(--eos-subtle)]">
                           {u.radar?.city ? <span>{u.radar.city}</span> : null}
                           {u.channels.length ? <span>{u.channels.slice(0, 2).join(" · ")}</span> : null}
@@ -488,21 +496,22 @@ export default function AdminUsers() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-4">
-                      <div className="hidden text-right sm:block">
+                    <div className="hidden shrink-0 items-center gap-4 xl:flex">
+                      <div className="text-right">
                         <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">Kredyty</p>
                         <p className="text-sm font-black tabular-nums">{u.wallet?.credits ?? 0}</p>
                       </div>
-                      <div className="hidden text-right sm:block">
+                      <div className="text-right">
                         <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">Kupony</p>
                         <p className="text-sm font-black tabular-nums">{u.wallet?.activeCoupons ?? 0}</p>
                       </div>
-                      <div className="hidden text-right md:block">
+                      <div className="text-right">
                         <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">Oferty</p>
                         <p className="text-sm font-black tabular-nums">{u.offers?.length || 0}</p>
                       </div>
                       <ChevronRight size={18} className={selected ? "text-emerald-500" : "text-[var(--eos-subtle)]"} />
                     </div>
+                    <ChevronRight size={18} className={`shrink-0 xl:hidden ${selected ? "text-emerald-500" : "text-[var(--eos-subtle)]"}`} />
                   </motion.button>
                 );
               })

@@ -199,15 +199,19 @@ export default function AdminUserDetailPanel({
   };
 
   return (
-    <aside className="w-full shrink-0 rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-xl lg:sticky lg:top-28 lg:max-h-[calc(100vh-8rem)] lg:w-[480px] lg:overflow-y-auto lg:p-7">
+    <aside className="w-full shrink-0 rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-xl xl:sticky xl:top-[calc(var(--eos-nav-height)+0.75rem)] xl:max-h-[calc(100dvh-var(--eos-nav-height)-1.5rem)] xl:w-[480px] xl:overflow-y-auto xl:p-7">
       <div className="mb-6 flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg)] text-lg font-black text-[var(--eos-muted)]">
             {(user.name || user.email || "?").charAt(0).toUpperCase()}
           </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-lg font-black">{user.name || "Użytkownik"}</h2>
-            <p className="truncate text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{user.email}</p>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-black leading-snug break-words" title={user.name || undefined}>
+              {user.name || "Użytkownik"}
+            </h2>
+            <p className="mt-0.5 break-all text-xs font-medium text-[var(--eos-muted)]" title={user.email}>
+              {user.email}
+            </p>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
