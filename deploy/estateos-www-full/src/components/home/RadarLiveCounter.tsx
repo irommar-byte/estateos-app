@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Radar, Sparkles, Users } from "lucide-react";
+import { ChevronLeft, Radar, Sparkles, Users } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { numberFormatLocale } from "@/i18n/config";
 import {
@@ -62,6 +62,7 @@ export default function RadarLiveCounter() {
     hideTimerRef.current = setTimeout(() => {
       setExpanded(false);
       setSpectacle(false);
+      setPinned(false);
     }, 7000);
   }, [pinned, clearHideTimer]);
 
@@ -126,14 +127,6 @@ export default function RadarLiveCounter() {
     };
   }, [syncCount, clearHideTimer]);
 
-  useEffect(() => {
-    const intro = setTimeout(() => {
-      setExpanded(true);
-      scheduleAutoHide();
-    }, 4200);
-    return () => clearTimeout(intro);
-  }, [scheduleAutoHide]);
-
   const toggleExpanded = () => {
     setExpanded((v) => !v);
     if (!expanded) {
@@ -174,118 +167,127 @@ export default function RadarLiveCounter() {
         <motion.div
           ref={cardRef}
           layout
-          initial={{ opacity: 0, x: -80 }}
+          initial={{ opacity: 0, scale: 0.85 }}
           animate={{
             opacity: 1,
-            x: expanded ? 0 : -12,
-            width: expanded ? "auto" : 52,
+            scale: 1,
           }}
-          transition={{ type: "spring", stiffness: 280, damping: 28 }}
-          className="pointer-events-auto overflow-hidden rounded-2xl border border-emerald-500/25 bg-black/75 shadow-[0_20px_60px_rgba(0,0,0,0.55),0_0_40px_rgba(16,185,129,0.12)] backdrop-blur-2xl"
+          transition={{ type: "spring", stiffness: 320, damping: 26 }}
+          className="pointer-events-auto"
         >
-          <div className="relative flex items-stretch">
-            <button
-              type="button"
-              onClick={toggleExpanded}
-              className="flex shrink-0 flex-col items-center justify-center gap-1 px-3 py-3 text-emerald-400 transition-colors hover:bg-white/5 sm:px-3.5"
-              aria-expanded={expanded}
-              aria-label={expanded ? copy.collapse : copy.expand}
-            >
-              {expanded ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-              {!expanded && (
-                <span className="relative flex size-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
-                  <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
-                </span>
-              )}
-            </button>
+          <AnimatePresence mode="wait" initial={false}>
+            {expanded ? (
+              <motion.div
+                key="expanded"
+                initial={{ opacity: 0, x: -12, scale: 0.96 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -10, scale: 0.96 }}
+                transition={{ duration: reduceMotion ? 0.12 : 0.32, ease: [0.16, 1, 0.3, 1] }}
+                className="overflow-hidden rounded-2xl border border-emerald-500/25 bg-black/75 shadow-[0_20px_60px_rgba(0,0,0,0.55),0_0_40px_rgba(16,185,129,0.12)] backdrop-blur-2xl"
+              >
+                <div className="relative min-w-[220px] max-w-[min(88vw,320px)] py-3.5 pl-4 pr-4 sm:min-w-[260px]">
+                  <button
+                    type="button"
+                    onClick={toggleExpanded}
+                    className="absolute right-3 top-3 rounded-full p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white/70"
+                    aria-label={copy.collapse}
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
 
-            <AnimatePresence mode="wait">
-              {expanded && (
-                <motion.div
-                  key="panel"
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: "auto" }}
-                  exit={{ opacity: 0, width: 0 }}
-                  transition={{ duration: reduceMotion ? 0.15 : 0.45, ease: [0.16, 1, 0.3, 1] }}
-                  className="overflow-hidden"
-                >
-                  <div className="min-w-[220px] max-w-[min(88vw,320px)] border-l border-white/10 py-3.5 pl-3 pr-4 sm:min-w-[260px]">
-                    <div className="mb-2 flex items-center gap-2">
-                      <Radar size={14} className="text-emerald-400" aria-hidden />
-                      <span className="text-[9px] font-black uppercase tracking-[0.28em] text-emerald-400/90">
-                        {copy.eyebrow}
-                      </span>
-                      <span className="relative ml-auto flex size-2">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                        <span className="relative inline-flex size-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-                      </span>
-                    </div>
-
-                    <div className="flex items-end gap-2">
-                      <motion.span
-                        key={displayCount}
-                        initial={spectacle ? { scale: 1.35, color: "#F9E498" } : false}
-                        animate={{ scale: 1, color: "#ffffff" }}
-                        transition={{ type: "spring", stiffness: 400, damping: 18 }}
-                        className="text-4xl font-black tabular-nums leading-none tracking-tight text-white"
-                      >
-                        {displayCount.toLocaleString(numberFormatLocale(locale))}
-                      </motion.span>
-                      <Users size={18} className="mb-1 text-[#D4AF37]/80" aria-hidden />
-
-                      <AnimatePresence>
-                        {spectacle && delta > 0 && (
-                          <motion.span
-                            initial={{ opacity: 0, y: 12, scale: 0.6 }}
-                            animate={{ opacity: 1, y: -8, scale: 1 }}
-                            exit={{ opacity: 0, y: -28 }}
-                            transition={{ duration: 0.55, ease: "easeOut" }}
-                            className="mb-1 ml-1 text-lg font-black text-[#F9E498] drop-shadow-[0_0_12px_rgba(249,228,152,0.6)]"
-                          >
-                            +{delta}
-                          </motion.span>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
-                    <p className="mt-1.5 text-[11px] font-bold leading-snug text-white/75">
-                      {spectacle ? copy.newJoin : copy.joinSuffix}
-                    </p>
-
-                    {spectacle && (
-                      <motion.p
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        className="mt-2 flex items-center gap-1.5 text-[10px] font-medium text-emerald-300/90"
-                      >
-                        <Sparkles size={12} className="text-[#D4AF37]" aria-hidden />
-                        {copy.subtitle}
-                      </motion.p>
-                    )}
-
-                    {!spectacle && (
-                      <p className="mt-2 text-[10px] leading-relaxed text-white/45">{copy.hint}</p>
-                    )}
+                  <div className="mb-2 flex items-center gap-2 pr-6">
+                    <Radar size={14} className="text-emerald-400" aria-hidden />
+                    <span className="text-[9px] font-black uppercase tracking-[0.28em] text-emerald-400/90">
+                      {copy.eyebrow}
+                    </span>
+                    <span className="relative ml-auto flex size-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                      <span className="relative inline-flex size-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                    </span>
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
 
-            {!expanded && (
-              <div className="flex flex-col items-center justify-center gap-0.5 pr-3 py-3">
-                <Radar size={18} className="text-emerald-400" aria-hidden />
-                <span className="text-sm font-black tabular-nums text-white">{displayCount}</span>
-              </div>
+                  <div className="flex items-end gap-2">
+                    <motion.span
+                      key={displayCount}
+                      initial={spectacle ? { scale: 1.35, color: "#F9E498" } : false}
+                      animate={{ scale: 1, color: "#ffffff" }}
+                      transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                      className="text-4xl font-black tabular-nums leading-none tracking-tight text-white"
+                    >
+                      {displayCount.toLocaleString(numberFormatLocale(locale))}
+                    </motion.span>
+                    <Users size={18} className="mb-1 text-[#D4AF37]/80" aria-hidden />
+
+                    <AnimatePresence>
+                      {spectacle && delta > 0 && (
+                        <motion.span
+                          initial={{ opacity: 0, y: 12, scale: 0.6 }}
+                          animate={{ opacity: 1, y: -8, scale: 1 }}
+                          exit={{ opacity: 0, y: -28 }}
+                          transition={{ duration: 0.55, ease: "easeOut" }}
+                          className="mb-1 ml-1 text-lg font-black text-[#F9E498] drop-shadow-[0_0_12px_rgba(249,228,152,0.6)]"
+                        >
+                          +{delta}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  <p className="mt-1.5 text-[11px] font-bold leading-snug text-white/75">
+                    {spectacle ? copy.newJoin : copy.joinSuffix}
+                  </p>
+
+                  {spectacle && (
+                    <motion.p
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      className="mt-2 flex items-center gap-1.5 text-[10px] font-medium text-emerald-300/90"
+                    >
+                      <Sparkles size={12} className="text-[#D4AF37]" aria-hidden />
+                      {copy.subtitle}
+                    </motion.p>
+                  )}
+
+                  {!spectacle && (
+                    <p className="mt-2 text-[10px] leading-relaxed text-white/45">{copy.hint}</p>
+                  )}
+                </div>
+
+                <motion.div
+                  className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent"
+                  animate={spectacle ? { opacity: [0.4, 1, 0.4] } : { opacity: 0.35 }}
+                  transition={{ duration: spectacle ? 0.8 : 0, repeat: spectacle ? 2 : 0 }}
+                  aria-hidden
+                />
+              </motion.div>
+            ) : (
+              <motion.button
+                key="collapsed"
+                type="button"
+                onClick={toggleExpanded}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ duration: reduceMotion ? 0.12 : 0.28, ease: [0.16, 1, 0.3, 1] }}
+                className="group relative flex size-9 items-center justify-center rounded-xl border border-white/25 bg-white/92 shadow-[0_8px_24px_rgba(0,0,0,0.28)] backdrop-blur-md transition-transform hover:scale-105 active:scale-95 dark:bg-white/88"
+                aria-expanded={false}
+                aria-label={copy.expand}
+              >
+                <span className="absolute inset-0 rounded-xl bg-emerald-400/0 transition-colors group-hover:bg-emerald-400/5" />
+                <span className="relative flex size-2.5">
+                  {!reduceMotion && (
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-55" />
+                  )}
+                  <span
+                    className={[
+                      "relative inline-flex size-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.65)]",
+                      reduceMotion ? "" : "animate-pulse",
+                    ].join(" ")}
+                  />
+                </span>
+              </motion.button>
             )}
-          </div>
-
-          <motion.div
-            className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent"
-            animate={spectacle ? { opacity: [0.4, 1, 0.4] } : { opacity: 0.35 }}
-            transition={{ duration: spectacle ? 0.8 : 0, repeat: spectacle ? 2 : 0 }}
-            aria-hidden
-          />
+          </AnimatePresence>
         </motion.div>
       </div>
     </>

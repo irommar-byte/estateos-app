@@ -4,6 +4,9 @@ import { formatAgentTitle, pickAgentAvatar, resolveProfileMediaUrl } from '@/lib
 import { isAgentOrAgencySeller } from '@/lib/sellerDisplay';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 
+/** Ile kart ofert pokazujemy na publicznym profilu agenta (licznik = pełna liczba ACTIVE). */
+export const AGENT_PROFILE_OFFERS_PREVIEW_LIMIT = 24;
+
 export async function loadAgentPublicProfile(userId: number) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -50,24 +53,29 @@ export async function loadAgentPublicProfile(userId: number) {
   });
   const reviews = reviewsRaw.map((row) => shapePublicReviewForApi(row));
 
-  const offers = await prisma.offer.findMany({
-    where: { userId, status: 'ACTIVE' },
-    orderBy: { createdAt: 'desc' },
-    take: 24,
-    select: {
-      id: true,
-      title: true,
-      price: true,
-      pricePln: true,
-      priceCurrency: true,
-      city: true,
-      district: true,
-      area: true,
-      rooms: true,
-      images: true,
-      transactionType: true,
-    },
-  });
+  const activeOffersWhere = { userId, status: 'ACTIVE' as const };
+
+  const [activeOffersCount, offers] = await Promise.all([
+    prisma.offer.count({ where: activeOffersWhere }),
+    prisma.offer.findMany({
+      where: activeOffersWhere,
+      orderBy: { createdAt: 'desc' },
+      take: AGENT_PROFILE_OFFERS_PREVIEW_LIMIT,
+      select: {
+        id: true,
+        title: true,
+        price: true,
+        pricePln: true,
+        priceCurrency: true,
+        city: true,
+        district: true,
+        area: true,
+        rooms: true,
+        images: true,
+        transactionType: true,
+      },
+    }),
+  ]);
 
   const reviewsCount = reviews.length;
   const averageRating =
@@ -126,7 +134,8 @@ export async function loadAgentPublicProfile(userId: number) {
     stats: {
       reviewsCount,
       averageRating,
-      activeOffers: offers.length,
+      activeOffers: activeOffersCount,
+      offersPreviewLimit: AGENT_PROFILE_OFFERS_PREVIEW_LIMIT,
     },
     offers: offers.map((o) => ({
       id: o.id,
