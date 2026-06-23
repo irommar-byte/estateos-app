@@ -1,13 +1,6 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import {
-  LayoutChangeEvent,
-  PanResponder,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import {
   COMMISSION_RATE_DEFAULT,
   COMMISSION_RATE_MAX,
@@ -22,7 +15,7 @@ import {
   snapCommissionRate,
 } from '../../types/leadTransfer';
 
-type CommissionMode = 'percent' | 'amount';
+type FocusField = 'percent' | 'amount' | null;
 
 type Props = {
   value: number;
@@ -31,264 +24,316 @@ type Props = {
   isDark?: boolean;
 };
 
+function formatPercentDraft(rate: number): string {
+  return rate.toFixed(1).replace('.', ',');
+}
+
+function formatAmountDraft(pln: number): string {
+  return new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(pln);
+}
+
+function parseDecimalInput(text: string): number | null {
+  const normalized = text.trim().replace(/\s/g, '').replace(',', '.');
+  if (!normalized || normalized === '.') return null;
+  const parsed = parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export default function CommissionRateSlider({
   value,
   onChange,
   offerPrice,
   isDark = false,
 }: Props) {
-  const [mode, setMode] = useState<CommissionMode>('percent');
-  const trackWidth = useRef(0);
   const safeRate = snapCommissionRate(Number.isFinite(value) ? value : COMMISSION_RATE_DEFAULT);
   const price = Number.isFinite(offerPrice) && offerPrice > 0 ? offerPrice : 0;
   const amount = commissionAmountFromRate(price, safeRate);
-  const amountModeAvailable = price > 0;
+  const amountStep = commissionAmountStep(price);
+
+  const [activeField, setActiveField] = useState<FocusField>(null);
+  const [percentDraft, setPercentDraft] = useState('');
+  const [amountDraft, setAmountDraft] = useState('');
+  const percentInputRef = useRef<TextInput>(null);
+  const amountInputRef = useRef<TextInput>(null);
 
   const colors = useMemo(
     () => ({
-      track: isDark ? 'rgba(84,84,88,0.55)' : 'rgba(60,60,67,0.16)',
-      fill: '#34C759',
-      thumb: '#FFFFFF',
       text: isDark ? '#FFFFFF' : '#000000',
       muted: isDark ? '#8E8E93' : '#6C6C70',
-      inputBg: isDark ? 'rgba(44,44,46,0.9)' : '#F2F2F7',
-      border: isDark ? 'rgba(84,84,88,0.65)' : 'rgba(60,60,67,0.2)',
+      subtle: isDark ? '#636366' : '#AEAEB2',
+      card: isDark ? 'rgba(44,44,46,0.95)' : '#FFFFFF',
+      cardBorder: isDark ? 'rgba(84,84,88,0.55)' : 'rgba(60,60,67,0.12)',
+      inputBg: isDark ? 'rgba(28,28,30,0.9)' : '#F2F2F7',
+      accent: '#34C759',
+      stepper: isDark ? 'rgba(84,84,88,0.45)' : 'rgba(60,60,67,0.08)',
     }),
     [isDark],
   );
 
-  const sliderValue =
-    mode === 'percent' ? safeRate : snapCommissionAmount(price, amount);
-  const sliderMin = mode === 'percent' ? COMMISSION_RATE_MIN : 0;
-  const sliderMax = mode === 'percent' ? COMMISSION_RATE_MAX : price;
-  const sliderRange = Math.max(sliderMax - sliderMin, COMMISSION_RATE_STEP);
-  const ratio = (sliderValue - sliderMin) / sliderRange;
+  useEffect(() => {
+    if (activeField === 'percent') return;
+    setPercentDraft(formatPercentDraft(safeRate));
+  }, [safeRate, activeField]);
 
-  const applyRawValue = useCallback(
-    (raw: number) => {
-      if (mode === 'percent') {
-        onChange(snapCommissionRate(raw));
-        return;
-      }
-      onChange(commissionRateFromAmount(price, snapCommissionAmount(price, raw)));
-    },
-    [mode, onChange, price],
-  );
+  useEffect(() => {
+    if (activeField === 'amount') return;
+    setAmountDraft(formatAmountDraft(amount));
+  }, [amount, activeField]);
 
-  const setFromX = useCallback(
-    (x: number) => {
-      if (trackWidth.current <= 0) return;
-      const clamped = Math.max(0, Math.min(trackWidth.current, x));
-      const next = sliderMin + (clamped / trackWidth.current) * sliderRange;
-      applyRawValue(next);
-    },
-    [applyRawValue, sliderMin, sliderRange],
-  );
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (e) => setFromX(e.nativeEvent.locationX),
-        onPanResponderMove: (e) => setFromX(e.nativeEvent.locationX),
-      }),
-    [setFromX],
-  );
-
-  const onLayout = (e: LayoutChangeEvent) => {
-    trackWidth.current = e.nativeEvent.layout.width;
+  const commitPercent = (text: string) => {
+    const parsed = parseDecimalInput(text);
+    if (parsed === null) {
+      setPercentDraft(formatPercentDraft(safeRate));
+      return;
+    }
+    onChange(snapCommissionRate(parsed));
   };
 
-  const applyInputText = (text: string) => {
-    const normalized = text.trim().replace(/\s/g, '').replace(',', '.');
-    if (!normalized || normalized === '.') return;
-    const parsed = parseFloat(normalized);
-    if (!Number.isFinite(parsed)) return;
-    applyRawValue(parsed);
+  const commitAmount = (text: string) => {
+    if (price <= 0) return;
+    const parsed = parseDecimalInput(text);
+    if (parsed === null) {
+      setAmountDraft(formatAmountDraft(amount));
+      return;
+    }
+    onChange(commissionRateFromAmount(price, snapCommissionAmount(price, parsed)));
   };
 
-  const inputValue =
-    mode === 'percent'
-      ? safeRate.toFixed(1).replace('.', ',')
-      : String(snapCommissionAmount(price, amount));
+  const stepPercent = (delta: number) => {
+    percentInputRef.current?.blur();
+    amountInputRef.current?.blur();
+    setActiveField(null);
+    onChange(snapCommissionRate(safeRate + delta));
+  };
 
-  const minLabel =
-    mode === 'percent' ? formatCommissionRate(COMMISSION_RATE_MIN) : formatCommissionAmount(0);
-  const maxLabel =
-    mode === 'percent'
-      ? formatCommissionRate(COMMISSION_RATE_MAX)
-      : formatCommissionAmount(price);
+  const stepAmount = (delta: number) => {
+    if (price <= 0) return;
+    percentInputRef.current?.blur();
+    amountInputRef.current?.blur();
+    setActiveField(null);
+    const next = snapCommissionAmount(price, amount + delta * amountStep);
+    onChange(commissionRateFromAmount(price, next));
+  };
+
+  const percentAtMin = safeRate <= COMMISSION_RATE_MIN;
+  const percentAtMax = safeRate >= COMMISSION_RATE_MAX;
+  const amountAtMin = amount <= 0;
+  const amountAtMax = price > 0 && amount >= price;
+
+  const StepperButton = ({
+    icon,
+    onPress,
+    disabled,
+    accessibilityLabel,
+  }: {
+    icon: 'remove' | 'add';
+    onPress: () => void;
+    disabled?: boolean;
+    accessibilityLabel: string;
+  }) => (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => [
+        styles.stepperBtn,
+        { backgroundColor: colors.stepper },
+        pressed && !disabled && { opacity: 0.7 },
+        disabled && { opacity: 0.35 },
+      ]}
+    >
+      <Ionicons name={icon} size={18} color={colors.text} />
+    </Pressable>
+  );
 
   return (
-    <View>
-      <View style={styles.headerRow}>
-        <View style={{ flex: 1, paddingRight: 8 }}>
-          <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '700' }}>Prowizja agencji</Text>
-          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
-            {formatCommissionRate(safeRate)}
-            {amountModeAvailable ? ` · ${formatCommissionAmount(amount)}` : ''}
-          </Text>
-        </View>
-        <View style={[styles.modeToggle, { borderColor: colors.border, backgroundColor: colors.inputBg }]}>
-          <Pressable
-            onPress={() => setMode('percent')}
-            style={[styles.modeBtn, mode === 'percent' && styles.modeBtnActive]}
-          >
-            <Text
-              style={{
-                fontSize: 11,
-                fontWeight: '800',
-                color: mode === 'percent' ? '#FFFFFF' : colors.muted,
-              }}
-            >
-              %
+    <View style={styles.root}>
+      <Text style={[styles.title, { color: colors.muted }]}>Prowizja agencji</Text>
+
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+        <View style={styles.row}>
+          <View style={styles.rowLabel}>
+            <Text style={[styles.rowTitle, { color: colors.text }]}>Procent</Text>
+            <Text style={[styles.rowHint, { color: colors.subtle }]}>
+              {formatCommissionRate(COMMISSION_RATE_MIN)} – {formatCommissionRate(COMMISSION_RATE_MAX)}
             </Text>
-          </Pressable>
-          <Pressable
-            disabled={!amountModeAvailable}
-            onPress={() => amountModeAvailable && setMode('amount')}
-            style={[
-              styles.modeBtn,
-              mode === 'amount' && styles.modeBtnActive,
-              !amountModeAvailable && { opacity: 0.4 },
-            ]}
-          >
-            <Text
-              style={{
-                fontSize: 11,
-                fontWeight: '800',
-                color: mode === 'amount' ? '#FFFFFF' : colors.muted,
+          </View>
+          <View style={styles.controls}>
+            <StepperButton
+              icon="remove"
+              onPress={() => stepPercent(-COMMISSION_RATE_STEP)}
+              disabled={percentAtMin}
+              accessibilityLabel="Zmniejsz prowizję o 0,1 punktu procentowego"
+            />
+            <TextInput
+              ref={percentInputRef}
+              value={percentDraft}
+              onFocus={() => setActiveField('percent')}
+              onChangeText={setPercentDraft}
+              onBlur={() => {
+                commitPercent(percentDraft);
+                setActiveField(null);
               }}
-            >
-              zł
-            </Text>
-          </Pressable>
+              onSubmitEditing={() => {
+                commitPercent(percentDraft);
+                percentInputRef.current?.blur();
+              }}
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+              selectTextOnFocus
+              style={[
+                styles.input,
+                {
+                  color: colors.text,
+                  backgroundColor: colors.inputBg,
+                  borderColor: activeField === 'percent' ? colors.accent : 'transparent',
+                },
+              ]}
+              accessibilityLabel="Prowizja w procentach"
+            />
+            <Text style={[styles.suffix, { color: colors.muted }]}>%</Text>
+            <StepperButton
+              icon="add"
+              onPress={() => stepPercent(COMMISSION_RATE_STEP)}
+              disabled={percentAtMax}
+              accessibilityLabel="Zwiększ prowizję o 0,1 punktu procentowego"
+            />
+          </View>
         </View>
+
+        {price > 0 ? (
+          <>
+            <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
+            <View style={styles.row}>
+              <View style={styles.rowLabel}>
+                <Text style={[styles.rowTitle, { color: colors.text }]}>Wynagrodzenie</Text>
+                <Text style={[styles.rowHint, { color: colors.subtle }]}>
+                  Przy cenie {formatCommissionAmount(price)}
+                </Text>
+              </View>
+              <View style={styles.controls}>
+                <StepperButton
+                  icon="remove"
+                  onPress={() => stepAmount(-1)}
+                  disabled={amountAtMin}
+                  accessibilityLabel="Zmniejsz wynagrodzenie"
+                />
+                <TextInput
+                  ref={amountInputRef}
+                  value={amountDraft}
+                  onFocus={() => setActiveField('amount')}
+                  onChangeText={setAmountDraft}
+                  onBlur={() => {
+                    commitAmount(amountDraft);
+                    setActiveField(null);
+                  }}
+                  onSubmitEditing={() => {
+                    commitAmount(amountDraft);
+                    amountInputRef.current?.blur();
+                  }}
+                  keyboardType="number-pad"
+                  returnKeyType="done"
+                  selectTextOnFocus
+                  style={[
+                    styles.input,
+                    styles.inputWide,
+                    {
+                      color: colors.text,
+                      backgroundColor: colors.inputBg,
+                      borderColor: activeField === 'amount' ? colors.accent : 'transparent',
+                    },
+                  ]}
+                  accessibilityLabel="Wynagrodzenie w złotych"
+                />
+                <Text style={[styles.suffix, { color: colors.muted }]}>zł</Text>
+                <StepperButton
+                  icon="add"
+                  onPress={() => stepAmount(1)}
+                  disabled={amountAtMax}
+                  accessibilityLabel="Zwiększ wynagrodzenie"
+                />
+              </View>
+            </View>
+          </>
+        ) : null}
       </View>
 
-      <View style={styles.inputRow}>
-        <TextInput
-          value={inputValue}
-          onChangeText={applyInputText}
-          keyboardType="decimal-pad"
-          style={[
-            styles.input,
-            {
-              color: colors.text,
-              backgroundColor: colors.inputBg,
-              borderColor: colors.border,
-            },
-          ]}
-        />
-        <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '700' }}>
-          {mode === 'percent' ? '%' : 'zł'}
-        </Text>
-      </View>
-
-      <View
-        style={styles.touchArea}
-        onLayout={onLayout}
-        {...panResponder.panHandlers}
-        accessibilityRole="adjustable"
-        accessibilityLabel={
-          mode === 'percent' ? 'Prowizja agencji w procentach' : 'Prowizja agencji w złotych'
-        }
-      >
-        <View style={[styles.track, { backgroundColor: colors.track }]}>
-          <View style={[styles.fill, { width: `${ratio * 100}%`, backgroundColor: colors.fill }]} />
-        </View>
-        <View
-          style={[
-            styles.thumb,
-            {
-              left: `${ratio * 100}%`,
-              backgroundColor: colors.thumb,
-              borderColor: colors.fill,
-            },
-          ]}
-        />
-      </View>
-
-      <View style={styles.labelsRow}>
-        <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600' }}>{minLabel}</Text>
-        <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600' }}>{maxLabel}</Text>
-      </View>
+      <Text style={[styles.summary, { color: colors.muted }]}>
+        Propozycja: {formatCommissionRate(safeRate)}
+        {price > 0 ? ` · ${formatCommissionAmount(amount)}` : ''}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 10,
+  root: {
+    gap: 8,
   },
-  modeToggle: {
-    flexDirection: 'row',
+  title: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  card: {
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 2,
+    borderRadius: 16,
+    padding: 12,
+    gap: 12,
   },
-  modeBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
+  row: {
+    gap: 10,
   },
-  modeBtnActive: {
-    backgroundColor: '#34C759',
+  rowLabel: {
+    gap: 2,
   },
-  inputRow: {
+  rowTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  rowHint: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  controls: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 10,
   },
-  input: {
-    width: 110,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 15,
-    fontWeight: '800',
-    textAlign: 'right',
-  },
-  touchArea: {
-    height: 44,
+  stepperBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  track: {
-    height: 6,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  fill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    borderRadius: 999,
-  },
-  thumb: {
-    position: 'absolute',
-    top: '50%',
-    width: 28,
-    height: 28,
-    marginTop: -14,
-    marginLeft: -14,
-    borderRadius: 14,
+  input: {
+    minWidth: 72,
+    flex: 1,
+    maxWidth: 96,
     borderWidth: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 17,
+    fontWeight: '800',
+    textAlign: 'center',
   },
-  labelsRow: {
-    marginTop: 6,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  inputWide: {
+    maxWidth: 120,
+  },
+  suffix: {
+    width: 18,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+  },
+  summary: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

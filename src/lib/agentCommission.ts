@@ -179,8 +179,9 @@ export function parseOfferNumeric(raw: unknown): number {
  */
 export type AgentCommissionInputMode = 'percent' | 'amount';
 
-export function maxAgentCommissionAmountPln(_priceRaw: unknown): number {
-  return Number.NaN;
+export function maxAgentCommissionAmountPln(priceRaw: unknown): number {
+  if (!Number.isFinite(AGENT_COMMISSION_MAX_PERCENT)) return Number.NaN;
+  return computeAgentCommissionAmount(priceRaw, AGENT_COMMISSION_MAX_PERCENT);
 }
 
 export function percentFromCommissionAmount(

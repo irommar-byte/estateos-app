@@ -27,6 +27,19 @@ export type EnrichedLeadTransfer = {
   agency: { id: number; name: string; image: string | null; phone: string | null };
 };
 
+export const LEAD_CONDITION_CATALOG = [
+  { id: 'valuation', label: 'Wycena rynkowa i rekomendacja ceny wyjściowej' },
+  { id: 'photos', label: 'Profesjonalna sesja zdjęciowa i wirtualny spacer' },
+  { id: 'marketing', label: 'Publikacja i promocja ogłoszenia na platformach' },
+  { id: 'inquiries', label: 'Obsługa zapytań i wstępna kwalifikacja kupujących' },
+  { id: 'visits', label: 'Umawianie i prowadzenie prezentacji nieruchomości' },
+  { id: 'negotiations', label: 'Negocjacje cenowe i warunków transakcji' },
+  { id: 'legal', label: 'Koordynacja dokumentów i przygotowanie do aktu notarialnego' },
+  { id: 'reporting', label: 'Cotygodniowy raport postępów dla właściciela' },
+] as const;
+
+export type LeadConditionId = (typeof LEAD_CONDITION_CATALOG)[number]['id'];
+
 export const LEAD_SERVICE_PRESETS = [
   'Pełna obsługa sprzedaży: wycena, sesja zdjęciowa, publikacja, prezentacje i negocjacje do aktu notarialnego.',
   'Marketing i obsługa zapytań: optymalizacja ogłoszenia, kontakt z kupującymi, umawianie wizyt.',
@@ -88,4 +101,53 @@ export function countPendingConciergeLeads(
       ? ['PENDING', 'USER_COUNTER'].includes(l.status)
       : ['PENDING', 'TERMS_PROPOSED', 'USER_COUNTER'].includes(l.status),
   ).length;
+}
+
+export type ParsedLeadTerms = {
+  conditions: Array<{ id: string; label: string }>;
+  customNote: string | null;
+  isStructured: boolean;
+  rawText: string | null;
+};
+
+export function serializeLeadConditions(selectedIds: string[], customNote?: string | null): string {
+  const unique = [...new Set(selectedIds.filter(Boolean))];
+  return JSON.stringify({
+    version: 1,
+    conditions: unique,
+    customNote: customNote?.trim().slice(0, 500) || null,
+  });
+}
+
+export function parseLeadConditions(raw: string | null | undefined): ParsedLeadTerms {
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  if (!text) {
+    return { conditions: [], customNote: null, isStructured: false, rawText: null };
+  }
+  if (text.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(text) as { conditions?: string[]; customNote?: string | null };
+      const ids = Array.isArray(parsed.conditions) ? parsed.conditions : [];
+      const conditions = ids
+        .map((id) => {
+          const hit = LEAD_CONDITION_CATALOG.find((c) => c.id === id);
+          return hit ? { id: hit.id, label: hit.label } : { id, label: id };
+        })
+        .filter((c) => c.label);
+      return {
+        conditions,
+        customNote: parsed.customNote?.trim() || null,
+        isStructured: true,
+        rawText: text,
+      };
+    } catch {
+      /* fall through */
+    }
+  }
+  return {
+    conditions: [],
+    customNote: null,
+    isStructured: false,
+    rawText: text,
+  };
 }

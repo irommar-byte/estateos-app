@@ -21,17 +21,23 @@ import { useThemeStore } from '../store/useThemeStore';
 import { API_URL } from '../config/network';
 import {
   acceptLeadTransfer,
+  fetchDelegatedOffers,
   fetchLeadTransfers,
   proposeLeadTerms,
   rejectLeadTransfer,
+  type DelegatedOffer,
 } from '../services/leadTransferService';
 import type { EnrichedLeadTransfer } from '../types/leadTransfer';
 import {
   COMMISSION_RATE_DEFAULT,
   countPendingConciergeLeads,
-  LEAD_SERVICE_PRESETS,
+  formatCommissionRate,
+  LEAD_CONDITION_CATALOG,
+  parseLeadConditions,
+  serializeLeadConditions,
 } from '../types/leadTransfer';
 import CommissionRateSlider from '../components/agency/CommissionRateSlider';
+import DelegatedOffersSection from '../components/agency/DelegatedOffersSection';
 
 function mediaUrl(value?: string | null) {
   const raw = String(value || '').trim();
@@ -44,6 +50,49 @@ function fmtPrice(value: number) {
   return `${Math.round(value).toLocaleString('pl-PL')} zł`;
 }
 
+function OwnerTermsDisplay({
+  commissionRate,
+  commissionTerms,
+  colors,
+  isDark,
+}: {
+  commissionRate: number;
+  commissionTerms: string | null;
+  colors: { text: string; secondary: string };
+  isDark: boolean;
+}) {
+  const parsed = parseLeadConditions(commissionTerms);
+  return (
+    <View style={[styles.termsBox, { backgroundColor: isDark ? '#132318' : '#E8F8EC' }]}>
+      <Text style={{ color: colors.text, fontWeight: '800' }}>
+        Prowizja: {formatCommissionRate(commissionRate)}
+      </Text>
+      {parsed.isStructured && parsed.conditions.length > 0 ? (
+        <View style={{ marginTop: 8, gap: 6 }}>
+          {parsed.conditions.map((c, i) => (
+            <View key={c.id} style={styles.conditionRow}>
+              <Text style={styles.conditionIndex}>{i + 1}</Text>
+              <Text style={{ color: colors.secondary, fontSize: 13, flex: 1, lineHeight: 19 }}>
+                {c.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : parsed.rawText ? (
+        <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 6, lineHeight: 20 }}>
+          {parsed.rawText}
+        </Text>
+      ) : null}
+      {parsed.customNote ? (
+        <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 8, lineHeight: 18 }}>
+          <Text style={{ fontWeight: '700', color: colors.text }}>Uwagi: </Text>
+          {parsed.customNote}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export default function AgencyLeadInboxScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -54,9 +103,12 @@ export default function AgencyLeadInboxScreen() {
 
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<EnrichedLeadTransfer[]>([]);
+  const [delegated, setDelegated] = useState<DelegatedOffer[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [error, setError] = useState('');
   const [commission, setCommission] = useState<Record<number, number>>({});
   const [terms, setTerms] = useState<Record<number, string>>({});
+  const [selectedConditions, setSelectedConditions] = useState<Record<number, string[]>>({});
 
   const colors = useMemo(
     () => ({
@@ -67,6 +119,7 @@ export default function AgencyLeadInboxScreen() {
       separator: isDark ? 'rgba(84,84,88,0.45)' : 'rgba(60,60,67,0.12)',
       accent: '#34C759',
       accentOrange: '#FF9500',
+      danger: '#FF3B30',
     }),
     [isDark],
   );
@@ -75,31 +128,53 @@ export default function AgencyLeadInboxScreen() {
     if (!token) return;
     setLoading(true);
     try {
-      const data = await fetchLeadTransfers(token);
-      setLeads(data);
+      const [leadData, delegatedData] = await Promise.all([
+        fetchLeadTransfers(token),
+        !isAgency ? fetchDelegatedOffers(token) : Promise.resolve([]),
+      ]);
+      setLeads(leadData);
+      setDelegated(delegatedData);
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [isAgency, token]);
 
   React.useEffect(() => {
     void reload();
   }, [reload]);
 
-  const pending = useMemo(() => leads.filter((l) => countPendingConciergeLeads([l], isAgency) === 1), [leads, isAgency]);
+  const pending = useMemo(
+    () => leads.filter((l) => countPendingConciergeLeads([l], isAgency) === 1),
+    [leads, isAgency],
+  );
   const pendingCount = useMemo(() => countPendingConciergeLeads(leads, isAgency), [leads, isAgency]);
+
+  const toggleCondition = (leadId: number, id: string) => {
+    setSelectedConditions((prev) => {
+      const current = prev[leadId] || [];
+      const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+      return { ...prev, [leadId]: next };
+    });
+  };
 
   const handlePropose = async (lead: EnrichedLeadTransfer) => {
     if (!token) return;
+    const conditionIds = selectedConditions[lead.id] || [];
+    if (conditionIds.length < 3) {
+      setError('Zaznacz co najmniej 3 konkretne warunki obsługi dla klienta.');
+      return;
+    }
     setBusyId(lead.id);
+    setError('');
     try {
+      const commissionTerms = serializeLeadConditions(conditionIds, terms[lead.id]);
       const res = await proposeLeadTerms(token, {
         leadId: lead.id,
         commissionRate: String(commission[lead.id] ?? COMMISSION_RATE_DEFAULT),
-        commissionTerms: terms[lead.id] || LEAD_SERVICE_PRESETS[0],
+        commissionTerms,
       });
       if (!res.ok) {
-        Alert.alert('Warunki', res.message || 'Nie udało się wysłać.');
+        setError(res.message || 'Nie udało się wysłać.');
         return;
       }
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -113,18 +188,19 @@ export default function AgencyLeadInboxScreen() {
     if (!token) return;
     Alert.alert(
       'Przekazać sprzedaż agencji?',
-      'Agencja przejmie kontakt z kupującymi. Zachowasz podgląd oferty i statystyk.',
+      'Agencja przejmie kontakt z kupującymi na zaakceptowanych warunkach. Zachowasz podgląd oferty i statystyk.',
       [
         { text: 'Anuluj', style: 'cancel' },
         {
-          text: 'Akceptuję',
+          text: 'Akceptuję warunki',
           onPress: () => {
             void (async () => {
               setBusyId(leadId);
+              setError('');
               try {
                 const res = await acceptLeadTransfer(token, leadId);
                 if (!res.ok) {
-                  Alert.alert('Przekazanie', res.message || 'Nie udało się.');
+                  setError(res.message || 'Nie udało się.');
                   return;
                 }
                 void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -142,9 +218,10 @@ export default function AgencyLeadInboxScreen() {
   const handleReject = async (leadId: number) => {
     if (!token) return;
     setBusyId(leadId);
+    setError('');
     try {
       const res = await rejectLeadTransfer(token, leadId);
-      if (!res.ok) Alert.alert('Operacja', res.message || 'Nie udało się.');
+      if (!res.ok) setError(res.message || 'Nie udało się.');
       else await reload();
     } finally {
       setBusyId(null);
@@ -172,6 +249,7 @@ export default function AgencyLeadInboxScreen() {
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} />}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.separator }]}>
           <Ionicons name="shield-checkmark" size={22} color={colors.accent} />
@@ -183,10 +261,16 @@ export default function AgencyLeadInboxScreen() {
           </Text>
         </View>
 
-        {loading && pending.length === 0 ? (
+        {error ? (
+          <View style={[styles.errorBox, { borderColor: `${colors.danger}55`, backgroundColor: `${colors.danger}14` }]}>
+            <Text style={{ color: colors.danger, fontSize: 13, lineHeight: 19 }}>{error}</Text>
+          </View>
+        ) : null}
+
+        {loading && pending.length === 0 && delegated.length === 0 ? (
           <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
         ) : pending.length === 0 ? (
-          <Text style={{ color: colors.secondary, textAlign: 'center', marginTop: 32 }}>
+          <Text style={{ color: colors.secondary, textAlign: 'center', marginTop: 24 }}>
             Brak aktywnych zapytań o przekazanie.
           </Text>
         ) : (
@@ -225,7 +309,7 @@ export default function AgencyLeadInboxScreen() {
               </Pressable>
 
               {isAgency ? (
-                <View style={{ marginTop: 12, gap: 8 }}>
+                <View style={{ marginTop: 12, gap: 10 }}>
                   <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '700' }}>
                     Właściciel: {lead.owner.name}
                     {lead.owner.phone ? ` · ${lead.owner.phone}` : ''}
@@ -236,27 +320,56 @@ export default function AgencyLeadInboxScreen() {
                     offerPrice={lead.offer.pricePln ?? lead.offer.price}
                     isDark={isDark}
                   />
+                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '700' }}>
+                    Zakres usług (min. 3 punkty)
+                  </Text>
+                  <View style={{ gap: 8 }}>
+                    {LEAD_CONDITION_CATALOG.map((item) => {
+                      const checked = (selectedConditions[lead.id] || []).includes(item.id);
+                      return (
+                        <Pressable
+                          key={item.id}
+                          onPress={() => toggleCondition(lead.id, item.id)}
+                          style={[
+                            styles.conditionChip,
+                            {
+                              borderColor: checked ? colors.accent : colors.separator,
+                              backgroundColor: checked
+                                ? isDark
+                                  ? 'rgba(52,199,89,0.12)'
+                                  : 'rgba(52,199,89,0.08)'
+                                : 'transparent',
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={checked ? 'checkbox' : 'square-outline'}
+                            size={18}
+                            color={checked ? colors.accent : colors.secondary}
+                          />
+                          <Text style={{ color: colors.text, fontSize: 13, flex: 1, lineHeight: 19 }}>
+                            {item.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                   <TextInput
-                    placeholder="Zakres usług"
+                    placeholder="Uwagi dodatkowe (opcjonalnie)"
                     placeholderTextColor={colors.secondary}
                     multiline
                     value={terms[lead.id] ?? ''}
                     onChangeText={(v) => setTerms((p) => ({ ...p, [lead.id]: v }))}
-                    style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.separator, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
+                    style={[
+                      styles.input,
+                      styles.textArea,
+                      {
+                        color: colors.text,
+                        borderColor: colors.separator,
+                        backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
+                      },
+                    ]}
                   />
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                    {LEAD_SERVICE_PRESETS.map((preset) => (
-                      <Pressable
-                        key={preset}
-                        onPress={() => setTerms((p) => ({ ...p, [lead.id]: preset }))}
-                        style={[styles.presetChip, { borderColor: colors.separator }]}
-                      >
-                        <Text style={{ color: colors.secondary, fontSize: 10 }} numberOfLines={2}>
-                          {preset.slice(0, 40)}…
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
                   <View style={styles.actions}>
                     <Pressable
                       onPress={() => void handlePropose(lead)}
@@ -279,36 +392,67 @@ export default function AgencyLeadInboxScreen() {
                   <Text style={{ color: colors.secondary, fontSize: 12, marginBottom: 4 }}>
                     Agencja: {lead.agency.name}
                   </Text>
-                  {lead.commissionRate != null ? (
-                    <View style={[styles.termsBox, { backgroundColor: isDark ? '#132318' : '#E8F8EC' }]}>
-                      <Text style={{ color: colors.text, fontWeight: '800' }}>Prowizja: {lead.commissionRate}%</Text>
-                      {lead.commissionTerms ? (
-                        <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 6, lineHeight: 20 }}>
-                          {lead.commissionTerms}
-                        </Text>
-                      ) : null}
+
+                  {lead.status === 'PENDING' ? (
+                    <View style={[styles.waitingBox, { backgroundColor: isDark ? '#0A1A33' : '#E8F0FF' }]}>
+                      <Text style={{ color: colors.text, fontWeight: '800' }}>Zlecenie w analizie</Text>
+                      <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 6, lineHeight: 20 }}>
+                        Agencja przejrzy ogłoszenie i prześle konkretną listę warunków. Twoja oferta pozostaje u
+                        Ciebie — nic się nie zmienia bez Twojej akceptacji.
+                      </Text>
                     </View>
                   ) : null}
-                  <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18, marginTop: 10 }}>
-                    Po akceptacji agencja przejmuje sprzedaż. Ty zachowujesz podgląd statystyk i zmian ceny.
-                  </Text>
-                  <View style={[styles.actions, { marginTop: 12 }]}>
+
+                  {lead.status === 'TERMS_PROPOSED' && lead.commissionRate != null ? (
+                    <>
+                      <OwnerTermsDisplay
+                        commissionRate={lead.commissionRate}
+                        commissionTerms={lead.commissionTerms}
+                        colors={colors}
+                        isDark={isDark}
+                      />
+                      <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18, marginTop: 10 }}>
+                        Akceptując, przekazujesz sprzedaż agencji na powyższych warunkach. Zachowujesz podgląd
+                        statystyk i zmian ceny.
+                      </Text>
+                      <View style={[styles.actions, { marginTop: 12 }]}>
+                        <Pressable
+                          onPress={() => void handleAccept(lead.id)}
+                          disabled={busyId === lead.id}
+                          style={[styles.primaryBtn, { opacity: busyId === lead.id ? 0.6 : 1 }]}
+                        >
+                          <Text style={styles.primaryBtnText}>Akceptuję warunki</Text>
+                        </Pressable>
+                        <Pressable onPress={() => void handleReject(lead.id)} disabled={busyId === lead.id}>
+                          <Text style={{ color: colors.secondary, fontWeight: '700' }}>Odrzuć</Text>
+                        </Pressable>
+                      </View>
+                    </>
+                  ) : lead.status === 'USER_COUNTER' ? (
+                    <View style={[styles.waitingBox, { backgroundColor: isDark ? '#1A1408' : '#FFF8E8' }]}>
+                      <Text style={{ color: colors.text, fontWeight: '800' }}>Twoja kontrpropozycja</Text>
+                      <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 6, lineHeight: 20 }}>
+                        Agencja została powiadomiona — poczekaj na nową propozycję warunków.
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {lead.status !== 'TERMS_PROPOSED' ? (
                     <Pressable
-                      onPress={() => void handleAccept(lead.id)}
+                      onPress={() => void handleReject(lead.id)}
                       disabled={busyId === lead.id}
-                      style={[styles.primaryBtn, { opacity: busyId === lead.id ? 0.6 : 1 }]}
+                      style={{ marginTop: 12, alignSelf: 'flex-start' }}
                     >
-                      <Text style={styles.primaryBtnText}>Akceptuję przekazanie</Text>
+                      <Text style={{ color: colors.secondary, fontWeight: '700' }}>Anuluj zapytanie</Text>
                     </Pressable>
-                    <Pressable onPress={() => void handleReject(lead.id)} disabled={busyId === lead.id}>
-                      <Text style={{ color: colors.secondary, fontWeight: '700' }}>Odrzuć</Text>
-                    </Pressable>
-                  </View>
+                  ) : null}
                 </View>
               )}
             </View>
           ))
         )}
+
+        {!isAgency ? <DelegatedOffersSection offers={delegated} isDark={isDark} /> : null}
       </ScrollView>
     </View>
   );
@@ -342,6 +486,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   infoTitle: { fontSize: 16, fontWeight: '800', marginTop: 8 },
+  errorBox: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
   leadCard: {
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
@@ -365,14 +515,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   textArea: { minHeight: 72, textAlignVertical: 'top' },
-  presetChip: {
+  conditionChip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    maxWidth: 160,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 8 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 8, flexWrap: 'wrap' },
   primaryBtn: {
     backgroundColor: '#34C759',
     paddingHorizontal: 16,
@@ -383,4 +535,18 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: '#000', fontWeight: '800', fontSize: 13 },
   termsBox: { borderRadius: 12, padding: 12, marginTop: 8 },
+  waitingBox: { borderRadius: 12, padding: 12, marginTop: 8 },
+  conditionRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  conditionIndex: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(52,199,89,0.15)',
+    color: '#34C759',
+    fontSize: 11,
+    fontWeight: '900',
+    textAlign: 'center',
+    lineHeight: 20,
+    overflow: 'hidden',
+  },
 });

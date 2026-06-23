@@ -70,6 +70,31 @@ export async function rejectLeadTransfer(
   return { ok: true };
 }
 
+export type DelegatedOffer = {
+  id: number;
+  title: string;
+  price: number;
+  pricePln?: number;
+  city: string;
+  district: string | null;
+  status: string;
+  imageUrl: string;
+  updatedAt: string;
+  agency: { id: number; name: string | null; image: string | null };
+  commissionRate: number | null;
+  commissionTerms: string | null;
+  acceptedAt: string | null;
+};
+
+export async function fetchDelegatedOffers(token: string): Promise<DelegatedOffer[]> {
+  const res = await fetch(`${API_URL}/api/offers/delegated?t=${Date.now()}`, {
+    headers: authHeaders(token),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.success) return [];
+  return Array.isArray(json.offers) ? json.offers : [];
+}
+
 export async function fetchAgencyCatalog(): Promise<
   Array<{ id: number; displayName: string; image: string | null; averageRating: number | null; reviewsCount: number }>
 > {
