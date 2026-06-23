@@ -25,8 +25,8 @@ export const LEAD_SERVICE_PRESETS = [
   'Obsługa premium: doradztwo cenowe, staging, raporty tygodniowe dla właściciela.',
 ] as const;
 
-export const COMMISSION_RATE_MIN = 0.5;
-export const COMMISSION_RATE_MAX = 10;
+export const COMMISSION_RATE_MIN = 0;
+export const COMMISSION_RATE_MAX = 100;
 export const COMMISSION_RATE_STEP = 0.1;
 export const COMMISSION_RATE_DEFAULT = 2.5;
 
@@ -37,6 +37,38 @@ export function snapCommissionRate(raw: number): number {
 
 export function formatCommissionRate(value: number): string {
   return `${value.toFixed(1).replace('.', ',')}%`;
+}
+
+export function commissionAmountStep(price: number): number {
+  if (!Number.isFinite(price) || price <= 0) return 100;
+  const tenthPercent = price * 0.001;
+  if (tenthPercent >= 1000) return Math.round(tenthPercent / 1000) * 1000;
+  if (tenthPercent >= 100) return Math.round(tenthPercent / 100) * 100;
+  return 100;
+}
+
+export function snapCommissionAmount(price: number, amount: number): number {
+  const step = commissionAmountStep(price);
+  const stepped = Math.round(amount / step) * step;
+  return Math.min(price, Math.max(0, stepped));
+}
+
+export function commissionAmountFromRate(price: number, rate: number): number {
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  return snapCommissionAmount(price, (price * rate) / 100);
+}
+
+export function commissionRateFromAmount(price: number, amount: number): number {
+  if (!Number.isFinite(price) || price <= 0) return COMMISSION_RATE_DEFAULT;
+  return snapCommissionRate((amount / price) * 100);
+}
+
+export function formatCommissionAmount(pln: number): string {
+  return new Intl.NumberFormat('pl-PL', {
+    style: 'currency',
+    currency: 'PLN',
+    maximumFractionDigits: 0,
+  }).format(pln);
 }
 
 export function countPendingConciergeLeads(

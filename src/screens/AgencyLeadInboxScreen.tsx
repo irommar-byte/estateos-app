@@ -233,6 +233,7 @@ export default function AgencyLeadInboxScreen() {
                   <CommissionRateSlider
                     value={commission[lead.id] ?? COMMISSION_RATE_DEFAULT}
                     onChange={(next) => setCommission((p) => ({ ...p, [lead.id]: next }))}
+                    offerPrice={lead.offer.pricePln ?? lead.offer.price}
                     isDark={isDark}
                   />
                   <TextInput
