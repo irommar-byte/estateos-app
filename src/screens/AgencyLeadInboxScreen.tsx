@@ -26,7 +26,12 @@ import {
   rejectLeadTransfer,
 } from '../services/leadTransferService';
 import type { EnrichedLeadTransfer } from '../types/leadTransfer';
-import { LEAD_SERVICE_PRESETS } from '../types/leadTransfer';
+import {
+  COMMISSION_RATE_DEFAULT,
+  countPendingConciergeLeads,
+  LEAD_SERVICE_PRESETS,
+} from '../types/leadTransfer';
+import CommissionRateSlider from '../components/agency/CommissionRateSlider';
 
 function mediaUrl(value?: string | null) {
   const raw = String(value || '').trim();
@@ -50,7 +55,7 @@ export default function AgencyLeadInboxScreen() {
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<EnrichedLeadTransfer[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [commission, setCommission] = useState<Record<number, string>>({});
+  const [commission, setCommission] = useState<Record<number, number>>({});
   const [terms, setTerms] = useState<Record<number, string>>({});
 
   const colors = useMemo(
@@ -81,15 +86,8 @@ export default function AgencyLeadInboxScreen() {
     void reload();
   }, [reload]);
 
-  const pending = useMemo(
-    () =>
-      leads.filter((l) =>
-        isAgency
-          ? ['PENDING', 'USER_COUNTER'].includes(l.status)
-          : ['TERMS_PROPOSED', 'USER_COUNTER'].includes(l.status),
-      ),
-    [leads, isAgency],
-  );
+  const pending = useMemo(() => leads.filter((l) => countPendingConciergeLeads([l], isAgency) === 1), [leads, isAgency]);
+  const pendingCount = useMemo(() => countPendingConciergeLeads(leads, isAgency), [leads, isAgency]);
 
   const handlePropose = async (lead: EnrichedLeadTransfer) => {
     if (!token) return;
@@ -97,7 +95,7 @@ export default function AgencyLeadInboxScreen() {
     try {
       const res = await proposeLeadTerms(token, {
         leadId: lead.id,
-        commissionRate: commission[lead.id] || '2.5',
+        commissionRate: String(commission[lead.id] ?? COMMISSION_RATE_DEFAULT),
         commissionTerms: terms[lead.id] || LEAD_SERVICE_PRESETS[0],
       });
       if (!res.ok) {
@@ -162,7 +160,13 @@ export default function AgencyLeadInboxScreen() {
         <Text style={[styles.navTitle, { color: colors.text }]}>
           {isAgency ? 'Zapytania Concierge' : 'Przekazanie do agencji'}
         </Text>
-        <View style={{ width: 44 }} />
+        {pendingCount > 0 ? (
+          <View style={styles.navBadge}>
+            <Text style={styles.navBadgeText}>{pendingCount > 9 ? '9+' : pendingCount}</Text>
+          </View>
+        ) : (
+          <View style={{ width: 44 }} />
+        )}
       </View>
 
       <ScrollView
@@ -226,13 +230,10 @@ export default function AgencyLeadInboxScreen() {
                     Właściciel: {lead.owner.name}
                     {lead.owner.phone ? ` · ${lead.owner.phone}` : ''}
                   </Text>
-                  <TextInput
-                    placeholder="Prowizja %"
-                    placeholderTextColor={colors.secondary}
-                    keyboardType="decimal-pad"
-                    value={commission[lead.id] ?? ''}
-                    onChangeText={(v) => setCommission((p) => ({ ...p, [lead.id]: v }))}
-                    style={[styles.input, { color: colors.text, borderColor: colors.separator, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}
+                  <CommissionRateSlider
+                    value={commission[lead.id] ?? COMMISSION_RATE_DEFAULT}
+                    onChange={(next) => setCommission((p) => ({ ...p, [lead.id]: next }))}
+                    isDark={isDark}
                   />
                   <TextInput
                     placeholder="Zakres usług"
@@ -323,6 +324,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   navTitle: { fontSize: 17, fontWeight: '700' },
+  navBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FF3B30',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  navBadgeText: { color: '#FFFFFF', fontWeight: '900', fontSize: 12 },
   infoCard: {
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,

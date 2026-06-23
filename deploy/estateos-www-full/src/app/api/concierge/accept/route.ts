@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { transferOfferManagementFromLead } from '@/lib/offerAgencyManagement';
-import { notifyLeadTransfer } from '@/lib/leadTransfer';
+import { notifyLeadTransfer, CONCIERGE_NOTIFY_TITLES } from '@/lib/leadTransfer';
 
 export async function POST(req: Request) {
   try {
@@ -21,20 +21,24 @@ export async function POST(req: Request) {
 
     const lead = await prisma.leadTransfer.findUnique({
       where: { id },
-      select: { offer: { select: { title: true } }, agencyId: true },
+      select: { id: true, offerId: true, offer: { select: { title: true } }, agencyId: true },
     });
 
     if (lead) {
       await notifyLeadTransfer({
         userId,
-        title: 'Sprzedaż przekazana agencji',
+        leadId: lead.id,
+        offerId: lead.offerId,
+        title: CONCIERGE_NOTIFY_TITLES.ACCEPTED_OWNER,
         body:
           `„${lead.offer.title}” jest teraz zarządzana przez wybrane biuro. ` +
           'Masz podgląd aktywności w panelu — bez kontaktu z kupującymi.',
       });
       await notifyLeadTransfer({
         userId: lead.agencyId,
-        title: 'Przejęto zarządzanie ofertą',
+        leadId: lead.id,
+        offerId: lead.offerId,
+        title: CONCIERGE_NOTIFY_TITLES.ACCEPTED_AGENCY,
         body: `Właściciel zaakceptował warunki dla „${lead.offer.title}”. Oferta jest w Twoim CRM.`,
       });
     }

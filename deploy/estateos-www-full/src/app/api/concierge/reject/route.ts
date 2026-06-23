@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
-import { notifyLeadTransfer } from '@/lib/leadTransfer';
+import { notifyLeadTransfer, CONCIERGE_NOTIFY_TITLES } from '@/lib/leadTransfer';
 
 export async function POST(req: Request) {
   try {
@@ -40,7 +40,8 @@ export async function POST(req: Request) {
     const notifyUserId = isOwner ? lead.agencyId : lead.ownerId;
     await notifyLeadTransfer({
       userId: notifyUserId,
-      title: isOwner ? 'Właściciel odrzucił przekazanie' : 'Agencja odrzuciła zapytanie',
+      leadId: lead.id,
+      title: isOwner ? CONCIERGE_NOTIFY_TITLES.REJECTED_BY_OWNER : CONCIERGE_NOTIFY_TITLES.REJECTED_BY_AGENCY,
       body:
         (isOwner
           ? `Właściciel nie zaakceptował warunków dla „${title}”.`

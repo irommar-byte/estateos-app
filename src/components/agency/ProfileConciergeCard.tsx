@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import * as Notifications from 'expo-notifications';
 import { useAuthStore } from '../../store/useAuthStore';
 import { fetchLeadTransfers } from '../../services/leadTransferService';
+import { countPendingConciergeLeads } from '../../types/leadTransfer';
 
 type Props = {
   isDark: boolean;
@@ -25,19 +27,31 @@ export default function ProfileConciergeCard({ isDark, isAgency }: Props) {
     setLoading(true);
     try {
       const leads = await fetchLeadTransfers(token);
-      const pending = leads.filter((l) =>
-        isAgency
-          ? ['PENDING', 'USER_COUNTER'].includes(l.status)
-          : ['TERMS_PROPOSED', 'USER_COUNTER'].includes(l.status),
-      );
-      setPendingCount(pending.length);
+      setPendingCount(countPendingConciergeLeads(leads, isAgency));
     } finally {
       setLoading(false);
     }
   }, [token, isAgency]);
 
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
   useEffect(() => {
-    void load();
+    const refreshSub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = (notification?.request?.content?.data || {}) as Record<string, unknown>;
+      if (String(data.kind || data.notificationType || '').toLowerCase() !== 'concierge_lead') return;
+      void load();
+    });
+    const appSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void load();
+    });
+    return () => {
+      refreshSub.remove();
+      appSub.remove();
+    };
   }, [load]);
 
   const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
@@ -73,7 +87,7 @@ export default function ProfileConciergeCard({ isDark, isAgency }: Props) {
         <ActivityIndicator color="#FF9500" />
       ) : pendingCount > 0 ? (
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>{pendingCount}</Text>
+          <Text style={styles.badgeText}>{pendingCount > 9 ? '9+' : pendingCount}</Text>
         </View>
       ) : (
         <Ionicons name="chevron-forward" size={20} color={secondary} />
@@ -101,13 +115,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badge: {
-    minWidth: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#FF9500',
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FF3B30',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
+    shadowColor: '#FF3B30',
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
-  badgeText: { color: '#000', fontWeight: '900', fontSize: 12 },
+  badgeText: { color: '#FFFFFF', fontWeight: '900', fontSize: 12 },
 });

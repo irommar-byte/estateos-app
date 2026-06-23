@@ -1321,6 +1321,17 @@ const parsePushTargetFromResponse = (
   }
 
   if (
+    data.kind === 'concierge_lead' ||
+    String(data.notificationType || '').toUpperCase() === 'CONCIERGE_LEAD' ||
+    routeHint.includes('concierge')
+  ) {
+    return {
+      screen: 'AgencyLeadInbox',
+      params: {},
+    };
+  }
+
+  if (
     data.kind === 'bonus_coupon_received' ||
     data.target === 'profile_bonus_coupons' ||
     routeHint.includes('bonus') ||
