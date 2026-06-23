@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
-import { notifyLeadTransfer } from '@/lib/leadTransfer';
+import { notifyLeadTransfer, CONCIERGE_NOTIFY_TITLES } from '@/lib/leadTransfer';
 
 export async function POST(req: Request) {
   try {
@@ -29,7 +29,9 @@ export async function POST(req: Request) {
 
     await notifyLeadTransfer({
       userId: transfer.agencyId,
-      title: 'Klient negocjuje warunki',
+      leadId: transfer.id,
+      offerId: transfer.offerId,
+      title: CONCIERGE_NOTIFY_TITLES.COUNTER,
       body:
         `Kontrpropozycja prowizji (${newRate}%).` +
         (clientNetto

@@ -18,7 +18,8 @@ import {
   User,
   XCircle,
 } from "lucide-react";
-import { LEAD_CONDITION_CATALOG, LEAD_SERVICE_PRESETS, parseLeadConditions, serializeLeadConditions } from "@/lib/leadTransferShared";
+import { LEAD_CONDITION_CATALOG, LEAD_SERVICE_PRESETS, parseLeadConditions, serializeLeadConditions, COMMISSION_RATE_DEFAULT } from "@/lib/leadTransferShared";
+import CommissionRateSlider from "@/components/crm/CommissionRateSlider";
 
 export type EnrichedLead = {
   id: number;
@@ -124,7 +125,7 @@ function Stepper({ step }: { step: number }) {
 
 export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh }: Props) {
   const [busy, setBusy] = useState<number | null>(null);
-  const [commission, setCommission] = useState<Record<number, string>>({});
+  const [commission, setCommission] = useState<Record<number, number>>({});
   const [terms, setTerms] = useState<Record<number, string>>({});
   const [selectedConditions, setSelectedConditions] = useState<Record<number, string[]>>({});
   const [error, setError] = useState("");
@@ -156,7 +157,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
         body: JSON.stringify({
           leadId: lead.id,
           status: "TERMS_PROPOSED",
-          commissionRate: commission[lead.id] || "2.5",
+          commissionRate: String(commission[lead.id] ?? COMMISSION_RATE_DEFAULT),
           commissionTerms,
         }),
       });
@@ -216,7 +217,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
   if (pending.length === 0) return null;
 
   return (
-    <div className="mb-8 overflow-hidden rounded-[2rem] border border-amber-500/25 bg-gradient-to-br from-amber-500/[0.08] to-[var(--eos-card)]">
+    <div id="concierge-inbox" className="mb-8 overflow-hidden rounded-[2rem] border border-amber-500/25 bg-gradient-to-br from-amber-500/[0.08] to-[var(--eos-card)] scroll-mt-24">
       <div className="border-b border-amber-500/15 px-6 py-5 sm:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -225,6 +226,11 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
               <p className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-500">
                 Concierge · przekazanie sprzedaży
               </p>
+              {pending.length > 0 ? (
+                <span className="inline-flex min-w-[1.35rem] items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-black text-white shadow-[0_0_0_2px_rgba(239,68,68,0.2)]">
+                  {pending.length}
+                </span>
+              ) : null}
             </div>
             <h3 className="text-xl font-black tracking-tight text-[var(--eos-text)] sm:text-2xl">
               {isAgency ? "Zapytania o przejęcie ofert" : "Przekazanie do agencji"}
@@ -309,22 +315,11 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
                   Konkretne warunki współpracy (właściciel zaakceptuje każdy punkt)
                 </p>
-                <div className="grid gap-3 sm:grid-cols-[120px_1fr]">
-                  <label className="block">
-                    <span className="mb-1.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[var(--eos-muted)]">
-                      <Percent className="size-3" /> Prowizja
-                    </span>
-                    <input
-                      type="number"
-                      step="0.25"
-                      min="0"
-                      max="10"
-                      placeholder="2.5"
-                      value={commission[lead.id] ?? ""}
-                      onChange={(e) => setCommission((p) => ({ ...p, [lead.id]: e.target.value }))}
-                      className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm"
-                    />
-                  </label>
+                <div className="grid gap-3 sm:grid-cols-[1fr]">
+                  <CommissionRateSlider
+                    value={commission[lead.id] ?? COMMISSION_RATE_DEFAULT}
+                    onChange={(next) => setCommission((p) => ({ ...p, [lead.id]: next }))}
+                  />
                   <label className="block">
                     <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wide text-[var(--eos-muted)]">
                       Uwagi dodatkowe (opcjonalnie)

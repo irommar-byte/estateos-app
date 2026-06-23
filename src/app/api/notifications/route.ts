@@ -6,6 +6,7 @@ import { activePublicationOfferIds } from '@/lib/offerPublication';
 import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
 import { getAuthedUserIdFromRequest } from '@/lib/sessionAuth';
 import { agencyPendingApprovalLink, isAgencyPendingNotification } from '@/lib/agencyCompanyNotify';
+import { conciergeNotificationLink, isConciergeLeadNotification } from '@/lib/leadTransfer';
 
 export const dynamic = 'force-dynamic';
 
@@ -188,6 +189,10 @@ export async function GET(req: Request) {
         link = agencyPendingApprovalLink();
         groupKey = `agency-pending:${n.targetId || n.id}`;
         message = baseBody || 'Nowy agent czeka na zatwierdzenie w panelu biura.';
+      } else if (isConciergeLeadNotification(n)) {
+        link = conciergeNotificationLink();
+        groupKey = `concierge-lead:${n.targetId || n.id}`;
+        message = baseBody || 'Masz nową aktywność w Concierge — przekazanie sprzedaży.';
       } else if (n.type === 'SYSTEM_ALERT' && n.title === 'Zatwierdzono zgłoszenie do biura') {
         link = '/moje-konto/crm';
       } else if (n.type === 'SYSTEM_ALERT' && n.title === 'Przypisano ogłoszenia') {

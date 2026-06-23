@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
-import { notifyLeadTransfer } from '@/lib/leadTransfer';
+import { notifyLeadTransfer, CONCIERGE_NOTIFY_TITLES } from '@/lib/leadTransfer';
 
 export async function POST(req: Request) {
   try {
@@ -45,7 +45,8 @@ export async function POST(req: Request) {
 
     await notifyLeadTransfer({
       userId: aid,
-      title: 'Nowe zapytanie o przejęcie sprzedaży',
+      leadId: lead.id,
+      title: CONCIERGE_NOTIFY_TITLES.NEW_LEAD,
       body:
         `Właściciel prosi o profesjonalną obsługę oferty „${offer.title}”. ` +
         'Przejrzyj ogłoszenie i prześlij warunki w panelu CRM. https://estateos.pl/moje-konto/crm',

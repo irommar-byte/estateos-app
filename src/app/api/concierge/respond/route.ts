@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
-import { notifyLeadTransfer } from '@/lib/leadTransfer';
-import { parseLeadConditions } from '@/lib/leadTransferShared';
+import { notifyLeadTransfer, CONCIERGE_NOTIFY_TITLES } from '@/lib/leadTransfer';
+import { parseLeadConditions, snapCommissionRate } from '@/lib/leadTransferShared';
 
 export async function POST(req: Request) {
   try {
@@ -27,7 +27,10 @@ export async function POST(req: Request) {
     }
 
     const nextStatus = String(status || 'TERMS_PROPOSED').toUpperCase();
-    const rate = commissionRate != null ? parseFloat(String(commissionRate)) : null;
+    const rate =
+      commissionRate != null
+        ? snapCommissionRate(parseFloat(String(commissionRate).replace(',', '.')))
+        : null;
     const terms = typeof commissionTerms === 'string' ? commissionTerms.trim().slice(0, 2000) : null;
 
     if (nextStatus === 'TERMS_PROPOSED' && (rate == null || !Number.isFinite(rate) || rate <= 0)) {
@@ -58,7 +61,8 @@ export async function POST(req: Request) {
     if (nextStatus === 'TERMS_PROPOSED') {
       await notifyLeadTransfer({
         userId: lead.ownerId,
-        title: 'Agencja przesłała warunki współpracy',
+        leadId: lead.id,
+        title: CONCIERGE_NOTIFY_TITLES.TERMS,
         body:
           `„${lead.offer.title}” — propozycja prowizji ${rate}%. ` +
           'Zaakceptuj przekazanie sprzedaży lub odrzuć w panelu CRM. https://estateos.pl/moje-konto/crm',

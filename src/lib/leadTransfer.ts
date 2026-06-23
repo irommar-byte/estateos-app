@@ -1,4 +1,3 @@
-import { NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { getUserDisplayAvatar } from '@/lib/agencyCompany';
@@ -6,7 +5,17 @@ import { getBestUserAvatarUrl } from '@/lib/userAvatar';
 import { leadStatusMeta, type LeadTransferStatus } from '@/lib/leadTransferShared';
 
 export type { LeadTransferStatus } from '@/lib/leadTransferShared';
-export { LEAD_SERVICE_PRESETS, leadStatusMeta } from '@/lib/leadTransferShared';
+export {
+  LEAD_SERVICE_PRESETS,
+  leadStatusMeta,
+  countPendingConciergeLeads,
+} from '@/lib/leadTransferShared';
+export {
+  CONCIERGE_NOTIFY_TITLES,
+  conciergeNotificationLink,
+  isConciergeLeadNotification,
+  notifyLeadTransfer,
+} from '@/lib/leadTransferNotify';
 
 function formatOfferLocation(offer: {
   city?: string | null;
@@ -142,20 +151,4 @@ export async function listEnrichedLeadTransfersForUser(userId: number) {
     orderBy: { updatedAt: 'desc' },
   });
   return Promise.all(rows.map((row) => shapeEnrichedLeadTransfer(row, userId)));
-}
-
-export async function notifyLeadTransfer(params: {
-  userId: number;
-  title: string;
-  body: string;
-  offerId?: number;
-}) {
-  await prisma.notification.create({
-    data: {
-      userId: params.userId,
-      title: params.title,
-      body: params.body,
-      type: NotificationType.SYSTEM_ALERT,
-    },
-  });
 }
