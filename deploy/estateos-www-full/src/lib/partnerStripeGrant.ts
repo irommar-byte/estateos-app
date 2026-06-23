@@ -10,6 +10,8 @@ import {
 import { stripeTransactionId } from '@/lib/stripePublication';
 
 const PARTNER_PERIOD_DAYS = 30;
+const PARTNER_PRO_TRIAL_PRODUCT = 'pl.estateos.partner.pro_trial';
+const PARTNER_PRO_PAID_PRODUCT = 'pl.estateos.partner.pro_monthly';
 
 const STRIPE_PLAN_TO_PARTNER_ID: Record<string, PartnerPlanId> = {
   partner_start: 'start',
@@ -166,4 +168,83 @@ export async function assertPartnerCheckoutAllowed(userId: number): Promise<void
   if (!membership || membership.role !== 'ADMIN') {
     throw new Error('PARTNER_REQUIRES_COMPANY_ADMIN');
   }
+}
+
+export async function grantPartnerProTrial(userId: number): Promise<{
+  granted: boolean;
+  alreadyUsed: boolean;
+  companyId: number | null;
+  creditsAdded: number;
+}> {
+  await assertPartnerCheckoutAllowed(userId);
+  await ensureMobileIapTables();
+
+  const prior = (await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
+    `SELECT id FROM MobileIapPurchase
+     WHERE userId = ? AND productId IN (?, ?)
+     LIMIT 1`,
+    userId,
+    PARTNER_PRO_TRIAL_PRODUCT,
+    PARTNER_PRO_PAID_PRODUCT,
+  )) as Array<{ id: bigint }>;
+
+  if (prior.length > 0) {
+    const membership = await getUserAgencyMembership(userId);
+    return { granted: false, alreadyUsed: true, companyId: membership?.companyId ?? null, creditsAdded: 0 };
+  }
+
+  const plan = PARTNER_PLANS.find((p) => p.id === 'pro');
+  if (!plan) throw new Error('PARTNER_PRO_PLAN_MISSING');
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { isPro: false, planType: PlanType.AGENCY, proExpiresAt: null },
+  });
+
+  const membership = await ensureAgencyCompanyForAgentUser(userId);
+  if (!membership || membership.role !== 'ADMIN') {
+    throw new Error('PARTNER_REQUIRES_COMPANY_ADMIN');
+  }
+
+  const periodEnd = new Date();
+  periodEnd.setDate(periodEnd.getDate() + PARTNER_PERIOD_DAYS);
+
+  const company = await prisma.agencyCompany.findUnique({
+    where: { id: membership.companyId },
+    select: { id: true, plusExpiresAt: true },
+  });
+  if (!company) throw new Error('PARTNER_COMPANY_NOT_FOUND');
+
+  const currentExpiryMs = company.plusExpiresAt ? new Date(company.plusExpiresAt).getTime() : 0;
+  const mergedExpiry = new Date(Math.max(currentExpiryMs, periodEnd.getTime()));
+  const pendingId = `partner_pro_trial_${userId}_${Date.now()}`;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.agencyCompany.update({
+      where: { id: company.id },
+      data: {
+        extraListings: { increment: plan.creditsPerMonth },
+        plusExpiresAt: mergedExpiry,
+      },
+    });
+
+    await tx.$executeRawUnsafe(
+      `
+        INSERT INTO MobileIapPurchase
+          (userId, pendingPurchaseId, platform, productId, transactionId, status, verifyStatus, entitlementGrantedAt)
+        VALUES (?, ?, 'web', ?, ?, 'VERIFIED', 'VERIFIED', NOW(3))
+      `,
+      userId,
+      pendingId,
+      PARTNER_PRO_TRIAL_PRODUCT,
+      `trial_${pendingId}`,
+    );
+  });
+
+  return {
+    granted: true,
+    alreadyUsed: false,
+    companyId: company.id,
+    creditsAdded: plan.creditsPerMonth,
+  };
 }

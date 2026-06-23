@@ -31,6 +31,7 @@ export type AgencyPartnerPlanPayload = {
   agentsLimit: number | null;
   daysRemaining: number | null;
   lastPurchaseAt: string | null;
+  proTrialEligible?: boolean;
 };
 
 const PLAN_LABELS: Record<PartnerPlanId, string> = {
@@ -47,11 +48,15 @@ function fmtDate(iso: string | null) {
 export default function AgencyPartnerPlanSection({
   partnerPlan,
   onCheckout,
+  onTrialActivate,
   checkoutLoading,
   checkoutError,
+  trialLoading,
 }: {
   partnerPlan: AgencyPartnerPlanPayload;
   onCheckout: (stripePlanCode: string) => void;
+  onTrialActivate?: () => void;
+  trialLoading?: boolean;
   checkoutLoading: string | null;
   checkoutError: string | null;
 }) {
@@ -84,6 +89,8 @@ export default function AgencyPartnerPlanSection({
     : 'Brak aktywnego pakietu';
 
   const statusTone = partnerPlan.isSubscriptionActive ? 'text-emerald-500' : 'text-amber-500';
+  const showProTrial =
+    Boolean(partnerPlan.proTrialEligible) && selectedId === 'pro' && !partnerPlan.isSubscriptionActive;
 
   return (
     <section className="overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]">
@@ -213,18 +220,33 @@ export default function AgencyPartnerPlanSection({
           </div>
 
           <div className="flex flex-col gap-3 lg:min-w-[16rem]">
+            {showProTrial ? (
+              <p className="mb-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-center text-[11px] font-semibold text-emerald-600">
+                Pierwszy miesiąc Partner Pro (999 zł) — <strong>0 zł</strong>, 50 kredytów na pulę na 30 dni.
+              </p>
+            ) : null}
             <button
               type="button"
-              disabled={Boolean(checkoutLoading)}
-              onClick={() => onCheckout(partnerStripePlanCodeFromId(selectedPlan.id))}
+              disabled={Boolean(checkoutLoading) || Boolean(trialLoading)}
+              onClick={() => {
+                if (showProTrial && onTrialActivate) {
+                  onTrialActivate();
+                  return;
+                }
+                onCheckout(partnerStripePlanCodeFromId(selectedPlan.id));
+              }}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-6 py-4 text-sm font-black uppercase tracking-widest text-black shadow-[0_10px_30px_rgba(16,185,129,0.25)] transition hover:bg-emerald-400 disabled:opacity-60"
             >
-              {checkoutLoading === partnerStripePlanCodeFromId(selectedPlan.id) ? (
+              {(checkoutLoading === partnerStripePlanCodeFromId(selectedPlan.id) || trialLoading) ? (
                 <Loader2 size={18} className="animate-spin" />
               ) : (
                 <Building2 size={18} />
               )}
-              {partnerPlan.currentPlanId === selectedPlan.id ? 'Odnów pakiet' : 'Aktywuj pakiet'}
+              {showProTrial
+                ? 'Aktywuj okres próbny (0 zł)'
+                : partnerPlan.currentPlanId === selectedPlan.id
+                  ? 'Odnów pakiet'
+                  : 'Aktywuj pakiet'}
             </button>
             <p className="text-center text-[10px] leading-relaxed text-[var(--eos-muted)]">
               {partnerActivationNote}

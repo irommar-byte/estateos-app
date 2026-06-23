@@ -33,6 +33,19 @@ import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { AgencyClientListItem } from "@/lib/agencyClientShape";
 
+function clientNeedsContactVerification(client: Pick<AgencyClientListItem, 'linkedUserId' | 'emailVerifiedAt' | 'phoneVerifiedAt'>) {
+  if (client.linkedUserId) return false;
+  return !client.emailVerifiedAt || !client.phoneVerifiedAt;
+}
+
+function clientEmailVerified(client: Pick<AgencyClientListItem, 'linkedUserId' | 'emailVerifiedAt'>) {
+  return Boolean(client.linkedUserId || client.emailVerifiedAt);
+}
+
+function clientPhoneVerified(client: Pick<AgencyClientListItem, 'linkedUserId' | 'phoneVerifiedAt'>) {
+  return Boolean(client.linkedUserId || client.phoneVerifiedAt);
+}
+
 type ClientDetail = AgencyClientListItem & {
   linkedOfferId?: number | null;
   portalUrl?: string | null;
@@ -174,7 +187,7 @@ export default function CrmClientsWorkspace() {
         (client.phone || "").toLowerCase().includes(q);
       if (!textHit) return false;
       if (!onlyAttention) return true;
-      return !client.emailVerifiedAt || !client.phoneVerifiedAt || client.matchCount === 0;
+      return clientNeedsContactVerification(client) || client.matchCount === 0;
     });
     return [...base].sort((a, b) => {
       if (sortBy === "name") {
@@ -283,8 +296,8 @@ export default function CrmClientsWorkspace() {
 
   const analytics = useMemo(() => {
     const total = clients.length || 1;
-    const emailVerified = clients.filter((c) => c.emailVerifiedAt).length;
-    const phoneVerified = clients.filter((c) => c.phoneVerifiedAt).length;
+    const emailVerified = clients.filter((c) => clientEmailVerified(c)).length;
+    const phoneVerified = clients.filter((c) => clientPhoneVerified(c)).length;
     const withMatches = clients.filter((c) => c.matchCount > 0).length;
     const buyers = clients.filter((c) => c.type === "BUYER").length;
     const sellers = clients.filter((c) => c.type === "SELLER").length;
@@ -294,7 +307,7 @@ export default function CrmClientsWorkspace() {
       matchPct: Math.round((withMatches / total) * 100),
       buyers,
       sellers,
-      pendingVerification: clients.filter((c) => !c.emailVerifiedAt || !c.phoneVerifiedAt).length,
+      pendingVerification: clients.filter((c) => clientNeedsContactVerification(c)).length,
     };
   }, [clients]);
 
@@ -313,7 +326,8 @@ export default function CrmClientsWorkspace() {
     const activities = detail.activities || [];
     const sentCount = matches.filter((m) => m.notifiedAt).length;
     const feedbackCount = matches.filter((m) => m.clientFeedback).length;
-    const verificationPoints = Number(Boolean(detail.emailVerifiedAt)) + Number(Boolean(detail.phoneVerifiedAt));
+    const verificationPoints =
+      (detail.linkedUserId ? 2 : Number(Boolean(detail.emailVerifiedAt)) + Number(Boolean(detail.phoneVerifiedAt)));
     const engagementPoints = Math.min(2, sentCount > 0 ? 1 : 0) + Math.min(2, feedbackCount > 0 ? 1 : 0);
     const activityPoints = activities.length > 0 ? 1 : 0;
     const scorePct = Math.round(((verificationPoints + engagementPoints + activityPoints) / 7) * 100);
@@ -323,8 +337,8 @@ export default function CrmClientsWorkspace() {
       activityCount: activities.length,
       scorePct,
       pendingItems: [
-        !detail.emailVerifiedAt ? "Zweryfikować e-mail" : null,
-        !detail.phoneVerifiedAt ? "Zweryfikować telefon" : null,
+        detail.linkedUserId ? null : !detail.emailVerifiedAt ? "Zweryfikować e-mail" : null,
+        detail.linkedUserId ? null : !detail.phoneVerifiedAt ? "Zweryfikować telefon" : null,
         sentCount === 0 && detail.type === "BUYER" ? "Wysłać pierwsze oferty" : null,
         feedbackCount === 0 && detail.type === "BUYER" ? "Zebrać feedback klienta" : null,
       ].filter(Boolean) as string[],
@@ -504,8 +518,8 @@ export default function CrmClientsWorkspace() {
                         )}
                       </td>
                       <td className="px-3 py-3 text-xs">
-                        <p className={client.emailVerifiedAt ? "text-emerald-600" : "text-amber-700"}>E-mail</p>
-                        <p className={client.phoneVerifiedAt ? "text-emerald-600" : "text-amber-700"}>Telefon</p>
+                        <p className={clientEmailVerified(client) ? "text-emerald-600" : "text-amber-700"}>E-mail</p>
+                        <p className={clientPhoneVerified(client) ? "text-emerald-600" : "text-amber-700"}>Telefon</p>
                       </td>
                       <td className="px-3 py-3 text-xs text-[var(--eos-muted)]">
                         {client.matchCount} dop.
@@ -697,16 +711,16 @@ export default function CrmClientsWorkspace() {
                   <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{detail.pesel || "—"}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-wider ${detail.emailVerifiedAt ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-700"}`}>
-                    {detail.emailVerifiedAt ? <BadgeCheck className="size-3" /> : <ShieldAlert className="size-3" />}
-                    E-mail {detail.emailVerifiedAt ? "zweryfikowany" : "do weryfikacji"}
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-wider ${clientEmailVerified(detail) ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-700"}`}>
+                    {clientEmailVerified(detail) ? <BadgeCheck className="size-3" /> : <ShieldAlert className="size-3" />}
+                    E-mail {clientEmailVerified(detail) ? "zweryfikowany" : "do weryfikacji"}
                   </span>
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-wider ${detail.phoneVerifiedAt ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-700"}`}>
-                    {detail.phoneVerifiedAt ? <BadgeCheck className="size-3" /> : <ShieldAlert className="size-3" />}
-                    Telefon {detail.phoneVerifiedAt ? "zweryfikowany" : "do weryfikacji"}
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-wider ${clientPhoneVerified(detail) ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-700"}`}>
+                    {clientPhoneVerified(detail) ? <BadgeCheck className="size-3" /> : <ShieldAlert className="size-3" />}
+                    Telefon {clientPhoneVerified(detail) ? "zweryfikowany" : "do weryfikacji"}
                   </span>
                 </div>
-                {!detail.emailVerifiedAt ? (
+                {!clientEmailVerified(detail) ? (
                   <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -729,7 +743,7 @@ export default function CrmClientsWorkspace() {
                     </button>
                   </div>
                 ) : null}
-                {!detail.phoneVerifiedAt ? (
+                {!clientPhoneVerified(detail) ? (
                   <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
                     <button
                       type="button"

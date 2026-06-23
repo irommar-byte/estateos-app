@@ -17,6 +17,7 @@ export type CompanyPartnerPlanSnapshot = {
   activeAgents: number;
   agentsLimit: number | null;
   daysRemaining: number | null;
+  proTrialEligible: boolean;
 };
 
 function parsePartnerPlanIdFromProductId(productId: string): PartnerPlanId | null {
@@ -43,6 +44,13 @@ export async function resolveCompanyPartnerPlanStatus(params: {
     params.ownerUserId,
   )) as Array<{ productId: string; createdAt: Date }>;
 
+  const proRows = (await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
+    `SELECT id FROM MobileIapPurchase
+     WHERE userId = ? AND productId IN ('pl.estateos.partner.pro_monthly', 'pl.estateos.partner.pro_trial')
+     LIMIT 1`,
+    params.ownerUserId,
+  )) as Array<{ id: bigint }>;
+
   const last = rows[0];
   const currentPlanId = last ? parsePartnerPlanIdFromProductId(last.productId) : null;
   const currentPlan = currentPlanId ? getPartnerPlanById(currentPlanId) ?? null : null;
@@ -64,6 +72,7 @@ export async function resolveCompanyPartnerPlanStatus(params: {
     activeAgents: params.activeAgents,
     agentsLimit: currentPlan?.maxAgents ?? null,
     daysRemaining,
+    proTrialEligible: proRows.length === 0,
   };
 }
 
