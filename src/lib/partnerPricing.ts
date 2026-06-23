@@ -31,7 +31,7 @@ export const PARTNER_PLANS: readonly PartnerPlanConfig[] = [
   {
     id: 'enterprise',
     pricePln: 1499,
-    creditsPerMonth: 80,
+    creditsPerMonth: 100,
     maxAgents: null,
   },
 ] as const;

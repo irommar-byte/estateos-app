@@ -84,6 +84,9 @@ type DashboardPayload = {
     status: string;
     price: number;
     city: string;
+    district: string | null;
+    imageUrl: string | null;
+    agentUserId: number;
     updatedAt: string;
     agent: { id: number; name: string | null };
   }>;
@@ -108,6 +111,19 @@ type MembershipPayload = {
 function fmtDate(iso: string | null) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function formatOfferLocation(city?: string | null, district?: string | null) {
+  const cityLabel = String(city || '').trim();
+  const districtLabel = String(district || '').trim();
+  if (!cityLabel && !districtLabel) return '—';
+  if (!districtLabel || districtLabel.toUpperCase() === 'OTHER') return cityLabel || '—';
+  return cityLabel ? `${cityLabel}, ${districtLabel}` : districtLabel;
+}
+
+function formatOfferPrice(price: number) {
+  if (!Number.isFinite(price)) return '—';
+  return `${Math.round(price).toLocaleString('pl-PL')} zł`;
 }
 
 function memberDisplayName(member: Pick<MemberRow, 'userId' | 'user'> | null | undefined) {
@@ -172,6 +188,9 @@ function normalizeDashboardPayload(raw: Record<string, unknown>): DashboardPaylo
     })
     .map((offer) => ({
       ...offer,
+      district: offer.district ?? null,
+      imageUrl: offer.imageUrl ?? null,
+      agentUserId: offer.agentUserId ?? offer.agent?.id ?? 0,
       agent: offer.agent ?? { id: 0, name: null },
     }));
 
@@ -221,6 +240,9 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   const [detailMember, setDetailMember] = useState<MemberRow | null>(null);
   const [partnerCheckoutLoading, setPartnerCheckoutLoading] = useState<string | null>(null);
   const [partnerCheckoutError, setPartnerCheckoutError] = useState('');
+  const [partnerTrialLoading, setPartnerTrialLoading] = useState(false);
+  const [assignBusyId, setAssignBusyId] = useState<number | null>(null);
+  const [assignTargetByOffer, setAssignTargetByOffer] = useState<Record<number, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -293,6 +315,10 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   );
   const activeAgents = useMemo(
     () => (dashboard?.members ?? []).filter((m) => m.status === 'ACTIVE' && m.role === 'AGENT'),
+    [dashboard],
+  );
+  const assignableAgents = useMemo(
+    () => (dashboard?.members ?? []).filter((m) => m.status === 'ACTIVE'),
     [dashboard],
   );
 
@@ -424,6 +450,68 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       setPartnerCheckoutError('Błąd połączenia z płatnością.');
     } finally {
       setPartnerCheckoutLoading(null);
+    }
+  };
+
+  const handlePartnerProTrial = async () => {
+    setPartnerCheckoutError('');
+    setPartnerTrialLoading(true);
+    try {
+      const res = await fetch('/api/agency-company/partner/trial', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setPartnerCheckoutError(data.message || 'Nie udało się aktywować okresu próbnego.');
+        return;
+      }
+      await load();
+    } catch {
+      setPartnerCheckoutError('Błąd połączenia.');
+    } finally {
+      setPartnerTrialLoading(false);
+    }
+  };
+
+  const handleAssignOffer = async (offerId: number, fromUserId: number) => {
+    const toUserId = Number(assignTargetByOffer[offerId]);
+    if (!Number.isFinite(toUserId) || toUserId <= 0) {
+      setError('Wybierz agenta, któremu przypisać ogłoszenie.');
+      return;
+    }
+    if (toUserId === fromUserId) {
+      setError('Wybierz innego agenta niż obecny opiekun ogłoszenia.');
+      return;
+    }
+    setAssignBusyId(offerId);
+    setError('');
+    try {
+      const res = await fetch('/api/agency-company/offers/transfer', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromUserId,
+          toUserId,
+          offerIds: [offerId],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.message || 'Nie udało się przypisać ogłoszenia.');
+        return;
+      }
+      setAssignTargetByOffer((prev) => {
+        const next = { ...prev };
+        delete next[offerId];
+        return next;
+      });
+      await load();
+    } catch {
+      setError('Błąd połączenia.');
+    } finally {
+      setAssignBusyId(null);
     }
   };
 
@@ -630,8 +718,10 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         <AgencyPartnerPlanSection
           partnerPlan={dashboard.partnerPlan}
           onCheckout={(code) => void handlePartnerCheckout(code)}
+          onTrialActivate={() => void handlePartnerProTrial()}
           checkoutLoading={partnerCheckoutLoading}
           checkoutError={partnerCheckoutError}
+          trialLoading={partnerTrialLoading}
         />
       ) : null}
 
@@ -923,20 +1013,76 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       {(dashboard?.recentOffers ?? []).length > 0 && (
         <section className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
           <h2 className="mb-4 text-lg font-black text-[var(--eos-text)]">Ostatnie ogłoszenia biura</h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {(dashboard?.recentOffers ?? []).map((offer) => (
-              <Link
-                key={offer.id}
-                href={`/oferta/${offer.id}`}
-                className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/50 p-4 transition hover:border-emerald-500/30"
-              >
-                <p className="truncate font-bold text-[var(--eos-text)]">{offer.title}</p>
-                <p className="eos-muted-copy mt-1 text-xs">
-                  {offer.agent?.name || 'Agent'} · {offer.city || '—'} · {offer.status}
-                </p>
-                <p className="mt-2 text-[10px] text-[var(--eos-muted)]">Aktualizacja: {fmtDate(offer.updatedAt)}</p>
-              </Link>
-            ))}
+          <div className="grid gap-3 lg:grid-cols-2">
+            {(dashboard?.recentOffers ?? []).map((offer) => {
+              const thumb = offer.imageUrl || '/placeholder.jpg';
+              const assignTargets = assignableAgents.filter((m) => m.userId !== offer.agentUserId);
+              return (
+                <div
+                  key={offer.id}
+                  className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/50 transition hover:border-emerald-500/30"
+                >
+                  <Link href={`/oferta/${offer.id}`} className="flex gap-4 p-4">
+                    <div className="relative size-24 shrink-0 overflow-hidden rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={thumb}
+                        alt=""
+                        className="size-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = '/placeholder.jpg';
+                        }}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 font-bold text-[var(--eos-text)]">{offer.title}</p>
+                      <p className="mt-1 text-sm font-black text-emerald-500">{formatOfferPrice(offer.price)}</p>
+                      <p className="eos-muted-copy mt-1 text-xs">
+                        {formatOfferLocation(offer.city, offer.district)}
+                      </p>
+                      <p className="eos-muted-copy mt-2 text-[10px] uppercase tracking-widest">
+                        {offer.agent?.name || 'Agent'} · {offer.status}
+                      </p>
+                      <p className="mt-2 text-[10px] text-[var(--eos-muted)]">
+                        Aktualizacja: {fmtDate(offer.updatedAt)}
+                      </p>
+                    </div>
+                  </Link>
+                  {isAdmin && assignTargets.length > 0 ? (
+                    <div className="flex flex-wrap items-center gap-2 border-t border-[var(--eos-border)]/60 px-4 py-3">
+                      <label className="eos-muted-copy text-[10px] font-bold uppercase tracking-widest">
+                        Przypisz agentowi
+                      </label>
+                      <select
+                        value={assignTargetByOffer[offer.id] || ''}
+                        onChange={(e) =>
+                          setAssignTargetByOffer((prev) => ({ ...prev, [offer.id]: e.target.value }))
+                        }
+                        className="eos-field min-w-[10rem] flex-1 py-1.5 text-xs font-bold"
+                      >
+                        <option value="">Wybierz agenta…</option>
+                        {assignTargets.map((m) => (
+                          <option key={m.userId} value={m.userId}>
+                            {memberDisplayName(m)}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={assignBusyId === offer.id}
+                        onClick={() => void handleAssignOffer(offer.id, offer.agentUserId)}
+                        className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black disabled:opacity-50"
+                      >
+                        {assignBusyId === offer.id ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : null}
+                        Przypisz
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

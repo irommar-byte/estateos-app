@@ -8,6 +8,7 @@ import {
   resolveProfileMediaUrl,
 } from '@/lib/agentProfile';
 import { resolveCompanyPartnerPlanStatus } from '@/lib/partnerPlanStatus';
+import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { notifyMemberApproved, notifyOffersTransferred } from '@/lib/agencyCompanyNotify';
 
 export function slugifyCompanyName(name: string): string {
@@ -379,6 +380,8 @@ export async function getCompanyDashboard(companyId: number) {
           status: true,
           price: true,
           city: true,
+          district: true,
+          images: true,
           userId: true,
           updatedAt: true,
           user: { select: { id: true, name: true } },
@@ -434,6 +437,9 @@ export async function getCompanyDashboard(companyId: number) {
       status: o.status,
       price: o.price,
       city: o.city,
+      district: o.district,
+      imageUrl: resolveOfferPrimaryImage(o) || null,
+      agentUserId: o.userId,
       updatedAt: o.updatedAt.toISOString(),
       agent: o.user,
     })),

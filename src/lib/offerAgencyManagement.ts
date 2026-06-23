@@ -72,7 +72,7 @@ export async function transferOfferManagementFromLead(leadId: number, ownerUserI
     where: { id: leadId },
     include: {
       offer: true,
-      owner: { select: { id: true, name: true, email: true, phone: true } },
+      owner: { select: { id: true, name: true, email: true, phone: true, emailVerifiedAt: true, phoneVerifiedAt: true } },
       agency: { select: { id: true, name: true, companyName: true } },
     },
   });
@@ -110,6 +110,7 @@ export async function transferOfferManagementFromLead(leadId: number, ownerUserI
     });
 
     if (!agencyClient) {
+      const now = new Date();
       agencyClient = await tx.agencyClient.create({
         data: {
           agencyUserId: lead.agencyId,
@@ -118,7 +119,10 @@ export async function transferOfferManagementFromLead(leadId: number, ownerUserI
           lastName,
           email: lead.owner.email,
           phone: lead.owner.phone,
-          notes: `Przekazanie zarządzania z konta właściciela (#${lead.ownerId}). Prowizja: ${lead.commissionRate ?? '—'}%.`,
+          emailVerifiedAt: lead.owner.email ? now : null,
+          phoneVerifiedAt: lead.owner.phone ? now : null,
+          linkedUserId: lead.ownerId,
+          notes: `Przekazanie zarządzania z konta właściciela (#${lead.ownerId}). Prowizja: ${lead.commissionRate ?? '—'}%. Kontakt uznany za zweryfikowany — właściciel przekazał ofertę przez Concierge.`,
           sellerTransactionType: lead.offer.transactionType,
           sellerPropertyType: lead.offer.propertyType,
           sellerCity: lead.offer.city,
@@ -139,6 +143,18 @@ export async function transferOfferManagementFromLead(leadId: number, ownerUserI
           title: 'Przejęto zarządzanie ofertą',
           body: `Właściciel zaakceptował warunki. Oferta #${lead.offerId} jest w pełni obsługiwana przez biuro.`,
           offerId: lead.offerId,
+        },
+      });
+    } else {
+      const now = new Date();
+      await tx.agencyClient.update({
+        where: { id: agencyClient.id },
+        data: {
+          linkedUserId: lead.ownerId,
+          email: lead.owner.email ?? agencyClient.email,
+          phone: lead.owner.phone ?? agencyClient.phone,
+          emailVerifiedAt: agencyClient.emailVerifiedAt ?? (lead.owner.email ? now : null),
+          phoneVerifiedAt: agencyClient.phoneVerifiedAt ?? (lead.owner.phone ? now : null),
         },
       });
     }
