@@ -319,6 +319,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
                   <CommissionRateSlider
                     value={commission[lead.id] ?? COMMISSION_RATE_DEFAULT}
                     onChange={(next) => setCommission((p) => ({ ...p, [lead.id]: next }))}
+                    offerPrice={lead.offer.pricePln ?? lead.offer.price}
                   />
                   <label className="block">
                     <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wide text-[var(--eos-muted)]">
