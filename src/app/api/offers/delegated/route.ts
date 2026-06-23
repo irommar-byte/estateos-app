@@ -1,28 +1,13 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { decryptSession } from '@/lib/sessionUtils';
 import { prisma } from '@/lib/prisma';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { isAgencyManagedOffer } from '@/lib/offerAgencyManagement';
-
-async function sessionUserId(): Promise<number | null> {
-  const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get('estateos_session') || cookieStore.get('luxestate_user');
-  if (!sessionCookie?.value) return null;
-  try {
-    const data = decryptSession(sessionCookie.value);
-    const id = Number(data?.id);
-    return Number.isFinite(id) ? id : null;
-  } catch {
-    const u = await prisma.user.findUnique({ where: { email: sessionCookie.value }, select: { id: true } });
-    return u?.id ?? null;
-  }
-}
+import { resolveWebUserId } from '@/lib/webSessionAuth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const userId = await sessionUserId();
+export async function GET(req: Request) {
+  const userId = await resolveWebUserId(req);
   if (!userId) {
     return NextResponse.json({ error: 'Musisz być zalogowany.' }, { status: 401 });
   }
