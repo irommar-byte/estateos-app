@@ -203,19 +203,39 @@ export function sellerClientToListingPrefill(client: {
 
 export async function listAgenciesWithStats() {
   const fromCompanies = await listAgencyCompaniesWithStats();
+  let merged: Awaited<ReturnType<typeof listLegacyAgenciesWithStats>>;
   if (fromCompanies.length > 0) {
     const memberRows = await prisma.agencyCompanyMember.findMany({ select: { userId: true } });
     const memberIds = new Set(memberRows.map((m) => m.userId));
     const legacyAgencies = await listLegacyAgenciesWithStats(memberIds);
-    return [...fromCompanies, ...legacyAgencies].sort((a, b) => {
+    merged = [...fromCompanies, ...legacyAgencies].sort((a, b) => {
       const ra = a.averageRating ?? 0;
       const rb = b.averageRating ?? 0;
       if (rb !== ra) return rb - ra;
       return b.activeListings - a.activeListings;
     });
+  } else {
+    merged = await listLegacyAgenciesWithStats(new Set());
   }
 
-  return listLegacyAgenciesWithStats(new Set());
+  return attachConciergeManagedCounts(merged);
+}
+
+async function attachConciergeManagedCounts<T extends { id: number }>(
+  agencies: T[],
+): Promise<Array<T & { conciergeManaged: number }>> {
+  if (agencies.length === 0) return [];
+  const ids = agencies.map((a) => a.id);
+  const grouped = await prisma.leadTransfer.groupBy({
+    by: ['agencyId'],
+    where: { agencyId: { in: ids }, status: 'ACCEPTED' },
+    _count: { id: true },
+  });
+  const map = new Map(grouped.map((g) => [g.agencyId, g._count.id]));
+  return agencies.map((agency) => ({
+    ...agency,
+    conciergeManaged: map.get(agency.id) ?? 0,
+  }));
 }
 
 async function listLegacyAgenciesWithStats(excludeUserIds: Set<number>) {

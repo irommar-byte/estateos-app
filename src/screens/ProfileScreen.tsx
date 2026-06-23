@@ -53,6 +53,7 @@ import ProfileCardShell from '../components/profile/ProfileCardShell';
 import ProfileAgencyOfficeCard from '../components/agency/ProfileAgencyOfficeCard';
 import ProfileConciergeCard from '../components/agency/ProfileConciergeCard';
 import AgencyTransferModal from '../components/agency/AgencyTransferModal';
+import { getAppVersionLabel } from '../utils/appVersion';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
 import {
   dismissProfilePromoCardForever,
@@ -4058,7 +4059,9 @@ function ProfileScreenLoggedIn({
           </ListGroup>
         </View>
 
-        <Text style={styles.versionText}>{t('profile.session.version')}</Text>
+        <Text style={styles.versionText}>
+          {t('profile.session.version', { version: getAppVersionLabel() })}
+        </Text>
         <Pressable
           onPress={() => {
             Haptics.selectionAsync();

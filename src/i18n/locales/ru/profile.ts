@@ -382,7 +382,7 @@ export const profile = {
     logoutConfirmTitle: 'выход',
     logoutConfirmBody: 'Вы уверены, что хотите выйти?',
     logoutAction: 'выход',
-    version: 'EstateOS™ v1.0.0',
+    version: 'EstateOS™ v{{version}}',
     deleteAccount: 'удалить аккаунт',
     deleteAccountA11y: 'Удалить аккаунт',
     alerts: {

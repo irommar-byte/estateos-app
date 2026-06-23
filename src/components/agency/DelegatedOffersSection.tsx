@@ -2,9 +2,9 @@ import React, { useMemo } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { API_URL } from '../config/network';
-import type { DelegatedOffer } from '../services/leadTransferService';
-import { formatCommissionRate, parseLeadConditions } from '../types/leadTransfer';
+import { API_URL } from '../../config/network';
+import type { DelegatedOffer } from '../../services/leadTransferService';
+import { formatCommissionRate, parseLeadConditions } from '../../types/leadTransfer';
 
 type Props = {
   offers: DelegatedOffer[];

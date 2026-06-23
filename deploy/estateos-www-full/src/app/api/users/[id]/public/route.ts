@@ -42,7 +42,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         const offers = await prisma.offer.findMany({
             where: { userId: user.id, status: { in: ['ACTIVE', 'PENDING'] } },
             orderBy: { createdAt: 'desc' },
-            select: { id: true, title: true, price: true, status: true, images: true, district: true, city: true, street: true, buildingNumber: true }
+            select: { id: true, title: true, price: true, pricePln: true, status: true, images: true, district: true, city: true, street: true, buildingNumber: true, transactionType: true, propertyType: true, area: true, rooms: true }
         });
 
         // 3. Pobieranie opinii
