@@ -37,7 +37,11 @@ export async function GET() {
   });
 
   const leadByOffer = await prisma.leadTransfer.findMany({
-    where: { ownerId: userId, offerId: { in: offers.map((o) => o.id) } },
+    where: {
+      ownerId: userId,
+      offerId: { in: offers.map((o) => o.id) },
+      status: 'ACCEPTED',
+    },
     orderBy: { updatedAt: 'desc' },
   });
   const leadMap = new Map<number, (typeof leadByOffer)[0]>();
@@ -64,6 +68,8 @@ export async function GET() {
         image: o.user.image,
       },
       commissionRate: leadMap.get(o.id)?.commissionRate ?? null,
+      commissionTerms: leadMap.get(o.id)?.commissionTerms ?? null,
+      acceptedAt: leadMap.get(o.id)?.updatedAt?.toISOString() ?? null,
       recentPriceChanges: o.priceHistory.map((p) => ({
         price: p.price,
         recordedAt: p.recordedAt.toISOString(),

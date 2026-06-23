@@ -9,6 +9,7 @@ import {
 import {
   assertPartnerCheckoutAllowed,
   getPartnerPlanByStripePlan,
+  isPartnerProTrialEligible,
   isStripePartnerPlan,
   partnerCheckoutCopy,
 } from '@/lib/partnerStripeGrant';
@@ -110,6 +111,47 @@ export async function POST(req: Request) {
       plan_activated: normalizedPlan,
       renewalOfferId: normalizedPlan === 'renewal' && offerId ? String(offerId) : '',
     });
+
+    if (
+      isStripePartnerPlan(normalizedPlan) &&
+      normalizedPlan === 'partner_pro' &&
+      userId &&
+      (await isPartnerProTrialEligible(userId))
+    ) {
+      const partnerPlan = getPartnerPlanByStripePlan(normalizedPlan);
+      if (!partnerPlan) {
+        return NextResponse.json({ error: 'Nieznany plan Partner.' }, { status: 400 });
+      }
+      const copy = partnerCheckoutCopy(partnerPlan);
+      metadata.user_id = String(userId);
+      metadata.partner_trial = 'true';
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'subscription',
+        line_items: [
+          {
+            price_data: {
+              currency: 'pln',
+              product_data: { name: copy.name, description: copy.description },
+              unit_amount: partnerStripeAmountGrosze(partnerPlan),
+              recurring: { interval: 'month', interval_count: 1 },
+            },
+            quantity: 1,
+          },
+        ],
+        subscription_data: {
+          trial_period_days: 30,
+          metadata: { plan_type: normalizedPlan, user_id: String(userId) },
+        },
+        metadata,
+        customer_email: customerEmail,
+        success_url: successUrl,
+        cancel_url: finalCancelUrl,
+      });
+
+      return NextResponse.json({ url: session.url });
+    }
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card', 'blik'],

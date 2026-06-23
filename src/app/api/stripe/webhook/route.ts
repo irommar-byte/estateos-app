@@ -8,6 +8,8 @@ import { grantPlusCreditFromStripeCheckout } from '@/lib/stripePublication';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
 import {
   grantPartnerPlanFromStripeCheckout,
+  grantPartnerPlanFromStripeInvoice,
+  grantPartnerPlanFromStripeSubscription,
   isStripePartnerPlan,
 } from '@/lib/partnerStripeGrant';
 
@@ -82,10 +84,29 @@ export async function POST(req: Request) {
       const rawPlanType = String(session.metadata?.plan_type || '').trim().toLowerCase();
       const offerIdToRenew = session.metadata?.offer_id_to_renew;
       const checkoutSessionId = session.id;
+      const metadataUserId = Number(session.metadata?.user_id || 0);
 
       if (customerEmail) {
 
-        if (rawPlanType === 'renewal') {
+        if (session.mode === 'subscription' && isStripePartnerPlan(rawPlanType)) {
+          const user = metadataUserId
+            ? await prisma.user.findUnique({ where: { id: metadataUserId }, select: { id: true, email: true } })
+            : await prisma.user.findUnique({ where: { email: customerEmail }, select: { id: true, email: true } });
+          const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
+          if (user?.id && subscriptionId) {
+            const isTrial = session.metadata?.partner_trial === 'true';
+            const grant = await grantPartnerPlanFromStripeSubscription({
+              userId: Number(user.id),
+              checkoutSessionId,
+              subscriptionId,
+              stripePlanType: rawPlanType,
+              isTrial,
+            });
+            console.log(
+              `[stripe:webhook] partner_subscription email=${customerEmail} session=${checkoutSessionId} sub=${subscriptionId} trial=${isTrial} granted=${grant.granted}`,
+            );
+          }
+        } else if (rawPlanType === 'renewal') {
           console.log(`[stripe:webhook] renewal_completed email=${customerEmail} session=${checkoutSessionId} offer=${offerIdToRenew || 'missing'}`);
         } else if (rawPlanType === 'pakiet_plus') {
           const user = await prisma.user.findUnique({
@@ -173,6 +194,34 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Nie udało się aktywować odnowionej oferty' }, { status: 404 });
           }
           console.log(`[stripe:webhook] renewal activated offerId=${numericOfferId} session=${checkoutSessionId}`);
+        }
+      }
+    }
+
+    if (event.type === 'invoice.paid') {
+      const invoice = event.data.object as Stripe.Invoice;
+      const rawSubscription = (invoice as Stripe.Invoice & { subscription?: string | Stripe.Subscription | null })
+        .subscription;
+      const subscriptionId =
+        typeof rawSubscription === 'string' ? rawSubscription : rawSubscription?.id;
+      const amountPaid = Number(invoice.amount_paid || 0);
+      const billingReason = String(invoice.billing_reason || '');
+
+      if (subscriptionId && amountPaid > 0 && billingReason !== 'manual') {
+        const sub = await stripe.subscriptions.retrieve(subscriptionId);
+        const rawPlanType = String(sub.metadata?.plan_type || '').trim().toLowerCase();
+        const userId = Number(sub.metadata?.user_id || 0);
+
+        if (isStripePartnerPlan(rawPlanType) && userId) {
+          const grant = await grantPartnerPlanFromStripeInvoice({
+            userId,
+            invoiceId: invoice.id,
+            subscriptionId,
+            stripePlanType: rawPlanType,
+          });
+          console.log(
+            `[stripe:webhook] partner_invoice user=${userId} invoice=${invoice.id} sub=${subscriptionId} granted=${grant.granted} credits=${grant.creditsAdded}`,
+          );
         }
       }
     }
