@@ -7,6 +7,7 @@ import { buildInvestorProGrantData, isStripeInvestorProPlan } from '@/lib/invest
 import { grantPlusCreditFromStripeCheckout } from '@/lib/stripePublication';
 import {
   grantPartnerPlanFromStripeCheckout,
+  grantPartnerPlanFromStripeSubscription,
   isStripePartnerPlan,
 } from '@/lib/partnerStripeGrant';
 
@@ -103,11 +104,43 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Brak session_id dla pakietu Partner' }, { status: 400 });
       }
       const stripe = getStripeClient();
-      const session = await stripe.checkout.sessions.retrieve(String(sessionId), { expand: ['payment_intent'] });
+      const session = await stripe.checkout.sessions.retrieve(String(sessionId), {
+        expand: ['payment_intent', 'subscription'],
+      });
       const paymentStatus = session.payment_status;
       const stripePlan = String(session.metadata?.plan_type || '').trim().toLowerCase();
-      if (paymentStatus !== 'paid' || stripePlan !== normalizedPlan) {
+      const isSubscriptionTrial =
+        session.mode === 'subscription' && session.metadata?.partner_trial === 'true';
+      const paymentOk =
+        paymentStatus === 'paid' ||
+        (isSubscriptionTrial && (paymentStatus === 'no_payment_required' || paymentStatus === 'unpaid'));
+
+      if (!paymentOk || stripePlan !== normalizedPlan) {
         return NextResponse.json({ error: 'Płatność Partner niepotwierdzona' }, { status: 409 });
+      }
+
+      if (session.mode === 'subscription') {
+        const subscriptionId =
+          typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
+        if (!subscriptionId) {
+          return NextResponse.json({ error: 'Brak subskrypcji Partner' }, { status: 409 });
+        }
+        const grant = await grantPartnerPlanFromStripeSubscription({
+          userId,
+          checkoutSessionId: String(sessionId),
+          subscriptionId,
+          stripePlanType: normalizedPlan,
+          isTrial: isSubscriptionTrial,
+        });
+        return NextResponse.json({
+          success: true,
+          planType: 'AGENCY',
+          partnerPlanId: grant.partnerPlanId,
+          creditsAdded: grant.creditsAdded,
+          companyId: grant.companyId,
+          alreadyGranted: grant.alreadyGranted,
+          subscriptionTrial: isSubscriptionTrial,
+        });
       }
 
       const grant = await grantPartnerPlanFromStripeCheckout({

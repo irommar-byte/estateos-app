@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { notifyLeadTransfer } from '@/lib/leadTransfer';
+import { parseLeadConditions } from '@/lib/leadTransferShared';
 
 export async function POST(req: Request) {
   try {
@@ -34,6 +35,15 @@ export async function POST(req: Request) {
     }
     if (nextStatus === 'TERMS_PROPOSED' && !terms) {
       return NextResponse.json({ error: 'Opisz zakres usług dla klienta.' }, { status: 400 });
+    }
+    if (nextStatus === 'TERMS_PROPOSED' && terms) {
+      const parsed = parseLeadConditions(terms);
+      if (parsed.isStructured && parsed.conditions.length < 3) {
+        return NextResponse.json(
+          { error: 'Zaznacz co najmniej 3 konkretne warunki obsługi.' },
+          { status: 400 },
+        );
+      }
     }
 
     await prisma.leadTransfer.update({

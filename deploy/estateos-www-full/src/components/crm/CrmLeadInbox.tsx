@@ -18,7 +18,7 @@ import {
   User,
   XCircle,
 } from "lucide-react";
-import { LEAD_SERVICE_PRESETS } from "@/lib/leadTransferShared";
+import { LEAD_CONDITION_CATALOG, LEAD_SERVICE_PRESETS, parseLeadConditions, serializeLeadConditions } from "@/lib/leadTransferShared";
 
 export type EnrichedLead = {
   id: number;
@@ -126,6 +126,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
   const [busy, setBusy] = useState<number | null>(null);
   const [commission, setCommission] = useState<Record<number, string>>({});
   const [terms, setTerms] = useState<Record<number, string>>({});
+  const [selectedConditions, setSelectedConditions] = useState<Record<number, string[]>>({});
   const [error, setError] = useState("");
 
   const pending = useMemo(
@@ -133,7 +134,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
       leads.filter((l) =>
         isAgency
           ? ["PENDING", "USER_COUNTER"].includes(l.status)
-          : ["TERMS_PROPOSED", "USER_COUNTER"].includes(l.status),
+          : ["PENDING", "TERMS_PROPOSED", "USER_COUNTER"].includes(l.status),
       ),
     [leads, isAgency],
   );
@@ -142,6 +143,12 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
     setBusy(lead.id);
     setError("");
     try {
+      const conditionIds = selectedConditions[lead.id] || [];
+      if (conditionIds.length < 3) {
+        setError("Zaznacz co najmniej 3 konkretne warunki obsługi dla klienta.");
+        return;
+      }
+      const commissionTerms = serializeLeadConditions(conditionIds, terms[lead.id]);
       const res = await fetch("/api/concierge/respond", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -150,9 +157,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
           leadId: lead.id,
           status: "TERMS_PROPOSED",
           commissionRate: commission[lead.id] || "2.5",
-          commissionTerms:
-            terms[lead.id] ||
-            "Pełna obsługa sprzedaży: wycena, sesja zdjęciowa, publikacja, prezentacje i negocjacje.",
+          commissionTerms,
         }),
       });
       const data = await res.json();
@@ -302,7 +307,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
             {isAgency ? (
               <div className="mt-5 space-y-4">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
-                  Twoja propozycja współpracy
+                  Konkretne warunki współpracy (właściciel zaakceptuje każdy punkt)
                 </p>
                 <div className="grid gap-3 sm:grid-cols-[120px_1fr]">
                   <label className="block">
@@ -320,28 +325,66 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
                       className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm"
                     />
                   </label>
-                  <label className="block sm:col-span-1">
+                  <label className="block">
                     <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wide text-[var(--eos-muted)]">
-                      Zakres usług dla klienta
+                      Uwagi dodatkowe (opcjonalnie)
                     </span>
                     <textarea
-                      rows={3}
-                      placeholder="Opisz co obejmuje obsługa…"
+                      rows={2}
+                      placeholder="Np. wyłączność, minimalny czas umowy…"
                       value={terms[lead.id] ?? ""}
                       onChange={(e) => setTerms((p) => ({ ...p, [lead.id]: e.target.value }))}
                       className="w-full resize-none rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm"
                     />
                   </label>
                 </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {LEAD_CONDITION_CATALOG.map((item) => {
+                    const checked = (selectedConditions[lead.id] || []).includes(item.id);
+                    return (
+                      <label
+                        key={item.id}
+                        className={[
+                          "flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 text-sm transition",
+                          checked
+                            ? "border-emerald-500/40 bg-emerald-500/10"
+                            : "border-[var(--eos-border)] bg-[var(--eos-input)]/40",
+                        ].join(" ")}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setSelectedConditions((prev) => {
+                              const current = prev[lead.id] || [];
+                              const next = e.target.checked
+                                ? [...current, item.id]
+                                : current.filter((id) => id !== item.id);
+                              return { ...prev, [lead.id]: next };
+                            });
+                          }}
+                          className="mt-0.5 accent-emerald-500"
+                        />
+                        <span className="leading-snug text-[var(--eos-text)]">{item.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {LEAD_SERVICE_PRESETS.map((preset) => (
                     <button
                       key={preset}
                       type="button"
-                      onClick={() => setTerms((p) => ({ ...p, [lead.id]: preset }))}
+                      onClick={() => {
+                        setSelectedConditions((p) => ({
+                          ...p,
+                          [lead.id]: LEAD_CONDITION_CATALOG.map((c) => c.id),
+                        }));
+                        setTerms((p) => ({ ...p, [lead.id]: preset }));
+                      }}
                       className="rounded-full border border-[var(--eos-border)] px-3 py-1.5 text-left text-[10px] font-semibold text-[var(--eos-muted)] hover:border-emerald-500/30 hover:text-emerald-500"
                     >
-                      {preset.slice(0, 48)}…
+                      Zaznacz pełny pakiet
                     </button>
                   ))}
                 </div>
@@ -369,36 +412,78 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
             ) : (
               <div className="mt-5">
                 {lead.commissionRate != null ? (
-                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
                     <p className="flex items-center gap-2 text-sm font-bold text-[var(--eos-text)]">
                       <Percent className="size-4 text-emerald-500" />
-                      Prowizja agencji: {lead.commissionRate}%
+                      Prowizja przy udanej transakcji: {lead.commissionRate}%
                     </p>
-                    {lead.commissionTerms ? (
-                      <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{lead.commissionTerms}</p>
-                    ) : null}
+                    {(() => {
+                      const parsed = parseLeadConditions(lead.commissionTerms);
+                      if (parsed.conditions.length > 0) {
+                        return (
+                          <div className="mt-4">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
+                              Agencja zobowiązuje się do:
+                            </p>
+                            <ol className="mt-3 space-y-2">
+                              {parsed.conditions.map((c, i) => (
+                                <li
+                                  key={c.id}
+                                  className="flex gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/60 px-3 py-2.5 text-sm text-[var(--eos-text)]"
+                                >
+                                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-[10px] font-black text-emerald-600">
+                                    {i + 1}
+                                  </span>
+                                  <span className="leading-relaxed">{c.label}</span>
+                                </li>
+                              ))}
+                            </ol>
+                            {parsed.customNote ? (
+                              <p className="eos-muted-copy mt-3 text-xs leading-relaxed">
+                                <span className="font-bold text-[var(--eos-text)]">Uwagi: </span>
+                                {parsed.customNote}
+                              </p>
+                            ) : null}
+                          </div>
+                        );
+                      }
+                      if (parsed.rawText) {
+                        return (
+                          <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{parsed.rawText}</p>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                ) : lead.status === "PENDING" ? (
+                  <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 text-sm leading-relaxed text-[var(--eos-muted)]">
+                    <p className="font-bold text-[var(--eos-text)]">Zlecenie w analizie</p>
+                    <p className="mt-2">
+                      Agencja przejrzy Twoje ogłoszenie i prześle konkretną listę warunków współpracy.
+                      Twoja oferta pozostaje u Ciebie — nic się nie zmienia bez Twojej akceptacji.
+                    </p>
                   </div>
                 ) : null}
 
-                <div className="mt-4 rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 text-xs leading-relaxed text-[var(--eos-muted)]">
-                  <p className="font-bold text-[var(--eos-text)]">Co oznacza akceptacja?</p>
-                  <ul className="mt-2 list-disc space-y-1 pl-4">
-                    <li>Agencja przejmuje publikację, kontakt z kupującymi i negocjacje.</li>
-                    <li>Ty widzisz podgląd oferty, statystyki i zmiany ceny — bez obowiązku odbierania telefonów.</li>
-                    <li>Warunki prowizji obowiązują przy udanej transakcji zgodnie z umową z biurem.</li>
-                  </ul>
-                </div>
+                {lead.status === "TERMS_PROPOSED" ? (
+                  <p className="mt-4 text-xs leading-relaxed text-[var(--eos-muted)]">
+                    Akceptując, przekazujesz sprzedaż agencji na powyższych warunkach. Zachowujesz podgląd
+                    oferty i statystyk — bez obowiązku kontaktu z kupującymi.
+                  </p>
+                ) : null}
 
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={busy === lead.id}
-                    onClick={() => void acceptTransfer(lead.id)}
-                    className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-black"
-                  >
-                    <CheckCircle2 className="size-4" />
-                    Akceptuję — przekazuję sprzedaż agencji
-                  </button>
+                  {lead.status === "TERMS_PROPOSED" ? (
+                    <button
+                      type="button"
+                      disabled={busy === lead.id}
+                      onClick={() => void acceptTransfer(lead.id)}
+                      className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-black"
+                    >
+                      <CheckCircle2 className="size-4" />
+                      Akceptuję powyższe warunki i przekazuję sprzedaż
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     disabled={busy === lead.id}

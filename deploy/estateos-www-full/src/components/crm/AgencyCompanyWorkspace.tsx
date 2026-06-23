@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   Building2,
   Check,
@@ -240,7 +241,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   const [detailMember, setDetailMember] = useState<MemberRow | null>(null);
   const [partnerCheckoutLoading, setPartnerCheckoutLoading] = useState<string | null>(null);
   const [partnerCheckoutError, setPartnerCheckoutError] = useState('');
-  const [partnerTrialLoading, setPartnerTrialLoading] = useState(false);
+  const searchParams = useSearchParams();
   const [assignBusyId, setAssignBusyId] = useState<number | null>(null);
   const [assignTargetByOffer, setAssignTargetByOffer] = useState<Record<number, string>>({});
 
@@ -287,6 +288,31 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const paymentSuccess = searchParams?.get('payment_success');
+    const planActivated = searchParams?.get('plan_activated');
+    const sessionId = searchParams?.get('session_id');
+    if (paymentSuccess !== 'true' || !planActivated) return;
+
+    void (async () => {
+      try {
+        await fetch('/api/stripe/force-sync', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan: planActivated,
+            sessionId,
+          }),
+        });
+        await load();
+        window.history.replaceState({}, '', '/moje-konto/firma');
+      } catch {
+        /* webhook may still grant */
+      }
+    })();
+  }, [searchParams, load]);
 
   useEffect(() => {
     const company = dashboard?.company ?? membership?.company;
@@ -450,27 +476,6 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       setPartnerCheckoutError('Błąd połączenia z płatnością.');
     } finally {
       setPartnerCheckoutLoading(null);
-    }
-  };
-
-  const handlePartnerProTrial = async () => {
-    setPartnerCheckoutError('');
-    setPartnerTrialLoading(true);
-    try {
-      const res = await fetch('/api/agency-company/partner/trial', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setPartnerCheckoutError(data.message || 'Nie udało się aktywować okresu próbnego.');
-        return;
-      }
-      await load();
-    } catch {
-      setPartnerCheckoutError('Błąd połączenia.');
-    } finally {
-      setPartnerTrialLoading(false);
     }
   };
 
@@ -718,10 +723,8 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         <AgencyPartnerPlanSection
           partnerPlan={dashboard.partnerPlan}
           onCheckout={(code) => void handlePartnerCheckout(code)}
-          onTrialActivate={() => void handlePartnerProTrial()}
           checkoutLoading={partnerCheckoutLoading}
           checkoutError={partnerCheckoutError}
-          trialLoading={partnerTrialLoading}
         />
       ) : null}
 

@@ -18,10 +18,12 @@ export type CompanyPartnerPlanSnapshot = {
   agentsLimit: number | null;
   daysRemaining: number | null;
   proTrialEligible: boolean;
+  isTrialing: boolean;
 };
 
 function parsePartnerPlanIdFromProductId(productId: string): PartnerPlanId | null {
-  const m = String(productId || '').match(/pl\.estateos\.partner\.(\w+)_monthly/i);
+  if (productId === 'pl.estateos.partner.pro_trial') return 'pro';
+  const m = String(productId || '').match(/pl\.estateos\.partner\.(\w+)_(monthly|trial)/i);
   if (!m) return null;
   const id = m[1] as PartnerPlanId;
   return PARTNER_PLANS.some((p) => p.id === id) ? id : null;
@@ -54,6 +56,7 @@ export async function resolveCompanyPartnerPlanStatus(params: {
   const last = rows[0];
   const currentPlanId = last ? parsePartnerPlanIdFromProductId(last.productId) : null;
   const currentPlan = currentPlanId ? getPartnerPlanById(currentPlanId) ?? null : null;
+  const isTrialing = last?.productId === 'pl.estateos.partner.pro_trial';
 
   const expiryMs = params.plusExpiresAt ? new Date(params.plusExpiresAt).getTime() : 0;
   const isSubscriptionActive = expiryMs > Date.now();
@@ -73,6 +76,7 @@ export async function resolveCompanyPartnerPlanStatus(params: {
     agentsLimit: currentPlan?.maxAgents ?? null,
     daysRemaining,
     proTrialEligible: proRows.length === 0,
+    isTrialing,
   };
 }
 

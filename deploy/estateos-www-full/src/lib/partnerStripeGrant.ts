@@ -38,6 +38,23 @@ function partnerProductId(plan: PartnerPlanConfig): string {
   return `pl.estateos.partner.${plan.id}_monthly`;
 }
 
+function partnerTrialProductId(planId: PartnerPlanId): string {
+  return `pl.estateos.partner.${planId}_trial`;
+}
+
+export async function isPartnerProTrialEligible(userId: number): Promise<boolean> {
+  await ensureMobileIapTables();
+  const prior = (await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
+    `SELECT id FROM MobileIapPurchase
+     WHERE userId = ? AND productId IN (?, ?)
+     LIMIT 1`,
+    userId,
+    PARTNER_PRO_TRIAL_PRODUCT,
+    PARTNER_PRO_PAID_PRODUCT,
+  )) as Array<{ id: bigint }>;
+  return prior.length === 0;
+}
+
 function partnerPendingPurchaseId(checkoutSessionId: string): string {
   return `stripe_partner_${checkoutSessionId}`;
 }
@@ -135,6 +152,176 @@ export async function grantPartnerPlanFromStripeCheckout(params: {
     alreadyGranted: false,
     companyId: updatedCompany.id,
     creditsAdded: plan.creditsPerMonth,
+    partnerPlanId: plan.id,
+  };
+}
+
+async function grantPartnerPlanPeriod(params: {
+  userId: number;
+  plan: PartnerPlanConfig;
+  productId: string;
+  transactionId: string;
+  pendingPurchaseId: string;
+}): Promise<{ companyId: number; creditsAdded: number }> {
+  await prisma.user.update({
+    where: { id: params.userId },
+    data: {
+      isPro: false,
+      planType: PlanType.AGENCY,
+      proExpiresAt: null,
+    },
+  });
+
+  const membership = await ensureAgencyCompanyForAgentUser(params.userId);
+  if (!membership || membership.role !== 'ADMIN') {
+    throw new Error('PARTNER_REQUIRES_COMPANY_ADMIN');
+  }
+
+  const periodEnd = new Date();
+  periodEnd.setDate(periodEnd.getDate() + PARTNER_PERIOD_DAYS);
+
+  const company = await prisma.agencyCompany.findUnique({
+    where: { id: membership.companyId },
+    select: { id: true, plusExpiresAt: true },
+  });
+  if (!company) throw new Error('PARTNER_COMPANY_NOT_FOUND');
+
+  const currentExpiryMs = company.plusExpiresAt ? new Date(company.plusExpiresAt).getTime() : 0;
+  const mergedExpiry = new Date(Math.max(currentExpiryMs, periodEnd.getTime()));
+
+  await prisma.$transaction(async (tx) => {
+    await tx.agencyCompany.update({
+      where: { id: company.id },
+      data: {
+        extraListings: { increment: params.plan.creditsPerMonth },
+        plusExpiresAt: mergedExpiry,
+      },
+    });
+
+    await tx.$executeRawUnsafe(
+      `
+        INSERT INTO MobileIapPurchase
+          (userId, pendingPurchaseId, platform, productId, transactionId, status, verifyStatus, entitlementGrantedAt)
+        VALUES (?, ?, 'web', ?, ?, 'VERIFIED', 'VERIFIED', NOW(3))
+      `,
+      params.userId,
+      params.pendingPurchaseId,
+      params.productId,
+      params.transactionId,
+    );
+  });
+
+  return { companyId: company.id, creditsAdded: params.plan.creditsPerMonth };
+}
+
+export async function grantPartnerPlanFromStripeSubscription(params: {
+  userId: number;
+  checkoutSessionId: string;
+  subscriptionId: string;
+  stripePlanType: string;
+  isTrial: boolean;
+}): Promise<{
+  granted: boolean;
+  alreadyGranted: boolean;
+  companyId: number | null;
+  creditsAdded: number;
+  partnerPlanId: PartnerPlanId;
+}> {
+  const plan = getPartnerPlanByStripePlan(params.stripePlanType);
+  if (!plan) {
+    throw new Error(`UNKNOWN_PARTNER_PLAN:${params.stripePlanType}`);
+  }
+
+  await ensureMobileIapTables();
+  const pendingId = partnerPendingPurchaseId(params.checkoutSessionId);
+  const txId = `sub_${params.subscriptionId}_${params.isTrial ? 'trial' : 'start'}`;
+  const productId = params.isTrial ? partnerTrialProductId(plan.id) : partnerProductId(plan);
+
+  const existing = (await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
+    `SELECT id FROM MobileIapPurchase WHERE pendingPurchaseId = ? OR transactionId = ? LIMIT 1`,
+    pendingId,
+    txId,
+  )) as Array<{ id: bigint }>;
+
+  if (existing.length > 0) {
+    const membership = await getUserAgencyMembership(params.userId);
+    return {
+      granted: false,
+      alreadyGranted: true,
+      companyId: membership?.companyId ?? null,
+      creditsAdded: 0,
+      partnerPlanId: plan.id,
+    };
+  }
+
+  const result = await grantPartnerPlanPeriod({
+    userId: params.userId,
+    plan,
+    productId,
+    transactionId: txId,
+    pendingPurchaseId: pendingId,
+  });
+
+  return {
+    granted: true,
+    alreadyGranted: false,
+    companyId: result.companyId,
+    creditsAdded: result.creditsAdded,
+    partnerPlanId: plan.id,
+  };
+}
+
+export async function grantPartnerPlanFromStripeInvoice(params: {
+  userId: number;
+  invoiceId: string;
+  subscriptionId: string;
+  stripePlanType: string;
+}): Promise<{
+  granted: boolean;
+  alreadyGranted: boolean;
+  companyId: number | null;
+  creditsAdded: number;
+  partnerPlanId: PartnerPlanId;
+}> {
+  const plan = getPartnerPlanByStripePlan(params.stripePlanType);
+  if (!plan) {
+    throw new Error(`UNKNOWN_PARTNER_PLAN:${params.stripePlanType}`);
+  }
+
+  await ensureMobileIapTables();
+  const pendingId = `stripe_partner_inv_${params.invoiceId}`;
+  const txId = `inv_${params.invoiceId}`;
+
+  const existing = (await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
+    `SELECT id FROM MobileIapPurchase WHERE pendingPurchaseId = ? OR transactionId = ? LIMIT 1`,
+    pendingId,
+    txId,
+  )) as Array<{ id: bigint }>;
+
+  if (existing.length > 0) {
+    const membership = await getUserAgencyMembership(params.userId);
+    return {
+      granted: false,
+      alreadyGranted: true,
+      companyId: membership?.companyId ?? null,
+      creditsAdded: 0,
+      partnerPlanId: plan.id,
+    };
+  }
+
+  const result = await grantPartnerPlanPeriod({
+    userId: params.userId,
+    plan,
+    productId: partnerProductId(plan),
+    transactionId: txId,
+    pendingPurchaseId: pendingId,
+  });
+
+  return {
+    granted: true,
+    alreadyGranted: false,
+    companyId: result.companyId,
+    creditsAdded: result.creditsAdded,
     partnerPlanId: plan.id,
   };
 }
