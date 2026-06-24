@@ -481,7 +481,10 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       partnerFreeNote:
         "Partner Free активується автоматично при реєстрації офісу (роль агента + нова компанія).",
       partnerPaidIntro:
-        "Потрібно більше кредитів або місць для агентів? Оберіть абонемент — активація в панелі після входу.",
+        "Публікуєте регулярно? Вищий пакет = дешевший кредит. Pro — зазвичай момент, коли офіс починає заробляти на різниці.",
+      partnerValueBadge: "Найкраща цінність",
+      partnerSavingsVsRetail: "−{savings}% vs Pakiet + ({retail} zł / кредит)",
+      partnerBreakEvenCredits: "Окупається від {count} публікацій на місяць",
       partnerStartName: "Partner Start",
       partnerStartDesc: "Малий офіс або агентство однієї особи — CRM, профіль компанії та пул публікацій для команди.",
       partnerStartF1: "{credits} кредитів публікації на місяць у пулі компанії — адміністратор розподіляє між агентами.",

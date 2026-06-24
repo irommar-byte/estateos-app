@@ -1,4 +1,4 @@
-/** Ceny i limity planów EstateOS™ Partner — jedno źródło prawdy (Krok 1: UI + copy). */
+/** Ceny i limity planów EstateOS™ Partner — jedno źródło prawdy (UI + Stripe). */
 
 export const INVESTOR_PRO_PRICE_PLN = 249;
 export const INVESTOR_PRO_WAS_PRICE_PLN = 299;
@@ -9,6 +9,8 @@ export type PartnerPlanId = 'free' | 'start' | 'pro' | 'enterprise';
 export type PartnerPlanConfig = {
   id: PartnerPlanId;
   pricePln: number;
+  /** Kotwica marketingowa (przekreślona cena na /cennik). */
+  wasPricePln?: number;
   creditsPerMonth: number;
   maxAgents: number | null;
   highlighted?: boolean;
@@ -26,23 +28,32 @@ export const PARTNER_FREE_PLAN: PartnerPlanConfig = {
 export const PARTNER_FREE_SIGNUP_PRODUCT = 'pl.estateos.partner.free_signup';
 export const PARTNER_FREE_PERIOD_DAYS = 90;
 
+/**
+ * Płatne pakiety — drabinka zaprojektowana pod upsell:
+ * - Start: próg <300 zł, ~20 zł/kredyt (−59% vs detal 49 zł)
+ * - Pro: 2× cena Start, 3× kredyty — oczywisty sweet spot
+ * - Enterprise: 100 kredytów po 10 zł — dla sieci i wolumenu
+ */
 export const PARTNER_PAID_PLANS: readonly PartnerPlanConfig[] = [
   {
     id: 'start',
-    pricePln: 449,
+    pricePln: 299,
+    wasPricePln: 449,
     creditsPerMonth: 15,
     maxAgents: 5,
   },
   {
     id: 'pro',
-    pricePln: 999,
-    creditsPerMonth: 50,
-    maxAgents: 20,
+    pricePln: 599,
+    wasPricePln: 999,
+    creditsPerMonth: 45,
+    maxAgents: 15,
     highlighted: true,
   },
   {
     id: 'enterprise',
-    pricePln: 1499,
+    pricePln: 999,
+    wasPricePln: 1499,
     creditsPerMonth: 100,
     maxAgents: null,
   },
@@ -57,6 +68,19 @@ export function isPaidPartnerPlanId(id: PartnerPlanId): boolean {
 export function partnerCreditUnitPrice(plan: PartnerPlanConfig): number {
   if (plan.pricePln <= 0 || plan.creditsPerMonth <= 0) return 0;
   return Math.round(plan.pricePln / plan.creditsPerMonth);
+}
+
+/** Oszczędność vs detal (Pakiet + 49 zł / kredyt). */
+export function partnerSavingsPercentVsRetail(plan: PartnerPlanConfig): number {
+  const unit = partnerCreditUnitPrice(plan);
+  if (unit <= 0) return 0;
+  return Math.max(0, Math.round((1 - unit / PAKIET_PLUS_PRICE_PLN) * 100));
+}
+
+/** Od ilu publikacji/mies. abonament wygrywa z kupowaniem pojedynczych kredytów. */
+export function partnerBreakEvenCreditsPerMonth(plan: PartnerPlanConfig): number {
+  if (plan.pricePln <= 0) return 0;
+  return Math.ceil(plan.pricePln / PAKIET_PLUS_PRICE_PLN);
 }
 
 export function formatAgentsLimit(maxAgents: number | null, unlimitedLabel: string): string {
@@ -98,7 +122,10 @@ export function describePartnerPlanChange(params: {
 
   if (!from || from.pricePln !== to.pricePln) {
     if (to.pricePln > 0) {
-      lines.push(`Abonament: ${to.pricePln} zł / 30 dni (${Math.round(to.pricePln / to.creditsPerMonth)} zł za kredyt).`);
+      const savings = partnerSavingsPercentVsRetail(to);
+      lines.push(
+        `Abonament: ${to.pricePln} zł / 30 dni (${partnerCreditUnitPrice(to)} zł za kredyt — ${savings}% taniej niż Pakiet +).`,
+      );
     }
   }
 

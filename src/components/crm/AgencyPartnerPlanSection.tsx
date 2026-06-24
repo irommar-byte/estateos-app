@@ -17,6 +17,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import {
   PARTNER_PAID_PLANS,
   PARTNER_PLANS,
+  getPartnerPlanById,
   type PartnerPlanId,
   describePartnerPlanChange,
   partnerCreditUnitPrice,
@@ -74,6 +75,7 @@ export default function AgencyPartnerPlanSection({
     p?.partnerActivationNote ??
     'Wymaga konta administratora biura. Nie masz biura? Załóż je bezpłatnie przed aktywacją.';
 
+  const proPlanPrice = getPartnerPlanById('pro')?.pricePln ?? 599;
   const hasActive = partnerPlan.isSubscriptionActive;
   const isFreePlan = partnerPlan.currentPlanId === 'free';
   const [showUpgrade, setShowUpgrade] = useState(false);
@@ -139,7 +141,7 @@ export default function AgencyPartnerPlanSection({
                 ? ' Pakiet startowy Partner Free — ulepsz, gdy zespół lub liczba publikacji urośnie.'
                 : null}
               {partnerPlan.isTrialing
-                ? ' Po okresie próbnym pobierzemy 999 zł za kolejne 30 dni — anulujesz w dowolnym momencie przed końcem trialu.'
+                ? ` Po okresie próbnym pobierzemy ${proPlanPrice} zł za kolejne 30 dni — anulujesz w dowolnym momencie przed końcem trialu.`
                 : null}
             </p>
           </div>
@@ -299,7 +301,7 @@ export default function AgencyPartnerPlanSection({
                 {showProTrial ? (
                   <p className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-center text-[11px] font-semibold leading-relaxed text-emerald-600">
                     Pierwszy miesiąc <strong>0 zł</strong> — wymagana karta. Po 30 dniach automatycznie
-                    pobierzemy <strong>999 zł</strong> za kolejne 30 dni.
+                    pobierzemy <strong>{proPlanPrice} zł</strong> za kolejne 30 dni.
                   </p>
                 ) : null}
                 <button
