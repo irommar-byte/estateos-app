@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { ensureMobileIapTables } from '@/lib/mobileIapTables';
 import {
+  PARTNER_FREE_SIGNUP_PRODUCT,
   PARTNER_PLANS,
   type PartnerPlanConfig,
   type PartnerPlanId,
@@ -22,6 +23,7 @@ export type CompanyPartnerPlanSnapshot = {
 };
 
 function parsePartnerPlanIdFromProductId(productId: string): PartnerPlanId | null {
+  if (productId === PARTNER_FREE_SIGNUP_PRODUCT) return 'free';
   if (productId === 'pl.estateos.partner.pro_trial') return 'pro';
   const m = String(productId || '').match(/pl\.estateos\.partner\.(\w+)_(monthly|trial)/i);
   if (!m) return null;

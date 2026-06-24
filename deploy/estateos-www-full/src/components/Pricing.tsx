@@ -19,7 +19,8 @@ import {
 } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import {
-  PARTNER_PLANS,
+  PARTNER_FREE_PLAN,
+  PARTNER_PAID_PLANS,
   type PartnerPlanConfig,
   formatAgentsLimit,
   partnerCreditUnitPrice,
@@ -49,6 +50,20 @@ function partnerCopyForPlan(
     agents,
     unitPrice: partnerCreditUnitPrice(plan),
   };
+
+  if (plan.id === "free") {
+    return {
+      name: p.partnerFreeName,
+      desc: p.partnerFreeDesc,
+      features: [
+        p.partnerFreeF1,
+        p.partnerFreeF2,
+        p.partnerFreeF3,
+        p.partnerFreeF4,
+        p.partnerFreeF5,
+      ].map((line) => fillTemplate(line, vars)),
+    };
+  }
 
   if (plan.id === "start") {
     return {
@@ -104,6 +119,8 @@ function PartnerPlanCard({
   stripePlanCode,
   loading,
   disabled,
+  isFree,
+  freeCtaLabel,
   onActivate,
   onRegister,
 }: {
@@ -118,6 +135,8 @@ function PartnerPlanCard({
   stripePlanCode: string;
   loading: boolean;
   disabled: boolean;
+  isFree?: boolean;
+  freeCtaLabel?: string;
   onActivate: (stripePlanCode: string) => void;
   onRegister: () => void;
 }) {
@@ -160,7 +179,9 @@ function PartnerPlanCard({
       <div className="mb-8">
         <span className="text-5xl font-black text-[var(--eos-text)] tracking-tight">
           {plan.pricePln}{" "}
-          <span className="text-lg text-[var(--eos-muted)] font-medium">{periodLabel}</span>
+          <span className="text-lg text-[var(--eos-muted)] font-medium">
+            {isFree ? periodLabel : periodLabel}
+          </span>
         </span>
       </div>
 
@@ -174,28 +195,42 @@ function PartnerPlanCard({
       </ul>
 
       <div className="mt-auto space-y-3">
-        <button
-          type="button"
-          onClick={() => onActivate(stripePlanCode)}
-          disabled={disabled || loading}
-          className={[
-            "w-full py-4 rounded-2xl font-bold transition-colors flex justify-center items-center gap-2 text-sm disabled:opacity-70",
-            highlighted
-              ? "bg-emerald-500 text-white hover:bg-emerald-400 shadow-[0_10px_30px_rgba(16,185,129,0.25)]"
-              : "bg-[var(--eos-input)] border border-[var(--eos-border)] text-[var(--eos-text)] hover:border-emerald-500/40 hover:bg-emerald-500/5",
-          ].join(" ")}
-        >
-          <Building2 size={16} />
-          {loading ? "…" : ctaActivateLabel}
-          {!loading ? <ArrowRight size={16} /> : null}
-        </button>
-        <button
-          type="button"
-          onClick={onRegister}
-          className="w-full text-center text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
-        >
-          {ctaRegisterLabel}
-        </button>
+        {isFree ? (
+          <button
+            type="button"
+            onClick={onRegister}
+            className="w-full py-4 rounded-2xl font-bold transition-colors flex justify-center items-center gap-2 text-sm bg-emerald-500 text-white hover:bg-emerald-400 shadow-[0_10px_30px_rgba(16,185,129,0.25)]"
+          >
+            <Building2 size={16} />
+            {freeCtaLabel ?? ctaRegisterLabel}
+            <ArrowRight size={16} />
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => onActivate(stripePlanCode)}
+              disabled={disabled || loading}
+              className={[
+                "w-full py-4 rounded-2xl font-bold transition-colors flex justify-center items-center gap-2 text-sm disabled:opacity-70",
+                highlighted
+                  ? "bg-emerald-500 text-white hover:bg-emerald-400 shadow-[0_10px_30px_rgba(16,185,129,0.25)]"
+                  : "bg-[var(--eos-input)] border border-[var(--eos-border)] text-[var(--eos-text)] hover:border-emerald-500/40 hover:bg-emerald-500/5",
+              ].join(" ")}
+            >
+              <Building2 size={16} />
+              {loading ? "…" : ctaActivateLabel}
+              {!loading ? <ArrowRight size={16} /> : null}
+            </button>
+            <button
+              type="button"
+              onClick={onRegister}
+              className="w-full text-center text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+            >
+              {ctaRegisterLabel}
+            </button>
+          </>
+        )}
         <p className="text-[11px] text-center leading-relaxed text-[var(--eos-subtle)] px-1">{activationNote}</p>
       </div>
     </article>
@@ -225,6 +260,10 @@ export default function Pricing() {
 
   const handleCheckout = async (planName: string) => {
     setCheckoutError(null);
+    if (planName === "partner_free") {
+      window.location.href = "/rejestracja?kind=agent";
+      return;
+    }
     const isPartnerPlan = planName.startsWith("partner_");
     if (!isLoggedIn) {
       if (isPartnerPlan) {
@@ -266,6 +305,10 @@ export default function Pricing() {
     { Icon: Crown, text: p.proF4 },
     { Icon: Zap, text: p.proF5 },
   ];
+
+  const goRegisterOffice = () => {
+    window.location.href = "/rejestracja?kind=agent";
+  };
 
   const activeSubtitle = isAgency ? p.subtitleAgency : p.subtitlePrivate;
 
@@ -438,8 +481,51 @@ export default function Pricing() {
 
         {isAgency && (
           <div className="animate-in fade-in duration-700 space-y-10">
+            <div className="max-w-4xl mx-auto rounded-[2rem] border border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.1] via-[var(--eos-card)] to-[var(--eos-card)] p-8 md:p-10 text-center shadow-[0_0_60px_rgba(16,185,129,0.08)]">
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-600 dark:text-emerald-400 mb-3">
+                {p.partnerFreeBadge}
+              </p>
+              <h4 className="text-2xl md:text-3xl font-black text-[var(--eos-text)] mb-3">{p.partnerFreeHeroTitle}</h4>
+              <p className="text-[var(--eos-muted)] text-sm md:text-base leading-relaxed max-w-2xl mx-auto mb-6">
+                {p.partnerFreeHeroSubtitle}
+              </p>
+              <button
+                type="button"
+                onClick={goRegisterOffice}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-8 py-4 text-sm font-black uppercase tracking-widest text-black shadow-[0_10px_30px_rgba(16,185,129,0.25)] transition hover:bg-emerald-400"
+              >
+                <Building2 size={18} />
+                {p.partnerFreeCta}
+                <ArrowRight size={18} />
+              </button>
+            </div>
+
+            <div className="max-w-2xl mx-auto">
+              <PartnerPlanCard
+                plan={PARTNER_FREE_PLAN}
+                copy={partnerCopyForPlan(PARTNER_FREE_PLAN, p)}
+                highlighted
+                isFree
+                badgeLabel={p.partnerFreeBadge}
+                periodLabel={p.partnerFreePeriod}
+                ctaActivateLabel={p.partnerFreeCta}
+                ctaRegisterLabel={p.partnerCta}
+                freeCtaLabel={p.partnerFreeCta}
+                activationNote={p.partnerFreeNote}
+                stripePlanCode="partner_free"
+                loading={false}
+                disabled={false}
+                onActivate={handleCheckout}
+                onRegister={goRegisterOffice}
+              />
+            </div>
+
+            <p className="text-center text-sm font-semibold text-[var(--eos-muted)] max-w-2xl mx-auto">
+              {p.partnerPaidIntro}
+            </p>
+
             <div className="grid eos-pricing-grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 xl:gap-8">
-              {PARTNER_PLANS.map((plan) => {
+              {PARTNER_PAID_PLANS.map((plan) => {
                 const copy = partnerCopyForPlan(plan, p);
                 const stripePlanCode = partnerStripePlanCodeFromId(plan.id);
                 return (
@@ -457,9 +543,7 @@ export default function Pricing() {
                     loading={loadingPlan === stripePlanCode}
                     disabled={loadingPlan !== null && loadingPlan !== stripePlanCode}
                     onActivate={handleCheckout}
-                    onRegister={() => {
-                      window.location.href = "/dla-agencji";
-                    }}
+                    onRegister={goRegisterOffice}
                   />
                 );
               })}

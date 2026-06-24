@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useLocale } from '@/contexts/LocaleContext';
 import {
+  PARTNER_PAID_PLANS,
   PARTNER_PLANS,
   type PartnerPlanId,
   describePartnerPlanChange,
@@ -37,12 +38,14 @@ export type AgencyPartnerPlanPayload = {
 };
 
 const PLAN_LABELS: Record<PartnerPlanId, string> = {
+  free: 'Partner Free',
   start: 'Partner Start',
   pro: 'Partner Pro',
   enterprise: 'Partner Enterprise',
 };
 
 const PLAN_RANK: Record<PartnerPlanId, number> = {
+  free: 0,
   start: 1,
   pro: 2,
   enterprise: 3,
@@ -72,18 +75,22 @@ export default function AgencyPartnerPlanSection({
     'Wymaga konta administratora biura. Nie masz biura? Załóż je bezpłatnie przed aktywacją.';
 
   const hasActive = partnerPlan.isSubscriptionActive;
+  const isFreePlan = partnerPlan.currentPlanId === 'free';
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [selectedId, setSelectedId] = useState<PartnerPlanId>(
-    partnerPlan.currentPlanId ?? 'pro',
+    partnerPlan.currentPlanId && partnerPlan.currentPlanId !== 'free'
+      ? partnerPlan.currentPlanId
+      : 'pro',
   );
 
   const currentPlan = PARTNER_PLANS.find((pl) => pl.id === partnerPlan.currentPlanId) ?? null;
-  const selectedPlan = PARTNER_PLANS.find((pl) => pl.id === selectedId) ?? PARTNER_PLANS[1];
+  const selectedPlan =
+    PARTNER_PAID_PLANS.find((pl) => pl.id === selectedId) ?? PARTNER_PAID_PLANS[1];
 
   const upgradePlans = useMemo(() => {
-    if (!hasActive || !partnerPlan.currentPlanId) return PARTNER_PLANS;
+    if (!hasActive || !partnerPlan.currentPlanId) return PARTNER_PAID_PLANS;
     const rank = PLAN_RANK[partnerPlan.currentPlanId];
-    return PARTNER_PLANS.filter((pl) => PLAN_RANK[pl.id] > rank);
+    return PARTNER_PAID_PLANS.filter((pl) => PLAN_RANK[pl.id] > rank);
   }, [hasActive, partnerPlan.currentPlanId]);
 
   const changeLines = useMemo(
@@ -128,6 +135,9 @@ export default function AgencyPartnerPlanSection({
                     partnerPlan.daysRemaining != null ? ` · pozostało ${partnerPlan.daysRemaining} dni` : ''
                   }`
                 : 'Aktywna pula kredytów firmy.'}
+              {isFreePlan
+                ? ' Pakiet startowy Partner Free — ulepsz, gdy zespół lub liczba publikacji urośnie.'
+                : null}
               {partnerPlan.isTrialing
                 ? ' Po okresie próbnym pobierzemy 999 zł za kolejne 30 dni — anulujesz w dowolnym momencie przed końcem trialu.'
                 : null}
@@ -171,7 +181,7 @@ export default function AgencyPartnerPlanSection({
     );
   }
 
-  const plansToShow = hasActive && showUpgrade ? upgradePlans : PARTNER_PLANS;
+  const plansToShow = hasActive && showUpgrade ? upgradePlans : PARTNER_PAID_PLANS;
 
   return (
     <section className="overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]">
@@ -191,12 +201,18 @@ export default function AgencyPartnerPlanSection({
               <Sparkles size={14} /> Pakiet agencji
             </p>
             <h2 className="text-2xl font-black text-[var(--eos-text)] md:text-3xl">
-              {hasActive && showUpgrade ? 'Ulepsz abonament biura' : 'EstateOS™ Partner — wybierz pakiet'}
+              {hasActive && showUpgrade
+                ? 'Ulepsz abonament biura'
+                : hasActive
+                  ? 'Ulepsz pakiet Partner'
+                  : 'EstateOS™ Partner — wybierz pakiet płatny'}
             </h2>
             <p className="eos-muted-copy mt-2 text-sm leading-relaxed">
               {hasActive && showUpgrade
                 ? 'Dopłać różnicę i od razu zyskujesz wyższy limit agentów oraz większą pulę kredytów.'
-                : 'Kredyty publikacji, limit zespołu i CRM w jednym miejscu.'}
+                : hasActive && isFreePlan
+                  ? 'Masz aktywny Partner Free. Wybierz płatny pakiet, gdy potrzebujesz więcej kredytów lub miejsc w zespole.'
+                  : 'Kredyty publikacji, limit zespołu i CRM w jednym miejscu.'}
             </p>
           </div>
 
@@ -204,8 +220,10 @@ export default function AgencyPartnerPlanSection({
             <div className="grid min-w-[min(100%,18rem)] gap-3 sm:grid-cols-2 lg:grid-cols-1">
               <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
                 <p className="text-[9px] font-bold uppercase tracking-widest text-amber-600">Status</p>
-                <p className="mt-1 text-lg font-black text-amber-600">Brak aktywnego pakietu</p>
-                <p className="eos-muted-copy mt-1 text-xs">Aktywuj pakiet, aby korzystać z puli kredytów firmy.</p>
+                <p className="mt-1 text-lg font-black text-amber-600">Brak aktywnej puli</p>
+                <p className="eos-muted-copy mt-1 text-xs">
+                  Załóż biuro na nowo lub aktywuj płatny pakiet, aby odnowić kredyty firmy.
+                </p>
               </div>
             </div>
           ) : null}

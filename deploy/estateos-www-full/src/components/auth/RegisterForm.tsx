@@ -312,9 +312,11 @@ export default function RegisterForm({
       }
 
       setSuccessMsg(
-        data.agencyMembership?.pendingApproval
-          ? 'Konto utworzone. Administrator firmy musi zatwierdzić Twoje zgłoszenie.'
-          : t.successRegister,
+        data.partnerWelcome?.message
+          ? data.partnerWelcome.message
+          : data.agencyMembership?.pendingApproval
+            ? 'Konto utworzone. Administrator firmy musi zatwierdzić Twoje zgłoszenie.'
+            : t.successRegister,
       );
       const role = data.role || data.user?.role || 'USER';
       window.setTimeout(() => {

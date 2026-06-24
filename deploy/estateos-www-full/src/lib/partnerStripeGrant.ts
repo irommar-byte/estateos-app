@@ -3,7 +3,11 @@ import { prisma } from '@/lib/prisma';
 import { ensureAgencyCompanyForAgentUser, getUserAgencyMembership } from '@/lib/agencyCompany';
 import { ensureMobileIapTables } from '@/lib/mobileIapTables';
 import {
-  PARTNER_PLANS,
+  PARTNER_FREE_PLAN,
+  PARTNER_FREE_PERIOD_DAYS,
+  PARTNER_FREE_SIGNUP_PRODUCT,
+  PARTNER_PAID_PLANS,
+  getPartnerPlanById,
   type PartnerPlanConfig,
   type PartnerPlanId,
 } from '@/lib/partnerPricing';
@@ -31,7 +35,7 @@ export function isStripePartnerPlan(raw: unknown): boolean {
 export function getPartnerPlanByStripePlan(raw: unknown): PartnerPlanConfig | null {
   const id = STRIPE_PLAN_TO_PARTNER_ID[String(raw || '').trim().toLowerCase()];
   if (!id) return null;
-  return PARTNER_PLANS.find((p) => p.id === id) ?? null;
+  return PARTNER_PAID_PLANS.find((p) => p.id === id) ?? null;
 }
 
 function partnerProductId(plan: PartnerPlanConfig): string {
@@ -380,7 +384,7 @@ export async function grantPartnerProTrial(userId: number): Promise<{
     return { granted: false, alreadyUsed: true, companyId: membership?.companyId ?? null, creditsAdded: 0 };
   }
 
-  const plan = PARTNER_PLANS.find((p) => p.id === 'pro');
+  const plan = getPartnerPlanById('pro');
   if (!plan) throw new Error('PARTNER_PRO_PLAN_MISSING');
 
   await prisma.user.update({
@@ -431,6 +435,90 @@ export async function grantPartnerProTrial(userId: number): Promise<{
   return {
     granted: true,
     alreadyUsed: false,
+    companyId: company.id,
+    creditsAdded: plan.creditsPerMonth,
+  };
+}
+
+export async function grantPartnerFreeTierOnSignup(userId: number): Promise<{
+  granted: boolean;
+  alreadyGranted: boolean;
+  companyId: number | null;
+  creditsAdded: number;
+}> {
+  await ensureMobileIapTables();
+
+  const existing = (await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
+    `SELECT id FROM MobileIapPurchase WHERE userId = ? AND productId = ? LIMIT 1`,
+    userId,
+    PARTNER_FREE_SIGNUP_PRODUCT,
+  )) as Array<{ id: bigint }>;
+
+  if (existing.length > 0) {
+    const membership = await getUserAgencyMembership(userId);
+    return {
+      granted: false,
+      alreadyGranted: true,
+      companyId: membership?.companyId ?? null,
+      creditsAdded: 0,
+    };
+  }
+
+  const membership = await getUserAgencyMembership(userId);
+  if (!membership || membership.role !== 'ADMIN') {
+    return { granted: false, alreadyGranted: false, companyId: null, creditsAdded: 0 };
+  }
+
+  const plan = PARTNER_FREE_PLAN;
+  const periodEnd = new Date();
+  periodEnd.setDate(periodEnd.getDate() + PARTNER_FREE_PERIOD_DAYS);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      isPro: false,
+      planType: PlanType.AGENCY,
+      proExpiresAt: null,
+    },
+  });
+
+  const company = await prisma.agencyCompany.findUnique({
+    where: { id: membership.companyId },
+    select: { id: true, plusExpiresAt: true, extraListings: true },
+  });
+  if (!company) {
+    return { granted: false, alreadyGranted: false, companyId: null, creditsAdded: 0 };
+  }
+
+  const currentExpiryMs = company.plusExpiresAt ? new Date(company.plusExpiresAt).getTime() : 0;
+  const mergedExpiry = new Date(Math.max(currentExpiryMs, periodEnd.getTime()));
+  const pendingId = `partner_free_signup_${userId}`;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.agencyCompany.update({
+      where: { id: company.id },
+      data: {
+        extraListings: { increment: plan.creditsPerMonth },
+        plusExpiresAt: mergedExpiry,
+      },
+    });
+
+    await tx.$executeRawUnsafe(
+      `
+        INSERT INTO MobileIapPurchase
+          (userId, pendingPurchaseId, platform, productId, transactionId, status, verifyStatus, entitlementGrantedAt)
+        VALUES (?, ?, 'web', ?, ?, 'VERIFIED', 'VERIFIED', NOW(3))
+      `,
+      userId,
+      pendingId,
+      PARTNER_FREE_SIGNUP_PRODUCT,
+      `free_signup_${userId}`,
+    );
+  });
+
+  return {
+    granted: true,
+    alreadyGranted: false,
     companyId: company.id,
     creditsAdded: plan.creditsPerMonth,
   };

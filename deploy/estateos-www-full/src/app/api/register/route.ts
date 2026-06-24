@@ -13,6 +13,7 @@ import {
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 import { uniqueCompanySlug } from '@/lib/agencyCompany';
 import { notifyCompanyAdminsOfPendingMember } from '@/lib/agencyCompanyNotify';
+import { grantPartnerFreeTierOnSignup } from '@/lib/partnerStripeGrant';
 
 const normalizeEmail = (value: unknown) => String(value || '').toLowerCase().trim();
 
@@ -242,6 +243,14 @@ export async function POST(req: Request) {
       }
     }
 
+    let partnerFreeCredits = 0;
+    if (dbRole === Role.AGENT && !isJoinAgency) {
+      const freeGrant = await grantPartnerFreeTierOnSignup(user.id);
+      if (freeGrant.granted) {
+        partnerFreeCredits = freeGrant.creditsAdded;
+      }
+    }
+
     void sendTransactionalEmail({
       to: user.email,
       subject: buildWelcomeEmailSubject({ userName: user.name }),
@@ -274,6 +283,15 @@ export async function POST(req: Request) {
       agencyMembership: membership
         ? { status: membership.status, role: membership.role, pendingApproval: membership.status === 'PENDING' }
         : null,
+      partnerWelcome:
+        partnerFreeCredits > 0
+          ? {
+              plan: 'free',
+              credits: partnerFreeCredits,
+              message:
+                'Aktywowaliśmy Partner Free: profil w katalogu, Concierge i kredyty publikacji są już na Twoim koncie.',
+            }
+          : null,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
