@@ -5,6 +5,7 @@ import { encryptSession } from '@/lib/sessionUtils';
 import { cookies } from 'next/headers';
 import { PlanType, Role } from '@prisma/client';
 import { buildWelcomeEmailHtml, buildWelcomeEmailSubject, sendTransactionalEmail } from '@/lib/email/transactional';
+import { deliverPartnerFreeWelcome } from '@/lib/partnerGrowthNotify';
 import {
   buildPhoneLookupVariants,
   extractPhoneFromBody,
@@ -244,18 +245,31 @@ export async function POST(req: Request) {
     }
 
     let partnerFreeCredits = 0;
+    let partnerFreeCompanyId: number | null = null;
     if (dbRole === Role.AGENT && !isJoinAgency) {
       const freeGrant = await grantPartnerFreeTierOnSignup(user.id);
       if (freeGrant.granted) {
         partnerFreeCredits = freeGrant.creditsAdded;
+        partnerFreeCompanyId = freeGrant.companyId;
       }
     }
 
-    void sendTransactionalEmail({
-      to: user.email,
-      subject: buildWelcomeEmailSubject({ userName: user.name }),
-      html: buildWelcomeEmailHtml({ userName: user.name }),
-    });
+    if (partnerFreeCredits > 0 && partnerFreeCompanyId) {
+      void deliverPartnerFreeWelcome({
+        userId: user.id,
+        userEmail: user.email,
+        userName: user.name,
+        companyId: partnerFreeCompanyId,
+        companyName: user.companyName || 'Twoje biuro',
+        credits: partnerFreeCredits,
+      });
+    } else {
+      void sendTransactionalEmail({
+        to: user.email,
+        subject: buildWelcomeEmailSubject({ userName: user.name }),
+        html: buildWelcomeEmailHtml({ userName: user.name }),
+      });
+    }
 
     const session = encryptSession({ id: user.id, email: user.email, role: user.role || 'USER' });
 

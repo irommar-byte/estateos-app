@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -29,6 +29,8 @@ import AgencyMemberDetailPanel from '@/components/crm/AgencyMemberDetailPanel';
 import AgencyPartnerPlanSection, {
   type AgencyPartnerPlanPayload,
 } from '@/components/crm/AgencyPartnerPlanSection';
+import AgencyGrowthBanner from '@/components/crm/AgencyGrowthBanner';
+import type { PartnerGrowthInsight } from '@/lib/partnerGrowth';
 import { AGENCY_AGENT_TITLES, formatAgentTitle, pickTeamMemberAvatar } from '@/lib/agentProfile';
 
 type MemberRow = {
@@ -101,6 +103,7 @@ type DashboardPayload = {
     createdBy: { id: number; name: string | null };
   }>;
   partnerPlan?: AgencyPartnerPlanPayload | null;
+  growthInsight?: PartnerGrowthInsight | null;
 };
 
 type MembershipPayload = {
@@ -216,6 +219,7 @@ function normalizeDashboardPayload(raw: Record<string, unknown>): DashboardPaylo
     recentOffers,
     creditTransfers,
     partnerPlan: (raw.partnerPlan as DashboardPayload['partnerPlan']) ?? null,
+    growthInsight: (raw.growthInsight as DashboardPayload['growthInsight']) ?? null,
   };
 }
 
@@ -719,13 +723,20 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         </div>
       </header>
 
+      {dashboard?.growthInsight ? (
+        <AgencyGrowthBanner insight={dashboard.growthInsight} />
+      ) : null}
+
       {dashboard?.partnerPlan ? (
-        <AgencyPartnerPlanSection
-          partnerPlan={dashboard.partnerPlan}
-          onCheckout={(code) => void handlePartnerCheckout(code)}
-          checkoutLoading={partnerCheckoutLoading}
-          checkoutError={partnerCheckoutError}
-        />
+        <Suspense fallback={null}>
+          <AgencyPartnerPlanSection
+            id="pakiet"
+            partnerPlan={dashboard.partnerPlan}
+            onCheckout={(code) => void handlePartnerCheckout(code)}
+            checkoutLoading={partnerCheckoutLoading}
+            checkoutError={partnerCheckoutError}
+          />
+        </Suspense>
       ) : null}
 
       <section className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">

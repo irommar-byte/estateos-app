@@ -215,6 +215,106 @@ export function buildWelcomeEmailHtml(params: { userName?: string | null }) {
   return wrapTransactionalEmail(body);
 }
 
+export function buildPartnerFreeWelcomeEmailSubject(params: { companyName: string }): string {
+  const company = String(params.companyName || '').trim() || 'Twoje biuro';
+  return `Partner Free aktywny — ${company} może publikować`;
+}
+
+export function buildPartnerGrowthEmailSubject(params: {
+  subject: string;
+  companyName?: string;
+}): string {
+  const company = String(params.companyName || '').trim();
+  if (!company) return params.subject;
+  return `${params.subject} · ${company}`;
+}
+
+export function buildPartnerFreeWelcomeEmailHtml(params: {
+  userName?: string | null;
+  companyName: string;
+  credits: number;
+}) {
+  const firstName = escapeHtml(extractFirstName(params.userName));
+  const company = escapeHtml(params.companyName);
+  const credits = params.credits;
+  const firmaUrl = appUrl('/moje-konto/firma');
+  const offerUrl = appUrl('/dodaj-oferte');
+  const cennikUrl = appUrl('/cennik?tab=partner');
+
+  const body = `
+    <p style="margin:0 0 8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#10b981;">
+      Partner Free · 0 zł
+    </p>
+    <h1 style="margin:0 0 16px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:30px;font-weight:700;line-height:1.15;letter-spacing:-0.03em;color:#1d1d1f;">
+      Biuro ${company} jest gotowe
+    </h1>
+    <p style="margin:0 0 16px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:17px;line-height:1.58;color:#424245;">
+      Cześć ${firstName}, aktywowaliśmy <strong>Partner Free</strong> na 90 dni — bez karty i bez abonamentu.
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px 0;background:#f0fdf4;border-radius:14px;border:1px solid rgba(16,185,129,0.2);">
+      <tr>
+        <td style="padding:18px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;line-height:1.65;color:#1d1d1f;">
+          <p style="margin:0 0 8px 0;"><strong>${credits} kredytów</strong> publikacji na pulę firmy</p>
+          <p style="margin:0 0 8px 0;"><strong>Concierge</strong> — leady od prywatnych właścicieli</p>
+          <p style="margin:0 0 8px 0;"><strong>Katalog agencji</strong> — widoczność od dnia 1</p>
+          <p style="margin:0;"><strong>CRM + Deal Room</strong> dla zespołu do 2 osób</p>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:16px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;line-height:1.55;color:#424245;">
+      Najlepszy następny krok: <strong>opublikuj pierwszą ofertę</strong>. Kupujący z Radaru i Concierge zobaczą Cię jako profesjonalne biuro — nie jako kolejne ogłoszenie prywatne.
+    </p>
+    ${emailPrimaryButtonHtml(offerUrl, 'Dodaj pierwszą ofertę')}
+    <p style="margin:20px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;line-height:1.55;color:#86868b;text-align:center;">
+      Panel biura: <a href="${firmaUrl}" style="color:#0071e3;text-decoration:none;">Moje biuro</a>
+      · Później: <a href="${cennikUrl}" style="color:#0071e3;text-decoration:none;">pakiety od 299 zł</a>
+    </p>
+  `;
+  return wrapTransactionalEmail(body);
+}
+
+export function buildPartnerGrowthEmailHtml(params: {
+  userName?: string | null;
+  companyName: string;
+  insight: {
+    title: string;
+    body: string;
+    ctaLabel: string;
+    ctaHref: string;
+    savingsPln?: number;
+    savingsPercent?: number;
+    severity: string;
+  };
+}) {
+  const firstName = escapeHtml(extractFirstName(params.userName));
+  const company = escapeHtml(params.companyName);
+  const title = escapeHtml(params.insight.title);
+  const bodyText = escapeHtml(params.insight.body);
+  const ctaUrl = appUrl(params.insight.ctaHref);
+  const accent = params.insight.severity === 'urgent' ? '#dc2626' : '#10b981';
+  const savingsBlock =
+    params.insight.savingsPln && params.insight.savingsPln > 0
+      ? `<p style="margin:14px 0 0 0;padding:12px 16px;background:#f5f5f7;border-radius:12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;color:#1d1d1f;">
+          Szacunkowa oszczędność vs pojedyncze publikacje (49 zł): <strong>~${params.insight.savingsPln} zł/mies.</strong>${params.insight.savingsPercent ? ` (−${params.insight.savingsPercent}%)` : ''}
+        </p>`
+      : '';
+
+  const body = `
+    <p style="margin:0 0 8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:${accent};">
+      EstateOS™ Partner · ${company}
+    </p>
+    <h1 style="margin:0 0 16px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:28px;font-weight:700;line-height:1.15;letter-spacing:-0.03em;color:#1d1d1f;">
+      ${title}
+    </h1>
+    <p style="margin:0 0 8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:17px;line-height:1.58;color:#424245;">
+      Cześć ${firstName}, ${bodyText}
+    </p>
+    ${savingsBlock}
+    ${emailPrimaryButtonHtml(ctaUrl, escapeHtml(params.insight.ctaLabel))}
+  `;
+  return wrapTransactionalEmail(body);
+}
+
 export function buildAppointmentUpdateEmailHtml(params: {
   recipientName?: string | null;
   offerTitle?: string | null;
