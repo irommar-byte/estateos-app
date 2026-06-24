@@ -21,7 +21,7 @@ const STRIPE_PLAN_TO_PARTNER_ID: Record<string, PartnerPlanId> = {
   partner_start: 'start',
   partner_pro: 'pro',
   partner_enterprise: 'enterprise',
-  /** Legacy checkout code — map to Enterprise (1499 PLN tier). */
+  /** Legacy checkout code — map to Enterprise (999 PLN tier). */
   agency: 'enterprise',
 };
 

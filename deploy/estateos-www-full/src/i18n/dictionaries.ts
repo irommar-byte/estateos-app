@@ -544,6 +544,9 @@ export type Dictionary = {
     partnerFreeCta: string;
     partnerFreeNote: string;
     partnerPaidIntro: string;
+    partnerValueBadge: string;
+    partnerSavingsVsRetail: string;
+    partnerBreakEvenCredits: string;
     partnerStartName: string;
     partnerStartDesc: string;
     partnerStartF1: string;
@@ -771,7 +774,7 @@ const pl: Dictionary = {
       },
       {
         title: "Skaluj, gdy rośniesz",
-        body: "Od 449 zł/mies., gdy potrzebujesz więcej kredytów i agentów — bez zmiany platformy i bez migracji danych.",
+        body: "Od 299 zł/mies., gdy potrzebujesz więcej kredytów i agentów — bez zmiany platformy i bez migracji danych.",
       },
     ],
     ctaPrimary: "Załóż biuro za 0 zł",
@@ -1214,29 +1217,38 @@ const pl: Dictionary = {
     partnerFreeCta: "Załóż biuro za 0 zł",
     partnerFreeNote:
       "Partner Free aktywuje się automatycznie przy rejestracji biura (rola agenta + nowa firma).",
-    partnerPaidIntro: "Potrzebujesz więcej kredytów lub miejsc dla agentów? Wybierz abonament — aktywacja w panelu po zalogowaniu.",
+    partnerPaidIntro:
+      "Publikujesz więcej niż pojedyncze ogłoszenia? Im wyższy pakiet, tym tańszy kredyt — Pro to zwykle punkt, w którym biuro realnie zarabia na różnicy.",
+    partnerValueBadge: "Najlepsza wartość",
+    partnerSavingsVsRetail: "−{savings}% vs Pakiet + ({retail} zł / kredyt)",
+    partnerBreakEvenCredits: "Opłaca się od {count} publikacji miesięcznie",
     partnerStartName: "Partner Start",
-    partnerStartDesc: "Małe biuro lub jednoosobowa agencja — CRM, profil firmy i pula publikacji dla zespołu.",
-    partnerStartF1: "{credits} kredytów publikacji miesięcznie na pulę firmową — administrator rozdziela agentom.",
+    partnerStartDesc:
+      "Małe biuro lub jednoosobowa agencja — pierwszy krok po Partner Free, gdy zaczynasz regularnie wystawiać oferty.",
+    partnerStartF1:
+      "{credits} kredytów miesięcznie — ok. {unitPrice} zł za publikację zamiast {retail} zł w detalu.",
     partnerStartF2: "Do {agents} aktywnych agentów w zespole.",
-    partnerStartF3: "CRM klientów, Deal Room i mapa ofert — ten sam ekosystem co dla osób prywatnych.",
-    partnerStartF4: "Dostęp do Concierge — leady od prywatnych sprzedawców szukających biura.",
-    partnerStartF5: "Profil firmy, import pojedynczej oferty (link z portalu). Po wyczerpaniu puli — dokup paczki lub Pakiet + (49 zł).",
+    partnerStartF3: "CRM klientów, Deal Room, Concierge i mapa ofert — cały ekosystem w jednym panelu.",
+    partnerStartF4: "Profil w Katalogu agencji — wyróżnienie względem ogłoszeń prywatnych.",
+    partnerStartF5: "{breakEven}+ publikacji/mies.? Abonament wygrywa z kupowaniem pojedynczych kredytów.",
     partnerProName: "Partner Pro",
-    partnerProDesc: "Biuro z zespołem agentów — większa pula publikacji i priorytet w katalogu oraz Concierge.",
-    partnerProF1: "{credits} kredytów publikacji miesięcznie na pulę firmową.",
-    partnerProF2: "Do {agents} aktywnych agentów.",
-    partnerProF3: "Wszystko ze Start + priorytet w Katalogu agencji.",
+    partnerProDesc:
+      "Najczęściej wybierany — 3× więcej kredytów niż Start przy 2× cenie. Dla biur, które żyją z obrotu ofert.",
+    partnerProF1: "{credits} kredytów miesięcznie — tylko {unitPrice} zł za publikację (−{savings}% vs detal).",
+    partnerProF2: "Do {agents} aktywnych agentów — cały zespół w jednym CRM.",
+    partnerProF3: "Wszystko ze Start + priorytet w Katalogu agencji i Concierge.",
     partnerProF4: "Concierge priorytetowy — pierwszeństwo przy leadach od prywatnych właścicieli.",
     partnerProF5: "Statystyki zespołu, transfer ofert między agentami, portal klienta CRM.",
-    partnerProF6: "Około {unitPrice} zł za kredyt w abonamencie (detal: Pakiet + 49 zł).",
+    partnerProF6:
+      "Jedna transakcja miesięcznie zwraca się szybciej niż {breakEven}× Pakiet + — reszta to czysta marża biura.",
     partnerEnterpriseName: "Partner Enterprise",
-    partnerEnterpriseDesc: "Duże biura i sieci — wolumen publikacji, rozbudowany zespół i wdrożenie pod klucz.",
-    partnerEnterpriseF1: "{credits} kredytów publikacji miesięcznie na pulę firmową.",
-    partnerEnterpriseF2: "Agenci: {agents} — bez sztucznego limitu miejsc w zespole.",
+    partnerEnterpriseDesc:
+      "Sieci i duże biura — 100 publikacji po 10 zł, bez limitu agentów. Najniższy koszt kredytu w ekosystemie.",
+    partnerEnterpriseF1: "{credits} kredytów miesięcznie — {unitPrice} zł za publikację (−{savings}% vs detal).",
+    partnerEnterpriseF2: "Agenci: {agents} — skaluj zespół bez dopłat za każde miejsce.",
     partnerEnterpriseF3: "Priorytetowy Concierge i wyróżnienie w katalogu agencji.",
     partnerEnterpriseF4: "Docelowo: synchronizacja XML / feed ofert (w przygotowaniu).",
-    partnerEnterpriseF5: "Dedykowany onboarding i możliwość negocjacji rocznych pakietów kredytów.",
+    partnerEnterpriseF5: "Dedykowany onboarding — roczne pakiety kredytów na życzenie.",
     modalTitle: "Jaki jest Twój Cel?",
     modalSubtitle: "Wybierz odpowiednią ścieżkę, abyśmy mogli dopasować narzędzia do Twoich potrzeb.",
     modalBuy: "Chcę Kupić",
@@ -1442,7 +1454,7 @@ const en: Dictionary = {
       },
       {
         title: "Scale when you grow",
-        body: "From 449 PLN/mo when you need more credits and agents — same platform, no data migration.",
+        body: "From 299 PLN/mo when you need more credits and agents — same platform, no data migration.",
       },
     ],
     ctaPrimary: "Register your office for 0 PLN",
@@ -1886,29 +1898,37 @@ const en: Dictionary = {
     partnerFreeNote:
       "Partner Free activates automatically when you register an office (agent role + new company).",
     partnerPaidIntro:
-      "Need more credits or agent seats? Pick a subscription — activate in your dashboard after sign-in.",
+      "Publishing more than one-off listings? Higher tiers mean cheaper credits — Pro is usually where offices start making money on the spread.",
+    partnerValueBadge: "Best value",
+    partnerSavingsVsRetail: "−{savings}% vs Pakiet + ({retail} PLN / credit)",
+    partnerBreakEvenCredits: "Pays off from {count} publications per month",
     partnerStartName: "Partner Start",
-    partnerStartDesc: "Small office or solo agency — CRM, company profile, and a publication pool for the team.",
-    partnerStartF1: "{credits} publication credits per month in the company pool — the administrator assigns them to agents.",
+    partnerStartDesc:
+      "Small office or solo agency — your first step after Partner Free when you publish regularly.",
+    partnerStartF1:
+      "{credits} credits per month — about {unitPrice} PLN per listing instead of {retail} PLN retail.",
     partnerStartF2: "Up to {agents} active agents on the team.",
-    partnerStartF3: "Client CRM, Deal Room, and listing map — the same ecosystem as for private users.",
-    partnerStartF4: "Concierge access — leads from private sellers looking for an agency.",
-    partnerStartF5: "Company profile, single-listing import (portal link). After the pool runs out — buy packs or Pakiet + (49 PLN).",
+    partnerStartF3: "Client CRM, Deal Room, Concierge, and listing map — one dashboard.",
+    partnerStartF4: "Agency catalog profile — stand out from private listings.",
+    partnerStartF5: "{breakEven}+ publications/month? The subscription beats buying single credits.",
     partnerProName: "Partner Pro",
-    partnerProDesc: "Office with a team of agents — larger publication pool and priority in the catalog and Concierge.",
-    partnerProF1: "{credits} publication credits per month in the company pool.",
-    partnerProF2: "Up to {agents} active agents.",
-    partnerProF3: "Everything in Start + priority in the agency catalog.",
+    partnerProDesc:
+      "Most popular — 3× the credits of Start for 2× the price. Built for offices that live on listing volume.",
+    partnerProF1: "{credits} credits per month — only {unitPrice} PLN per listing (−{savings}% vs retail).",
+    partnerProF2: "Up to {agents} active agents — whole team in one CRM.",
+    partnerProF3: "Everything in Start + priority in the agency catalog and Concierge.",
     partnerProF4: "Priority Concierge — first access to leads from private owners.",
     partnerProF5: "Team stats, offer transfers between agents, CRM client portal.",
-    partnerProF6: "About {unitPrice} PLN per credit in the subscription (retail: Pakiet + 49 PLN).",
+    partnerProF6:
+      "One deal a month pays back faster than {breakEven}× Pakiet + — the rest is margin for your office.",
     partnerEnterpriseName: "Partner Enterprise",
-    partnerEnterpriseDesc: "Large offices and networks — publication volume, expanded team, and tailored onboarding.",
-    partnerEnterpriseF1: "{credits} publication credits per month in the company pool.",
-    partnerEnterpriseF2: "Agents: {agents} — no artificial cap on team seats.",
+    partnerEnterpriseDesc:
+      "Networks and large offices — 100 publications at 10 PLN each, unlimited agents. Lowest credit cost in the ecosystem.",
+    partnerEnterpriseF1: "{credits} credits per month — {unitPrice} PLN per listing (−{savings}% vs retail).",
+    partnerEnterpriseF2: "Agents: {agents} — scale the team without per-seat fees.",
     partnerEnterpriseF3: "Priority Concierge and featured placement in the agency catalog.",
     partnerEnterpriseF4: "Coming soon: XML / listing feed sync.",
-    partnerEnterpriseF5: "Dedicated onboarding and optional annual credit packages.",
+    partnerEnterpriseF5: "Dedicated onboarding — annual credit packages on request.",
     modalTitle: "What is your goal?",
     modalSubtitle: "Pick a path so we can tailor tools to your needs.",
     modalBuy: "I want to buy",

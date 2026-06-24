@@ -21,9 +21,12 @@ import { useLocale } from "@/contexts/LocaleContext";
 import {
   PARTNER_FREE_PLAN,
   PARTNER_PAID_PLANS,
+  PAKIET_PLUS_PRICE_PLN,
   type PartnerPlanConfig,
   formatAgentsLimit,
+  partnerBreakEvenCreditsPerMonth,
   partnerCreditUnitPrice,
+  partnerSavingsPercentVsRetail,
   partnerStripePlanCodeFromId,
 } from "@/lib/partnerPricing";
 
@@ -49,6 +52,9 @@ function partnerCopyForPlan(
     credits: plan.creditsPerMonth,
     agents,
     unitPrice: partnerCreditUnitPrice(plan),
+    retail: PAKIET_PLUS_PRICE_PLN,
+    savings: partnerSavingsPercentVsRetail(plan),
+    breakEven: partnerBreakEvenCreditsPerMonth(plan),
   };
 
   if (plan.id === "free") {
@@ -121,6 +127,9 @@ function PartnerPlanCard({
   disabled,
   isFree,
   freeCtaLabel,
+  wasPricePln,
+  savingsLabel,
+  breakEvenLabel,
   onActivate,
   onRegister,
 }: {
@@ -137,6 +146,9 @@ function PartnerPlanCard({
   disabled: boolean;
   isFree?: boolean;
   freeCtaLabel?: string;
+  wasPricePln?: number;
+  savingsLabel?: string;
+  breakEvenLabel?: string;
   onActivate: (stripePlanCode: string) => void;
   onRegister: () => void;
 }) {
@@ -177,12 +189,23 @@ function PartnerPlanCard({
       </div>
 
       <div className="mb-8">
+        {wasPricePln && wasPricePln > plan.pricePln ? (
+          <p className="text-xl font-black text-[var(--eos-subtle)] line-through decoration-red-500/50 decoration-2 mb-1">
+            {wasPricePln} {periodLabel}
+          </p>
+        ) : null}
         <span className="text-5xl font-black text-[var(--eos-text)] tracking-tight">
           {plan.pricePln}{" "}
-          <span className="text-lg text-[var(--eos-muted)] font-medium">
-            {isFree ? periodLabel : periodLabel}
-          </span>
+          <span className="text-lg text-[var(--eos-muted)] font-medium">{periodLabel}</span>
         </span>
+        {!isFree && savingsLabel ? (
+          <p className="mt-3 inline-flex rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+            {savingsLabel}
+          </p>
+        ) : null}
+        {!isFree && breakEvenLabel ? (
+          <p className="mt-2 text-xs text-[var(--eos-muted)]">{breakEvenLabel}</p>
+        ) : null}
       </div>
 
       <ul className="flex flex-col gap-4 mb-8 flex-1">
@@ -528,14 +551,22 @@ export default function Pricing() {
               {PARTNER_PAID_PLANS.map((plan) => {
                 const copy = partnerCopyForPlan(plan, p);
                 const stripePlanCode = partnerStripePlanCodeFromId(plan.id);
+                const savings = partnerSavingsPercentVsRetail(plan);
+                const breakEven = partnerBreakEvenCreditsPerMonth(plan);
                 return (
                   <PartnerPlanCard
                     key={plan.id}
                     plan={plan}
                     copy={copy}
                     highlighted={plan.highlighted}
-                    badgeLabel={p.proBadge}
+                    badgeLabel={plan.highlighted ? p.partnerValueBadge : p.proBadge}
                     periodLabel={p.partnerPeriod}
+                    wasPricePln={plan.wasPricePln}
+                    savingsLabel={fillTemplate(p.partnerSavingsVsRetail, {
+                      savings,
+                      retail: PAKIET_PLUS_PRICE_PLN,
+                    })}
+                    breakEvenLabel={fillTemplate(p.partnerBreakEvenCredits, { count: breakEven })}
                     ctaActivateLabel={p.partnerCtaActivate}
                     ctaRegisterLabel={p.partnerCta}
                     activationNote={p.partnerActivationNote}
