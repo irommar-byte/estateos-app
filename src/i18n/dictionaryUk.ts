@@ -425,7 +425,7 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       subtitlePrivate:
         "Безкоштовний акаунт або часова перевага на ринку. Публікуєте, коли потрібно — купоном, кредитами PRO або Pakiet +.",
       subtitleAgency:
-        "Абонемент платформи + пул кредитів публікацій для всього офісу. Адміністратор активує план і призначає кредити агентам.",
+        "Зареєструйте офіс за 0 zł — Partner Free активується при реєстрації (5 кредитів, Concierge, каталог). Платні пакети нижче, коли команда зросте.",
       tabPrivate: "Приватні та інвестори",
       tabAgency: "EstateOS™ Partner",
       basicName: "Basic",
@@ -464,6 +464,24 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       partnerActivationNote:
         "Потрібен акаунт адміністратора офісу. Немає офісу? Спочатку зареєструйте його безкоштовно.",
       partnerPoolBadge: "CRM · пул кредитів",
+      partnerFreeBadge: "Старт за 0 zł",
+      partnerFreeHeroTitle: "Почніть за 0 zł — публікуйте одразу",
+      partnerFreeHeroSubtitle:
+        "Реєстрація офісу = Partner Free: каталог агентств, Concierge та стартові кредити. Платний пакет — коли команда зросте.",
+      partnerFreeName: "Partner Free",
+      partnerFreeDesc:
+        "Старт для кожного офісу — без картки та абонементу. Достатньо реєстрації з назвою компанії.",
+      partnerFreeF1: "{credits} кредитів публікації в пулі компанії — вистачить на перші оголошення.",
+      partnerFreeF2: "До {agents} активних агентів (ви + один у команді).",
+      partnerFreeF3: "Профіль у каталозі агентств і знаки довіри з першого дня.",
+      partnerFreeF4: "Concierge — ліди від приватних продавців, які шукають агента.",
+      partnerFreeF5: "CRM, Deal Room і карта оголошень — повна екосистема на 90 днів.",
+      partnerFreePeriod: "zł · 90 днів · без картки",
+      partnerFreeCta: "Зареєструвати офіс за 0 zł",
+      partnerFreeNote:
+        "Partner Free активується автоматично при реєстрації офісу (роль агента + нова компанія).",
+      partnerPaidIntro:
+        "Потрібно більше кредитів або місць для агентів? Оберіть абонемент — активація в панелі після входу.",
       partnerStartName: "Partner Start",
       partnerStartDesc: "Малий офіс або агентство однієї особи — CRM, профіль компанії та пул публікацій для команди.",
       partnerStartF1: "{credits} кредитів публікації на місяць у пулі компанії — адміністратор розподіляє між агентами.",

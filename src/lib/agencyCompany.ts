@@ -555,10 +555,37 @@ export async function setMemberStatus(params: {
 
   const member = await prisma.agencyCompanyMember.findFirst({
     where: { id: params.memberId, companyId: params.companyId },
-    include: { company: { select: { name: true } } },
+    include: {
+      company: {
+        select: {
+          name: true,
+          ownerUserId: true,
+          extraListings: true,
+          plusExpiresAt: true,
+        },
+      },
+    },
   });
   if (!member) throw new Error('Nie znaleziono pracownika.');
   if (member.role === 'ADMIN') throw new Error('Nie można zmieniać statusu administratora.');
+
+  if (params.status === 'ACTIVE' && member.status !== 'ACTIVE') {
+    const activeAgents = await prisma.agencyCompanyMember.count({
+      where: { companyId: params.companyId, status: 'ACTIVE', id: { not: member.id } },
+    });
+    const plan = await resolveCompanyPartnerPlanStatus({
+      ownerUserId: member.company.ownerUserId,
+      extraListings: member.company.extraListings,
+      plusExpiresAt: member.company.plusExpiresAt,
+      activeAgents,
+    });
+    const limit = plan.agentsLimit;
+    if (limit != null && activeAgents + 1 > limit) {
+      throw new Error(
+        `Limit agentów dla planu ${plan.currentPlan?.id === 'free' ? 'Partner Free' : 'Partner'} (${limit}) został osiągnięty. Ulepsz pakiet w panelu Moje biuro.`,
+      );
+    }
+  }
 
   const updated = await prisma.agencyCompanyMember.update({
     where: { id: params.memberId },

@@ -4,7 +4,7 @@ export const INVESTOR_PRO_PRICE_PLN = 249;
 export const INVESTOR_PRO_WAS_PRICE_PLN = 299;
 export const PAKIET_PLUS_PRICE_PLN = 49;
 
-export type PartnerPlanId = 'start' | 'pro' | 'enterprise';
+export type PartnerPlanId = 'free' | 'start' | 'pro' | 'enterprise';
 
 export type PartnerPlanConfig = {
   id: PartnerPlanId;
@@ -14,7 +14,19 @@ export type PartnerPlanConfig = {
   highlighted?: boolean;
 };
 
-export const PARTNER_PLANS: readonly PartnerPlanConfig[] = [
+/** Przy rejestracji biura — bez karty, bez Stripe. */
+export const PARTNER_FREE_PLAN: PartnerPlanConfig = {
+  id: 'free',
+  pricePln: 0,
+  creditsPerMonth: 5,
+  maxAgents: 2,
+  highlighted: true,
+};
+
+export const PARTNER_FREE_SIGNUP_PRODUCT = 'pl.estateos.partner.free_signup';
+export const PARTNER_FREE_PERIOD_DAYS = 90;
+
+export const PARTNER_PAID_PLANS: readonly PartnerPlanConfig[] = [
   {
     id: 'start',
     pricePln: 449,
@@ -36,7 +48,14 @@ export const PARTNER_PLANS: readonly PartnerPlanConfig[] = [
   },
 ] as const;
 
+export const PARTNER_PLANS: readonly PartnerPlanConfig[] = [PARTNER_FREE_PLAN, ...PARTNER_PAID_PLANS];
+
+export function isPaidPartnerPlanId(id: PartnerPlanId): boolean {
+  return id !== 'free';
+}
+
 export function partnerCreditUnitPrice(plan: PartnerPlanConfig): number {
+  if (plan.pricePln <= 0 || plan.creditsPerMonth <= 0) return 0;
   return Math.round(plan.pricePln / plan.creditsPerMonth);
 }
 
@@ -46,6 +65,7 @@ export function formatAgentsLimit(maxAgents: number | null, unlimitedLabel: stri
 }
 
 export function partnerStripePlanCodeFromId(id: PartnerPlanId): string {
+  if (id === 'free') return 'partner_free';
   if (id === 'start') return 'partner_start';
   if (id === 'pro') return 'partner_pro';
   return 'partner_enterprise';
@@ -77,7 +97,9 @@ export function describePartnerPlanChange(params: {
   }
 
   if (!from || from.pricePln !== to.pricePln) {
-    lines.push(`Abonament: ${to.pricePln} zł / 30 dni (${Math.round(to.pricePln / to.creditsPerMonth)} zł za kredyt).`);
+    if (to.pricePln > 0) {
+      lines.push(`Abonament: ${to.pricePln} zł / 30 dni (${Math.round(to.pricePln / to.creditsPerMonth)} zł za kredyt).`);
+    }
   }
 
   if (from && from.id === to.id) {

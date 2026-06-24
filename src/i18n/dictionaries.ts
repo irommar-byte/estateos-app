@@ -530,6 +530,20 @@ export type Dictionary = {
     partnerCtaActivate: string;
     partnerActivationNote: string;
     partnerPoolBadge: string;
+    partnerFreeBadge: string;
+    partnerFreeHeroTitle: string;
+    partnerFreeHeroSubtitle: string;
+    partnerFreeName: string;
+    partnerFreeDesc: string;
+    partnerFreeF1: string;
+    partnerFreeF2: string;
+    partnerFreeF3: string;
+    partnerFreeF4: string;
+    partnerFreeF5: string;
+    partnerFreePeriod: string;
+    partnerFreeCta: string;
+    partnerFreeNote: string;
+    partnerPaidIntro: string;
     partnerStartName: string;
     partnerStartDesc: string;
     partnerStartF1: string;
@@ -730,18 +744,22 @@ const pl: Dictionary = {
   },
   audienceAgency: {
     eyebrow: "EstateOS™ · agencje i pośrednicy",
-    title: "Biuro, które",
-    titleAccent: "przewodzi rynkowi.",
+    title: "Biuro od",
+    titleAccent: "zera złotych.",
     subtitle:
-      "CRM, weryfikacja ofert, Radar klientów i Deal Room w jednej platformie. Publikujesz dla zespołu, śledzisz leady i zamykasz transakcje szybciej — z prestiżem marki EstateOS™ za plecami.",
+      "Załóż konto biura — od razu dostajesz Partner Free: profil w katalogu agencji, Concierge (leady od prywatnych właścicieli), CRM zespołu i 5 kredytów publikacji na 90 dni. Bez karty, bez rozmów handlowych.",
     features: [
+      {
+        title: "Partner Free przy rejestracji",
+        body: "5 publikacji, 2 miejsca w zespole, Concierge i katalog — aktywuje się automatycznie, gdy zakładasz biuro jako administrator.",
+      },
       {
         title: "Centrala i CRM zespołu",
         body: "Panel zarządzania ofertami, statystykami i użytkownikami — przejrzysty widok całego biura w jednym miejscu.",
       },
       {
-        title: "Profil partnerski i wyróżnienie",
-        body: "Oznaczenia zaufania i widoczność na mapie — Twoje ogłoszenia wyróżniają się wśród ofert prywatnych.",
+        title: "Concierge — leady od właścicieli",
+        body: "Prywatni sprzedawcy szukają pośrednika — Ty dostajesz zapytania bez płacenia za leady z zewnętrznych portali.",
       },
       {
         title: "Radar dopasowań dla klientów",
@@ -752,20 +770,16 @@ const pl: Dictionary = {
         body: "Negocjacje, dokumenty i harmonogram spotkań w zamkniętym pokoju — bez chaosu w mailach i komunikatorach.",
       },
       {
-        title: "Import i skalowanie portfela",
-        body: "Narzędzia do masowego zarządzania ogłoszeniami i integracji z procesami biura — mniej ręcznej pracy.",
-      },
-      {
-        title: "Plany Pro dla biur",
-        body: "Rozszerzone limity, priorytet i funkcje premium — dopasowane do skali Twojej agencji.",
+        title: "Skaluj, gdy rośniesz",
+        body: "Od 449 zł/mies., gdy potrzebujesz więcej kredytów i agentów — bez zmiany platformy i bez migracji danych.",
       },
     ],
-    ctaPrimary: "Zarejestruj biuro",
+    ctaPrimary: "Załóż biuro za 0 zł",
     ctaSecondary: "Przeglądaj rynek",
     ctaLogin: "Logowanie dla zespołu",
-    ctaPricing: "Zobacz plany Pro",
+    ctaPricing: "Porównaj pakiety",
     closing:
-      "Klienci oczekują doświadczenia na poziomie Apple — Ty możesz je im dać. Dołącz do EstateOS™ i przekształć biuro w nowoczesną centralę nieruchomości.",
+      "Rynek nie czeka na umowy wdrożeniowe. Wejdź dziś, opublikuj pierwszą ofertę jutro — EstateOS™ rośnie razem z Twoim biurem.",
   },
   homeAppPitch: {
     eyebrow: "Radar Inwestycji",
@@ -1146,7 +1160,7 @@ const pl: Dictionary = {
     subtitlePrivate:
       "Konto za darmo albo przewaga czasowa na rynku. Publikujesz wtedy, kiedy chcesz — kuponem, kredytem z PRO albo Pakietem +.",
     subtitleAgency:
-      "Abonament platformowy + pula kredytów dla całego biura. Administrator aktywuje plan i przydziela publikacje agentom.",
+      "Załóż biuro za 0 zł — Partner Free włącza się przy rejestracji (5 kredytów, Concierge, katalog). Poniżej pakiety płatne, gdy zespół się rozwinie.",
     tabPrivate: "Prywatni & Inwestorzy",
     tabAgency: "EstateOS™ Partner",
     basicName: "Basic",
@@ -1184,6 +1198,23 @@ const pl: Dictionary = {
     partnerCtaActivate: "Aktywuj plan",
     partnerActivationNote: "Wymaga konta administratora biura. Nie masz biura? Załóż je bezpłatnie przed aktywacją.",
     partnerPoolBadge: "CRM · pula kredytów",
+    partnerFreeBadge: "Start za 0 zł",
+    partnerFreeHeroTitle: "Zacznij za 0 zł — publikuj od razu",
+    partnerFreeHeroSubtitle:
+      "Rejestracja biura = Partner Free: katalog agencji, Concierge i kredyty na start. Płatny pakiet dopiero wtedy, gdy zespół urośnie.",
+    partnerFreeName: "Partner Free",
+    partnerFreeDesc:
+      "Start dla każdego biura — bez karty i bez abonamentu. Wystarczy rejestracja z nazwą firmy.",
+    partnerFreeF1: "{credits} kredytów publikacji na pulę firmową — wystarczają na pierwsze oferty.",
+    partnerFreeF2: "Do {agents} aktywnych agentów (Ty + jeden w zespole).",
+    partnerFreeF3: "Profil w Katalogu agencji i oznaczenia zaufania od pierwszego dnia.",
+    partnerFreeF4: "Concierge — leady od prywatnych sprzedawców szukających pośrednika.",
+    partnerFreeF5: "CRM, Deal Room i mapa ofert — pełny ekosystem przez 90 dni.",
+    partnerFreePeriod: "zł · 90 dni · bez karty",
+    partnerFreeCta: "Załóż biuro za 0 zł",
+    partnerFreeNote:
+      "Partner Free aktywuje się automatycznie przy rejestracji biura (rola agenta + nowa firma).",
+    partnerPaidIntro: "Potrzebujesz więcej kredytów lub miejsc dla agentów? Wybierz abonament — aktywacja w panelu po zalogowaniu.",
     partnerStartName: "Partner Start",
     partnerStartDesc: "Małe biuro lub jednoosobowa agencja — CRM, profil firmy i pula publikacji dla zespołu.",
     partnerStartF1: "{credits} kredytów publikacji miesięcznie na pulę firmową — administrator rozdziela agentom.",
@@ -1384,18 +1415,22 @@ const en: Dictionary = {
   },
   audienceAgency: {
     eyebrow: "EstateOS™ · agencies & brokers",
-    title: "A brokerage that",
-    titleAccent: "leads the market.",
+    title: "An office from",
+    titleAccent: "zero PLN.",
     subtitle:
-      "CRM, listing verification, client Radar, and Deal Room in one platform. Publish as a team, track leads, and close faster — with EstateOS™ prestige behind your brand.",
+      "Create your agency account — Partner Free activates instantly: agency catalog profile, Concierge (leads from private owners), team CRM, and 5 publication credits for 90 days. No card, no sales calls.",
     features: [
+      {
+        title: "Partner Free on signup",
+        body: "5 publications, 2 team seats, Concierge, and catalog — granted automatically when you register as the office administrator.",
+      },
       {
         title: "Headquarters & team CRM",
         body: "Manage listings, stats, and users — a clear view of the whole office.",
       },
       {
-        title: "Partner profile & visibility",
-        body: "Trust badges and map prominence — your listings stand out from private ads.",
+        title: "Concierge — owner leads",
+        body: "Private sellers look for an agent — you receive inquiries without paying external lead portals.",
       },
       {
         title: "Client match Radar",
@@ -1406,20 +1441,16 @@ const en: Dictionary = {
         body: "Negotiations, documents, and meetings in a private room — no email chaos.",
       },
       {
-        title: "Portfolio scale & import",
-        body: "Tools for bulk listing management and office workflows — less manual work.",
-      },
-      {
-        title: "Pro plans for offices",
-        body: "Higher limits, priority, and premium features — scaled to your agency.",
+        title: "Scale when you grow",
+        body: "From 449 PLN/mo when you need more credits and agents — same platform, no data migration.",
       },
     ],
-    ctaPrimary: "Register your agency",
+    ctaPrimary: "Register your office for 0 PLN",
     ctaSecondary: "Browse the market",
     ctaLogin: "Team sign-in",
-    ctaPricing: "View Pro plans",
+    ctaPricing: "Compare plans",
     closing:
-      "Clients expect an Apple-level experience — you can deliver it. Join EstateOS™ and turn your office into a modern real-estate command center.",
+      "The market will not wait for enterprise contracts. Join today, publish your first listing tomorrow — EstateOS™ grows with your office.",
   },
   homeAppPitch: {
     eyebrow: "Investment Radar",
@@ -1800,7 +1831,7 @@ const en: Dictionary = {
     subtitlePrivate:
       "A free account or a time advantage on the market. Publish when you need — welcome coupon, PRO credits, or Pakiet +.",
     subtitleAgency:
-      "Platform subscription + a publication credit pool for the whole office. The administrator activates the plan and assigns credits to agents.",
+      "Register your office for 0 PLN — Partner Free activates on signup (5 credits, Concierge, catalog). Paid plans below when your team scales up.",
     tabPrivate: "Private & Investors",
     tabAgency: "EstateOS™ Partner",
     basicName: "Basic",
@@ -1838,6 +1869,24 @@ const en: Dictionary = {
     partnerCtaActivate: "Activate plan",
     partnerActivationNote: "Requires a company administrator account. No office yet? Register for free before activating.",
     partnerPoolBadge: "CRM · credit pool",
+    partnerFreeBadge: "Start at 0 PLN",
+    partnerFreeHeroTitle: "Start at 0 PLN — publish right away",
+    partnerFreeHeroSubtitle:
+      "Office registration = Partner Free: agency catalog, Concierge, and starter credits. Paid plans only when your team outgrows the free tier.",
+    partnerFreeName: "Partner Free",
+    partnerFreeDesc:
+      "A real start for every office — no card and no subscription. Just register with your company name.",
+    partnerFreeF1: "{credits} publication credits in the company pool — enough for your first listings.",
+    partnerFreeF2: "Up to {agents} active agents (you + one teammate).",
+    partnerFreeF3: "Agency catalog profile and trust badges from day one.",
+    partnerFreeF4: "Concierge — leads from private sellers looking for an agent.",
+    partnerFreeF5: "CRM, Deal Room, and listing map — full ecosystem for 90 days.",
+    partnerFreePeriod: "PLN · 90 days · no card",
+    partnerFreeCta: "Register your office for 0 PLN",
+    partnerFreeNote:
+      "Partner Free activates automatically when you register an office (agent role + new company).",
+    partnerPaidIntro:
+      "Need more credits or agent seats? Pick a subscription — activate in your dashboard after sign-in.",
     partnerStartName: "Partner Start",
     partnerStartDesc: "Small office or solo agency — CRM, company profile, and a publication pool for the team.",
     partnerStartF1: "{credits} publication credits per month in the company pool — the administrator assigns them to agents.",

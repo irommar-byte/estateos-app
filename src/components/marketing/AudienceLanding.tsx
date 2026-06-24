@@ -129,7 +129,7 @@ export default function AudienceLanding({ audience }: { audience: AudienceKey })
             </Link>
             {audience === "agency" ? (
               <Link
-                href="/cennik"
+                href="/cennik?tab=partner"
                 className="rounded-full border border-amber-300/40 bg-amber-400/10 px-8 py-3.5 text-[11px] font-black uppercase tracking-[0.16em] text-amber-200 transition hover:bg-amber-400/20"
               >
                 {copy.ctaPricing}
