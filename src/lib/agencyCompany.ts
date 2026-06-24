@@ -8,6 +8,7 @@ import {
   resolveProfileMediaUrl,
 } from '@/lib/agentProfile';
 import { resolveCompanyPartnerPlanStatus } from '@/lib/partnerPlanStatus';
+import { computePartnerGrowthInsight, type PartnerGrowthInsight } from '@/lib/partnerGrowth';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { notifyMemberApproved, notifyOffersTransferred } from '@/lib/agencyCompanyNotify';
 
@@ -483,6 +484,10 @@ export async function getCompanyDashboard(companyId: number) {
       createdBy: t.createdBy,
     })),
     partnerPlan,
+    growthInsight: computePartnerGrowthInsight({
+      partnerPlan,
+      companyName: company.name,
+    }) as PartnerGrowthInsight | null,
   };
 }
 

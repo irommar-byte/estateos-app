@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
   Building2,
@@ -58,16 +59,20 @@ function fmtDate(iso: string | null) {
 }
 
 export default function AgencyPartnerPlanSection({
+  id,
   partnerPlan,
   onCheckout,
   checkoutLoading,
   checkoutError,
 }: {
+  id?: string;
   partnerPlan: AgencyPartnerPlanPayload;
   onCheckout: (stripePlanCode: string) => void;
   checkoutLoading: string | null;
   checkoutError: string | null;
 }) {
+  const searchParams = useSearchParams();
+  const upgradeParam = searchParams.get('upgrade') as PartnerPlanId | null;
   const { dict } = useLocale();
   const p = dict.pricing;
   const partnerAgentsUnlimited = p?.partnerAgentsUnlimited ?? 'bez limitu';
@@ -84,6 +89,13 @@ export default function AgencyPartnerPlanSection({
       ? partnerPlan.currentPlanId
       : 'pro',
   );
+
+  useEffect(() => {
+    if (!upgradeParam) return;
+    if (!PARTNER_PAID_PLANS.some((p) => p.id === upgradeParam)) return;
+    setSelectedId(upgradeParam);
+    setShowUpgrade(true);
+  }, [upgradeParam]);
 
   const currentPlan = PARTNER_PLANS.find((pl) => pl.id === partnerPlan.currentPlanId) ?? null;
   const selectedPlan =
@@ -117,7 +129,10 @@ export default function AgencyPartnerPlanSection({
 
   if (hasActive && !showUpgrade) {
     return (
-      <section className="overflow-hidden rounded-3xl border border-emerald-500/25 bg-gradient-to-br from-emerald-500/[0.08] to-[var(--eos-card)]">
+      <section
+        id={id}
+        className="overflow-hidden rounded-3xl border border-emerald-500/25 bg-gradient-to-br from-emerald-500/[0.08] to-[var(--eos-card)]"
+      >
         <div className="flex flex-col gap-5 p-6 md:flex-row md:items-center md:justify-between md:p-8">
           <div className="min-w-0">
             <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -186,7 +201,10 @@ export default function AgencyPartnerPlanSection({
   const plansToShow = hasActive && showUpgrade ? upgradePlans : PARTNER_PAID_PLANS;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]">
+    <section
+      id={id}
+      className="overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]"
+    >
       <div className="border-b border-[var(--eos-border)] bg-gradient-to-r from-emerald-500/[0.06] to-transparent p-6 md:p-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-2xl">

@@ -30,6 +30,8 @@ import CrmLeadInbox from "@/components/crm/CrmLeadInbox";
 import DelegatedOffersPanel from "@/components/crm/DelegatedOffersPanel";
 import AgencyTransferModal from "@/components/crm/AgencyTransferModal";
 import ProfileAgencyOfficeCard, { type AgencyMembershipUi } from "@/components/crm/ProfileAgencyOfficeCard";
+import AgencyGrowthBanner from "@/components/crm/AgencyGrowthBanner";
+import type { PartnerGrowthInsight } from "@/lib/partnerGrowth";
 import {
   buildLegacyRadarUpdateBody,
   buildRadarPreferencesPostBody,
@@ -329,6 +331,7 @@ export default function CRMDashboard() {
   const { favoriteOffers, refresh: refreshFavorites } = useFavorites();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [agencyMembership, setAgencyMembership] = useState<AgencyMembershipUi | null>(null);
+  const [agencyGrowthInsight, setAgencyGrowthInsight] = useState<PartnerGrowthInsight | null>(null);
   const { mode, initModeFromUser } = useUserMode();
 
   const [managingApp, setManagingApp] = useState<any>(null);
@@ -773,14 +776,38 @@ export default function CRMDashboard() {
           const meJson = await meRes.json().catch(() => ({}));
           if (meRes.ok && meJson?.membership) {
             setAgencyMembership(meJson.membership as AgencyMembershipUi);
+            if (
+              meJson.membership.role === 'ADMIN' &&
+              meJson.membership.status === 'ACTIVE'
+            ) {
+              try {
+                const growthRes = await fetch('/api/agency-company/growth-insight', {
+                  credentials: 'include',
+                  cache: 'no-store',
+                });
+                const growthJson = await growthRes.json().catch(() => ({}));
+                setAgencyGrowthInsight(
+                  growthRes.ok && growthJson?.growthInsight
+                    ? (growthJson.growthInsight as PartnerGrowthInsight)
+                    : null,
+                );
+              } catch {
+                setAgencyGrowthInsight(null);
+              }
+            } else {
+              setAgencyGrowthInsight(null);
+            }
           } else {
             setAgencyMembership(null);
+            setAgencyGrowthInsight(null);
           }
         } catch {
           setAgencyMembership(null);
+          setAgencyGrowthInsight(null);
         }
       } else {
         setAgencyMembership(null);
+        setAgencyGrowthInsight(null);
       }
 
       await Promise.all([fetchData(uData.id), fetchRadarData()]);
@@ -1205,6 +1232,10 @@ export default function CRMDashboard() {
               Zweryfikuj teraz
             </Link>
           </div>
+        ) : null}
+
+        {isAgencyWorkspace && agencyGrowthInsight ? (
+          <AgencyGrowthBanner insight={agencyGrowthInsight} compact />
         ) : null}
 
         {isAgencyWorkspace && agencyMembership ? (
