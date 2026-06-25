@@ -14,6 +14,8 @@ import {
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 import { encryptSession } from '@/lib/sessionUtils';
 import { verifyPortalOnboardingInvite } from '@/lib/portalOnboardingInvite';
+import { calculateRadarMatchScore, radarMatchThreshold } from '@/lib/radarMatchScore';
+import { getTotalRadarCount } from '@/lib/radarLiveCounter';
 
 const MAX_IMPORT_IMAGES = 12;
 
@@ -32,6 +34,53 @@ export type PortalListingPreview = {
   source: string;
   externalUrl: string;
 };
+
+export type PortalRadarEstimate = {
+  matchCount: number;
+  highIntentCount: number;
+  ecosystemTotal: number;
+  city: string;
+};
+
+export async function estimateRadarBuyersForListing(
+  preview: Pick<
+    PortalListingPreview,
+    'city' | 'district' | 'price' | 'area' | 'rooms' | 'transactionType' | 'propertyType'
+  >,
+): Promise<PortalRadarEstimate> {
+  const mockOffer: Record<string, unknown> = {
+    city: preview.city,
+    district: preview.district,
+    price: preview.price,
+    pricePln: preview.price,
+    area: preview.area,
+    rooms: preview.rooms,
+    transactionType: preview.transactionType,
+    propertyType: preview.propertyType,
+  };
+
+  const prefs = await prisma.radarPreference.findMany({
+    where: { pushNotifications: true },
+  });
+
+  let matchCount = 0;
+  let highIntentCount = 0;
+
+  for (const pref of prefs) {
+    const score = calculateRadarMatchScore(pref, mockOffer);
+    const threshold = radarMatchThreshold(pref);
+    if (score < threshold) continue;
+    matchCount += 1;
+    if (score >= 82) highIntentCount += 1;
+  }
+
+  return {
+    matchCount,
+    highIntentCount,
+    ecosystemTotal: getTotalRadarCount(),
+    city: preview.city,
+  };
+}
 
 function formatPriceLabel(price: number | null, transactionType: 'RENT' | 'SALE'): string {
   if (price == null || !Number.isFinite(price)) return 'Cena do uzgodnienia';
