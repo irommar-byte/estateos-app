@@ -44,10 +44,13 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const { initModeFromUser } = useUserMode();
+  const isOfferShareLanding = pathname?.startsWith("/o/");
 
   useEffect(() => {
     setIsOpen(false);
   }, [pathname]);
+
+  if (isOfferShareLanding) return null;
 
   useEffect(() => {
     let cancelled = false;
