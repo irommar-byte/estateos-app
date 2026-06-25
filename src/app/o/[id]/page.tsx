@@ -1,6 +1,7 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { notFound } from 'next/navigation';
 import OfferShareLanding from '@/components/offer/OfferShareLanding';
+import { buildAppleItunesAppMeta } from '@/lib/estateosAppLinks';
 import { loadOfferShareCard, resolvePublicAppOrigin } from '@/lib/offerShareLanding';
 
 type PageProps = {
@@ -53,8 +54,25 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         : [`${resolvePublicAppOrigin()}/o/${offerId}/opengraph-image`],
     },
     robots: { index: true, follow: true },
+    other: {
+      'apple-itunes-app': buildAppleItunesAppMeta(card.canonicalUrl),
+      'mobile-web-app-capable': 'yes',
+    },
+    appleWebApp: {
+      capable: true,
+      title: 'EstateOS™',
+      statusBarStyle: 'black-translucent',
+    },
   };
 }
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#fafaf8' },
+    { media: '(prefers-color-scheme: dark)', color: '#101014' },
+  ],
+  colorScheme: 'light dark',
+};
 
 export default async function OfferSharePage({ params, searchParams }: PageProps) {
   const { id } = await params;

@@ -14,6 +14,9 @@ import {
 import type { OfferShareCard } from '@/lib/offerShareLanding';
 import OfferSharePublisherCard from '@/components/offer/OfferSharePublisherCard';
 import OfferShareQr from '@/components/offer/OfferShareQr';
+import OfferShareAppBanner from '@/components/offer/OfferShareAppBanner';
+import OfferShareOpenInAppButton from '@/components/offer/OfferShareOpenInAppButton';
+import AppStoreBadgeLink from '@/components/ui/AppStoreBadgeLink';
 import AppointmentModal from '@/components/AppointmentModal';
 import OfferShareMessageModal from '@/components/offer/OfferShareMessageModal';
 import { loadOfferShareIntent, resumeOfferShareIntent } from '@/lib/offerShareIntent';
@@ -62,6 +65,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
 
   return (
     <main className="min-h-[100dvh] bg-[#ececea] text-[#141416] dark:bg-[#060608] dark:text-[#f5f5f7]">
+      <OfferShareAppBanner offerId={card.id} canonicalUrl={card.canonicalUrl} offerTitle={card.title} />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(900px_520px_at_50%_-10%,rgba(184,146,46,0.12),transparent_60%)]" />
 
       <div className="relative mx-auto max-w-xl px-3 pb-12 pt-[calc(env(safe-area-inset-top)+1rem)]">
@@ -180,6 +184,8 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
                 caption="Zeskanuj telefonem — otworzy wizytówkę lub aplikację EstateOS™ z tą nieruchomością."
               />
 
+              <OfferShareOpenInAppButton offerId={card.id} canonicalUrl={card.canonicalUrl} />
+
               <p className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs leading-relaxed text-emerald-800 dark:text-emerald-300">
                 Galeria, rzut i mapa — na pełnej stronie oferty. Kontakt z wystawcą i negocjacje wymagają
                 bezpłatnego konta na zweryfikowanej platformie EstateOS™.
@@ -230,6 +236,12 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
                       estateos.pl
                       <ExternalLink size={11} />
                     </Link>
+                  </div>
+                  <div className="mt-5 rounded-2xl border border-black/8 bg-white/60 p-4 dark:border-white/10 dark:bg-white/[0.03]">
+                    <p className="mb-3 text-[9px] font-black uppercase tracking-[0.2em] text-[#5c5c66]">
+                      Pobierz aplikację
+                    </p>
+                    <AppStoreBadgeLink compact androidComingSoon showAndroidBetaHint />
                   </div>
                 </div>
               </div>
