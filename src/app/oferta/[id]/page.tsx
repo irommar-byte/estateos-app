@@ -21,6 +21,7 @@ import { isOutsidePolandBounds } from "@/lib/location/locationNameMatch";
 import AppointmentModal from "@/components/AppointmentModal";
 import BiddingModal from "@/components/BiddingModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
+import OfferOwnerPublishPanel from "@/components/offer/OfferOwnerPublishPanel";
 import OfferDiscountPriceHero from "@/components/offer/OfferDiscountPriceHero";
 import OfferPriceHistoryProSection from "@/components/offer/OfferPriceHistoryProSection";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
@@ -1238,7 +1239,18 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </>
                 )}
                 </div>
-                ) : null}
+                ) : (
+                <OfferOwnerPublishPanel
+                  offerId={Number(offer.id ?? offer._id)}
+                  presentingAgentId={
+                    offer.isPresentedByAgent
+                      ? Number(offer.presentingAgent?.userId ?? offer.user?.id)
+                      : currentUser?.id && isAgentOrAgencySeller(currentUser)
+                        ? Number(currentUser.id)
+                        : undefined
+                  }
+                />
+                )}
               </div>
 
             </div>

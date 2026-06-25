@@ -38,6 +38,14 @@ export type OfferModalsDictionary = {
     copyPrompt: string;
     openNewTab: string;
   };
+  ownerPublish: {
+    kicker: string;
+    lead: string;
+    facebook: string;
+    previewCard: string;
+    portalsHint: string;
+    editOffer: string;
+  };
   writeMessage: string;
   writeMessageError: string;
 };
@@ -79,6 +87,15 @@ const pl: OfferModalsDictionary = {
     copied: "Skopiowano",
     copyPrompt: "Skopiuj link:",
     openNewTab: "Otwórz wizytówkę w nowej karcie",
+  },
+  ownerPublish: {
+    kicker: "Promuj ofertę",
+    lead: "Udostępnij wizytówkę z podglądem zdjęcia i ceny — na Facebooku, w grupach nieruchomości lub w wiadomości do klienta.",
+    facebook: "Udostępnij na Facebooku",
+    previewCard: "Podgląd wizytówki",
+    portalsHint:
+      "Link działa wszędzie: Messenger, WhatsApp, e-mail, OLX (w opisie). Na Facebooku użyj „Udostępnij” lub wklej link — podgląd pokaże zdjęcie oferty.",
+    editOffer: "Edytuj ofertę",
   },
   writeMessage: "Napisz",
   writeMessageError: "Nie udało się otworzyć czatu.",
@@ -122,6 +139,15 @@ const en: OfferModalsDictionary = {
     copyPrompt: "Copy link:",
     openNewTab: "Open offer sheet in new tab",
   },
+  ownerPublish: {
+    kicker: "Promote listing",
+    lead: "Share a preview card with photo and price — on Facebook, property groups, or in a client message.",
+    facebook: "Share on Facebook",
+    previewCard: "Preview card",
+    portalsHint:
+      "The link works everywhere: Messenger, WhatsApp, email, OLX (in description). On Facebook use Share or paste the link for a rich preview.",
+    editOffer: "Edit listing",
+  },
   writeMessage: "Message",
   writeMessageError: "Could not open chat.",
 };
@@ -163,6 +189,15 @@ const uk: OfferModalsDictionary = {
     copied: "Скопійовано",
     copyPrompt: "Скопіюйте посилання:",
     openNewTab: "Відкрити візитівку в новій вкладці",
+  },
+  ownerPublish: {
+    kicker: "Просувати оголошення",
+    lead: "Поділіться візитівкою з фото та ціною — у Facebook, групах нерухомості або в повідомленні клієнту.",
+    facebook: "Поділитися у Facebook",
+    previewCard: "Перегляд візитівки",
+    portalsHint:
+      "Посилання працює скрізь: Messenger, WhatsApp, e-mail, OLX. У Facebook натисніть «Поділитися» або вставте посилання — з’явиться прев’ю оголошення.",
+    editOffer: "Редагувати оголошення",
   },
   writeMessage: "Написати",
   writeMessageError: "Не вдалося відкрити чат.",
