@@ -69,7 +69,7 @@ const pl: PortalOnboardingDictionary = {
   heroTitle: 'Przenieś ogłoszenie',
   heroTitleAccent: 'na mapę EstateOS™',
   heroSubtitle:
-    'Wklej link z OtoDom lub innego portalu, załóż konto — a my przepiszemy treść, skopiujemy zdjęcia i opublikujemy ofertę na Twoim profilu. Bez ręcznego przepisywania.',
+    'Wklej link z OtoDom lub innego portalu, załóż konto — skopiujemy treść i zdjęcia 1:1 z portalu i przekażemy ogłoszenie do weryfikacji na Twoim profilu.',
   statImport: 'Import z portali',
   statImportValue: 'OtoDom · OLX',
   statTime: 'Czas',
@@ -97,20 +97,20 @@ const pl: PortalOnboardingDictionary = {
   privacyLink: 'Politykę prywatności',
   submitCta: 'Zarejestruj się i opublikuj moje ogłoszenie',
   footerNote:
-    'Po publikacji oferta trafia na mapę i Radar EstateOS™ — kupujący z ustawionymi kryteriami dostaną powiadomienie o Twojej nieruchomości.',
-  successTitle: 'Gotowe — Twoja nieruchomość jest na profilu',
+    'Po akceptacji przez zespół EstateOS™ oferta pojawi się na mapie i w Radarze — kupujący z dopasowanymi kryteriami dostaną powiadomienie.',
+  successTitle: 'Ogłoszenie przekazane do weryfikacji',
   successBody: (offerId, images) =>
     images > 0
-      ? `Oferta #${offerId} została opublikowana wraz z ${images} zdjęciami. Za chwilę przeniesiemy Cię na profil EstateOS™.`
-      : `Oferta #${offerId} została opublikowana. Za chwilę przeniesiemy Cię na profil EstateOS™.`,
-  successCta: 'Zobacz profil',
-  publishing: 'Publikujemy…',
-  publishingTitle: 'Twój dom na mapie EstateOS™',
+      ? `Oferta #${offerId} jest na Twoim profilu (status: oczekujące) wraz z ${images} zdjęciami i oryginalnym opisem. Zespół sprawdzi ją przed publikacją — za chwilę pokażemy Ci panel.`
+      : `Oferta #${offerId} jest na Twoim profilu i czeka na weryfikację. Za chwilę pokażemy Ci, co dalej.`,
+  successCta: 'Przejdź do profilu',
+  publishing: 'Importujemy…',
+  publishingTitle: 'Przenosimy ogłoszenie do EstateOS™',
   progressAccount: 'Tworzenie konta',
   progressFetch: 'Pobieranie ogłoszenia',
-  progressRewrite: 'Przepisywanie opisu',
+  progressRewrite: 'Kopiowanie opisu z portalu',
   progressPhotos: 'Kopiowanie zdjęć',
-  progressPublish: 'Publikacja na profilu',
+  progressPublish: 'Przekazanie do weryfikacji',
   radarEyebrow: 'Podgląd Radaru',
   radarTitle: (count) =>
     count === 1 ? '1 inwestor czeka na taką ofertę' : `${count} inwestorów czeka na taką ofertę`,
@@ -136,7 +136,7 @@ const en: PortalOnboardingDictionary = {
   heroTitle: 'Bring your listing',
   heroTitleAccent: 'to the EstateOS™ map',
   heroSubtitle:
-    'Paste a link from OtoDom or another portal, create an account — we rewrite the copy, copy photos and publish on your profile. No manual retyping.',
+    'Paste a link from OtoDom or another portal, create an account — we copy content and photos 1:1 and submit your listing for review on your profile.',
   statImport: 'Portal import',
   statImportValue: 'OtoDom · OLX',
   statTime: 'Time',
@@ -164,20 +164,17 @@ const en: PortalOnboardingDictionary = {
   privacyLink: 'Privacy Policy',
   submitCta: 'Register and publish my listing',
   footerNote:
-    'After publication your listing appears on the map and Radar — buyers with matching criteria get notified.',
-  successTitle: 'Done — your property is on your profile',
+    'After team approval your listing appears on the map and Radar — matching buyers get notified.',
+  successTitle: 'Listing submitted for review',
   successBody: (offerId, images) =>
     images > 0
-      ? `Listing #${offerId} is live with ${images} photos. Redirecting to your EstateOS™ profile.`
-      : `Listing #${offerId} is live. Redirecting to your EstateOS™ profile.`,
-  successCta: 'View profile',
-  publishing: 'Publishing…',
-  publishingTitle: 'Your home on the EstateOS™ map',
-  progressAccount: 'Creating account',
-  progressFetch: 'Fetching listing',
-  progressRewrite: 'Rewriting description',
-  progressPhotos: 'Copying photos',
-  progressPublish: 'Publishing on profile',
+      ? `Listing #${offerId} is on your profile (pending) with ${images} photos and the original description. We will guide you through the panel next.`
+      : `Listing #${offerId} is on your profile awaiting review.`,
+  successCta: 'Go to profile',
+  publishing: 'Importing…',
+  publishingTitle: 'Moving your listing to EstateOS™',
+  progressRewrite: 'Copying description from portal',
+  progressPublish: 'Submitting for review',
   radarEyebrow: 'Radar preview',
   radarTitle: (count) =>
     count === 1 ? '1 investor is waiting for a listing like this' : `${count} investors are waiting for a listing like this`,

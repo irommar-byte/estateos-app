@@ -5,7 +5,7 @@ import { buildWelcomeEmailHtml, buildWelcomeEmailSubject, sendTransactionalEmail
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { createOfferFromOtodomDraft, findExistingImportedOffer } from '@/lib/otodomImportCreate';
 import { peekLastImageInfo } from '@/lib/otodomImportFloorPlan';
-import { activateOfferPublication } from '@/lib/offerPublication';
+import { notifyAdminsOfferPending } from '@/lib/adminAttentionPush';
 import {
   buildPhoneLookupVariants,
   extractPhoneFromBody,
@@ -128,6 +128,7 @@ export type PortalOnboardingResult = {
   sessionToken: string;
   user: ReturnType<typeof shapeMobileUser>;
   imagesUploaded: number;
+  awaitingModeration: boolean;
 };
 
 export async function registerAndImportPortalListing(params: {
@@ -206,7 +207,7 @@ export async function registerAndImportPortalListing(params: {
       : { enabled: false, imageIndex: null as number | null };
 
   const created = await createOfferFromOtodomDraft(draft, user.id, undefined, {
-    agentVoice: false,
+    preserveOriginalCopy: true,
     maxImportImages: MAX_IMPORT_IMAGES,
     floorPlanImageIndex: floorPlanChoice.enabled ? floorPlanChoice.imageIndex : null,
   });
@@ -216,18 +217,7 @@ export async function registerAndImportPortalListing(params: {
     throw new Error(created.message || 'Nie udało się utworzyć oferty z importu.');
   }
 
-  try {
-    await activateOfferPublication({
-      userId: user.id,
-      offerId: created.offerId,
-      kind: 'PLUS_CREDIT',
-      skipEntitlementConsume: true,
-    });
-  } catch (error) {
-    await prisma.offer.delete({ where: { id: created.offerId } }).catch(() => null);
-    await prisma.user.delete({ where: { id: user.id } }).catch(() => null);
-    throw error;
-  }
+  notifyAdminsOfferPending(created.offerId, draft.title);
 
   void sendTransactionalEmail({
     to: user.email,
@@ -246,5 +236,6 @@ export async function registerAndImportPortalListing(params: {
     sessionToken,
     user: shapeMobileUser(user),
     imagesUploaded: created.images.uploaded,
+    awaitingModeration: true,
   };
 }

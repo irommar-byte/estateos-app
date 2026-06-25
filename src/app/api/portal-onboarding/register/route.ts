@@ -28,7 +28,8 @@ export async function POST(req: Request) {
       editUrl: result.editUrl,
       imagesUploaded: result.imagesUploaded,
       user: result.user,
-      message: 'Konto utworzone, ogłoszenie opublikowane na Twoim profilu.',
+      awaitingModeration: result.awaitingModeration,
+      message: 'Konto utworzone — ogłoszenie oczekuje na weryfikację zespołu EstateOS™.',
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Rejestracja nie powiodła się.';

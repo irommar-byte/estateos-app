@@ -225,8 +225,8 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
       });
 
       window.setTimeout(() => {
-        window.location.href = `${data.profileUrl}?welcome=import`;
-      }, 3200);
+        window.location.href = `${data.profileUrl}?welcome=import&offer=${data.offerId}`;
+      }, 3800);
     } catch (error) {
       await progressPromise.catch(() => null);
       setSubmitError(error instanceof Error ? error.message : 'Operation failed.');

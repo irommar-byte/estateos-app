@@ -381,6 +381,8 @@ export async function createOfferFromOtodomDraft(
     onCopyProgress?: (label: string, detail?: string, meta?: { rewrittenByAi?: boolean }) => void;
     /** false = głos właściciela (import zaproszeń), true = głos agenta (domyślnie). */
     agentVoice?: boolean;
+    /** Zachowaj tytuł i opis z portalu bez AI (zaproszenia właścicieli). */
+    preserveOriginalCopy?: boolean;
   },
 ) {
   const existing = await findExistingImportedOffer(draft);
@@ -394,20 +396,33 @@ export async function createOfferFromOtodomDraft(
   }
 
   options?.onCopyProgress?.(
-    'Przeróbka opisu (sztuczna inteligencja)…',
-    isOtodomImportAiConfigured() ? 'GPT' : 'reguły',
+    options?.preserveOriginalCopy ? 'Kopiowanie opisu z portalu…' : 'Przeróbka opisu (sztuczna inteligencja)…',
+    options?.preserveOriginalCopy ? 'bez zmian' : isOtodomImportAiConfigured() ? 'GPT' : 'reguły',
   );
-  const presentation = await buildOtodomPresentationCopy(draft, {
-    agentVoice: options?.agentVoice !== false,
-  });
+  const presentation = options?.preserveOriginalCopy
+    ? {
+        title: draft.title.trim(),
+        descriptionHtml: (draft.descriptionHtml || draft.descriptionText || '').trim(),
+        rewrittenByAi: false,
+        aiSkipReason: 'preserve_original_copy',
+      }
+    : await buildOtodomPresentationCopy(draft, {
+        agentVoice: options?.agentVoice !== false,
+      });
   const detail = presentation.rewrittenByAi
     ? 'AI ✓'
-    : 'automatycznie';
-  if (!presentation.rewrittenByAi && presentation.aiSkipReason) {
+    : options?.preserveOriginalCopy
+      ? 'oryginał'
+      : 'automatycznie';
+  if (!presentation.rewrittenByAi && presentation.aiSkipReason && !options?.preserveOriginalCopy) {
     console.warn('[otodom-import] copy fallback:', presentation.aiSkipReason);
   }
   options?.onCopyProgress?.(
-    presentation.rewrittenByAi ? 'Opis przepisany przez AI' : 'Opis uzupełniony automatycznie',
+    presentation.rewrittenByAi
+      ? 'Opis przepisany przez AI'
+      : options?.preserveOriginalCopy
+        ? 'Opis skopiowany z portalu'
+        : 'Opis uzupełniony automatycznie',
     detail,
     { rewrittenByAi: presentation.rewrittenByAi },
   );

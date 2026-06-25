@@ -1,11 +1,13 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { Suspense, use, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import AgentPublicProfile from "@/components/profile/AgentPublicProfile";
+import PortalImportProfileGuide from "@/components/onboarding/PortalImportProfileGuide";
 
 export default function UserProfile({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
+  const profileId = Number(resolvedParams.id);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -35,9 +37,14 @@ export default function UserProfile({ params }: { params: Promise<{ id: string }
     );
   }
 
-  if (data.isAgent) {
-    return <AgentPublicProfile data={data} />;
-  }
-
-  return <AgentPublicProfile data={data} />;
+  return (
+    <>
+      {Number.isFinite(profileId) ? (
+        <Suspense fallback={null}>
+          <PortalImportProfileGuide profileUserId={profileId} />
+        </Suspense>
+      ) : null}
+      <AgentPublicProfile data={data} />
+    </>
+  );
 }
