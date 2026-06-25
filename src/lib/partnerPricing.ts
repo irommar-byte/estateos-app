@@ -26,7 +26,10 @@ export const PARTNER_FREE_PLAN: PartnerPlanConfig = {
 };
 
 export const PARTNER_FREE_SIGNUP_PRODUCT = 'pl.estateos.partner.free_signup';
+/** Okres startowy Partner Free przy rejestracji biura — zgodny z /cennik. */
 export const PARTNER_FREE_PERIOD_DAYS = 90;
+/** Okres rozliczeniowy płatnych pakietów Partner i trialu Pro. */
+export const PARTNER_PAID_PERIOD_DAYS = 30;
 
 /**
  * Płatne pakiety — drabinka zaprojektowana pod upsell:

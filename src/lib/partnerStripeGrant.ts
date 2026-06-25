@@ -6,6 +6,7 @@ import {
   PARTNER_FREE_PLAN,
   PARTNER_FREE_PERIOD_DAYS,
   PARTNER_FREE_SIGNUP_PRODUCT,
+  PARTNER_PAID_PERIOD_DAYS,
   PARTNER_PAID_PLANS,
   getPartnerPlanById,
   type PartnerPlanConfig,
@@ -13,7 +14,6 @@ import {
 } from '@/lib/partnerPricing';
 import { stripeTransactionId } from '@/lib/stripePublication';
 
-const PARTNER_PERIOD_DAYS = 30;
 const PARTNER_PRO_TRIAL_PRODUCT = 'pl.estateos.partner.pro_trial';
 const PARTNER_PRO_PAID_PRODUCT = 'pl.estateos.partner.pro_monthly';
 
@@ -115,7 +115,7 @@ export async function grantPartnerPlanFromStripeCheckout(params: {
   }
 
   const periodEnd = new Date();
-  periodEnd.setDate(periodEnd.getDate() + PARTNER_PERIOD_DAYS);
+  periodEnd.setDate(periodEnd.getDate() + PARTNER_PAID_PERIOD_DAYS);
 
   const company = await prisma.agencyCompany.findUnique({
     where: { id: membership.companyId },
@@ -182,7 +182,7 @@ async function grantPartnerPlanPeriod(params: {
   }
 
   const periodEnd = new Date();
-  periodEnd.setDate(periodEnd.getDate() + PARTNER_PERIOD_DAYS);
+  periodEnd.setDate(periodEnd.getDate() + PARTNER_PAID_PERIOD_DAYS);
 
   const company = await prisma.agencyCompany.findUnique({
     where: { id: membership.companyId },
@@ -398,7 +398,7 @@ export async function grantPartnerProTrial(userId: number): Promise<{
   }
 
   const periodEnd = new Date();
-  periodEnd.setDate(periodEnd.getDate() + PARTNER_PERIOD_DAYS);
+  periodEnd.setDate(periodEnd.getDate() + PARTNER_PAID_PERIOD_DAYS);
 
   const company = await prisma.agencyCompany.findUnique({
     where: { id: membership.companyId },

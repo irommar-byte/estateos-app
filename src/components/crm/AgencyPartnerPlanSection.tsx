@@ -17,6 +17,8 @@ import {
 import { useLocale } from '@/contexts/LocaleContext';
 import { formatAgencyDate, getAgencyFirm } from '@/i18n/agencyFirmDictionary';
 import {
+  PARTNER_FREE_PERIOD_DAYS,
+  PARTNER_PAID_PERIOD_DAYS,
   PARTNER_PAID_PLANS,
   PARTNER_PLANS,
   getPartnerPlanById,
@@ -28,13 +30,15 @@ import {
 
 export type AgencyPartnerPlanPayload = {
   currentPlanId: PartnerPlanId | null;
+  displayPlanId?: PartnerPlanId | null;
   isSubscriptionActive: boolean;
   plusExpiresAt: string | null;
   poolCredits: number;
   activeAgents: number;
   agentsLimit: number | null;
   daysRemaining: number | null;
-  lastPurchaseAt: string | null;
+  periodDays?: number | null;
+  hasFreeSignup?: boolean;
   proTrialEligible?: boolean;
   isTrialing?: boolean;
 };
@@ -72,12 +76,14 @@ export default function AgencyPartnerPlanSection({
 
   const proPlanPrice = getPartnerPlanById('pro')?.pricePln ?? 599;
   const hasActive = partnerPlan.isSubscriptionActive;
-  const isFreePlan = partnerPlan.currentPlanId === 'free';
+  const displayPlanId = partnerPlan.displayPlanId ?? partnerPlan.currentPlanId;
+  const isFreeDisplay = displayPlanId === 'free';
+  const periodDays =
+    partnerPlan.periodDays ??
+    (isFreeDisplay ? PARTNER_FREE_PERIOD_DAYS : PARTNER_PAID_PERIOD_DAYS);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [selectedId, setSelectedId] = useState<PartnerPlanId>(
-    partnerPlan.currentPlanId && partnerPlan.currentPlanId !== 'free'
-      ? partnerPlan.currentPlanId
-      : 'pro',
+    displayPlanId && displayPlanId !== 'free' ? displayPlanId : 'pro',
   );
 
   useEffect(() => {
@@ -87,7 +93,7 @@ export default function AgencyPartnerPlanSection({
     setShowUpgrade(true);
   }, [upgradeParam]);
 
-  const currentPlan = PARTNER_PLANS.find((pl) => pl.id === partnerPlan.currentPlanId) ?? null;
+  const currentPlan = PARTNER_PLANS.find((pl) => pl.id === displayPlanId) ?? null;
   const selectedPlan =
     PARTNER_PAID_PLANS.find((pl) => pl.id === selectedId) ?? PARTNER_PAID_PLANS[1];
 
@@ -110,10 +116,13 @@ export default function AgencyPartnerPlanSection({
   const planLabel = (planId: PartnerPlanId | null) =>
     planId && pp.planLabels[planId] ? pp.planLabels[planId] : pp.activePartnerPool;
 
-  const statusLabel = planLabel(partnerPlan.currentPlanId);
+  const statusLabel = planLabel(displayPlanId);
 
-  const showProTrial =
-    Boolean(partnerPlan.proTrialEligible) && selectedId === 'pro' && !hasActive;
+  const showProTrialCheckoutOffer =
+    Boolean(partnerPlan.proTrialEligible) &&
+    selectedId === 'pro' &&
+    !partnerPlan.isTrialing &&
+    !(isFreeDisplay && (partnerPlan.daysRemaining ?? 0) > PARTNER_PAID_PERIOD_DAYS);
 
   const daysSuffix =
     partnerPlan.daysRemaining != null
@@ -136,9 +145,14 @@ export default function AgencyPartnerPlanSection({
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-black">
                 <Check size={12} /> {pp.activePackage}
               </span>
-              {partnerPlan.isTrialing ? (
+              {isFreeDisplay ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-[#b8922e]/35 bg-[#b8922e]/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#8a6e2f]">
+                  {pp.freePeriodBadge}
+                </span>
+              ) : null}
+              {partnerPlan.isTrialing && !isFreeDisplay ? (
                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-600">
-                  {pp.trialBadge}
+                  {pp.proTrialBadge}
                 </span>
               ) : null}
             </div>
@@ -147,8 +161,17 @@ export default function AgencyPartnerPlanSection({
               {partnerPlan.plusExpiresAt
                 ? pp.validUntil(formatAgencyDate(partnerPlan.plusExpiresAt, locale), daysSuffix)
                 : pp.activePool}
-              {isFreePlan ? pp.freePlanNote : null}
-              {partnerPlan.isTrialing ? pp.trialRenewalNote(proPlanPrice) : null}
+              {isFreeDisplay ? pp.freePeriodNote(periodDays) : null}
+              {isFreeDisplay ? pp.freePlanNote : null}
+              {partnerPlan.isTrialing && !isFreeDisplay
+                ? pp.proTrialNote(proPlanPrice, PARTNER_PAID_PERIOD_DAYS)
+                : null}
+              {!isFreeDisplay && !partnerPlan.isTrialing && displayPlanId
+                ? pp.paidRenewalNote(
+                    getPartnerPlanById(displayPlanId)?.pricePln ?? proPlanPrice,
+                    PARTNER_PAID_PERIOD_DAYS,
+                  )
+                : null}
             </p>
           </div>
 
@@ -225,7 +248,7 @@ export default function AgencyPartnerPlanSection({
             <p className="eos-muted-copy mt-2 text-sm leading-relaxed">
               {hasActive && showUpgrade
                 ? pp.upgradeDiffNote
-                : hasActive && isFreePlan
+                : hasActive && isFreeDisplay
                   ? pp.freeUpgradeNote
                   : pp.ecosystemNote}
             </p>
@@ -309,9 +332,9 @@ export default function AgencyPartnerPlanSection({
               </div>
 
               <div className="flex flex-col gap-3 lg:min-w-[16rem]">
-                {showProTrial ? (
+                {showProTrialCheckoutOffer ? (
                   <p className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-center text-[11px] font-semibold leading-relaxed text-emerald-600">
-                    {pp.trialCheckoutNote(proPlanPrice)}
+                    {pp.trialCheckoutNote(proPlanPrice, PARTNER_PAID_PERIOD_DAYS)}
                   </p>
                 ) : null}
                 <button
@@ -325,7 +348,7 @@ export default function AgencyPartnerPlanSection({
                   ) : (
                     <Building2 size={18} />
                   )}
-                  {showProTrial ? pp.trialCta : hasActive ? pp.upgradeCta : pp.activateCta}
+                  {showProTrialCheckoutOffer ? pp.trialCta : hasActive ? pp.upgradeCta : pp.activateCta}
                 </button>
                 <p className="text-center text-[10px] leading-relaxed text-[var(--eos-muted)]">
                   {partnerActivationNote}

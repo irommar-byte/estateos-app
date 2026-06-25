@@ -64,11 +64,15 @@ export type AgencyFirmDictionary = {
   partnerPlan: {
     activePackage: string;
     trialBadge: string;
+    proTrialBadge: string;
+    freePeriodBadge: string;
     activePool: string;
     upgradePackage: string;
     validUntil: (date: string, days: string) => string;
-    trialRenewalNote: (price: number) => string;
+    freePeriodNote: (periodDays: number) => string;
     freePlanNote: string;
+    proTrialNote: (price: number, periodDays: number) => string;
+    paidRenewalNote: (price: number, periodDays: number) => string;
     creditsPoolLabel: string;
     teamLabel: string;
     agencyPackage: string;
@@ -86,7 +90,7 @@ export type AgencyFirmDictionary = {
     creditsOnPool: (n: number) => string;
     agentsInTeam: (label: string) => string;
     whatChanges: (planName: string) => string;
-    trialCheckoutNote: (price: number) => string;
+    trialCheckoutNote: (price: number, periodDays: number) => string;
     trialCta: string;
     upgradeCta: string;
     activateCta: string;
@@ -170,13 +174,19 @@ const pl: AgencyFirmDictionary = {
   partnerPlan: {
     activePackage: 'Aktywny pakiet',
     trialBadge: 'Okres próbny',
+    proTrialBadge: 'Trial Partner Pro · 30 dni',
+    freePeriodBadge: 'Partner Free · 90 dni · 0 zł',
     activePool: 'Aktywna pula kredytów firmy.',
     upgradePackage: 'Ulepsz pakiet',
     validUntil: (date, days) => `Ważne do ${date}${days}`,
-    trialRenewalNote: (price) =>
-      ` Po zakończeniu trialu kontynuujesz na planie Partner Pro (${price} zł / 30 dni) — zmiana lub rezygnacja w ustawieniach subskrypcji w każdej chwili.`,
+    freePeriodNote: (periodDays) =>
+      ` Okres startowy ${periodDays} dni od rejestracji biura — zgodnie z Partner Free na cenniku. Bez karty, bez abonamentu.`,
     freePlanNote:
-      ' Pakiet Partner Free — ulepsz plan, gdy zespół lub liczba publikacji urośnie.',
+      ' Po wygaśnięciu możesz wybrać płatny pakiet dopasowany do zespołu — bez automatycznych opłat.',
+    proTrialNote: (price, periodDays) =>
+      ` Trial Partner Pro (${periodDays} dni) — po zakończeniu możesz kontynuować na planie Pro (${price} zł / ${periodDays} dni) lub wrócić do wyboru pakietu.`,
+    paidRenewalNote: (price, periodDays) =>
+      ` Abonament odnawia się co ${periodDays} dni (${price} zł) — zarządzasz subskrypcją w ustawieniach konta.`,
     creditsPoolLabel: 'Pula kredytów',
     teamLabel: 'Zespół',
     agencyPackage: 'Pakiet agencji',
@@ -196,8 +206,8 @@ const pl: AgencyFirmDictionary = {
     creditsOnPool: (n) => `${n} kredytów na pulę`,
     agentsInTeam: (label) => `${label} w zespole`,
     whatChanges: (planName) => `Co się zmieni — ${planName}`,
-    trialCheckoutNote: (price) =>
-      `30 dni na start bez opłaty za pakiet Pro. Potem ${price} zł / 30 dni — warunki widoczne przed potwierdzeniem płatności.`,
+    trialCheckoutNote: (price, periodDays) =>
+      `Płatny pakiet Pro: ${price} zł / ${periodDays} dni po ewentualnym trialu. Partner Free (90 dni) aktywuje się przy rejestracji biura.`,
     trialCta: 'Rozpocznij okres próbny',
     upgradeCta: 'Ulepsz pakiet',
     activateCta: 'Aktywuj pakiet',
@@ -285,12 +295,19 @@ const en: AgencyFirmDictionary = {
   partnerPlan: {
     activePackage: 'Active plan',
     trialBadge: 'Trial period',
+    proTrialBadge: 'Partner Pro trial · 30 days',
+    freePeriodBadge: 'Partner Free · 90 days · 0 PLN',
     activePool: 'Company credit pool is active.',
     upgradePackage: 'Upgrade plan',
     validUntil: (date, days) => `Valid until ${date}${days}`,
-    trialRenewalNote: (price) =>
-      ` After the trial you continue on Partner Pro (${price} PLN / 30 days) — change or cancel anytime in subscription settings.`,
-    freePlanNote: ' Partner Free — upgrade when your team or listing volume grows.',
+    freePeriodNote: (periodDays) =>
+      ` Starter period: ${periodDays} days from office registration — as on the pricing page. No card, no subscription.`,
+    freePlanNote:
+      ' After it ends you can choose a paid plan that fits your team — no automatic charges.',
+    proTrialNote: (price, periodDays) =>
+      ` Partner Pro trial (${periodDays} days) — after it ends you may continue on Pro (${price} PLN / ${periodDays} days) or pick another plan.`,
+    paidRenewalNote: (price, periodDays) =>
+      ` Subscription renews every ${periodDays} days (${price} PLN) — manage it in account settings.`,
     creditsPoolLabel: 'Credit pool',
     teamLabel: 'Team',
     agencyPackage: 'Agency plan',
@@ -308,8 +325,8 @@ const en: AgencyFirmDictionary = {
     creditsOnPool: (n) => `${n} credits for the pool`,
     agentsInTeam: (label) => `${label} on the team`,
     whatChanges: (planName) => `What changes — ${planName}`,
-    trialCheckoutNote: (price) =>
-      `30 days to start with no Pro plan charge. Then ${price} PLN / 30 days — terms shown before payment confirmation.`,
+    trialCheckoutNote: (price, periodDays) =>
+      `Paid Pro plan: ${price} PLN / ${periodDays} days after any trial. Partner Free (90 days) activates on office registration.`,
     trialCta: 'Start trial',
     upgradeCta: 'Upgrade plan',
     activateCta: 'Activate plan',
@@ -351,10 +368,30 @@ const uk: AgencyFirmDictionary = {
     ...en.partnerPlan,
     activePackage: 'Активний пакет',
     trialBadge: 'Пробний період',
+    proTrialBadge: 'Пробний Partner Pro · 30 дн.',
+    freePeriodBadge: 'Partner Free · 90 дн. · 0 zł',
+    freePeriodNote: (periodDays) =>
+      ` Стартовий період ${periodDays} дн. від реєстрації офісу — як на сторінці цін. Без картки, без абонементу.`,
+    freePlanNote:
+      ' Після закінчення можна обрати платний пакет — без автоматичних списань.',
+    proTrialNote: (price, periodDays) =>
+      ` Пробний Partner Pro (${periodDays} дн.) — після нього можна продовжити Pro (${price} zł / ${periodDays} дн.) або обрати інший пакет.`,
+    paidRenewalNote: (price, periodDays) =>
+      ` Абонемент поновлюється кожні ${periodDays} дн. (${price} zł) — керування в налаштуваннях облікового запису.`,
     upgradePackage: 'Покращити пакет',
+    freeUpgradeNote:
+      'У вас активний Partner Free. Оберіть платний пакет, коли потрібно більше кредитів або місць у команді.',
+    trialCheckoutNote: (price, periodDays) =>
+      `Платний Pro: ${price} zł / ${periodDays} дн. після пробного. Partner Free (90 дн.) активується при реєстрації офісу.`,
     trialCta: 'Розпочати пробний період',
     upgradeCta: 'Покращити пакет',
     activateCta: 'Активувати пакет',
+    planLabels: {
+      free: 'Partner Free',
+      start: 'Partner Start',
+      pro: 'Partner Pro',
+      enterprise: 'Partner Enterprise',
+    },
   },
 };
 
