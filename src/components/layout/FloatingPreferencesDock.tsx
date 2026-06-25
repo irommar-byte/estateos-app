@@ -10,7 +10,6 @@ import { AnimatePresence, motion } from "framer-motion";
 
 const INTRO_SEEN_KEY = "estateos_prefs_dock_intro_seen";
 const AUTO_HIDE_MS = 3000;
-const INTRO_AUTO_CLOSE_MS = 7000;
 
 export default function FloatingPreferencesDock() {
   const { dict } = useLocale();
@@ -18,7 +17,6 @@ export default function FloatingPreferencesDock() {
   const [showIntro, setShowIntro] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const hideTimerRef = useRef<number | null>(null);
-  const introTimerRef = useRef<number | null>(null);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current != null) {
@@ -27,19 +25,11 @@ export default function FloatingPreferencesDock() {
     }
   }, []);
 
-  const clearIntroTimer = useCallback(() => {
-    if (introTimerRef.current != null) {
-      window.clearTimeout(introTimerRef.current);
-      introTimerRef.current = null;
-    }
-  }, []);
-
   const closePanel = useCallback(() => {
     clearHideTimer();
-    clearIntroTimer();
     setOpen(false);
     setShowIntro(false);
-  }, [clearHideTimer, clearIntroTimer]);
+  }, [clearHideTimer]);
 
   const scheduleHide = useCallback(() => {
     clearHideTimer();
@@ -49,20 +39,6 @@ export default function FloatingPreferencesDock() {
   }, [clearHideTimer, closePanel]);
 
   useEffect(() => {
-    try {
-      const introSeen = window.localStorage.getItem(INTRO_SEEN_KEY) === "1";
-      if (!introSeen) {
-        window.localStorage.setItem(INTRO_SEEN_KEY, "1");
-        setOpen(true);
-        setShowIntro(true);
-        introTimerRef.current = window.setTimeout(() => {
-          closePanel();
-        }, INTRO_AUTO_CLOSE_MS);
-      }
-    } catch {
-      /* noop */
-    }
-
     void fetch("/api/user/profile", { cache: "no-store", credentials: "include" })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -72,13 +48,11 @@ export default function FloatingPreferencesDock() {
 
     return () => {
       clearHideTimer();
-      clearIntroTimer();
     };
-  }, [clearHideTimer, clearIntroTimer, closePanel]);
+  }, [clearHideTimer]);
 
   const handleMouseEnter = () => {
     clearHideTimer();
-    if (showIntro) clearIntroTimer();
   };
 
   const handleMouseLeave = () => {
@@ -92,8 +66,17 @@ export default function FloatingPreferencesDock() {
       return;
     }
     clearHideTimer();
-    clearIntroTimer();
-    setShowIntro(false);
+    try {
+      const introSeen = window.localStorage.getItem(INTRO_SEEN_KEY) === "1";
+      if (!introSeen) {
+        window.localStorage.setItem(INTRO_SEEN_KEY, "1");
+        setShowIntro(true);
+      } else {
+        setShowIntro(false);
+      }
+    } catch {
+      setShowIntro(false);
+    }
     setOpen(true);
   };
 

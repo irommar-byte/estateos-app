@@ -47,7 +47,8 @@ export default function RadarLiveCounter() {
 
   const cardRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevCountRef = useRef(RADAR_COUNTER_BASE);
+  const prevCountRef = useRef<number | null>(null);
+  const initializedRef = useRef(false);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current) {
@@ -91,6 +92,20 @@ export default function RadarLiveCounter() {
   const syncCount = useCallback(() => {
     const target = getTotalRadarCount();
     const prev = prevCountRef.current;
+
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      setDisplayCount(target);
+      prevCountRef.current = target;
+      return;
+    }
+
+    if (prev == null) {
+      prevCountRef.current = target;
+      setDisplayCount(target);
+      return;
+    }
+
     if (target > prev) {
       fireSpectacle(target - prev);
       setDisplayCount(target);
