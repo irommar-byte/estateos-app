@@ -62,14 +62,11 @@ export default async function OfferSharePage({ params, searchParams }: PageProps
   const offerId = Number(id);
   if (!Number.isFinite(offerId) || offerId <= 0) notFound();
 
-  const card = await loadOfferShareCard(offerId);
+  const card = await loadOfferShareCard(offerId, {
+    portalToken: sp.portal ?? null,
+    agentUserId: sp.agent ?? null,
+  });
   if (!card) notFound();
 
-  return (
-    <OfferShareLanding
-      card={card}
-      portalToken={sp.portal ?? null}
-      agentUserId={sp.agent ?? null}
-    />
-  );
+  return <OfferShareLanding card={card} />;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
@@ -10,34 +10,19 @@ import {
   MapPin,
   Ruler,
   Sparkles,
-  UserPlus,
 } from 'lucide-react';
 import type { OfferShareCard } from '@/lib/offerShareLanding';
+import OfferSharePublisherCard from '@/components/offer/OfferSharePublisherCard';
+import OfferShareQr from '@/components/offer/OfferShareQr';
 
-export default function OfferShareLanding({
-  card,
-  portalToken,
-  agentUserId,
-}: {
-  card: OfferShareCard;
-  portalToken: string | null;
-  agentUserId: string | null;
-}) {
+export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
   const [activeImage, setActiveImage] = useState(0);
   const [copied, setCopied] = useState(false);
 
   const images = card.images.length ? card.images : card.imageUrl ? [card.imageUrl] : [];
   const hero = images[activeImage] || '';
-
-  const fullOfferHref = useMemo(() => {
-    const qs = new URLSearchParams();
-    if (portalToken) qs.set('portal', portalToken);
-    else if (agentUserId) qs.set('agent', agentUserId);
-    const q = qs.toString();
-    return `/oferta/${card.id}${q ? `?${q}` : ''}`;
-  }, [card.id, portalToken, agentUserId]);
-
-  const registerHref = `/rejestracja?next=${encodeURIComponent(fullOfferHref)}`;
+  const registerHref = `/rejestracja?next=${encodeURIComponent(card.fullOfferPath)}`;
+  const contactHref = registerHref;
 
   const copyLink = useCallback(async () => {
     try {
@@ -150,30 +135,33 @@ export default function OfferShareLanding({
               </div>
 
               {card.description ? (
-                <p className="text-sm leading-relaxed text-[#5c5c66] dark:text-[#9a9aa8] line-clamp-4">
+                <p className="text-sm leading-relaxed text-[#5c5c66] dark:text-[#9a9aa8] line-clamp-6">
                   {card.description}
                 </p>
               ) : null}
 
+              {card.publisher ? (
+                <OfferSharePublisherCard publisher={card.publisher} contactHref={contactHref} />
+              ) : null}
+
+              <OfferShareQr
+                url={card.canonicalUrl}
+                label="Kod QR oferty"
+                caption="Zeskanuj telefonem — otworzy wizytówkę lub aplikację EstateOS™ z tą nieruchomością."
+              />
+
               <p className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs leading-relaxed text-emerald-800 dark:text-emerald-300">
-                Galeria i parametry — bez rejestracji. Kontakt z wystawcą, oferta cenowa i prezentacja wymagają
+                Galeria, rzut i mapa — na pełnej stronie oferty. Kontakt z wystawcą i negocjacje wymagają
                 bezpłatnego konta na zweryfikowanej platformie EstateOS™.
               </p>
 
               <div className="flex flex-col gap-3">
                 <Link
-                  href={fullOfferHref}
+                  href={card.fullOfferPath}
                   className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#141416] px-5 py-4 text-sm font-black uppercase tracking-widest text-white transition hover:bg-black dark:bg-white dark:text-black dark:hover:bg-white/90"
                 >
                   Zobacz pełną ofertę
                   <ArrowRight size={16} />
-                </Link>
-                <Link
-                  href={registerHref}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-4 text-sm font-black uppercase tracking-widest text-black shadow-[0_10px_30px_rgba(16,185,129,0.25)] transition hover:bg-emerald-400"
-                >
-                  <UserPlus size={16} />
-                  Załóż konto i skontaktuj się
                 </Link>
                 <button
                   type="button"
@@ -181,7 +169,7 @@ export default function OfferShareLanding({
                   className="inline-flex items-center justify-center gap-2 rounded-2xl border border-black/10 bg-white/60 px-5 py-3 text-xs font-bold uppercase tracking-widest text-[#141416] transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white"
                 >
                   <Copy size={14} />
-                  {copied ? 'Skopiowano link' : 'Kopiuj link'}
+                  {copied ? 'Skopiowano link' : 'Kopiuj link wizytówki'}
                 </button>
               </div>
             </div>

@@ -2,7 +2,7 @@
 import { useSearchParams } from "next/navigation";
 import PublicProfileModal from "@/components/PublicProfileModal";
 import dynamic from "next/dynamic";
-import { useEffect, useState, useRef, use } from "react";
+import { Suspense, useEffect, useState, useRef, use } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2, BedDouble, Layers, Calendar, Ruler, Home } from "lucide-react";
@@ -1327,10 +1327,32 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 }
 
 export default function SingleOfferPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<OfferPageLoading />}>
+      <SingleOfferPageInner params={params} />
+    </Suspense>
+  );
+}
+
+function OfferPageLoading() {
+  return (
+    <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)]">
+      <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="size-10 animate-spin rounded-full border-2 border-emerald-500/30 border-t-emerald-500" />
+        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[var(--eos-muted)]">
+          Ładowanie oferty…
+        </p>
+      </div>
+    </main>
+  );
+}
+
+function SingleOfferPageInner({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const searchParams = useSearchParams();
   const [offer, setOffer] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   
   useEffect(() => {
     const fetchUserAndOffer = async () => {
@@ -1344,7 +1366,10 @@ export default function SingleOfferPage({ params }: { params: Promise<{ id: stri
       } catch (e) {}
 
       const id = resolvedParams.id;
-      if (!id) return;
+      if (!id) {
+        setLoadState("error");
+        return;
+      }
       const portal = searchParams.get("portal");
       const agent = searchParams.get("agent");
       const offerQs = new URLSearchParams();
@@ -1360,15 +1385,45 @@ export default function SingleOfferPage({ params }: { params: Promise<{ id: stri
         if (res.ok) {
           const data = await res.json();
           setOffer(data);
+          setLoadState("ready");
+        } else {
+          setLoadState("error");
         }
       } catch (error) {
         console.error("Błąd ładowania oferty:", error);
+        setLoadState("error");
       }
     };
     void fetchUserAndOffer();
   }, [resolvedParams, searchParams]);
 
-  if (!offer) return <div className="min-h-screen bg-[var(--eos-bg)]" />;
+  if (loadState === "loading") return <OfferPageLoading />;
+
+  if (loadState === "error" || !offer) {
+    return (
+      <main className="theme-aware-dashboard flex min-h-screen flex-col items-center justify-center bg-[var(--eos-bg)] px-6 pb-24 pt-32 text-center text-[var(--eos-text)]">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--eos-muted)]">Oferta</p>
+        <h1 className="mt-4 max-w-lg text-3xl font-semibold tracking-tight">Nie udało się wczytać oferty</h1>
+        <p className="mt-4 max-w-md text-[17px] leading-relaxed text-[var(--eos-muted)]">
+          Oferta mogła wygasnąć lub adres jest nieprawidłowy. Możesz wrócić do wizytówki lub założyć konto.
+        </p>
+        <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row">
+          <Link
+            href={`/o/${resolvedParams.id}`}
+            className="inline-flex min-h-[48px] min-w-[200px] items-center justify-center rounded-full bg-emerald-500 px-8 text-[15px] font-semibold text-black"
+          >
+            Wizytówka oferty
+          </Link>
+          <Link
+            href="/oferty"
+            className="inline-flex min-h-[48px] min-w-[200px] items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] px-8 text-[15px] font-semibold text-[var(--eos-text)]"
+          >
+            Przeglądaj oferty
+          </Link>
+        </div>
+      </main>
+    );
+  }
   
   return <OfferDetails offer={offer} currentUser={currentUser} />;
 }
