@@ -18,12 +18,19 @@ import {
   Star,
   Upload,
   UserCheck,
+  UserRound,
   UserX,
   Users,
   Wallet,
   X,
+  PauseCircle,
+  RotateCcw,
+  Settings,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useLocale } from '@/contexts/LocaleContext';
+import { formatAgencyDateTime, getAgencyFirm } from '@/i18n/agencyFirmDictionary';
+import { numberFormatLocale } from '@/i18n/config';
 import ProfileMediaAvatar from '@/components/profile/ProfileMediaAvatar';
 import AgencyMemberDetailPanel from '@/components/crm/AgencyMemberDetailPanel';
 import AgencyPartnerPlanSection, {
@@ -112,11 +119,6 @@ type MembershipPayload = {
   company: DashboardPayload['company'];
 };
 
-function fmtDate(iso: string | null) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
-}
-
 function formatOfferLocation(city?: string | null, district?: string | null) {
   const cityLabel = String(city || '').trim();
   const districtLabel = String(district || '').trim();
@@ -125,9 +127,9 @@ function formatOfferLocation(city?: string | null, district?: string | null) {
   return cityLabel ? `${cityLabel}, ${districtLabel}` : districtLabel;
 }
 
-function formatOfferPrice(price: number) {
+function formatOfferPrice(price: number, locale: string) {
   if (!Number.isFinite(price)) return '—';
-  return `${Math.round(price).toLocaleString('pl-PL')} zł`;
+  return `${Math.round(price).toLocaleString(numberFormatLocale(locale as 'pl' | 'en' | 'uk'))} zł`;
 }
 
 function memberDisplayName(member: Pick<MemberRow, 'userId' | 'user'> | null | undefined) {
@@ -223,12 +225,21 @@ function normalizeDashboardPayload(raw: Record<string, unknown>): DashboardPaylo
   };
 }
 
+type MemberStatusAction = 'ACTIVE' | 'REJECTED' | 'SUSPENDED';
+
 export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendingOnly?: boolean }) {
+  const { locale } = useLocale();
+  const t = getAgencyFirm(locale);
   const [loading, setLoading] = useState(true);
   const [membership, setMembership] = useState<MembershipPayload | null>(null);
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
   const [error, setError] = useState('');
   const [actionId, setActionId] = useState<number | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    memberId: number;
+    status: 'SUSPENDED' | 'REJECTED';
+    name: string;
+  } | null>(null);
   const [creditTarget, setCreditTarget] = useState<number | null>(null);
   const [creditAmount, setCreditAmount] = useState('');
   const [creditNote, setCreditNote] = useState('');
@@ -347,12 +358,16 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
     () => (dashboard?.members ?? []).filter((m) => m.status === 'ACTIVE' && m.role === 'AGENT'),
     [dashboard],
   );
+  const suspendedMembers = useMemo(
+    () => (dashboard?.members ?? []).filter((m) => m.status === 'SUSPENDED'),
+    [dashboard],
+  );
   const assignableAgents = useMemo(
     () => (dashboard?.members ?? []).filter((m) => m.status === 'ACTIVE'),
     [dashboard],
   );
 
-  const handleMemberAction = async (memberId: number, status: 'ACTIVE' | 'REJECTED') => {
+  const handleMemberAction = async (memberId: number, status: MemberStatusAction) => {
     setActionId(memberId);
     try {
       const res = await fetch(`/api/agency-company/members/${memberId}`, {
@@ -363,12 +378,13 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        setError(data.message || 'Operacja nie powiodła się.');
+        setError(data.message || t.operationFailed);
         return;
       }
+      setConfirmAction(null);
       await load();
     } catch {
-      setError('Błąd połączenia.');
+      setError(t.connectionError);
     } finally {
       setActionId(null);
     }
@@ -602,12 +618,10 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   if (!company) {
     return (
       <div className="rounded-3xl border border-red-500/30 bg-red-500/5 p-8 text-center sm:p-10">
-        <h1 className="text-xl font-black text-[var(--eos-text)]">Brak danych biura</h1>
-        <p className="eos-muted-copy mt-2 text-sm">
-          Nie udało się wczytać informacji o firmie. Odśwież stronę lub wróć do CRM.
-        </p>
+        <h1 className="text-xl font-black text-[var(--eos-text)]">{t.noCompanyData}</h1>
+        <p className="eos-muted-copy mt-2 text-sm">{t.noCompanyDataHint}</p>
         <Link href="/moje-konto/crm" className="mt-6 inline-block text-sm font-bold text-emerald-500 hover:underline">
-          Wróć do CRM
+          {t.backToCrm}
         </Link>
       </div>
     );
@@ -619,14 +633,11 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         <div className="flex items-start gap-4">
           <Clock className="shrink-0 text-amber-500" size={32} />
           <div>
-            <h1 className="text-2xl font-black text-[var(--eos-text)]">Oczekujesz na zatwierdzenie</h1>
+            <h1 className="text-2xl font-black text-[var(--eos-text)]">{t.awaitingApprovalTitle}</h1>
             <p className="eos-muted-copy mt-2 text-sm leading-relaxed">
-              Twoje zgłoszenie do biura <strong>{company.name}</strong> zostało wysłane. Administrator firmy musi
-              je zatwierdzić, zanim uzyskasz dostęp do CRM i publikacji ofert.
+              {t.awaitingApprovalBody.replace('{company}', company.name)}
             </p>
-            <p className="mt-4 text-xs font-bold uppercase tracking-widest text-amber-600">
-              Status: oczekujący pracownik
-            </p>
+            <p className="mt-4 text-xs font-bold uppercase tracking-widest text-amber-600">{t.awaitingStatus}</p>
           </div>
         </div>
       </div>
@@ -647,17 +658,15 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
               </div>
             )}
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Twoje biuro</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">{t.yourOffice}</p>
               <h1 className="text-2xl font-black text-[var(--eos-text)]">{company.name}</h1>
               {company.address && <p className="eos-muted-copy mt-1 text-sm">{company.address}</p>}
             </div>
           </div>
         </header>
-        <p className="eos-muted-copy text-sm">
-          Jesteś aktywnym pracownikiem tego biura. Panel zarządzania firmą jest dostępny tylko dla administratora.
-        </p>
+        <p className="eos-muted-copy text-sm">{t.employeeOnlyHint}</p>
         <Link href="/moje-konto/crm" className="inline-flex items-center gap-2 text-sm font-bold text-emerald-500 hover:underline">
-          Przejdź do CRM <ExternalLink size={14} />
+          {t.goToCrm} <ExternalLink size={14} />
         </Link>
       </div>
     );
@@ -686,7 +695,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
             <div>
               <div className="mb-1 flex items-center gap-2">
                 <ShieldCheck size={14} className="text-emerald-500" />
-                <span className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-500">Panel administratora</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-500">{t.adminPanel}</span>
               </div>
               <h1 className="text-3xl font-black text-[var(--eos-text)]">{company.name}</h1>
               {company.address && <p className="eos-muted-copy mt-1 text-sm">{company.address}</p>}
@@ -695,12 +704,12 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                 {company.officeEmail && <span>{company.officeEmail}</span>}
                 {company.website && (
                   <a href={company.website} target="_blank" rel="noreferrer" className="text-emerald-500 hover:underline">
-                    Strona www
+                    {t.website}
                   </a>
                 )}
                 {company.slug ? (
                   <Link href={`/firma/${company.slug}`} target="_blank" className="inline-flex items-center gap-1 text-emerald-500 hover:underline">
-                    Publiczna strona biura <ExternalLink size={12} />
+                    {t.publicOfficePage} <ExternalLink size={12} />
                   </Link>
                 ) : null}
               </div>
@@ -708,10 +717,10 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              { label: 'Aktywni agenci', value: dashboard?.stats?.activeAgents ?? 0, icon: Users },
-              { label: 'Oczekujący', value: dashboard?.stats?.pendingAgents ?? 0, icon: Clock },
-              { label: 'Oferty firmy', value: dashboard?.stats?.totalOffers ?? 0, icon: Building2 },
-              { label: 'Kredyty w puli', value: company.extraListings, icon: Wallet },
+              { label: t.activeAgents, value: dashboard?.stats?.activeAgents ?? 0, icon: Users },
+              { label: t.pendingAgents, value: dashboard?.stats?.pendingAgents ?? 0, icon: Clock },
+              { label: t.companyOffers, value: dashboard?.stats?.totalOffers ?? 0, icon: Building2 },
+              { label: t.creditsInPool, value: company.extraListings, icon: Wallet },
             ].map((kpi) => (
               <div key={kpi.label} className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/60 px-4 py-3">
                 <kpi.icon size={14} className="mb-2 text-emerald-500" />
@@ -859,7 +868,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       {pendingMembers.length > 0 && (
         <section id="zgłoszenia" className="scroll-mt-28 rounded-3xl border border-amber-500/25 bg-amber-500/5 p-6">
           <h2 className="mb-4 flex items-center gap-2 text-lg font-black text-[var(--eos-text)]">
-            <UserCheck size={18} className="text-amber-500" /> Zgłoszenia do zatwierdzenia
+            <UserCheck size={18} className="text-amber-500" /> {t.pendingTitle}
           </h2>
           <div className="space-y-3">
             {pendingMembers.map((m) => (
@@ -873,7 +882,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                   <p className="font-bold text-[var(--eos-text)]">{memberDisplayName(m)}</p>
                   <p className="eos-muted-copy text-xs">{m.user?.email || '—'}</p>
                   <p className="mt-1 text-[10px] uppercase tracking-widest text-[var(--eos-muted)]">
-                    Zgłoszono: {fmtDate(m.createdAt)}
+                    {formatAgencyDateTime(m.createdAt, locale)}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -884,7 +893,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                     className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-widest text-black disabled:opacity-50"
                   >
                     {actionId === m.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                    Zatwierdź
+                    {t.approve}
                   </button>
                   <button
                     type="button"
@@ -892,7 +901,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                     onClick={() => void handleMemberAction(m.id, 'REJECTED')}
                     className="inline-flex items-center gap-2 rounded-full border border-red-500/40 px-4 py-2 text-xs font-black uppercase tracking-widest text-red-500 disabled:opacity-50"
                   >
-                    <UserX size={14} /> Odrzuć
+                    <UserX size={14} /> {t.reject}
                   </button>
                 </div>
               </motion.div>
@@ -903,22 +912,22 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
 
       <section className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-black text-[var(--eos-text)]">Zespół i aktywność</h2>
-          <p className="eos-muted-copy text-xs">Podgląd logowań, ofert, CRM i przenoszenie ogłoszeń między agentami</p>
+          <h2 className="text-lg font-black text-[var(--eos-text)]">{t.teamTitle}</h2>
+          <p className="eos-muted-copy text-xs">{t.teamSubtitle}</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead>
               <tr className="border-b border-[var(--eos-border)] text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">
-                <th className="py-3 pr-4">Agent</th>
-                <th className="py-3 pr-4">Stanowisko</th>
-                <th className="py-3 pr-4">Ostatnie logowanie</th>
-                <th className="py-3 pr-4">Oferty</th>
-                <th className="py-3 pr-4">Opinie</th>
+                <th className="py-3 pr-4">{t.agent}</th>
+                <th className="py-3 pr-4">{t.position}</th>
+                <th className="py-3 pr-4">{t.lastLogin}</th>
+                <th className="py-3 pr-4">{t.offers}</th>
+                <th className="py-3 pr-4">{t.reviews}</th>
                 <th className="py-3 pr-4">CRM</th>
-                <th className="py-3 pr-4">Transakcje</th>
-                <th className="py-3 pr-4">Kredyty</th>
-                <th className="py-3">Akcje</th>
+                <th className="py-3 pr-4">{t.transactions}</th>
+                <th className="py-3 pr-4">{t.credits}</th>
+                <th className="py-3">{t.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -953,7 +962,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                           <p className="eos-muted-copy text-xs">{m.user?.email || '—'}</p>
                           {m.role === 'ADMIN' && (
                             <span className="mt-1 inline-block rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600">
-                              Administrator
+                              {t.administrator}
                             </span>
                           )}
                         </div>
@@ -963,20 +972,26 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                       <select
                         value={m.agentTitle}
                         onChange={(e) => void handleTitleChange(m.id, e.target.value)}
-                        className="eos-field min-w-[7.5rem] py-1.5 text-xs font-bold"
+                        disabled={m.role === 'ADMIN'}
+                        className="eos-field min-w-[7.5rem] rounded-xl py-2 text-xs font-bold"
                       >
-                        {AGENCY_AGENT_TITLES.map((t) => (
-                          <option key={t} value={t}>
-                            {formatAgentTitle(t)}
+                        {AGENCY_AGENT_TITLES.map((titleKey) => (
+                          <option key={titleKey} value={titleKey}>
+                            {t.agentTitles[titleKey] ?? formatAgentTitle(titleKey)}
                           </option>
                         ))}
                       </select>
                     </td>
-                    <td className="py-4 pr-4 text-xs text-[var(--eos-muted)]">{fmtDate(m.user?.lastLoginAt ?? null)}</td>
+                    <td className="py-4 pr-4 text-xs text-[var(--eos-muted)]">
+                      {formatAgencyDateTime(m.user?.lastLoginAt ?? null, locale)}
+                    </td>
                     <td className="py-4 pr-4">
-                      <div className="text-xs font-bold text-[var(--eos-text)]">{m.user?.activeOffers ?? 0} aktyw.</div>
+                      <div className="text-xs font-bold text-[var(--eos-text)]">
+                        {m.user?.activeOffers ?? 0} {t.activeOffersShort}
+                      </div>
                       <div className="eos-muted-copy text-[10px]">
-                        {m.user?.pendingOffers ?? 0} oczek. · {m.user?.soldOffers ?? 0} sprzed.
+                        {m.user?.pendingOffers ?? 0} {t.pendingOffersShort} · {m.user?.soldOffers ?? 0}{' '}
+                        {t.soldOffersShort}
                       </div>
                     </td>
                     <td className="py-4 pr-4">
@@ -993,27 +1008,66 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                     <td className="py-4 pr-4">{m.user?.dealsInProgress ?? 0}</td>
                     <td className="py-4 pr-4">{m.user?.extraListings ?? 0}</td>
                     <td className="py-4">
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1.5">
                         <button
                           type="button"
                           onClick={() => setDetailMember(m)}
-                          className="text-xs font-bold text-emerald-500 hover:underline"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-600 transition hover:bg-emerald-500/20"
                         >
-                          Zarządzaj
+                          <Settings size={12} />
+                          {t.manage}
                         </button>
                         {m.user?.id ? (
-                          <Link href={`/profil/${m.user.id}`} className="text-xs font-bold text-[var(--eos-muted)] hover:underline">
-                            Profil
+                          <Link
+                            href={`/profil/${m.user.id}`}
+                            target="_blank"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-[var(--eos-text)] transition hover:border-emerald-500/30 hover:text-emerald-600"
+                          >
+                            <UserRound size={12} />
+                            {t.profile}
                           </Link>
                         ) : null}
                         {m.role === 'AGENT' && (
-                          <button
-                            type="button"
-                            onClick={() => setCreditTarget(m.userId)}
-                            className="text-xs font-bold text-amber-500 hover:underline"
-                          >
-                            Kredyty
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setCreditTarget(m.userId)}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-600 transition hover:bg-amber-500/20"
+                            >
+                              <Coins size={12} />
+                              {t.assignCredits}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={actionId === m.id}
+                              onClick={() =>
+                                setConfirmAction({
+                                  memberId: m.id,
+                                  status: 'SUSPENDED',
+                                  name: memberDisplayName(m),
+                                })
+                              }
+                              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--eos-border)] px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)] transition hover:border-amber-500/40 hover:text-amber-600 disabled:opacity-50"
+                            >
+                              <PauseCircle size={12} />
+                              {t.suspend}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={actionId === m.id}
+                              onClick={() =>
+                                setConfirmAction({
+                                  memberId: m.id,
+                                  status: 'REJECTED',
+                                  name: memberDisplayName(m),
+                                })
+                              }
+                              className="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-500 transition hover:bg-red-500/10 disabled:opacity-50"
+                            >
+                              <UserX size={12} />
+                              {t.removeFromOffice}
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>
@@ -1024,9 +1078,54 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         </div>
       </section>
 
+      {suspendedMembers.length > 0 ? (
+        <section className="rounded-3xl border border-amber-500/20 bg-amber-500/[0.04] p-6">
+          <h2 className="text-lg font-black text-[var(--eos-text)]">{t.suspendedTitle}</h2>
+          <p className="eos-muted-copy mb-4 text-xs">{t.suspendedSubtitle}</p>
+          <div className="space-y-3">
+            {suspendedMembers.map((m) => (
+              <div
+                key={m.id}
+                className="flex flex-col gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="font-bold text-[var(--eos-text)]">{memberDisplayName(m)}</p>
+                  <p className="eos-muted-copy text-xs">{m.user?.email || '—'}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={actionId === m.id}
+                    onClick={() => void handleMemberAction(m.id, 'ACTIVE')}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                  >
+                    {actionId === m.id ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                    {t.restore}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionId === m.id}
+                    onClick={() =>
+                      setConfirmAction({
+                        memberId: m.id,
+                        status: 'REJECTED',
+                        name: memberDisplayName(m),
+                      })
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-red-500 disabled:opacity-50"
+                  >
+                    <UserX size={12} /> {t.removeFromOffice}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {(dashboard?.recentOffers ?? []).length > 0 && (
         <section className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
-          <h2 className="mb-4 text-lg font-black text-[var(--eos-text)]">Ostatnie ogłoszenia biura</h2>
+          <h2 className="mb-4 text-lg font-black text-[var(--eos-text)]">{t.recentOffersTitle}</h2>
           <div className="grid gap-3 lg:grid-cols-2">
             {(dashboard?.recentOffers ?? []).map((offer) => {
               const thumb = offer.imageUrl || '/placeholder.jpg';
@@ -1050,7 +1149,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="line-clamp-2 font-bold text-[var(--eos-text)]">{offer.title}</p>
-                      <p className="mt-1 text-sm font-black text-emerald-500">{formatOfferPrice(offer.price)}</p>
+                      <p className="mt-1 text-sm font-black text-emerald-500">{formatOfferPrice(offer.price, locale)}</p>
                       <p className="eos-muted-copy mt-1 text-xs">
                         {formatOfferLocation(offer.city, offer.district)}
                       </p>
@@ -1058,14 +1157,14 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                         {offer.agent?.name || 'Agent'} · {offer.status}
                       </p>
                       <p className="mt-2 text-[10px] text-[var(--eos-muted)]">
-                        Aktualizacja: {fmtDate(offer.updatedAt)}
+                        {formatAgencyDateTime(offer.updatedAt, locale)}
                       </p>
                     </div>
                   </Link>
                   {isAdmin && assignTargets.length > 0 ? (
                     <div className="flex flex-wrap items-center gap-2 border-t border-[var(--eos-border)]/60 px-4 py-3">
                       <label className="eos-muted-copy text-[10px] font-bold uppercase tracking-widest">
-                        Przypisz agentowi
+                        {t.assignToAgent}
                       </label>
                       <select
                         value={assignTargetByOffer[offer.id] || ''}
@@ -1090,7 +1189,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                         {assignBusyId === offer.id ? (
                           <Loader2 size={12} className="animate-spin" />
                         ) : null}
-                        Przypisz
+                        {t.transfer}
                       </button>
                     </div>
                   ) : null}
@@ -1158,20 +1257,53 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         <section className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
           <h2 className="mb-4 text-lg font-black text-[var(--eos-text)]">Historia przydziałów kredytów</h2>
           <div className="space-y-2">
-            {(dashboard?.creditTransfers ?? []).map((t) => (
+            {(dashboard?.creditTransfers ?? []).map((transfer) => (
               <div
-                key={t.id}
+                key={transfer.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--eos-border)]/60 px-4 py-3 text-sm"
               >
                 <span>
-                  <strong>{t.amount}</strong> kredytów → {t.toUser?.name || t.toUser?.email || 'Agent'}
+                  <strong>{transfer.amount}</strong> kredytów → {transfer.toUser?.name || transfer.toUser?.email || 'Agent'}
                 </span>
-                <span className="eos-muted-copy text-xs">{fmtDate(t.createdAt)}</span>
+                <span className="eos-muted-copy text-xs">{formatAgencyDateTime(transfer.createdAt, locale)}</span>
               </div>
             ))}
           </div>
         </section>
       )}
+
+      {confirmAction ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-2xl">
+            <h3 className="text-lg font-black text-[var(--eos-text)]">
+              {confirmAction.status === 'SUSPENDED' ? t.confirmSuspendTitle : t.confirmRemoveTitle}
+            </h3>
+            <p className="eos-muted-copy mt-3 text-sm leading-relaxed">
+              <strong className="text-[var(--eos-text)]">{confirmAction.name}</strong>
+              {' — '}
+              {confirmAction.status === 'SUSPENDED' ? t.confirmSuspendBody : t.confirmRemoveBody}
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={actionId === confirmAction.memberId}
+                onClick={() => void handleMemberAction(confirmAction.memberId, confirmAction.status)}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[var(--eos-text)] px-4 py-3 text-xs font-black uppercase tracking-widest text-[var(--eos-bg)] disabled:opacity-50"
+              >
+                {actionId === confirmAction.memberId ? <Loader2 size={14} className="animate-spin" /> : null}
+                {t.confirm}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmAction(null)}
+                className="inline-flex flex-1 items-center justify-center rounded-2xl border border-[var(--eos-border)] px-4 py-3 text-xs font-black uppercase tracking-widest text-[var(--eos-muted)]"
+              >
+                {t.cancel}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
