@@ -3,6 +3,7 @@ import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
 import { resolveOfferDetailAccess } from '@/lib/offerPublicAccess';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
+import { stripHtmlToPlain, stripInternalOfferDescriptionMarkers } from '@/lib/offerDescriptionHtml';
 
 export function resolvePublicAppOrigin(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://estateos.pl').replace(
@@ -115,6 +116,8 @@ export async function loadOfferShareCard(offerId: number): Promise<OfferShareCar
     area: row.area != null ? Number(row.area) : null,
     rooms: row.rooms != null ? Number(row.rooms) : null,
     floor: row.floor != null ? row.floor : null,
-    description: row.description ? String(row.description).trim().slice(0, 600) : null,
+    description: row.description
+      ? stripHtmlToPlain(stripInternalOfferDescriptionMarkers(String(row.description))).slice(0, 600)
+      : null,
   };
 }
