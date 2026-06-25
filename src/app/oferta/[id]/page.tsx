@@ -2,7 +2,7 @@
 import { useSearchParams } from "next/navigation";
 import PublicProfileModal from "@/components/PublicProfileModal";
 import dynamic from "next/dynamic";
-import { Suspense, useEffect, useState, useRef, use } from "react";
+import { Suspense, useEffect, useState, use } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2, BedDouble, Layers, Calendar, Ruler, Home } from "lucide-react";
@@ -115,11 +115,20 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         : "shadow-[0_0_40px_rgba(16,185,129,0.3)]",
     bgActiveSoft: isDealRoom ? "bg-orange-500/10" : isRent ? "bg-blue-500/10" : "bg-emerald-500/10",
   };
-  const ref = useRef(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
-  const bgY = useTransform(scrollYProgress, [0, 1], ["0%", "15%"]);
+  const { scrollYProgress } = useScroll();
+  const bgY = useTransform(scrollYProgress, [0, 0.25], ["0%", "12%"]);
   
-  const rawImages = (() => { if (!offer.images) return []; try { const p = JSON.parse(offer.images); return Array.isArray(p) ? p : offer.images.split(','); } catch(e) { return offer.images.split(','); } })();
+  const rawImages = (() => {
+    if (!offer.images) return [];
+    if (Array.isArray(offer.images)) return offer.images.map(String);
+    const raw = String(offer.images);
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.map(String) : raw.split(",").map((s) => s.trim()).filter(Boolean);
+    } catch {
+      return raw.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+  })();
   const allImages = [offer.imageUrl, ...rawImages].filter((v: string, i: number, a: string[]) => v && v.length > 5 && a.indexOf(v) === i);
   const images = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
   const thumbImages = images.slice(1);
@@ -176,7 +185,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   // 🔥 SILNIK FOMO: LOGIKA CZASU I BLOKADY 🔥
   const [timeLeft, setTimeLeft] = useState<number>(0);
-  const isOwner = currentUser && (currentUser.id === offer.userId || currentUser.email === offer.user?.email || currentUser.email === offer.contactEmail);
+  const isOwner =
+    !!currentUser &&
+    (Number(currentUser.id) === Number(offer.userId) ||
+      currentUser.email === offer.user?.email ||
+      currentUser.email === offer.contactEmail);
   const isFormerOwnerViewer =
     !!currentUser &&
     offer.managementStatus === 'AGENCY_MANAGED' &&
@@ -562,7 +575,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-32 font-sans text-[var(--eos-text)] selection:bg-emerald-500/20">
       
-      <div ref={ref} className="eos-cinematic-dark relative w-full min-h-[64vh] h-[72svh] sm:min-h-[100vh] sm:h-[100dvh] overflow-hidden bg-black">
+      <div className="eos-cinematic-dark relative w-full min-h-[64vh] h-[72svh] sm:min-h-[100vh] sm:h-[100dvh] overflow-hidden bg-black">
         <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center ${isArchived ? 'opacity-25 blur-2xl grayscale' : isLocked ? 'opacity-60 blur-xl' : 'opacity-60'}`} />
         <div className="absolute inset-0 eos-offer-hero-vignette z-10" />
 
