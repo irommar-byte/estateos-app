@@ -379,6 +379,8 @@ export async function createOfferFromOtodomDraft(
     floorPlanImageIndex?: number | null;
     onImageProgress?: (progress: ImportImageProgress) => void;
     onCopyProgress?: (label: string, detail?: string, meta?: { rewrittenByAi?: boolean }) => void;
+    /** false = głos właściciela (import zaproszeń), true = głos agenta (domyślnie). */
+    agentVoice?: boolean;
   },
 ) {
   const existing = await findExistingImportedOffer(draft);
@@ -395,7 +397,9 @@ export async function createOfferFromOtodomDraft(
     'Przeróbka opisu (sztuczna inteligencja)…',
     isOtodomImportAiConfigured() ? 'GPT' : 'reguły',
   );
-  const presentation = await buildOtodomPresentationCopy(draft, { agentVoice: true });
+  const presentation = await buildOtodomPresentationCopy(draft, {
+    agentVoice: options?.agentVoice !== false,
+  });
   const detail = presentation.rewrittenByAi
     ? 'AI ✓'
     : 'automatycznie';

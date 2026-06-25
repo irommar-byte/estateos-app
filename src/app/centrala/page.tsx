@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Wallet } from "lucide-react";
 import KeiAmerWorkspace from "@/components/admin/KeiAmerWorkspace";
+import PortalOnboardingInvitePanel from "@/components/admin/PortalOnboardingInvitePanel";
 
 export default function Centrala() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -105,6 +106,8 @@ export default function Centrala() {
             </motion.div>
           ))}
         </div>
+
+        <PortalOnboardingInvitePanel />
 
         <KeiAmerWorkspace />
       </main>
