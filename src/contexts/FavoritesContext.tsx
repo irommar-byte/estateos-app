@@ -35,6 +35,15 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
+      const profileRes = await fetch('/api/user/profile', {
+        cache: 'no-store',
+        credentials: 'include',
+      });
+      if (!profileRes.ok) {
+        setFavoriteIds([]);
+        setFavoriteOffers([]);
+        return;
+      }
       const snapshot = await fetchFavoritesSnapshot();
       if (snapshot) {
         setFavoriteIds(snapshot.offerIds);

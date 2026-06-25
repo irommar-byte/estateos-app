@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MessageCircle, Star, UserPlus } from "lucide-react";
+import { CalendarDays, MessageCircle, Star } from "lucide-react";
 import type { OfferSharePublisher } from "@/lib/offerShareLanding";
 
 function initialsFrom(name: string): string {
@@ -13,10 +13,12 @@ function initialsFrom(name: string): string {
 
 export default function OfferSharePublisherCard({
   publisher,
-  contactHref,
+  onScheduleVisit,
+  onWriteMessage,
 }: {
   publisher: OfferSharePublisher;
-  contactHref: string;
+  onScheduleVisit: () => void;
+  onWriteMessage: () => void;
 }) {
   const primaryName = publisher.personName || publisher.displayName;
   const kicker = publisher.isPresentingAgent
@@ -78,23 +80,26 @@ export default function OfferSharePublisherCard({
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <Link
-          href={contactHref}
+        <button
+          type="button"
+          onClick={onScheduleVisit}
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-black shadow-[0_8px_24px_rgba(16,185,129,0.28)] transition hover:bg-emerald-400"
         >
-          <UserPlus size={15} />
-          Skontaktuj się
-        </Link>
-        <Link
-          href={contactHref}
+          <CalendarDays size={15} />
+          Umów wizytę
+        </button>
+        <button
+          type="button"
+          onClick={onWriteMessage}
           className="inline-flex items-center justify-center gap-2 rounded-xl border border-black/10 bg-white/70 px-4 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#141416] transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white"
         >
           <MessageCircle size={15} />
           Napisz wiadomość
-        </Link>
+        </button>
       </div>
       <p className="mt-3 text-[10px] leading-relaxed text-[#5c5c66] dark:text-[#9a9aa8]">
-        Bezpłatna rejestracja na EstateOS™ — weryfikacja użytkowników, Deal Room i bezpieczny kontakt z wystawcą.
+        Wybierz termin lub napisz wiadomość — po potwierdzeniu poprowadzimy Cię do bezpłatnej rejestracji i Deal
+        Room.
       </p>
     </section>
   );

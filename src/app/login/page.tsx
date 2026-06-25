@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { Fingerprint, Lock, Loader2, AlertCircle, Mail, Key, ArrowLeft, CheckCircle } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
+import { resolvePostAuthDestination } from "@/lib/offerShareIntent";
 
 function resolveSafeNextPath(raw: string | null): string {
   const next = String(raw || "").trim();
@@ -20,9 +21,13 @@ function LoginPageInner() {
   const t = dict.auth;
   const searchParams = useSearchParams();
   const afterLoginPath = resolveSafeNextPath(searchParams.get("next"));
-  const registerHref = afterLoginPath.startsWith("/dodaj-oferte")
-    ? "/rejestracja?next=/dodaj-oferte"
-    : "/rejestracja";
+  const intentParam = searchParams.get("intent");
+  const registerHref = (() => {
+    if (afterLoginPath.startsWith("/dodaj-oferte")) return "/rejestracja?next=/dodaj-oferte";
+    const next = encodeURIComponent(afterLoginPath);
+    const base = `/rejestracja?next=${next}`;
+    return intentParam ? `${base}&intent=${encodeURIComponent(intentParam)}` : base;
+  })();
 
   const [view, setView] = useState<'login' | 'forgot' | 'reset' | 'verify_otp'>('login');
   
@@ -59,8 +64,11 @@ function LoginPageInner() {
 
       const data = await verifyResp.json();
       if (verifyResp.ok && data.success) {
-        window.location.href =
-          data.role === "ADMIN" ? "/centrala" : resolveSafeNextPath(afterLoginPath);
+        const destination = await resolvePostAuthDestination(
+          resolveSafeNextPath(afterLoginPath),
+          data.role,
+        );
+        window.location.href = destination;
       } else {
         setError(data.error || t.passkeyFailed);
       }
@@ -84,8 +92,11 @@ function LoginPageInner() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        window.location.href =
-          data.role === "ADMIN" ? "/centrala" : resolveSafeNextPath(afterLoginPath);
+        const destination = await resolvePostAuthDestination(
+          resolveSafeNextPath(afterLoginPath),
+          data.role,
+        );
+        window.location.href = destination;
       } else if (data.needs_otp) {
         setPendingPhone(data.phone || email);
         setView("verify_otp");
@@ -168,9 +179,11 @@ function LoginPageInner() {
 
         if (dataLogin.success) {
           localStorage.setItem("token", dataLogin.token);
-          window.location.replace(
-            dataLogin.role === "ADMIN" ? "/centrala" : resolveSafeNextPath(afterLoginPath)
+          const destination = await resolvePostAuthDestination(
+            resolveSafeNextPath(afterLoginPath),
+            dataLogin.role,
           );
+          window.location.replace(destination);
         } else {
           setError(dataLogin.message || t.invalidCredentials);
         }

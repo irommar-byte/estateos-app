@@ -5,8 +5,29 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, CalendarIcon, ShieldCheck, Loader2, CheckCircle, ChevronLeft } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { appointmentDateLocale, getOfferModalsDictionary } from "@/i18n/offerModalsDictionary";
+import { fetchCurrentWebUser } from "@/lib/webSessionClient";
+import { saveOfferShareIntent } from "@/lib/offerShareIntent";
+import OfferShareAuthPrompt from "@/components/offer/OfferShareAuthPrompt";
 
-export default function AppointmentModal({ isOpen, onClose, offerId, sellerId }: any) {
+type AppointmentModalProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  offerId: number | string;
+  sellerId: number | string;
+  returnPath?: string;
+  publisherName?: string;
+  offerTitle?: string;
+};
+
+export default function AppointmentModal({
+  isOpen,
+  onClose,
+  offerId,
+  sellerId,
+  returnPath,
+  publisherName,
+  offerTitle,
+}: AppointmentModalProps) {
   const { locale } = useLocale();
   const m = getOfferModalsDictionary(locale);
   const dateTag = appointmentDateLocale(locale);
@@ -18,8 +39,16 @@ export default function AppointmentModal({ isOpen, onClose, offerId, sellerId }:
   const [shareContact, setShareContact] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
+  const [pendingSlotLabel, setPendingSlotLabel] = useState("");
 
   useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (!isOpen) {
+      setAuthPromptOpen(false);
+      setPendingSlotLabel("");
+    }
+  }, [isOpen]);
 
   const dates = Array.from({ length: 30 }).map((_, i) => { const d = new Date(); d.setDate(d.getDate() + i + 1); return d; });
   const hours: string[] = [];
@@ -34,29 +63,58 @@ export default function AppointmentModal({ isOpen, onClose, offerId, sellerId }:
     const [hoursStr, minutesStr] = selectedHour.split(':');
     const finalDate = new Date(selectedDate);
     finalDate.setHours(parseInt(hoursStr, 10), parseInt(minutesStr, 10), 0, 0);
-    let buyerId = "nieznany";
-    try {
-      const localUser = null;
-      if (localUser) {
-        const parsed = JSON.parse(localUser);
-        buyerId = parsed.id || parsed.email || localUser;
-      }
-    } catch(e) {}
+    const slotLabel = `${selectedDate.toLocaleDateString(dateTag)} · ${selectedHour}`;
+    const fullMessage = message + (shareContact ? m.appointment.contactConsentNote : "");
+    const safeReturnPath =
+      returnPath ||
+      (typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '/');
 
     try {
+      const user = await fetchCurrentWebUser();
+      if (!user) {
+        saveOfferShareIntent({
+          kind: 'appointment',
+          offerId: Number(offerId),
+          sellerId: Number(sellerId),
+          proposedDateIso: finalDate.toISOString(),
+          message: fullMessage,
+          shareContact,
+          returnPath: safeReturnPath,
+          publisherName,
+          offerTitle,
+        });
+        setPendingSlotLabel(slotLabel);
+        setAuthPromptOpen(true);
+        return;
+      }
+
       const res = await fetch('/api/appointments/propose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           offerId,
           sellerId,
-          buyerId,
           proposedDate: finalDate.toISOString(),
-          message: message + (shareContact ? m.appointment.contactConsentNote : ""),
-        })
+          message: fullMessage,
+        }),
       });
-      if (res.ok) { setIsSuccess(true); setTimeout(() => { onClose(); setIsSuccess(false); setStep(1); setSelectedDate(null); setSelectedHour(null); setMessage(""); }, 3000); } 
-      else {
+      if (res.ok) {
+        setIsSuccess(true);
+        const data = await res.json().catch(() => ({}));
+        const dealId = Number(data?.appointment?.dealId);
+        window.setTimeout(() => {
+          onClose();
+          setIsSuccess(false);
+          setStep(1);
+          setSelectedDate(null);
+          setSelectedHour(null);
+          setMessage("");
+          if (Number.isFinite(dealId) && dealId > 0) {
+            window.location.href = `/dealroom/${dealId}`;
+          }
+        }, 2800);
+      } else {
         const data = await res.json().catch(() => ({}));
         if (data.errorCode === 'PHONE_VERIFICATION_REQUIRED') {
           window.location.href = '/moje-konto/weryfikacja';
@@ -64,7 +122,11 @@ export default function AppointmentModal({ isOpen, onClose, offerId, sellerId }:
         }
         alert(data.error || data.message || m.appointment.saveError);
       }
-    } catch (e) { alert(m.appointment.connectionError); } finally { setIsSubmitting(false); }
+    } catch {
+      alert(m.appointment.connectionError);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const slideVariants: any = { initial: { opacity: 0, x: 20 }, animate: { opacity: 1, x: 0, transition: { duration: 0.3, ease: "easeOut" } }, exit: { opacity: 0, x: -20, transition: { duration: 0.2, ease: "easeIn" } } };
@@ -80,8 +142,9 @@ export default function AppointmentModal({ isOpen, onClose, offerId, sellerId }:
         : m.appointment.stepDetails;
 
   const modalContent = (
+    <>
     <AnimatePresence>
-      {isOpen && (
+      {isOpen && !authPromptOpen && (
         <div className="fixed inset-0 z-[999999] flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="eos-modal-backdrop absolute inset-0" />
           <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="eos-modal-surface eos-modal-shell eos-themed-modal relative my-auto flex h-[650px] max-h-[90vh] w-full max-w-md shrink-0 flex-col overflow-hidden rounded-[2.5rem]" onClick={(e) => e.stopPropagation()}>
@@ -165,6 +228,21 @@ export default function AppointmentModal({ isOpen, onClose, offerId, sellerId }:
         </div>
       )}
     </AnimatePresence>
+    <OfferShareAuthPrompt
+      isOpen={authPromptOpen}
+      onClose={() => {
+        setAuthPromptOpen(false);
+        onClose();
+      }}
+      kind="appointment"
+      returnPath={
+        returnPath ||
+        (typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '/')
+      }
+      publisherName={publisherName}
+      slotLabel={pendingSlotLabel}
+    />
+    </>
   );
   return createPortal(modalContent, document.body);
 }

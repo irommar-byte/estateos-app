@@ -50,8 +50,6 @@ export default function Navbar() {
     setIsOpen(false);
   }, [pathname]);
 
-  if (isOfferShareLanding) return null;
-
   useEffect(() => {
     let cancelled = false;
 
@@ -79,6 +77,8 @@ export default function Navbar() {
       cancelled = true;
     };
   }, [pathname, initModeFromUser]);
+
+  if (isOfferShareLanding) return null;
 
   const handleLogout = async () => {
     try {

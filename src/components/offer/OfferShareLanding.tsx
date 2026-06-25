@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
@@ -14,15 +14,41 @@ import {
 import type { OfferShareCard } from '@/lib/offerShareLanding';
 import OfferSharePublisherCard from '@/components/offer/OfferSharePublisherCard';
 import OfferShareQr from '@/components/offer/OfferShareQr';
+import AppointmentModal from '@/components/AppointmentModal';
+import OfferShareMessageModal from '@/components/offer/OfferShareMessageModal';
+import { loadOfferShareIntent, resumeOfferShareIntent } from '@/lib/offerShareIntent';
 
 export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
   const [activeImage, setActiveImage] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [appointmentOpen, setAppointmentOpen] = useState(false);
+  const [messageOpen, setMessageOpen] = useState(false);
+  const [resuming, setResuming] = useState(false);
 
   const images = card.images.length ? card.images : card.imageUrl ? [card.imageUrl] : [];
   const hero = images[activeImage] || '';
-  const registerHref = `/rejestracja?next=${encodeURIComponent(card.fullOfferPath)}`;
-  const contactHref = registerHref;
+  const returnPath = `/o/${card.id}`;
+  const publisherName = card.publisher?.personName || card.publisher?.displayName;
+
+  useEffect(() => {
+    const pending = loadOfferShareIntent();
+    if (!pending) return;
+    let cancelled = false;
+    void (async () => {
+      setResuming(true);
+      try {
+        const destination = await resumeOfferShareIntent();
+        if (!cancelled && destination) {
+          window.location.href = destination;
+        }
+      } finally {
+        if (!cancelled) setResuming(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const copyLink = useCallback(async () => {
     try {
@@ -141,7 +167,11 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
               ) : null}
 
               {card.publisher ? (
-                <OfferSharePublisherCard publisher={card.publisher} contactHref={contactHref} />
+                <OfferSharePublisherCard
+                  publisher={card.publisher}
+                  onScheduleVisit={() => setAppointmentOpen(true)}
+                  onWriteMessage={() => setMessageOpen(true)}
+                />
               ) : null}
 
               <OfferShareQr
@@ -207,6 +237,36 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
           </article>
         </div>
       </div>
+
+      {card.publisher ? (
+        <>
+          <AppointmentModal
+            isOpen={appointmentOpen}
+            onClose={() => setAppointmentOpen(false)}
+            offerId={card.id}
+            sellerId={card.publisher.userId}
+            returnPath={returnPath}
+            publisherName={publisherName}
+            offerTitle={card.title}
+          />
+          <OfferShareMessageModal
+            isOpen={messageOpen}
+            onClose={() => setMessageOpen(false)}
+            peerUserId={card.publisher.userId}
+            peerName={publisherName}
+            offerId={card.id}
+            returnPath={returnPath}
+          />
+        </>
+      ) : null}
+
+      {resuming ? (
+        <div className="pointer-events-none fixed inset-0 z-[99999] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <p className="rounded-2xl bg-white px-6 py-4 text-sm font-bold text-[#141416] shadow-xl dark:bg-[#101014] dark:text-white">
+            Kończymy rezerwację terminu…
+          </p>
+        </div>
+      ) : null}
     </main>
   );
 }
