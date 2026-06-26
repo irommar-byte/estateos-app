@@ -27,6 +27,7 @@ import { getPortalOnboardingDict } from '@/i18n/portalOnboardingDictionary';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
 import type { PortalListingPreview } from '@/lib/portalOnboarding';
 import type { ImportDraftIssue } from '@/lib/importDraftValidate';
+import { isNonCityLabel } from '@/lib/location/locationCatalog';
 
 type FieldStatus = 'idle' | 'checking' | 'available' | 'taken';
 
@@ -49,6 +50,7 @@ function issueNeedsField(issues: ImportDraftIssue[], field: string): boolean {
 function importPatchSatisfiesIssues(issues: ImportDraftIssue[], patch: ImportPatchForm): boolean {
   for (const issue of issues) {
     if (issue.field === 'city') {
+      if (issue.kind === 'invalid' && !patch.city.trim()) return false;
       if (!patch.city.trim() && !patch.district.trim()) return false;
       continue;
     }
@@ -158,6 +160,14 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
     );
   }, [importStepLabels]);
 
+  const showLocationPatch =
+    previewIssues.some((issue) => issue.field === 'city') ||
+    Boolean(preview?.city && isNonCityLabel(preview.city));
+
+  const locationPatchReady =
+    !showLocationPatch ||
+    (importPatch.city.trim().length > 0 && !isNonCityLabel(importPatch.city));
+
   const canPreview = portalUrl.trim().length > 12;
   const formReady =
     Boolean(preview) &&
@@ -170,6 +180,7 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
     acceptTerms &&
     emailStatus !== 'taken' &&
     phoneStatus !== 'taken' &&
+    locationPatchReady &&
     importPatchSatisfiesIssues(previewIssues, importPatch);
 
   const sourceLabel = (source: string) => {
@@ -309,6 +320,14 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
       if (!res.ok) {
         if (Array.isArray(data?.issues)) {
           setPreviewIssues(data.issues as ImportDraftIssue[]);
+        } else if (data?.code === 'LOCATION_MISMATCH' || /pinezk/i.test(String(data?.error || ''))) {
+          setPreviewIssues([
+            {
+              field: 'city',
+              kind: 'invalid',
+              message: String(data?.error || 'Popraw miejscowość.'),
+            },
+          ]);
         }
         throw new Error(data?.error || 'Registration failed.');
       }
@@ -485,12 +504,14 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
                       </div>
                     </div>
 
-                    {previewIssues.length > 0 ? (
+                    {(previewIssues.length > 0 || showLocationPatch) ? (
                       <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
                         <p className="text-sm font-bold text-[var(--po-text)]">{dict.patchSectionTitle}</p>
-                        <p className="mt-1 text-xs leading-relaxed text-[var(--po-muted)]">{dict.patchSectionHint}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-[var(--po-muted)]">
+                          {previewIssues.find((issue) => issue.field === 'city')?.message || dict.patchSectionHint}
+                        </p>
                         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                          {issueNeedsField(previewIssues, 'city') ? (
+                          {showLocationPatch ? (
                             <>
                               <label className="block sm:col-span-1">
                                 <span className="mb-1.5 block text-xs font-semibold text-[var(--po-muted)]">
@@ -665,12 +686,19 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
                 disabled={!preview}
               >
                 {dict.termsLabel}{' '}
-                <Link href="/regulamin" className="font-semibold text-emerald-600 underline-offset-2 hover:underline dark:text-emerald-400">
+                <Link
+                  href="/regulamin"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-emerald-600 underline-offset-2 hover:underline dark:text-emerald-400"
+                >
                   {dict.termsLink}
                 </Link>{' '}
                 ·{' '}
                 <Link
                   href="/polityka-prywatnosci"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="font-semibold text-emerald-600 underline-offset-2 hover:underline dark:text-emerald-400"
                 >
                   {dict.privacyLink}

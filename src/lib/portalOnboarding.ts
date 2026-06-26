@@ -15,7 +15,7 @@ import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 import { encryptSession } from '@/lib/sessionUtils';
 import { verifyPortalOnboardingInvite } from '@/lib/portalOnboardingInvite';
 import { calculateRadarMatchScore, radarMatchThreshold } from '@/lib/radarMatchScore';
-import { getTotalRadarCount } from '@/lib/radarLiveCounter';
+import { PORTAL_ONBOARDING_RADAR_ECOSYSTEM } from '@/lib/radarLiveCounter';
 import {
   applyImportDraftPatch,
   enrichOtodomImportDraft,
@@ -24,6 +24,7 @@ import {
 import {
   assertOtodomImportDraftReady,
   collectOtodomImportDraftIssues,
+  collectOtodomImportLocationIssues,
   type ImportDraftIssue,
 } from '@/lib/importDraftValidate';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
@@ -88,7 +89,7 @@ export async function estimateRadarBuyersForListing(
   return {
     matchCount,
     highIntentCount,
-    ecosystemTotal: getTotalRadarCount(),
+    ecosystemTotal: PORTAL_ONBOARDING_RADAR_ECOSYSTEM,
     city: preview.city,
   };
 }
@@ -136,9 +137,13 @@ export async function previewPortalListing(portalUrl: string): Promise<PortalLis
     throw new Error(`Ta oferta jest już w EstateOS™ (oferta #${existing.id}).`);
   }
 
+  const baseIssues = collectOtodomImportDraftIssues(draft);
+  const locationIssues = await collectOtodomImportLocationIssues(draft);
+  const issues = [...baseIssues, ...locationIssues.filter((issue) => !baseIssues.some((b) => b.field === issue.field))];
+
   return {
     preview: draftToPortalPreview(draft),
-    issues: collectOtodomImportDraftIssues(draft),
+    issues,
   };
 }
 

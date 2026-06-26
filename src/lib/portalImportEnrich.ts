@@ -4,9 +4,12 @@ import {
   canonicalizeDistrict,
   getStrictCities,
   inferCityFromMapboxFeature,
+  isNonCityLabel,
+  isStrictCity,
   normalizeText,
   pickDistrictFromPlaceName,
 } from '@/lib/location/locationCatalog';
+import { locationNamesEquivalent } from '@/lib/location/locationNameMatch';
 import { fetchMapboxReverseFeature } from '@/lib/location/resolveOfferLocationFromCoordinates';
 
 /** Gdy OtoDom poda tylko dzielnicę (np. Służew), dopasuj miasto strict z katalogu. */
@@ -35,13 +38,34 @@ export function inferCityFromImportSlug(url: string, title: string): string {
     }
   }
 
-  const first = slug.split('-')[0];
-  if (first) {
-    const fromSegment = canonicalizeCity(first.replace(/-/g, ' '));
+  for (const segment of slug.split('-').filter(Boolean)) {
+    if (isNonCityLabel(segment)) continue;
+    const fromSegment = canonicalizeCity(segment.replace(/-/g, ' '));
     if (fromSegment) return fromSegment;
   }
 
   return '';
+}
+
+async function reconcileImportCityWithPin(
+  draft: Pick<OtodomImportDraft, 'lat' | 'lng'>,
+  city: string,
+): Promise<string> {
+  if (draft.lat == null || draft.lng == null) return city;
+
+  const feature = await fetchMapboxReverseFeature(draft.lat, draft.lng);
+  const pinCity = inferCityFromMapboxFeature(feature);
+  if (!pinCity) return city;
+
+  if (!city || isNonCityLabel(city)) {
+    return canonicalizeCity(pinCity);
+  }
+
+  if (!isStrictCity(city) && !locationNamesEquivalent(city, pinCity)) {
+    return canonicalizeCity(pinCity);
+  }
+
+  return city;
 }
 
 export function inferDistrictForCity(city: string, draft: Pick<OtodomImportDraft, 'district' | 'neighborhood' | 'title' | 'externalUrl'>): string {
@@ -78,6 +102,12 @@ export async function enrichOtodomImportDraft(draft: OtodomImportDraft): Promise
     const feature = await fetchMapboxReverseFeature(draft.lat, draft.lng);
     city = inferCityFromMapboxFeature(feature);
   }
+
+  if (city && !district) {
+    district = inferDistrictForCity(city, draft);
+  }
+
+  city = await reconcileImportCityWithPin(draft, canonicalizeCity(city));
 
   if (city && !district) {
     district = inferDistrictForCity(city, draft);

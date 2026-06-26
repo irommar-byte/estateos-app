@@ -3,6 +3,9 @@ export const RADAR_COUNTER_EPOCH_MS = Date.parse('2026-06-02T00:00:00Z');
 export const RADAR_COUNTER_BASE = 570;
 export const RADAR_DAILY_NET = 10;
 
+/** Stała liczba profili w ekosystemie na podglądzie /dolacz (nie trend na żywo). */
+export const PORTAL_ONBOARDING_RADAR_ECOSYSTEM = 610;
+
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 

@@ -7,7 +7,7 @@ import type { PortalRadarEstimate } from '@/lib/portalOnboarding';
 import type { PortalListingPreview } from '@/lib/portalOnboarding';
 import type { PortalOnboardingDictionary } from '@/i18n/portalOnboardingDictionary';
 import type { Locale } from '@/i18n/config';
-import { getTotalRadarCount } from '@/lib/radarLiveCounter';
+import { PORTAL_ONBOARDING_RADAR_ECOSYSTEM } from '@/lib/radarLiveCounter';
 
 export default function PortalRadarInvestorPreview({
   inviteToken,
@@ -60,7 +60,7 @@ export default function PortalRadarInvestorPreview({
   const ecosystem =
     estimate?.ecosystemTotal && estimate.ecosystemTotal > 0
       ? estimate.ecosystemTotal
-      : getTotalRadarCount();
+      : PORTAL_ONBOARDING_RADAR_ECOSYSTEM;
 
   return (
     <motion.div

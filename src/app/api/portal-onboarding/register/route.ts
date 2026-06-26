@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { registerAndImportPortalListing } from '@/lib/portalOnboarding';
-import { ImportDraftValidationError } from '@/lib/importDraftValidate';
+import { ImportDraftValidationError, issuesFromCreateErrorMessage } from '@/lib/importDraftValidate';
+import { LocationMismatchError } from '@/lib/offerGeolocationValidate';
 
 export async function POST(req: Request) {
   try {
@@ -45,7 +46,21 @@ export async function POST(req: Request) {
         { status: 422 },
       );
     }
+    if (error instanceof LocationMismatchError) {
+      const issues = issuesFromCreateErrorMessage(error.message);
+      return NextResponse.json(
+        { error: error.message, code: error.code, issues },
+        { status: 422 },
+      );
+    }
     const message = error instanceof Error ? error.message : 'Rejestracja nie powiodła się.';
+    if (/pinezk/i.test(message)) {
+      const issues = issuesFromCreateErrorMessage(message);
+      return NextResponse.json(
+        { error: message, code: 'LOCATION_MISMATCH', issues },
+        { status: 422 },
+      );
+    }
     const status =
       message.includes('zarejestrowany') || message.includes('w użyciu') || message.includes('już w EstateOS')
         ? 409
