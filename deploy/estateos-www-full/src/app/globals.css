@@ -591,6 +591,58 @@ html.light .eos-portal-guide-modal .eos-form-checkbox.checked svg {
   opacity: 1;
   color: #000000;
 }
+
+/* Kreator profilu po imporcie — jasny modal na ciemnym www (nie dziedziczy białego tekstu z body). */
+.eos-portal-guide-modal {
+  color: #141416 !important;
+}
+
+.eos-portal-guide-modal h2,
+.eos-portal-guide-modal h3,
+.eos-portal-guide-modal p,
+.eos-portal-guide-modal li,
+.eos-portal-guide-modal span {
+  color: inherit;
+}
+
+.eos-portal-guide-modal .eos-guide-btn-primary {
+  color: #ffffff !important;
+  background-color: #f59e0b !important;
+}
+
+.eos-portal-guide-modal .eos-guide-btn-primary.bg-emerald-500 {
+  color: #141416 !important;
+  background-color: #10b981 !important;
+}
+
+.eos-portal-guide-modal .eos-guide-btn-secondary {
+  color: #3d3d46 !important;
+  background-color: #f7f7f5 !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+.eos-portal-guide-modal .eos-guide-btn-ghost {
+  color: #5c5c66 !important;
+  background: transparent !important;
+}
+
+.eos-portal-guide-modal .eos-guide-app-footer p {
+  color: #5c5c66 !important;
+}
+
+html.dark .eos-portal-guide-modal,
+html.light .eos-portal-guide-modal {
+  color: #141416 !important;
+}
+
+html.dark .eos-portal-guide-modal button,
+html.light .eos-portal-guide-modal button,
+html.dark .eos-portal-guide-modal a.eos-guide-btn-primary,
+html.light .eos-portal-guide-modal a.eos-guide-btn-primary,
+html.dark .eos-portal-guide-modal a.eos-guide-btn-secondary,
+html.light .eos-portal-guide-modal a.eos-guide-btn-secondary {
+  -webkit-text-fill-color: currentColor;
+}
 /* ----------------------------------------- */
 
 

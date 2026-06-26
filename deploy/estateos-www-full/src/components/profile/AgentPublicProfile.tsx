@@ -24,7 +24,7 @@ type AgentProfilePayload = {
     phone: string | null;
     memberSince: string;
     role: string | null;
-    agentTitle: string;
+    agentTitle: string | null;
     titleLabel: string;
     profilePhotoUrl: string | null;
     avatarUrl: string | null;
@@ -82,9 +82,11 @@ function formatCount(n: number) {
 }
 
 export default function AgentPublicProfile({ data }: { data: AgentProfilePayload }) {
-  const { agent, company, stats, offers, reviews } = data;
+  const { isAgent, agent, company, stats, offers, reviews } = data;
   const rating = stats.averageRating ?? 0;
   const hasMoreOffers = stats.activeOffers > offers.length;
+  const profileKindLabel = isAgent ? "Profil agenta nieruchomości" : "Profil właściciela";
+  const displayName = agent.name || (isAgent ? "Agent" : "Użytkownik");
 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] pb-32 pt-28 text-[var(--eos-text)]">
@@ -107,18 +109,24 @@ export default function AgentPublicProfile({ data }: { data: AgentProfilePayload
           <div className="flex flex-col gap-8 lg:flex-row lg:items-center">
             <div className="relative mx-auto shrink-0 lg:mx-0">
               <div className="size-32 overflow-hidden rounded-full border-2 border-emerald-500/30 bg-[var(--eos-input)] shadow-lg sm:size-36">
-                <ProfileMediaAvatar src={agent.avatarUrl} alt={agent.name || "Agent"} iconSize={40} />
+                <ProfileMediaAvatar src={agent.avatarUrl} alt={displayName} iconSize={40} />
               </div>
-              <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-amber-400 to-amber-500 px-4 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-black shadow-lg">
+              <span
+                className={`absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-4 py-1 text-[10px] font-black uppercase tracking-[0.18em] shadow-lg ${
+                  isAgent
+                    ? "bg-gradient-to-r from-amber-400 to-amber-500 text-black"
+                    : "bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/30"
+                }`}
+              >
                 {agent.titleLabel}
               </span>
             </div>
 
             <div className="flex-1 text-center lg:text-left">
               <p className="mb-1 text-[10px] font-black uppercase tracking-[0.25em] text-emerald-500">
-                Profil agenta nieruchomości
+                {profileKindLabel}
               </p>
-              <h1 className="text-3xl font-black tracking-tight sm:text-4xl">{agent.name || "Agent"}</h1>
+              <h1 className="text-3xl font-black tracking-tight sm:text-4xl">{displayName}</h1>
               {company ? (
                 <p className="mt-2 text-lg font-semibold text-[var(--eos-muted)]">{company.name}</p>
               ) : null}
@@ -208,7 +216,7 @@ export default function AgentPublicProfile({ data }: { data: AgentProfilePayload
             <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <h2 className="flex items-center gap-2 text-xl font-black">
                 <Briefcase className="text-emerald-500" size={20} />
-                Oferty agenta ({formatCount(stats.activeOffers)})
+                {isAgent ? "Oferty agenta" : "Oferty"} ({formatCount(stats.activeOffers)})
               </h2>
               {hasMoreOffers ? (
                 <p className="text-xs font-medium text-[var(--eos-muted)]">
@@ -254,7 +262,9 @@ export default function AgentPublicProfile({ data }: { data: AgentProfilePayload
           </h2>
           {reviews.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-[var(--eos-border)] p-10 text-center text-sm text-[var(--eos-muted)]">
-              Ten agent nie ma jeszcze opinii od klientów.
+              {isAgent
+                ? "Ten agent nie ma jeszcze opinii od klientów."
+                : "Ten użytkownik nie ma jeszcze opinii."}
             </div>
           ) : (
             <div className="space-y-3">

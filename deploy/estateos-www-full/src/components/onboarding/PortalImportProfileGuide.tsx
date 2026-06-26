@@ -109,7 +109,7 @@ export default function PortalImportProfileGuide({
           initial={{ y: 40, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 24, opacity: 0 }}
-          className="eos-portal-guide-modal relative flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.75rem] bg-white shadow-2xl sm:rounded-[1.75rem]"
+          className="eos-portal-guide-modal relative flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.75rem] bg-white text-[#141416] shadow-2xl sm:rounded-[1.75rem]"
         >
           <button
             type="button"
@@ -120,13 +120,10 @@ export default function PortalImportProfileGuide({
             <X size={18} />
           </button>
 
-          <div className="border-b border-black/[0.06] px-6 pb-4 pt-6">
-            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600">
+          <div className="flex-1 overflow-y-auto px-6 pb-6 pt-14">
+            <p className="mb-5 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600">
               EstateOS™ · {dict.stepOf(stepIndex + 1, total)}
             </p>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-6 py-5">
             {step === 'pending' ? (
               <div>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
@@ -150,37 +147,41 @@ export default function PortalImportProfileGuide({
                 <h2 className="mt-4 text-2xl font-black tracking-tight text-[#141416]">{dict.investorTitle}</h2>
                 <p className="mt-3 text-sm leading-relaxed text-[#5c5c66]">{investorBody}</p>
                 <p className="mt-3 text-sm font-semibold text-[#141416]">{dict.investorCredits}</p>
-                <p className="mt-2 text-xs text-[#8a8a94]">{investorPriceNote}</p>
-                <div className="mt-6 flex flex-col gap-3">
+                <p className="mt-2 text-xs leading-relaxed text-[#5c5c66]">{investorPriceNote}</p>
+                <div className="mt-8 flex flex-col gap-3">
                   {isMobileApp ? (
                     <a
                       href={mobile.isIOS ? ESTATEOS_APP_STORE_URL : ESTATEOS_PLAY_STORE_URL}
-                      className="flex items-center justify-center gap-2 rounded-2xl bg-[#F59E0B] py-4 text-sm font-black uppercase tracking-widest text-white"
+                      className="eos-guide-btn-primary flex items-center justify-center gap-2 rounded-2xl bg-[#F59E0B] py-4 text-sm font-black uppercase tracking-widest text-white"
                     >
                       <Smartphone size={18} /> {dict.investorCta}
                     </a>
                   ) : (
-                    <>
-                      <Link
-                        href="/cennik"
-                        className="flex items-center justify-center gap-2 rounded-2xl bg-[#F59E0B] py-4 text-sm font-black uppercase tracking-widest text-white"
-                      >
-                        <Crown size={18} /> {dict.investorCtaWeb}
-                      </Link>
-                      <div className="flex flex-col items-center gap-2 pt-1">
-                        <AppStoreBadgeLink className="h-10" />
-                        <p className="text-center text-[11px] text-[#8a8a94]">{dict.investorAppTrialHint}</p>
-                      </div>
-                    </>
+                    <Link
+                      href="/cennik"
+                      className="eos-guide-btn-primary flex items-center justify-center gap-2 rounded-2xl bg-[#F59E0B] py-4 text-sm font-black uppercase tracking-widest text-white"
+                    >
+                      <Crown size={18} /> {dict.investorCtaWeb}
+                    </Link>
                   )}
                   <button
                     type="button"
                     onClick={goNext}
-                    className="py-2 text-center text-sm font-semibold text-[#8a8a94]"
+                    className="eos-guide-btn-ghost py-2 text-center text-sm font-semibold"
                   >
                     {dict.investorLater}
                   </button>
                 </div>
+                {!isMobileApp ? (
+                  <div className="eos-guide-app-footer mt-8 border-t border-black/[0.08] pt-6">
+                    <div className="flex flex-col items-center gap-3">
+                      <AppStoreBadgeLink className="h-10" />
+                      <p className="max-w-xs text-center text-xs leading-relaxed text-[#5c5c66]">
+                        {dict.investorAppTrialHint}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -195,7 +196,7 @@ export default function PortalImportProfileGuide({
                       setWantsRadar(true);
                       setStepIndex((i) => i + 1);
                     }}
-                    className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-4 text-sm font-black uppercase tracking-widest text-black"
+                    className="eos-guide-btn-primary flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-4 text-sm font-black uppercase tracking-widest text-black"
                   >
                     <Radar size={18} /> {dict.searchYes}
                   </button>
@@ -205,7 +206,7 @@ export default function PortalImportProfileGuide({
                       setWantsRadar(false);
                       setStepIndex((i) => i + 1);
                     }}
-                    className="rounded-2xl border border-black/10 py-4 text-sm font-semibold text-[#5c5c66]"
+                    className="eos-guide-btn-secondary rounded-2xl border border-black/12 bg-[#f7f7f5] py-4 text-sm font-semibold"
                   >
                     {dict.searchNo}
                   </button>
@@ -241,16 +242,16 @@ export default function PortalImportProfileGuide({
               <div>
                 <h2 className="text-2xl font-black tracking-tight text-[#141416]">{dict.appTitle}</h2>
                 <p className="mt-3 text-sm leading-relaxed text-[#5c5c66]">{dict.appBody}</p>
-                <div className="mt-5 flex flex-wrap justify-center gap-3">
+                <div className="eos-guide-app-footer mt-8 flex flex-wrap justify-center gap-3 border-t border-black/[0.08] pt-6">
                   <a
                     href={ESTATEOS_APP_STORE_URL}
-                    className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-3 text-xs font-bold"
+                    className="eos-guide-btn-secondary inline-flex items-center gap-2 rounded-xl border border-black/12 bg-[#f7f7f5] px-4 py-3 text-xs font-bold"
                   >
                     <Smartphone size={16} /> {dict.appIos}
                   </a>
                   <a
                     href={ESTATEOS_PLAY_STORE_URL}
-                    className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-3 text-xs font-bold"
+                    className="eos-guide-btn-secondary inline-flex items-center gap-2 rounded-xl border border-black/12 bg-[#f7f7f5] px-4 py-3 text-xs font-bold"
                   >
                     <Smartphone size={16} /> {dict.appAndroid}
                   </a>

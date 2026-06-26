@@ -86,6 +86,9 @@ export async function loadAgentPublicProfile(userId: number) {
   const agentTitle = membership?.agentTitle ?? 'AGENT';
   const profilePhotoUrl = membership?.profilePhotoUrl ?? null;
   const companyLogoUrl = company?.logoUrl ?? null;
+  const titleLabel = isAgent
+    ? formatAgentTitle(agentTitle)
+    : 'Właściciel';
 
   return {
     isAgent,
@@ -97,8 +100,8 @@ export async function loadAgentPublicProfile(userId: number) {
       memberSince: user.createdAt.toISOString(),
       role: membership?.role ?? null,
       status: membership?.status ?? null,
-      agentTitle,
-      titleLabel: formatAgentTitle(agentTitle),
+      agentTitle: isAgent ? agentTitle : null,
+      titleLabel,
       profilePhotoUrl: resolveProfileMediaUrl(profilePhotoUrl),
       avatarUrl: pickAgentAvatar({
         profilePhotoUrl,
