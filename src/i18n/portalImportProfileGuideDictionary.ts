@@ -9,13 +9,17 @@ export type PortalImportProfileGuideDictionary = {
   pendingTitle: string;
   pendingBody: (offerId: number) => string;
   pendingHint: string;
-  investorBadge: string;
+  investorBadgeApp: string;
+  investorBadgeWeb: string;
   investorTitle: string;
-  investorBody: string;
+  investorBodyApp: string;
+  investorBodyWeb: string;
   investorCredits: string;
-  investorPriceNote: string;
+  investorPriceNoteApp: string;
+  investorPriceNoteWeb: string;
   investorCta: string;
   investorCtaWeb: string;
+  investorAppTrialHint: string;
   investorLater: string;
   searchTitle: string;
   searchBody: string;
@@ -42,14 +46,19 @@ const pl: PortalImportProfileGuideDictionary = {
   pendingBody: (id) =>
     `Zaimportowaliśmy ofertę #${id} wraz ze zdjęciami i oryginalnym opisem z portalu. Zespół EstateOS™ sprawdzi ją przed publikacją na mapie — dostaniesz powiadomienie, gdy będzie aktywna.`,
   pendingHint: 'Status „Oczekujące” zobaczysz w panelu Moje konto → CRM.',
-  investorBadge: '3 dni za darmo',
+  investorBadgeApp: '3 dni za darmo',
+  investorBadgeWeb: '249 zł / 30 dni',
   investorTitle: 'Wypróbuj Investor Pro',
-  investorBody:
-    'Import z portali, podgląd off-market i narzędzia premium — 3 dni za darmo, bez zobowiązań. Anuluj w App Store przed końcem trialu, jeśli nie chcesz płacić.',
+  investorBodyApp:
+    'Import z portali, podgląd off-market i narzędzia premium — w aplikacji masz 3 dni za darmo. Anuluj w App Store lub Google Play przed końcem trialu, jeśli nie chcesz płacić.',
+  investorBodyWeb:
+    'Import z portali, podgląd off-market i Radar bez 24-godzinnego opóźnienia. Na stronie www aktywujesz Investor Pro jednorazową płatnością — bez okresu próbnego.',
   investorCredits: '5 publikacji w pakiecie + Radar bez 24-godzinnego opóźnienia.',
-  investorPriceNote: 'Potem subskrypcja miesięczna w App Store.',
+  investorPriceNoteApp: 'Po trialu — subskrypcja miesięczna w sklepie z aplikacjami.',
+  investorPriceNoteWeb: 'Płatność od razu (karta lub BLIK w Stripe). Po 30 dniach przedłużysz pakiet na cenniku.',
   investorCta: 'Rozpocznij 3-dniowy trial w aplikacji',
-  investorCtaWeb: 'Investor Pro na stronie',
+  investorCtaWeb: 'Kup Investor Pro — 249 zł',
+  investorAppTrialHint: 'Na iPhone i Android: 3-dniowy trial w App Store / Google Play',
   investorLater: 'Później',
   searchTitle: 'Szukasz też nieruchomości dla siebie?',
   searchBody:
@@ -88,14 +97,19 @@ const en: PortalImportProfileGuideDictionary = {
   pendingBody: (id) =>
     `We imported listing #${id} with photos and the original portal description. The EstateOS™ team will review it before it goes live on the map.`,
   pendingHint: 'See “Pending” status under My account → CRM.',
-  investorBadge: '3 days free',
+  investorBadgeApp: '3 days free',
+  investorBadgeWeb: '249 PLN / 30 days',
   investorTitle: 'Try Investor Pro',
-  investorBody:
-    'Portal import, off-market preview and premium tools — 3 days free, no commitment. Cancel in the App Store before the trial ends if you do not want to pay.',
+  investorBodyApp:
+    'Portal import, off-market preview and premium tools — 3 days free in the app. Cancel in the App Store or Google Play before the trial ends if you do not want to pay.',
+  investorBodyWeb:
+    'Portal import, off-market preview and Radar without the 24-hour delay. On the website you activate Investor Pro with a one-time payment — no free trial.',
   investorCredits: '5 publication credits + Radar without the 24-hour delay.',
-  investorPriceNote: 'Then monthly subscription in the App Store.',
+  investorPriceNoteApp: 'After the trial — monthly subscription in the app store.',
+  investorPriceNoteWeb: 'Pay immediately (card or BLIK via Stripe). Renew on the pricing page after 30 days.',
   investorCta: 'Start 3-day trial in the app',
-  investorCtaWeb: 'Investor Pro on the website',
+  investorCtaWeb: 'Buy Investor Pro — 249 PLN',
+  investorAppTrialHint: 'On iPhone and Android: 3-day trial in the App Store / Google Play',
   investorLater: 'Later',
   searchTitle: 'Also looking for a property?',
   searchBody: 'Many owners use EstateOS™ as buyers too. Set up Radar to get notified when a perfect match appears.',
@@ -124,8 +138,17 @@ const en: PortalImportProfileGuideDictionary = {
 const uk: PortalImportProfileGuideDictionary = {
   ...en,
   pendingTitle: 'Оголошення на вашому профілі',
+  investorBadgeApp: '3 дні безкоштовно',
+  investorBadgeWeb: '249 zł / 30 дн.',
   investorTitle: 'Спробуйте Investor Pro',
+  investorBodyApp:
+    'Імпорт з порталів, off-market і преміум-інструменти — 3 дні безкоштовно в застосунку. Скасуйте в App Store або Google Play до кінця trial, якщо не хочете платити.',
+  investorBodyWeb:
+    'Імпорт з порталів, off-market і Radar без 24-годинної затримки. На сайті Investor Pro — одноразова оплата, без пробного періоду.',
+  investorPriceNoteWeb: 'Оплата одразу (картка або BLIK у Stripe). Після 30 днів — продовження на сторінці цін.',
   investorCta: 'Розпочати 3-денний trial у застосунку',
+  investorCtaWeb: 'Купити Investor Pro — 249 zł',
+  investorAppTrialHint: 'На iPhone та Android: 3-денний trial у App Store / Google Play',
   searchTitle: 'Також шукаєте нерухомість для себе?',
   radarTitle: 'Як налаштувати Radar за 3 кроки',
   finish: 'Зрозуміло — до профілю',

@@ -90,6 +90,11 @@ export default function PortalImportProfileGuide({
     i === 3 && offerId > 0 ? { ...tip, href: `/edytuj-oferte/${offerId}` } : tip,
   );
 
+  const isMobileApp = mobile.isIOS || mobile.isAndroid;
+  const investorBadge = isMobileApp ? dict.investorBadgeApp : dict.investorBadgeWeb;
+  const investorBody = isMobileApp ? dict.investorBodyApp : dict.investorBodyWeb;
+  const investorPriceNote = isMobileApp ? dict.investorPriceNoteApp : dict.investorPriceNoteWeb;
+
   return (
     <AnimatePresence>
       <motion.div
@@ -104,7 +109,7 @@ export default function PortalImportProfileGuide({
           initial={{ y: 40, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 24, opacity: 0 }}
-          className="relative flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.75rem] bg-white shadow-2xl sm:rounded-[1.75rem]"
+          className="eos-portal-guide-modal relative flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.75rem] bg-white shadow-2xl sm:rounded-[1.75rem]"
         >
           <button
             type="button"
@@ -140,14 +145,14 @@ export default function PortalImportProfileGuide({
             {step === 'investor' ? (
               <div>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F59E0B] px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-white">
-                  <Crown size={14} /> {dict.investorBadge}
+                  <Crown size={14} /> {investorBadge}
                 </span>
                 <h2 className="mt-4 text-2xl font-black tracking-tight text-[#141416]">{dict.investorTitle}</h2>
-                <p className="mt-3 text-sm leading-relaxed text-[#5c5c66]">{dict.investorBody}</p>
+                <p className="mt-3 text-sm leading-relaxed text-[#5c5c66]">{investorBody}</p>
                 <p className="mt-3 text-sm font-semibold text-[#141416]">{dict.investorCredits}</p>
-                <p className="mt-2 text-xs text-[#8a8a94]">{dict.investorPriceNote}</p>
+                <p className="mt-2 text-xs text-[#8a8a94]">{investorPriceNote}</p>
                 <div className="mt-6 flex flex-col gap-3">
-                  {mobile.isIOS || mobile.isAndroid ? (
+                  {isMobileApp ? (
                     <a
                       href={mobile.isIOS ? ESTATEOS_APP_STORE_URL : ESTATEOS_PLAY_STORE_URL}
                       className="flex items-center justify-center gap-2 rounded-2xl bg-[#F59E0B] py-4 text-sm font-black uppercase tracking-widest text-white"
@@ -162,8 +167,9 @@ export default function PortalImportProfileGuide({
                       >
                         <Crown size={18} /> {dict.investorCtaWeb}
                       </Link>
-                      <div className="flex justify-center gap-3 pt-1">
+                      <div className="flex flex-col items-center gap-2 pt-1">
                         <AppStoreBadgeLink className="h-10" />
+                        <p className="text-center text-[11px] text-[#8a8a94]">{dict.investorAppTrialHint}</p>
                       </div>
                     </>
                   )}
@@ -278,7 +284,7 @@ export default function PortalImportProfileGuide({
               <button
                 type="button"
                 onClick={goNext}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#141416] py-4 text-sm font-black uppercase tracking-widest text-white"
+                className="eos-dark-cta flex w-full items-center justify-center gap-2 rounded-2xl bg-[#141416] py-4 text-sm font-black uppercase tracking-widest text-white"
               >
                 {stepIndex >= total - 1 ? (
                   <>

@@ -313,20 +313,23 @@ button.premium-action-btn > * { position: relative; z-index: 10; }
 
 
 /* --- ESTATE OS DARK THEME GLOBAL FIXES --- */
-/* Wymuszenie białego tekstu w polach */
-input, textarea, select {
+/* Wymuszenie koloru tekstu w polach — wyjątek: /dolacz (.po-field w .portal-onboarding-shell) */
+input:not(.po-field):not(.sr-only),
+textarea:not(.po-field),
+select:not(.po-field) {
     color: var(--eos-input-text) !important;
     color-scheme: inherit;
 }
-input::placeholder, textarea::placeholder {
+input:not(.po-field):not(.sr-only)::placeholder,
+textarea:not(.po-field)::placeholder {
     color: var(--eos-subtle) !important;
 }
 
 /* BLOKADA CZARNEGO TEKSTU PRZY AUTOUZUPEŁNIANIU PRZEGLĄDARKI */
-input:-webkit-autofill,
-input:-webkit-autofill:hover, 
-input:-webkit-autofill:focus, 
-input:-webkit-autofill:active {
+input:not(.po-field):-webkit-autofill,
+input:not(.po-field):-webkit-autofill:hover, 
+input:not(.po-field):-webkit-autofill:focus, 
+input:not(.po-field):-webkit-autofill:active {
     -webkit-box-shadow: 0 0 0 30px var(--eos-bg-elevated) inset !important;
     -webkit-text-fill-color: var(--eos-accent) !important;
     transition: background-color 5000s ease-in-out 0s;
@@ -392,6 +395,201 @@ html.light .estate-checkbox.checked,
 html.light .eos-form-checkbox.checked {
     background-color: #10b981;
     border-color: #059669;
+}
+
+/* Portal onboarding (/dolacz) — izolowany jasny/ciemny motyw, zgodny z przełącznikiem strony */
+.portal-onboarding-shell {
+  --po-bg: #f4f3f0;
+  --po-text: #141416;
+  --po-muted: #5c5c66;
+  --po-subtle: #8a8a94;
+  --po-card: #ffffff;
+  --po-card-alt: #fafaf8;
+  --po-input-bg: #f3f3f1;
+  --po-input-focus-bg: #ffffff;
+  --po-input-border: rgba(15, 23, 42, 0.18);
+  --po-input-text: #141416;
+  --po-placeholder: #8a8a94;
+  --po-border: rgba(15, 23, 42, 0.1);
+  --po-border-soft: rgba(15, 23, 42, 0.06);
+  --po-shadow: 0 20px 50px rgba(20, 20, 22, 0.08);
+  --po-overlay: rgba(20, 20, 22, 0.5);
+  --po-error-bg: #fef2f2;
+  --po-error-border: rgba(220, 38, 38, 0.25);
+  --po-error-text: #dc2626;
+  --po-thumb: #ececea;
+  --po-radar-from: #faf8f2;
+  --po-radar-via: #ffffff;
+  --po-radar-gold: #8a6e2f;
+  --po-radar-gold-bg: rgba(184, 146, 46, 0.08);
+  --po-radar-gold-text: #6b5420;
+  --eos-input-text: #141416;
+  --eos-text: #141416;
+  --eos-muted: #5c5c66;
+  --eos-subtle: #8a8a94;
+  --eos-border: rgba(15, 23, 42, 0.12);
+  --eos-border-strong: rgba(15, 23, 42, 0.18);
+  --eos-input: #f3f3f1;
+  --eos-card: #ffffff;
+  --eos-bg-elevated: #ffffff;
+  --eos-accent-soft: rgba(16, 185, 129, 0.1);
+  background-color: var(--po-bg);
+  color: var(--po-text);
+}
+
+html.dark .portal-onboarding-shell {
+  --po-bg: #070708;
+  --po-text: #f4f4f5;
+  --po-muted: #a1a1aa;
+  --po-subtle: #71717a;
+  --po-card: #141416;
+  --po-card-alt: #1a1a1e;
+  --po-input-bg: #1e1e22;
+  --po-input-focus-bg: #252529;
+  --po-input-border: rgba(255, 255, 255, 0.16);
+  --po-input-text: #f4f4f5;
+  --po-placeholder: #71717a;
+  --po-border: rgba(255, 255, 255, 0.1);
+  --po-border-soft: rgba(255, 255, 255, 0.06);
+  --po-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  --po-overlay: rgba(0, 0, 0, 0.72);
+  --po-error-bg: rgba(220, 38, 38, 0.12);
+  --po-error-border: rgba(248, 113, 113, 0.3);
+  --po-error-text: #fca5a5;
+  --po-thumb: #2a2a2e;
+  --po-radar-from: #1a1814;
+  --po-radar-via: #141416;
+  --po-radar-gold: #d4b86a;
+  --po-radar-gold-bg: rgba(184, 146, 46, 0.14);
+  --po-radar-gold-text: #e8d5a3;
+  --eos-input-text: #f4f4f5;
+  --eos-text: #f4f4f5;
+  --eos-muted: #a1a1aa;
+  --eos-subtle: #71717a;
+  --eos-border: rgba(255, 255, 255, 0.12);
+  --eos-border-strong: rgba(255, 255, 255, 0.18);
+  --eos-input: #1e1e22;
+  --eos-card: #141416;
+  --eos-bg-elevated: #1a1a1e;
+  --eos-accent-soft: rgba(16, 185, 129, 0.14);
+}
+
+.portal-onboarding-shell .po-field {
+  background-color: var(--po-input-bg);
+  border: 1px solid var(--po-input-border);
+  color: var(--po-input-text);
+}
+
+.portal-onboarding-shell .po-field:focus {
+  background-color: var(--po-input-focus-bg);
+  border-color: rgba(16, 185, 129, 0.45);
+}
+
+.portal-onboarding-shell input:not([type='checkbox']):not(.sr-only),
+.portal-onboarding-shell textarea,
+.portal-onboarding-shell select {
+  color: var(--po-input-text) !important;
+  -webkit-text-fill-color: var(--po-input-text) !important;
+  caret-color: var(--po-input-text);
+}
+
+.portal-onboarding-shell input:not([type='checkbox']):not(.sr-only)::placeholder,
+.portal-onboarding-shell textarea::placeholder {
+  color: var(--po-placeholder) !important;
+  -webkit-text-fill-color: var(--po-placeholder) !important;
+  opacity: 1;
+}
+
+.portal-onboarding-shell input:not([type='checkbox']):not(.sr-only):-webkit-autofill,
+.portal-onboarding-shell input:not([type='checkbox']):not(.sr-only):-webkit-autofill:hover,
+.portal-onboarding-shell input:not([type='checkbox']):not(.sr-only):-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 30px var(--po-input-bg) inset !important;
+  -webkit-text-fill-color: var(--po-input-text) !important;
+  color: var(--po-input-text) !important;
+}
+
+.portal-onboarding-shell input:not([type='checkbox']):not(.sr-only)::selection,
+.portal-onboarding-shell textarea::selection {
+  background-color: rgba(16, 185, 129, 0.28);
+  color: var(--po-input-text);
+}
+
+.portal-onboarding-shell .estate-checkbox svg,
+.portal-onboarding-shell .eos-form-checkbox svg {
+  color: #000000;
+}
+
+.portal-onboarding-shell .estate-checkbox.checked svg,
+.portal-onboarding-shell .eos-form-checkbox.checked svg {
+  opacity: 1;
+  color: #000000;
+}
+
+html.dark .portal-onboarding-shell .estate-checkbox,
+html.dark .portal-onboarding-shell .eos-form-checkbox {
+  border-color: rgba(255, 255, 255, 0.28);
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+html.dark .portal-onboarding-shell .estate-checkbox.checked,
+html.dark .portal-onboarding-shell .eos-form-checkbox.checked {
+  background-color: #10b981;
+  border-color: #059669;
+}
+
+.portal-onboarding-shell .po-radar-preview {
+  border-color: rgba(184, 146, 46, 0.35);
+  background: linear-gradient(
+    to bottom right,
+    var(--po-radar-from),
+    var(--po-radar-via),
+    rgba(16, 185, 129, 0.08)
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 40px rgba(184, 146, 46, 0.1);
+}
+
+html.light .portal-onboarding-shell .po-radar-preview {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 12px 40px rgba(184, 146, 46, 0.12);
+}
+
+button.eos-dark-cta,
+a.eos-dark-cta {
+  background-color: #141416 !important;
+  color: #ffffff !important;
+}
+
+button.eos-dark-cta svg,
+a.eos-dark-cta svg {
+  color: #ffffff !important;
+}
+
+html.light .portal-onboarding-shell button.eos-dark-cta,
+html.light .portal-onboarding-shell a.eos-dark-cta,
+html.dark .portal-onboarding-shell button.eos-dark-cta,
+html.dark .portal-onboarding-shell a.eos-dark-cta,
+html.light .eos-portal-guide-modal button.eos-dark-cta,
+html.light .theme-aware-dashboard .eos-portal-guide-modal button.eos-dark-cta {
+  background-color: #141416 !important;
+  color: #ffffff !important;
+}
+
+html.light .theme-aware-dashboard .eos-portal-guide-modal button.eos-dark-cta,
+html.light .theme-aware-dashboard .eos-portal-guide-modal button.eos-dark-cta span,
+html.light .theme-aware-dashboard .eos-portal-guide-modal button.eos-dark-cta svg {
+  color: #ffffff !important;
+}
+
+html.dark .portal-onboarding-shell .eos-portal-guide-modal .estate-checkbox svg,
+html.light .eos-portal-guide-modal .estate-checkbox svg,
+html.light .eos-portal-guide-modal .eos-form-checkbox svg {
+  color: #000000;
+}
+
+html.dark .portal-onboarding-shell .eos-portal-guide-modal .estate-checkbox.checked svg,
+html.light .eos-portal-guide-modal .estate-checkbox.checked svg,
+html.light .eos-portal-guide-modal .eos-form-checkbox.checked svg {
+  opacity: 1;
+  color: #000000;
 }
 /* ----------------------------------------- */
 
@@ -1944,5 +2142,21 @@ html.light .eos-modal-panel {
   height: 0.375rem;
   border-radius: 999px;
   background: #10b981;
+}
+
+/* /dolacz — pola muszą wygrać z każdym globalnym nadpisaniem (Safari, dark/light) */
+.portal-onboarding-shell input.po-field:not([type='checkbox']):not(.sr-only),
+.portal-onboarding-shell textarea.po-field,
+.portal-onboarding-shell select.po-field,
+.portal-onboarding-shell .portal-onboarding-phone input:not([type='checkbox']):not(.sr-only) {
+  color: var(--po-input-text) !important;
+  -webkit-text-fill-color: var(--po-input-text) !important;
+  caret-color: var(--po-input-text) !important;
+  opacity: 1 !important;
+}
+
+.portal-onboarding-shell .portal-onboarding-phone > div > div {
+  background-color: var(--po-input-bg) !important;
+  border-color: var(--po-input-border) !important;
 }
 

@@ -50,6 +50,7 @@ export type PortalOnboardingDictionary = {
   radarSubtitle: (city: string) => string;
   radarHighIntent: (n: number) => string;
   radarEcosystem: (total: number) => string;
+  radarNoMatchTitle: string;
   radarScanning: string;
   radarAfterPublish: string;
   sourceOtodom: string;
@@ -104,8 +105,8 @@ const pl: PortalOnboardingDictionary = {
       ? `Oferta #${offerId} jest na Twoim profilu (status: oczekujące) wraz z ${images} zdjęciami i oryginalnym opisem. Zespół sprawdzi ją przed publikacją — za chwilę pokażemy Ci panel.`
       : `Oferta #${offerId} jest na Twoim profilu i czeka na weryfikację. Za chwilę pokażemy Ci, co dalej.`,
   successCta: 'Przejdź do profilu',
-  publishing: 'Importujemy…',
-  publishingTitle: 'Przenosimy ogłoszenie do EstateOS™',
+  publishing: 'Publikujemy…',
+  publishingTitle: 'Publikujemy ogłoszenie na Twoim profilu',
   progressAccount: 'Tworzenie konta',
   progressFetch: 'Pobieranie ogłoszenia',
   progressRewrite: 'Kopiowanie opisu z portalu',
@@ -118,6 +119,7 @@ const pl: PortalOnboardingDictionary = {
     `Po publikacji i ustawieniu Radaru — kupujący szukający w ${city || 'Twojej okolicy'} dostaną powiadomienie.`,
   radarHighIntent: (n) => `${n} z bardzo wysokim dopasowaniem profilu`,
   radarEcosystem: (total) => `${total.toLocaleString('pl-PL')} aktywnych profili w ekosystemie EstateOS™`,
+  radarNoMatchTitle: 'Radar powiadomi dopasowanych inwestorów',
   radarScanning: 'Skanujemy dopasowania…',
   radarAfterPublish: 'Powiadomienia wysyłamy automatycznie po aktywacji oferty na mapie.',
   sourceOtodom: 'OtoDom',
@@ -171,8 +173,8 @@ const en: PortalOnboardingDictionary = {
       ? `Listing #${offerId} is on your profile (pending) with ${images} photos and the original description. We will guide you through the panel next.`
       : `Listing #${offerId} is on your profile awaiting review.`,
   successCta: 'Go to profile',
-  publishing: 'Importing…',
-  publishingTitle: 'Moving your listing to EstateOS™',
+  publishing: 'Publishing…',
+  publishingTitle: 'Publishing your listing on your profile',
   progressRewrite: 'Copying description from portal',
   progressPublish: 'Submitting for review',
   radarEyebrow: 'Radar preview',
@@ -182,6 +184,7 @@ const en: PortalOnboardingDictionary = {
     `After publication and Radar setup — buyers searching in ${city || 'your area'} will be notified.`,
   radarHighIntent: (n) => `${n} with a very strong profile match`,
   radarEcosystem: (total) => `${total.toLocaleString('en-US')} active profiles in the EstateOS™ ecosystem`,
+  radarNoMatchTitle: 'Radar will notify matching investors',
   radarScanning: 'Scanning matches…',
   radarAfterPublish: 'Notifications are sent automatically once the listing is live on the map.',
   sourceOtodom: 'OtoDom',

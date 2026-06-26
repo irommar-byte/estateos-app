@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -30,6 +30,42 @@ import type { PortalListingPreview } from '@/lib/portalOnboarding';
 type FieldStatus = 'idle' | 'checking' | 'available' | 'taken';
 
 type ProgressStep = { id: string; label: string; done: boolean; active: boolean };
+
+const PO_FIELD =
+  'po-field w-full rounded-2xl text-sm outline-none transition focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-50';
+
+function PortalCheckbox({
+  checked,
+  onCheckedChange,
+  disabled,
+  children,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer gap-3 text-sm leading-relaxed text-[var(--po-muted)] ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+    >
+      <span
+        className={`estate-checkbox eos-form-checkbox mt-0.5 shrink-0 ${checked ? 'checked' : ''}`}
+        aria-hidden
+      >
+        <Check size={16} strokeWidth={4} />
+      </span>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onCheckedChange(e.target.checked)}
+        className="sr-only"
+      />
+      <span>{children}</span>
+    </label>
+  );
+}
 
 export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: string }) {
   const { locale } = useLocale();
@@ -244,17 +280,17 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
 
   if (success) {
     return (
-      <main className="flex min-h-[100dvh] items-center justify-center bg-[#f4f3f0] p-6">
+      <main className="flex min-h-[100dvh] items-center justify-center p-6">
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-md rounded-[2rem] border border-emerald-500/25 bg-white p-10 text-center shadow-[0_24px_80px_rgba(20,20,22,0.1)]"
+          className="w-full max-w-md rounded-[2rem] border border-emerald-500/25 bg-[var(--po-card)] p-10 text-center shadow-[var(--po-shadow)]"
         >
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
             <CheckCircle2 size={36} />
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-[#141416]">{dict.successTitle}</h1>
-          <p className="mt-3 text-sm leading-relaxed text-[#5c5c66]">
+          <h1 className="text-2xl font-black tracking-tight text-[var(--po-text)]">{dict.successTitle}</h1>
+          <p className="mt-3 text-sm leading-relaxed text-[var(--po-muted)]">
             {dict.successBody(success.offerId, success.imagesUploaded)}
           </p>
           <Link
@@ -269,7 +305,7 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
   }
 
   return (
-    <main className="min-h-[100dvh] bg-[#f4f3f0] text-[#141416]">
+    <main className="min-h-[100dvh]">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(900px_520px_at_50%_-8%,rgba(16,185,129,0.1),transparent_58%)]" />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(640px_380px_at_100%_100%,rgba(184,146,46,0.08),transparent_55%)]" />
 
@@ -278,7 +314,7 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
           <div className="mb-6 flex items-center justify-between gap-4">
             <Link
               href="/"
-              className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.28em] text-[#5c5c66] transition hover:text-[#141416]"
+              className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.28em] text-[var(--po-muted)] transition hover:text-[var(--po-text)]"
             >
               <Building2 size={14} className="text-emerald-600" />
               {dict.brand}
@@ -289,40 +325,40 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
           <motion.h1
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-[clamp(1.75rem,5vw,3rem)] font-black leading-[1.12] tracking-tight text-[#141416]"
+            className="text-[clamp(1.75rem,5vw,3rem)] font-black leading-[1.12] tracking-tight text-[var(--po-text)]"
           >
             {dict.heroTitle}
-            <span className="mt-1 block text-emerald-600">{dict.heroTitleAccent}</span>
+            <span className="mt-1 block text-emerald-500">{dict.heroTitleAccent}</span>
           </motion.h1>
-          <p className="mx-auto mt-5 max-w-lg text-sm leading-relaxed text-[#5c5c66] md:text-base">
+          <p className="mx-auto mt-5 max-w-lg text-sm leading-relaxed text-[var(--po-muted)] md:text-base">
             {dict.heroSubtitle}
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-2">
             {heroStats.map((item) => (
               <span
                 key={item.label}
-                className="rounded-full border border-black/[0.08] bg-white px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#5c5c66] shadow-sm"
+                className="rounded-full border border-[var(--po-border)] bg-[var(--po-card)] px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--po-muted)] shadow-sm"
               >
-                {item.label}: <span className="text-[#141416]">{item.value}</span>
+                {item.label}: <span className="text-[var(--po-text)]">{item.value}</span>
               </span>
             ))}
           </div>
         </header>
 
         <div className="space-y-5">
-          <section className="overflow-hidden rounded-[1.75rem] border border-black/[0.08] bg-white shadow-[0_20px_50px_rgba(20,20,22,0.07)]">
-            <div className="border-b border-black/[0.06] bg-[#fafaf8] px-5 py-4">
-              <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/15 text-[11px] text-emerald-700">
+          <section className="overflow-hidden rounded-[1.75rem] border border-[var(--po-border)] bg-[var(--po-card)] shadow-[var(--po-shadow)]">
+            <div className="border-b border-[var(--po-border-soft)] bg-[var(--po-card-alt)] px-5 py-4">
+              <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-500">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/15 text-[11px] text-emerald-600 dark:text-emerald-400">
                   1
                 </span>
                 {dict.step1}
               </p>
             </div>
             <div className="space-y-4 p-5">
-              <label className="block text-xs font-semibold text-[#5c5c66]">{dict.step1Label}</label>
+              <label className="block text-xs font-semibold text-[var(--po-muted)]">{dict.step1Label}</label>
               <div className="relative min-w-0">
-                <Link2 size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#8a8a94]" />
+                <Link2 size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--po-subtle)]" />
                 <input
                   type="url"
                   value={portalUrl}
@@ -332,20 +368,20 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
                     setPreviewError('');
                   }}
                   placeholder={dict.step1Placeholder}
-                  className="w-full rounded-2xl border border-black/[0.1] bg-[#fafaf8] py-4 pl-11 pr-4 text-sm text-[#141416] outline-none transition focus:border-emerald-500/40 focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
+                  className={`${PO_FIELD} py-4 pl-11 pr-4`}
                 />
               </div>
               <button
                 type="button"
                 disabled={!canPreview || previewLoading}
                 onClick={() => void runPreview()}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 py-3.5 text-[11px] font-black uppercase tracking-widest text-emerald-700 transition hover:bg-emerald-500/15 disabled:opacity-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 py-3.5 text-[11px] font-black uppercase tracking-widest text-emerald-600 transition hover:bg-emerald-500/15 disabled:opacity-50 dark:text-emerald-400"
               >
                 {previewLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
                 {dict.previewCta}
               </button>
               {previewError ? (
-                <p className="rounded-xl border border-red-500/25 bg-red-50 px-3 py-2 text-xs text-red-600">
+                <p className="rounded-xl border border-[var(--po-error-border)] bg-[var(--po-error-bg)] px-3 py-2 text-xs text-[var(--po-error-text)]">
                   {previewError}
                 </p>
               ) : null}
@@ -358,32 +394,32 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
                     exit={{ opacity: 0 }}
                     className="space-y-4"
                   >
-                    <div className="overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-50/80 to-white">
+                    <div className="overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-[var(--po-card)]">
                       <div className="flex gap-4 p-4">
                         {preview.imageUrl ? (
-                          <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-xl bg-[#ececea]">
+                          <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-xl bg-[var(--po-thumb)]">
                             <Image src={preview.imageUrl} alt="" fill className="object-cover" unoptimized />
                           </div>
                         ) : (
-                          <div className="flex h-24 w-28 shrink-0 items-center justify-center rounded-xl bg-[#ececea] text-[#8a8a94]">
+                          <div className="flex h-24 w-28 shrink-0 items-center justify-center rounded-xl bg-[var(--po-thumb)] text-[var(--po-subtle)]">
                             <Home size={28} />
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-700">
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                             {sourceLabel(preview.source)} · {dict.previewReady}
                           </p>
-                          <h3 className="mt-1 line-clamp-2 text-sm font-black leading-snug text-[#141416]">
+                          <h3 className="mt-1 line-clamp-2 text-sm font-black leading-snug text-[var(--po-text)]">
                             {preview.title}
                           </h3>
-                          <p className="mt-2 text-lg font-black text-[#141416]">{preview.priceLabel}</p>
-                          <p className="mt-1 flex items-center gap-1 text-xs text-[#5c5c66]">
+                          <p className="mt-2 text-lg font-black text-[var(--po-text)]">{preview.priceLabel}</p>
+                          <p className="mt-1 flex items-center gap-1 text-xs text-[var(--po-muted)]">
                             <MapPin size={12} />
                             {[preview.city, preview.district].filter(Boolean).join(' · ')}
                             {preview.area ? ` · ${preview.area} m²` : ''}
                             {preview.rooms ? ` · ${preview.rooms}` : ''}
                           </p>
-                          <p className="mt-1 text-[10px] text-[#8a8a94]">{dict.photosToCopy(preview.imageCount)}</p>
+                          <p className="mt-1 text-[10px] text-[var(--po-subtle)]">{dict.photosToCopy(preview.imageCount)}</p>
                         </div>
                       </div>
                     </div>
@@ -401,13 +437,13 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
           </section>
 
           <section
-            className={`overflow-hidden rounded-[1.75rem] border bg-white shadow-[0_20px_50px_rgba(20,20,22,0.07)] transition ${
-              preview ? 'border-black/[0.08]' : 'border-black/[0.05] opacity-55'
+            className={`overflow-hidden rounded-[1.75rem] border bg-[var(--po-card)] shadow-[var(--po-shadow)] transition ${
+              preview ? 'border-[var(--po-border)]' : 'border-[var(--po-border-soft)] opacity-55'
             }`}
           >
-            <div className="border-b border-black/[0.06] bg-[#fafaf8] px-5 py-4">
-              <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/15 text-[11px] text-emerald-700">
+            <div className="border-b border-[var(--po-border-soft)] bg-[var(--po-card-alt)] px-5 py-4">
+              <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-500">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/15 text-[11px] text-emerald-600 dark:text-emerald-400">
                   2
                 </span>
                 {dict.step2}
@@ -415,27 +451,27 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
             </div>
             <div className="grid gap-4 p-5 sm:grid-cols-2">
               <label className="block sm:col-span-1">
-                <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[#5c5c66]">
+                <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--po-muted)]">
                   <User size={12} /> {dict.firstName}
                 </span>
                 <input
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   disabled={!preview}
-                  className="w-full rounded-2xl border border-black/[0.1] bg-[#fafaf8] px-4 py-3.5 text-sm text-[#141416] outline-none focus:border-emerald-500/40 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-50"
+                  className={`${PO_FIELD} px-4 py-3.5`}
                 />
               </label>
               <label className="block sm:col-span-1">
-                <span className="mb-1.5 text-xs font-semibold text-[#5c5c66]">{dict.lastName}</span>
+                <span className="mb-1.5 text-xs font-semibold text-[var(--po-muted)]">{dict.lastName}</span>
                 <input
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   disabled={!preview}
-                  className="w-full rounded-2xl border border-black/[0.1] bg-[#fafaf8] px-4 py-3.5 text-sm text-[#141416] outline-none focus:border-emerald-500/40 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-50"
+                  className={`${PO_FIELD} px-4 py-3.5`}
                 />
               </label>
               <label className="block sm:col-span-2">
-                <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[#5c5c66]">
+                <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--po-muted)]">
                   <Mail size={12} /> {dict.email}
                 </span>
                 <input
@@ -443,28 +479,31 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={!preview}
-                  className="w-full rounded-2xl border border-black/[0.1] bg-[#fafaf8] px-4 py-3.5 text-sm text-[#141416] outline-none focus:border-emerald-500/40 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-50"
+                  className={`${PO_FIELD} px-4 py-3.5`}
                 />
                 {emailStatus === 'taken' ? (
-                  <p className="mt-1 text-xs text-red-600">{dict.emailTaken}</p>
+                  <p className="mt-1 text-xs text-[var(--po-error-text)]">{dict.emailTaken}</p>
                 ) : null}
               </label>
               <label className="block sm:col-span-2">
-                <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[#5c5c66]">
+                <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--po-muted)]">
                   <Phone size={12} /> {dict.phone}
                 </span>
-                <PhoneCountryInput
-                  valueE164={phoneE164}
-                  onChangeE164={setPhoneE164}
-                  disabled={!preview}
-                  status={phoneStatus}
-                />
+                <div className="portal-onboarding-phone">
+                  <PhoneCountryInput
+                    valueE164={phoneE164}
+                    onChangeE164={setPhoneE164}
+                    disabled={!preview}
+                    status={phoneStatus}
+                    hideLabel
+                  />
+                </div>
                 {phoneStatus === 'taken' ? (
-                  <p className="mt-1 text-xs text-red-600">{dict.phoneTaken}</p>
+                  <p className="mt-1 text-xs text-[var(--po-error-text)]">{dict.phoneTaken}</p>
                 ) : null}
               </label>
               <label className="block sm:col-span-2">
-                <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[#5c5c66]">
+                <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-[var(--po-muted)]">
                   <Lock size={12} /> {dict.password}
                 </span>
                 <input
@@ -472,48 +511,42 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={!preview}
-                  className="w-full rounded-2xl border border-black/[0.1] bg-[#fafaf8] px-4 py-3.5 text-sm text-[#141416] outline-none focus:border-emerald-500/40 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-50"
+                  className={`${PO_FIELD} px-4 py-3.5`}
                 />
               </label>
             </div>
           </section>
 
-          <section className="rounded-[1.75rem] border border-black/[0.08] bg-white p-5 shadow-[0_20px_50px_rgba(20,20,22,0.07)]">
-            <label className="flex cursor-pointer gap-3 text-sm leading-relaxed text-[#5c5c66]">
-              <input
-                type="checkbox"
-                checked={rightsConfirmed}
-                onChange={(e) => setRightsConfirmed(e.target.checked)}
-                disabled={!preview}
-                className="mt-1 shrink-0 accent-emerald-600"
-              />
-              <span>{dict.rightsLabel}</span>
-            </label>
-            <label className="mt-4 flex cursor-pointer gap-3 text-sm leading-relaxed text-[#5c5c66]">
-              <input
-                type="checkbox"
+          <section className="rounded-[1.75rem] border border-[var(--po-border)] bg-[var(--po-card)] p-5 shadow-[var(--po-shadow)]">
+            <PortalCheckbox
+              checked={rightsConfirmed}
+              onCheckedChange={setRightsConfirmed}
+              disabled={!preview}
+            >
+              {dict.rightsLabel}
+            </PortalCheckbox>
+            <div className="mt-4">
+              <PortalCheckbox
                 checked={acceptTerms}
-                onChange={(e) => setAcceptTerms(e.target.checked)}
+                onCheckedChange={setAcceptTerms}
                 disabled={!preview}
-                className="mt-1 shrink-0 accent-emerald-600"
-              />
-              <span>
+              >
                 {dict.termsLabel}{' '}
-                <Link href="/regulamin" className="font-semibold text-emerald-700 underline-offset-2 hover:underline">
+                <Link href="/regulamin" className="font-semibold text-emerald-600 underline-offset-2 hover:underline dark:text-emerald-400">
                   {dict.termsLink}
                 </Link>{' '}
                 ·{' '}
                 <Link
                   href="/polityka-prywatnosci"
-                  className="font-semibold text-emerald-700 underline-offset-2 hover:underline"
+                  className="font-semibold text-emerald-600 underline-offset-2 hover:underline dark:text-emerald-400"
                 >
                   {dict.privacyLink}
                 </Link>
-              </span>
-            </label>
+              </PortalCheckbox>
+            </div>
 
             {submitError ? (
-              <p className="mt-4 rounded-xl border border-red-500/25 bg-red-50 px-3 py-2 text-xs text-red-600">
+              <p className="mt-4 rounded-xl border border-[var(--po-error-border)] bg-[var(--po-error-bg)] px-3 py-2 text-xs text-[var(--po-error-text)]">
                 {submitError}
               </p>
             ) : null}
@@ -522,7 +555,7 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
               type="button"
               disabled={!formReady || submitting}
               onClick={() => void handleSubmit()}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-[1.25rem] bg-[#141416] py-5 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_16px_40px_rgba(20,20,22,0.2)] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-45"
+              className="eos-dark-cta mt-6 flex w-full items-center justify-center gap-2 rounded-[1.25rem] bg-[#141416] py-5 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_16px_40px_rgba(20,20,22,0.2)] transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-45"
             >
               {submitting ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
               {dict.submitCta}
@@ -530,7 +563,7 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
           </section>
         </div>
 
-        <p className="mt-10 text-center text-[11px] leading-relaxed text-[#8a8a94]">{dict.footerNote}</p>
+        <p className="mt-10 text-center text-[11px] leading-relaxed text-[var(--po-subtle)]">{dict.footerNote}</p>
       </div>
 
       <AnimatePresence>
@@ -539,11 +572,11 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-[#141416]/50 p-6 backdrop-blur-md"
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-[var(--po-overlay)] p-6 backdrop-blur-md"
           >
-            <div className="w-full max-w-sm rounded-[2rem] border border-white/10 bg-white p-8 shadow-2xl">
-              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-600">{dict.publishing}</p>
-              <h2 className="mt-2 text-xl font-black text-[#141416]">{dict.publishingTitle}</h2>
+            <div className="w-full max-w-sm rounded-[2rem] border border-[var(--po-border)] bg-[var(--po-card)] p-8 shadow-2xl">
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-500">{dict.publishing}</p>
+              <h2 className="mt-2 text-xl font-black text-[var(--po-text)]">{dict.publishingTitle}</h2>
               <ul className="mt-6 space-y-3">
                 {progress.map((step) => (
                   <li key={step.id} className="flex items-center gap-3 text-sm">
@@ -552,8 +585,8 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
                         step.done
                           ? 'border-emerald-500 bg-emerald-500 text-white'
                           : step.active
-                            ? 'border-emerald-500/50 text-emerald-600'
-                            : 'border-black/10 text-[#c4c4cc]'
+                            ? 'border-emerald-500/50 text-emerald-500'
+                            : 'border-[var(--po-border)] text-[var(--po-subtle)]'
                       }`}
                     >
                       {step.done ? (
@@ -562,7 +595,7 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
                         <Loader2 size={14} className="animate-spin" />
                       ) : null}
                     </span>
-                    <span className={step.done || step.active ? 'font-medium text-[#141416]' : 'text-[#8a8a94]'}>
+                    <span className={step.done || step.active ? 'font-medium text-[var(--po-text)]' : 'text-[var(--po-subtle)]'}>
                       {step.label}
                     </span>
                   </li>

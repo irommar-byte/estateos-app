@@ -13,8 +13,8 @@ export default function DolaczPage() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-[100dvh] items-center justify-center bg-[#f4f3f0]">
-          <p className="text-sm font-semibold text-[#5c5c66]">Ładowanie…</p>
+        <main className="flex min-h-[100dvh] items-center justify-center">
+          <p className="text-sm font-semibold text-[var(--po-muted)]">Ładowanie…</p>
         </main>
       }
     >
