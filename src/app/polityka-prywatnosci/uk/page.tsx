@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import LegalDocumentView from '@/components/legal/LegalDocumentView';
 import { getPrivacyContent } from '@/content/legal/privacyContent';
 
-const doc = getPrivacyContent('en');
+const doc = getPrivacyContent('uk');
 
 export const metadata: Metadata = {
   title: doc.metaTitle,
@@ -10,6 +10,6 @@ export const metadata: Metadata = {
   alternates: { canonical: doc.canonical },
 };
 
-export default function PrivacyPolicyEnPage() {
+export default function PrivacyPolicyUkPage() {
   return <LegalDocumentView doc={doc} />;
 }
