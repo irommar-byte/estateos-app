@@ -26,6 +26,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { getPortalOnboardingDict } from '@/i18n/portalOnboardingDictionary';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
 import type { PortalListingPreview } from '@/lib/portalOnboarding';
+import type { ImportDraftIssue } from '@/lib/importDraftValidate';
 
 type FieldStatus = 'idle' | 'checking' | 'available' | 'taken';
 
@@ -33,6 +34,36 @@ type ProgressStep = { id: string; label: string; done: boolean; active: boolean 
 
 const PO_FIELD =
   'po-field w-full rounded-2xl text-sm outline-none transition focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-50';
+
+type ImportPatchForm = {
+  city: string;
+  district: string;
+  price: string;
+  area: string;
+};
+
+function issueNeedsField(issues: ImportDraftIssue[], field: string): boolean {
+  return issues.some((issue) => issue.field === field);
+}
+
+function importPatchSatisfiesIssues(issues: ImportDraftIssue[], patch: ImportPatchForm): boolean {
+  for (const issue of issues) {
+    if (issue.field === 'city') {
+      if (!patch.city.trim() && !patch.district.trim()) return false;
+      continue;
+    }
+    if (issue.field === 'price') {
+      if (!(Number(patch.price) > 0)) return false;
+      continue;
+    }
+    if (issue.field === 'area') {
+      if (!(Number(patch.area) > 0)) return false;
+      continue;
+    }
+    if (issue.field === 'coords') continue;
+  }
+  return true;
+}
 
 function PortalCheckbox({
   checked,
@@ -84,6 +115,13 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
 
   const [portalUrl, setPortalUrl] = useState('');
   const [preview, setPreview] = useState<PortalListingPreview | null>(null);
+  const [previewIssues, setPreviewIssues] = useState<ImportDraftIssue[]>([]);
+  const [importPatch, setImportPatch] = useState<ImportPatchForm>({
+    city: '',
+    district: '',
+    price: '',
+    area: '',
+  });
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
 
@@ -131,7 +169,8 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
     rightsConfirmed &&
     acceptTerms &&
     emailStatus !== 'taken' &&
-    phoneStatus !== 'taken';
+    phoneStatus !== 'taken' &&
+    importPatchSatisfiesIssues(previewIssues, importPatch);
 
   const sourceLabel = (source: string) => {
     if (source === 'OTODOM') return dict.sourceOtodom;
@@ -193,6 +232,8 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
   const runPreview = async () => {
     setPreviewError('');
     setPreview(null);
+    setPreviewIssues([]);
+    setImportPatch({ city: '', district: '', price: '', area: '' });
     setPreviewLoading(true);
     try {
       const res = await fetch('/api/portal-onboarding/preview', {
@@ -202,7 +243,16 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Preview failed.');
-      setPreview(data.preview as PortalListingPreview);
+      const nextPreview = data.preview as PortalListingPreview;
+      const issues = Array.isArray(data.issues) ? (data.issues as ImportDraftIssue[]) : [];
+      setPreview(nextPreview);
+      setPreviewIssues(issues);
+      setImportPatch({
+        city: nextPreview.city || '',
+        district: nextPreview.district || '',
+        price: nextPreview.price != null ? String(nextPreview.price) : '',
+        area: nextPreview.area != null ? String(nextPreview.area) : '',
+      });
     } catch (error) {
       setPreviewError(error instanceof Error ? error.message : 'Preview error.');
     } finally {
@@ -247,12 +297,21 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
           password,
           phone: phoneE164,
           rightsConfirmed,
+          city: importPatch.city.trim() || undefined,
+          district: importPatch.district.trim() || undefined,
+          price: importPatch.price.trim() ? Number(importPatch.price) : undefined,
+          area: importPatch.area.trim() ? Number(importPatch.area) : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
       await progressPromise;
 
-      if (!res.ok) throw new Error(data?.error || 'Registration failed.');
+      if (!res.ok) {
+        if (Array.isArray(data?.issues)) {
+          setPreviewIssues(data.issues as ImportDraftIssue[]);
+        }
+        throw new Error(data?.error || 'Registration failed.');
+      }
 
       setSuccess({
         profileUrl: data.profileUrl,
@@ -365,6 +424,8 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
                   onChange={(e) => {
                     setPortalUrl(e.target.value);
                     setPreview(null);
+                    setPreviewIssues([]);
+                    setImportPatch({ city: '', district: '', price: '', area: '' });
                     setPreviewError('');
                   }}
                   placeholder={dict.step1Placeholder}
@@ -423,6 +484,78 @@ export default function PortalOnboardingLanding({ inviteToken }: { inviteToken: 
                         </div>
                       </div>
                     </div>
+
+                    {previewIssues.length > 0 ? (
+                      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                        <p className="text-sm font-bold text-[var(--po-text)]">{dict.patchSectionTitle}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-[var(--po-muted)]">{dict.patchSectionHint}</p>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          {issueNeedsField(previewIssues, 'city') ? (
+                            <>
+                              <label className="block sm:col-span-1">
+                                <span className="mb-1.5 block text-xs font-semibold text-[var(--po-muted)]">
+                                  {dict.patchCity}
+                                </span>
+                                <input
+                                  value={importPatch.city}
+                                  onChange={(e) =>
+                                    setImportPatch((p) => ({ ...p, city: e.target.value }))
+                                  }
+                                  className={`${PO_FIELD} px-4 py-3.5`}
+                                  placeholder="np. Warszawa"
+                                />
+                              </label>
+                              <label className="block sm:col-span-1">
+                                <span className="mb-1.5 block text-xs font-semibold text-[var(--po-muted)]">
+                                  {dict.patchDistrict}
+                                </span>
+                                <input
+                                  value={importPatch.district}
+                                  onChange={(e) =>
+                                    setImportPatch((p) => ({ ...p, district: e.target.value }))
+                                  }
+                                  className={`${PO_FIELD} px-4 py-3.5`}
+                                  placeholder="np. Służew"
+                                />
+                              </label>
+                            </>
+                          ) : null}
+                          {issueNeedsField(previewIssues, 'price') ? (
+                            <label className="block sm:col-span-1">
+                              <span className="mb-1.5 block text-xs font-semibold text-[var(--po-muted)]">
+                                {dict.patchPrice}
+                              </span>
+                              <input
+                                type="number"
+                                min={1}
+                                value={importPatch.price}
+                                onChange={(e) =>
+                                  setImportPatch((p) => ({ ...p, price: e.target.value }))
+                                }
+                                className={`${PO_FIELD} px-4 py-3.5`}
+                              />
+                            </label>
+                          ) : null}
+                          {issueNeedsField(previewIssues, 'area') ? (
+                            <label className="block sm:col-span-1">
+                              <span className="mb-1.5 block text-xs font-semibold text-[var(--po-muted)]">
+                                {dict.patchArea}
+                              </span>
+                              <input
+                                type="number"
+                                min={1}
+                                step="0.01"
+                                value={importPatch.area}
+                                onChange={(e) =>
+                                  setImportPatch((p) => ({ ...p, area: e.target.value }))
+                                }
+                                className={`${PO_FIELD} px-4 py-3.5`}
+                              />
+                            </label>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
 
                     <PortalRadarInvestorPreview
                       inviteToken={inviteToken}

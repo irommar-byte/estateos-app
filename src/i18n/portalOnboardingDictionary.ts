@@ -53,6 +53,12 @@ export type PortalOnboardingDictionary = {
   radarNoMatchTitle: string;
   radarScanning: string;
   radarAfterPublish: string;
+  patchSectionTitle: string;
+  patchSectionHint: string;
+  patchCity: string;
+  patchDistrict: string;
+  patchPrice: string;
+  patchArea: string;
   sourceOtodom: string;
   sourceOlx: string;
   sourceNieruchomosci: string;
@@ -122,6 +128,13 @@ const pl: PortalOnboardingDictionary = {
   radarNoMatchTitle: 'Radar powiadomi dopasowanych inwestorów',
   radarScanning: 'Skanujemy dopasowania…',
   radarAfterPublish: 'Powiadomienia wysyłamy automatycznie po aktywacji oferty na mapie.',
+  patchSectionTitle: 'Uzupełnij dane z ogłoszenia',
+  patchSectionHint:
+    'Portal nie podał wszystkiego — wpisz brakujące pola poniżej. Reszta formularza zostaje aktywna.',
+  patchCity: 'Miejscowość (miasto lub wieś)',
+  patchDistrict: 'Dzielnica / rejon (opcjonalnie)',
+  patchPrice: 'Cena (zł)',
+  patchArea: 'Metraż (m²)',
   sourceOtodom: 'OtoDom',
   sourceOlx: 'OLX',
   sourceNieruchomosci: 'Nieruchomosci-Online',
@@ -187,6 +200,12 @@ const en: PortalOnboardingDictionary = {
   radarNoMatchTitle: 'Radar will notify matching investors',
   radarScanning: 'Scanning matches…',
   radarAfterPublish: 'Notifications are sent automatically once the listing is live on the map.',
+  patchSectionTitle: 'Complete listing details',
+  patchSectionHint: 'The portal did not provide everything — fill in the missing fields below.',
+  patchCity: 'Locality (city or town)',
+  patchDistrict: 'District / area (optional)',
+  patchPrice: 'Price (PLN)',
+  patchArea: 'Area (m²)',
   sourceOtodom: 'OtoDom',
   sourceOlx: 'OLX',
   sourceNieruchomosci: 'Nieruchomosci-Online',

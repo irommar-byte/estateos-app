@@ -16,6 +16,17 @@ import { encryptSession } from '@/lib/sessionUtils';
 import { verifyPortalOnboardingInvite } from '@/lib/portalOnboardingInvite';
 import { calculateRadarMatchScore, radarMatchThreshold } from '@/lib/radarMatchScore';
 import { getTotalRadarCount } from '@/lib/radarLiveCounter';
+import {
+  applyImportDraftPatch,
+  enrichOtodomImportDraft,
+  type PortalImportPatch,
+} from '@/lib/portalImportEnrich';
+import {
+  assertOtodomImportDraftReady,
+  collectOtodomImportDraftIssues,
+  type ImportDraftIssue,
+} from '@/lib/importDraftValidate';
+import type { OtodomImportDraft } from '@/lib/otodomImport';
 
 const MAX_IMPORT_IMAGES = 12;
 
@@ -88,20 +99,7 @@ function formatPriceLabel(price: number | null, transactionType: 'RENT' | 'SALE'
   return transactionType === 'RENT' ? `${formatted} zł / mies.` : `${formatted} zł`;
 }
 
-export async function previewPortalListing(portalUrl: string): Promise<PortalListingPreview> {
-  const url = String(portalUrl || '').trim();
-  if (!isSupportedImportOfferUrl(url)) {
-    throw new Error(
-      'Obsługiwane są linki: OtoDom (/oferta/...), OLX (/d/oferta/...) lub Nieruchomosci-Online.',
-    );
-  }
-
-  const draft = await importOfferFromUrl(url);
-  const existing = await findExistingImportedOffer(draft);
-  if (existing) {
-    throw new Error(`Ta oferta jest już w EstateOS™ (oferta #${existing.id}).`);
-  }
-
+function draftToPortalPreview(draft: OtodomImportDraft): PortalListingPreview {
   return {
     title: draft.title,
     price: draft.price,
@@ -116,6 +114,31 @@ export async function previewPortalListing(portalUrl: string): Promise<PortalLis
     imageCount: draft.imageCount,
     source: draft.source,
     externalUrl: draft.externalUrl,
+  };
+}
+
+export type PortalListingPreviewResult = {
+  preview: PortalListingPreview;
+  issues: ImportDraftIssue[];
+};
+
+export async function previewPortalListing(portalUrl: string): Promise<PortalListingPreviewResult> {
+  const url = String(portalUrl || '').trim();
+  if (!isSupportedImportOfferUrl(url)) {
+    throw new Error(
+      'Obsługiwane są linki: OtoDom (/oferta/...), OLX (/d/oferta/...) lub Nieruchomosci-Online.',
+    );
+  }
+
+  const draft = await enrichOtodomImportDraft(await importOfferFromUrl(url));
+  const existing = await findExistingImportedOffer(draft);
+  if (existing) {
+    throw new Error(`Ta oferta jest już w EstateOS™ (oferta #${existing.id}).`);
+  }
+
+  return {
+    preview: draftToPortalPreview(draft),
+    issues: collectOtodomImportDraftIssues(draft),
   };
 }
 
@@ -140,6 +163,7 @@ export async function registerAndImportPortalListing(params: {
   password: string;
   phone?: string;
   rightsConfirmed: boolean;
+  importPatch?: PortalImportPatch;
 }): Promise<PortalOnboardingResult> {
   const invite = verifyPortalOnboardingInvite(params.inviteToken);
   if (!invite) {
@@ -181,11 +205,18 @@ export async function registerAndImportPortalListing(params: {
     throw new Error('Ten numer telefonu jest już w użyciu.');
   }
 
-  const draft = await importOfferFromUrl(portalUrl);
-  const existingOffer = await findExistingImportedOffer(draft);
+  const draftRaw = await importOfferFromUrl(portalUrl);
+  const existingOffer = await findExistingImportedOffer(draftRaw);
   if (existingOffer) {
     throw new Error(`Ta oferta jest już w EstateOS™ (oferta #${existingOffer.id}).`);
   }
+
+  const draft = applyImportDraftPatch(
+    await enrichOtodomImportDraft(draftRaw),
+    params.importPatch,
+  );
+
+  assertOtodomImportDraftReady(draft);
 
   const hashed = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({

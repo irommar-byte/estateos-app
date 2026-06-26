@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     }
 
     const preview = await previewPortalListing(portalUrl);
-    return NextResponse.json({ ok: true, preview });
+    return NextResponse.json({ ok: true, ...preview });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Nie udało się odczytać ogłoszenia.';
     return NextResponse.json({ error: message }, { status: 422 });

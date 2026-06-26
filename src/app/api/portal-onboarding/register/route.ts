@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { registerAndImportPortalListing } from '@/lib/portalOnboarding';
+import { ImportDraftValidationError } from '@/lib/importDraftValidate';
 
 export async function POST(req: Request) {
   try {
@@ -15,6 +16,12 @@ export async function POST(req: Request) {
       password: String(body?.password ?? ''),
       phone: String(body?.phone ?? body?.contactPhone ?? ''),
       rightsConfirmed: body?.rightsConfirmed === true,
+      importPatch: {
+        city: body?.city != null ? String(body.city) : undefined,
+        district: body?.district != null ? String(body.district) : undefined,
+        price: body?.price != null ? Number(body.price) : undefined,
+        area: body?.area != null ? Number(body.area) : undefined,
+      },
     });
 
     (await cookies()).set('estateos_session', result.sessionToken, { httpOnly: true, path: '/' });
@@ -32,6 +39,12 @@ export async function POST(req: Request) {
       message: 'Konto utworzone — ogłoszenie oczekuje na weryfikację zespołu EstateOS™.',
     });
   } catch (error) {
+    if (error instanceof ImportDraftValidationError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code, issues: error.issues },
+        { status: 422 },
+      );
+    }
     const message = error instanceof Error ? error.message : 'Rejestracja nie powiodła się.';
     const status =
       message.includes('zarejestrowany') || message.includes('w użyciu') || message.includes('już w EstateOS')
