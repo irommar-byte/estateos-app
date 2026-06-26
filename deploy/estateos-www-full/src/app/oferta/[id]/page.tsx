@@ -2,7 +2,7 @@
 import { useSearchParams } from "next/navigation";
 import PublicProfileModal from "@/components/PublicProfileModal";
 import dynamic from "next/dynamic";
-import { useEffect, useState, useRef, use } from "react";
+import { Suspense, useEffect, useState, use } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2, BedDouble, Layers, Calendar, Ruler, Home } from "lucide-react";
@@ -21,6 +21,7 @@ import { isOutsidePolandBounds } from "@/lib/location/locationNameMatch";
 import AppointmentModal from "@/components/AppointmentModal";
 import BiddingModal from "@/components/BiddingModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
+import OfferOwnerPublishPanel from "@/components/offer/OfferOwnerPublishPanel";
 import OfferDiscountPriceHero from "@/components/offer/OfferDiscountPriceHero";
 import OfferPriceHistoryProSection from "@/components/offer/OfferPriceHistoryProSection";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
@@ -114,11 +115,20 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         : "shadow-[0_0_40px_rgba(16,185,129,0.3)]",
     bgActiveSoft: isDealRoom ? "bg-orange-500/10" : isRent ? "bg-blue-500/10" : "bg-emerald-500/10",
   };
-  const ref = useRef(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
-  const bgY = useTransform(scrollYProgress, [0, 1], ["0%", "15%"]);
+  const { scrollYProgress } = useScroll();
+  const bgY = useTransform(scrollYProgress, [0, 0.25], ["0%", "12%"]);
   
-  const rawImages = (() => { if (!offer.images) return []; try { const p = JSON.parse(offer.images); return Array.isArray(p) ? p : offer.images.split(','); } catch(e) { return offer.images.split(','); } })();
+  const rawImages = (() => {
+    if (!offer.images) return [];
+    if (Array.isArray(offer.images)) return offer.images.map(String);
+    const raw = String(offer.images);
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.map(String) : raw.split(",").map((s) => s.trim()).filter(Boolean);
+    } catch {
+      return raw.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+  })();
   const allImages = [offer.imageUrl, ...rawImages].filter((v: string, i: number, a: string[]) => v && v.length > 5 && a.indexOf(v) === i);
   const images = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
   const thumbImages = images.slice(1);
@@ -175,7 +185,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   // 🔥 SILNIK FOMO: LOGIKA CZASU I BLOKADY 🔥
   const [timeLeft, setTimeLeft] = useState<number>(0);
-  const isOwner = currentUser && (currentUser.id === offer.userId || currentUser.email === offer.user?.email || currentUser.email === offer.contactEmail);
+  const isOwner =
+    !!currentUser &&
+    (Number(currentUser.id) === Number(offer.userId) ||
+      currentUser.email === offer.user?.email ||
+      currentUser.email === offer.contactEmail);
   const isFormerOwnerViewer =
     !!currentUser &&
     offer.managementStatus === 'AGENCY_MANAGED' &&
@@ -561,7 +575,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-32 font-sans text-[var(--eos-text)] selection:bg-emerald-500/20">
       
-      <div ref={ref} className="eos-cinematic-dark relative w-full min-h-[64vh] h-[72svh] sm:min-h-[100vh] sm:h-[100dvh] overflow-hidden bg-black">
+      <div className="eos-cinematic-dark relative w-full min-h-[64vh] h-[72svh] sm:min-h-[100vh] sm:h-[100dvh] overflow-hidden bg-black">
         <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center ${isArchived ? 'opacity-25 blur-2xl grayscale' : isLocked ? 'opacity-60 blur-xl' : 'opacity-60'}`} />
         <div className="absolute inset-0 eos-offer-hero-vignette z-10" />
 
@@ -1238,7 +1252,18 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </>
                 )}
                 </div>
-                ) : null}
+                ) : (
+                <OfferOwnerPublishPanel
+                  offerId={Number(offer.id ?? offer._id)}
+                  presentingAgentId={
+                    offer.isPresentedByAgent
+                      ? Number(offer.presentingAgent?.userId ?? offer.user?.id)
+                      : currentUser?.id && isAgentOrAgencySeller(currentUser)
+                        ? Number(currentUser.id)
+                        : undefined
+                  }
+                />
+                )}
               </div>
 
             </div>
@@ -1315,10 +1340,32 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 }
 
 export default function SingleOfferPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<OfferPageLoading />}>
+      <SingleOfferPageInner params={params} />
+    </Suspense>
+  );
+}
+
+function OfferPageLoading() {
+  return (
+    <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)]">
+      <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="size-10 animate-spin rounded-full border-2 border-emerald-500/30 border-t-emerald-500" />
+        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[var(--eos-muted)]">
+          Ładowanie oferty…
+        </p>
+      </div>
+    </main>
+  );
+}
+
+function SingleOfferPageInner({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const searchParams = useSearchParams();
   const [offer, setOffer] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   
   useEffect(() => {
     const fetchUserAndOffer = async () => {
@@ -1332,7 +1379,10 @@ export default function SingleOfferPage({ params }: { params: Promise<{ id: stri
       } catch (e) {}
 
       const id = resolvedParams.id;
-      if (!id) return;
+      if (!id) {
+        setLoadState("error");
+        return;
+      }
       const portal = searchParams.get("portal");
       const agent = searchParams.get("agent");
       const offerQs = new URLSearchParams();
@@ -1348,15 +1398,45 @@ export default function SingleOfferPage({ params }: { params: Promise<{ id: stri
         if (res.ok) {
           const data = await res.json();
           setOffer(data);
+          setLoadState("ready");
+        } else {
+          setLoadState("error");
         }
       } catch (error) {
         console.error("Błąd ładowania oferty:", error);
+        setLoadState("error");
       }
     };
     void fetchUserAndOffer();
   }, [resolvedParams, searchParams]);
 
-  if (!offer) return <div className="min-h-screen bg-[var(--eos-bg)]" />;
+  if (loadState === "loading") return <OfferPageLoading />;
+
+  if (loadState === "error" || !offer) {
+    return (
+      <main className="theme-aware-dashboard flex min-h-screen flex-col items-center justify-center bg-[var(--eos-bg)] px-6 pb-24 pt-32 text-center text-[var(--eos-text)]">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--eos-muted)]">Oferta</p>
+        <h1 className="mt-4 max-w-lg text-3xl font-semibold tracking-tight">Nie udało się wczytać oferty</h1>
+        <p className="mt-4 max-w-md text-[17px] leading-relaxed text-[var(--eos-muted)]">
+          Oferta mogła wygasnąć lub adres jest nieprawidłowy. Możesz wrócić do wizytówki lub założyć konto.
+        </p>
+        <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row">
+          <Link
+            href={`/o/${resolvedParams.id}`}
+            className="inline-flex min-h-[48px] min-w-[200px] items-center justify-center rounded-full bg-emerald-500 px-8 text-[15px] font-semibold text-black"
+          >
+            Wizytówka oferty
+          </Link>
+          <Link
+            href="/oferty"
+            className="inline-flex min-h-[48px] min-w-[200px] items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] px-8 text-[15px] font-semibold text-[var(--eos-text)]"
+          >
+            Przeglądaj oferty
+          </Link>
+        </div>
+      </main>
+    );
+  }
   
   return <OfferDetails offer={offer} currentUser={currentUser} />;
 }

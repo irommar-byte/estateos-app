@@ -1,4 +1,5 @@
 import { canonicalizeCity, canonicalizeDistrict } from '@/lib/location/locationCatalog';
+import { inferCityFromImportSlug, inferCityFromLocationHints } from '@/lib/portalImportEnrich';
 
 const OTODOM_HOST = 'otodom.pl';
 const OLX_HOST = 'olx.pl';
@@ -521,7 +522,6 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
   const reverseGeocoding = (location.reverseGeocoding ?? {}) as Record<string, unknown>;
   const reverseLocations = Array.isArray(reverseGeocoding.locations) ? reverseGeocoding.locations : [];
 
-  const city = canonicalizeCity(String(cityObj.name ?? ''));
   const otodomDistrict = String(districtObj.name ?? '').trim();
   const neighborhoodEntry = [...reverseLocations]
     .reverse()
@@ -530,6 +530,29 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
       return String((entry as Record<string, unknown>).locationLevel ?? '') === 'residential';
     }) as Record<string, unknown> | undefined;
   const neighborhood = neighborhoodEntry ? String(neighborhoodEntry.name ?? '').trim() || null : null;
+
+  let city = canonicalizeCity(String(cityObj.name ?? ''));
+  if (!city) {
+    for (const entry of reverseLocations) {
+      if (!entry || typeof entry !== 'object') continue;
+      const row = entry as Record<string, unknown>;
+      const level = String(row.locationLevel ?? '').toLowerCase();
+      const name = String(row.name ?? '').trim();
+      if (!name) continue;
+      if (level === 'city' || level === 'place') {
+        const candidate = canonicalizeCity(name);
+        if (candidate) {
+          city = candidate;
+          break;
+        }
+      }
+    }
+  }
+  if (!city) {
+    city =
+      inferCityFromLocationHints(otodomDistrict, neighborhood, String(ad.title ?? ''), sourceUrl) ||
+      inferCityFromImportSlug(sourceUrl, String(ad.title ?? ''));
+  }
 
   const district = canonicalizeDistrict(city, otodomDistrict || neighborhood || '');
   const locationWarnings: string[] = [];

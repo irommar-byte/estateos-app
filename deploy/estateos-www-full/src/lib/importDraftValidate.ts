@@ -1,4 +1,7 @@
 import type { OtodomImportDraft } from '@/lib/otodomImport';
+import { isNonCityLabel, isStrictCity } from '@/lib/location/locationCatalog';
+import { locationNamesEquivalent } from '@/lib/location/locationNameMatch';
+import { resolveCityAtCoordinates } from '@/lib/offerGeolocationValidate';
 
 export type ImportDraftIssue = {
   field: string;
@@ -42,7 +45,13 @@ export function collectOtodomImportDraftIssues(draft: OtodomImportDraft): Import
 
   const city = String(draft.city || '').trim();
   const district = String(draft.district || draft.neighborhood || '').trim();
-  if (!city && !district) {
+  if (city && isNonCityLabel(city)) {
+    issues.push({
+      field: 'city',
+      kind: 'invalid',
+      message: 'Nie udało się odczytać miejscowości z ogłoszenia — podaj miasto ręcznie.',
+    });
+  } else if (!city && !district) {
     issues.push({
       field: 'city',
       kind: 'missing',
@@ -50,6 +59,25 @@ export function collectOtodomImportDraftIssues(draft: OtodomImportDraft): Import
     });
   }
 
+  return issues;
+}
+
+export async function collectOtodomImportLocationIssues(draft: OtodomImportDraft): Promise<ImportDraftIssue[]> {
+  const issues: ImportDraftIssue[] = [];
+  const city = String(draft.city || '').trim();
+  if (!city || isNonCityLabel(city)) return issues;
+  if (draft.lat == null || draft.lng == null) return issues;
+
+  const resolved = await resolveCityAtCoordinates(draft.lat, draft.lng);
+  if (!resolved || locationNamesEquivalent(resolved, city)) return issues;
+
+  if (isStrictCity(city)) return issues;
+
+  issues.push({
+    field: 'city',
+    kind: 'invalid',
+    message: `Pinezka na mapie wskazuje ${resolved}, a import podał ${city}. Popraw miejscowość poniżej.`,
+  });
   return issues;
 }
 

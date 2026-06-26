@@ -44,6 +44,7 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const { initModeFromUser } = useUserMode();
+  const isOfferShareLanding = pathname?.startsWith("/o/");
 
   useEffect(() => {
     setIsOpen(false);
@@ -76,6 +77,8 @@ export default function Navbar() {
       cancelled = true;
     };
   }, [pathname, initModeFromUser]);
+
+  if (isOfferShareLanding) return null;
 
   const handleLogout = async () => {
     try {

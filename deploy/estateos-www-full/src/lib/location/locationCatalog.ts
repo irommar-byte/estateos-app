@@ -159,6 +159,79 @@ export function getStrictCities(): string[] {
   return Object.keys(STRICT_CITY_DISTRICTS);
 }
 
+/** Etykiety stanu / typu ogłoszenia z OtoDom (slug, parametry) — nie są nazwami miejscowości. */
+const NON_CITY_LABEL_TOKENS = new Set([
+  "gotowy",
+  "wynajem",
+  "sprzedaz",
+  "sprzedazy",
+  "mieszkanie",
+  "mieszkania",
+  "dom",
+  "domu",
+  "domy",
+  "dzialka",
+  "dzialki",
+  "lokal",
+  "apartament",
+  "kawalerka",
+  "umeblowane",
+  "umeblowany",
+  "nowy",
+  "nowe",
+  "remont",
+  "deweloper",
+  "deweloperski",
+  "inwestycja",
+  "inwestycyjny",
+  "premium",
+  "luksusowy",
+  "ekskluzywny",
+  "okazja",
+  "tanio",
+  "pilne",
+  "bezposrednio",
+  "bezposrednia",
+  "agencja",
+  "prywatne",
+  "prywatny",
+  "oferta",
+  "nieruchomosc",
+  "nieruchomosci",
+  "zamieszkania",
+  "zamieszkanie",
+  "budowlany",
+  "budowlana",
+  "stan",
+  "pietro",
+  "parter",
+  "pokoje",
+  "pokojowe",
+  "pokojowy",
+  "garaz",
+  "balkon",
+  "ogrod",
+  "taras",
+]);
+
+export function isNonCityLabel(input?: string | null): boolean {
+  const raw = String(input || "").trim();
+  if (!raw) return true;
+
+  const normalized = normalizeText(raw);
+  if (!normalized || normalized.length < 2) return true;
+  if (NON_CITY_LABEL_TOKENS.has(normalized)) return true;
+
+  const tokens = normalized.split(/[\s,/|-]+/).filter(Boolean);
+  if (tokens.length === 1 && NON_CITY_LABEL_TOKENS.has(tokens[0])) return true;
+  if (tokens.every((token) => NON_CITY_LABEL_TOKENS.has(token))) return true;
+
+  if (/^gotowy\b/.test(normalized) || /\bdo\s+zamieszkania\b/.test(normalized)) return true;
+  if (/\bdo\s+remontu\b/.test(normalized) || /\bstan\s+deweloperski\b/.test(normalized)) return true;
+
+  return false;
+}
+
 export function canonicalizeCity(input?: string | null): string {
   const value = String(input || "").trim();
   if (!value) {
@@ -167,6 +240,10 @@ export function canonicalizeCity(input?: string | null): string {
 
   const alias = CITY_ALIASES[normalizeText(value)];
   const candidate = alias || value;
+  if (isNonCityLabel(candidate)) {
+    return "";
+  }
+
   const normalizedCandidate = normalizeText(candidate);
 
   const strictHit = getStrictCities().find((city) => normalizeText(city) === normalizedCandidate);

@@ -17,6 +17,9 @@ type PhoneCountryInputProps = {
   disabled?: boolean;
   status?: 'idle' | 'checking' | 'available' | 'taken';
   onFocusChange?: (focused: boolean) => void;
+  hideLabel?: boolean;
+  inputClassName?: string;
+  wrapperClassName?: string;
 };
 
 export default function PhoneCountryInput({
@@ -25,6 +28,9 @@ export default function PhoneCountryInput({
   disabled,
   status = 'idle',
   onFocusChange,
+  hideLabel = false,
+  inputClassName = '',
+  wrapperClassName = '',
 }: PhoneCountryInputProps) {
   const [regionIso, setRegionIso] = useState(DEFAULT_PHONE_REGION_ISO);
   const [localDigits, setLocalDigits] = useState('');
@@ -54,10 +60,12 @@ export default function PhoneCountryInput({
         : 'border-[var(--eos-border-strong)] focus-within:border-emerald-500';
 
   return (
-    <div ref={rootRef} className="relative">
-      <label className="eos-label mb-2 flex items-center gap-2">
-        <Phone size={14} /> Numer telefonu
-      </label>
+    <div ref={rootRef} className={`relative ${wrapperClassName}`}>
+      {!hideLabel ? (
+        <label className="eos-label mb-2 flex items-center gap-2">
+          <Phone size={14} /> Numer telefonu
+        </label>
+      ) : null}
       <div
         className={`flex items-stretch overflow-hidden rounded-2xl border bg-[var(--eos-input)] transition-colors ${borderClass}`}
       >
@@ -77,7 +85,7 @@ export default function PhoneCountryInput({
           autoComplete="tel-national"
           disabled={disabled}
           placeholder={region.iso2 === 'PL' ? '501 234 567' : 'numer krajowy'}
-          className="min-w-0 flex-1 bg-transparent px-4 py-4 text-xl font-bold text-[var(--eos-text)] outline-none placeholder:text-[var(--eos-subtle)]"
+          className={`po-field min-w-0 flex-1 bg-transparent px-4 py-4 text-xl font-bold text-[var(--eos-text)] outline-none placeholder:text-[var(--eos-subtle)] ${inputClassName}`}
           value={formatLocalPhoneDisplay(region.iso2, localDigits)}
           onFocus={() => {
             setOpen(false);

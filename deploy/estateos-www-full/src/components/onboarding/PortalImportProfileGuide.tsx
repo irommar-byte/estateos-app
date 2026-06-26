@@ -1,0 +1,305 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  ArrowRight,
+  Check,
+  Clock,
+  Crown,
+  Radar,
+  Smartphone,
+  Sparkles,
+  X,
+} from 'lucide-react';
+import { useLocale } from '@/contexts/LocaleContext';
+import { getPortalImportProfileGuideDict } from '@/i18n/portalImportProfileGuideDictionary';
+import {
+  ESTATEOS_APP_STORE_URL,
+  ESTATEOS_PLAY_STORE_URL,
+  detectMobileAppContext,
+} from '@/lib/estateosAppLinks';
+import AppStoreBadgeLink from '@/components/ui/AppStoreBadgeLink';
+
+type StepId = 'pending' | 'investor' | 'search' | 'radar' | 'app';
+
+export default function PortalImportProfileGuide({
+  profileUserId,
+}: {
+  profileUserId: number;
+}) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { locale } = useLocale();
+  const dict = getPortalImportProfileGuideDict(locale);
+  const welcome = searchParams.get('welcome');
+  const offerId = Number(searchParams.get('offer') || 0);
+
+  const [open, setOpen] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [wantsRadar, setWantsRadar] = useState<boolean | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
+
+  const mobile = detectMobileAppContext();
+
+  useEffect(() => {
+    if (welcome !== 'import') return;
+    void fetch('/api/user/profile', { credentials: 'include', cache: 'no-store' })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        const uid = Number(data?.id ?? data?.user?.id);
+        if (res.ok && uid === profileUserId) {
+          setIsOwner(true);
+          setOpen(true);
+        }
+      })
+      .catch(() => null);
+  }, [welcome, profileUserId]);
+
+  const steps = useMemo((): StepId[] => {
+    const base: StepId[] = ['pending', 'investor', 'search'];
+    if (wantsRadar === true) base.push('radar');
+    base.push('app');
+    return base;
+  }, [wantsRadar]);
+
+  const step = steps[stepIndex] ?? 'pending';
+  const total = steps.length;
+
+  const close = useCallback(() => {
+    setOpen(false);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('welcome');
+    url.searchParams.delete('offer');
+    router.replace(url.pathname + (url.search || ''), { scroll: false });
+  }, [router]);
+
+  const goNext = () => {
+    if (stepIndex >= total - 1) {
+      close();
+      return;
+    }
+    setStepIndex((i) => Math.min(i + 1, total - 1));
+  };
+
+  if (!open || !isOwner) return null;
+
+  const panelTips = dict.panelTips.map((tip, i) =>
+    i === 3 && offerId > 0 ? { ...tip, href: `/edytuj-oferte/${offerId}` } : tip,
+  );
+
+  const isMobileApp = mobile.isIOS || mobile.isAndroid;
+  const investorBadge = isMobileApp ? dict.investorBadgeApp : dict.investorBadgeWeb;
+  const investorBody = isMobileApp ? dict.investorBodyApp : dict.investorBodyWeb;
+  const investorPriceNote = isMobileApp ? dict.investorPriceNoteApp : dict.investorPriceNoteWeb;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[300] flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-6"
+        role="dialog"
+        aria-modal
+      >
+        <motion.div
+          initial={{ y: 40, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 24, opacity: 0 }}
+          className="eos-portal-guide-modal relative flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-[1.75rem] bg-white shadow-2xl sm:rounded-[1.75rem]"
+        >
+          <button
+            type="button"
+            onClick={close}
+            className="absolute right-4 top-4 z-10 rounded-full border border-black/10 bg-white/90 p-2 text-[#5c5c66] hover:bg-[#f4f3f0]"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+
+          <div className="border-b border-black/[0.06] px-6 pb-4 pt-6">
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600">
+              EstateOS™ · {dict.stepOf(stepIndex + 1, total)}
+            </p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            {step === 'pending' ? (
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
+                  <Clock size={12} /> {dict.pendingBadge}
+                </span>
+                <h2 className="mt-4 text-2xl font-black tracking-tight text-[#141416]">{dict.pendingTitle}</h2>
+                <p className="mt-3 text-sm leading-relaxed text-[#5c5c66]">
+                  {offerId > 0 ? dict.pendingBody(offerId) : dict.pendingBody(0).replace('#0', '')}
+                </p>
+                <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  {dict.pendingHint}
+                </p>
+              </div>
+            ) : null}
+
+            {step === 'investor' ? (
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F59E0B] px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-white">
+                  <Crown size={14} /> {investorBadge}
+                </span>
+                <h2 className="mt-4 text-2xl font-black tracking-tight text-[#141416]">{dict.investorTitle}</h2>
+                <p className="mt-3 text-sm leading-relaxed text-[#5c5c66]">{investorBody}</p>
+                <p className="mt-3 text-sm font-semibold text-[#141416]">{dict.investorCredits}</p>
+                <p className="mt-2 text-xs text-[#8a8a94]">{investorPriceNote}</p>
+                <div className="mt-6 flex flex-col gap-3">
+                  {isMobileApp ? (
+                    <a
+                      href={mobile.isIOS ? ESTATEOS_APP_STORE_URL : ESTATEOS_PLAY_STORE_URL}
+                      className="flex items-center justify-center gap-2 rounded-2xl bg-[#F59E0B] py-4 text-sm font-black uppercase tracking-widest text-white"
+                    >
+                      <Smartphone size={18} /> {dict.investorCta}
+                    </a>
+                  ) : (
+                    <>
+                      <Link
+                        href="/cennik"
+                        className="flex items-center justify-center gap-2 rounded-2xl bg-[#F59E0B] py-4 text-sm font-black uppercase tracking-widest text-white"
+                      >
+                        <Crown size={18} /> {dict.investorCtaWeb}
+                      </Link>
+                      <div className="flex flex-col items-center gap-2 pt-1">
+                        <AppStoreBadgeLink className="h-10" />
+                        <p className="text-center text-[11px] text-[#8a8a94]">{dict.investorAppTrialHint}</p>
+                      </div>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    className="py-2 text-center text-sm font-semibold text-[#8a8a94]"
+                  >
+                    {dict.investorLater}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {step === 'search' ? (
+              <div>
+                <h2 className="text-2xl font-black tracking-tight text-[#141416]">{dict.searchTitle}</h2>
+                <p className="mt-3 text-sm leading-relaxed text-[#5c5c66]">{dict.searchBody}</p>
+                <div className="mt-8 grid gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWantsRadar(true);
+                      setStepIndex((i) => i + 1);
+                    }}
+                    className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-4 text-sm font-black uppercase tracking-widest text-black"
+                  >
+                    <Radar size={18} /> {dict.searchYes}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWantsRadar(false);
+                      setStepIndex((i) => i + 1);
+                    }}
+                    className="rounded-2xl border border-black/10 py-4 text-sm font-semibold text-[#5c5c66]"
+                  >
+                    {dict.searchNo}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {step === 'radar' ? (
+              <div>
+                <h2 className="flex items-center gap-2 text-2xl font-black tracking-tight text-[#141416]">
+                  <Radar className="text-emerald-600" size={24} /> {dict.radarTitle}
+                </h2>
+                <ol className="mt-5 space-y-4">
+                  {dict.radarSteps.map((line, i) => (
+                    <li key={line} className="flex gap-3 text-sm leading-relaxed text-[#5c5c66]">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-xs font-black text-emerald-700">
+                        {i + 1}
+                      </span>
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ol>
+                <Link
+                  href="/moje-konto/crm?tab=radar"
+                  className="mt-6 flex items-center justify-center gap-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 py-4 text-sm font-black uppercase tracking-widest text-emerald-700"
+                >
+                  {dict.radarCta} <ArrowRight size={16} />
+                </Link>
+              </div>
+            ) : null}
+
+            {step === 'app' ? (
+              <div>
+                <h2 className="text-2xl font-black tracking-tight text-[#141416]">{dict.appTitle}</h2>
+                <p className="mt-3 text-sm leading-relaxed text-[#5c5c66]">{dict.appBody}</p>
+                <div className="mt-5 flex flex-wrap justify-center gap-3">
+                  <a
+                    href={ESTATEOS_APP_STORE_URL}
+                    className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-3 text-xs font-bold"
+                  >
+                    <Smartphone size={16} /> {dict.appIos}
+                  </a>
+                  <a
+                    href={ESTATEOS_PLAY_STORE_URL}
+                    className="inline-flex items-center gap-2 rounded-xl border border-black/10 px-4 py-3 text-xs font-bold"
+                  >
+                    <Smartphone size={16} /> {dict.appAndroid}
+                  </a>
+                </div>
+
+                <h3 className="mt-8 text-sm font-black uppercase tracking-widest text-[#141416]">
+                  {dict.panelTitle}
+                </h3>
+                <ul className="mt-4 space-y-2">
+                  {panelTips.map((tip) => (
+                    <li key={tip.label}>
+                      <Link
+                        href={tip.href}
+                        className="flex items-start gap-3 rounded-xl border border-black/[0.08] bg-[#fafaf8] px-4 py-3 transition hover:border-emerald-500/30"
+                      >
+                        <Sparkles size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+                        <div>
+                          <p className="text-sm font-bold text-[#141416]">{tip.label}</p>
+                          <p className="text-xs text-[#8a8a94]">{tip.hint}</p>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+
+          {step !== 'search' && step !== 'investor' ? (
+            <div className="border-t border-black/[0.06] p-4">
+              <button
+                type="button"
+                onClick={goNext}
+                className="eos-dark-cta flex w-full items-center justify-center gap-2 rounded-2xl bg-[#141416] py-4 text-sm font-black uppercase tracking-widest text-white"
+              >
+                {stepIndex >= total - 1 ? (
+                  <>
+                    <Check size={18} /> {dict.finish}
+                  </>
+                ) : (
+                  <>
+                    {dict.next} <ArrowRight size={16} />
+                  </>
+                )}
+              </button>
+            </div>
+          ) : null}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}

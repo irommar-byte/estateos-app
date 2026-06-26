@@ -20,6 +20,7 @@ import PhoneCountryInput from '@/components/auth/PhoneCountryInput';
 import ProfileMediaAvatar from '@/components/profile/ProfileMediaAvatar';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
 import { useLocale } from '@/contexts/LocaleContext';
+import { resolvePostAuthDestination } from '@/lib/offerShareIntent';
 
 /** Zgodne z aplikacją mobilną: PRIVATE | AGENT (bez PARTNER — partner/Pro tylko przez /cennik). */
 type AccountKind = 'private' | 'agent';
@@ -320,19 +321,22 @@ export default function RegisterForm({
       );
       const role = data.role || data.user?.role || 'USER';
       window.setTimeout(() => {
-        if (role === 'ADMIN') {
-          window.location.href = '/centrala';
-          return;
-        }
-        if (data.agencyMembership?.pendingApproval) {
-          window.location.href = '/moje-konto/firma?pending=1';
-          return;
-        }
-        if (data.agencyMembership?.role === 'ADMIN') {
-          window.location.href = '/moje-konto/firma';
-          return;
-        }
-        window.location.href = postRegisterPath;
+        void (async () => {
+          if (role === 'ADMIN') {
+            window.location.href = '/centrala';
+            return;
+          }
+          if (data.agencyMembership?.pendingApproval) {
+            window.location.href = '/moje-konto/firma?pending=1';
+            return;
+          }
+          if (data.agencyMembership?.role === 'ADMIN') {
+            window.location.href = '/moje-konto/firma';
+            return;
+          }
+          const destination = await resolvePostAuthDestination(postRegisterPath, role);
+          window.location.href = destination;
+        })();
       }, 400);
     } catch {
       setError(t.errConnection);
