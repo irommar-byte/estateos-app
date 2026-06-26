@@ -7,7 +7,6 @@ import {
   listHostOpenHouseEvents,
   mapOpenHouseError,
 } from '@/lib/openHouse';
-import { requireInvestorProWeb } from '@/lib/requireInvestorProWeb';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
 
 export async function GET(req: Request) {
@@ -32,12 +31,14 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const gate = await requireInvestorProWeb(req);
-  if (!gate.ok) return gate.response;
+  const userId = await resolveWebUserId(req);
+  if (!userId) {
+    return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+  }
 
   try {
     const body = await req.json();
-    const event = await createOpenHouseEvent(gate.userId, {
+    const event = await createOpenHouseEvent(userId, {
       offerId: Number(body.offerId),
       title: body.title ?? null,
       description: body.description ?? null,
