@@ -16,7 +16,6 @@ import { Image } from 'expo-image';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { useI18n, localeToDateFormat } from '../i18n';
-import { hasActiveInvestorProMembership } from '../utils/investorProMembership';
 import {
   fetchHostOpenHouseEvents,
   fetchMyOpenHouseReservations,
@@ -32,7 +31,6 @@ export default function OpenHouseHubScreen() {
   const insets = useSafeAreaInsets();
   const { t, locale } = useI18n();
   const token = useAuthStore((s) => s.token);
-  const user = useAuthStore((s) => s.user);
   const themeMode = useThemeStore((s) => s.themeMode);
   const systemScheme = useColorScheme();
   const isDark = themeMode === 'auto' ? systemScheme === 'dark' : themeMode === 'dark';
@@ -43,7 +41,6 @@ export default function OpenHouseHubScreen() {
   const [events, setEvents] = useState<OpenHouseEventRecord[]>([]);
   const [reservations, setReservations] = useState<OpenHouseReservationRecord[]>([]);
 
-  const isPro = hasActiveInvestorProMembership(user);
   const bg = isDark ? '#000000' : '#F2F2F7';
   const card = isDark ? '#1C1C1E' : '#FFFFFF';
   const text = isDark ? '#FFFFFF' : '#000000';
@@ -157,7 +154,7 @@ export default function OpenHouseHubScreen() {
         ))}
       </View>
 
-      {isPro ? (
+      {token ? (
         <Pressable
           onPress={() => navigation.navigate('OpenHouseCreate')}
           style={styles.createBtn}
@@ -167,8 +164,8 @@ export default function OpenHouseHubScreen() {
         </Pressable>
       ) : (
         <View style={[styles.proBanner, { backgroundColor: card }]}>
-          <Ionicons name="diamond-outline" size={18} color="#F59E0B" />
-          <Text style={[styles.proBannerText, { color: muted }]}>{t('openHouse.hub.proRequired')}</Text>
+          <Ionicons name="log-in-outline" size={18} color="#F59E0B" />
+          <Text style={[styles.proBannerText, { color: muted }]}>{t('openHouse.event.loginRequired')}</Text>
         </View>
       )}
 

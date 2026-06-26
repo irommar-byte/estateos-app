@@ -59,11 +59,13 @@ export function computePartnerGrowthInsight(params: {
   partnerPlan: Pick<
     CompanyPartnerPlanSnapshot,
     | 'currentPlanId'
+    | 'displayPlanId'
     | 'isSubscriptionActive'
     | 'poolCredits'
     | 'activeAgents'
     | 'agentsLimit'
     | 'daysRemaining'
+    | 'isTrialing'
   >;
   companyName?: string;
 }): PartnerGrowthInsight | null {
@@ -80,7 +82,8 @@ export function computePartnerGrowthInsight(params: {
   const savingsPct = partnerSavingsPercentVsRetail(plan);
   const unitPrice = partnerCreditUnitPrice(plan);
   const ctaHref = `/moje-konto/firma?upgrade=${recommended}#pakiet`;
-  const isFree = p.currentPlanId === 'free';
+  const isFree =
+    (p.displayPlanId ?? p.currentPlanId) === 'free' && !p.isTrialing;
   const proPlan = getPartnerPlanById('pro');
 
   if (!p.isSubscriptionActive) {

@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import ProWidget, { AppleClock } from "@/components/ProWidget";
+import OpenHouseProCard from "@/components/openHouse/OpenHouseProCard";
 import ReviewsModal from "@/components/ReviewsModal";
 import OfferRenewalModal from "@/components/offer/OfferRenewalModal";
 import OfferPrivateCommentModal from "@/components/crm/OfferPrivateCommentModal";
@@ -1339,7 +1340,16 @@ export default function CRMDashboard() {
               if (currentUser?.id) void fetchData(currentUser.id);
             }}
           />
-        ) : null}
+        ) : (
+          <div className="mb-8 grid max-w-md grid-cols-1 gap-4">
+            <OpenHouseProCard
+              activeOffers={activeOffersForProTools}
+              onChanged={() => {
+                if (currentUser?.id) void fetchData(currentUser.id);
+              }}
+            />
+          </div>
+        )}
 
         <CrmSectionTabBar
           tabs={profileTabs as CrmSectionTabId[]}

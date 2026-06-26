@@ -22,7 +22,7 @@ export default function OpenHouseProCard({ activeOffers, onChanged }: Props) {
     <>
       <ProToolBadge
         icon="door"
-        badgeLabel={copy.exclusiveBadge}
+        badgeLabel={copy.openHouseTag}
         title={copy.openHouseTitle}
         subtitle={copy.openHouseSubtitle}
         onClick={() => setPanelOpen(true)}

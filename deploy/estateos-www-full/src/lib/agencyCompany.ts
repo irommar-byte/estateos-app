@@ -9,6 +9,7 @@ import {
 } from '@/lib/agentProfile';
 import { resolveCompanyPartnerPlanStatus } from '@/lib/partnerPlanStatus';
 import { computePartnerGrowthInsight, type PartnerGrowthInsight } from '@/lib/partnerGrowth';
+import { grantPartnerFreeTierOnSignup } from '@/lib/partnerStripeGrant';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { notifyMemberApproved, notifyOffersTransferred } from '@/lib/agencyCompanyNotify';
 
@@ -406,6 +407,7 @@ export async function getCompanyDashboard(companyId: number) {
   );
 
   const activeAgentCount = company.members.filter((m) => m.status === 'ACTIVE').length;
+  await grantPartnerFreeTierOnSignup(company.ownerUserId).catch(() => null);
   const partnerPlan = await resolveCompanyPartnerPlanStatus({
     ownerUserId: company.ownerUserId,
     extraListings: company.extraListings,

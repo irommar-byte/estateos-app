@@ -15,35 +15,32 @@ import {
   Zap,
 } from 'lucide-react';
 import { useLocale } from '@/contexts/LocaleContext';
+import { formatAgencyDate, getAgencyFirm } from '@/i18n/agencyFirmDictionary';
 import {
+  PARTNER_FREE_PERIOD_DAYS,
+  PARTNER_PAID_PERIOD_DAYS,
   PARTNER_PAID_PLANS,
   PARTNER_PLANS,
   getPartnerPlanById,
   type PartnerPlanId,
   describePartnerPlanChange,
-  partnerCreditUnitPrice,
   partnerStripePlanCodeFromId,
   formatAgentsLimit,
 } from '@/lib/partnerPricing';
 
 export type AgencyPartnerPlanPayload = {
   currentPlanId: PartnerPlanId | null;
+  displayPlanId?: PartnerPlanId | null;
   isSubscriptionActive: boolean;
   plusExpiresAt: string | null;
   poolCredits: number;
   activeAgents: number;
   agentsLimit: number | null;
   daysRemaining: number | null;
-  lastPurchaseAt: string | null;
+  periodDays?: number | null;
+  hasFreeSignup?: boolean;
   proTrialEligible?: boolean;
   isTrialing?: boolean;
-};
-
-const PLAN_LABELS: Record<PartnerPlanId, string> = {
-  free: 'Partner Free',
-  start: 'Partner Start',
-  pro: 'Partner Pro',
-  enterprise: 'Partner Enterprise',
 };
 
 const PLAN_RANK: Record<PartnerPlanId, number> = {
@@ -52,11 +49,6 @@ const PLAN_RANK: Record<PartnerPlanId, number> = {
   pro: 2,
   enterprise: 3,
 };
-
-function fmtDate(iso: string | null) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('pl-PL', { dateStyle: 'long' });
-}
 
 export default function AgencyPartnerPlanSection({
   id,
@@ -73,7 +65,9 @@ export default function AgencyPartnerPlanSection({
 }) {
   const searchParams = useSearchParams();
   const upgradeParam = searchParams.get('upgrade') as PartnerPlanId | null;
-  const { dict } = useLocale();
+  const { dict, locale } = useLocale();
+  const t = getAgencyFirm(locale);
+  const pp = t.partnerPlan;
   const p = dict.pricing;
   const partnerAgentsUnlimited = p?.partnerAgentsUnlimited ?? 'bez limitu';
   const partnerActivationNote =
@@ -82,22 +76,24 @@ export default function AgencyPartnerPlanSection({
 
   const proPlanPrice = getPartnerPlanById('pro')?.pricePln ?? 599;
   const hasActive = partnerPlan.isSubscriptionActive;
-  const isFreePlan = partnerPlan.currentPlanId === 'free';
+  const displayPlanId = partnerPlan.displayPlanId ?? partnerPlan.currentPlanId;
+  const isFreeDisplay = displayPlanId === 'free';
+  const periodDays =
+    partnerPlan.periodDays ??
+    (isFreeDisplay ? PARTNER_FREE_PERIOD_DAYS : PARTNER_PAID_PERIOD_DAYS);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [selectedId, setSelectedId] = useState<PartnerPlanId>(
-    partnerPlan.currentPlanId && partnerPlan.currentPlanId !== 'free'
-      ? partnerPlan.currentPlanId
-      : 'pro',
+    displayPlanId && displayPlanId !== 'free' ? displayPlanId : 'pro',
   );
 
   useEffect(() => {
     if (!upgradeParam) return;
-    if (!PARTNER_PAID_PLANS.some((p) => p.id === upgradeParam)) return;
+    if (!PARTNER_PAID_PLANS.some((plan) => plan.id === upgradeParam)) return;
     setSelectedId(upgradeParam);
     setShowUpgrade(true);
   }, [upgradeParam]);
 
-  const currentPlan = PARTNER_PLANS.find((pl) => pl.id === partnerPlan.currentPlanId) ?? null;
+  const currentPlan = PARTNER_PLANS.find((pl) => pl.id === displayPlanId) ?? null;
   const selectedPlan =
     PARTNER_PAID_PLANS.find((pl) => pl.id === selectedId) ?? PARTNER_PAID_PLANS[1];
 
@@ -117,15 +113,25 @@ export default function AgencyPartnerPlanSection({
       ? partnerAgentsUnlimited
       : `${partnerPlan.activeAgents} / ${partnerPlan.agentsLimit}`;
 
-  const statusLabel =
-    partnerPlan.currentPlanId && PLAN_LABELS[partnerPlan.currentPlanId]
-      ? PLAN_LABELS[partnerPlan.currentPlanId]
-      : 'Aktywna pula Partner';
+  const planLabel = (planId: PartnerPlanId | null) =>
+    planId && pp.planLabels[planId] ? pp.planLabels[planId] : pp.activePartnerPool;
 
-  const showProTrial =
+  const statusLabel = planLabel(displayPlanId);
+
+  const showProTrialCheckoutOffer =
     Boolean(partnerPlan.proTrialEligible) &&
     selectedId === 'pro' &&
-    !hasActive;
+    !partnerPlan.isTrialing &&
+    !(isFreeDisplay && (partnerPlan.daysRemaining ?? 0) > PARTNER_PAID_PERIOD_DAYS);
+
+  const daysSuffix =
+    partnerPlan.daysRemaining != null
+      ? locale === 'pl'
+        ? ` · pozostało ${partnerPlan.daysRemaining} dni`
+        : locale === 'uk'
+          ? ` · залишилось ${partnerPlan.daysRemaining} дн.`
+          : ` · ${partnerPlan.daysRemaining} days left`
+      : '';
 
   if (hasActive && !showUpgrade) {
     return (
@@ -137,40 +143,52 @@ export default function AgencyPartnerPlanSection({
           <div className="min-w-0">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-black">
-                <Check size={12} /> Aktywny pakiet
+                <Check size={12} /> {pp.activePackage}
               </span>
-              {partnerPlan.isTrialing ? (
+              {isFreeDisplay ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-[#b8922e]/35 bg-[#b8922e]/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#8a6e2f]">
+                  {pp.freePeriodBadge}
+                </span>
+              ) : null}
+              {partnerPlan.isTrialing && !isFreeDisplay ? (
                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-amber-600">
-                  Okres próbny
+                  {pp.proTrialBadge}
                 </span>
               ) : null}
             </div>
             <h2 className="text-2xl font-black text-[var(--eos-text)]">{statusLabel}</h2>
             <p className="eos-muted-copy mt-2 text-sm leading-relaxed">
               {partnerPlan.plusExpiresAt
-                ? `Ważne do ${fmtDate(partnerPlan.plusExpiresAt)}${
-                    partnerPlan.daysRemaining != null ? ` · pozostało ${partnerPlan.daysRemaining} dni` : ''
-                  }`
-                : 'Aktywna pula kredytów firmy.'}
-              {isFreePlan
-                ? ' Pakiet startowy Partner Free — ulepsz, gdy zespół lub liczba publikacji urośnie.'
+                ? pp.validUntil(formatAgencyDate(partnerPlan.plusExpiresAt, locale), daysSuffix)
+                : pp.activePool}
+              {isFreeDisplay ? pp.freePeriodNote(periodDays) : null}
+              {isFreeDisplay ? pp.freePlanNote : null}
+              {partnerPlan.isTrialing && !isFreeDisplay
+                ? pp.proTrialNote(proPlanPrice, PARTNER_PAID_PERIOD_DAYS)
                 : null}
-              {partnerPlan.isTrialing
-                ? ` Po okresie próbnym pobierzemy ${proPlanPrice} zł za kolejne 30 dni — anulujesz w dowolnym momencie przed końcem trialu.`
+              {!isFreeDisplay && !partnerPlan.isTrialing && displayPlanId
+                ? pp.paidRenewalNote(
+                    getPartnerPlanById(displayPlanId)?.pricePln ?? proPlanPrice,
+                    PARTNER_PAID_PERIOD_DAYS,
+                  )
                 : null}
             </p>
           </div>
 
           <div className="grid shrink-0 gap-3 sm:grid-cols-2">
             <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/80 px-4 py-3">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">Pula kredytów</p>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">
+                {pp.creditsPoolLabel}
+              </p>
               <p className="mt-1 flex items-center gap-2 text-xl font-black text-[var(--eos-text)]">
                 <Wallet size={16} className="text-emerald-500" />
                 {partnerPlan.poolCredits}
               </p>
             </div>
             <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/80 px-4 py-3">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">Zespół</p>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">
+                {pp.teamLabel}
+              </p>
               <p className="mt-1 flex items-center gap-2 text-xl font-black text-[var(--eos-text)]">
                 <Users size={16} className="text-emerald-500" />
                 {agentsLimitLabel}
@@ -189,7 +207,7 @@ export default function AgencyPartnerPlanSection({
               }}
               className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-400"
             >
-              <Zap size={14} /> Ulepsz pakiet
+              <Zap size={14} /> {pp.upgradePackage}
               <ChevronRight size={14} />
             </button>
           </div>
@@ -214,36 +232,34 @@ export default function AgencyPartnerPlanSection({
                 onClick={() => setShowUpgrade(false)}
                 className="mb-3 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] hover:text-emerald-500"
               >
-                ← Wróć do aktywnego pakietu
+                {pp.backToActive}
               </button>
             ) : null}
             <p className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.28em] text-emerald-500">
-              <Sparkles size={14} /> Pakiet agencji
+              <Sparkles size={14} /> {pp.agencyPackage}
             </p>
             <h2 className="text-2xl font-black text-[var(--eos-text)] md:text-3xl">
               {hasActive && showUpgrade
-                ? 'Ulepsz abonament biura'
+                ? pp.upgradeSubscription
                 : hasActive
-                  ? 'Ulepsz pakiet Partner'
-                  : 'EstateOS™ Partner — wybierz pakiet płatny'}
+                  ? pp.upgradePackage
+                  : pp.choosePaidPackage}
             </h2>
             <p className="eos-muted-copy mt-2 text-sm leading-relaxed">
               {hasActive && showUpgrade
-                ? 'Dopłać różnicę i od razu zyskujesz wyższy limit agentów oraz większą pulę kredytów.'
-                : hasActive && isFreePlan
-                  ? 'Masz aktywny Partner Free. Wybierz płatny pakiet, gdy potrzebujesz więcej kredytów lub miejsc w zespole.'
-                  : 'Kredyty publikacji, limit zespołu i CRM w jednym miejscu.'}
+                ? pp.upgradeDiffNote
+                : hasActive && isFreeDisplay
+                  ? pp.freeUpgradeNote
+                  : pp.ecosystemNote}
             </p>
           </div>
 
           {!hasActive ? (
             <div className="grid min-w-[min(100%,18rem)] gap-3 sm:grid-cols-2 lg:grid-cols-1">
               <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
-                <p className="text-[9px] font-bold uppercase tracking-widest text-amber-600">Status</p>
-                <p className="mt-1 text-lg font-black text-amber-600">Brak aktywnej puli</p>
-                <p className="eos-muted-copy mt-1 text-xs">
-                  Załóż biuro na nowo lub aktywuj płatny pakiet, aby odnowić kredyty firmy.
-                </p>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-amber-600">{pp.noActivePool}</p>
+                <p className="mt-1 text-lg font-black text-amber-600">—</p>
+                <p className="eos-muted-copy mt-1 text-xs">{pp.noActivePoolHint}</p>
               </div>
             </div>
           ) : null}
@@ -251,12 +267,12 @@ export default function AgencyPartnerPlanSection({
       </div>
 
       {plansToShow.length === 0 ? (
-        <p className="p-8 text-center text-sm text-[var(--eos-muted)]">
-          Masz już najwyższy pakiet Partner Enterprise.
-        </p>
+        <p className="p-8 text-center text-sm text-[var(--eos-muted)]">{pp.highestPackage}</p>
       ) : (
         <>
-          <div className={`grid gap-4 p-6 md:p-8 ${plansToShow.length === 1 ? 'max-w-md' : plansToShow.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
+          <div
+            className={`grid gap-4 p-6 md:p-8 ${plansToShow.length === 1 ? 'max-w-md' : plansToShow.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}
+          >
             {plansToShow.map((plan) => {
               const isSelected = selectedId === plan.id;
               const agents = formatAgentsLimit(plan.maxAgents, partnerAgentsUnlimited);
@@ -274,24 +290,24 @@ export default function AgencyPartnerPlanSection({
                 >
                   {plan.highlighted ? (
                     <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-emerald-500">
-                      <Crown size={10} /> Polecany
+                      <Crown size={10} /> {pp.recommended}
                     </span>
                   ) : null}
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
-                    {PLAN_LABELS[plan.id]}
+                    {pp.planLabels[plan.id]}
                   </p>
                   <p className="mt-2 text-3xl font-black text-[var(--eos-text)]">
                     {plan.pricePln}
-                    <span className="ml-1 text-sm font-medium text-[var(--eos-muted)]">zł / 30 dni</span>
+                    <span className="ml-1 text-sm font-medium text-[var(--eos-muted)]">{pp.per30Days}</span>
                   </p>
                   <ul className="mt-4 space-y-2 text-xs text-[var(--eos-muted)]">
                     <li className="flex gap-2">
                       <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
-                      {plan.creditsPerMonth} kredytów na pulę
+                      {pp.creditsOnPool(plan.creditsPerMonth)}
                     </li>
                     <li className="flex gap-2">
                       <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
-                      {agents} w zespole
+                      {pp.agentsInTeam(agents)}
                     </li>
                   </ul>
                 </button>
@@ -303,7 +319,7 @@ export default function AgencyPartnerPlanSection({
             <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
               <div>
                 <h3 className="text-sm font-black uppercase tracking-widest text-[var(--eos-text)]">
-                  Co się zmieni — {PLAN_LABELS[selectedPlan.id]}
+                  {pp.whatChanges(pp.planLabels[selectedPlan.id])}
                 </h3>
                 <ul className="mt-3 space-y-2">
                   {changeLines.map((line) => (
@@ -316,10 +332,9 @@ export default function AgencyPartnerPlanSection({
               </div>
 
               <div className="flex flex-col gap-3 lg:min-w-[16rem]">
-                {showProTrial ? (
+                {showProTrialCheckoutOffer ? (
                   <p className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-center text-[11px] font-semibold leading-relaxed text-emerald-600">
-                    Pierwszy miesiąc <strong>0 zł</strong> — wymagana karta. Po 30 dniach automatycznie
-                    pobierzemy <strong>{proPlanPrice} zł</strong> za kolejne 30 dni.
+                    {pp.trialCheckoutNote(proPlanPrice, PARTNER_PAID_PERIOD_DAYS)}
                   </p>
                 ) : null}
                 <button
@@ -333,11 +348,7 @@ export default function AgencyPartnerPlanSection({
                   ) : (
                     <Building2 size={18} />
                   )}
-                  {showProTrial
-                    ? 'Dodaj kartę — start trialu (0 zł)'
-                    : hasActive
-                      ? 'Ulepsz pakiet'
-                      : 'Aktywuj pakiet'}
+                  {showProTrialCheckoutOffer ? pp.trialCta : hasActive ? pp.upgradeCta : pp.activateCta}
                 </button>
                 <p className="text-center text-[10px] leading-relaxed text-[var(--eos-muted)]">
                   {partnerActivationNote}

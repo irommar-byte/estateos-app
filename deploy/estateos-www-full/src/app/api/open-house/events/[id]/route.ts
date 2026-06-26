@@ -3,7 +3,6 @@ export const revalidate = 0;
 
 import { NextResponse } from 'next/server';
 import { getOpenHouseEventById, mapOpenHouseError, updateOpenHouseEvent } from '@/lib/openHouse';
-import { requireInvestorProWeb } from '@/lib/requireInvestorProWeb';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -33,8 +32,10 @@ export async function GET(req: Request, context: RouteContext) {
 }
 
 export async function PATCH(req: Request, context: RouteContext) {
-  const gate = await requireInvestorProWeb(req);
-  if (!gate.ok) return gate.response;
+  const userId = await resolveWebUserId(req);
+  if (!userId) {
+    return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+  }
 
   const { id: rawId } = await context.params;
   const eventId = Number(rawId);
@@ -44,7 +45,7 @@ export async function PATCH(req: Request, context: RouteContext) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const event = await updateOpenHouseEvent(gate.userId, eventId, {
+    const event = await updateOpenHouseEvent(userId, eventId, {
       title: body.title,
       description: body.description,
       status: body.status,
