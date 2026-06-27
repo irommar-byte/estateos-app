@@ -12,7 +12,6 @@ import {
   Eye,
   ImageIcon,
   Loader2,
-  Mail,
   Minimize2,
   RefreshCw,
   Send,
@@ -29,6 +28,17 @@ import {
   type KeiImportStepId,
 } from "@/lib/keiAmerExportWebClient";
 import { useKeiAmerExportStore } from "@/store/useKeiAmerExportStore";
+import {
+  DEFAULT_KEI_OUTREACH_TEMPLATE,
+  loadKeiOutreachSender,
+  loadKeiOutreachTemplate,
+  renderKeiOutreachMessage,
+  saveKeiOutreachSender,
+  saveKeiOutreachTemplate,
+  sourceLabelFromPortalUrl,
+  type KeiOutreachSenderProfile,
+} from "@/lib/keiAmerOutreachMessage";
+import { buildOtodomContactBookmarklet } from "@/lib/keiAmerOtodomBookmarklet";
 
 type ActionMode = "import" | "outreach";
 type PropertyKind = "apartment" | "house";
@@ -395,6 +405,107 @@ function FloorPlanPicker(props: {
   );
 }
 
+function OutreachDeliveryModal(props: {
+  open: boolean;
+  items: OutreachResultItem[];
+  stepIndex: number;
+  sender: KeiOutreachSenderProfile;
+  bookmarkletHref: string;
+  onNext: () => void;
+  onClose: () => void;
+  onFillAgain: () => void;
+}) {
+  if (!props.open || props.items.length === 0) return null;
+  const item = props.items[props.stepIndex];
+  if (!item) return null;
+  const total = props.items.length;
+  const step = props.stepIndex + 1;
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <motion.div
+        initial={{ y: 24, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="w-full max-w-lg rounded-[28px] border border-emerald-400/30 bg-[#111] p-5 shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300/90">
+              Zaproszenie {step}/{total}
+            </p>
+            <p className="text-sm font-semibold text-white mt-1 line-clamp-2">{item.address}</p>
+          </div>
+          <button type="button" onClick={props.onClose} className="p-2 rounded-xl text-white/50 hover:text-white">
+            <X size={18} />
+          </button>
+        </div>
+
+        <ol className="space-y-2 text-xs text-white/75 mb-4 list-decimal list-inside">
+          <li className="text-emerald-200">Wiadomość skopiowana do schowka (z unikalnym linkiem /dolacz).</li>
+          <li>Ogłoszenie otwarte w nowej karcie portalu.</li>
+          <li>
+            Na stronie ogłoszenia kliknij zakładkę{" "}
+            <span className="font-bold text-white">EOS: Wypełnij OtoDom</span> (jednorazowa instalacja poniżej).
+          </li>
+          <li>Sprawdź pola i kliknij <span className="font-bold text-white">Wyślij</span> na portalu — to jedyny ręczny krok.</li>
+        </ol>
+
+        <p className="text-[10px] text-white/45 mb-3">
+          EstateOS nie wysyła wiadomości za Ciebie (ograniczenia OtoDom). System generuje link, kopiuje treść i otwiera ogłoszenie.
+        </p>
+
+        <div className="rounded-xl border border-white/10 bg-black/40 p-3 mb-4">
+          <p className="text-[10px] font-black uppercase tracking-wider text-white/45 mb-2">Twoje dane w formularzu</p>
+          <p className="text-xs text-white/70">
+            {props.sender.name || "—"} · {props.sender.email || "—"} · {props.sender.phone || "—"}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <a
+            href={props.bookmarkletHref}
+            onClick={(e) => {
+              e.preventDefault();
+              alert("Przeciągnij ten przycisk na pasek zakładek Safari/Chrome. Potem używaj na stronie ogłoszenia OtoDom.");
+            }}
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/uri-list", props.bookmarkletHref);
+              e.dataTransfer.setData("text/plain", props.bookmarkletHref);
+            }}
+            draggable
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500 text-black text-[10px] font-black uppercase"
+          >
+            EOS: Wypełnij OtoDom
+          </a>
+          <button
+            type="button"
+            onClick={props.onFillAgain}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-white/15 text-[10px] font-black uppercase text-white/80"
+          >
+            <Copy size={14} /> Kopiuj wiadomość
+          </button>
+          <a
+            href={item.portalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-white/15 text-[10px] font-black uppercase text-white/80"
+          >
+            <ExternalLink size={14} /> OtoDom
+          </a>
+        </div>
+
+        <button
+          type="button"
+          onClick={props.onNext}
+          className="mt-4 w-full py-3.5 rounded-2xl bg-emerald-500 text-black text-sm font-black uppercase"
+        >
+          {step < total ? `Następne ogłoszenie (${step + 1}/${total})` : "Zamknij kreator"}
+        </button>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function KeiAmerWorkspace() {
   const [session, setSession] = useState<SessionState>({ loading: true, ok: false, message: "" });
   const [actionMode, setActionMode] = useState<ActionMode>("import");
@@ -412,6 +523,14 @@ export default function KeiAmerWorkspace() {
   const [outreachLoading, setOutreachLoading] = useState(false);
   const [outreachError, setOutreachError] = useState("");
   const [outreachResults, setOutreachResults] = useState<OutreachResultItem[]>([]);
+  const [outreachDeliveryOpen, setOutreachDeliveryOpen] = useState(false);
+  const [outreachDeliveryStep, setOutreachDeliveryStep] = useState(0);
+  const [outreachTemplate, setOutreachTemplate] = useState(DEFAULT_KEI_OUTREACH_TEMPLATE);
+  const [outreachSender, setOutreachSender] = useState<KeiOutreachSenderProfile>({
+    name: "",
+    email: "",
+    phone: "",
+  });
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState>({
     loading: false,
@@ -436,6 +555,38 @@ export default function KeiAmerWorkspace() {
   const selectedList = useMemo(() => Object.values(selected), [selected]);
   const selectedCount = selectedList.length;
   const overallPercent = computeKeiOverallPercent(exportItems);
+
+  useEffect(() => {
+    setOutreachTemplate(loadKeiOutreachTemplate());
+    setOutreachSender(loadKeiOutreachSender());
+  }, []);
+
+  const bookmarkletHref = useMemo(
+    () => buildOtodomContactBookmarklet(outreachSender),
+    [outreachSender],
+  );
+
+  const outreachPreviewMessage = useMemo(() => {
+    const sample = selectedList[0];
+    return renderKeiOutreachMessage(outreachTemplate, {
+      location: sample?.address || "warszawa, przykładowa lokalizacja",
+      source: sample?.portalUrl ? sourceLabelFromPortalUrl(sample.portalUrl) : "OtoDom",
+      inviteUrl: "https://estateos.pl/dolacz?invite=…",
+    });
+  }, [outreachTemplate, selectedList]);
+
+  const deliverOutreachItem = useCallback(async (item: OutreachResultItem) => {
+    try {
+      await navigator.clipboard.writeText(item.message);
+      setCopiedKey(item.portalUrl);
+      window.setTimeout(() => setCopiedKey(null), 2200);
+    } catch {
+      /* ignore */
+    }
+    if (item.portalUrl) {
+      window.open(item.portalUrl, "_blank", "noopener,noreferrer");
+    }
+  }, []);
 
   const ensureSession = useCallback(async (force = false) => {
     setSession((prev) => ({ ...prev, loading: true }));
@@ -731,6 +882,12 @@ export default function KeiAmerWorkspace() {
       setOutreachError("Wybrane ogłoszenia zawierają pozycje zablokowane (już zaimportowane lub z wysłanym zaproszeniem).");
       return;
     }
+    if (!outreachSender.name.trim() || !outreachSender.email.trim() || !outreachSender.phone.trim()) {
+      setOutreachError("Uzupełnij imię, e-mail i telefon — będą wpisywane w formularz OtoDom.");
+      return;
+    }
+    saveKeiOutreachTemplate(outreachTemplate);
+    saveKeiOutreachSender(outreachSender);
     setOutreachLoading(true);
     setOutreachError("");
     try {
@@ -739,6 +896,7 @@ export default function KeiAmerWorkspace() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          messageTemplate: outreachTemplate,
           selections: selectedList.map((row) => ({
             keiId: row.keiId,
             portalUrl: row.portalUrl,
@@ -748,13 +906,31 @@ export default function KeiAmerWorkspace() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(data?.error || "Nie udało się przygotować zaproszeń."));
-      setOutreachResults(Array.isArray(data.items) ? data.items : []);
+      const items: OutreachResultItem[] = Array.isArray(data.items) ? data.items : [];
+      setOutreachResults(items);
+      if (items.length > 0) {
+        setOutreachDeliveryStep(0);
+        setOutreachDeliveryOpen(true);
+        await deliverOutreachItem(items[0]);
+      }
       refreshAfterAction();
     } catch (e) {
       setOutreachError(e instanceof Error ? e.message : "Błąd połączenia.");
     } finally {
       setOutreachLoading(false);
     }
+  };
+
+  const advanceOutreachDelivery = async () => {
+    const items = outreachResults;
+    const next = outreachDeliveryStep + 1;
+    if (next >= items.length) {
+      setOutreachDeliveryOpen(false);
+      setOutreachDeliveryStep(0);
+      return;
+    }
+    setOutreachDeliveryStep(next);
+    await deliverOutreachItem(items[next]);
   };
 
   const copyOutreachMessage = async (key: string, text: string) => {
@@ -913,10 +1089,94 @@ export default function KeiAmerWorkspace() {
               </label>
             </>
           ) : (
-            <div className="sm:col-span-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3 text-xs text-emerald-100/90 leading-relaxed">
-              <p className="font-bold mb-1 flex items-center gap-2"><Mail size={14} /> Wiadomość z linkiem /dolacz</p>
-              System wygeneruje szablon z unikalnym zaproszeniem. Skopiuj treść i wyślij właścicielowi na OtoDom/OLX — ręcznie w wiadomości portalu.
-            </div>
+            <>
+              <div className="sm:col-span-2 lg:col-span-4 space-y-3">
+                <p className="text-[10px] font-black uppercase tracking-wider text-white/50">Twoje dane w formularzu OtoDom</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-[10px] font-bold text-white/45">Imię</span>
+                    <input
+                      value={outreachSender.name}
+                      onChange={(e) => setOutreachSender((s) => ({ ...s, name: e.target.value }))}
+                      onBlur={() => saveKeiOutreachSender(outreachSender)}
+                      placeholder="Imię"
+                      className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-[10px] font-bold text-white/45">E-mail</span>
+                    <input
+                      type="email"
+                      value={outreachSender.email}
+                      onChange={(e) => setOutreachSender((s) => ({ ...s, email: e.target.value }))}
+                      onBlur={() => saveKeiOutreachSender(outreachSender)}
+                      placeholder="email@…"
+                      className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-[10px] font-bold text-white/45">Telefon</span>
+                    <input
+                      value={outreachSender.phone}
+                      onChange={(e) => setOutreachSender((s) => ({ ...s, phone: e.target.value }))}
+                      onBlur={() => saveKeiOutreachSender(outreachSender)}
+                      placeholder="+48 …"
+                      className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="sm:col-span-2 lg:col-span-4 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-white/50">Treść wiadomości</p>
+                  <button
+                    type="button"
+                    onClick={() => setOutreachTemplate(DEFAULT_KEI_OUTREACH_TEMPLATE)}
+                    className="text-[10px] font-bold uppercase text-white/45 hover:text-white"
+                  >
+                    Przywróć domyślną
+                  </button>
+                </div>
+                <textarea
+                  value={outreachTemplate}
+                  onChange={(e) => setOutreachTemplate(e.target.value)}
+                  onBlur={() => saveKeiOutreachTemplate(outreachTemplate)}
+                  rows={8}
+                  className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white font-mono leading-relaxed"
+                />
+                <p className="text-[10px] text-white/40">
+                  Zmienne: <code className="text-emerald-300/80">{"{{location}}"}</code>,{" "}
+                  <code className="text-emerald-300/80">{"{{source}}"}</code>,{" "}
+                  <code className="text-emerald-300/80">{"{{inviteUrl}}"}</code> — link generowany przy każdym zaproszeniu.
+                </p>
+                <pre className="text-[10px] text-white/50 whitespace-pre-wrap max-h-28 overflow-y-auto rounded-lg bg-black/30 p-2 border border-white/5">
+                  {outreachPreviewMessage}
+                </pre>
+              </div>
+
+              <div className="sm:col-span-2 lg:col-span-4 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3 text-xs text-amber-100/90">
+                <p className="font-bold mb-2">Jednorazowo: zakładka do OtoDom</p>
+                <p className="mb-3 text-amber-100/75">
+                  Przeciągnij przycisk na pasek zakładek. Po kliknięciu «Zaproszenie» system skopiuje wiadomość i otworzy ogłoszenie — na OtoDom kliknij zakładkę, aby wypełnić formularz.
+                </p>
+                <a
+                  href={bookmarkletHref}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    alert("Przeciągnij ten przycisk na pasek zakładek przeglądarki.");
+                  }}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("text/uri-list", bookmarkletHref);
+                    e.dataTransfer.setData("text/plain", bookmarkletHref);
+                  }}
+                  draggable
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 text-black text-[10px] font-black uppercase"
+                >
+                  EOS: Wypełnij OtoDom
+                </a>
+              </div>
+            </>
           )}
 
           <label className="flex flex-col gap-1.5">
@@ -1166,6 +1426,23 @@ export default function KeiAmerWorkspace() {
         onClose={() => {
           setExportVisible(false);
           clearExportSession();
+        }}
+      />
+
+      <OutreachDeliveryModal
+        open={outreachDeliveryOpen}
+        items={outreachResults}
+        stepIndex={outreachDeliveryStep}
+        sender={outreachSender}
+        bookmarkletHref={bookmarkletHref}
+        onNext={() => void advanceOutreachDelivery()}
+        onClose={() => {
+          setOutreachDeliveryOpen(false);
+          setOutreachDeliveryStep(0);
+        }}
+        onFillAgain={() => {
+          const item = outreachResults[outreachDeliveryStep];
+          if (item) void copyOutreachMessage(item.portalUrl, item.message);
         }}
       />
     </div>
