@@ -454,97 +454,41 @@ function OutreachSenderCard(props: {
   );
 }
 
-function OutreachDeliveryModal(props: {
+function OutreachToast(props: {
   open: boolean;
-  items: OutreachResultItem[];
-  stepIndex: number;
-  sender: KeiOutreachSenderProfile;
-  onNext: () => void;
+  address: string;
+  pendingCount: number;
   onClose: () => void;
-  onCopyMessage: () => void;
-  onCopySender: () => void;
 }) {
-  if (!props.open || props.items.length === 0) return null;
-  const item = props.items[props.stepIndex];
-  if (!item) return null;
-  const total = props.items.length;
-  const step = props.stepIndex + 1;
-
   return (
-    <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <motion.div
-        initial={{ y: 24, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="w-full max-w-lg rounded-[28px] border border-emerald-400/30 bg-[#111] p-5 shadow-2xl"
-      >
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300/90">
-              Zaproszenie {step}/{total}
-            </p>
-            <p className="text-sm font-semibold text-white mt-1 line-clamp-2">{item.address}</p>
-          </div>
-          <button type="button" onClick={props.onClose} className="p-2 rounded-xl text-white/50 hover:text-white">
-            <X size={18} />
-          </button>
-        </div>
-
-        <ol className="space-y-2 text-xs text-white/75 mb-4 list-decimal list-inside">
-          <li className="text-emerald-200">Wiadomość z linkiem /dolacz — skopiowana do schowka.</li>
-          <li>Ogłoszenie otwarte w nowej karcie OtoDom.</li>
-          <li>
-            Na OtoDom: wklej wiadomość w pole <span className="font-bold text-white">Twoja wiadomość</span> (Cmd+V).
-          </li>
-          <li>
-            Uzupełnij <span className="font-bold text-white">Imię, E-mail, Telefon</span> — możesz skopiować przyciskiem poniżej.
-          </li>
-          <li>Kliknij <span className="font-bold text-white">Wyślij</span> na OtoDom — to jedyny krok, którego przeglądarka nie pozwala zrobić za nas.</li>
-        </ol>
-
-        <p className="text-[10px] text-white/45 mb-3">
-          Pełna automatyzacja wysyłki z estateos.pl na OtoDom jest technicznie zablokowana (inna domena, anty-spam portalu).
-        </p>
-
-        <div className="rounded-xl border border-white/10 bg-black/40 p-3 mb-4 text-xs text-white/70 space-y-1">
-          <p><span className="text-white/45">Imię:</span> {props.sender.name || "—"}</p>
-          <p><span className="text-white/45">E-mail:</span> {props.sender.email || "—"}</p>
-          <p><span className="text-white/45">Telefon:</span> {props.sender.phone || "—"}</p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={props.onCopyMessage}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase"
-          >
-            <Copy size={14} /> Kopiuj wiadomość
-          </button>
-          <button
-            type="button"
-            onClick={props.onCopySender}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-white/15 text-[10px] font-black uppercase text-white/80"
-          >
-            <Copy size={14} /> Kopiuj dane kontaktowe
-          </button>
-          <a
-            href={item.portalUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-white/15 text-[10px] font-black uppercase text-white/80"
-          >
-            <ExternalLink size={14} /> OtoDom
-          </a>
-        </div>
-
-        <button
-          type="button"
-          onClick={props.onNext}
-          className="mt-4 w-full py-3.5 rounded-2xl bg-emerald-500 text-black text-sm font-black uppercase"
+    <AnimatePresence>
+      {props.open ? (
+        <motion.div
+          key="outreach-toast"
+          initial={{ y: 16, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 16, opacity: 0 }}
+          className="fixed bottom-24 inset-x-4 z-[80] mx-auto max-w-xl pointer-events-auto"
         >
-          {step < total ? `Następne ogłoszenie (${step + 1}/${total})` : "Zamknij kreator"}
+      <div className="rounded-2xl border border-emerald-400/40 bg-[#0d1f17]/95 backdrop-blur-md shadow-2xl px-4 py-3.5 flex items-start gap-3">
+        <div className="shrink-0 w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-black">
+          <Check size={18} strokeWidth={3} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-emerald-100">Skopiowano · OtoDom otwarty</p>
+          <p className="text-xs text-white/65 mt-0.5 line-clamp-2">{props.address}</p>
+          <p className="text-[11px] text-emerald-200/90 mt-1.5">
+            Wklej <span className="font-bold">Cmd+V</span> w pole „Twoja wiadomość” i kliknij Wyślij.
+            {props.pendingCount > 0 ? ` · ${props.pendingCount} kolejnych w sekcji poniżej` : ""}
+          </p>
+        </div>
+        <button type="button" onClick={props.onClose} className="p-1.5 text-white/40 hover:text-white shrink-0">
+          <X size={16} />
         </button>
-      </motion.div>
-    </div>
+      </div>
+    </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }
 
@@ -565,8 +509,9 @@ export default function KeiAmerWorkspace() {
   const [outreachLoading, setOutreachLoading] = useState(false);
   const [outreachError, setOutreachError] = useState("");
   const [outreachResults, setOutreachResults] = useState<OutreachResultItem[]>([]);
-  const [outreachDeliveryOpen, setOutreachDeliveryOpen] = useState(false);
-  const [outreachDeliveryStep, setOutreachDeliveryStep] = useState(0);
+  const [outreachToastOpen, setOutreachToastOpen] = useState(false);
+  const [outreachToastAddress, setOutreachToastAddress] = useState("");
+  const [outreachToastPending, setOutreachToastPending] = useState(0);
   const [outreachTemplate, setOutreachTemplate] = useState(DEFAULT_KEI_OUTREACH_TEMPLATE);
   const [outreachSender, setOutreachSender] = useState<KeiOutreachSenderProfile>({
     name: "",
@@ -639,14 +584,21 @@ export default function KeiAmerWorkspace() {
     }
   }, []);
 
-  const copySenderProfile = useCallback(async () => {
-    const text = [`Imię: ${outreachSender.name}`, `E-mail: ${outreachSender.email}`, `Telefon: ${outreachSender.phone}`].join("\n");
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      /* ignore */
-    }
-  }, [outreachSender]);
+  useEffect(() => {
+    if (!outreachToastOpen) return;
+    const timer = window.setTimeout(() => setOutreachToastOpen(false), 12000);
+    return () => window.clearTimeout(timer);
+  }, [outreachToastOpen]);
+
+  const openOutreachItem = useCallback(
+    async (item: OutreachResultItem) => {
+      await deliverOutreachItem(item);
+      setOutreachToastAddress(item.address);
+      setOutreachToastPending(0);
+      setOutreachToastOpen(true);
+    },
+    [deliverOutreachItem],
+  );
 
   const ensureSession = useCallback(async (force = false) => {
     setSession((prev) => ({ ...prev, loading: true }));
@@ -972,9 +924,10 @@ export default function KeiAmerWorkspace() {
       const items: OutreachResultItem[] = Array.isArray(data.items) ? data.items : [];
       setOutreachResults(items);
       if (items.length > 0) {
-        setOutreachDeliveryStep(0);
-        setOutreachDeliveryOpen(true);
         await deliverOutreachItem(items[0]);
+        setOutreachToastAddress(items[0].address);
+        setOutreachToastPending(Math.max(0, items.length - 1));
+        setOutreachToastOpen(true);
       }
       refreshAfterAction();
     } catch (e) {
@@ -982,18 +935,6 @@ export default function KeiAmerWorkspace() {
     } finally {
       setOutreachLoading(false);
     }
-  };
-
-  const advanceOutreachDelivery = async () => {
-    const items = outreachResults;
-    const next = outreachDeliveryStep + 1;
-    if (next >= items.length) {
-      setOutreachDeliveryOpen(false);
-      setOutreachDeliveryStep(0);
-      return;
-    }
-    setOutreachDeliveryStep(next);
-    await deliverOutreachItem(items[next]);
   };
 
   const copyOutreachMessage = async (key: string, text: string) => {
@@ -1161,7 +1102,8 @@ export default function KeiAmerWorkspace() {
               <p className="text-[10px] text-white/40">
                 Zmienne: <code className="text-emerald-300/80">{"{{location}}"}</code>,{" "}
                 <code className="text-emerald-300/80">{"{{source}}"}</code>,{" "}
-                <code className="text-emerald-300/80">{"{{inviteUrl}}"}</code> — świeży link przy każdym kliknięciu Zaproszenie.
+                <code className="text-emerald-300/80">{"{{inviteCta}}"}</code> (ramka z linkiem),{" "}
+                <code className="text-emerald-300/80">{"{{inviteUrl}}"}</code> (sam link).
               </p>
             </div>
           </div>
@@ -1245,15 +1187,19 @@ export default function KeiAmerWorkspace() {
                 <div className="flex flex-wrap gap-2 mt-3">
                   <button
                     type="button"
-                    onClick={() => void copyOutreachMessage(item.portalUrl, item.message)}
+                    onClick={() => void openOutreachItem(item)}
                     className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase"
                   >
-                    {copiedKey === item.portalUrl ? <Check size={14} /> : <Copy size={14} />}
-                    {copiedKey === item.portalUrl ? "Skopiowano" : "Kopiuj wiadomość"}
+                    <ExternalLink size={14} /> Otwórz OtoDom + kopiuj
                   </button>
-                  <a href={item.inviteUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-white/15 text-[10px] font-black uppercase text-white/75">
-                    <ExternalLink size={14} /> Link /dolacz
-                  </a>
+                  <button
+                    type="button"
+                    onClick={() => void copyOutreachMessage(item.portalUrl, item.message)}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-white/15 text-[10px] font-black uppercase text-white/75"
+                  >
+                    {copiedKey === item.portalUrl ? <Check size={14} /> : <Copy size={14} />}
+                    {copiedKey === item.portalUrl ? "Skopiowano" : "Tylko kopiuj"}
+                  </button>
                 </div>
               </div>
             ))}
@@ -1444,21 +1390,11 @@ export default function KeiAmerWorkspace() {
         }}
       />
 
-      <OutreachDeliveryModal
-        open={outreachDeliveryOpen}
-        items={outreachResults}
-        stepIndex={outreachDeliveryStep}
-        sender={outreachSender}
-        onNext={() => void advanceOutreachDelivery()}
-        onClose={() => {
-          setOutreachDeliveryOpen(false);
-          setOutreachDeliveryStep(0);
-        }}
-        onCopyMessage={() => {
-          const item = outreachResults[outreachDeliveryStep];
-          if (item) void copyOutreachMessage(item.portalUrl, item.message);
-        }}
-        onCopySender={() => void copySenderProfile()}
+      <OutreachToast
+        open={outreachToastOpen}
+        address={outreachToastAddress}
+        pendingCount={outreachToastPending}
+        onClose={() => setOutreachToastOpen(false)}
       />
     </div>
   );
