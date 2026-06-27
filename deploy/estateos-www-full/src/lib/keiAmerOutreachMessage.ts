@@ -1,4 +1,4 @@
-export const KEI_OUTREACH_TEMPLATE_STORAGE_KEY = 'eos_kei_outreach_template_v2';
+export const KEI_OUTREACH_TEMPLATE_STORAGE_KEY = 'eos_kei_outreach_template_v3';
 export const KEI_OUTREACH_SENDER_STORAGE_KEY = 'eos_kei_outreach_sender_v1';
 
 export type KeiOutreachSenderProfile = {
@@ -13,25 +13,53 @@ export const DEFAULT_KEI_OUTREACH_SENDER: KeiOutreachSenderProfile = {
   phone: '',
 };
 
-/** Wersja domyślna — ekskluzywny blok CTA (plain text, do wklejenia na OtoDom). */
 export const DEFAULT_KEI_OUTREACH_TEMPLATE = `Dzień dobry,
 
-Zauważyliśmy Państwa ogłoszenie ({{location}}) na {{source}}.
+Piszę w sprawie Państwa ogłoszenia na {{source}} — {{location}}.
 
-EstateOS™ to platforma z ceną ostateczną — prowizja już wliczona w cenę dla kupującego. Publikacja po moderacji, import z linku do ogłoszenia w kilka minut.
+Prowadzimy EstateOS, mapę nieruchomości w Polsce. U nas kupujący widzi cenę ostateczną, bez ukrytych dopłat w ogłoszeniu.
 
-{{inviteCta}}
+Jeśli chcieliby Państwo ten sam lokal pokazać również u nas, można to zrobić w kilka minut: po rejestracji wklejają Państwo link do ogłoszenia, a zdjęcia i opis przenoszą się automatycznie.
 
-Po rejestracji wystarczy wkleić link do ogłoszenia — zdjęcia i opis zostają.
+Link do bezpłatnego dodania oferty:
+{{inviteUrl}}
 
-Z poważaniem,
-Zespół EstateOS™`;
+W razie pytań — proszę śmiało odpisać na tę wiadomość.
+
+Pozdrawiam,
+Zespół EstateOS`;
 
 const LEGACY_TEMPLATE_MARKERS = [
   'jak w narzędziu KEI AMER',
   'Zapraszamy do bezpłatnego dodania nieruchomości na EstateOS',
   'resztą zajmie się system.',
+  'PRZENIEŚ NIERUCHOMOŚĆ NA ESTATEOS',
+  'prowizja już wliczona w cenę dla kupującego',
+  'EstateOS™ to platforma z ceną ostateczną',
+  '{{inviteCta}}',
+  '════════════════',
 ];
+
+const VOIVODESHIPS = new Set(
+  [
+    'dolnośląskie',
+    'kujawsko-pomorskie',
+    'lubelskie',
+    'lubuskie',
+    'łódzkie',
+    'małopolskie',
+    'mazowieckie',
+    'opolskie',
+    'podkarpackie',
+    'podlaskie',
+    'pomorskie',
+    'śląskie',
+    'świętokrzyskie',
+    'warmińsko-mazurskie',
+    'wielkopolskie',
+    'zachodniopomorskie',
+  ].map((v) => v.toLowerCase()),
+);
 
 export type KeiOutreachTemplateVars = {
   location: string;
@@ -39,17 +67,47 @@ export type KeiOutreachTemplateVars = {
   inviteUrl: string;
 };
 
+function capitalizeSegment(segment: string): string {
+  return segment
+    .split(/([\s-]+)/)
+    .map((part) => {
+      if (!part || /^[\s-]+$/.test(part)) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join('');
+}
+
+/** Czytelna lokalizacja z adresu KEI (bez województwa, z polską kapitalizacją). */
+export function formatOutreachLocation(raw: string): string {
+  const parts = raw
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return 'Państwa lokalizacji';
+
+  let slice = parts;
+  if (VOIVODESHIPS.has(parts[0].toLowerCase())) {
+    slice = parts.slice(1);
+  }
+  if (slice.length === 0) slice = parts;
+
+  const formatted = slice.map(capitalizeSegment);
+  if (formatted.length >= 3) {
+    const [city, district, ...rest] = formatted;
+    const street = rest.join(', ');
+    return street ? `${street}, ${district}, ${city}` : `${district}, ${city}`;
+  }
+  if (formatted.length === 2) {
+    return `${formatted[1]}, ${formatted[0]}`;
+  }
+  return formatted[0];
+}
+
+/** Opcjonalny krótki CTA — domyślny szablon używa samego {{inviteUrl}}. */
 export function formatInviteCtaBlock(inviteUrl: string): string {
   const url = inviteUrl?.trim();
   if (!url) return '';
-  return [
-    '═══════════════════════════════════════',
-    '  ▶ PRZENIEŚ NIERUCHOMOŚĆ NA ESTATEOS™',
-    '     bezpłatny import · cena ostateczna',
-    '───────────────────────────────────────',
-    url,
-    '═══════════════════════════════════════',
-  ].join('\n');
+  return `Dodaj ofertę na EstateOS:\n${url}`;
 }
 
 export function sourceLabelFromPortalUrl(portalUrl: string): string {
@@ -68,7 +126,7 @@ export function renderKeiOutreachMessage(
   template: string,
   vars: KeiOutreachTemplateVars,
 ): string {
-  const location = vars.location?.trim() || 'Państwa nieruchomość';
+  const location = formatOutreachLocation(vars.location || '');
   const source = vars.source?.trim() || 'portalu ogłoszeniowego';
   const inviteUrl = vars.inviteUrl?.trim() || '';
   const inviteCta = formatInviteCtaBlock(inviteUrl);
@@ -89,11 +147,15 @@ export function loadKeiOutreachTemplate(): string {
   try {
     const saved = window.localStorage.getItem(KEI_OUTREACH_TEMPLATE_STORAGE_KEY);
     if (saved?.trim() && !isLegacyOutreachTemplate(saved)) return saved;
-    const legacyV1 = window.localStorage.getItem('eos_kei_outreach_template_v1');
-    if (legacyV1?.trim() && !isLegacyOutreachTemplate(legacyV1)) {
-      window.localStorage.setItem(KEI_OUTREACH_TEMPLATE_STORAGE_KEY, legacyV1);
-      return legacyV1;
+
+    for (const legacyKey of ['eos_kei_outreach_template_v2', 'eos_kei_outreach_template_v1']) {
+      const legacy = window.localStorage.getItem(legacyKey);
+      if (legacy?.trim() && !isLegacyOutreachTemplate(legacy)) {
+        window.localStorage.setItem(KEI_OUTREACH_TEMPLATE_STORAGE_KEY, legacy);
+        return legacy;
+      }
     }
+
     return DEFAULT_KEI_OUTREACH_TEMPLATE;
   } catch {
     return DEFAULT_KEI_OUTREACH_TEMPLATE;
