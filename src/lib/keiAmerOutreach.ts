@@ -1,5 +1,10 @@
 import { getPasskeyOrigin } from '@/lib/env.server';
 import {
+  DEFAULT_KEI_OUTREACH_TEMPLATE,
+  renderKeiOutreachMessage,
+  sourceLabelFromPortalUrl,
+} from '@/lib/keiAmerOutreachMessage';
+import {
   buildPortalOnboardingUrl,
   createPortalOnboardingInvite,
 } from '@/lib/portalOnboardingInvite';
@@ -24,44 +29,10 @@ export type KeiOutreachMessageItem = {
   sentAt: string;
 };
 
-function buildOwnerOutreachMessage(options: {
-  address: string;
-  inviteUrl: string;
-  sourceLabel?: string;
-}): string {
-  const location = options.address?.trim() || 'Państwa nieruchomość';
-  const source = options.sourceLabel?.trim() || 'portalu ogłoszeniowego';
-
-  return [
-    'Dzień dobry,',
-    '',
-    `Zauważyliśmy ogłoszenie (${location}) na ${source}.`,
-    'Zapraszamy do bezpłatnego dodania nieruchomości na EstateOS — import z linku do ogłoszenia i publikacja na profilu w kilka minut:',
-    '',
-    options.inviteUrl,
-    '',
-    'Po rejestracji wystarczy wkleić link do ogłoszenia — resztą zajmie się system (jak w narzędziu KEI AMER).',
-    '',
-    'Pozdrawiamy,',
-    'Zespół EstateOS',
-  ].join('\n');
-}
-
-function sourceLabelFromPortalUrl(portalUrl: string): string {
-  try {
-    const host = new URL(portalUrl).hostname.replace(/^www\./i, '').toLowerCase();
-    if (host.includes('otodom')) return 'OtoDom';
-    if (host.includes('olx')) return 'OLX';
-    if (host.includes('nieruchomosci-online')) return 'Nieruchomosci-Online';
-    return host;
-  } catch {
-    return 'portalu ogłoszeniowego';
-  }
-}
-
 export async function sendKeiOwnerOutreach(options: {
   adminUserId: number;
   selections: KeiOutreachSelection[];
+  messageTemplate?: string;
 }): Promise<{ ok: true; items: KeiOutreachMessageItem[]; message: string }> {
   const selections = (options.selections || [])
     .map((row) => ({
@@ -79,6 +50,7 @@ export async function sendKeiOwnerOutreach(options: {
   }
 
   const origin = getPasskeyOrigin();
+  const template = options.messageTemplate?.trim() || DEFAULT_KEI_OUTREACH_TEMPLATE;
   const items: KeiOutreachMessageItem[] = [];
 
   for (const row of selections) {
@@ -96,10 +68,10 @@ export async function sendKeiOwnerOutreach(options: {
       portalUrl: row.portalUrl,
       address: row.address || row.portalUrl,
       inviteUrl,
-      message: buildOwnerOutreachMessage({
-        address: row.address,
+      message: renderKeiOutreachMessage(template, {
+        location: row.address,
         inviteUrl,
-        sourceLabel: sourceLabelFromPortalUrl(row.portalUrl),
+        source: sourceLabelFromPortalUrl(row.portalUrl),
       }),
       sentAt: disposition.outreachSentAt || new Date().toISOString(),
     });
@@ -107,20 +79,8 @@ export async function sendKeiOwnerOutreach(options: {
 
   const message =
     items.length === 1
-      ? 'Przygotowano wiadomość zaproszenia dla właściciela. Skopiuj treść i wyślij na OtoDom/OLX.'
-      : `Przygotowano ${items.length} wiadomości zaproszenia. Skopiuj i wyślij każdą na portalu.`;
+      ? 'Zaproszenie gotowe — wiadomość w schowku, ogłoszenie otwarte w nowej karcie.'
+      : `Przygotowano ${items.length} zaproszeń — realizuj kolejno w kreatorze.`;
 
   return { ok: true, items, message };
-}
-
-export function previewKeiOwnerOutreachMessage(options: {
-  address?: string;
-  portalUrl: string;
-  inviteUrl: string;
-}): string {
-  return buildOwnerOutreachMessage({
-    address: options.address || '',
-    inviteUrl: options.inviteUrl,
-    sourceLabel: sourceLabelFromPortalUrl(options.portalUrl),
-  });
 }

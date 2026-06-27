@@ -22,10 +22,14 @@ export async function POST(req: Request) {
         .filter((row: { portalUrl: string }) => row.portalUrl)
     : [];
 
+  const messageTemplate =
+    typeof body?.messageTemplate === 'string' ? body.messageTemplate.trim() : undefined;
+
   try {
     const result = await sendKeiOwnerOutreach({
       adminUserId: admin.id,
       selections,
+      messageTemplate,
     });
     return NextResponse.json(result);
   } catch (error) {
