@@ -13,14 +13,21 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: 'Brak uprawnień.' }, { status: 401 });
   }
 
-  const portalUrl = new URL(req.url).searchParams.get('portalUrl')?.trim() || '';
+  const url = new URL(req.url);
+  const portalUrl = url.searchParams.get('portalUrl')?.trim() || '';
+  const imageIndexRaw = url.searchParams.get('imageIndex');
+  const imageIndex = imageIndexRaw != null && imageIndexRaw !== '' ? Number(imageIndexRaw) : null;
+
   if (!portalUrl || !isSupportedImportOfferUrl(portalUrl)) {
     return NextResponse.json({ ok: false, error: 'Nieobsługiwany URL.' }, { status: 422 });
   }
 
   try {
     const peek = await peekKeiPortalListing(portalUrl);
-    const imageUrl = peek.lastImageUrl;
+    const imageUrl =
+      imageIndex != null && Number.isFinite(imageIndex) && imageIndex >= 0
+        ? peek.imageUrls[imageIndex] ?? null
+        : peek.lastImageUrl;
     if (!imageUrl) {
       return NextResponse.json({ ok: false, error: 'Brak zdjęcia.' }, { status: 404 });
     }
@@ -30,7 +37,7 @@ export async function GET(req: Request) {
         'User-Agent':
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         Accept: 'image/*,*/*;q=0.8',
-        Referer: new URL(portalUrl).origin + '/',
+        Referer: `${new URL(portalUrl).origin}/`,
       },
       cache: 'no-store',
     });

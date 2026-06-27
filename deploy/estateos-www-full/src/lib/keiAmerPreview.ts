@@ -11,6 +11,7 @@ import {
   type KeiPropertyKind,
   type KeiTransactionKind,
 } from '@/lib/keiAmerClient';
+import { getKeiListingDispositions, normalizeKeiPortalUrl } from '@/lib/keiAmerListingState';
 
 export type KeiPreviewListing = {
   keiId: string;
@@ -25,6 +26,9 @@ export type KeiPreviewListing = {
   transactionLabel: string;
   alreadyImported: boolean;
   existingOfferId: number | null;
+  outreachSent: boolean;
+  outreachSentAt: string | null;
+  blockedReason: 'imported' | 'outreach' | null;
 };
 
 function portalHostFromUrl(url: string): string {
@@ -47,16 +51,35 @@ async function mapRowsToPreviewListings(
   filters: { propertyKind: KeiPropertyKind; transactionKind: KeiTransactionKind },
 ): Promise<KeiPreviewListing[]> {
   const listings: KeiPreviewListing[] = [];
+  const portalUrls: string[] = [];
+
+  for (const row of rows) {
+    if (!rowMatchesKeiFilters(row, filters.propertyKind, filters.transactionKind)) continue;
+    const portalUrl = normalizeKeiPortalUrl(String(row.www || '').trim());
+    if (!portalUrl || !isSupportedKeiPortalUrl(portalUrl)) continue;
+    portalUrls.push(portalUrl);
+  }
+
+  const dispositions = await getKeiListingDispositions(portalUrls);
 
   for (const row of rows) {
     if (!rowMatchesKeiFilters(row, filters.propertyKind, filters.transactionKind)) continue;
 
-    const portalUrl = String(row.www || '').trim();
+    const portalUrl = normalizeKeiPortalUrl(String(row.www || '').trim());
     if (!portalUrl || !isSupportedKeiPortalUrl(portalUrl)) continue;
 
     const existing = await findExistingImportedOfferByPortalUrl(portalUrl);
+    const disposition = dispositions.get(portalUrl);
+    const alreadyImported = Boolean(existing) || Boolean(disposition?.importedOfferId);
+    const outreachSent = Boolean(disposition?.outreachSent);
+    const existingOfferId = existing?.id ?? disposition?.importedOfferId ?? null;
     const host = portalHostFromUrl(portalUrl);
     const transactionKind = keiTransactionKindFromRow(row);
+
+    let blockedReason: KeiPreviewListing['blockedReason'] = null;
+    if (alreadyImported) blockedReason = 'imported';
+    else if (outreachSent) blockedReason = 'outreach';
+
     listings.push({
       keiId: row.id,
       date: row.data || '',
@@ -68,8 +91,11 @@ async function mapRowsToPreviewListings(
       sourceLabel: sourceLabelFromHost(host),
       transactionKind,
       transactionLabel: keiTransactionKindLabel(transactionKind),
-      alreadyImported: Boolean(existing),
-      existingOfferId: existing?.id ?? null,
+      alreadyImported,
+      existingOfferId,
+      outreachSent,
+      outreachSentAt: disposition?.outreachSentAt ?? null,
+      blockedReason,
     });
   }
 
@@ -110,7 +136,7 @@ export async function previewKeiExportListings(options?: {
 
   const kindLabel = keiPropertyKindLabel(propertyKind);
   const txLabel = keiTransactionKindLabel(transactionKind);
-  const freshCount = listings.filter((item) => !item.alreadyImported).length;
+  const freshCount = listings.filter((item) => !item.blockedReason).length;
   const message =
     listings.length === 0
       ? `Brak ogłoszeń (${kindLabel}, ${txLabel}) na stronie ${page}.`

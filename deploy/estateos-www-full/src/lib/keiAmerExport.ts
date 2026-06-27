@@ -15,6 +15,10 @@ import {
   type KeiPropertyKind,
   type KeiTransactionKind,
 } from '@/lib/keiAmerClient';
+import {
+  assertKeiListingAvailableForImport,
+  markKeiListingImported,
+} from '@/lib/keiAmerListingState';
 
 const DEFAULT_EXPORT_USER_ID = 55;
 const DEFAULT_COMMISSION_PERCENT = 2;
@@ -283,6 +287,24 @@ export async function exportKeiListingsToEstateOS(options?: {
         label: 'Sprawdzanie duplikatu',
       });
 
+      try {
+        await assertKeiListingAvailableForImport(portalUrl);
+      } catch (outreachBlock) {
+        const reason =
+          outreachBlock instanceof Error
+            ? outreachBlock.message
+            : 'Wysłano zaproszenie właściciela — import zablokowany.';
+        skipped.push({ keiListingId, portalUrl, reason });
+        emit?.({
+          type: 'item_skip',
+          index: currentIndex,
+          keiListingId,
+          portalUrl,
+          reason,
+        });
+        continue;
+      }
+
       const existingByUrl = await findExistingImportedOfferByPortalUrl(portalUrl);
       if (existingByUrl) {
         skipped.push({
@@ -439,6 +461,11 @@ export async function exportKeiListingsToEstateOS(options?: {
       };
 
       exported.push(resultItem);
+      await markKeiListingImported({
+        portalUrl,
+        keiListingId,
+        offerId: created.offerId,
+      });
       emit?.({
         type: 'item_done',
         index: currentIndex,
