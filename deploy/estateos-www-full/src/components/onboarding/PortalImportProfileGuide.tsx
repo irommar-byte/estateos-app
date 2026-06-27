@@ -300,19 +300,8 @@ export default function PortalImportProfileGuide({
               <div>
                 <h2 className="text-2xl font-black tracking-tight text-[#141416]">{dict.appTitle}</h2>
                 <p className="mt-3 text-sm leading-relaxed text-[#5c5c66]">{dict.appBody}</p>
-                <div className="eos-guide-app-footer mt-8 flex flex-wrap justify-center gap-3 border-t border-black/[0.08] pt-6">
-                  <a
-                    href={ESTATEOS_APP_STORE_URL}
-                    className="eos-guide-btn-secondary inline-flex items-center gap-2 rounded-xl border border-black/12 bg-[#f7f7f5] px-4 py-3 text-xs font-bold"
-                  >
-                    <Smartphone size={16} /> {dict.appIos}
-                  </a>
-                  <a
-                    href={ESTATEOS_PLAY_STORE_URL}
-                    className="eos-guide-btn-secondary inline-flex items-center gap-2 rounded-xl border border-black/12 bg-[#f7f7f5] px-4 py-3 text-xs font-bold"
-                  >
-                    <Smartphone size={16} /> {dict.appAndroid}
-                  </a>
+                <div className="eos-guide-app-footer mt-8 border-t border-black/[0.08] pt-6">
+                  <AppStoreBadgeLink />
                 </div>
 
                 <h3 className="mt-8 text-sm font-black uppercase tracking-widest text-[#141416]">

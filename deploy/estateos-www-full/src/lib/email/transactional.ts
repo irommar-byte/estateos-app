@@ -91,8 +91,55 @@ function emailLogoMarkHtml(size = 56): string {
   return `<img src="${logoUrl}" width="${size}" height="${size}" alt="EstateOS" style="display:block;width:${size}px;height:${size}px;border:0;border-radius:${Math.round(size * 0.22)}px;" />`;
 }
 
-function emailBrandWordmarkHtml(fontSize = 15): string {
-  return `<span style="font-size:${fontSize}px;font-weight:800;letter-spacing:-0.04em;color:#1d1d1f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;"><span style="color:#10b981;">E</span>state<span style="color:#10b981;">OS</span></span>`;
+function emailBrandWordmarkHtml(fontSize = 15, color = '#1d1d1f'): string {
+  return `<span style="font-size:${fontSize}px;font-weight:800;letter-spacing:-0.045em;color:${color};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;white-space:nowrap;"><span style="color:#10b981;">E</span>state<span style="color:#10b981;">OS</span><sup style="font-size:${Math.max(8, Math.round(fontSize * 0.45))}px;font-weight:700;line-height:0;vertical-align:super;color:${color};opacity:0.72;">™</sup></span>`;
+}
+
+function emailHeaderBrandHtml(): string {
+  const logoUrl =
+    process.env.EMAIL_LOGO_URL?.trim() ||
+    process.env.NEXT_PUBLIC_EMAIL_LOGO_URL?.trim() ||
+    appUrl('/apple-touch-icon.png');
+  return `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+      <tr>
+        <td style="padding-right:12px;vertical-align:middle;">
+          <img src="${logoUrl}" width="52" height="52" alt="" style="display:block;width:52px;height:52px;border:0;border-radius:14px;" />
+        </td>
+        <td style="vertical-align:middle;">
+          ${emailBrandWordmarkHtml(22)}
+        </td>
+      </tr>
+    </table>
+  `;
+}
+
+function emailAppStoreBadgesHtml(): string {
+  const appStoreUrl = 'https://apps.apple.com/app/id6762899098';
+  const playStoreUrl = 'https://play.google.com/store/apps/details?id=pl.estateos.mobile';
+  const appleBadge = appUrl('/badges/app-store-pl-official.png');
+  const googleBadge =
+    'https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg';
+
+  return `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:28px auto 0 auto;">
+      <tr>
+        <td align="center" style="padding:0 6px;">
+          <a href="${appStoreUrl}" style="text-decoration:none;">
+            <img src="${appleBadge}" alt="Pobierz w App Store" height="44" style="display:block;height:44px;width:auto;border:0;" />
+          </a>
+        </td>
+        <td align="center" style="padding:0 6px;">
+          <a href="${playStoreUrl}" style="text-decoration:none;">
+            <img src="${googleBadge}" alt="Pobierz w Google Play" height="44" style="display:block;height:44px;width:auto;border:0;" />
+          </a>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:12px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;line-height:1.5;color:#86868b;text-align:center;">
+      iPhone i Android — mapa, Radar i powiadomienia push w jednej aplikacji.
+    </p>
+  `;
 }
 
 function emailPrimaryButtonHtml(href: string, label: string): string {
@@ -150,7 +197,7 @@ function wrapTransactionalEmail(bodyHtml: string): string {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:580px;">
           <tr>
             <td align="center" style="padding-bottom:24px;">
-              ${emailLogoMarkHtml(56)}
+              ${emailHeaderBrandHtml()}
             </td>
           </tr>
           <tr>
@@ -183,7 +230,7 @@ export function buildWelcomeEmailHtml(params: { userName?: string | null }) {
       <tr>
         <td style="padding:22px 24px;background:linear-gradient(135deg,#0f172a 0%,#1e293b 55%,#0f766e 100%);">
           <p style="margin:0 0 6px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.72);">
-            EstateOS
+            EstateOS™
           </p>
           <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:26px;font-weight:700;line-height:1.2;letter-spacing:-0.03em;color:#ffffff;">
             Witaj, ${firstName}
@@ -207,6 +254,7 @@ export function buildWelcomeEmailHtml(params: { userName?: string | null }) {
       </tr>
     </table>
     ${emailPrimaryButtonHtml(panelUrl, 'Otwórz panel')}
+    ${emailAppStoreBadgesHtml()}
     <p style="margin:24px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;line-height:1.5;color:#86868b;text-align:center;">
       Jeśli to nie Ty zakładałeś konto, zignoruj tę wiadomość lub napisz na kontakt z aplikacji.
     </p>
