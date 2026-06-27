@@ -1,4 +1,4 @@
-export const KEI_OUTREACH_TEMPLATE_STORAGE_KEY = 'eos_kei_outreach_template_v3';
+export const KEI_OUTREACH_TEMPLATE_STORAGE_KEY = 'eos_kei_outreach_template_v4';
 export const KEI_OUTREACH_SENDER_STORAGE_KEY = 'eos_kei_outreach_sender_v1';
 
 export type KeiOutreachSenderProfile = {
@@ -15,19 +15,22 @@ export const DEFAULT_KEI_OUTREACH_SENDER: KeiOutreachSenderProfile = {
 
 export const DEFAULT_KEI_OUTREACH_TEMPLATE = `Dzień dobry,
 
-Piszę w sprawie Państwa ogłoszenia na {{source}} — {{location}}.
+Piszę z EstateOS — polskiego portalu nieruchomości: {{siteUrl}}
 
-Prowadzimy EstateOS, mapę nieruchomości w Polsce. U nas kupujący widzi cenę ostateczną, bez ukrytych dopłat w ogłoszeniu.
+Zwracamy się w sprawie Państwa ogłoszenia na {{source}} ({{location}}). Zachęcamy do bezpłatnej publikacji u nas — bez opłat za pierwsze dodanie oferty.
 
-Jeśli chcieliby Państwo ten sam lokal pokazać również u nas, można to zrobić w kilka minut: po rejestracji wklejają Państwo link do ogłoszenia, a zdjęcia i opis przenoszą się automatycznie.
+Wystarczy jeden krok: po rejestracji wklejają Państwo link do gotowego ogłoszenia, a system automatycznie przeniesie zdjęcia, opis i parametry nieruchomości. Nie trzeba tworzyć oferty od zera.
 
-Link do bezpłatnego dodania oferty:
+Na EstateOS działają inwestorzy z aktywnymi radarami — otrzymują powiadomienia o dopasowanych lokalach. Państwa ogłoszenie może od razu trafić do osób, które już czekają na takie nieruchomości.
+
+Link do bezpłatnego dodania oferty (import z linku):
 {{inviteUrl}}
 
-W razie pytań — proszę śmiało odpisać na tę wiadomość.
+W razie pytań prosimy o odpowiedź na tę wiadomość.
 
-Pozdrawiam,
-Zespół EstateOS`;
+Z poważaniem,
+Zespół EstateOS
+{{siteUrl}}`;
 
 const LEGACY_TEMPLATE_MARKERS = [
   'jak w narzędziu KEI AMER',
@@ -38,6 +41,8 @@ const LEGACY_TEMPLATE_MARKERS = [
   'EstateOS™ to platforma z ceną ostateczną',
   '{{inviteCta}}',
   '════════════════',
+  'Prowadzimy EstateOS, mapę nieruchomości w Polsce',
+  'W razie pytań — proszę śmiało odpisać',
 ];
 
 const VOIVODESHIPS = new Set(
@@ -65,7 +70,10 @@ export type KeiOutreachTemplateVars = {
   location: string;
   source: string;
   inviteUrl: string;
+  siteUrl?: string;
 };
+
+export const DEFAULT_ESTATEOS_SITE_URL = 'https://estateos.pl';
 
 function capitalizeSegment(segment: string): string {
   return segment
@@ -129,13 +137,15 @@ export function renderKeiOutreachMessage(
   const location = formatOutreachLocation(vars.location || '');
   const source = vars.source?.trim() || 'portalu ogłoszeniowego';
   const inviteUrl = vars.inviteUrl?.trim() || '';
+  const siteUrl = vars.siteUrl?.trim() || DEFAULT_ESTATEOS_SITE_URL;
   const inviteCta = formatInviteCtaBlock(inviteUrl);
 
   return (template || DEFAULT_KEI_OUTREACH_TEMPLATE)
     .replace(/\{\{location\}\}/g, location)
     .replace(/\{\{source\}\}/g, source)
     .replace(/\{\{inviteCta\}\}/g, inviteCta)
-    .replace(/\{\{inviteUrl\}\}/g, inviteUrl);
+    .replace(/\{\{inviteUrl\}\}/g, inviteUrl)
+    .replace(/\{\{siteUrl\}\}/g, siteUrl);
 }
 
 function isLegacyOutreachTemplate(saved: string): boolean {
@@ -148,7 +158,11 @@ export function loadKeiOutreachTemplate(): string {
     const saved = window.localStorage.getItem(KEI_OUTREACH_TEMPLATE_STORAGE_KEY);
     if (saved?.trim() && !isLegacyOutreachTemplate(saved)) return saved;
 
-    for (const legacyKey of ['eos_kei_outreach_template_v2', 'eos_kei_outreach_template_v1']) {
+    for (const legacyKey of [
+      'eos_kei_outreach_template_v3',
+      'eos_kei_outreach_template_v2',
+      'eos_kei_outreach_template_v1',
+    ]) {
       const legacy = window.localStorage.getItem(legacyKey);
       if (legacy?.trim() && !isLegacyOutreachTemplate(legacy)) {
         window.localStorage.setItem(KEI_OUTREACH_TEMPLATE_STORAGE_KEY, legacy);
