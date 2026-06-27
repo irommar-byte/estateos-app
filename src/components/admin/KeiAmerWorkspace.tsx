@@ -1,41 +1,40 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Circle,
+  Copy,
   ExternalLink,
   Eye,
   ImageIcon,
   Loader2,
-  Pencil,
+  Mail,
+  Minimize2,
   RefreshCw,
+  Send,
+  Sparkles,
   UploadCloud,
+  X,
 } from "lucide-react";
+import {
+  computeKeiItemPercent,
+  computeKeiOverallPercent,
+  KEI_IMPORT_STEPS,
+  KEI_STEP_LABELS,
+  type KeiExportItemProgress,
+  type KeiImportStepId,
+} from "@/lib/keiAmerExportWebClient";
+import { useKeiAmerExportStore } from "@/store/useKeiAmerExportStore";
 
-type SessionState = {
-  loading: boolean;
-  ok: boolean;
-  message: string;
-};
+type ActionMode = "import" | "outreach";
+type PropertyKind = "apartment" | "house";
+type TransactionKind = "sale" | "rent";
 
-type ExportResultItem = {
-  offerId: number;
-  portalUrl: string;
-  publicUrl: string;
-  editUrl: string;
-};
-
-type ExportState = {
-  loading: boolean;
-  message: string;
-  error: string;
-  items: ExportResultItem[];
-  skippedCount: number;
-};
+type SessionState = { loading: boolean; ok: boolean; message: string };
 
 type PreviewListing = {
   keiId: string;
@@ -45,8 +44,12 @@ type PreviewListing = {
   area: string;
   portalUrl: string;
   sourceLabel: string;
+  transactionLabel?: string;
   alreadyImported: boolean;
   existingOfferId: number | null;
+  outreachSent: boolean;
+  outreachSentAt: string | null;
+  blockedReason: "imported" | "outreach" | null;
 };
 
 type PreviewState = {
@@ -58,75 +61,95 @@ type PreviewState = {
   listings: PreviewListing[];
 };
 
-type PropertyKind = "apartment" | "house";
-
-type ImportStepId = "check_duplicate" | "fetch_portal" | "create_offer" | "images" | "activate";
+type FloorPlanSelection = { enabled: boolean; imageIndex: number };
 
 type LastImagePeek = {
   loading: boolean;
   error: string;
-  lastImageUrl: string | null;
+  imageUrls: string[];
+  suggestedFloorPlanIndex: number | null;
   suggestedFloorPlan: boolean;
   imageCount: number;
 };
 
-type ItemProgress = {
-  index: number;
-  keiListingId: string;
-  portalUrl: string;
-  address?: string;
-  status: "pending" | "active" | "done" | "skipped";
-  completedSteps: ImportStepId[];
-  currentStep: ImportStepId | null;
-  stepLabel: string;
-  stepDetail?: string;
-  imageProgress?: { index: number; total: number; label: string; asFloorPlan: boolean };
-  offerId?: number;
-  publicUrl?: string;
-  editUrl?: string;
-  reason?: string;
-  aiRewrite?: boolean;
-};
-
-type ImportProgressState = {
-  visible: boolean;
-  status: "idle" | "running" | "done" | "error";
-  total: number;
-  message: string;
-  items: ItemProgress[];
-};
-
-type SelectedListingMeta = {
+type OutreachResultItem = {
   keiId: string;
   portalUrl: string;
   address: string;
-};
-
-type ExportFinalResult = {
-  ok: boolean;
-  exported: Record<string, unknown>[];
-  skipped: unknown[];
+  inviteUrl: string;
   message: string;
+  sentAt: string;
 };
 
 const MAX_SELECT = 25;
 const PAGE_SIZE = 20;
 
-const STEP_ORDER: ImportStepId[] = [
-  "check_duplicate",
-  "fetch_portal",
-  "create_offer",
-  "images",
-  "activate",
-];
+function SegmentedControl<T extends string>(props: {
+  value: T;
+  onChange: (value: T) => void;
+  options: Array<{ id: T; label: string }>;
+}) {
+  return (
+    <div className="flex rounded-xl bg-white/5 p-1 border border-white/10">
+      {props.options.map((opt) => {
+        const active = opt.id === props.value;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => props.onChange(opt.id)}
+            className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold transition-all ${
+              active ? "bg-white text-black shadow-lg" : "text-white/55 hover:text-white"
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
-const STEP_LABELS: Record<ImportStepId, string> = {
-  check_duplicate: "Duplikat",
-  fetch_portal: "Portal",
-  create_offer: "Oferta",
-  images: "Zdjęcia",
-  activate: "Publikacja",
-};
+function ProgressBar({ percent }: { percent: number }) {
+  return (
+    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+      <motion.div
+        className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400"
+        animate={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+      />
+    </div>
+  );
+}
+
+function StepPill(props: {
+  label: string;
+  done: boolean;
+  active: boolean;
+  pulsate?: boolean;
+  accent?: "blue" | "orange";
+}) {
+  const accentClass =
+    props.accent === "orange"
+      ? "border-amber-400/50 bg-amber-500/20 text-amber-100"
+      : "border-cyan-400/50 bg-cyan-500/20 text-cyan-100";
+
+  return (
+    <motion.span
+      animate={props.pulsate && props.active && !props.done ? { opacity: [1, 0.35, 1] } : { opacity: 1 }}
+      transition={props.pulsate && props.active && !props.done ? { duration: 0.9, repeat: Infinity } : undefined}
+      className={`px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide border ${
+        props.done
+          ? "bg-emerald-500/15 border-emerald-400/30 text-emerald-300"
+          : props.active
+            ? accentClass
+            : "bg-white/[0.03] border-white/8 text-white/25"
+      }`}
+    >
+      {props.label}
+    </motion.span>
+  );
+}
 
 function PagePager(props: {
   page: number;
@@ -136,7 +159,6 @@ function PagePager(props: {
 }) {
   const maxPage = props.page + (props.hasNextPage ? 1 : 0);
   const pages = Array.from({ length: maxPage }, (_, i) => i + 1);
-
   return (
     <div className="flex flex-wrap items-center justify-center gap-2">
       {pages.map((p) => (
@@ -148,7 +170,7 @@ function PagePager(props: {
           className={`min-w-[2.25rem] h-9 px-3 rounded-xl text-xs font-black transition-colors disabled:opacity-50 ${
             p === props.page
               ? "bg-emerald-500 text-black"
-              : "bg-white/5 border border-white/10 text-white/70 hover:text-white hover:border-white/25"
+              : "bg-white/5 border border-white/10 text-white/70 hover:text-white"
           }`}
         >
           {p}
@@ -158,523 +180,239 @@ function PagePager(props: {
   );
 }
 
-function computeItemPercent(item: ItemProgress): number {
-  if (item.status === "done" || item.status === "skipped") return 100;
-  if (item.status === "pending") return 0;
-  const stepIdx = item.currentStep ? STEP_ORDER.indexOf(item.currentStep) : 0;
-  const base = (Math.max(stepIdx, 0) + 0.35) / STEP_ORDER.length;
-  let imagePart = 0;
-  if (item.currentStep === "images" && item.imageProgress && item.imageProgress.total > 0) {
-    imagePart = item.imageProgress.index / item.imageProgress.total / STEP_ORDER.length;
-  }
-  return Math.min(98, Math.round((base + imagePart) * 100));
-}
-
-function computeOverallPercent(items: ItemProgress[]): number {
-  if (items.length === 0) return 0;
-  const sum = items.reduce((acc, item) => acc + computeItemPercent(item), 0);
-  return Math.round(sum / items.length);
-}
-
-function KeiListingRow(props: {
-  item: PreviewListing;
-  isSelected: boolean;
-  onToggle: (item: PreviewListing) => void;
-  resolveFloorPlan: (portalUrl: string) => boolean;
-  lastImagePeeks: Record<string, LastImagePeek>;
-  setFloorPlanForUrl: (portalUrl: string, value: boolean) => void;
-  compact?: boolean;
+function ImportProgressModal(props: {
+  open: boolean;
+  running: boolean;
+  message: string;
+  items: KeiExportItemProgress[];
+  resultsCount: number;
+  skippedCount: number;
+  onMinimize: () => void;
+  onClose: () => void;
 }) {
-  const { item, isSelected, compact } = props;
-  const disabled = item.alreadyImported;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const overallPct = computeKeiOverallPercent(props.items);
+
+  useEffect(() => {
+    if (props.open) {
+      requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }));
+    }
+  }, [props.open, props.items, props.message]);
+
+  if (!props.open) return null;
 
   return (
-    <div
-      className={`px-3 py-2.5 ${
-        compact ? "py-2" : ""
-      } ${
-        isSelected ? "bg-emerald-500/[0.07]" : "hover:bg-white/[0.03]"
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => props.onToggle(item)}
-          className={`shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center disabled:cursor-not-allowed ${
-            isSelected
-              ? "bg-emerald-500 border-emerald-400 text-black"
-              : "border-white/25 bg-black/30"
-          }`}
-        >
-          {isSelected ? <Check size={12} strokeWidth={3} /> : null}
-        </button>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-            <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">
-              {item.date || "—"}
-            </span>
-            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-white/10 text-white/60">
-              {item.sourceLabel}
-            </span>
-            {isSelected && props.resolveFloorPlan(item.portalUrl) ? (
-              <span className="text-[9px] font-black uppercase text-emerald-300">rzut</span>
+    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-0 sm:p-6">
+      <button type="button" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={props.onMinimize} aria-label="Zminimalizuj" />
+      <motion.div
+        initial={{ opacity: 0, y: 40 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative z-10 w-full sm:max-w-2xl max-h-[92vh] overflow-hidden rounded-t-[28px] sm:rounded-[28px] border border-white/12 bg-gradient-to-b from-[#111] to-black shadow-[0_40px_120px_rgba(0,0,0,0.8)]"
+      >
+        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-white/10">
+          <div>
+            <p className="text-lg font-black text-white">Import KEI</p>
+            <p className="text-xs text-white/45 mt-0.5">{props.message || "Postęp na żywo"}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={props.onMinimize}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/8 hover:bg-white/12 text-[11px] font-bold text-white/80"
+            >
+              <Minimize2 size={14} /> {props.running ? "Zminimalizuj" : "Zamknij"}
+            </button>
+            {!props.running ? (
+              <button type="button" onClick={props.onClose} className="p-2 rounded-xl hover:bg-white/10 text-white/60">
+                <X size={18} />
+              </button>
             ) : null}
           </div>
-          <p className={`truncate ${compact ? "text-[11px] text-white/70" : "text-xs text-white/90"}`}>
-            {item.address || "Brak adresu"}
-          </p>
-          <p className="text-[10px] text-white/45">
-            {item.price || "—"} · {item.area ? `${item.area} m²` : "—"}
-          </p>
         </div>
 
-        {item.portalUrl ? (
-          <a
-            href={item.portalUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 p-2 rounded-lg text-white/50 hover:text-white"
-            aria-label="Otwórz ogłoszenie"
-          >
-            <ExternalLink size={14} />
-          </a>
-        ) : null}
-      </div>
-
-      {isSelected && !compact ? (
-        <FloorPlanToggle
-          portalUrl={item.portalUrl}
-          peek={props.lastImagePeeks[item.portalUrl]}
-          asFloorPlan={props.resolveFloorPlan(item.portalUrl)}
-          onChange={props.setFloorPlanForUrl}
-          compact
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function ImportedListingsStack(props: {
-  listings: PreviewListing[];
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const { listings, expanded } = props;
-  if (listings.length === 0) return null;
-
-  const previewLine = listings[0]?.address || "—";
-  const lastLine = listings.length > 1 ? listings[listings.length - 1]?.address : null;
-
-  return (
-    <div className="border-b border-white/10">
-      <button
-        type="button"
-        onClick={props.onToggle}
-        className={`w-full text-left px-4 py-3.5 transition-colors ${
-          expanded ? "bg-amber-500/[0.06]" : "bg-gradient-to-r from-amber-500/[0.08] via-black/20 to-black/40 hover:from-amber-500/[0.12]"
-        } shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]`}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center border shadow-inner ${
-              expanded
-                ? "bg-amber-500/20 border-amber-400/30"
-                : "bg-black/40 border-white/10"
-            }`}
-          >
-            {expanded ? (
-              <ChevronDown size={18} className="text-amber-200" />
-            ) : (
-              <ChevronRight size={18} className="text-amber-200/80" />
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-black uppercase tracking-wider text-amber-200/90">
-              {listings.length} {listings.length === 1 ? "ogłoszenie" : "ogłoszeń"} już w bazie
-            </p>
-            <p className="text-[11px] text-white/45 mt-0.5 truncate">
-              {expanded
-                ? "Kliknij, aby zwinąć stos zaimportowanych"
-                : `Stos zwinięty · od „${previewLine.slice(0, 48)}${previewLine.length > 48 ? "…" : ""}”${
-                    lastLine ? " …" : ""
-                  }`}
-            </p>
-          </div>
-          <span className="shrink-0 px-2.5 py-1 rounded-lg bg-black/40 border border-white/10 text-[10px] font-bold tabular-nums text-white/50">
-            {listings.length}
-          </span>
-        </div>
-      </button>
-
-      {expanded ? (
-        <div className="max-h-[220px] overflow-y-auto divide-y divide-white/5 bg-black/25 shadow-[inset_0_8px_24px_rgba(0,0,0,0.35)]">
-          {listings.map((item) => (
-            <div
-              key={item.keiId}
-              className="px-3 py-2 flex items-center gap-2 opacity-60 hover:opacity-80 transition-opacity"
-            >
-              <span className="text-[9px] font-black uppercase text-amber-300/80 shrink-0 w-16">
-                #{item.existingOfferId}
-              </span>
-              <span className="text-[11px] text-white/60 truncate flex-1">{item.address || "—"}</span>
-              <span className="text-[10px] text-white/30 shrink-0 hidden sm:inline">{item.price || "—"}</span>
-              {item.portalUrl ? (
-                <a
-                  href={item.portalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 p-1.5 rounded-lg text-white/40 hover:text-white"
-                  aria-label="Oryginał"
-                >
-                  <ExternalLink size={12} />
-                </a>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function AppleSwitch(props: { checked: boolean; onChange: (checked: boolean) => void; label: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={props.checked}
-      onClick={() => props.onChange(!props.checked)}
-      className={`inline-flex items-center gap-2.5 rounded-full px-1 py-1 transition-colors ${
-        props.checked ? "bg-emerald-500/20" : "bg-white/5 hover:bg-white/10"
-      }`}
-    >
-      <span
-        className={`relative w-11 h-6 rounded-full transition-colors ${
-          props.checked ? "bg-emerald-500" : "bg-white/20"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-            props.checked ? "translate-x-5" : "translate-x-0"
-          }`}
-        />
-      </span>
-      <span className={`text-[11px] font-semibold pr-2 ${props.checked ? "text-emerald-200" : "text-white/60"}`}>
-        {props.label}
-      </span>
-    </button>
-  );
-}
-
-function ImportOfferQueue(props: {
-  progress: ImportProgressState;
-  exporting: boolean;
-  onClear: () => void;
-}) {
-  const { progress, exporting } = props;
-  if (!progress.visible && !exporting) return null;
-  if (progress.items.length === 0 && exporting) {
-    return (
-      <div className="rounded-[28px] border border-cyan-400/20 bg-gradient-to-b from-cyan-500/[0.08] to-black/40 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)]">
-        <div className="flex items-center gap-3">
-          <Loader2 size={20} className="text-cyan-300 animate-spin shrink-0" />
+        <div ref={scrollRef} className="p-5 overflow-y-auto max-h-[calc(92vh-88px)] space-y-4">
           <div>
-            <p className="text-sm font-semibold text-white">Przygotowanie importu…</p>
-            <p className="text-xs text-white/50 mt-0.5">{progress.message || "Łączenie z serwerem"}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const overallPct = computeOverallPercent(progress.items);
-  const doneCount = progress.items.filter((i) => i.status === "done").length;
-  const isComplete = progress.status === "done" && !exporting;
-
-  return (
-    <div className="rounded-[28px] border border-white/12 bg-gradient-to-b from-white/[0.04] to-black/50 overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.1)]">
-      <div className="px-5 py-4 border-b border-white/10 bg-black/20 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          {exporting ? (
-            <Loader2 size={22} className="text-cyan-300 animate-spin shrink-0" />
-          ) : isComplete ? (
-            <CheckCircle2 size={22} className="text-emerald-400 shrink-0" />
-          ) : (
-            <Circle size={22} className="text-white/30 shrink-0" />
-          )}
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-white">
-              {isComplete ? "Import zakończony" : "Import ogłoszeń — postęp na żywo"}
-            </p>
-            <p className="text-[11px] text-white/45 mt-0.5">
-              {doneCount} / {progress.total} ukończonych · ogółem {overallPct}%
-            </p>
-          </div>
-        </div>
-        {isComplete ? (
-          <button
-            type="button"
-            onClick={props.onClear}
-            className="px-3 py-1.5 rounded-xl bg-white/8 hover:bg-white/12 border border-white/10 text-[10px] font-black uppercase tracking-wider text-white/70"
-          >
-            Wyczyść
-          </button>
-        ) : null}
-      </div>
-
-      <div className="p-4 space-y-3 max-h-[min(70vh,640px)] overflow-y-auto">
-        {progress.items.map((item) => {
-          const pct = computeItemPercent(item);
-          const isActive = item.status === "active";
-          const isDone = item.status === "done";
-          const isSkipped = item.status === "skipped";
-
-          return (
-            <div
-              key={`${item.index}-${item.portalUrl}`}
-              className={`rounded-[22px] border p-4 transition-all duration-300 ${
-                isActive
-                  ? "border-cyan-400/35 bg-gradient-to-br from-cyan-500/[0.12] via-black/40 to-black/60 shadow-[0_8px_32px_rgba(34,211,238,0.15),inset_0_1px_0_rgba(255,255,255,0.08)]"
-                  : isDone
-                    ? "border-emerald-400/25 bg-gradient-to-br from-emerald-500/[0.08] to-black/50 shadow-[0_4px_24px_rgba(16,185,129,0.12)]"
-                    : isSkipped
-                      ? "border-amber-400/20 bg-amber-500/[0.04]"
-                      : "border-white/8 bg-black/30 opacity-70"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-white/40 mb-1">
-                    Ogłoszenie {item.index + 1}
-                    {item.offerId ? ` · #${item.offerId}` : ""}
-                  </p>
-                  <p className="text-sm font-semibold text-white truncate">
-                    {item.address || item.portalUrl}
-                  </p>
-                  {isActive ? (
-                    <p className="text-xs text-cyan-200/90 mt-1 truncate">{item.stepLabel}</p>
-                  ) : isDone ? (
-                    <p className="text-xs text-emerald-300/90 mt-1">Zaimportowano pomyślnie</p>
-                  ) : isSkipped ? (
-                    <p className="text-xs text-amber-300/90 mt-1">{item.reason || "Pominięto"}</p>
-                  ) : (
-                    <p className="text-xs text-white/40 mt-1">Oczekuje w kolejce…</p>
-                  )}
-                  {item.stepDetail && isActive ? (
-                    <p className="text-[11px] text-white/45 mt-0.5 truncate">{item.stepDetail}</p>
-                  ) : null}
-                  {item.imageProgress && isActive ? (
-                    <p className="text-[11px] text-cyan-300/80 mt-1">
-                      {item.imageProgress.label}
-                      {item.imageProgress.asFloorPlan ? " · zapis jako rzut lokalu" : ""}
-                    </p>
-                  ) : null}
-                </div>
-                <span
-                  className={`shrink-0 tabular-nums text-lg font-black ${
-                    isDone ? "text-emerald-400" : isActive ? "text-cyan-300" : "text-white/35"
-                  }`}
-                >
-                  {pct}%
-                </span>
-              </div>
-
-              {!isDone && !isSkipped ? (
-                <>
-                  <div className="h-2.5 rounded-full bg-black/50 border border-white/10 overflow-hidden shadow-inner mb-3">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ease-out ${
-                        isActive
-                          ? "bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 shadow-[0_0_12px_rgba(34,211,238,0.5)]"
-                          : "bg-white/15"
-                      }`}
-                      style={{ width: `${Math.max(pct, isActive ? 3 : 0)}%` }}
-                    />
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {STEP_ORDER.map((step) => {
-                      const done = item.completedSteps.includes(step);
-                      const current = isActive && item.currentStep === step;
-                      return (
-                        <span
-                          key={step}
-                          className={`px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide border ${
-                            done
-                              ? "bg-emerald-500/15 border-emerald-400/30 text-emerald-300"
-                              : current
-                                ? "bg-cyan-500/20 border-cyan-400/40 text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,0.2)]"
-                                : "bg-white/[0.03] border-white/8 text-white/25"
-                          }`}
-                        >
-                          {STEP_LABELS[step]}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </>
-              ) : isDone ? (
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {item.publicUrl ? (
-                    <a
-                      href={item.publicUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-500/15 border border-blue-400/35 text-[11px] font-black uppercase tracking-wider text-blue-200 hover:bg-blue-500/25 shadow-[0_4px_16px_rgba(59,130,246,0.2)] transition-colors"
-                    >
-                      <Eye size={14} /> Podgląd
-                    </a>
-                  ) : null}
-                  {item.editUrl ? (
-                    <a
-                      href={item.editUrl}
-                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-[11px] font-black uppercase tracking-wider text-white hover:bg-white/15 shadow-[0_4px_16px_rgba(0,0,0,0.25)] transition-colors"
-                    >
-                      <Pencil size={14} /> Edytuj
-                    </a>
-                  ) : null}
-                  {item.portalUrl ? (
-                    <a
-                      href={item.portalUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-[11px] font-black uppercase tracking-wider text-white/75 hover:text-white hover:bg-white/10 transition-colors"
-                    >
-                      <ExternalLink size={14} /> Pokaż oryginał
-                    </a>
-                  ) : null}
-                </div>
-              ) : null}
+            <div className="flex items-end justify-between mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/40">Ogółem</span>
+              <span className="text-2xl font-black tabular-nums text-white">{overallPct}%</span>
             </div>
-          );
-        })}
-      </div>
+            <ProgressBar percent={overallPct} />
+          </div>
+
+          {props.items.map((item) => {
+            const pct = computeKeiItemPercent(item);
+            const isActive = item.status === "active";
+            const isDone = item.status === "done";
+            const isSkipped = item.status === "skipped";
+            return (
+              <div
+                key={`${item.index}-${item.portalUrl}`}
+                className={`rounded-[22px] border p-4 ${
+                  isActive
+                    ? "border-cyan-400/35 bg-cyan-500/[0.08]"
+                    : isDone
+                      ? "border-emerald-400/25 bg-emerald-500/[0.06]"
+                      : isSkipped
+                        ? "border-amber-400/20 bg-amber-500/[0.04]"
+                        : "border-white/8 bg-black/30 opacity-70"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{item.address || item.portalUrl}</p>
+                    <p className="text-xs text-white/50 mt-0.5">{item.stepLabel}</p>
+                    {item.stepDetail ? <p className="text-[11px] text-white/40 mt-0.5">{item.stepDetail}</p> : null}
+                  </div>
+                  <span className="text-lg font-black tabular-nums text-white/80">{pct}%</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {KEI_IMPORT_STEPS.map((step) => {
+                    const done = item.completedSteps.includes(step) || isDone;
+                    const active = isActive && item.currentStep === step;
+                    const isFloorPlan = step === "images" && item.imageProgress?.asFloorPlan;
+                    return (
+                      <StepPill
+                        key={step}
+                        label={isFloorPlan && (active || done) ? "Rzut" : KEI_STEP_LABELS[step]}
+                        done={done}
+                        active={active}
+                        pulsate={props.running}
+                        accent={isFloorPlan ? "orange" : "blue"}
+                      />
+                    );
+                  })}
+                </div>
+                {item.aiRewrite && !item.aiRewrite.working ? (
+                  <p className="text-[11px] text-cyan-200/80">
+                    {item.aiRewrite.rewrittenByAi ? "Opis przepisany przez AI" : "Opis uzupełniony regułami"}
+                  </p>
+                ) : null}
+                {isDone && item.publicUrl ? (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <a href={item.publicUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-blue-300 hover:text-blue-200">
+                      Podgląd oferty
+                    </a>
+                    {item.editUrl ? (
+                      <a href={item.editUrl} className="text-xs font-bold text-white/70 hover:text-white">
+                        Edycja
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
+                {item.reason ? <p className="text-xs text-amber-300/90 mt-2">{item.reason}</p> : null}
+              </div>
+            );
+          })}
+
+          {!props.running && props.resultsCount > 0 ? (
+            <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+              Zaimportowano: {props.resultsCount}
+              {props.skippedCount > 0 ? ` · Pominięto: ${props.skippedCount}` : ""}
+            </div>
+          ) : null}
+        </div>
+      </motion.div>
     </div>
   );
 }
 
-function FloorPlanToggle(props: {
+function FloorPlanPicker(props: {
   portalUrl: string;
   peek: LastImagePeek | undefined;
-  asFloorPlan: boolean;
-  onChange: (portalUrl: string, value: boolean) => void;
+  selection: FloorPlanSelection;
+  onSelectIndex: (index: number) => void;
+  onToggleEnabled: (enabled: boolean) => void;
   compact?: boolean;
 }) {
-  const { peek, portalUrl, asFloorPlan, onChange, compact } = props;
-  const thumbSrc = peek?.lastImageUrl
-    ? `/api/admin/kei-amer/peek-image?portalUrl=${encodeURIComponent(portalUrl)}`
-    : null;
-
+  const { peek, selection } = props;
+  const thumbSize = props.compact ? "w-[72px] h-[72px]" : "w-[88px] h-[88px]";
   return (
-    <div
-      className={`rounded-xl border flex items-center gap-3 transition-all ${
-        asFloorPlan
-          ? "bg-emerald-500/[0.08] border-emerald-400/35 shadow-[0_0_0_1px_rgba(52,211,153,0.15)_inset]"
-          : "bg-black/30 border-white/10"
-      } ${compact ? "p-2 mt-2" : "p-2.5 mt-2"}`}
-    >
-      <div className="w-16 h-16 rounded-xl overflow-hidden bg-white/5 border border-white/10 shrink-0 flex items-center justify-center relative">
-        {peek?.loading ? (
-          <Loader2 size={16} className="animate-spin text-white/40" />
-        ) : thumbSrc ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={thumbSrc} alt="Ostatnie zdjęcie" className="w-full h-full object-cover" />
-        ) : (
-          <ImageIcon size={18} className="text-white/30" />
-        )}
-        {asFloorPlan ? (
-          <span className="absolute bottom-0 inset-x-0 bg-emerald-600/90 text-[8px] font-black uppercase text-center py-0.5 text-white">
-            Rzut
-          </span>
-        ) : null}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-white/45">Ostatnie zdjęcie</p>
-        <p className="text-[11px] text-white/60 truncate">
-          {peek?.loading
-            ? "Pobieram podgląd z portalu…"
-            : peek?.error
-              ? peek.error
-              : peek?.imageCount
-                ? `${peek.imageCount} zdjęć · ${peek.suggestedFloorPlan ? "system wykrył rzut" : "zwykłe zdjęcie"}`
-                : "Zaznacz ogłoszenie, aby załadować podgląd"}
-        </p>
-        <div className="mt-2">
-          <AppleSwitch
-            checked={asFloorPlan}
-            onChange={(value) => onChange(portalUrl, value)}
-            label={asFloorPlan ? "Importuję jako rzut lokalu" : "Importuję do galerii"}
-          />
+    <div className="rounded-xl border border-emerald-400/25 bg-black/30 p-3">
+      {!props.compact ? (
+        <p className="text-[10px] font-black uppercase tracking-wider text-white/45 mb-1">Które zdjęcie to rzut?</p>
+      ) : null}
+      <p className="text-[11px] text-white/45 mb-2">
+        {peek?.loading
+          ? "Ładowanie zdjęć z portalu…"
+          : peek?.error
+            ? peek.error
+            : peek?.imageCount
+              ? `${peek.imageCount} zdj. · dotknij miniaturę z planem (żółta ramka = sugerowane)`
+              : "Brak podglądu zdjęć"}
+      </p>
+      {peek?.loading ? (
+        <div className="flex items-center justify-center gap-2 text-xs text-white/50 py-6">
+          <Loader2 size={16} className="animate-spin" />
         </div>
-      </div>
+      ) : peek?.error ? null : (peek?.imageUrls?.length ?? 0) > 0 ? (
+        <div className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory">
+          {peek!.imageUrls.map((_, imageIndex) => {
+            const picked = selection.enabled && selection.imageIndex === imageIndex;
+            const suggested = peek!.suggestedFloorPlanIndex === imageIndex;
+            return (
+              <button
+                key={`${props.portalUrl}-${imageIndex}`}
+                type="button"
+                onClick={() => props.onSelectIndex(imageIndex)}
+                className={`relative shrink-0 snap-start ${thumbSize} rounded-xl overflow-hidden border-2 transition-all ${
+                  picked ? "border-amber-400 ring-2 ring-amber-400/30" : suggested ? "border-amber-400/40" : "border-white/10"
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/admin/kei-amer/peek-image?portalUrl=${encodeURIComponent(props.portalUrl)}&imageIndex=${imageIndex}`}
+                  alt={`Zdjęcie ${imageIndex + 1}`}
+                  className="w-full h-full object-cover"
+                />
+                <span className="absolute bottom-1 right-1 text-[9px] font-black text-white drop-shadow">{imageIndex + 1}</span>
+                {suggested ? (
+                  <span className="absolute top-1 left-1 px-1 rounded bg-amber-500 text-[8px] font-black text-black">?</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex items-center justify-center h-[72px] rounded-xl bg-white/5">
+          <ImageIcon size={20} className="text-white/30" />
+        </div>
+      )}
+      <label className="mt-3 flex items-center justify-between gap-3 cursor-pointer">
+        <div>
+          <p className="text-xs font-semibold text-white">Zapisz jako rzut (plan)</p>
+          <p className="text-[11px] text-white/45">
+            {selection.enabled ? `Zdjęcie #${selection.imageIndex + 1} → sekcja planu` : "Tylko galeria — bez planu"}
+          </p>
+        </div>
+        <input
+          type="checkbox"
+          checked={selection.enabled}
+          onChange={(e) => props.onToggleEnabled(e.target.checked)}
+          className="w-5 h-5 accent-emerald-500"
+        />
+      </label>
     </div>
   );
-}
-
-async function consumeExportStream(
-  response: Response,
-  onEvent: (payload: Record<string, unknown>) => void,
-): Promise<void> {
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("Brak strumienia odpowiedzi.");
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    buffer = buffer.replace(/\r\n/g, "\n");
-    const chunks = buffer.split("\n\n");
-    buffer = chunks.pop() || "";
-
-    for (const chunk of chunks) {
-      for (const line of chunk.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data: ")) continue;
-        try {
-          onEvent(JSON.parse(trimmed.slice(6)) as Record<string, unknown>);
-        } catch {
-          // ignore malformed chunk
-        }
-      }
-    }
-  }
 }
 
 export default function KeiAmerWorkspace() {
-  const [session, setSession] = useState<SessionState>({
-    loading: true,
-    ok: false,
-    message: "",
-  });
+  const [session, setSession] = useState<SessionState>({ loading: true, ok: false, message: "" });
+  const [actionMode, setActionMode] = useState<ActionMode>("import");
+  const [propertyKind, setPropertyKind] = useState<PropertyKind>("apartment");
+  const [transactionKind, setTransactionKind] = useState<TransactionKind>("sale");
   const [targetUserId, setTargetUserId] = useState("55");
   const [commissionPercent, setCommissionPercent] = useState("2");
   const [exportCount, setExportCount] = useState("1");
-  const [propertyKind, setPropertyKind] = useState<PropertyKind>("apartment");
   const [previewPage, setPreviewPage] = useState(1);
-  const [selectedMap, setSelectedMap] = useState<Map<string, string>>(new Map());
-  const [selectedMeta, setSelectedMeta] = useState<Map<string, SelectedListingMeta>>(new Map());
-  const [floorPlanOverrides, setFloorPlanOverrides] = useState<Record<string, boolean>>({});
+  const [selected, setSelected] = useState<Record<string, PreviewListing>>({});
+  const [floorPlanSelections, setFloorPlanSelections] = useState<Record<string, FloorPlanSelection>>({});
   const [lastImagePeeks, setLastImagePeeks] = useState<Record<string, LastImagePeek>>({});
   const [importedStackExpanded, setImportedStackExpanded] = useState(false);
-  const [importProgress, setImportProgress] = useState<ImportProgressState>({
-    visible: false,
-    status: "idle",
-    total: 0,
-    message: "",
-    items: [],
-  });
-  const [exportState, setExportState] = useState<ExportState>({
-    loading: false,
-    message: "",
-    error: "",
-    items: [],
-    skippedCount: 0,
-  });
+  const [outreachStackExpanded, setOutreachStackExpanded] = useState(false);
+  const [outreachLoading, setOutreachLoading] = useState(false);
+  const [outreachError, setOutreachError] = useState("");
+  const [outreachResults, setOutreachResults] = useState<OutreachResultItem[]>([]);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState>({
     loading: false,
     error: "",
@@ -684,7 +422,20 @@ export default function KeiAmerWorkspace() {
     listings: [],
   });
 
-  const selectedCount = selectedMap.size;
+  const exportRunning = useKeiAmerExportStore((s) => s.running);
+  const exportVisible = useKeiAmerExportStore((s) => s.modalVisible);
+  const exportMessage = useKeiAmerExportStore((s) => s.message);
+  const exportItems = useKeiAmerExportStore((s) => s.items);
+  const exportResults = useKeiAmerExportStore((s) => s.results);
+  const exportSkipped = useKeiAmerExportStore((s) => s.skipped);
+  const setExportVisible = useKeiAmerExportStore((s) => s.setModalVisible);
+  const startKeiExport = useKeiAmerExportStore((s) => s.startExport);
+  const clearExportSession = useKeiAmerExportStore((s) => s.clearSession);
+
+  const peekInflight = useRef(new Set<string>());
+  const selectedList = useMemo(() => Object.values(selected), [selected]);
+  const selectedCount = selectedList.length;
+  const overallPercent = computeKeiOverallPercent(exportItems);
 
   const ensureSession = useCallback(async (force = false) => {
     setSession((prev) => ({ ...prev, loading: true }));
@@ -701,78 +452,63 @@ export default function KeiAmerWorkspace() {
         message: String(data?.message || data?.error || ""),
       });
     } catch {
-      setSession({
-        loading: false,
-        ok: false,
-        message: "Nie udało się połączyć z integracją KEI AMER.",
-      });
+      setSession({ loading: false, ok: false, message: "Nie udało się połączyć z integracją KEI AMER." });
     }
   }, []);
 
   const loadLastImagePeek = useCallback(async (portalUrl: string) => {
-    if (!portalUrl) return;
-
+    if (!portalUrl || peekInflight.current.has(portalUrl)) return;
+    peekInflight.current.add(portalUrl);
     setLastImagePeeks((prev) => ({
       ...prev,
-      [portalUrl]: prev[portalUrl] ?? {
+      [portalUrl]: {
         loading: true,
         error: "",
-        lastImageUrl: null,
+        imageUrls: [],
+        suggestedFloorPlanIndex: null,
         suggestedFloorPlan: false,
         imageCount: 0,
       },
     }));
-
     try {
       const qs = new URLSearchParams({ portalUrl });
-      const res = await fetch(`/api/admin/kei-amer/peek?${qs.toString()}`, {
-        credentials: "include",
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/admin/kei-amer/peek?${qs}`, { credentials: "include", cache: "no-store" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setLastImagePeeks((prev) => ({
-          ...prev,
-          [portalUrl]: {
-            loading: false,
-            error: String(data?.error || "Podgląd niedostępny"),
-            lastImageUrl: null,
-            suggestedFloorPlan: false,
-            imageCount: 0,
-          },
-        }));
-        return;
-      }
-
+      if (!res.ok) throw new Error(String(data?.error || "Podgląd niedostępny"));
+      const suggestedIdx =
+        data.suggestedFloorPlanIndex ??
+        (data.suggestedFloorPlan && data.imageUrls?.length ? data.imageUrls.length - 1 : null);
       setLastImagePeeks((prev) => ({
         ...prev,
         [portalUrl]: {
           loading: false,
           error: "",
-          lastImageUrl: data.lastImageUrl ? String(data.lastImageUrl) : null,
-          suggestedFloorPlan: Boolean(data.suggestedFloorPlan),
+          imageUrls: Array.isArray(data.imageUrls) ? data.imageUrls : [],
+          suggestedFloorPlanIndex: suggestedIdx,
+          suggestedFloorPlan: suggestedIdx != null,
           imageCount: Number(data.imageCount) || 0,
         },
       }));
-
-      setFloorPlanOverrides((prev) => {
-        if (Object.prototype.hasOwnProperty.call(prev, portalUrl)) return prev;
-        if (data.suggestedFloorPlan) {
-          return { ...prev, [portalUrl]: true };
-        }
-        return { ...prev, [portalUrl]: false };
-      });
-    } catch {
+      if (suggestedIdx != null) {
+        setFloorPlanSelections((prev) => {
+          if (portalUrl in prev) return prev;
+          return { ...prev, [portalUrl]: { enabled: true, imageIndex: suggestedIdx } };
+        });
+      }
+    } catch (e) {
       setLastImagePeeks((prev) => ({
         ...prev,
         [portalUrl]: {
           loading: false,
-          error: "Błąd podglądu",
-          lastImageUrl: null,
+          error: e instanceof Error ? e.message : "Błąd podglądu",
+          imageUrls: [],
+          suggestedFloorPlanIndex: null,
           suggestedFloorPlan: false,
           imageCount: 0,
         },
       }));
+    } finally {
+      peekInflight.current.delete(portalUrl);
     }
   }, []);
 
@@ -782,25 +518,13 @@ export default function KeiAmerWorkspace() {
       try {
         const qs = new URLSearchParams({
           propertyKind,
+          transactionKind,
           page: String(page),
           pageSize: String(PAGE_SIZE),
         });
-        const res = await fetch(`/api/admin/kei-amer/preview?${qs.toString()}`, {
-          credentials: "include",
-          cache: "no-store",
-        });
+        const res = await fetch(`/api/admin/kei-amer/preview?${qs}`, { credentials: "include", cache: "no-store" });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setPreview({
-            loading: false,
-            error: String(data?.error || `Błąd podglądu (${res.status}).`),
-            message: "",
-            page,
-            hasNextPage: false,
-            listings: [],
-          });
-          return;
-        }
+        if (!res.ok) throw new Error(String(data?.error || `Błąd podglądu (${res.status}).`));
         const listings = Array.isArray(data?.listings)
           ? data.listings.map((row: Record<string, unknown>) => ({
               keiId: String(row.keiId || ""),
@@ -810,8 +534,12 @@ export default function KeiAmerWorkspace() {
               area: String(row.area || ""),
               portalUrl: String(row.portalUrl || ""),
               sourceLabel: String(row.sourceLabel || ""),
+              transactionLabel: String(row.transactionLabel || ""),
               alreadyImported: Boolean(row.alreadyImported),
               existingOfferId: Number(row.existingOfferId) || null,
+              outreachSent: Boolean(row.outreachSent),
+              outreachSentAt: row.outreachSentAt ? String(row.outreachSentAt) : null,
+              blockedReason: (row.blockedReason as PreviewListing["blockedReason"]) || null,
             }))
           : [];
         setPreview({
@@ -823,10 +551,11 @@ export default function KeiAmerWorkspace() {
           listings,
         });
         setImportedStackExpanded(false);
-      } catch {
+        setOutreachStackExpanded(false);
+      } catch (e) {
         setPreview({
           loading: false,
-          error: "Błąd połączenia podczas ładowania podglądu.",
+          error: e instanceof Error ? e.message : "Błąd połączenia.",
           message: "",
           page,
           hasNextPage: false,
@@ -834,7 +563,7 @@ export default function KeiAmerWorkspace() {
         });
       }
     },
-    [previewPage, propertyKind],
+    [previewPage, propertyKind, transactionKind],
   );
 
   const autoSelectByCount = useCallback(
@@ -842,49 +571,45 @@ export default function KeiAmerWorkspace() {
       if (!session.ok) return;
       const n = Math.max(0, Math.min(Math.floor(count), MAX_SELECT));
       if (n === 0) {
-        setSelectedMap(new Map());
+        setSelected({});
         return;
       }
-
       try {
-        const qs = new URLSearchParams({
-          propertyKind,
-          selectionPool: "1",
-        });
-        const res = await fetch(`/api/admin/kei-amer/preview?${qs.toString()}`, {
-          credentials: "include",
-          cache: "no-store",
-        });
+        const qs = new URLSearchParams({ propertyKind, transactionKind, selectionPool: "1" });
+        const res = await fetch(`/api/admin/kei-amer/preview?${qs}`, { credentials: "include", cache: "no-store" });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) return;
-
         const pool = Array.isArray(data?.listings) ? data.listings : [];
-        const next = new Map<string, string>();
-        const nextMeta = new Map<string, SelectedListingMeta>();
+        const picks: Record<string, PreviewListing> = {};
         for (const row of pool) {
-          if (next.size >= n) break;
-          if (row.alreadyImported) continue;
-          const keiId = String(row.keiId || "");
-          const portalUrl = String(row.portalUrl || "");
-          if (!keiId || !portalUrl) continue;
-          next.set(keiId, portalUrl);
-          nextMeta.set(keiId, {
-            keiId,
-            portalUrl,
-            address: String(row.address || portalUrl),
-          });
+          if (Object.keys(picks).length >= n) break;
+          if (row.blockedReason || row.alreadyImported || row.outreachSent) continue;
+          const item: PreviewListing = {
+            keiId: String(row.keiId || ""),
+            date: String(row.date || ""),
+            address: String(row.address || ""),
+            price: String(row.price || ""),
+            area: String(row.area || ""),
+            portalUrl: String(row.portalUrl || ""),
+            sourceLabel: String(row.sourceLabel || ""),
+            transactionLabel: String(row.transactionLabel || ""),
+            alreadyImported: Boolean(row.alreadyImported),
+            existingOfferId: Number(row.existingOfferId) || null,
+            outreachSent: Boolean(row.outreachSent),
+            outreachSentAt: row.outreachSentAt ? String(row.outreachSentAt) : null,
+            blockedReason: row.blockedReason || null,
+          };
+          if (!item.keiId || !item.portalUrl) continue;
+          picks[item.portalUrl] = item;
         }
-        setSelectedMap(next);
-        setSelectedMeta(nextMeta);
-        setExportCount(String(next.size));
-        for (const portalUrl of next.values()) {
-          void loadLastImagePeek(portalUrl);
-        }
+        setSelected(picks);
+        setExportCount(String(Object.keys(picks).length));
+        for (const item of Object.values(picks)) void loadLastImagePeek(item.portalUrl);
       } catch {
-        // ignore pool fetch errors
+        /* ignore */
       }
     },
-    [propertyKind, session.ok, loadLastImagePeek],
+    [propertyKind, transactionKind, session.ok, loadLastImagePeek],
   );
 
   useEffect(() => {
@@ -892,427 +617,179 @@ export default function KeiAmerWorkspace() {
   }, [ensureSession]);
 
   useEffect(() => {
-    if (!session.ok || session.loading) return;
+    if (!session.ok || session.loading || exportRunning) return;
     void loadPreview(previewPage);
-  }, [session.ok, session.loading, propertyKind, previewPage, loadPreview]);
+  }, [session.ok, session.loading, propertyKind, transactionKind, previewPage, exportRunning, loadPreview]);
 
   useEffect(() => {
-    if (!session.ok) return;
+    if (!session.ok || exportRunning) return;
     setPreviewPage(1);
-    setSelectedMap(new Map());
-    setSelectedMeta(new Map());
-    setFloorPlanOverrides({});
+    setSelected({});
+    setFloorPlanSelections({});
     void autoSelectByCount(Number(exportCount) || 1);
-  }, [propertyKind, session.ok]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [propertyKind, transactionKind, session.ok]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const resolveFloorPlanSelection = useCallback(
+    (portalUrl: string): FloorPlanSelection => {
+      if (portalUrl in floorPlanSelections) return floorPlanSelections[portalUrl];
+      const peek = lastImagePeeks[portalUrl];
+      const idx = peek?.suggestedFloorPlanIndex;
+      return { enabled: idx != null, imageIndex: idx ?? 0 };
+    },
+    [floorPlanSelections, lastImagePeeks],
+  );
+
+  const toggleSelection = (item: PreviewListing) => {
+    if (item.blockedReason) return;
+    setSelected((prev) => {
+      const next = { ...prev };
+      if (next[item.portalUrl]) {
+        delete next[item.portalUrl];
+      } else {
+        if (Object.keys(next).length >= MAX_SELECT) return prev;
+        next[item.portalUrl] = item;
+        void loadLastImagePeek(item.portalUrl);
+      }
+      setExportCount(String(Object.keys(next).length));
+      return next;
+    });
+  };
 
   const handleExportCountChange = (raw: string) => {
     setExportCount(raw);
     const n = Number(raw);
     if (!Number.isFinite(n) || n <= 0) {
-      setSelectedMap(new Map());
-      setSelectedMeta(new Map());
+      setSelected({});
       return;
     }
     void autoSelectByCount(n);
   };
 
-  const toggleSelection = (item: PreviewListing) => {
-    if (item.alreadyImported) return;
+  const refreshAfterAction = useCallback(() => {
+    setSelected({});
+    setFloorPlanSelections({});
+    setExportCount("1");
+    void autoSelectByCount(1);
+    void loadPreview(previewPage);
+  }, [autoSelectByCount, loadPreview, previewPage]);
 
-    setSelectedMap((prev) => {
-      const next = new Map(prev);
-      if (next.has(item.keiId)) {
-        next.delete(item.keiId);
-        setSelectedMeta((meta) => {
-          const nextMeta = new Map(meta);
-          nextMeta.delete(item.keiId);
-          return nextMeta;
-        });
-        setFloorPlanOverrides((prevOverrides) => {
-          const copy = { ...prevOverrides };
-          delete copy[item.portalUrl];
-          return copy;
-        });
-      } else {
-        if (next.size >= MAX_SELECT) return prev;
-        next.set(item.keiId, item.portalUrl);
-        setSelectedMeta((meta) =>
-          new Map(meta).set(item.keiId, {
-            keiId: item.keiId,
-            portalUrl: item.portalUrl,
-            address: item.address || item.portalUrl,
-          }),
-        );
-        void loadLastImagePeek(item.portalUrl);
-      }
-      setExportCount(String(next.size));
-      return next;
-    });
-  };
-
-  const resolveFloorPlan = (portalUrl: string): boolean => {
-    if (Object.prototype.hasOwnProperty.call(floorPlanOverrides, portalUrl)) {
-      return floorPlanOverrides[portalUrl];
+  const handleImport = () => {
+    if (exportRunning || selectedCount === 0 || !session.ok) {
+      if (exportRunning) setExportVisible(true);
+      return;
     }
-    return lastImagePeeks[portalUrl]?.suggestedFloorPlan ?? false;
-  };
-
-  const setFloorPlanForUrl = (portalUrl: string, value: boolean) => {
-    setFloorPlanOverrides((prev) => ({ ...prev, [portalUrl]: value }));
-  };
-
-  const updateProgressFromEvent = useCallback((payload: Record<string, unknown>) => {
-    const type = String(payload.type || "");
-
-    if (type === "batch_start") {
-      const total = Number(payload.total) || 0;
-      setImportProgress((prev) => ({
-        ...prev,
-        visible: true,
-        status: "running",
-        total,
-        message: "",
-        items:
-          prev.items.length > 0
-            ? prev.items
-            : [],
-      }));
+    const userId = Number(targetUserId);
+    const comm = Number(commissionPercent);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      alert("Podaj poprawne ID użytkownika docelowego.");
+      return;
+    }
+    const blocked = selectedList.filter((row) => row.blockedReason);
+    if (blocked.length > 0) {
+      alert(`${blocked.length} ogłoszeń jest zablokowanych (import lub outreach). Odznacz je.`);
       return;
     }
 
-    if (type === "connected") {
-      setImportProgress((prev) => ({
-        ...prev,
-        visible: true,
-        status: "running",
-        message: String(payload.message || "Rozpoczynam import…"),
-      }));
-      return;
+    const floorPlanPayload: Record<string, FloorPlanSelection> = {};
+    for (const row of selectedList) {
+      floorPlanPayload[row.portalUrl] = resolveFloorPlanSelection(row.portalUrl);
     }
 
-    if (type === "item_start") {
-      const index = Number(payload.index) || 0;
-      setImportProgress((prev) => {
-        const items = [...prev.items];
-        const existingIdx = items.findIndex((i) => i.index === index);
-        const base = {
-          index,
-          keiListingId: String(payload.keiListingId || ""),
-          portalUrl: String(payload.portalUrl || ""),
-          address: payload.address ? String(payload.address) : undefined,
-          status: "active" as const,
-          completedSteps: [] as ImportStepId[],
-          currentStep: null,
-          stepLabel: "Rozpoczynanie importu…",
-        };
-        if (existingIdx >= 0) {
-          items[existingIdx] = { ...items[existingIdx], ...base, address: base.address || items[existingIdx].address };
-        } else {
-          items.push(base);
-        }
-        items.sort((a, b) => a.index - b.index);
-        return { ...prev, items };
-      });
-      return;
-    }
-
-    if (type === "step") {
-      const index = Number(payload.index) || 0;
-      const step = String(payload.step || "") as ImportStepId;
-      setImportProgress((prev) => {
-        const items = prev.items.map((item) => {
-          if (item.index !== index) return item;
-          const completedSteps = [...item.completedSteps];
-          const stepIdx = STEP_ORDER.indexOf(step);
-          for (let i = 0; i < stepIdx; i += 1) {
-            const s = STEP_ORDER[i];
-            if (!completedSteps.includes(s)) completedSteps.push(s);
-          }
-          return {
-            ...item,
-            status: "active" as const,
-            currentStep: step,
-            completedSteps,
-            stepLabel: String(payload.label || item.stepLabel),
-            stepDetail: payload.detail ? String(payload.detail) : item.stepDetail,
-            aiRewrite: payload.detail === "AI ✓" ? true : item.aiRewrite,
-          };
-        });
-        return { ...prev, items };
-      });
-      return;
-    }
-
-    if (type === "image_progress") {
-      const index = Number(payload.index) || 0;
-      setImportProgress((prev) => ({
-        ...prev,
-        items: prev.items.map((item) =>
-          item.index !== index
-            ? item
-            : {
-                ...item,
-                imageProgress: {
-                  index: Number(payload.imageIndex) || 0,
-                  total: Number(payload.imageTotal) || 0,
-                  label: String(payload.label || ""),
-                  asFloorPlan: Boolean(payload.asFloorPlan),
-                },
-              },
-        ),
-      }));
-      return;
-    }
-
-    if (type === "item_done") {
-      const index = Number(payload.index) || 0;
-      setImportProgress((prev) => ({
-        ...prev,
-        items: prev.items.map((item) =>
-          item.index !== index
-            ? item
-            : {
-                ...item,
-                status: "done" as const,
-                completedSteps: [...STEP_ORDER],
-                currentStep: null,
-                offerId: Number(payload.offerId) || item.offerId,
-                publicUrl: String(payload.publicUrl || item.publicUrl || ""),
-                editUrl: String(payload.editUrl || item.editUrl || ""),
-                stepLabel: "Zaimportowano",
-              },
-        ),
-      }));
-      return;
-    }
-
-    if (type === "item_skip") {
-      const index = Number(payload.index) || 0;
-      setImportProgress((prev) => ({
-        ...prev,
-        items: prev.items.map((item) =>
-          item.index !== index
-            ? item
-            : {
-                ...item,
-                status: "skipped" as const,
-                currentStep: null,
-                reason: String(payload.reason || "Pominięto"),
-              },
-        ),
-      }));
-      return;
-    }
-
-    if (type === "batch_done") {
-      setImportProgress((prev) => ({
-        ...prev,
-        status: "done",
-        visible: true,
-        message: String(payload.message || prev.message),
-      }));
-    }
-  }, []);
-
-  const handleExport = async () => {
-    const parsedUserId = Number(targetUserId);
-    const parsedCommission = Number(commissionPercent);
-
-    if (!Number.isFinite(parsedUserId) || parsedUserId <= 0) {
-      setExportState({
-        loading: false,
-        message: "",
-        error: "Podaj poprawne ID użytkownika (liczba > 0).",
-        items: [],
-        skippedCount: 0,
-      });
-      return;
-    }
-    if (!Number.isFinite(parsedCommission) || parsedCommission < 0) {
-      setExportState({
-        loading: false,
-        message: "",
-        error: "Podaj poprawny procent prowizji (≥ 0).",
-        items: [],
-        skippedCount: 0,
-      });
-      return;
-    }
-    if (selectedCount <= 0) {
-      setExportState({
-        loading: false,
-        message: "",
-        error: "Zaznacz co najmniej jedno ogłoszenie do eksportu.",
-        items: [],
-        skippedCount: 0,
-      });
-      return;
-    }
-    if (selectedCount > MAX_SELECT) {
-      setExportState({
-        loading: false,
-        message: "",
-        error: `Maksymalnie ${MAX_SELECT} ogłoszeń na raz.`,
-        items: [],
-        skippedCount: 0,
-      });
-      return;
-    }
-
-    const selections = Array.from(selectedMap.entries()).map(([keiId, portalUrl]) => ({
-      keiId,
-      portalUrl,
-    }));
-
-    const overrides: Record<string, boolean> = {};
-    for (const { portalUrl } of selections) {
-      overrides[portalUrl] = resolveFloorPlan(portalUrl);
-    }
-
-    const queueItems: ItemProgress[] = selections.map((sel, index) => ({
+    const initialItems: KeiExportItemProgress[] = selectedList.map((row, index) => ({
       index,
-      keiListingId: sel.keiId,
-      portalUrl: sel.portalUrl,
-      address: selectedMeta.get(sel.keiId)?.address || sel.portalUrl,
-      status: "pending",
+      keiListingId: row.keiId,
+      portalUrl: row.portalUrl,
+      address: row.address,
+      status: index === 0 ? "active" : "pending",
       completedSteps: [],
-      currentStep: null,
-      stepLabel: "Oczekuje w kolejce…",
+      currentStep: index === 0 ? ("check_duplicate" as KeiImportStepId) : null,
+      stepLabel: index === 0 ? "Sprawdzanie duplikatu…" : "Oczekuje w kolejce…",
     }));
 
-    setImportProgress({
-      visible: true,
-      status: "running",
-      total: selections.length,
-      message: "Łączenie z serwerem…",
-      items: queueItems,
-    });
-    setExportState({
-      loading: true,
-      message: "",
-      error: "",
-      items: [],
-      skippedCount: 0,
-    });
+    startKeiExport(
+      {
+        targetUserId: userId,
+        agentCommissionPercent: Number.isFinite(comm) ? comm : 2,
+        propertyKind,
+        transactionKind,
+        selections: selectedList.map((row) => ({
+          keiId: row.keiId,
+          portalUrl: row.portalUrl,
+          address: row.address,
+        })),
+        floorPlanSelections: floorPlanPayload,
+      },
+      initialItems,
+      refreshAfterAction,
+    );
+  };
 
+  const handleOutreach = async () => {
+    if (outreachLoading || selectedCount === 0 || !session.ok) return;
+    const blocked = selectedList.filter((row) => row.blockedReason);
+    if (blocked.length > 0) {
+      setOutreachError("Wybrane ogłoszenia zawierają pozycje zablokowane (już zaimportowane lub z wysłanym zaproszeniem).");
+      return;
+    }
+    setOutreachLoading(true);
+    setOutreachError("");
     try {
-      const res = await fetch("/api/admin/kei-amer/export-stream", {
+      const res = await fetch("/api/admin/kei-amer/outreach", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          targetUserId: parsedUserId,
-          agentCommissionPercent: parsedCommission,
-          count: selections.length,
-          propertyKind,
-          selections,
-          floorPlanOverrides: overrides,
+          selections: selectedList.map((row) => ({
+            keiId: row.keiId,
+            portalUrl: row.portalUrl,
+            address: row.address,
+          })),
         }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data?.error || "Nie udało się przygotować zaproszeń."));
+      setOutreachResults(Array.isArray(data.items) ? data.items : []);
+      refreshAfterAction();
+    } catch (e) {
+      setOutreachError(e instanceof Error ? e.message : "Błąd połączenia.");
+    } finally {
+      setOutreachLoading(false);
+    }
+  };
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setImportProgress((prev) => ({ ...prev, status: "error", visible: true }));
-        setExportState({
-          loading: false,
-          message: "",
-          error: String(data?.error || `Błąd eksportu (${res.status}).`),
-          items: [],
-          skippedCount: 0,
-        });
-        return;
-      }
-
-      const outcome = { result: null as ExportFinalResult | null };
-
-      await consumeExportStream(res, (payload) => {
-        if (payload.type === "result") {
-          outcome.result = payload as unknown as ExportFinalResult;
-          return;
-        }
-        if (payload.type === "error") {
-          throw new Error(String(payload.message || "Eksport nie powiódł się."));
-        }
-        updateProgressFromEvent(payload);
-      });
-
-      const finalResult = outcome.result;
-      if (!finalResult?.ok) {
-        throw new Error("Brak wyniku eksportu.");
-      }
-
-      const exported = Array.isArray(finalResult.exported) ? finalResult.exported : [];
-      const items: ExportResultItem[] = exported.map((item: Record<string, unknown>) => ({
-        offerId: Number(item.offerId) || 0,
-        portalUrl: String(item.portalUrl || ""),
-        publicUrl: String(item.publicUrl || ""),
-        editUrl: String(item.editUrl || ""),
-      }));
-
-      setExportState({
-        loading: false,
-        message: String(finalResult.message || "Eksport zakończony."),
-        error: "",
-        items: items.filter((item) => item.offerId > 0),
-        skippedCount: Array.isArray(finalResult.skipped) ? finalResult.skipped.length : 0,
-      });
-
-      setImportProgress((prev) => ({
-        ...prev,
-        status: "done",
-        visible: true,
-        message: String(finalResult.message || prev.message),
-      }));
-      setSelectedMap(new Map());
-      setSelectedMeta(new Map());
-      setFloorPlanOverrides({});
-      setExportCount("1");
-      void autoSelectByCount(1);
-      void loadPreview(previewPage);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Błąd połączenia podczas eksportu.";
-      setImportProgress((prev) => ({
-        ...prev,
-        status: "error",
-        visible: true,
-        message,
-      }));
-      setExportState({
-        loading: false,
-        message: "",
-        error: message,
-        items: [],
-        skippedCount: 0,
-      });
+  const copyOutreachMessage = async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      window.setTimeout(() => setCopiedKey(null), 2200);
+    } catch {
+      /* ignore */
     }
   };
 
   const listingGroups = useMemo(() => {
     const imported: PreviewListing[] = [];
+    const outreach: PreviewListing[] = [];
     const available: PreviewListing[] = [];
     for (const item of preview.listings) {
-      if (item.alreadyImported) imported.push(item);
+      if (item.blockedReason === "imported" || item.alreadyImported) imported.push(item);
+      else if (item.blockedReason === "outreach" || item.outreachSent) outreach.push(item);
       else available.push(item);
     }
-    return { imported, available };
+    return { imported, outreach, available };
   }, [preview.listings]);
 
-  const selectedListings = useMemo(() => {
-    return Array.from(selectedMeta.values());
-  }, [selectedMeta]);
-
-  const dismissImportProgress = () => {
-    setImportProgress({
-      visible: false,
-      status: "idle",
-      total: 0,
-      message: "",
-      items: [],
-    });
-  };
+  const primaryActionLabel =
+    actionMode === "import"
+      ? exportRunning
+        ? `Import w toku (${overallPercent}%)`
+        : `Importuj (${selectedCount})`
+      : outreachLoading
+        ? "Przygotowuję wiadomości…"
+        : `Zaproszenie właściciela (${selectedCount})`;
 
   return (
-    <div className="mt-10 bg-[#0a0a0a] border border-white/5 rounded-[40px] p-6 md:p-8 shadow-2xl relative">
+    <div className="mt-10 bg-[#0a0a0a] border border-white/5 rounded-[40px] p-6 md:p-8 shadow-2xl relative pb-28">
       <div className="absolute top-0 right-0 w-72 h-72 bg-cyan-500/5 blur-[120px] rounded-full pointer-events-none" />
 
       <div className="relative z-10 flex flex-col gap-6">
@@ -1320,17 +797,16 @@ export default function KeiAmerWorkspace() {
           <div>
             <h3 className="text-xl md:text-2xl font-black mb-2">KEI AMER — eksport ogłoszeń</h3>
             <p className="text-gray-500 text-xs md:text-sm max-w-3xl leading-relaxed">
-              Zaznacz ptaszkiem ogłoszenia do importu lub ustaw liczbę — auto-zaznaczy najnowsze.
-              {PAGE_SIZE} ogłoszeń na stronę. Ostatnie zdjęcie możesz oznaczyć jako rzut lokalu.
+              Import do wybranego użytkownika albo zaproszenie właściciela na <span className="text-emerald-400/90">/dolacz</span>.
+              Dla jednego ogłoszenia możliwe jest tylko jedno działanie — import albo outreach.
             </p>
           </div>
-
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={() => void ensureSession(true)}
               disabled={session.loading}
-              className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl border border-white/10 text-xs font-black uppercase tracking-wider text-white/80 hover:text-white hover:border-white/25 transition-colors disabled:opacity-60"
+              className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl border border-white/10 text-xs font-black uppercase tracking-wider text-white/80 hover:text-white disabled:opacity-60"
             >
               {session.loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
               Odśwież sesję
@@ -1338,8 +814,8 @@ export default function KeiAmerWorkspace() {
             <button
               type="button"
               onClick={() => void loadPreview(previewPage)}
-              disabled={preview.loading || session.loading || !session.ok}
-              className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl border border-white/10 text-xs font-black uppercase tracking-wider text-white/80 hover:text-white hover:border-white/25 transition-colors disabled:opacity-60"
+              disabled={preview.loading || !session.ok}
+              className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl border border-white/10 text-xs font-black uppercase tracking-wider text-white/80 hover:text-white disabled:opacity-60"
             >
               {preview.loading ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
               Odśwież listę
@@ -1352,47 +828,106 @@ export default function KeiAmerWorkspace() {
             >
               Panel KEI <ExternalLink size={14} />
             </a>
+            <motion.button
+              type="button"
+              disabled={
+                (!exportRunning && selectedCount === 0) ||
+                (!exportRunning && !session.ok) ||
+                outreachLoading
+              }
+              animate={
+                (exportRunning || (selectedCount > 0 && session.ok)) && !outreachLoading
+                  ? {
+                      boxShadow: [
+                        "0 0 0 0 rgba(52,211,153,0.45)",
+                        "0 0 0 10px rgba(52,211,153,0)",
+                        "0 0 0 0 rgba(52,211,153,0.45)",
+                      ],
+                    }
+                  : undefined
+              }
+              transition={exportRunning || selectedCount > 0 ? { duration: 1.2, repeat: Infinity } : undefined}
+              onClick={() => (actionMode === "import" ? handleImport() : void handleOutreach())}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-emerald-500 text-black text-xs font-black uppercase tracking-wider hover:bg-emerald-400 disabled:opacity-50 disabled:animate-none"
+            >
+              {exportRunning || outreachLoading ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : actionMode === "import" ? (
+                <UploadCloud size={16} />
+              ) : (
+                <Send size={16} />
+              )}
+              {primaryActionLabel}
+            </motion.button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/10">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-black uppercase tracking-wider text-white/50">ID użytkownika</span>
-            <input
-              type="number"
-              min={1}
-              value={targetUserId}
-              onChange={(e) => setTargetUserId(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white focus:outline-none focus:border-emerald-500/50"
-              placeholder="55"
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-white/45 mb-2">Tryb działania</p>
+            <SegmentedControl
+              value={actionMode}
+              onChange={setActionMode}
+              options={[
+                { id: "import", label: "Import do użytkownika" },
+                { id: "outreach", label: "Zaproszenie właściciela" },
+              ]}
             />
-          </label>
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-white/45 mb-2">Transakcja</p>
+            <SegmentedControl
+              value={transactionKind}
+              onChange={setTransactionKind}
+              options={[
+                { id: "sale", label: "Kupno" },
+                { id: "rent", label: "Wynajem" },
+              ]}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+          {actionMode === "import" ? (
+            <>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-white/50">ID użytkownika</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={targetUserId}
+                  onChange={(e) => setTargetUserId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Prowizja (%)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={commissionPercent}
+                  onChange={(e) => setCommissionPercent(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+                />
+              </label>
+            </>
+          ) : (
+            <div className="sm:col-span-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3 text-xs text-emerald-100/90 leading-relaxed">
+              <p className="font-bold mb-1 flex items-center gap-2"><Mail size={14} /> Wiadomość z linkiem /dolacz</p>
+              System wygeneruje szablon z unikalnym zaproszeniem. Skopiuj treść i wyślij właścicielowi na OtoDom/OLX — ręcznie w wiadomości portalu.
+            </div>
+          )}
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Prowizja (%)</span>
-            <input
-              type="number"
-              min={0}
-              step={0.1}
-              value={commissionPercent}
-              onChange={(e) => setCommissionPercent(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white focus:outline-none focus:border-emerald-500/50"
-              placeholder="2"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-black uppercase tracking-wider text-white/50">
-              Ile ogłoszeń ({selectedCount} zazn.)
-            </span>
+            <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Ile ogłoszeń ({selectedCount})</span>
             <input
               type="number"
               min={0}
               max={MAX_SELECT}
               value={exportCount}
               onChange={(e) => handleExportCountChange(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white focus:outline-none focus:border-emerald-500/50"
-              placeholder="1"
+              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
             />
           </label>
 
@@ -1401,177 +936,271 @@ export default function KeiAmerWorkspace() {
             <select
               value={propertyKind}
               onChange={(e) => setPropertyKind(e.target.value as PropertyKind)}
-              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white focus:outline-none focus:border-emerald-500/50"
+              className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
             >
               <option value="apartment">Mieszkanie</option>
               <option value="house">Dom</option>
             </select>
           </label>
-
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={() => void handleExport()}
-              disabled={exportState.loading || session.loading || !session.ok || selectedCount <= 0}
-              className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed text-black text-xs font-black uppercase tracking-wider transition-colors shadow-[0_12px_32px_rgba(16,185,129,0.28)]"
-            >
-              {exportState.loading ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
-              Export ({selectedCount})
-            </button>
-          </div>
         </div>
 
         <div className="text-xs md:text-sm">
           {session.loading ? (
             <p className="text-white/50">Łączenie z KEI AMER…</p>
           ) : session.ok ? (
-            <p className="text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
-              {session.message || "Sesja KEI AMER gotowa."}
-            </p>
+            <p className="text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">{session.message || "Sesja KEI AMER gotowa."}</p>
           ) : (
-            <p className="text-red-300/90 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-              {session.message || "Brak sesji KEI AMER. Ustaw KEI_AMER_LOGIN / KEI_AMER_PASSWORD na serwerze."}
-            </p>
+            <p className="text-red-300/90 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">{session.message || "Brak sesji KEI AMER."}</p>
           )}
         </div>
 
-        {selectedListings.length > 0 ? (
-          <div className="rounded-[24px] border border-white/10 bg-white/[0.02] p-4 space-y-3">
-            <p className="text-[10px] font-black uppercase tracking-wider text-white/50">
-              Rzut lokalu — podgląd ostatniego zdjęcia ({selectedListings.length})
+        {outreachError ? (
+          <p className="text-red-300/90 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm">{outreachError}</p>
+        ) : null}
+
+        {outreachResults.length > 0 ? (
+          <div className="rounded-[24px] border border-emerald-400/25 bg-emerald-500/[0.06] p-4 space-y-3">
+            <p className="text-xs font-black uppercase tracking-wider text-emerald-200 flex items-center gap-2">
+              <Sparkles size={14} /> Przygotowane wiadomości ({outreachResults.length})
             </p>
-            {selectedListings.map((item) => (
-              <div key={item.keiId}>
-                <p className="text-xs text-white/70 truncate mb-1">{item.address || item.portalUrl}</p>
-                <FloorPlanToggle
+            {outreachResults.map((item) => (
+              <div key={item.portalUrl} className="rounded-xl border border-white/10 bg-black/40 p-3">
+                <p className="text-xs font-semibold text-white truncate mb-1">{item.address}</p>
+                <pre className="text-[11px] text-white/70 whitespace-pre-wrap font-sans max-h-40 overflow-y-auto">{item.message}</pre>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <button
+                    type="button"
+                    onClick={() => void copyOutreachMessage(item.portalUrl, item.message)}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase"
+                  >
+                    {copiedKey === item.portalUrl ? <Check size={14} /> : <Copy size={14} />}
+                    {copiedKey === item.portalUrl ? "Skopiowano" : "Kopiuj wiadomość"}
+                  </button>
+                  <a href={item.inviteUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-white/15 text-[10px] font-black uppercase text-white/75">
+                    <ExternalLink size={14} /> Link /dolacz
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {actionMode === "import" && selectedList.length > 0 ? (
+          <div className="rounded-[24px] border border-amber-400/25 bg-amber-500/[0.05] p-4 space-y-4">
+            <p className="text-[10px] font-black uppercase tracking-wider text-amber-200/90">
+              Rzut lokalu — wybór zdjęcia ({selectedList.length})
+            </p>
+            {selectedList.map((item) => (
+              <div key={item.portalUrl} className="rounded-xl border border-white/10 bg-black/25 p-3">
+                <p className="text-xs font-semibold text-white/85 truncate mb-2">{item.address || item.portalUrl}</p>
+                <FloorPlanPicker
                   portalUrl={item.portalUrl}
                   peek={lastImagePeeks[item.portalUrl]}
-                  asFloorPlan={resolveFloorPlan(item.portalUrl)}
-                  onChange={setFloorPlanForUrl}
+                  selection={resolveFloorPlanSelection(item.portalUrl)}
+                  onSelectIndex={(imageIndex) =>
+                    setFloorPlanSelections((prev) => ({
+                      ...prev,
+                      [item.portalUrl]: { enabled: true, imageIndex },
+                    }))
+                  }
+                  onToggleEnabled={(enabled) =>
+                    setFloorPlanSelections((prev) => ({
+                      ...prev,
+                      [item.portalUrl]: {
+                        enabled,
+                        imageIndex: resolveFloorPlanSelection(item.portalUrl).imageIndex,
+                      },
+                    }))
+                  }
                 />
               </div>
             ))}
           </div>
         ) : null}
 
-        {exportState.error ? (
-          <p className="text-red-300/90 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm">
-            {exportState.error}
-          </p>
-        ) : null}
-
-        <ImportOfferQueue
-          progress={importProgress}
-          exporting={exportState.loading}
-          onClear={dismissImportProgress}
-        />
-
-        {exportState.message && importProgress.status === "done" && !exportState.loading ? (
-          <p className="text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-4 py-3 text-sm">
-            {exportState.message}
-            {exportState.skippedCount > 0 ? (
-              <span className="block mt-1 text-emerald-200/70 text-xs">
-                Pominięto {exportState.skippedCount} ogłoszeń (już w bazie lub błąd importu).
-              </span>
-            ) : null}
-          </p>
-        ) : null}
-
-        <div className="rounded-[28px] border border-white/10 bg-white/[0.02]">
-          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-black uppercase tracking-wider text-white/60">Podgląd ogłoszeń KEI</p>
-              {preview.message ? (
-                <p className="text-[11px] text-white/45 mt-0.5">{preview.message}</p>
-              ) : null}
-            </div>
-            <p className="text-[10px] text-white/40 shrink-0">{selectedCount} zaznaczonych · {PAGE_SIZE}/str.</p>
+        <div className="rounded-[28px] border border-white/10 bg-white/[0.02] overflow-hidden">
+          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+            <p className="text-xs font-black uppercase tracking-wider text-white/60">Podgląd ogłoszeń KEI</p>
+            <p className="text-[10px] text-white/40">{selectedCount} zazn. · {PAGE_SIZE}/str.</p>
           </div>
-
           <div className="px-4 py-2 border-b border-white/10">
-            <PagePager
-              page={preview.page}
-              hasNextPage={preview.hasNextPage}
-              disabled={preview.loading || !session.ok}
-              onChange={(p) => setPreviewPage(p)}
-            />
+            <PagePager page={preview.page} hasNextPage={preview.hasNextPage} disabled={preview.loading || !session.ok} onChange={setPreviewPage} />
           </div>
 
           {preview.loading ? (
             <div className="flex items-center justify-center gap-2 py-12 text-white/50 text-sm">
-              <Loader2 size={18} className="animate-spin" />
-              Ładowanie listy z KEI…
+              <Loader2 size={18} className="animate-spin" /> Ładowanie listy…
             </div>
           ) : preview.error ? (
             <p className="text-red-300/90 px-4 py-6 text-sm">{preview.error}</p>
-          ) : preview.listings.length === 0 ? (
-            <p className="text-white/40 px-4 py-6 text-sm text-center">
-              {session.ok
-                ? "Brak ogłoszeń na tej stronie. Spróbuj innej strony lub typu."
-                : "Podgląd pojawi się po poprawnym zalogowaniu KEI AMER."}
-            </p>
           ) : (
-            <div>
-              <ImportedListingsStack
-                listings={listingGroups.imported}
-                expanded={importedStackExpanded}
-                onToggle={() => setImportedStackExpanded((v) => !v)}
-              />
-
-              {listingGroups.available.length > 0 ? (
-                <>
-                  <div className="px-4 py-2.5 border-b border-emerald-500/20 bg-emerald-500/[0.04]">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300/90">
-                      Do importu · {listingGroups.available.length}{" "}
-                      {listingGroups.available.length === 1 ? "ogłoszenie" : "ogłoszeń"}
-                    </p>
-                  </div>
-                  <div className="divide-y divide-white/5">
-                    {listingGroups.available.map((item) => (
-                      <KeiListingRow
-                        key={item.keiId}
-                        item={item}
-                        isSelected={selectedMap.has(item.keiId)}
-                        onToggle={toggleSelection}
-                        resolveFloorPlan={resolveFloorPlan}
-                        lastImagePeeks={lastImagePeeks}
-                        setFloorPlanForUrl={setFloorPlanForUrl}
-                      />
-                    ))}
-                  </div>
-                </>
-              ) : listingGroups.imported.length > 0 ? (
-                <div className="px-4 py-8 text-center space-y-4">
-                  <p className="text-sm text-white/55">
-                    Na tej stronie wszystkie ogłoszenia są już w bazie.
-                  </p>
-                  {preview.hasNextPage ? (
-                    <button
-                      type="button"
-                      onClick={() => setPreviewPage(preview.page + 1)}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-xs font-black uppercase tracking-wider text-emerald-200 hover:bg-emerald-500/25 shadow-[0_8px_24px_rgba(16,185,129,0.15)] transition-colors"
-                    >
-                      Szukaj nowych na stronie {preview.page + 1}
-                      <ChevronRight size={14} />
-                    </button>
-                  ) : (
-                    <p className="text-xs text-white/35">To ostatnia strona listy KEI.</p>
-                  )}
-                </div>
+            <>
+              {listingGroups.imported.length > 0 ? (
+                <StackSection
+                  title={`Już w bazie (${listingGroups.imported.length})`}
+                  expanded={importedStackExpanded}
+                  onToggle={() => setImportedStackExpanded((v) => !v)}
+                  tone="amber"
+                >
+                  {listingGroups.imported.map((item) => (
+                    <BlockedRow key={item.keiId} item={item} badge={`#${item.existingOfferId}`} />
+                  ))}
+                </StackSection>
               ) : null}
-            </div>
-          )}
 
-          <div className="px-4 py-2 border-t border-white/10">
-            <PagePager
-              page={preview.page}
-              hasNextPage={preview.hasNextPage}
-              disabled={preview.loading || !session.ok}
-              onChange={(p) => setPreviewPage(p)}
-            />
-          </div>
+              {listingGroups.outreach.length > 0 ? (
+                <StackSection
+                  title={`Wysłano zaproszenie (${listingGroups.outreach.length})`}
+                  expanded={outreachStackExpanded}
+                  onToggle={() => setOutreachStackExpanded((v) => !v)}
+                  tone="cyan"
+                >
+                  {listingGroups.outreach.map((item) => (
+                    <BlockedRow key={item.keiId} item={item} badge="OUTREACH" />
+                  ))}
+                </StackSection>
+              ) : null}
+
+              <div className="px-4 py-2.5 border-b border-emerald-500/20 bg-emerald-500/[0.04]">
+                <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300/90">
+                  Dostępne · {listingGroups.available.length}
+                </p>
+              </div>
+
+              <div className="divide-y divide-white/5">
+                {listingGroups.available.map((item) => {
+                  const isSelected = Boolean(selected[item.portalUrl]);
+                  return (
+                    <div key={item.keiId} className={isSelected ? "bg-emerald-500/[0.05]" : ""}>
+                      <div className="flex items-center gap-3 px-3 py-2.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleSelection(item)}
+                          className={`shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center ${
+                            isSelected ? "bg-emerald-500 border-emerald-400 text-black" : "border-white/25"
+                          }`}
+                        >
+                          {isSelected ? <Check size={12} strokeWidth={3} /> : null}
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[9px] font-bold uppercase text-white/40">{item.date} · {item.sourceLabel}</p>
+                          <p className="text-xs text-white/90 truncate">{item.address || "Brak adresu"}</p>
+                          <p className="text-[10px] text-white/45">{item.price || "—"} · {item.area ? `${item.area} m²` : "—"}</p>
+                        </div>
+                        {item.portalUrl ? (
+                          <a href={item.portalUrl} target="_blank" rel="noopener noreferrer" className="p-2 text-white/50 hover:text-white">
+                            <ExternalLink size={14} />
+                          </a>
+                        ) : null}
+                      </div>
+                      {isSelected && actionMode === "import" ? (
+                        <div className="px-3 pb-2">
+                          <p className="text-[10px] text-amber-300/80 font-semibold">
+                            {resolveFloorPlanSelection(item.portalUrl).enabled
+                              ? `Rzut: zdjęcie #${resolveFloorPlanSelection(item.portalUrl).imageIndex + 1}`
+                              : "Bez rzutu — ustaw w panelu powyżej"}
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {(selectedCount > 0 || exportRunning) && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            className="fixed bottom-0 inset-x-0 z-[70] p-4 md:p-6 pointer-events-none"
+          >
+            <div className="max-w-3xl mx-auto pointer-events-auto">
+              <motion.button
+                type="button"
+                disabled={
+                  (!exportRunning && selectedCount === 0) ||
+                  (!exportRunning && !session.ok) ||
+                  outreachLoading
+                }
+                animate={
+                  exportRunning
+                    ? { boxShadow: ["0 0 0 0 rgba(52,211,153,0.4)", "0 0 0 12px rgba(52,211,153,0)", "0 0 0 0 rgba(52,211,153,0.4)"] }
+                    : { boxShadow: "0 12px 32px rgba(16,185,129,0.28)" }
+                }
+                transition={exportRunning ? { duration: 1.2, repeat: Infinity } : undefined}
+                onClick={() => (actionMode === "import" ? handleImport() : void handleOutreach())}
+                className={`w-full inline-flex items-center justify-center gap-2 px-6 py-4 rounded-2xl text-sm font-black uppercase tracking-wider transition-colors ${
+                  exportRunning || selectedCount > 0
+                    ? "bg-emerald-500 hover:bg-emerald-400 text-black"
+                    : "bg-white/10 text-white/40"
+                } disabled:opacity-60`}
+              >
+                {exportRunning || outreachLoading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : actionMode === "import" ? (
+                  <UploadCloud size={18} />
+                ) : (
+                  <Send size={18} />
+                )}
+                {primaryActionLabel}
+                {exportRunning ? " — dotknij, aby otworzyć" : ""}
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <ImportProgressModal
+        open={exportVisible}
+        running={exportRunning}
+        message={exportMessage}
+        items={exportItems}
+        resultsCount={exportResults.length}
+        skippedCount={exportSkipped}
+        onMinimize={() => setExportVisible(false)}
+        onClose={() => {
+          setExportVisible(false);
+          clearExportSession();
+        }}
+      />
+    </div>
+  );
+}
+
+function StackSection(props: {
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  tone: "amber" | "cyan";
+  children: ReactNode;
+}) {
+  const toneClass = props.tone === "amber" ? "text-amber-200" : "text-cyan-200";
+  return (
+    <div className="border-b border-white/10">
+      <button type="button" onClick={props.onToggle} className="w-full px-4 py-3 flex items-center gap-2 hover:bg-white/[0.03]">
+        {props.expanded ? <ChevronDown size={16} className={toneClass} /> : <ChevronRight size={16} className={toneClass} />}
+        <span className={`text-xs font-black uppercase tracking-wider ${toneClass}`}>{props.title}</span>
+      </button>
+      {props.expanded ? <div className="divide-y divide-white/5 bg-black/20">{props.children}</div> : null}
+    </div>
+  );
+}
+
+function BlockedRow(props: { item: PreviewListing; badge: string }) {
+  return (
+    <div className="px-3 py-2 flex items-center gap-2 opacity-65">
+      <span className="text-[9px] font-black uppercase text-white/45 shrink-0">{props.badge}</span>
+      <span className="text-[11px] text-white/60 truncate flex-1">{props.item.address || "—"}</span>
+      {props.item.portalUrl ? (
+        <a href={props.item.portalUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 text-white/40 hover:text-white">
+          <ExternalLink size={12} />
+        </a>
+      ) : null}
     </div>
   );
 }
