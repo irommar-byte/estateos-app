@@ -334,7 +334,27 @@ export default function RegisterForm({
             window.location.href = '/moje-konto/firma';
             return;
           }
-          const destination = await resolvePostAuthDestination(postRegisterPath, role);
+          const resumed = await resolvePostAuthDestination(postRegisterPath, role);
+          const userId = Number(data.id ?? data.user?.id);
+          let destination = resumed;
+          if (!destination && userId > 0) {
+            if (role === 'USER') {
+              destination = `/profil/${userId}?welcome=new`;
+            } else if (role === 'AGENT') {
+              destination = `/moje-konto/crm?welcome=new`;
+            }
+          }
+          if (!destination) {
+            destination = '/moje-konto/crm?welcome=new';
+          } else if (
+            userId > 0 &&
+            (role === 'USER' || role === 'AGENT') &&
+            !destination.includes('welcome=')
+          ) {
+            const url = new URL(destination, window.location.origin);
+            url.searchParams.set('welcome', 'new');
+            destination = `${url.pathname}${url.search}`;
+          }
           window.location.href = destination;
         })();
       }, 400);

@@ -15,6 +15,7 @@ import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 import { uniqueCompanySlug } from '@/lib/agencyCompany';
 import { notifyCompanyAdminsOfPendingMember } from '@/lib/agencyCompanyNotify';
 import { grantPartnerFreeTierOnSignup } from '@/lib/partnerStripeGrant';
+import { ensureWelcomePromoCardForUser } from '@/lib/profilePromoCards';
 
 const normalizeEmail = (value: unknown) => String(value || '').toLowerCase().trim();
 
@@ -242,6 +243,10 @@ export async function POST(req: Request) {
           applicantEmail: cleanEmail,
         });
       }
+    }
+
+    if (dbRole === Role.USER) {
+      await ensureWelcomePromoCardForUser(user.id);
     }
 
     let partnerFreeCredits = 0;

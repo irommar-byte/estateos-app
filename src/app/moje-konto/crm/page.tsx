@@ -3,7 +3,7 @@ import PasskeyToggle from "@/components/PasskeyToggle";
 import DealRoom from "@/components/crm/DealRoom";
 import { Check } from "lucide-react";
 import { useUserMode } from '@/contexts/UserModeContext';
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import ProWidget, { AppleClock } from "@/components/ProWidget";
@@ -32,6 +32,7 @@ import DelegatedOffersPanel from "@/components/crm/DelegatedOffersPanel";
 import AgencyTransferModal from "@/components/crm/AgencyTransferModal";
 import ProfileAgencyOfficeCard, { type AgencyMembershipUi } from "@/components/crm/ProfileAgencyOfficeCard";
 import AgencyGrowthBanner from "@/components/crm/AgencyGrowthBanner";
+import PortalImportProfileGuide from "@/components/onboarding/PortalImportProfileGuide";
 import type { PartnerGrowthInsight } from "@/lib/partnerGrowth";
 import {
   buildLegacyRadarUpdateBody,
@@ -1192,6 +1193,11 @@ export default function CRMDashboard() {
 
   return (
     <div className="theme-aware-dashboard crm-dashboard-shell eos-page-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
+      {currentUser?.id ? (
+        <Suspense fallback={null}>
+          <PortalImportProfileGuide profileUserId={Number(currentUser.id)} />
+        </Suspense>
+      ) : null}
       <AnimatePresence>
         {wowPlusType && <WowPlusOverlay wowPlus={c.wowPlus} />}
         {wowType && wowType !== "plus" && (

@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowRight,
+  BadgeCheck,
   Check,
   Clock,
   Crown,
@@ -15,7 +16,10 @@ import {
   X,
 } from 'lucide-react';
 import { useLocale } from '@/contexts/LocaleContext';
-import { getPortalImportProfileGuideDict } from '@/i18n/portalImportProfileGuideDictionary';
+import {
+  getPortalImportProfileGuideDict,
+  type WelcomeGuideMode,
+} from '@/i18n/portalImportProfileGuideDictionary';
 import {
   ESTATEOS_APP_STORE_URL,
   ESTATEOS_PLAY_STORE_URL,
@@ -23,7 +27,22 @@ import {
 } from '@/lib/estateosAppLinks';
 import AppStoreBadgeLink from '@/components/ui/AppStoreBadgeLink';
 
-type StepId = 'pending' | 'investor' | 'search' | 'radar' | 'app';
+type StepId = 'welcome' | 'pending' | 'ecosystem' | 'investor' | 'search' | 'radar' | 'app';
+
+function resolveGuideMode(welcome: string | null): WelcomeGuideMode | null {
+  if (welcome === 'import' || welcome === 'new') return welcome;
+  return null;
+}
+
+function buildSteps(mode: WelcomeGuideMode, wantsRadar: boolean | null, offerId: number): StepId[] {
+  const steps: StepId[] = [];
+  if (mode === 'import' && offerId > 0) steps.push('pending');
+  if (mode === 'new') steps.push('welcome');
+  steps.push('ecosystem', 'investor', 'search');
+  if (wantsRadar === true) steps.push('radar');
+  steps.push('app');
+  return steps;
+}
 
 export default function PortalImportProfileGuide({
   profileUserId,
@@ -31,10 +50,12 @@ export default function PortalImportProfileGuide({
   profileUserId: number;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { locale } = useLocale();
   const dict = getPortalImportProfileGuideDict(locale);
   const welcome = searchParams.get('welcome');
+  const guideMode = resolveGuideMode(welcome);
   const offerId = Number(searchParams.get('offer') || 0);
 
   const [open, setOpen] = useState(false);
@@ -45,7 +66,7 @@ export default function PortalImportProfileGuide({
   const mobile = detectMobileAppContext();
 
   useEffect(() => {
-    if (welcome !== 'import') return;
+    if (!guideMode) return;
     void fetch('/api/user/profile', { credentials: 'include', cache: 'no-store' })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -56,17 +77,16 @@ export default function PortalImportProfileGuide({
         }
       })
       .catch(() => null);
-  }, [welcome, profileUserId]);
+  }, [guideMode, profileUserId]);
 
-  const steps = useMemo((): StepId[] => {
-    const base: StepId[] = ['pending', 'investor', 'search'];
-    if (wantsRadar === true) base.push('radar');
-    base.push('app');
-    return base;
-  }, [wantsRadar]);
+  const steps = useMemo(
+    () => (guideMode ? buildSteps(guideMode, wantsRadar, offerId) : []),
+    [guideMode, wantsRadar, offerId],
+  );
 
-  const step = steps[stepIndex] ?? 'pending';
+  const step = steps[stepIndex] ?? 'ecosystem';
   const total = steps.length;
+  const onCrm = pathname?.startsWith('/moje-konto') ?? false;
 
   const close = useCallback(() => {
     setOpen(false);
@@ -84,16 +104,20 @@ export default function PortalImportProfileGuide({
     setStepIndex((i) => Math.min(i + 1, total - 1));
   };
 
-  if (!open || !isOwner) return null;
+  if (!open || !isOwner || !guideMode || total === 0) return null;
 
-  const panelTips = dict.panelTips.map((tip, i) =>
-    i === 3 && offerId > 0 ? { ...tip, href: `/edytuj-oferte/${offerId}` } : tip,
+  const panelTipsBase = guideMode === 'import' ? dict.panelTipsImport : dict.panelTipsNew;
+  const panelTips = panelTipsBase.map((tip, i) =>
+    guideMode === 'import' && i === 3 && offerId > 0
+      ? { ...tip, href: `/edytuj-oferte/${offerId}` }
+      : tip,
   );
 
   const isMobileApp = mobile.isIOS || mobile.isAndroid;
   const investorBadge = isMobileApp ? dict.investorBadgeApp : dict.investorBadgeWeb;
   const investorBody = isMobileApp ? dict.investorBodyApp : dict.investorBodyWeb;
   const investorPriceNote = isMobileApp ? dict.investorPriceNoteApp : dict.investorPriceNoteWeb;
+  const finishLabel = onCrm ? dict.finishCrm : dict.finish;
 
   return (
     <AnimatePresence>
@@ -124,6 +148,20 @@ export default function PortalImportProfileGuide({
             <p className="mb-5 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600">
               EstateOS™ · {dict.stepOf(stepIndex + 1, total)}
             </p>
+
+            {step === 'welcome' ? (
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-black">
+                  <Sparkles size={12} /> {dict.welcomeBadge}
+                </span>
+                <h2 className="mt-4 text-2xl font-black tracking-tight text-[#141416]">{dict.welcomeTitle}</h2>
+                <p className="mt-3 text-sm leading-relaxed text-[#5c5c66]">{dict.welcomeBody}</p>
+                <p className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-900">
+                  {dict.welcomeCouponHint}
+                </p>
+              </div>
+            ) : null}
+
             {step === 'pending' ? (
               <div>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
@@ -136,6 +174,26 @@ export default function PortalImportProfileGuide({
                 <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                   {dict.pendingHint}
                 </p>
+              </div>
+            ) : null}
+
+            {step === 'ecosystem' ? (
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#141416] px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white">
+                  <BadgeCheck size={12} /> {dict.ecosystemBadge}
+                </span>
+                <h2 className="mt-4 text-2xl font-black tracking-tight text-[#141416]">{dict.ecosystemTitle}</h2>
+                <p className="mt-3 text-sm leading-relaxed text-[#5c5c66]">{dict.ecosystemBody}</p>
+                <ul className="mt-5 space-y-3">
+                  {dict.ecosystemBullets.map((line) => (
+                    <li key={line} className="flex gap-3 text-sm leading-relaxed text-[#5c5c66]">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700">
+                        <Check size={12} strokeWidth={3} />
+                      </span>
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
 
@@ -289,7 +347,7 @@ export default function PortalImportProfileGuide({
               >
                 {stepIndex >= total - 1 ? (
                   <>
-                    <Check size={18} /> {dict.finish}
+                    <Check size={18} /> {finishLabel}
                   </>
                 ) : (
                   <>
