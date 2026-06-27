@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { buildWelcomeEmailHtml, buildWelcomeEmailSubject, sendTransactionalEmail } from '@/lib/email/transactional';
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { createOfferFromOtodomDraft, findExistingImportedOffer } from '@/lib/otodomImportCreate';
+import { buildWelcomeCouponPublicationInput } from '@/lib/otodomImportPublication';
+import { ensureWelcomePromoCardForUser } from '@/lib/profilePromoCards';
 import { peekLastImageInfo } from '@/lib/otodomImportFloorPlan';
 import { notifyAdminsOfferPending } from '@/lib/adminAttentionPush';
 import {
@@ -236,17 +238,24 @@ export async function registerAndImportPortalListing(params: {
     select: MOBILE_USER_SELECT,
   });
 
+  await ensureWelcomePromoCardForUser(user.id);
+
   const floorPeek = peekLastImageInfo(draft);
   const floorPlanChoice =
     floorPeek.suggestedFloorPlanIndex != null
       ? { enabled: true, imageIndex: floorPeek.suggestedFloorPlanIndex }
       : { enabled: false, imageIndex: null as number | null };
 
-  const created = await createOfferFromOtodomDraft(draft, user.id, undefined, {
-    preserveOriginalCopy: true,
-    maxImportImages: MAX_IMPORT_IMAGES,
-    floorPlanImageIndex: floorPlanChoice.enabled ? floorPlanChoice.imageIndex : null,
-  });
+  const created = await createOfferFromOtodomDraft(
+    draft,
+    user.id,
+    buildWelcomeCouponPublicationInput(user.id),
+    {
+      preserveOriginalCopy: true,
+      maxImportImages: MAX_IMPORT_IMAGES,
+      floorPlanImageIndex: floorPlanChoice.enabled ? floorPlanChoice.imageIndex : null,
+    },
+  );
 
   if (!created.ok) {
     await prisma.user.delete({ where: { id: user.id } }).catch(() => null);

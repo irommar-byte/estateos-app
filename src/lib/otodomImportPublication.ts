@@ -1,6 +1,10 @@
 import { prisma } from '@/lib/prisma';
 import { ensureOfferPendingPublicationColumns } from '@/lib/offerPendingPublication';
-import { ensureProfilePromoCardTable, ensureWelcomePromoCardForUser } from '@/lib/profilePromoCards';
+import {
+  ensureProfilePromoCardTable,
+  ensureWelcomePromoCardForUser,
+  welcomePromoCardId,
+} from '@/lib/profilePromoCards';
 
 export type ImportPublicationRedemptionKind = 'PLUS_CREDIT' | 'BONUS_COUPON' | 'PLUS_IAP';
 
@@ -35,6 +39,40 @@ export function publicationInputToRedemption(
     return { source: 'plus_credit' };
   }
   return null;
+}
+
+/** Kupon powitalny — standardowa pierwsza publikacja dla nowego właściciela. */
+export function buildWelcomeCouponPublicationInput(userId: number): OtodomPublicationInput {
+  return {
+    kind: 'FREE_FIRST',
+    bonusCouponId: welcomePromoCardId(userId),
+  };
+}
+
+/**
+ * Rezerwuje publikację kuponem powitalnym (np. import /dolacz lub brak rezerwacji przy akceptacji admina).
+ */
+export async function tryReserveWelcomeCouponPublication(params: {
+  offerId: number;
+  userId: number;
+}): Promise<boolean> {
+  await ensureWelcomePromoCardForUser(params.userId);
+  try {
+    await consumeAndReserveImportPublication({
+      offerId: params.offerId,
+      userId: params.userId,
+      redemption: {
+        source: 'bonus_coupon',
+        couponId: welcomePromoCardId(params.userId),
+      },
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof ImportPublicationError) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 export class ImportPublicationError extends Error {
