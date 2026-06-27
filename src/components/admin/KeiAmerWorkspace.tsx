@@ -1102,8 +1102,8 @@ export default function KeiAmerWorkspace() {
               <p className="text-[10px] text-white/40">
                 Zmienne: <code className="text-emerald-300/80">{"{{location}}"}</code>,{" "}
                 <code className="text-emerald-300/80">{"{{source}}"}</code>,{" "}
-                <code className="text-emerald-300/80">{"{{inviteCta}}"}</code> (ramka z linkiem),{" "}
-                <code className="text-emerald-300/80">{"{{inviteUrl}}"}</code> (sam link).
+                <code className="text-emerald-300/80">{"{{inviteUrl}}"}</code>,{" "}
+                <code className="text-emerald-300/80">{"{{siteUrl}}"}</code>.
               </p>
             </div>
           </div>
