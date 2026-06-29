@@ -2101,6 +2101,394 @@ html.light .eos-modal-panel {
   }
 }
 
+.offer-share-print-portal {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 210mm;
+  pointer-events: none;
+  opacity: 0;
+  z-index: -1;
+}
+
+.offer-share-print-brochure {
+  width: 196mm;
+  margin: 0 auto;
+  background: #fff;
+  color: #141416;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.offer-share-print-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4mm;
+  padding-bottom: 3mm;
+  margin-bottom: 2mm;
+  border-bottom: 1px solid #ddd;
+}
+
+.offer-share-print-brand-left {
+  display: flex;
+  align-items: baseline;
+  gap: 2mm;
+  font-size: 7pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #5c5c66;
+}
+
+.offer-share-print-brand-left strong {
+  font-size: 8pt;
+  color: #141416;
+}
+
+.offer-share-print-ref {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8a6d1f;
+  border: 1px solid rgba(184, 146, 46, 0.35);
+  border-radius: 999px;
+  padding: 1mm 2.5mm;
+}
+
+.offer-share-print-hero img {
+  width: 100%;
+  height: 34mm;
+  object-fit: cover;
+  display: block;
+  border-radius: 2mm;
+}
+
+.offer-share-print-hero-placeholder {
+  height: 34mm;
+  display: grid;
+  place-items: center;
+  background: #ececea;
+  color: #8a8a96;
+  font-size: 9pt;
+  border-radius: 2mm;
+}
+
+.offer-share-print-body {
+  padding-top: 2mm;
+}
+
+.offer-share-print-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2mm;
+  margin-bottom: 2mm;
+}
+
+.offer-share-print-badges span {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1mm 2mm;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  background: #f5f5f3;
+}
+
+.offer-share-print-brochure h1 {
+  margin: 0 0 1mm;
+  font-size: 15pt;
+  line-height: 1.15;
+  font-weight: 800;
+}
+
+.offer-share-print-location {
+  margin: 0 0 2mm;
+  font-size: 9pt;
+  color: #5c5c66;
+}
+
+.offer-share-print-summary {
+  margin: 0 0 1mm;
+  font-size: 8.5pt;
+  color: #5c5c66;
+}
+
+.offer-share-print-price {
+  margin: 2mm 0 0;
+  font-size: 17pt;
+  font-weight: 800;
+  color: #8a6d1f;
+}
+
+.offer-share-print-spec-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5mm;
+  margin-top: 2.5mm;
+}
+
+.offer-share-print-spec-grid div {
+  padding: 1.5mm 2mm;
+  border: 1px solid #e5e5ea;
+  border-radius: 2mm;
+  background: #fafaf8;
+}
+
+.offer-share-print-spec-grid label {
+  display: block;
+  margin-bottom: 0.5mm;
+  font-size: 6pt;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a8a96;
+}
+
+.offer-share-print-spec-grid strong {
+  font-size: 8pt;
+  color: #141416;
+}
+
+.offer-share-print-description {
+  margin-top: 2.5mm;
+  padding-top: 2mm;
+  border-top: 1px solid #e5e5ea;
+}
+
+.offer-share-print-section-title {
+  margin: 0 0 1mm;
+  font-size: 7pt;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8a8a96;
+}
+
+.offer-share-print-description-body {
+  margin: 0;
+  font-size: 8.5pt;
+  line-height: 1.35;
+  color: #3d3d46;
+  display: -webkit-box;
+  -webkit-line-clamp: 9;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.offer-share-print-qr-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 3mm;
+  margin-top: 3mm;
+  padding-top: 2mm;
+  border-top: 1px solid #e5e5ea;
+}
+
+.offer-share-print-qr {
+  width: 22mm;
+  height: 22mm;
+  border: 1px solid rgba(20, 20, 22, 0.12);
+  border-radius: 2mm;
+  background: #fff;
+}
+
+.offer-share-print-qr-title {
+  margin: 0 0 1mm;
+  font-size: 8pt;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8a6d1f;
+}
+
+.offer-share-print-qr-caption {
+  margin: 0 0 1mm;
+  font-size: 8pt;
+  line-height: 1.35;
+  color: #3d3d46;
+}
+
+.offer-share-print-qr-url {
+  margin: 0;
+  font-size: 6.5pt;
+  line-height: 1.35;
+  color: #6b6b76;
+  word-break: break-all;
+}
+
+.offer-share-agent-print-card {
+  margin-top: 3mm;
+  page-break-inside: avoid;
+}
+
+.offer-share-agent-print-inner {
+  display: grid;
+  grid-template-columns: 22mm 1fr 20mm auto;
+  gap: 3mm;
+  align-items: center;
+  padding: 4mm 5mm;
+  border-radius: 4mm;
+  border: 1px solid #d4c08a;
+  background: linear-gradient(135deg, #fffdf7 0%, #f8f4ea 55%, #f3efe6 100%);
+  color: #1a1a1e;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65);
+}
+
+.offer-share-agent-print-photo {
+  width: 22mm;
+  height: 22mm;
+  border-radius: 3mm;
+  overflow: hidden;
+  border: 1px solid rgba(184, 146, 46, 0.35);
+  background: #ece7dc;
+  display: grid;
+  place-items: center;
+}
+
+.offer-share-agent-print-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.offer-share-agent-photo-initial {
+  font-size: 11mm;
+  font-weight: 700;
+  color: #8a6d1f;
+  line-height: 1;
+}
+
+.offer-share-agent-print-kicker {
+  margin: 0 0 1mm;
+  font-size: 7pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8a6d1f;
+  font-weight: 700;
+}
+
+.offer-share-agent-print-name {
+  margin: 0 0 1mm;
+  font-size: 13pt;
+  line-height: 1.15;
+  font-weight: 700;
+  color: #141416;
+}
+
+.offer-share-agent-print-company {
+  margin: 0 0 2mm;
+  font-size: 9.5pt;
+  font-weight: 600;
+  color: #3d3d46;
+}
+
+.offer-share-agent-print-contact {
+  margin: 0;
+  font-size: 8.5pt;
+  line-height: 1.45;
+  color: #5c5c66;
+}
+
+.offer-share-agent-print-ref {
+  margin-top: 2mm;
+  font-size: 6.5pt;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a6d1f;
+}
+
+.offer-share-agent-print-qr-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1mm;
+}
+
+.offer-share-agent-print-qr {
+  width: 18mm;
+  height: 18mm;
+  border-radius: 2mm;
+  border: 1px solid rgba(20, 20, 22, 0.12);
+  background: #fff;
+  object-fit: contain;
+}
+
+.offer-share-agent-print-qr-label {
+  font-size: 5.5pt;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b6b76;
+  text-align: center;
+  line-height: 1.25;
+  max-width: 20mm;
+  margin: 0;
+}
+
+.offer-share-agent-print-brand {
+  text-align: right;
+  min-width: 42mm;
+}
+
+.offer-share-agent-print-badge {
+  display: inline-block;
+  margin: 0 0 2mm;
+  padding: 0.8mm 2.5mm;
+  border-radius: 999px;
+  border: 1px solid rgba(184, 146, 46, 0.45);
+  background: rgba(184, 146, 46, 0.12);
+  color: #8a6d1f;
+  font-size: 7pt;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.offer-share-agent-print-brand strong {
+  display: block;
+  font-size: 10pt;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #141416;
+}
+
+.offer-share-agent-print-brand p {
+  margin: 0;
+  font-size: 7pt;
+  line-height: 1.35;
+  color: #6b6b76;
+  max-width: 42mm;
+  margin-left: auto;
+}
+
+@media print {
+  body.offer-share-printing > *:not(#offer-share-print-portal) {
+    display: none !important;
+  }
+
+  body.offer-share-printing #offer-share-print-portal {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: auto !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    z-index: auto !important;
+  }
+
+  body.offer-share-printing {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 7mm;
+  }
+}
+
 .eos-crm-tab-scroller {
   scroll-snap-type: x proximity;
   scroll-padding-inline: 12px;

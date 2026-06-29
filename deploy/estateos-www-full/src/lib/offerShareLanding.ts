@@ -64,6 +64,8 @@ export type OfferSharePublisher = {
   displayName: string;
   personName: string | null;
   companyName: string | null;
+  phone: string | null;
+  email: string | null;
   imageUrl: string | null;
   isAgent: boolean;
   isPresentingAgent: boolean;
@@ -175,11 +177,22 @@ export async function loadOfferShareCard(
     const reviewCount = Number(reviewAgg._count._all || 0);
     const avgRaw = reviewAgg._avg.rating;
 
+    const phone =
+      presentingAgent?.phone ||
+      (userLike.phone != null ? String(userLike.phone).trim() : '') ||
+      null;
+    const email =
+      presentingAgent?.email ||
+      (userLike.email != null ? String(userLike.email).trim() : '') ||
+      null;
+
     publisher = {
       userId: uid,
       displayName,
       personName,
       companyName,
+      phone: phone || null,
+      email: email || null,
       imageUrl: avatar,
       isAgent: isAgentOrAgencySeller(userLike),
       isPresentingAgent: publisherSource.isPresentingAgent,

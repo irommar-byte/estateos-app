@@ -4,6 +4,11 @@ import { importOfferFromUrl, isSupportedImportOfferUrl } from "@/lib/otodomImpor
 import { createOfferFromOtodomDraft } from "@/lib/otodomImportCreate";
 import { requireOtodomImporter } from "@/lib/otodomImportAuth";
 import type { OtodomPublicationInput } from "@/lib/otodomImportPublication";
+import {
+  applyImportDraftPatch,
+  filterImportDraftImages,
+  type PortalImportPatch,
+} from "@/lib/portalImportEnrich";
 
 function isOtodomDraft(value: unknown): value is OtodomImportDraft {
   if (!value || typeof value !== "object") return false;
@@ -12,6 +17,33 @@ function isOtodomDraft(value: unknown): value is OtodomImportDraft {
     (row.source === "OTODOM" || row.source === "OLX" || row.source === "NIERUCHOMOSCI_ONLINE") &&
     typeof row.externalId === "number"
   );
+}
+
+function parseImportPatch(body: Record<string, unknown>): PortalImportPatch | undefined {
+  const patch = body?.patch;
+  if (!patch || typeof patch !== "object") return undefined;
+  const row = patch as Record<string, unknown>;
+  return {
+    city: row.city != null ? String(row.city) : undefined,
+    district: row.district != null ? String(row.district) : undefined,
+    price: row.price != null ? Number(row.price) : undefined,
+    area: row.area != null ? Number(row.area) : undefined,
+  };
+}
+
+function parseSelectedImageIndices(body: Record<string, unknown>): number[] | null {
+  if (!Array.isArray(body?.selectedImageIndices)) return null;
+  const indices = body.selectedImageIndices
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value >= 0);
+  return indices.length ? indices : null;
+}
+
+function parseFloorPlanImageIndex(body: Record<string, unknown>): number | null | undefined {
+  if (body?.floorPlanImageIndex === null) return null;
+  if (body?.floorPlanImageIndex === undefined) return undefined;
+  const index = Number(body.floorPlanImageIndex);
+  return Number.isInteger(index) && index >= 0 ? index : undefined;
 }
 
 function parsePublicationBody(body: Record<string, unknown>): OtodomPublicationInput | null {
@@ -56,6 +88,13 @@ export async function POST(req: Request) {
       );
     }
 
+    draft = applyImportDraftPatch(draft, parseImportPatch(body as Record<string, unknown>));
+
+    const selectedImageIndices = parseSelectedImageIndices(body as Record<string, unknown>);
+    const floorPlanImageIndex = parseFloorPlanImageIndex(body as Record<string, unknown>);
+    const filtered = filterImportDraftImages(draft, selectedImageIndices, floorPlanImageIndex);
+    draft = filtered.draft;
+
     if (body?.rightsConfirmed !== true) {
       return NextResponse.json(
         { error: "Wymagane oświadczenie o posiadaniu praw do publikacji danych i materiałów." },
@@ -75,7 +114,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await createOfferFromOtodomDraft(draft, user.id, publication);
+    const result = await createOfferFromOtodomDraft(draft, user.id, publication, {
+      floorPlanImageIndex: filtered.floorPlanImageIndex,
+      lastImageFloorPlan: filtered.floorPlanImageIndex == null ? false : undefined,
+    });
 
     if (!result.ok) {
       return NextResponse.json(

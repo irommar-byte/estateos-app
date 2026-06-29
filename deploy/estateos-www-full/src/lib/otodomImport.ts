@@ -812,6 +812,91 @@ function parseNierOnlineAdminFee(html: string): number | null {
   return amount;
 }
 
+function parseNierOnlineArea(
+  html: string,
+  normalizedHtml: string,
+  title: string,
+  descriptionText: string,
+): number | null {
+  const fromList = (label: string) => {
+    const raw = extractNierOnlineListValue(html, label);
+    if (!raw) return null;
+    return (
+      parseNumber(raw.match(/([\d\s.,]+)\s*m(?:2|²|kw)/i)?.[1]) ??
+      parseNumber(raw.replace(/[^\d\s.,]/g, ' '))
+    );
+  };
+
+  const areaFromStructured =
+    fromList('Powierzchnia użytkowa') ??
+    fromList('Powierzchnia') ??
+    fromList('Powierzchnia całkowita') ??
+    fromList('Powierzchnia mieszkania');
+
+  const areaFromLabel = parseNumber(
+    normalizedHtml.match(/powierzchni[aey]?\s*(?:użytkowa|mieszkania|całkowita)?[:\s]*([\d\s.,]+)\s*m(?:2|²|kw)/i)?.[1],
+  );
+  const areaFromTable = parseNumber(
+    normalizedHtml.match(/\|\s*([\d\s.,]{1,12})\s*m(?:2|²|kw)\s*\|/i)?.[1],
+  );
+  const areaFromRange = parseNumber(
+    normalizedHtml.match(/metra(?:że|ze)\s*(?:od)?\s*([\d\s.,]+)\s*(?:do\s*[\d\s.,]+)?\s*m(?:2|²|kw)/i)?.[1],
+  );
+  const areaFromAny = parseNumber(
+    normalizedHtml.match(/([\d]{1,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
+  );
+  const areaFromTitle = parseNumber(
+    decodeImportHtmlText(title).match(/([\d]{1,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
+  );
+  const areaFromDescription = parseNumber(
+    decodeImportHtmlText(descriptionText).match(/([\d]{1,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
+  );
+
+  return (
+    areaFromStructured ??
+    areaFromLabel ??
+    areaFromTable ??
+    areaFromRange ??
+    areaFromAny ??
+    areaFromTitle ??
+    areaFromDescription
+  );
+}
+
+function parseNierOnlineDescription(html: string, fallbackMeta: string): { text: string; html: string } {
+  const candidates = [
+    html.match(/<div[^>]+class="[^"]*ad-description[^"]*"[^>]*>([\s\S]*?)<\/div>/i)?.[1],
+    html.match(/<section[^>]+class="[^"]*description[^"]*"[^>]*>([\s\S]*?)<\/section>/i)?.[1],
+    html.match(/<div[^>]+id="description"[^>]*>([\s\S]*?)<\/div>/i)?.[1],
+    html.match(/<div[^>]+class="[^"]*offer-description[^"]*"[^>]*>([\s\S]*?)<\/div>/i)?.[1],
+  ].filter(Boolean) as string[];
+
+  for (const raw of candidates) {
+    const text = stripHtml(decodeImportHtmlText(raw));
+    if (text.length >= 24) {
+      const paragraphs = text
+        .split(/\n{2,}/)
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map((p) => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
+        .join('');
+      return { text, html: paragraphs || `<p>${text}</p>` };
+    }
+  }
+
+  const meta = String(fallbackMeta || '').trim();
+  return {
+    text: meta,
+    html: meta ? `<p>${meta}</p>` : '',
+  };
+}
+
+function parseNierOnlineListNumber(html: string, label: string): number | null {
+  const raw = extractNierOnlineListValue(html, label);
+  if (!raw) return null;
+  return parseNumber(raw.replace(/[^\d\s.,]/g, ' '));
+}
+
 function parseNierOnlineHeating(html: string): string | null {
   const media = extractNierOnlineListValue(html, 'Media');
   if (!media) {
@@ -835,8 +920,9 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
 
   const descriptionMeta =
     html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)?.[1] || '';
-  const descriptionText = String(descriptionMeta).trim();
-  const descriptionHtml = descriptionText ? `<p>${descriptionText}</p>` : '';
+  const parsedDescription = parseNierOnlineDescription(html, descriptionMeta);
+  const descriptionText = parsedDescription.text;
+  const descriptionHtml = parsedDescription.html;
 
   const canonical =
     html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1] || sourceUrl;
@@ -879,35 +965,20 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
     priceMain ??
     priceCandidates[0] ??
     parseNumber(normalizedHtml.match(/price["']?\s*[:=]\s*["']?(\d[\d\s.,]*)/i)?.[1]);
-  const areaFromLabel = parseNumber(
-    normalizedHtml.match(/powierzchni[aey]?\s*(?:użytkowa|mieszkania|całkowita)?[:\s]*([\d\s.,]+)\s*m(?:2|²|kw)/i)?.[1]
-  );
-  const areaFromTable = parseNumber(
-    normalizedHtml.match(/\|\s*([\d\s.,]{2,12})\s*m(?:2|²|kw)\s*\|/i)?.[1]
-  );
-  const areaFromRange = parseNumber(
-    normalizedHtml.match(/metra(?:że|ze)\s*(?:od)?\s*([\d\s.,]+)\s*(?:do\s*[\d\s.,]+)?\s*m(?:2|²|kw)/i)?.[1]
-  );
-  const areaFromAny = parseNumber(
-    normalizedHtml.match(/([\d]{2,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1]
-  );
-  const areaFromTitle = parseNumber(
-    decodeImportHtmlText(title).match(/([\d]{2,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1]
-  );
-  const areaFromDescription = parseNumber(
-    decodeImportHtmlText(descriptionText).match(/([\d]{2,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1]
-  );
-  const area = areaFromLabel ?? areaFromTable ?? areaFromRange ?? areaFromAny;
-  const plotArea = parseNumber(
-    html.match(/powierzchni[aey]?\s*dzia[łl]ki[:\s]*([\d\s.,]+)\s*m(?:2|²)/i)?.[1]
-  );
-  const areaResolved = area ?? areaFromTitle ?? areaFromDescription;
+  const areaResolved = parseNierOnlineArea(html, normalizedHtml, title, descriptionText);
+  const plotArea =
+    parseNierOnlineListNumber(html, 'Powierzchnia działki') ??
+    parseNumber(html.match(/powierzchni[aey]?\s*dzia[łl]ki[:\s]*([\d\s.,]+)\s*m(?:2|²)/i)?.[1]);
   const rooms =
+    parseNierOnlineListNumber(html, 'Liczba pokoi') ??
+    parseNierOnlineListNumber(html, 'Pokoje') ??
     parseNumber(normalizedHtml.match(/(\d+)\s*pok(?:ó|o)j/i)?.[1]) ??
     parseNumber(normalizedHtml.match(/(\d+)\s*pok\./i)?.[1]) ??
     parseNumber(normalizedHtml.match(/liczba\s+pokoi[:\s]*([\d]+)/i)?.[1]) ??
     parseNumber(normalizedHtml.match(/(\d+)\s*pomieszczeni(?:a|e)/i)?.[1]);
+  const floorFromList = extractNierOnlineListValue(html, 'Piętro');
   const floor =
+    parseFloor(floorFromList) ??
     parseFloor(html.match(/pi(?:ę|e)tro[:\s]*([\w\/-]+)/i)?.[1]) ??
     parseFloor(normalizedHtml.match(/pi(?:ę|e)tro\s*([0-9]+)\s*\/\s*[0-9]+/i)?.[1]);
   const yearBuilt =

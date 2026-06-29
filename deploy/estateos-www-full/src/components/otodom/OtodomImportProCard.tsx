@@ -1,10 +1,13 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { ExternalLink, Link2, Loader2, PlusCircle, Search } from "lucide-react";
+import { ExternalLink, Link2, Loader2, PlusCircle, Search, Sparkles } from "lucide-react";
 import type { OtodomImportDraft } from "@/lib/otodomImport";
 import type { OtodomPresentationCopy } from "@/lib/otodomImportRewrite";
+import type { ImportDraftIssue } from "@/lib/importDraftValidate";
+import { collectOtodomImportDraftIssues } from "@/lib/importDraftValidate";
+import { applyImportDraftPatch } from "@/lib/portalImportEnrich";
 import { pasteHttpUrlFromClipboard } from "@/lib/clipboardPaste";
 import ProToolBadge from "@/components/crm/ProToolBadge";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -15,6 +18,9 @@ import PublicationChoiceModal, {
 } from "@/components/publication/PublicationChoiceModal";
 import OtodomCreateConfirmModal from "@/components/admin/OtodomCreateConfirmModal";
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
+import PortalImportImagePicker, {
+  type PortalImportFloorPlanSelection,
+} from "@/components/otodom/PortalImportImagePicker";
 import EosModal from "@/components/ui/EosModal";
 
 const OtodomImportLocationPreview = dynamic(
@@ -29,6 +35,43 @@ const OtodomImportLocationPreview = dynamic(
   },
 );
 
+type ImportPatchForm = {
+  city: string;
+  district: string;
+  price: string;
+  area: string;
+};
+
+type ImportImagePeek = {
+  imageCount: number;
+  imageUrls: string[];
+  suggestedFloorPlanIndex: number | null;
+};
+
+function issueNeedsField(issues: ImportDraftIssue[], field: string): boolean {
+  return issues.some((issue) => issue.field === field);
+}
+
+function importPatchSatisfiesIssues(issues: ImportDraftIssue[], patch: ImportPatchForm): boolean {
+  for (const issue of issues) {
+    if (issue.field === "city") {
+      if (issue.kind === "invalid" && !patch.city.trim()) return false;
+      if (!patch.city.trim() && !patch.district.trim()) return false;
+      continue;
+    }
+    if (issue.field === "price") {
+      if (!(Number(patch.price) > 0)) return false;
+      continue;
+    }
+    if (issue.field === "area") {
+      if (!(Number(patch.area) > 0)) return false;
+      continue;
+    }
+    if (issue.field === "coords") continue;
+  }
+  return true;
+}
+
 export default function OtodomImportProCard() {
   const { locale } = useLocale();
   const copy = getDictionary(locale).crm.proTools;
@@ -38,6 +81,19 @@ export default function OtodomImportProCard() {
   const [error, setError] = useState("");
   const [draft, setDraft] = useState<OtodomImportDraft | null>(null);
   const [presentation, setPresentation] = useState<OtodomPresentationCopy | null>(null);
+  const [previewIssues, setPreviewIssues] = useState<ImportDraftIssue[]>([]);
+  const [imagePeek, setImagePeek] = useState<ImportImagePeek | null>(null);
+  const [importPatch, setImportPatch] = useState<ImportPatchForm>({
+    city: "",
+    district: "",
+    price: "",
+    area: "",
+  });
+  const [selectedImages, setSelectedImages] = useState<Set<number>>(new Set());
+  const [floorPlan, setFloorPlan] = useState<PortalImportFloorPlanSelection>({
+    enabled: false,
+    imageIndex: 0,
+  });
   const [creating, setCreating] = useState(false);
   const [createMessage, setCreateMessage] = useState("");
   const [createError, setCreateError] = useState("");
@@ -59,6 +115,36 @@ export default function OtodomImportProCard() {
     setCreatedLinks(null);
     setPendingRedemption(null);
   };
+
+  const resetPreviewState = () => {
+    setPreviewIssues([]);
+    setImagePeek(null);
+    setImportPatch({ city: "", district: "", price: "", area: "" });
+    setSelectedImages(new Set());
+    setFloorPlan({ enabled: false, imageIndex: 0 });
+  };
+
+  const mergedDraft = useMemo(() => {
+    if (!draft) return null;
+    return applyImportDraftPatch(draft, {
+      city: importPatch.city.trim() || undefined,
+      district: importPatch.district.trim() || undefined,
+      price: importPatch.price.trim() ? Number(importPatch.price) : undefined,
+      area: importPatch.area.trim() ? Number(importPatch.area) : undefined,
+    });
+  }, [draft, importPatch]);
+
+  const remainingIssues = useMemo(() => {
+    if (!mergedDraft) return [];
+    return collectOtodomImportDraftIssues(mergedDraft);
+  }, [mergedDraft]);
+
+  const canProceedToPayment =
+    Boolean(mergedDraft) &&
+    selectedImages.size > 0 &&
+    (remainingIssues.length === 0 || importPatchSatisfiesIssues(previewIssues, importPatch));
+
+  const selectedImageCount = selectedImages.size;
 
   const loadWallet = useCallback(async () => {
     const res = await fetch(`/api/user/publication-wallet?locale=${locale}`, { cache: "no-store" });
@@ -90,6 +176,7 @@ export default function OtodomImportProCard() {
     setError("");
     setDraft(null);
     setPresentation(null);
+    resetPreviewState();
     resetCreateState();
     try {
       const res = await fetch("/api/otodom-import", {
@@ -103,8 +190,30 @@ export default function OtodomImportProCard() {
         setError(data?.error || `Błąd importu (${res.status}).`);
         return;
       }
-      setDraft(data.draft ?? null);
+      const nextDraft = (data.draft ?? null) as OtodomImportDraft | null;
+      const peek = (data.imagePeek ?? null) as ImportImagePeek | null;
+      const issues = Array.isArray(data.issues) ? (data.issues as ImportDraftIssue[]) : [];
+
+      setDraft(nextDraft);
       setPresentation(data.presentation ?? null);
+      setPreviewIssues(issues);
+      setImagePeek(peek);
+
+      if (nextDraft) {
+        const urls = peek?.imageUrls?.length ? peek.imageUrls : nextDraft.imageUrls;
+        setSelectedImages(new Set(urls.map((_, index) => index)));
+        const suggested = peek?.suggestedFloorPlanIndex;
+        setFloorPlan({
+          enabled: suggested != null,
+          imageIndex: suggested ?? Math.max(urls.length - 1, 0),
+        });
+        setImportPatch({
+          city: nextDraft.city || "",
+          district: nextDraft.district || "",
+          price: nextDraft.price != null ? String(nextDraft.price) : "",
+          area: nextDraft.area != null ? String(nextDraft.area) : "",
+        });
+      }
     } catch {
       setError("Błąd połączenia z serwerem.");
     } finally {
@@ -113,7 +222,7 @@ export default function OtodomImportProCard() {
   };
 
   const startPaidImport = async () => {
-    if (!draft) return;
+    if (!mergedDraft || !canProceedToPayment) return;
     try {
       await loadWallet();
       setPubOpen(true);
@@ -123,7 +232,11 @@ export default function OtodomImportProCard() {
   };
 
   const handleCreate = async () => {
-    if (!draft || !pendingRedemption) return;
+    if (!mergedDraft || !pendingRedemption) return;
+    const selectedImageIndices = [...selectedImages].sort((a, b) => a - b);
+    const floorPlanImageIndex =
+      floorPlan.enabled && selectedImages.has(floorPlan.imageIndex) ? floorPlan.imageIndex : null;
+
     setCreating(true);
     setCreateError("");
     setCreateMessage("");
@@ -134,7 +247,15 @@ export default function OtodomImportProCard() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          draft,
+          draft: mergedDraft,
+          patch: {
+            city: importPatch.city.trim() || undefined,
+            district: importPatch.district.trim() || undefined,
+            price: importPatch.price.trim() ? Number(importPatch.price) : undefined,
+            area: importPatch.area.trim() ? Number(importPatch.area) : undefined,
+          },
+          selectedImageIndices,
+          floorPlanImageIndex,
           rightsConfirmed: true,
           publication: pendingRedemption,
         }),
@@ -230,29 +351,72 @@ export default function OtodomImportProCard() {
             </p>
           ) : null}
 
-          {draft ? (
+          {draft && mergedDraft ? (
             <div className="space-y-4">
               <div className="eos-modal-panel p-4">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">{copy.importPreviewLabel}</p>
                 <p className="mt-2 text-sm font-semibold text-[var(--eos-text)]">
-                  {presentation?.title ?? draft.title}
+                  {presentation?.title ?? mergedDraft.title}
                 </p>
-                      <p className="mt-1 text-xs text-[var(--eos-muted)]">
-                        {draft.city}
-                        {draft.district ? ` · ${draft.district}` : ""} · {draft.price != null ? `${draft.price} PLN` : ""}
-                        {" · "}
-                        {draft.propertyType === "PLOT"
-                          ? "Działka"
-                          : draft.propertyType === "HOUSE"
-                            ? "Dom"
-                            : draft.propertyType === "COMMERCIAL"
-                              ? "Lokal użytkowy"
-                              : "Mieszkanie"}
-                      </p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">
+                  {mergedDraft.city}
+                  {mergedDraft.district ? ` · ${mergedDraft.district}` : ""}
+                  {mergedDraft.price != null ? ` · ${mergedDraft.price} PLN` : ""}
+                  {mergedDraft.area != null ? ` · ${mergedDraft.area} m²` : ""}
+                  {" · "}
+                  {mergedDraft.propertyType === "PLOT"
+                    ? "Działka"
+                    : mergedDraft.propertyType === "HOUSE"
+                      ? "Dom"
+                      : mergedDraft.propertyType === "COMMERCIAL"
+                        ? "Lokal użytkowy"
+                        : "Mieszkanie"}
+                </p>
               </div>
+
+              {(issueNeedsField(previewIssues, "price") || issueNeedsField(previewIssues, "area")) && (
+                <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4 space-y-3">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                    Uzupełnij brakujące dane zanim opublikujesz ofertę.
+                  </p>
+                  {issueNeedsField(previewIssues, "price") ? (
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
+                        Cena (PLN)
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={importPatch.price}
+                        onChange={(e) => setImportPatch((prev) => ({ ...prev, price: e.target.value }))}
+                        className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] px-3 py-2.5 text-sm"
+                      />
+                    </label>
+                  ) : null}
+                  {issueNeedsField(previewIssues, "area") ? (
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
+                        Metraż (m²)
+                      </span>
+                      <input
+                        type="number"
+                        min={1}
+                        step="0.1"
+                        value={importPatch.area}
+                        onChange={(e) => setImportPatch((prev) => ({ ...prev, area: e.target.value }))}
+                        className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] px-3 py-2.5 text-sm"
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              )}
 
               {presentation ? (
                 <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-300">
+                    <Sparkles size={12} />
+                    {presentation.rewrittenByAi ? "Opis przepisany przez AI" : "Podgląd opisu"}
+                  </div>
                   <OfferDescriptionBody
                     description={presentation.descriptionHtml}
                     className="max-h-40 overflow-y-auto text-sm text-[var(--eos-muted)]"
@@ -260,23 +424,62 @@ export default function OtodomImportProCard() {
                 </div>
               ) : null}
 
-              {draft.lat != null && draft.lng != null ? (
+              <PortalImportImagePicker
+                imageUrls={imagePeek?.imageUrls?.length ? imagePeek.imageUrls : mergedDraft.imageUrls}
+                selectedIndices={selectedImages}
+                suggestedFloorPlanIndex={imagePeek?.suggestedFloorPlanIndex ?? null}
+                floorPlan={floorPlan}
+                onToggleImage={(index) => {
+                  setSelectedImages((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(index)) {
+                      next.delete(index);
+                      if (floorPlan.enabled && floorPlan.imageIndex === index) {
+                        setFloorPlan((fp) => ({ ...fp, enabled: false }));
+                      }
+                    } else {
+                      next.add(index);
+                    }
+                    return next;
+                  });
+                }}
+                onSelectFloorPlan={(index) => {
+                  setSelectedImages((prev) => new Set(prev).add(index));
+                  setFloorPlan({ enabled: true, imageIndex: index });
+                }}
+                onToggleFloorPlan={(enabled) => {
+                  setFloorPlan((prev) => ({
+                    enabled,
+                    imageIndex: enabled ? prev.imageIndex : prev.imageIndex,
+                  }));
+                }}
+              />
+
+              {mergedDraft.lat != null && mergedDraft.lng != null ? (
                 <OtodomImportLocationPreview
-                  lat={draft.lat}
-                  lng={draft.lng}
-                  title={draft.title}
-                  street={draft.street}
-                  city={draft.city}
-                  district={draft.district}
-                  previewImageUrl={draft.imageUrls[0] ?? null}
+                  lat={mergedDraft.lat}
+                  lng={mergedDraft.lng}
+                  title={mergedDraft.title}
+                  street={mergedDraft.street}
+                  city={mergedDraft.city}
+                  district={mergedDraft.district}
+                  previewImageUrl={(imagePeek?.imageUrls?.[0] ?? mergedDraft.imageUrls[0]) || null}
                   showPin
                 />
+              ) : null}
+
+              {!canProceedToPayment ? (
+                <p className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+                  {selectedImages.size === 0
+                    ? "Zaznacz co najmniej jedno zdjęcie do importu."
+                    : "Uzupełnij wymagane pola powyżej, aby kontynuować."}
+                </p>
               ) : null}
 
               <button
                 type="button"
                 onClick={() => void startPaidImport()}
-                disabled={creating}
+                disabled={creating || !canProceedToPayment}
                 className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-emerald-500/40 bg-emerald-500/10 py-4 text-xs font-black uppercase tracking-wider text-emerald-600 shadow-[0_12px_32px_rgba(16,185,129,0.12)] transition-colors hover:bg-emerald-500/15 disabled:opacity-60 dark:text-emerald-400"
               >
                 <PlusCircle size={16} />
@@ -342,8 +545,8 @@ export default function OtodomImportProCard() {
 
       <OtodomCreateConfirmModal
         open={confirmOpen}
-        title={presentation?.title ?? draft?.title ?? copy.importSourceOfferFallback}
-        imageCount={draft?.imageCount ?? 0}
+        title={presentation?.title ?? mergedDraft?.title ?? draft?.title ?? copy.importSourceOfferFallback}
+        imageCount={selectedImageCount}
         confirming={creating}
         variant="pro"
         onCancel={() => setConfirmOpen(false)}

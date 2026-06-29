@@ -19,6 +19,8 @@ import OfferShareOpenInAppButton from '@/components/offer/OfferShareOpenInAppBut
 import AppStoreBadgeLink from '@/components/ui/AppStoreBadgeLink';
 import AppointmentModal from '@/components/AppointmentModal';
 import OfferShareMessageModal from '@/components/offer/OfferShareMessageModal';
+import OfferSharePrintActions from '@/components/offer/OfferSharePrintActions';
+import OfferSharePrintBrochure from '@/components/offer/OfferSharePrintBrochure';
 import { loadOfferShareIntent, resumeOfferShareIntent } from '@/lib/offerShareIntent';
 
 export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
@@ -207,6 +209,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
                   <Copy size={14} />
                   {copied ? 'Skopiowano link' : 'Kopiuj link wizytówki'}
                 </button>
+                <OfferSharePrintActions card={card} />
               </div>
             </div>
 
@@ -279,6 +282,8 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
           </p>
         </div>
       ) : null}
+
+      <OfferSharePrintBrochure card={card} />
     </main>
   );
 }

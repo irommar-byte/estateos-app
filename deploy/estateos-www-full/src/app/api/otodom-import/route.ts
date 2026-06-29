@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { importOfferFromUrl, isSupportedImportOfferUrl } from "@/lib/otodomImport";
 import { buildOtodomPresentationCopy } from "@/lib/otodomImportRewrite";
 import { requireOtodomImporter } from "@/lib/otodomImportAuth";
+import { collectOtodomImportDraftIssues } from "@/lib/importDraftValidate";
+import { enrichOtodomImportDraft } from "@/lib/portalImportEnrich";
+import { peekLastImageInfo } from "@/lib/otodomImportFloorPlan";
 
 export async function POST(req: Request) {
   try {
@@ -25,9 +28,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const draft = await importOfferFromUrl(url);
+    const rawDraft = await importOfferFromUrl(url);
+    const draft = await enrichOtodomImportDraft(rawDraft);
     const presentation = await buildOtodomPresentationCopy(draft);
-    return NextResponse.json({ ok: true, draft, presentation });
+    const issues = collectOtodomImportDraftIssues(draft);
+    const imagePeek = peekLastImageInfo(draft);
+    return NextResponse.json({ ok: true, draft, presentation, issues, imagePeek });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Import oferty nie powiódł się.";
     return NextResponse.json({ error: message }, { status: 422 });
