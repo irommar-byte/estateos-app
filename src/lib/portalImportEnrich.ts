@@ -153,3 +153,36 @@ export function applyImportDraftPatch(draft: OtodomImportDraft, patch?: PortalIm
         : draft.area,
   };
 }
+
+export function filterImportDraftImages(
+  draft: OtodomImportDraft,
+  selectedImageIndices: number[] | null | undefined,
+  floorPlanImageIndex: number | null | undefined,
+): { draft: OtodomImportDraft; floorPlanImageIndex: number | null } {
+  if (!selectedImageIndices?.length) {
+    return { draft, floorPlanImageIndex: floorPlanImageIndex ?? null };
+  }
+
+  const sorted = [...new Set(selectedImageIndices)]
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < draft.imageUrls.length)
+    .sort((a, b) => a - b);
+
+  if (!sorted.length) {
+    return { draft, floorPlanImageIndex: floorPlanImageIndex ?? null };
+  }
+
+  const imageUrls = sorted.map((index) => draft.imageUrls[index]).filter(Boolean);
+  let mappedFloorPlan: number | null = null;
+  if (floorPlanImageIndex != null && sorted.includes(floorPlanImageIndex)) {
+    mappedFloorPlan = sorted.indexOf(floorPlanImageIndex);
+  }
+
+  return {
+    draft: {
+      ...draft,
+      imageUrls,
+      imageCount: imageUrls.length,
+    },
+    floorPlanImageIndex: mappedFloorPlan,
+  };
+}
