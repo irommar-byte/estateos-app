@@ -4,12 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { getPresentationFlowDictionary } from "@/i18n/presentationFlowDictionary";
 import type { PendingPresentationPayload } from "@/lib/appointments/presentationFlowPending";
+import { PRESENTATION_FLOW_OPEN_EVENT } from "@/lib/presentationFlowEvents";
 import PresentationOutcomeModal from "./PresentationOutcomeModal";
 import PresentationReviewModal from "./PresentationReviewModal";
 
 /**
  * Globalny orchestrator: domknięcie wizyty → ocena kontrahenta.
- * Montowany w Navbar (cała strona WWW).
+ * Montowany w root layout (cała strona WWW).
  */
 export default function PresentationFlowOrchestrator() {
   const { locale } = useLocale();
@@ -39,6 +40,15 @@ export default function PresentationFlowOrchestrator() {
       clearTimeout(timer);
       clearInterval(interval);
     };
+  }, [refresh]);
+
+  useEffect(() => {
+    const onOpenRequest = () => {
+      setDismissedId(null);
+      void refresh();
+    };
+    window.addEventListener(PRESENTATION_FLOW_OPEN_EVENT, onOpenRequest);
+    return () => window.removeEventListener(PRESENTATION_FLOW_OPEN_EVENT, onOpenRequest);
   }, [refresh]);
 
   const handleClose = () => {
