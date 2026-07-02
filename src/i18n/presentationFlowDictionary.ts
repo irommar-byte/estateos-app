@@ -66,7 +66,9 @@ export type PresentationFlowDictionary = {
   hints: {
     navbarPending: string;
     crmBanner: string;
+    crmBannerOpen: string;
     dealRoomBanner: string;
+    dealRoomBannerOpen: string;
   };
 };
 
@@ -141,7 +143,9 @@ const pl: PresentationFlowDictionary = {
   hints: {
     navbarPending: 'Masz zaległe podsumowanie wizyty lub ocenę kontrahenta.',
     crmBanner: 'Uzupełnij wynik prezentacji — wpływa na statystyki i opinie.',
+    crmBannerOpen: 'Otwórz formularz wyniku prezentacji',
     dealRoomBanner: 'Po terminie prezentacji domknij wizytę i oceń kontrahenta.',
+    dealRoomBannerOpen: 'Otwórz podsumowanie wizyty',
   },
 };
 
@@ -216,7 +220,9 @@ const en: PresentationFlowDictionary = {
   hints: {
     navbarPending: 'You have a pending viewing summary or counterparty rating.',
     crmBanner: 'Complete the viewing outcome — it drives stats and reviews.',
+    crmBannerOpen: 'Open viewing outcome form',
     dealRoomBanner: 'After the viewing slot, close the visit and rate your counterparty.',
+    dealRoomBannerOpen: 'Open viewing summary',
   },
 };
 
