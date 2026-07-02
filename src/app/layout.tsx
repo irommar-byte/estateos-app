@@ -7,6 +7,7 @@ import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import FloatingPreferencesDock from "@/components/layout/FloatingPreferencesDock";
 import WebNotificationPrompt from "@/components/layout/WebNotificationPrompt";
+import PresentationFlowOrchestrator from "@/components/presentation/PresentationFlowOrchestrator";
 import SkipToContent from "@/components/layout/SkipToContent";
 import LocaleDocumentMeta from "@/components/layout/LocaleDocumentMeta";
 import Tracker from "@/components/Tracker";
@@ -95,6 +96,7 @@ export default async function RootLayout({
                     <Navbar />
                     <FloatingPreferencesDock />
                     <WebNotificationPrompt />
+                    <PresentationFlowOrchestrator />
                     <div id="main-content" tabIndex={-1} className="outline-none">
                       {children}
                     </div>

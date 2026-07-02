@@ -17,7 +17,6 @@ import NotificationCenter from "@/components/NotificationCenter";
 import ContactMessagesNavButton from "@/components/contact/ContactMessagesNavButton";
 import PublicationWalletNavButton from "@/components/wallet/PublicationWalletNavButton";
 import NavbarProfileChip from "@/components/layout/NavbarProfileChip";
-import PresentationFlowOrchestrator from "@/components/presentation/PresentationFlowOrchestrator";
 import PremiumModeToggle from "@/components/ui/PremiumModeToggle";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useUserMode } from "@/contexts/UserModeContext";
@@ -328,8 +327,6 @@ export default function Navbar() {
           </>
         )}
       </AnimatePresence>
-
-      <PresentationFlowOrchestrator />
 
       <style jsx>{`
         .eos-nav-wordmark {

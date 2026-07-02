@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   CalendarCheck,
   CalendarX,
@@ -9,11 +8,11 @@ import {
   Info,
   MapPin,
   User,
-  X,
   Loader2,
 } from "lucide-react";
 import type { PresentationFlowDictionary } from "@/i18n/presentationFlowDictionary";
 import type { PendingPresentationPayload } from "@/lib/appointments/presentationFlowPending";
+import PresentationFlowModalShell from "./PresentationFlowModalShell";
 
 type Props = {
   open: boolean;
@@ -105,29 +104,8 @@ export default function PresentationOutcomeModal({ open, data, t, onClose, onSuc
   ];
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[200000] flex items-end sm:items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-md"
-      >
-        <motion.div
-          initial={{ y: 40, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 40, opacity: 0 }}
-          className="theme-aware-dashboard relative w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] shadow-2xl text-[var(--eos-text)]"
-        >
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-4 right-4 z-20 w-9 h-9 rounded-full bg-[var(--eos-bg)] border border-[var(--eos-border)] flex items-center justify-center text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
-            aria-label={o.dismiss}
-          >
-            <X size={18} />
-          </button>
-
-          <div className="p-6 sm:p-8 space-y-6">
+    <PresentationFlowModalShell open={open} onClose={onClose} dismissLabel={o.dismiss}>
+      <div className="space-y-6 p-6 sm:p-8">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500 mb-2">{o.badge}</p>
               <h2 className="text-2xl font-black tracking-tight">{o.title}</h2>
@@ -238,9 +216,7 @@ export default function PresentationOutcomeModal({ open, data, t, onClose, onSuc
                 </div>
               </>
             )}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+      </div>
+    </PresentationFlowModalShell>
   );
 }

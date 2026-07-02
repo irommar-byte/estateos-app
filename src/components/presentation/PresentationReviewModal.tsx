@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Star, ShieldCheck, Send, X, Loader2, Info, CheckCircle2 } from "lucide-react";
+import { Star, ShieldCheck, Send, Loader2, Info, CheckCircle2 } from "lucide-react";
 import type { PresentationFlowDictionary } from "@/i18n/presentationFlowDictionary";
 import { fmtPresentation } from "@/i18n/presentationFlowDictionary";
 import type { PendingPresentationPayload } from "@/lib/appointments/presentationFlowPending";
+import PresentationFlowModalShell from "./PresentationFlowModalShell";
 
 type Props = {
   open: boolean;
@@ -59,27 +59,8 @@ export default function PresentationReviewModal({ open, data, t, onClose, onSucc
   if (!open) return null;
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[200000] flex items-end sm:items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-md"
-      >
-        <motion.div
-          initial={{ y: 40, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="theme-aware-dashboard relative w-full max-w-md max-h-[92vh] overflow-y-auto rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] shadow-2xl text-[var(--eos-text)]"
-        >
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-4 right-4 z-20 w-9 h-9 rounded-full bg-[var(--eos-bg)] border border-[var(--eos-border)] flex items-center justify-center text-[var(--eos-muted)]"
-          >
-            <X size={18} />
-          </button>
-
-          <div className="p-6 sm:p-8 text-center space-y-5">
+    <PresentationFlowModalShell open={open} onClose={onClose} maxWidth="max-w-md" dismissLabel={r.dismiss}>
+      <div className="space-y-5 p-6 text-center sm:p-8">
             <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
               <ShieldCheck size={28} className="text-amber-500" />
             </div>
@@ -160,9 +141,7 @@ export default function PresentationReviewModal({ open, data, t, onClose, onSucc
                 </button>
               </>
             )}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+      </div>
+    </PresentationFlowModalShell>
   );
 }
