@@ -11,8 +11,10 @@ import {
   deleteOfferAfterImportPaymentFailure,
   ImportPublicationError,
   publicationInputToRedemption,
+  tryRecoverImportOfferPendingPublication,
   type OtodomPublicationInput,
 } from '@/lib/otodomImportPublication';
+import { readPendingPublication } from '@/lib/offerPendingPublication';
 import { createOffer } from '@/lib/services/offer.service';
 import {
   acquireOfferUploadLock,
@@ -479,6 +481,10 @@ export async function createOfferFromOtodomDraft(
           userId: ownerUserId,
           redemption,
         });
+        const pending = await readPendingPublication(offerId);
+        if (!pending?.kind) {
+          throw new Error('IMPORT_PUBLICATION_RESERVE_FAILED');
+        }
       } catch (error) {
         await deleteOfferAfterImportPaymentFailure(offerId);
         if (error instanceof ImportPublicationError) {
@@ -487,7 +493,19 @@ export async function createOfferFromOtodomDraft(
           }
           throw new Error(error.message);
         }
+        if (error instanceof Error && error.message === 'IMPORT_PUBLICATION_RESERVE_FAILED') {
+          throw new Error('Nie udało się zarezerwować publikacji po imporcie. Spróbuj ponownie.');
+        }
         throw error;
+      }
+    } else {
+      const recovered = await tryRecoverImportOfferPendingPublication({
+        offerId,
+        userId: ownerUserId,
+      });
+      if (!recovered) {
+        await deleteOfferAfterImportPaymentFailure(offerId);
+        throw new Error('Wybierz metodę publikacji (kupon lub kredyt Pakiet Plus) przed importem.');
       }
     }
   }
