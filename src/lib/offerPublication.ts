@@ -6,7 +6,7 @@ import {
   ensureOfferPendingPublicationColumns,
   readPendingPublication,
 } from '@/lib/offerPendingPublication';
-import { tryReserveWelcomeCouponPublication } from '@/lib/otodomImportPublication';
+import { tryRecoverImportOfferPendingPublication, tryReserveWelcomeCouponPublication } from '@/lib/otodomImportPublication';
 
 const PUBLICATION_DURATION_DAYS = 30;
 const PAKIET_PLUS_PRODUCT_ID = 'pl.estateos.app.pakiet_plus_30d';
@@ -898,6 +898,15 @@ export async function completeAdminOfferApproval(params: {
       userId: params.ownerUserId,
     });
     if (reserved) {
+      pending = await readPendingPublication(offerId);
+    }
+  }
+  if (!pending?.kind) {
+    const recovered = await tryRecoverImportOfferPendingPublication({
+      offerId,
+      userId: params.ownerUserId,
+    });
+    if (recovered) {
       pending = await readPendingPublication(offerId);
     }
   }

@@ -5,6 +5,7 @@ import {
   ensureWelcomePromoCardForUser,
   welcomePromoCardId,
 } from '@/lib/profilePromoCards';
+import { readPendingPublication } from '@/lib/offerPendingPublication';
 
 export type ImportPublicationRedemptionKind = 'PLUS_CREDIT' | 'BONUS_COUPON' | 'PLUS_IAP';
 
@@ -65,6 +66,54 @@ export async function tryReserveWelcomeCouponPublication(params: {
         source: 'bonus_coupon',
         couponId: welcomePromoCardId(params.userId),
       },
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof ImportPublicationError) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function isImportedOfferAwaitingPublication(offerId: number): Promise<boolean> {
+  const rows = (await prisma.$queryRawUnsafe<Array<{ total: number | string | bigint }>>(
+    `
+      SELECT COUNT(*) AS total
+      FROM OfferPrivateNote
+      WHERE offerId = ?
+        AND importExternalUrl IS NOT NULL
+        AND TRIM(importExternalUrl) <> ''
+    `,
+    offerId,
+  )) as Array<{ total: number | string | bigint }>;
+  return Number(rows[0]?.total ?? 0) > 0;
+}
+
+/**
+ * Import czasem utworzy ofertę bez pendingPublicationKind (starszy flow / błąd rezerwacji).
+ * Przy akceptacji admina próbujemy odzyskać rezerwację kuponem lub kredytem Plus.
+ */
+export async function tryRecoverImportOfferPendingPublication(params: {
+  offerId: number;
+  userId: number;
+}): Promise<boolean> {
+  const existing = await readPendingPublication(params.offerId);
+  if (existing?.kind) return true;
+
+  if (!(await isImportedOfferAwaitingPublication(params.offerId))) {
+    return false;
+  }
+
+  if (await tryReserveWelcomeCouponPublication(params)) {
+    return true;
+  }
+
+  try {
+    await consumeAndReserveImportPublication({
+      offerId: params.offerId,
+      userId: params.userId,
+      redemption: { source: 'plus_credit' },
     });
     return true;
   } catch (error) {
