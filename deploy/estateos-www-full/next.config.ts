@@ -18,6 +18,8 @@ const nextConfig: NextConfig = {
       { source: "/privacy-policy/", destination: "/polityka-prywatnosci", permanent: false },
       { source: "/press", destination: "/dla-prasy", permanent: true },
       { source: "/press/", destination: "/dla-prasy", permanent: true },
+      { source: "/plan", destination: "/kampania", permanent: false },
+      { source: "/plan/", destination: "/kampania", permanent: false },
     ];
   },
   async rewrites() {
