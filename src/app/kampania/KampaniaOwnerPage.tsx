@@ -219,6 +219,46 @@ export default function KampaniaOwnerPage() {
           Zostało: <strong>{remainingMinutes} min</strong> ({completed}/{OWNER_STEPS.length} ukończone).
         </p>
 
+        <section className="mt-6 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] p-5">
+          <h2 className="text-base font-semibold">Zakładki w przeglądarce — co zapisać i gdzie</h2>
+          <p className="mt-2 text-sm text-[var(--eos-muted)]">
+            <strong>Zakładka</strong> to zapisany adres strony u góry przeglądarki (Safari / Chrome), żeby nie szukać
+            linku za każdym razem. Zapisz <strong>3 adresy</strong> w folderze „EstateOS”:
+          </p>
+          <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-[var(--eos-text)]">
+            <li>
+              <strong>Twój plan (codziennie stąd zaczynasz):</strong>{' '}
+              <a href="/kampania" className="text-emerald-600 underline dark:text-emerald-400">
+                estateos.pl/kampania
+              </a>
+            </li>
+            <li>
+              <strong>Gotowe teksty do postów:</strong>{' '}
+              <a href="/dla-prasy" className="text-emerald-600 underline dark:text-emerald-400">
+                estateos.pl/dla-prasy
+              </a>
+            </li>
+            <li>
+              <strong>Link do udostępniania innym:</strong>{' '}
+              <a href="/start" className="text-emerald-600 underline dark:text-emerald-400">
+                estateos.pl/start
+              </a>
+            </li>
+          </ol>
+          <p className="mt-4 text-sm font-semibold text-[var(--eos-text)]">Safari na Macu:</p>
+          <ol className="mt-1 list-decimal space-y-1 pl-5 text-sm text-[var(--eos-muted)]">
+            <li>Otwórz adres (np. estateos.pl/kampania).</li>
+            <li>Menu <strong>Zakładki</strong> → <strong>Dodaj zakładkę…</strong> (lub ⌘ + D).</li>
+            <li>W polu „dodaj do” wybierz folder — możesz najpierw utworzyć folder „EstateOS”.</li>
+            <li>Powtórz dla pozostałych dwóch adresów.</li>
+          </ol>
+          <p className="mt-3 text-sm font-semibold text-[var(--eos-text)]">iPhone / iPad (Safari):</p>
+          <ol className="mt-1 list-decimal space-y-1 pl-5 text-sm text-[var(--eos-muted)]">
+            <li>Otwórz stronę → ikona <strong>Udostępnij</strong> (kwadrat ze strzałką).</li>
+            <li><strong>Dodaj zakładkę</strong> → zapisz (opcjonalnie folder „Ulubione” lub nowy).</li>
+          </ol>
+        </section>
+
         <section className="mt-8 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5">
           <h2 className="text-sm font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
             Już zrobione (system / agent)
