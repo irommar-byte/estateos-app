@@ -172,3 +172,32 @@ export async function fetchOfferPriceHistory(offerId: number): Promise<OfferPric
   }));
 }
 
+/** Highest recorded PLN price per offer — fallback when listPricePln was backfilled to current price. */
+export async function fetchMaxHistoricalPricePlnByOfferIds(
+  offerIds: number[],
+): Promise<Map<number, number>> {
+  if (!offerIds.length) return new Map();
+  await ensureOfferPriceHistorySchema();
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT offerId, MAX(pricePln) AS maxPrice
+     FROM \`OfferPriceHistory\`
+     WHERE offerId IN (${offerIds.join(",")})
+     GROUP BY offerId`,
+  )) as Array<{ offerId: number; maxPrice: number | bigint }>;
+  return new Map(rows.map((row) => [Number(row.offerId), Number(row.maxPrice || 0)]));
+}
+
+export function resolveEffectiveListPricePln(
+  offer: Record<string, unknown>,
+  historyMaxPln?: number | null,
+): number {
+  const current = getCanonicalOfferPricePln(offer as { pricePln?: number; price?: number });
+  const listRaw = Number(offer.listPricePln);
+  const listPricePln = Number.isFinite(listRaw) && listRaw > 0 ? listRaw : current;
+  const historyMax = Number(historyMaxPln);
+  if (Number.isFinite(historyMax) && historyMax > listPricePln) {
+    return historyMax;
+  }
+  return listPricePln;
+}
+
