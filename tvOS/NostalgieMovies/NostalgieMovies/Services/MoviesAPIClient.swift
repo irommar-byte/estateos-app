@@ -1,0 +1,311 @@
+import Foundation
+
+@MainActor
+final class MoviesAPIClient {
+    private var token: String?
+
+    func setToken(_ token: String?) {
+        self.token = token
+    }
+
+    // MARK: - Auth
+
+    func login(login: String, password: String) async throws -> SessionStore.Session {
+        let body = ["login": login, "password": password]
+        let response: AuthLoginResponse = try await request("POST", path: "/api/auth/login", body: body, authorized: false)
+        let session = SessionStore.Session(token: response.token, user: response.user)
+        try SessionStore.save(session)
+        token = response.token
+        return session
+    }
+
+    func me() async throws -> AuthUser {
+        let json: [String: AuthUserWrapper] = try await request("GET", path: "/api/auth/me")
+        return json["user"]!.user
+    }
+
+    private struct AuthUserWrapper: Codable {
+        let user: AuthUser
+    }
+
+    // MARK: - Favorites
+
+    func fetchFavorites() async throws -> [FavoriteItem] {
+        let response: FavoritesResponse = try await request("GET", path: "/api/favorites")
+        return response.items
+    }
+
+    func addFavorite(_ item: FavoriteItem) async throws {
+        struct Body: Encodable { let item: FavoriteItem }
+        let _: OkResponse = try await requestJSON("POST", path: "/api/favorites", encodable: Body(item: item))
+    }
+
+    func removeFavorite(url: String) async throws {
+        let encoded = url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? url
+        let _: OkResponse = try await request("DELETE", path: "/api/favorites?url=\(encoded)")
+    }
+
+    func startDownload(url: String, height: Int = 720) async throws -> String {
+        let body: [String: Any] = ["url": url, "height": height, "container": "mp4", "kind": "video"]
+        let response: DownloadStartResponse = try await request("POST", path: "/api/download", body: body)
+        return response.jobId
+    }
+
+    func startMusicDownload(url: String) async throws -> String {
+        let body: [String: Any] = ["url": url]
+        let response: DownloadStartResponse = try await request("POST", path: "/api/download", body: body)
+        return response.jobId
+    }
+
+    func searchAppleMusic(query: String, page: Int = 1, sort: MusicSort = .relevance) async throws -> SearchResponse {
+        try await search(
+            query: query,
+            source: .appleMusic,
+            page: page,
+            pageSize: 24,
+            sort: sort == .title ? .title : sort == .duration ? .duration : .relevance,
+            access: .all
+        )
+    }
+
+    func fetchMusicLibrary() async throws -> MusicLibraryResponse {
+        try await request("GET", path: "/api/music/library")
+    }
+
+    func createMusicFolder(name: String) async throws -> MusicFolder {
+        let response: MusicFolderCreateResponse = try await request(
+            "POST",
+            path: "/api/music/folders",
+            body: ["name": name]
+        )
+        return response.folder
+    }
+
+    func renameMusicFolder(id: String, name: String) async throws -> MusicFolder {
+        let response: MusicFolderCreateResponse = try await request(
+            "PATCH",
+            path: "/api/music/folders/\(id)",
+            body: ["name": name]
+        )
+        return response.folder
+    }
+
+    func deleteMusicFolder(id: String) async throws {
+        let _: OkResponse = try await request("DELETE", path: "/api/music/folders/\(id)")
+    }
+
+    func fetchFolderTracks(folderId: String) async throws -> MusicFolderTracksResponse {
+        try await request("GET", path: "/api/music/folders/\(folderId)/tracks")
+    }
+
+    func addTrackToFolder(folderId: String, track: MusicTrackPayload) async throws -> MusicTrack {
+        struct Body: Encodable { let track: MusicTrackPayload }
+        struct Response: Codable { let track: MusicTrack }
+        let response: Response = try await requestJSON(
+            "POST",
+            path: "/api/music/folders/\(folderId)/tracks",
+            encodable: Body(track: track)
+        )
+        return response.track
+    }
+
+    func removeTrackFromFolder(folderId: String, url: String) async throws {
+        let encoded = url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? url
+        let _: OkResponse = try await request("DELETE", path: "/api/music/folders/\(folderId)/tracks?url=\(encoded)")
+    }
+
+    struct MusicTrackPayload: Codable {
+        let url: String
+        let title: String
+        let artist: String?
+        let album: String?
+        let thumbnail: String?
+        let duration: Double?
+        let quality: String?
+        let source: String?
+    }
+
+    func fetchJobStatus(jobId: String) async throws -> JobStatusResponse {
+        try await request("GET", path: "/api/job/\(jobId)")
+    }
+
+    func cancelJob(jobId: String) async throws {
+        let _: OkResponse = try await request("POST", path: "/api/cancel/\(jobId)")
+    }
+
+    func downloadFileURL(jobId: String) -> URL {
+        AppConfig.apiBaseURL.appendingPathComponent("api/file/\(jobId)")
+    }
+
+    // MARK: - Search & play
+
+    func search(
+        query: String,
+        source: SearchSource,
+        page: Int = 1,
+        pageSize: Int = 24,
+        sort: SearchSort = .relevance,
+        access: CdaAccessFilter = .all
+    ) async throws -> SearchResponse {
+        let body: [String: Any] = [
+            "query": query,
+            "source": source.rawValue,
+            "page": page,
+            "pageSize": pageSize,
+            "sort": sort.rawValue,
+            "access": access.rawValue,
+            "limit": source == .youtube ? 28 : 48,
+        ]
+        return try await request("POST", path: "/api/search", body: body)
+    }
+
+    func fetchCdaHdLatest(limit: Int = 10) async throws -> [SearchResultItem] {
+        let response: LatestFeedResponse = try await request(
+            "GET",
+            path: "/api/cda-hd/latest?limit=\(limit)",
+            authorized: true
+        )
+        return response.items
+    }
+
+    private struct LatestFeedResponse: Codable {
+        let items: [SearchResultItem]
+    }
+
+    func fetchInfo(url: String) async throws -> VideoInfoResponse {
+        try await request("POST", path: "/api/info", body: ["url": url])
+    }
+
+    func startPreview(url: String) async throws -> PreviewResponse {
+        try await request("POST", path: "/api/preview", body: [
+            "url": url,
+            "height": 480,
+            "playMode": "stream",
+        ])
+    }
+
+    func playToken(jobId: String) async throws -> PlayTokenResponse {
+        try await request("GET", path: "/api/play-token/\(jobId)")
+    }
+
+    func waitForPreviewReady(
+        jobId: String,
+        timeoutSeconds: Int = 600,
+        onProgress: ((Int) -> Void)? = nil
+    ) async throws {
+        let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
+        var poll = 0
+        while Date() < deadline {
+            let job = try await fetchJobStatus(jobId: jobId)
+            if job.status == "error" {
+                throw APIError.server(job.error ?? "Odtwarzanie nie powiodło się.")
+            }
+            if let progress = job.progress {
+                onProgress?(Int(progress.rounded()))
+            }
+            if job.ready == true || job.status == "done" {
+                return
+            }
+            poll += 1
+            let delayNs: UInt64 = poll < 40 ? 400_000_000 : 800_000_000
+            try await Task.sleep(nanoseconds: delayNs)
+        }
+        throw APIError.server("Przekroczono czas oczekiwania na przygotowanie odtwarzania.")
+    }
+
+    func streamURL(jobId: String, token: String) -> URL {
+        AppConfig.apiBaseURL
+            .appendingPathComponent("api/play/\(jobId)")
+            .appending(queryItems: [
+                URLQueryItem(name: "token", value: token),
+                URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970))),
+            ])
+    }
+
+    // MARK: - HTTP
+
+    private struct OkResponse: Codable { let ok: Bool? }
+
+    private func requestJSON<T: Decodable, B: Encodable>(
+        _ method: String,
+        path: String,
+        encodable: B,
+        authorized: Bool = true
+    ) async throws -> T {
+        var url = AppConfig.apiBaseURL
+        if path.hasPrefix("/") {
+            url = URL(string: AppConfig.apiBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + path)!
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("NostalgieMovies-tvOS/1.0", forHTTPHeaderField: "User-Agent")
+        if authorized, let token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        req.httpBody = try JSONEncoder().encode(encodable)
+        return try await perform(req)
+    }
+
+    private func request<T: Decodable>(
+        _ method: String,
+        path: String,
+        body: [String: Any]? = nil,
+        authorized: Bool = true
+    ) async throws -> T {
+        var url = AppConfig.apiBaseURL
+        if path.hasPrefix("/") {
+            url = URL(string: AppConfig.apiBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + path)!
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("NostalgieMovies-tvOS/1.0", forHTTPHeaderField: "User-Agent")
+        if authorized, let token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let body {
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+
+        return try await perform(req)
+    }
+
+    private func perform<T: Decodable>(_ req: URLRequest) async throws -> T {
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse else { throw APIError.decode }
+
+            if http.statusCode == 401 {
+                if let err = try? JSONDecoder().decode(ServerErrorBody.self, from: data), let msg = err.error {
+                    if msg == "unauthorized" {
+                        throw APIError.server("Serwer odrzucił żądanie — spróbuj ponownie za chwilę.")
+                    }
+                    throw APIError.server(msg)
+                }
+                throw APIError.unauthorized
+            }
+            if http.statusCode >= 400 {
+                if let err = try? JSONDecoder().decode(ServerErrorBody.self, from: data), let msg = err.error {
+                    throw APIError.server(msg)
+                }
+                throw APIError.server("Błąd serwera (\(http.statusCode)).")
+            }
+
+            do {
+                return try JSONDecoder().decode(T.self, from: data)
+            } catch {
+                throw APIError.decode
+            }
+        } catch let error as APIError {
+            throw error
+        } catch {
+            throw APIError.network(error)
+        }
+    }
+
+    private struct ServerErrorBody: Codable {
+        let error: String?
+    }
+}

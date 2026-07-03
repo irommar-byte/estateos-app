@@ -1,0 +1,43 @@
+# NOSTALGIE™ MOVIES — served from estateos VPS (auth via Lineage session)
+location = /admin_pro/movies/inject.js {
+    alias /home/rommar/lineage-movies/inject.js;
+    default_type application/javascript;
+    add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+    add_header Pragma "no-cache" always;
+}
+
+location ^~ /admin_pro/movies/ {
+    alias /home/rommar/lineage-movies/public/;
+    index index.html;
+    add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+    add_header Pragma "no-cache" always;
+}
+
+location ^~ /admin_pro/api/movies/ {
+    proxy_pass http://127.0.0.1:4322;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Cookie $http_cookie;
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    client_max_body_size 64m;
+}
+
+location = /panel.php {
+    proxy_pass https://192.168.50.200/panel.php;
+    proxy_ssl_server_name on;
+    proxy_ssl_name lineage.mycloudnas.com;
+    proxy_ssl_verify off;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Accept-Encoding "";
+    sub_filter '</head>' '<script src="/admin_pro/movies/inject.js?v=20260703144708" defer></script></head>';
+    sub_filter_once on;
+    sub_filter_types text/html;
+}

@@ -1,0 +1,532 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		08934D1279074CD9867B9ED1 /* Views/SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08934D1279074CD9867B9ED1R /* Views/SearchView.swift */; };
+		1684DE9814D349CAAA642EFB /* Views/PlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1684DE9814D349CAAA642EFBR /* Views/PlayerScreen.swift */; };
+		1BEA82DF659F436E875C61D0 /* Resources/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1BEA82DF659F436E875C61D0R /* Resources/Assets.xcassets */; };
+		3F32D2D154A14C56A583E22E /* Services/MoviesAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F32D2D154A14C56A583E22ER /* Services/MoviesAPIClient.swift */; };
+		44FFC037A6FE4D399DFA8343 /* Core/KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44FFC037A6FE4D399DFA8343R /* Core/KeychainHelper.swift */; };
+		4BC8343473B645E3806E3593 /* Views/FavoritesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BC8343473B645E3806E3593R /* Views/FavoritesView.swift */; };
+		59E9EF9484C34AC0AC922147 /* NostalgieMoviesApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59E9EF9484C34AC0AC922147R /* NostalgieMoviesApp.swift */; };
+		5BD2FB124A9843BB8D58B295 /* Views/LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BD2FB124A9843BB8D58B295R /* Views/LoginView.swift */; };
+		A1B2C3D4E5F6478990ABCDE1 /* Views/SeriesEpisodesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6478990ABCDE1R /* Views/SeriesEpisodesView.swift */; };
+		B2C3D4E5F6A7489012BCDE01 /* Views/MediaComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7489012BCDE01R /* Views/MediaComponents.swift */; };
+		C3D4E5F6A7B8490123CDEF02 /* Views/MediaDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F6A7B8490123CDEF02R /* Views/MediaDetailView.swift */; };
+		C53D9745E5394339A4477E8A /* Theme/NostalgieTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53D9745E5394339A4477E8AR /* Theme/NostalgieTheme.swift */; };
+		DPLNK001A1B2C3D4E5F678901 /* Core/DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = DPLNK001A1B2C3D4E5F678902 /* Core/DeepLink.swift */; };
+		E64FD85C688F4FA490A0E636 /* App/AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E64FD85C688F4FA490A0E636R /* App/AppModel.swift */; };
+		EE2764E6CE454E5A83C28B7D /* Core/Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2764E6CE454E5A83C28B7DR /* Core/Models.swift */; };
+		EEED268459684BB9BF69079D /* Views/HomeTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEED268459684BB9BF69079DR /* Views/HomeTabView.swift */; };
+		LTCDA001A1B2C3D4E5F678901 /* Views/LatestCdaHdRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = LTCDA001A1B2C3D4E5F678902 /* Views/LatestCdaHdRow.swift */; };
+		TOPSHELF006BLD000001 /* ContentProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = TOPSHELF007SWIFT0001 /* ContentProvider.swift */; };
+		TOPSHELF010EMBEDBF01 /* NostalgieMoviesTopShelf.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = TOPSHELF002APPEX01 /* NostalgieMoviesTopShelf.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		MUSCMP001BLD000001 /* Views/MusicComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = MUSCMP001SWIFT0001 /* Views/MusicComponents.swift */; };
+		MUSDTL001BLD000001 /* Views/MusicDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MUSDTL001SWIFT0001 /* Views/MusicDetailView.swift */; };
+		MUSFLD001BLD000001 /* Views/MusicFolderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MUSFLD001SWIFT0001 /* Views/MusicFolderView.swift */; };
+		MUSVIW001BLD000001 /* Views/MusicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MUSVIW001SWIFT0001 /* Views/MusicView.swift */; };
+		TVFOCUS001A1B2C3D4E5F678901 /* Views/TVFocusNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = TVFOCUS001A1B2C3D4E5F678902 /* Views/TVFocusNavigation.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		TOPSHELF011DEP0001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D4A0C3F7DBAC4BB084821A1F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = TOPSHELF001TARGET01;
+			remoteInfo = NostalgieMoviesTopShelf;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		TOPSHELF009EMBED0001 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				TOPSHELF010EMBEDBF01 /* NostalgieMoviesTopShelf.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0137686E0E92439AB5D05B6D /* NostalgieMovies.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NostalgieMovies.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		08934D1279074CD9867B9ED1R /* Views/SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SearchView.swift; sourceTree = "<group>"; };
+		1684DE9814D349CAAA642EFBR /* Views/PlayerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/PlayerScreen.swift; sourceTree = "<group>"; };
+		1BEA82DF659F436E875C61D0R /* Resources/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Resources/Assets.xcassets; sourceTree = "<group>"; };
+		3F32D2D154A14C56A583E22ER /* Services/MoviesAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/MoviesAPIClient.swift; sourceTree = "<group>"; };
+		44FFC037A6FE4D399DFA8343R /* Core/KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/KeychainHelper.swift; sourceTree = "<group>"; };
+		4BC8343473B645E3806E3593R /* Views/FavoritesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/FavoritesView.swift; sourceTree = "<group>"; };
+		59E9EF9484C34AC0AC922147R /* NostalgieMoviesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostalgieMoviesApp.swift; sourceTree = "<group>"; };
+		5BD2FB124A9843BB8D58B295R /* Views/LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/LoginView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6478990ABCDE1R /* Views/SeriesEpisodesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SeriesEpisodesView.swift; sourceTree = "<group>"; };
+		B2C3D4E5F6A7489012BCDE01R /* Views/MediaComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MediaComponents.swift; sourceTree = "<group>"; };
+		C3D4E5F6A7B8490123CDEF02R /* Views/MediaDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MediaDetailView.swift; sourceTree = "<group>"; };
+		C53D9745E5394339A4477E8AR /* Theme/NostalgieTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme/NostalgieTheme.swift; sourceTree = "<group>"; };
+		DPLNK001A1B2C3D4E5F678902 /* Core/DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/DeepLink.swift; sourceTree = "<group>"; };
+		E64FD85C688F4FA490A0E636R /* App/AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AppModel.swift; sourceTree = "<group>"; };
+		EE2764E6CE454E5A83C28B7DR /* Core/Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Models.swift; sourceTree = "<group>"; };
+		EEED268459684BB9BF69079DR /* Views/HomeTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/HomeTabView.swift; sourceTree = "<group>"; };
+		LTCDA001A1B2C3D4E5F678902 /* Views/LatestCdaHdRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/LatestCdaHdRow.swift; sourceTree = "<group>"; };
+		TOPSHELF002APPEX01 /* NostalgieMoviesTopShelf.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NostalgieMoviesTopShelf.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		TOPSHELF007SWIFT0001 /* ContentProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentProvider.swift; sourceTree = "<group>"; };
+		TOPSHELF008PLIST0001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		MUSCMP001SWIFT0001 /* Views/MusicComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MusicComponents.swift; sourceTree = "<group>"; };
+		MUSDTL001SWIFT0001 /* Views/MusicDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MusicDetailView.swift; sourceTree = "<group>"; };
+		MUSFLD001SWIFT0001 /* Views/MusicFolderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MusicFolderView.swift; sourceTree = "<group>"; };
+		MUSVIW001SWIFT0001 /* Views/MusicView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MusicView.swift; sourceTree = "<group>"; };
+		TVFOCUS001A1B2C3D4E5F678902 /* Views/TVFocusNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/TVFocusNavigation.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		556074BA0EE24D99B6C973F0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TOPSHELF004FW000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0D4FE548BC8B4571BBAB062A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0137686E0E92439AB5D05B6D /* NostalgieMovies.app */,
+				TOPSHELF002APPEX01 /* NostalgieMoviesTopShelf.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		C0C09F0B50F246E09A2E2BBE = {
+			isa = PBXGroup;
+			children = (
+				DF20704B22114416AF2FF448 /* NostalgieMovies */,
+				TOPSHELF000GROUP001 /* NostalgieMoviesTopShelf */,
+				0D4FE548BC8B4571BBAB062A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		DF20704B22114416AF2FF448 /* NostalgieMovies */ = {
+			isa = PBXGroup;
+			children = (
+				59E9EF9484C34AC0AC922147R /* NostalgieMoviesApp.swift */,
+				44FFC037A6FE4D399DFA8343R /* Core/KeychainHelper.swift */,
+				EE2764E6CE454E5A83C28B7DR /* Core/Models.swift */,
+				E64FD85C688F4FA490A0E636R /* App/AppModel.swift */,
+				C53D9745E5394339A4477E8AR /* Theme/NostalgieTheme.swift */,
+				4BC8343473B645E3806E3593R /* Views/FavoritesView.swift */,
+				EEED268459684BB9BF69079DR /* Views/HomeTabView.swift */,
+				5BD2FB124A9843BB8D58B295R /* Views/LoginView.swift */,
+				1684DE9814D349CAAA642EFBR /* Views/PlayerScreen.swift */,
+				B2C3D4E5F6A7489012BCDE01R /* Views/MediaComponents.swift */,
+				C3D4E5F6A7B8490123CDEF02R /* Views/MediaDetailView.swift */,
+				A1B2C3D4E5F6478990ABCDE1R /* Views/SeriesEpisodesView.swift */,
+				08934D1279074CD9867B9ED1R /* Views/SearchView.swift */,
+				LTCDA001A1B2C3D4E5F678902 /* Views/LatestCdaHdRow.swift */,
+				MUSVIW001SWIFT0001 /* Views/MusicView.swift */,
+				MUSFLD001SWIFT0001 /* Views/MusicFolderView.swift */,
+				MUSDTL001SWIFT0001 /* Views/MusicDetailView.swift */,
+				MUSCMP001SWIFT0001 /* Views/MusicComponents.swift */,
+				DPLNK001A1B2C3D4E5F678902 /* Core/DeepLink.swift */,
+				TVFOCUS001A1B2C3D4E5F678902 /* Views/TVFocusNavigation.swift */,
+				3F32D2D154A14C56A583E22ER /* Services/MoviesAPIClient.swift */,
+				1BEA82DF659F436E875C61D0R /* Resources/Assets.xcassets */,
+			);
+			path = NostalgieMovies;
+			sourceTree = "<group>";
+		};
+		TOPSHELF000GROUP001 /* NostalgieMoviesTopShelf */ = {
+			isa = PBXGroup;
+			children = (
+				TOPSHELF007SWIFT0001 /* ContentProvider.swift */,
+				TOPSHELF008PLIST0001 /* Info.plist */,
+			);
+			path = NostalgieMoviesTopShelf;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		12D13315CCA24FD592E37CB1 /* NostalgieMovies */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FCD6AFFB51DC4C27A36F4DBBL /* Build configuration list for PBXNativeTarget "NostalgieMovies" */;
+			buildPhases = (
+				4D078321BB3F4940ADB98362 /* Sources */,
+				556074BA0EE24D99B6C973F0 /* Frameworks */,
+				61FAC769B99F46199D3A244B /* Resources */,
+				TOPSHELF009EMBED0001 /* Embed App Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				TOPSHELF011DEP0002 /* PBXTargetDependency */,
+			);
+			name = NostalgieMovies;
+			productName = NostalgieMovies;
+			productReference = 0137686E0E92439AB5D05B6D /* NostalgieMovies.app */;
+			productType = "com.apple.product-type.application";
+		};
+		TOPSHELF001TARGET01 /* NostalgieMoviesTopShelf */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = TOPSHELF012CFGList1 /* Build configuration list for PBXNativeTarget "NostalgieMoviesTopShelf" */;
+			buildPhases = (
+				TOPSHELF003SRC00001 /* Sources */,
+				TOPSHELF004FW000001 /* Frameworks */,
+				TOPSHELF005RES00001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NostalgieMoviesTopShelf;
+			productName = NostalgieMoviesTopShelf;
+			productReference = TOPSHELF002APPEX01 /* NostalgieMoviesTopShelf.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D4A0C3F7DBAC4BB084821A1F /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 2660;
+			};
+			buildConfigurationList = F887D1DC7AD04F4BAE3BFF4DL /* Build configuration list for PBXProject "NostalgieMovies" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = pl;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				pl,
+				Base,
+			);
+			mainGroup = C0C09F0B50F246E09A2E2BBE;
+			productRefGroup = 0D4FE548BC8B4571BBAB062A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				12D13315CCA24FD592E37CB1 /* NostalgieMovies */,
+				TOPSHELF001TARGET01 /* NostalgieMoviesTopShelf */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		61FAC769B99F46199D3A244B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1BEA82DF659F436E875C61D0 /* Resources/Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TOPSHELF005RES00001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4D078321BB3F4940ADB98362 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				59E9EF9484C34AC0AC922147 /* NostalgieMoviesApp.swift in Sources */,
+				44FFC037A6FE4D399DFA8343 /* Core/KeychainHelper.swift in Sources */,
+				EE2764E6CE454E5A83C28B7D /* Core/Models.swift in Sources */,
+				E64FD85C688F4FA490A0E636 /* App/AppModel.swift in Sources */,
+				C53D9745E5394339A4477E8A /* Theme/NostalgieTheme.swift in Sources */,
+				4BC8343473B645E3806E3593 /* Views/FavoritesView.swift in Sources */,
+				EEED268459684BB9BF69079D /* Views/HomeTabView.swift in Sources */,
+				5BD2FB124A9843BB8D58B295 /* Views/LoginView.swift in Sources */,
+				1684DE9814D349CAAA642EFB /* Views/PlayerScreen.swift in Sources */,
+				B2C3D4E5F6A7489012BCDE01 /* Views/MediaComponents.swift in Sources */,
+				C3D4E5F6A7B8490123CDEF02 /* Views/MediaDetailView.swift in Sources */,
+				A1B2C3D4E5F6478990ABCDE1 /* Views/SeriesEpisodesView.swift in Sources */,
+				08934D1279074CD9867B9ED1 /* Views/SearchView.swift in Sources */,
+				TVFOCUS001A1B2C3D4E5F678901 /* Views/TVFocusNavigation.swift in Sources */,
+				3F32D2D154A14C56A583E22E /* Services/MoviesAPIClient.swift in Sources */,
+				DPLNK001A1B2C3D4E5F678901 /* Core/DeepLink.swift in Sources */,
+				LTCDA001A1B2C3D4E5F678901 /* Views/LatestCdaHdRow.swift in Sources */,
+				MUSVIW001BLD000001 /* Views/MusicView.swift in Sources */,
+				MUSFLD001BLD000001 /* Views/MusicFolderView.swift in Sources */,
+				MUSDTL001BLD000001 /* Views/MusicDetailView.swift in Sources */,
+				MUSCMP001BLD000001 /* Views/MusicComponents.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TOPSHELF003SRC00001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TOPSHELF006BLD000001 /* ContentProvider.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		TOPSHELF011DEP0002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = TOPSHELF001TARGET01 /* NostalgieMoviesTopShelf */;
+			targetProxy = TOPSHELF011DEP0001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		6A55852E324840508EA0A1CC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 9;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=appletvos*]" = NW3YW69KL9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NostalgieMovies/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pl.nostalgie.movies;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=appletvos*]" = NostMov;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+			};
+			name = Release;
+		};
+		D1E9329A928344E48E940981 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = NW3YW69KL9;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				SDKROOT = appletvos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Release;
+		};
+		F887D1DC7AD04F4BAE3BFF4D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = NW3YW69KL9;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = appletvos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Debug;
+		};
+		FCD6AFFB51DC4C27A36F4DBB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 9;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=appletvos*]" = NW3YW69KL9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NostalgieMovies/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pl.nostalgie.movies;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=appletvos*]" = NostMov;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+			};
+			name = Debug;
+		};
+		TOPSHELF013DBG00001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=appletvos*]" = NW3YW69KL9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NostalgieMoviesTopShelf/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pl.nostalgie.movies.TopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=appletvos*]" = movieplus;
+				SDKROOT = appletvos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+			};
+			name = Debug;
+		};
+		TOPSHELF014REL00001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=appletvos*]" = NW3YW69KL9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NostalgieMoviesTopShelf/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pl.nostalgie.movies.TopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=appletvos*]" = movieplus;
+				SDKROOT = appletvos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		F887D1DC7AD04F4BAE3BFF4DL /* Build configuration list for PBXProject "NostalgieMovies" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F887D1DC7AD04F4BAE3BFF4D /* Debug */,
+				D1E9329A928344E48E940981 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FCD6AFFB51DC4C27A36F4DBBL /* Build configuration list for PBXNativeTarget "NostalgieMovies" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FCD6AFFB51DC4C27A36F4DBB /* Debug */,
+				6A55852E324840508EA0A1CC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		TOPSHELF012CFGList1 /* Build configuration list for PBXNativeTarget "NostalgieMoviesTopShelf" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TOPSHELF013DBG00001 /* Debug */,
+				TOPSHELF014REL00001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = D4A0C3F7DBAC4BB084821A1F /* Project object */;
+}
