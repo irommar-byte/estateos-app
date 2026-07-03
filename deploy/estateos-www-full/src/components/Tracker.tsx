@@ -12,6 +12,7 @@ export default function Tracker() {
       fetch('/api/track', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ path: pathname, campaignRef }),
       }).catch(() => {});
     }

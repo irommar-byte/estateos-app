@@ -25,6 +25,16 @@ export type AdminRadarHistoryRow = {
   queryText: string | null;
 };
 
+export type AdminAgencyMembershipSummary = {
+  companyId: number;
+  companyName: string;
+  companySlug: string | null;
+  memberRole: string;
+  agentTitle: string;
+  status: string;
+  isOfficeBoard: boolean;
+};
+
 export type AdminUserDetail = {
   id: number;
   email: string;
@@ -79,6 +89,7 @@ export type AdminUserDetail = {
   sessionsCount: number;
   channels: string[];
   offers: Array<{ id: number; title: string; price: number; status: string }>;
+  agencyMembership: AdminAgencyMembershipSummary | null;
 };
 
 const PROPERTY_LABELS: Record<string, string> = {
@@ -217,6 +228,12 @@ export function shapeAdminUserDetail(user: {
     createdAt: Date;
   }>;
   _count: { sessions: number; Authenticator: number };
+  agencyMembership?: {
+    role: string;
+    status: string;
+    agentTitle: string;
+    company: { id: number; name: string; slug: string | null };
+  } | null;
 }): AdminUserDetail {
   const shapedRadar = shapeRadarPreference(user.radarPreference, user.searchAmenities);
   const radar = shapedRadar
@@ -309,5 +326,19 @@ export function shapeAdminUserDetail(user: {
       lastLoginAt,
     }),
     offers: user.offers,
+    agencyMembership: user.agencyMembership
+      ? {
+          companyId: user.agencyMembership.company.id,
+          companyName: user.agencyMembership.company.name,
+          companySlug: user.agencyMembership.company.slug,
+          memberRole: user.agencyMembership.role,
+          agentTitle: user.agencyMembership.agentTitle,
+          status: user.agencyMembership.status,
+          isOfficeBoard:
+            user.agencyMembership.role === 'ADMIN' ||
+            user.agencyMembership.agentTitle === 'KIEROWNIK_BIURO' ||
+            user.agencyMembership.agentTitle === 'ZASTEPCA_KIEROWNIKA',
+        }
+      : null,
   };
 }

@@ -15,6 +15,7 @@ import {
   Smartphone,
   Coins,
   Ticket,
+  Briefcase,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -23,7 +24,7 @@ import type { AdminAgencyListItem } from "@/lib/adminAgencyDetail";
 import AdminUserDetailPanel from "@/components/admin/AdminUserDetailPanel";
 import AdminAgencyDetailPanel from "@/components/admin/AdminAgencyDetailPanel";
 
-type TabType = "PRIVATE" | "AGENCIES" | "PARTNER";
+type TabType = "PRIVATE" | "AGENTS" | "AGENCIES" | "PARTNER";
 
 function isAgentLikeUser(u: { role?: string | null; planType?: string | null }) {
   if (String(u.role || "").toUpperCase() === "AGENT") return true;
@@ -31,9 +32,8 @@ function isAgentLikeUser(u: { role?: string | null; planType?: string | null }) 
   return false;
 }
 
-/** Agenci widoczni tylko w segmencie Agencje (jako członkowie biura). */
 function classifyUser(u: { isPro?: boolean; planType?: string | null; role?: string | null }) {
-  if (isAgentLikeUser(u)) return null;
+  if (isAgentLikeUser(u)) return "AGENTS" as const;
   if (u.isPro) return "PARTNER" as const;
   return "PRIVATE" as const;
 }
@@ -67,7 +67,12 @@ export default function AdminUsers() {
       ]);
       const usersData = await usersRes.json();
       const agenciesData = await agenciesRes.json();
-      if (usersData.success) setUsers(usersData.users);
+      if (usersData.success) {
+        setUsers(usersData.users);
+        setSelectedUser((prev) =>
+          prev ? usersData.users.find((u: AdminUserDetail) => u.id === prev.id) ?? prev : null,
+        );
+      }
       if (agenciesData.success) setAgencies(agenciesData.agencies);
     } catch (err) {
       console.error(err);
@@ -99,10 +104,10 @@ export default function AdminUsers() {
   }, [searchParams, users]);
 
   const segmentCounts = useMemo(() => {
-    const counts: Record<TabType, number> = { PRIVATE: 0, AGENCIES: agencies.length, PARTNER: 0 };
+    const counts: Record<TabType, number> = { PRIVATE: 0, AGENTS: 0, AGENCIES: agencies.length, PARTNER: 0 };
     for (const u of users) {
       const seg = classifyUser(u);
-      if (seg) counts[seg] += 1;
+      counts[seg] += 1;
     }
     return counts;
   }, [users, agencies.length]);
@@ -132,7 +137,7 @@ export default function AdminUsers() {
     return users
       .filter((u) => {
         const seg = classifyUser(u);
-        if (!seg || seg !== activeTab) return false;
+        if (seg !== activeTab) return false;
         if (!q) return true;
         if (Number.isFinite(qId) && qId > 0 && u.id === qId) return true;
         return (
@@ -140,7 +145,9 @@ export default function AdminUsers() {
           String(u.email || "").toLowerCase().includes(q) ||
           String(u.name || "").toLowerCase().includes(q) ||
           String(u.phone || "").toLowerCase().includes(q) ||
-          String(u.companyName || "").toLowerCase().includes(q)
+          String(u.companyName || "").toLowerCase().includes(q) ||
+          String(u.agencyMembership?.companyName || "").toLowerCase().includes(q) ||
+          String(u.agencyMembership?.companySlug || "").toLowerCase().includes(q)
         );
       })
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
@@ -152,7 +159,8 @@ export default function AdminUsers() {
 
   const tabs: { id: TabType; label: string; hint: string; icon: typeof Users }[] = [
     { id: "PRIVATE", label: "Prywatni", hint: "Osoby fizyczne", icon: Users },
-    { id: "AGENCIES", label: "Agencje", hint: "Biura i agenci", icon: Building2 },
+    { id: "AGENTS", label: "Agenci", hint: "Agenci i doradcy", icon: Briefcase },
+    { id: "AGENCIES", label: "Agencje", hint: "Biura nieruchomości", icon: Building2 },
     { id: "PARTNER", label: "Partner PRO", hint: "Status PRO / inwestor", icon: Crown },
   ];
 
@@ -311,7 +319,7 @@ export default function AdminUsers() {
                       title={tab.hint}
                       className={`flex shrink-0 items-center gap-2.5 rounded-xl border px-4 py-3 transition-all ${
                         active
-                          ? tab.id === "AGENCIES"
+                          ? tab.id === "AGENCIES" || tab.id === "AGENTS"
                             ? "border-emerald-500/40 bg-emerald-500/10 text-[var(--eos-text)]"
                             : tab.id === "PARTNER"
                               ? "border-amber-500/40 bg-amber-500/10 text-[var(--eos-text)]"
@@ -325,7 +333,7 @@ export default function AdminUsers() {
                           active
                             ? tab.id === "PARTNER"
                               ? "text-amber-500"
-                              : tab.id === "AGENCIES"
+                              : tab.id === "AGENCIES" || tab.id === "AGENTS"
                                 ? "text-emerald-500"
                                 : "text-[var(--eos-text)]"
                             : "text-[var(--eos-subtle)]"
@@ -457,7 +465,9 @@ export default function AdminUsers() {
                         className={`flex size-11 shrink-0 items-center justify-center rounded-xl text-base font-black ${
                           seg === "PARTNER"
                             ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                            : "bg-[var(--eos-border)] text-[var(--eos-muted)]"
+                            : seg === "AGENTS"
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                              : "bg-[var(--eos-border)] text-[var(--eos-muted)]"
                         }`}
                       >
                         {(u.name || u.email || "?").charAt(0).toUpperCase()}
@@ -471,6 +481,11 @@ export default function AdminUsers() {
                             #{u.id}
                           </span>
                           {u.role === "ADMIN" ? <ShieldCheck size={14} className="shrink-0 text-emerald-500" /> : null}
+                          {u.agencyMembership?.isOfficeBoard ? (
+                            <span className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400">
+                              Zarząd biura
+                            </span>
+                          ) : null}
                           {u.isPro ? <Crown size={14} className="shrink-0 text-amber-500" /> : null}
                           {verified ? <BadgeCheck size={14} className="shrink-0 text-emerald-500" /> : null}
                           {u.devices.length > 0 ? <Smartphone size={13} className="shrink-0 text-[var(--eos-subtle)]" /> : null}
@@ -489,6 +504,12 @@ export default function AdminUsers() {
                           ) : null}
                         </div>
                         <p className="mt-1 break-all text-xs text-[var(--eos-muted)]">{u.email}</p>
+                        {u.agencyMembership ? (
+                          <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                            {u.agencyMembership.companyName}
+                            {u.agencyMembership.memberRole === "ADMIN" ? " · zarząd" : ""}
+                          </p>
+                        ) : null}
                         <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-[var(--eos-subtle)]">
                           {u.radar?.city ? <span>{u.radar.city}</span> : null}
                           {u.channels.length ? <span>{u.channels.slice(0, 2).join(" · ")}</span> : null}
@@ -540,6 +561,7 @@ export default function AdminUsers() {
                   onDelete={() => void handleDelete(selectedUser.id)}
                   onOpenMessages={() => void openContact(selectedUser.id, selectedUser.name)}
                   onVerificationChange={(patch) => patchUserVerification(selectedUser.id, patch)}
+                  onRefresh={() => void fetchUsers()}
                 />
               </motion.div>
             ) : null}

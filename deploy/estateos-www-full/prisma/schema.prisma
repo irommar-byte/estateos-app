@@ -145,10 +145,12 @@ model PageVisitLog {
   deviceType   String   @default("unknown") @db.VarChar(16)
   path         String   @default("/") @db.VarChar(191)
   userAgent    String?  @db.VarChar(255)
+  userId       Int?
   createdAt    DateTime @default(now())
 
   @@index([path, createdAt], map: "PageVisitLog_path_createdAt_idx")
   @@index([visitorHash, createdAt], map: "PageVisitLog_hash_createdAt_idx")
+  @@index([userId, createdAt], map: "PageVisitLog_userId_createdAt_idx")
 }
 
 model Offer {
