@@ -15,6 +15,10 @@ import { DEFAULT_EUR_PLN_RATE } from '@/lib/money/constants';
 import { getNbpEurPlnRate } from '@/lib/money/nbpEurPln';
 import { loadOfferViewCounts, shapePublicListOffer } from '@/lib/offers/publicListShape';
 import {
+  fetchMaxHistoricalPricePlnByOfferIds,
+  resolveEffectiveListPricePln,
+} from '@/lib/offerPriceHistory';
+import {
   applyLegalStatusOverride,
   legalStatusOverridesForOffers,
 } from '@/lib/offerLegalStatusOverlay';
@@ -122,15 +126,23 @@ export async function GET() {
     const offerIds = visibleOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
     const viewsMap = await loadOfferViewCounts(prisma, offerIds);
     const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
+    const historyMaxMap = await fetchMaxHistoricalPricePlnByOfferIds(offerIds);
     const listFx = { rate: listFxRate, date: listFxDate };
 
     return NextResponse.json(
-      visibleOffers.map((offer: any) =>
-        shapePublicListOffer(applyLegalStatusOverride(offer, legalOverrides), {
+      visibleOffers.map((offer: any) => {
+        const withListPrice = {
+          ...offer,
+          listPricePln: resolveEffectiveListPricePln(
+            offer,
+            historyMaxMap.get(Number(offer.id)),
+          ),
+        };
+        return shapePublicListOffer(applyLegalStatusOverride(withListPrice, legalOverrides), {
           viewsCount: viewsMap.get(Number(offer.id)) || 0,
           fx: listFx,
-        }),
-      ),
+        });
+      }),
     );
 
   } catch (error) {
