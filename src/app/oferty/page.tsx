@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
@@ -25,6 +25,10 @@ import { useLocale } from "@/contexts/LocaleContext";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 import CatalogAuctionCard from "@/components/catalog/CatalogAuctionCard";
+import CatalogLocationFilter, {
+  offerMatchesCatalogLocationFilter,
+  type CatalogLocationFilterValue,
+} from "@/components/catalog/CatalogLocationFilter";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { formatDistanceKm, haversineKm } from "@/lib/geo/haversine";
@@ -45,6 +49,9 @@ type CatalogOffer = {
   featured?: boolean | null;
   previousPrice?: unknown;
   oldPrice?: unknown;
+  listPricePln?: unknown;
+  localityCountry?: string | null;
+  localityCountryCode?: string | null;
   isLegalSafeVerified?: boolean | null;
   badges?: { isPartner?: boolean; isPro?: boolean } | null;
   lat?: number | null;
@@ -187,6 +194,12 @@ export default function CatalogPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<GallerySection>("all");
   const [gridDensity, setGridDensity] = useState<CatalogGridDensity>(2);
+  const [locationFilter, setLocationFilter] = useState<CatalogLocationFilterValue>({
+    countryCode: null,
+    city: null,
+    district: null,
+  });
+  const [strictCityDistricts, setStrictCityDistricts] = useState<Record<string, string[]>>({});
   const { location, denied, pending, request } = useUserLocation();
 
   useEffect(() => {
@@ -319,26 +332,58 @@ export default function CatalogPage() {
   }, [load, loadAuth, loadAuctions]);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch("/api/location/districts", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && json?.strictCityDistricts && typeof json.strictCityDistricts === "object") {
+          setStrictCityDistricts(json.strictCityDistricts as Record<string, string[]>);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setStrictCityDistricts({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleSectionChange = useCallback(
+    (section: GallerySection) => {
+      setActiveSection(section);
+      if (section === "nearest" && !location && !denied) {
+        void request();
+      }
+    },
+    [denied, location, request],
+  );
+
+  const locationFilteredOffers = useMemo(
+    () => offers.filter((offer) => offerMatchesCatalogLocationFilter(offer, locationFilter)),
+    [offers, locationFilter],
+  );
+
+  useEffect(() => {
     if (activeSection === "mine" && loggedIn) void loadMine();
     if (activeSection === "auction") void loadAuctions();
   }, [activeSection, loggedIn, loadMine, loadAuctions]);
 
-  const sortedByNewest = [...offers].sort((a, b) => {
+  const sortedByNewest = [...locationFilteredOffers].sort((a, b) => {
     const ta = a.createdAt ? Date.parse(a.createdAt) : Number(a.id) * 1000;
     const tb = b.createdAt ? Date.parse(b.createdAt) : Number(b.id) * 1000;
     return tb - ta;
   });
 
-  const discountedOffers = offers.filter((offer) => {
+  const discountedOffers = locationFilteredOffers.filter((offer) => {
     if (offer.isDiscounted) return true;
     const current = Number(offer.pricePln ?? offer.price ?? 0);
-    const prev = Number(offer.previousPrice ?? offer.oldPrice ?? 0);
+    const prev = Number(offer.previousPrice ?? offer.oldPrice ?? offer.listPricePln ?? 0);
     return Number.isFinite(current) && Number.isFinite(prev) && prev > current && current > 0;
   });
 
   const distanceByOfferId = new Map<number, number>();
   if (location) {
-    for (const offer of offers) {
+    for (const offer of locationFilteredOffers) {
       const lat = Number(offer.lat);
       const lng = Number(offer.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
@@ -347,26 +392,26 @@ export default function CatalogPage() {
   }
 
   const nearestOffers = location
-    ? [...offers]
+    ? [...locationFilteredOffers]
         .filter((o) => distanceByOfferId.has(o.id))
         .sort((a, b) => (distanceByOfferId.get(a.id)! - distanceByOfferId.get(b.id)!))
     : [];
 
-  const geolocatedCount = offers.filter((o) => {
+  const geolocatedCount = locationFilteredOffers.filter((o) => {
     const lat = Number(o.lat);
     const lng = Number(o.lng);
     return Number.isFinite(lat) && Number.isFinite(lng);
   }).length;
 
-  const featuredOffers = offers.filter(
+  const featuredOffers = locationFilteredOffers.filter(
     (offer) => offer.featured || offer.badges?.isPartner || offer.badges?.isPro,
   );
 
   const sectionCounts: Record<GallerySection, number> = {
-    all: offers.length,
+    all: locationFilteredOffers.length,
     nearest: location ? nearestOffers.length : geolocatedCount,
-    sale: offers.filter((o) => normalizeTransactionType(o.transactionType) === "sale").length,
-    rent: offers.filter((o) => normalizeTransactionType(o.transactionType) === "rent").length,
+    sale: locationFilteredOffers.filter((o) => normalizeTransactionType(o.transactionType) === "sale").length,
+    rent: locationFilteredOffers.filter((o) => normalizeTransactionType(o.transactionType) === "rent").length,
     newest: sortedByNewest.length,
     discounted: discountedOffers.length,
     featured: featuredOffers.length,
@@ -381,9 +426,9 @@ export default function CatalogPage() {
       case "nearest":
         return nearestOffers;
       case "sale":
-        return offers.filter((o) => normalizeTransactionType(o.transactionType) === "sale");
+        return locationFilteredOffers.filter((o) => normalizeTransactionType(o.transactionType) === "sale");
       case "rent":
-        return offers.filter((o) => normalizeTransactionType(o.transactionType) === "rent");
+        return locationFilteredOffers.filter((o) => normalizeTransactionType(o.transactionType) === "rent");
       case "newest":
         return sortedByNewest;
       case "discounted":
@@ -391,7 +436,7 @@ export default function CatalogPage() {
       case "featured":
         return featuredOffers.length > 0 ? featuredOffers : sortedByNewest.slice(0, 8);
       default:
-        return offers;
+        return locationFilteredOffers;
     }
   })();
 
@@ -423,20 +468,20 @@ export default function CatalogPage() {
             <p className="mt-4 max-w-2xl text-sm md:text-base font-light leading-relaxed text-[var(--eos-muted)]">
               {labels.lead}
             </p>
-            {!location ? (
-              <button
-                type="button"
-                onClick={request}
-                disabled={pending}
-                className="mt-5 inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600 transition hover:bg-emerald-500/15 dark:text-emerald-400"
-              >
-                {pending ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
-                {nearestCopy.enable}
-              </button>
-            ) : denied ? (
+            {denied ? (
               <p className="mt-4 text-xs text-[var(--eos-muted)]">{nearestCopy.denied}</p>
             ) : null}
           </motion.div>
+
+          {!loading && !error ? (
+            <CatalogLocationFilter
+              offers={offers}
+              value={locationFilter}
+              onChange={setLocationFilter}
+              labels={labels.locationFilter}
+              strictCityDistricts={strictCityDistricts}
+            />
+          ) : null}
 
           {!loading && !error && (
             <motion.nav
@@ -456,7 +501,7 @@ export default function CatalogPage() {
                     <button
                       key={section}
                       type="button"
-                      onClick={() => setActiveSection(section)}
+                      onClick={() => handleSectionChange(section)}
                       className={`flex shrink-0 items-center gap-2.5 rounded-xl px-4 py-3 text-left transition-all duration-200 border ${
                         active
                           ? accentAuction

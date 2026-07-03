@@ -416,6 +416,16 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       countryDefault: "Польща",
       offerTitleFallback: "Оголошення #{id}",
       offerImageAlt: "Оголошення {id}",
+      locationFilter: {
+        title: "Локація",
+        country: "Країна",
+        city: "Місто",
+        district: "Район",
+        allCountries: "Усі країни",
+        allCities: "Усі міста",
+        allDistricts: "Усе місто",
+        clear: "Скинути фільтри",
+      },
     },
     pricing: {
       eyebrow: "Оберіть рівень",
