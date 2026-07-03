@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Activity,
@@ -21,6 +21,8 @@ import {
   X,
 } from "lucide-react";
 import type { AdminUserDetail } from "@/lib/adminUserDetail";
+import type { AdminUserActivityBundle } from "@/lib/adminUserActivity";
+import AdminUserAccessSection from "@/components/admin/AdminUserAccessSection";
 import AdminWalletSection from "@/components/admin/AdminWalletSection";
 import {
   labelPropertyType,
@@ -146,6 +148,7 @@ export default function AdminUserDetailPanel({
   onDelete,
   onOpenMessages,
   onVerificationChange,
+  onRefresh,
 }: {
   user: AdminUserDetail;
   segmentLabel: string;
@@ -156,11 +159,33 @@ export default function AdminUserDetailPanel({
   onDelete: () => void;
   onOpenMessages: () => void;
   onVerificationChange?: (patch: Pick<AdminUserDetail, "isVerified" | "emailVerifiedAt" | "phoneVerifiedAt">) => void;
+  onRefresh?: () => void;
 }) {
   const [verifyBusy, setVerifyBusy] = useState<"email" | "phone" | null>(null);
+  const [activity, setActivity] = useState<AdminUserActivityBundle | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
   const legacyDistricts = parseDistrictList(user.legacyPreferences.searchDistricts);
   const emailOk = Boolean(user.emailVerifiedAt || user.isVerified);
   const phoneOk = Boolean(user.phoneVerifiedAt);
+
+  useEffect(() => {
+    let cancelled = false;
+    setActivityLoading(true);
+    void fetch(`/api/admin/users/${user.id}/activity`, { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data?.success) setActivity(data.activity);
+      })
+      .catch(() => {
+        if (!cancelled) setActivity(null);
+      })
+      .finally(() => {
+        if (!cancelled) setActivityLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id]);
 
   const runVerification = async (channel: "email" | "phone", action: "verify" | "unverify") => {
     const channelLabel = channel === "email" ? "e-mail" : "telefon (SMS)";
@@ -246,12 +271,119 @@ export default function AdminUserDetailPanel({
         <InfoRow label="Segment" value={segmentLabel} />
         <InfoRow label="Rola" value={user.role} />
         <InfoRow label="Plan" value={user.planType || "—"} />
+        {user.agencyMembership ? (
+          <>
+            <InfoRow label="Biuro" value={user.agencyMembership.companyName} />
+            <InfoRow
+              label="Profil biura"
+              value={
+                user.agencyMembership.companySlug ? (
+                  <Link href={`/firma/${user.agencyMembership.companySlug}`} className="text-emerald-600 hover:underline dark:text-emerald-400">
+                    /firma/{user.agencyMembership.companySlug}
+                  </Link>
+                ) : (
+                  "—"
+                )
+              }
+            />
+            <InfoRow label="Rola w biurze" value={user.agencyMembership.memberRole} />
+            <InfoRow label="Tytuł" value={user.agencyMembership.agentTitle} />
+            <InfoRow label="Status członkostwa" value={user.agencyMembership.status} />
+            <InfoRow label="Zarząd biura" value={user.agencyMembership.isOfficeBoard ? "Tak" : "Nie"} />
+          </>
+        ) : null}
         <InfoRow label="Telefon" value={user.phone || "—"} mono />
         <InfoRow label="Firma / biuro" value={user.companyName || "—"} />
         <InfoRow label="NIP" value={user.nip || "—"} mono />
         <InfoRow label="Dodatkowe oferty" value={String(user.extraListings)} />
         <InfoRow label="PRO do" value={formatDate(user.proExpiresAt)} />
         <InfoRow label="PLUS do" value={formatDate(user.plusExpiresAt)} />
+      </Section>
+
+      <Section title="Uprawnienia (PRO / Zarząd)" icon={<ShieldCheck size={12} className="text-amber-500" />}>
+        <AdminUserAccessSection user={user} onUpdated={() => onRefresh?.()} />
+      </Section>
+
+      <Section title="Statystyki aktywności" icon={<Activity size={12} className="text-emerald-500" />}>
+        {activityLoading ? (
+          <div className="flex items-center gap-2 px-4 py-4 text-sm text-[var(--eos-muted)]">
+            <Loader2 size={16} className="animate-spin" /> Wczytywanie…
+          </div>
+        ) : activity ? (
+          <>
+            <InfoRow label="Wątki Contact (łącznie)" value={String(activity.contactThreads)} />
+            <InfoRow label="Wiadomości wysłane" value={String(activity.contactMessagesSent)} />
+            <InfoRow label="Deale jako kupujący" value={String(activity.dealsAsBuyer)} />
+            <InfoRow label="Deale jako sprzedający" value={String(activity.dealsAsSeller)} />
+            <InfoRow label="Wizyty / prezentacje (prop.)" value={String(activity.appointmentsTotal)} />
+            <InfoRow label="Klienci CRM (agency)" value={String(activity.agencyClientsManaged)} />
+            <InfoRow label="Odsłony WWW (7 dni)" value={String(activity.pageViews7d)} />
+            {activity.recentAgencyClients.length > 0 ? (
+              <div className="border-t border-[var(--eos-border)] px-4 py-3">
+                <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
+                  Klienci CRM (reprezentacja)
+                </p>
+                <ul className="max-h-40 space-y-2 overflow-y-auto text-xs">
+                  {activity.recentAgencyClients.map((client) => (
+                    <li key={client.id} className="rounded-lg bg-[var(--eos-bg)] px-2 py-1.5">
+                      <p className="font-semibold text-[var(--eos-text)]">
+                        {client.name}{" "}
+                        <span className="font-normal text-[var(--eos-muted)]">
+                          · {client.type} · {client.status}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 text-[var(--eos-muted)]">
+                        {[client.email, client.phone].filter(Boolean).join(" · ") || "Bez kontaktu"}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {activity.recentContacts.length > 0 ? (
+              <div className="border-t border-[var(--eos-border)] px-4 py-3">
+                <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
+                  Ostatnie rozmowy (Contact)
+                </p>
+                <ul className="max-h-40 space-y-2 overflow-y-auto text-xs">
+                  {activity.recentContacts.map((peer) => (
+                    <li key={`${peer.userId}-${peer.lastAt}`} className="rounded-lg bg-[var(--eos-bg)] px-2 py-1.5">
+                      <p className="font-semibold text-[var(--eos-text)]">
+                        {peer.name || peer.email || `#${peer.userId}`}
+                      </p>
+                      <p className="mt-0.5 text-[var(--eos-muted)]">
+                        #{peer.userId} · ostatnia aktywność {formatDate(peer.lastAt)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {activity.recentPageViews.length > 0 ? (
+              <div className="border-t border-[var(--eos-border)] px-4 py-3">
+                <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
+                  Ostatnie strony (zalogowany)
+                </p>
+                <ul className="max-h-48 space-y-2 overflow-y-auto text-xs">
+                  {activity.recentPageViews.map((row, idx) => (
+                    <li key={`${row.at}-${idx}`} className="rounded-lg bg-[var(--eos-bg)] px-2 py-1.5">
+                      <p className="font-mono text-[11px] break-all text-[var(--eos-text)]">{row.path}</p>
+                      <p className="mt-0.5 text-[var(--eos-muted)]">
+                        {formatDate(row.at)} · {row.deviceType}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="px-4 py-3 text-xs text-[var(--eos-muted)]">
+                Brak zalogowanych odsłon — od teraz ruch zalogowanych użytkowników jest zapisywany z userId.
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="px-4 py-3 text-xs text-[var(--eos-muted)]">Nie udało się wczytać statystyk.</div>
+        )}
       </Section>
 
       <Section title="Weryfikacja" icon={<ShieldCheck size={12} className="text-emerald-500" />}>

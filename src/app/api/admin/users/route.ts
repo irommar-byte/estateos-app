@@ -43,6 +43,11 @@ const USER_ADMIN_INCLUDE = {
       Authenticator: true,
     },
   },
+  agencyMembership: {
+    include: {
+      company: { select: { id: true, name: true, slug: true } },
+    },
+  },
 };
 
 export async function GET() {

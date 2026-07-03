@@ -6,6 +6,7 @@ const EXTRA_COLUMNS: Array<{ name: string; ddl: string }> = [
   { name: 'isp', ddl: 'isp VARCHAR(128) NULL' },
   { name: 'geoSource', ddl: "geoSource VARCHAR(16) NOT NULL DEFAULT 'unknown'" },
   { name: 'deviceType', ddl: "deviceType VARCHAR(16) NOT NULL DEFAULT 'unknown'" },
+  { name: 'userId', ddl: 'userId INT NULL' },
 ];
 
 export async function ensurePageVisitLogTable(): Promise<void> {
@@ -30,5 +31,11 @@ export async function ensurePageVisitLogTable(): Promise<void> {
     } catch {
       // kolumna już istnieje
     }
+  }
+
+  try {
+    await prisma.$executeRawUnsafe(`CREATE INDEX PageVisitLog_userId_createdAt_idx ON PageVisitLog (userId, createdAt)`);
+  } catch {
+    // indeks już istnieje
   }
 }

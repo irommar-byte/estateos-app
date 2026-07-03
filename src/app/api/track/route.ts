@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createHash } from "crypto";
 import { ensurePageVisitLogTable } from "@/lib/pageVisitLogTable";
 import { parseDeviceType, resolveVisitGeo } from "@/lib/visitGeo";
+import { resolveWebUserId } from "@/lib/webSessionAuth";
 
 const PAGE_VISIT_WINDOW_MINUTES = 30;
 
@@ -36,15 +37,30 @@ export async function POST(req: Request) {
     const geo = await resolveVisitGeo(req, ip);
     const path = normalizePath(body?.path);
     const campaignRef = String(body?.campaignRef || "").trim().slice(0, 120);
-    const pathForLog = campaignRef ? `${path}|${campaignRef}` : path;
     const userAgent = (req.headers.get("user-agent") || "").slice(0, 255);
     const deviceType = parseDeviceType(userAgent);
     const visitorHash = hashVisitor(`${ip}|${userAgent}`);
+    const userId = await resolveWebUserId(req);
 
     await ensurePageVisitTable();
 
-    const recent = await prisma.$queryRawUnsafe<any[]>(
-      `
+    const dedupePath = campaignRef ? `${path}|${campaignRef}` : path;
+    const recent = userId
+      ? await prisma.$queryRawUnsafe<any[]>(
+          `
+        SELECT id
+        FROM PageVisitLog
+        WHERE userId = ?
+          AND path = ?
+          AND createdAt >= DATE_SUB(NOW(3), INTERVAL ? MINUTE)
+        LIMIT 1
+      `,
+          userId,
+          dedupePath,
+          PAGE_VISIT_WINDOW_MINUTES,
+        )
+      : await prisma.$queryRawUnsafe<any[]>(
+          `
         SELECT id
         FROM PageVisitLog
         WHERE visitorHash = ?
@@ -52,18 +68,18 @@ export async function POST(req: Request) {
           AND createdAt >= DATE_SUB(NOW(3), INTERVAL ? MINUTE)
         LIMIT 1
       `,
-      visitorHash,
-      path,
-      PAGE_VISIT_WINDOW_MINUTES
-    );
+          visitorHash,
+          dedupePath,
+          PAGE_VISIT_WINDOW_MINUTES,
+        );
 
     let counted = false;
     if (!recent.length) {
       counted = true;
       await prisma.$executeRawUnsafe(
         `
-          INSERT INTO PageVisitLog (visitorHash, ip, country, city, regionName, isp, geoSource, deviceType, path, userAgent, createdAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3))
+          INSERT INTO PageVisitLog (visitorHash, ip, country, city, regionName, isp, geoSource, deviceType, path, userAgent, userId, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3))
         `,
         visitorHash,
         ip,
@@ -73,8 +89,9 @@ export async function POST(req: Request) {
         geo.isp,
         geo.geoSource,
         deviceType,
-        pathForLog,
-        userAgent
+        dedupePath,
+        userAgent,
+        userId,
       );
     }
 
