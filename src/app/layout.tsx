@@ -8,6 +8,8 @@ import Navbar from "@/components/layout/Navbar";
 import FloatingPreferencesDock from "@/components/layout/FloatingPreferencesDock";
 import WebNotificationPrompt from "@/components/layout/WebNotificationPrompt";
 import PresentationFlowOrchestrator from "@/components/presentation/PresentationFlowOrchestrator";
+import CampaignAttributionBoundary from "@/components/marketing/CampaignAttributionBoundary";
+import EstateOsStructuredData from "@/components/marketing/EstateOsStructuredData";
 import SkipToContent from "@/components/layout/SkipToContent";
 import LocaleDocumentMeta from "@/components/layout/LocaleDocumentMeta";
 import Tracker from "@/components/Tracker";
@@ -31,9 +33,14 @@ export const metadata: Metadata = {
   description:
     "Discover, list, and close premium properties worldwide. 3D map, Intelligent Radar, verification, and Passkey.",
   keywords: [
+    "nieruchomości",
+    "EstateOS",
+    "estateos.pl",
+    "CRM agencja nieruchomości",
+    "platforma nieruchomości Polska",
+    "aplikacja nieruchomości",
     "premium real estate",
     "global property",
-    "estateos",
     "luxury homes",
     "property map",
     "intelligent radar",
@@ -83,6 +90,7 @@ export default async function RootLayout({
   return (
     <html suppressHydrationWarning lang={locale} className="dark" data-theme="dark">
       <body suppressHydrationWarning className={inter.className}>
+        <EstateOsStructuredData />
         <ThemeInitScript />
         <ThemeProvider>
           <LocaleProvider initialLocale={locale}>
@@ -92,6 +100,7 @@ export default async function RootLayout({
                 <UserModeProvider>
                   <FavoritesProvider>
                     <SkipToContent />
+                    <CampaignAttributionBoundary />
                     <Tracker />
                     <Navbar />
                     <FloatingPreferencesDock />

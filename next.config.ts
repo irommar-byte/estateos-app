@@ -16,6 +16,8 @@ const nextConfig: NextConfig = {
       /** Alias pod App Store / linki zewnętrzne — treść EN na działającej trasie prawnej. */
       { source: "/privacy-policy", destination: "/polityka-prywatnosci", permanent: false },
       { source: "/privacy-policy/", destination: "/polityka-prywatnosci", permanent: false },
+      { source: "/press", destination: "/dla-prasy", permanent: true },
+      { source: "/press/", destination: "/dla-prasy", permanent: true },
     ];
   },
   async rewrites() {
