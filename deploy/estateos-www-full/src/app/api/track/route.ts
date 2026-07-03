@@ -35,6 +35,8 @@ export async function POST(req: Request) {
     const ip = getClientIp(req).slice(0, 64);
     const geo = await resolveVisitGeo(req, ip);
     const path = normalizePath(body?.path);
+    const campaignRef = String(body?.campaignRef || "").trim().slice(0, 120);
+    const pathForLog = campaignRef ? `${path}|${campaignRef}` : path;
     const userAgent = (req.headers.get("user-agent") || "").slice(0, 255);
     const deviceType = parseDeviceType(userAgent);
     const visitorHash = hashVisitor(`${ip}|${userAgent}`);
@@ -71,7 +73,7 @@ export async function POST(req: Request) {
         geo.isp,
         geo.geoSource,
         deviceType,
-        path,
+        pathForLog,
         userAgent
       );
     }
