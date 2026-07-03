@@ -138,6 +138,12 @@ export default function PressKitClient() {
 
         <div className="mt-10 text-center">
           <Link
+            href="/kampania"
+            className="mr-3 inline-flex rounded-full border border-emerald-500/40 px-6 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400"
+          >
+            Twój plan krok po kroku
+          </Link>
+          <Link
             href="/start"
             className="inline-flex rounded-full bg-emerald-500 px-6 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-black"
           >
