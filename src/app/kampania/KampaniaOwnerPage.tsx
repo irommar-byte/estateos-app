@@ -23,12 +23,20 @@ const OWNER_STEPS: OwnerStep[] = [
     day: 'Dzień 1',
     title: 'Google Search Console + Bing',
     minutes: 15,
-    why: 'Bez tego Google i Copilot wolniej indeksują stronę i llms.txt.',
+    why: 'Bez tego Google wolniej indeksuje stronę. UWAGA: weryfikujesz estateos.pl — NIE adres sitemap.xml.',
     actions: [
       { label: 'Otwórz Google Search Console', href: 'https://search.google.com/search-console/welcome' },
-      { label: 'Dodaj domenę estateos.pl', href: 'https://search.google.com/search-console' },
       {
-        label: 'Skopiuj adres sitemap',
+        label: 'Jaka właściwość? (przeczytaj)',
+        copy:
+          'W Search Console dodaj właściwość:\n• Preferowane: „Domena” → estateos.pl\n• Albo: „Prefiks URL” → https://estateos.pl\n\nNIE dodawaj https://estateos.pl/sitemap.xml — to tylko mapa, nie strona główna.\n\nWeryfikacja plikiem HTML: plik google2924349bad8cf3ab.html jest już na serwerze pod adresem:\nhttps://estateos.pl/google2924349bad8cf3ab.html\n\nPo dodaniu właściwości kliknij WERYFIKUJ.',
+      },
+      {
+        label: 'Sprawdź plik weryfikacyjny (otwórz w przeglądarce)',
+        href: 'https://estateos.pl/google2924349bad8cf3ab.html',
+      },
+      {
+        label: 'Skopiuj adres sitemap (dopiero PO weryfikacji)',
         copy: 'https://estateos.pl/sitemap.xml',
       },
       { label: 'Otwórz Bing Webmaster', href: 'https://www.bing.com/webmasters' },
