@@ -483,6 +483,16 @@ export type Dictionary = {
     countryDefault: string;
     offerTitleFallback: string;
     offerImageAlt: string;
+    locationFilter: {
+      title: string;
+      country: string;
+      city: string;
+      district: string;
+      allCountries: string;
+      allCities: string;
+      allDistricts: string;
+      clear: string;
+    };
   };
   editOffer: {
     noAccess: string;
@@ -1145,6 +1155,16 @@ const pl: Dictionary = {
     countryDefault: "Polska",
     offerTitleFallback: "Oferta #{id}",
     offerImageAlt: "Oferta {id}",
+    locationFilter: {
+      title: "Lokalizacja",
+      country: "Państwo",
+      city: "Miasto",
+      district: "Dzielnica",
+      allCountries: "Wszystkie kraje",
+      allCities: "Wszystkie miasta",
+      allDistricts: "Całe miasto",
+      clear: "Wyczyść filtry",
+    },
   },
   editOffer: {
     noAccess: "Brak dostępu lub oferty.",
@@ -1825,6 +1845,16 @@ const en: Dictionary = {
     countryDefault: "Poland",
     offerTitleFallback: "Listing #{id}",
     offerImageAlt: "Listing {id}",
+    locationFilter: {
+      title: "Location",
+      country: "Country",
+      city: "City",
+      district: "District",
+      allCountries: "All countries",
+      allCities: "All cities",
+      allDistricts: "Whole city",
+      clear: "Clear filters",
+    },
   },
   editOffer: {
     noAccess: "No access or listing not found.",
