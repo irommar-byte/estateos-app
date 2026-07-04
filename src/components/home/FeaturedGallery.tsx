@@ -6,6 +6,8 @@ import { motion } from "framer-motion";
 import { ArrowUpRight, Briefcase, MapPin } from "lucide-react";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
+import OfferNewBadge from "@/components/offer/OfferNewBadge";
+import { isOfferNew, sortOffersByNewest } from "@/lib/offerNewBadge";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
@@ -24,6 +26,7 @@ type Offer = {
   images?: unknown;
   transactionType?: string | null;
   isLegalSafeVerified?: boolean | null;
+  createdAt?: string | null;
   badges?: {
     isPartner?: boolean;
     isInvestorPro?: boolean;
@@ -72,12 +75,7 @@ export default function FeaturedGallery() {
       .then((res) => res.json())
       .then((json) => {
         if (!cancelled && Array.isArray(json)) {
-          const sorted = [...json].sort((a, b) => {
-            const aPartner = a?.badges?.isPartner === true ? 1 : 0;
-            const bPartner = b?.badges?.isPartner === true ? 1 : 0;
-            return bPartner - aPartner;
-          });
-          setOffers(sorted.slice(0, 6));
+          setOffers(sortOffersByNewest(json).slice(0, 6));
         }
       })
       .catch(() => {
@@ -156,6 +154,7 @@ export default function FeaturedGallery() {
             const isRent = String(offer.transactionType || "").toLowerCase().includes("rent");
             const offerCopy = getOfferPageCopy(locale);
             const isKwVerified = offer.isLegalSafeVerified === true;
+            const showNewBadge = isOfferNew(offer.createdAt);
             return (
               <motion.article
                 key={offer.id}
@@ -178,13 +177,19 @@ export default function FeaturedGallery() {
                   <div className="absolute left-5 top-5 rounded-full border border-white/25 bg-black/65 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white backdrop-blur-xl shadow-[0_4px_20px_rgba(0,0,0,0.35)] eos-luxury-media-text">
                     {isRent ? dict.map.forRent : dict.map.forSale}
                   </div>
+                  {showNewBadge ? (
+                    <OfferNewBadge
+                      createdAt={offer.createdAt}
+                      className="absolute left-5 top-[3.35rem] z-10"
+                    />
+                  ) : null}
                   {isKwVerified ? (
                     <LegalVerifiedShieldBadge
                       variant="card"
                       active
                       label={offerCopy.legalVerifiedKw}
                       sublabel={offerCopy.legalVerifiedKwSublabel}
-                      className="absolute left-5 top-[3.25rem] z-10"
+                      className={`absolute left-5 z-10 ${showNewBadge ? "top-[5.5rem]" : "top-[3.25rem]"}`}
                     />
                   ) : null}
                   <OfferFavoriteButton

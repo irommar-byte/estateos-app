@@ -494,6 +494,7 @@ export type Dictionary = {
       clear: string;
     };
   };
+  offerNewBadge: string;
   editOffer: {
     noAccess: string;
     noPermission: string;
@@ -878,9 +879,9 @@ const pl: Dictionary = {
     statsMarketCities: "Obsługiwanych Miast",
     statsRegisteredMembers: "Zaufanych Klientów",
     galleryEyebrow: "Aktywny rynek",
-    galleryTitle: "Wybrane",
+    galleryTitle: "Najnowsze",
     galleryTitleHighlight: "ogłoszenia",
-    gallerySubtitle: "Aktualne oferty z bazy EstateOS — sprzedaż i wynajem, ten sam katalog co na mapie.",
+    gallerySubtitle: "Świeże oferty z ostatnich 24 godzin — sprzedaż i wynajem, ten sam katalog co na mapie.",
     galleryViewAll: "Zobacz całą kolekcję",
     galleryPriceLabel: "Cena",
     galleryAreaLabel: "Powierzchnia",
@@ -1166,6 +1167,7 @@ const pl: Dictionary = {
       clear: "Wyczyść filtry",
     },
   },
+  offerNewBadge: "Nowe",
   editOffer: {
     noAccess: "Brak dostępu lub oferty.",
     noPermission: "Brak uprawnień do edycji.",
@@ -1568,9 +1570,9 @@ const en: Dictionary = {
     statsMarketCities: "Cities Covered",
     statsRegisteredMembers: "Trusted Members",
     galleryEyebrow: "Active market",
-    galleryTitle: "Featured",
+    galleryTitle: "Latest",
     galleryTitleHighlight: "listings",
-    gallerySubtitle: "Live listings from EstateOS — sale and rent, the same catalog as on the map.",
+    gallerySubtitle: "Fresh listings from the last 24 hours — sale and rent, the same catalog as on the map.",
     galleryViewAll: "View full catalog",
     galleryPriceLabel: "Price",
     galleryAreaLabel: "Area",
@@ -1856,6 +1858,7 @@ const en: Dictionary = {
       clear: "Clear filters",
     },
   },
+  offerNewBadge: "New",
   editOffer: {
     noAccess: "No access or listing not found.",
     noPermission: "You cannot edit this listing.",
