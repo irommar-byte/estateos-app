@@ -33,9 +33,9 @@ struct SearchView: View {
     @FocusState private var localFocus: SearchFocus?
 
     private let pageSize = 24
-    private let cardMinimum: CGFloat = 340
-    private let gridSpacing: CGFloat = 40
-    private let columns = [GridItem(.adaptive(minimum: 340, maximum: 380), spacing: 40)]
+    private let cardMinimum: CGFloat = 300
+    private let gridSpacing: CGFloat = 32
+    private let columns = [GridItem(.adaptive(minimum: 300, maximum: 360), spacing: 32)]
 
     var body: some View {
         Group {
@@ -70,7 +70,7 @@ struct SearchView: View {
     private var searchContent: some View {
         ScrollViewReader { scrollProxy in
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: NostalgieSpacing.section) {
                     Color.clear.frame(height: 1).id("searchTop")
 
                     ScreenTitle(title: "Szukaj", subtitle: "Filmy, seriale i odcinki")
@@ -100,14 +100,28 @@ struct SearchView: View {
                         )
                     }
                 }
-                .padding(.bottom, 80)
+                .padding(.horizontal, NostalgieSpacing.screenH)
+                .padding(.bottom, NostalgieSpacing.scrollBottom)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onPlayPauseCommand {
+                localFocus = .query
+            }
+            .onExitCommand {
+                if !query.isEmpty || !results.isEmpty {
+                    query = ""
+                    results = []
+                    totalResults = 0
+                    localFocus = .query
+                } else {
+                    focusedTab.wrappedValue = navigationTab
+                }
+            }
             .onChange(of: localFocus) { _, focus in
                 guard let focus else { return }
                 switch focus {
                 case .query, .searchButton, .source, .access, .sort, .pagePrevious, .pageNext:
-                    withAnimation(.easeOut(duration: 0.25)) {
+                    withAnimation(NostalgieTheme.contentSpring) {
                         scrollProxy.scrollTo("searchTop", anchor: .top)
                     }
                 }
@@ -123,13 +137,13 @@ struct SearchView: View {
                         .foregroundStyle(.secondary)
                     TextField("Tytuł, serial, film…", text: $query)
                         .textFieldStyle(.plain)
-                        .font(.title3)
+                        .font(NostalgieFont.field)
                         .onSubmit {
                             Task { await runSearch(resetPage: true) }
                         }
                 }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 18)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
                 .background(localFocus == .query ? NostalgieTheme.cardFocused : NostalgieTheme.card)
                 .clipShape(RoundedRectangle(cornerRadius: NostalgieTheme.cardCornerRadius, style: .continuous))
                 .overlay {
@@ -137,7 +151,7 @@ struct SearchView: View {
                         .stroke(localFocus == .query ? Color.white.opacity(0.9) : Color.white.opacity(0.08), lineWidth: localFocus == .query ? 3 : 1)
                 }
                 .focused($localFocus, equals: .query)
-                .animation(NostalgieTheme.focusAnimation, value: localFocus == .query)
+                .animation(NostalgieTheme.focusSpring, value: localFocus == .query)
                 .onMoveCommand { direction in
                     if direction == .up {
                         focusedTab.wrappedValue = navigationTab
@@ -249,10 +263,10 @@ struct SearchView: View {
     private func filterRow<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.caption.weight(.semibold))
+                .font(NostalgieFont.caption)
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
-                .tracking(0.8)
+                .tracking(0.6)
             HStack(spacing: 12) {
                 content()
             }
@@ -263,11 +277,12 @@ struct SearchView: View {
     private var resultsHeader: some View {
         HStack(spacing: 16) {
             Text("\(totalResults) wyników · \(page)/\(totalPages)")
+                .font(NostalgieFont.metadata)
                 .foregroundStyle(.secondary)
             if !app.favoriteURLs.isEmpty {
                 Label("\(app.favoriteURLs.count) ulub.", systemImage: "heart.fill")
                     .foregroundStyle(.secondary)
-                    .font(.callout)
+                    .font(NostalgieFont.caption)
             }
             Spacer()
             if page > 1 {

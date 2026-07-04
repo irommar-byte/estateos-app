@@ -113,6 +113,12 @@ enum PlayerAudioSession {
         try? session.setCategory(.playback, mode: .moviePlayback)
         try? session.setActive(true)
     }
+
+    static func activateForMusic() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default)
+        try? session.setActive(true)
+    }
 }
 
 final class PlayerViewController: AVPlayerViewController, AVPlayerViewControllerDelegate {

@@ -22,9 +22,9 @@ struct FavoritesView: View {
     @FocusState private var localFocus: FavoritesFocus?
     @FocusState private var latestFocusedID: String?
 
-    private let cardMinimum: CGFloat = 340
-    private let gridSpacing: CGFloat = 40
-    private let columns = [GridItem(.adaptive(minimum: 340, maximum: 380), spacing: 40)]
+    private let cardMinimum: CGFloat = 300
+    private let gridSpacing: CGFloat = 32
+    private let columns = [GridItem(.adaptive(minimum: 300, maximum: 360), spacing: 32)]
 
     var body: some View {
         Group {
@@ -62,7 +62,7 @@ struct FavoritesView: View {
     private var favoritesList: some View {
         ScrollViewReader { scrollProxy in
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: NostalgieSpacing.section) {
                     Color.clear.frame(height: 1).id("favoritesTop")
 
                     HStack(alignment: .top) {
@@ -153,12 +153,13 @@ struct FavoritesView: View {
                         .padding(.top, 4)
                     }
                 }
-                .padding(.bottom, 80)
+                .padding(.horizontal, NostalgieSpacing.screenH)
+                .padding(.bottom, NostalgieSpacing.scrollBottom)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onChange(of: localFocus) { _, focus in
                 guard focus != nil else { return }
-                withAnimation(.easeOut(duration: 0.25)) {
+                withAnimation(NostalgieTheme.contentSpring) {
                     scrollProxy.scrollTo("favoritesTop", anchor: .top)
                 }
             }
@@ -214,7 +215,11 @@ struct FavoritesView: View {
                 duration: item.duration,
                 quality: nil,
                 isSerial: item.type == "series",
-                premium: item.detail?.localizedCaseInsensitiveContains("premium") == true ? true : nil
+                premium: item.detail?.localizedCaseInsensitiveContains("premium") == true ? true : nil,
+                previewUrl: nil,
+                artistId: nil,
+                albumId: nil,
+                trackNumber: nil
             )
         )
         if item.type == "series" {

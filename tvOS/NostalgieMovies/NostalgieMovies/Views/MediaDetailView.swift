@@ -37,8 +37,8 @@ struct MediaDetailView: View {
                     serialHint
                 }
                 .frame(maxWidth: 1040, alignment: .leading)
-                .padding(.horizontal, 90)
-                .padding(.bottom, 76)
+                .padding(.horizontal, NostalgieSpacing.screenH)
+                .padding(.bottom, 68)
             }
         }
         .ignoresSafeArea()
@@ -59,7 +59,7 @@ struct MediaDetailView: View {
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(selection.title)
-                .font(.system(size: 58, weight: .bold))
+                .font(NostalgieFont.hero)
                 .lineLimit(2)
                 .minimumScaleFactor(0.75)
                 .shadow(color: .black.opacity(0.45), radius: 12, y: 4)
@@ -73,7 +73,7 @@ struct MediaDetailView: View {
                     Text(formatDuration(duration))
                 }
             }
-            .font(.title3)
+            .font(NostalgieFont.metadata)
             .foregroundStyle(.white.opacity(0.72))
             .lineLimit(1)
         }
@@ -88,16 +88,16 @@ struct MediaDetailView: View {
             MediaTypeBadge(label: typeBadgeLabel)
             if let quality = selection.quality, !quality.isEmpty {
                 Text(quality.uppercased())
-                    .font(.caption.weight(.bold))
-                    .tracking(0.8)
+                    .font(NostalgieFont.caption)
+                    .tracking(0.6)
                     .foregroundStyle(.white.opacity(0.9))
-                    .glassCapsule(paddingH: 12, paddingV: 8)
+                    .glassCapsule(paddingH: 10, paddingV: 6)
             }
             if isFavorite {
                 Label("Ulubione", systemImage: "heart.fill")
-                    .font(.caption.weight(.semibold))
+                    .font(NostalgieFont.caption)
                     .foregroundStyle(NostalgieTheme.accent)
-                    .glassCapsule(paddingH: 12, paddingV: 8)
+                    .glassCapsule(paddingH: 10, paddingV: 6)
             }
         }
     }
@@ -113,7 +113,7 @@ struct MediaDetailView: View {
             Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(isError ? Color.orange : NostalgieTheme.accent)
             Text(message)
-                .font(.callout)
+                .font(NostalgieFont.body)
                 .foregroundStyle(.white.opacity(0.85))
         }
         .padding(.horizontal, 18)
@@ -128,7 +128,7 @@ struct MediaDetailView: View {
                 Task { await play() }
             } label: {
                 Label("Odtwórz", systemImage: "play.fill")
-                    .font(.title3.weight(.semibold))
+                    .font(NostalgieFont.rounded(.title3, weight: .semibold))
             }
             .buttonStyle(DetailPlayButtonStyle())
             .disabled(isBusy)
@@ -158,7 +158,7 @@ struct MediaDetailView: View {
     private var serialHint: some View {
         if selection.isSerial, onOpenEpisodes != nil {
             Text("Aby pobrać serial, wybierz odcinek z listy.")
-                .font(.subheadline)
+                .font(NostalgieFont.metadata)
                 .foregroundStyle(.white.opacity(0.55))
                 .padding(.top, 4)
         }
@@ -167,7 +167,7 @@ struct MediaDetailView: View {
     private func toolbarButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: icon)
-                .font(.body.weight(.semibold))
+                .font(NostalgieFont.rowTitle)
         }
         .buttonStyle(DetailToolbarButtonStyle())
     }
@@ -302,10 +302,10 @@ struct DownloadProgressView: View {
             NostalgieAmbientBackground()
             VStack(alignment: .leading, spacing: 24) {
                 Text("Pobieranie")
-                    .font(.largeTitle.bold())
+                    .font(NostalgieFont.pageTitle)
                 Text(title)
                     .foregroundStyle(.secondary)
-                    .font(.title3)
+                    .font(NostalgieFont.field)
 
                 if let errorMessage {
                     Text(errorMessage).foregroundStyle(NostalgieTheme.accent)
@@ -314,7 +314,7 @@ struct DownloadProgressView: View {
                         .foregroundStyle(.green)
                     Text("Pobierz w panelu www (MOVIES) lub użyj linku w przeglądarce na komputerze.")
                         .foregroundStyle(.secondary)
-                        .font(.callout)
+                        .font(NostalgieFont.caption)
                     Text(app.api.downloadFileURL(jobId: jobId).absoluteString)
                         .font(.footnote)
                         .foregroundStyle(.secondary)

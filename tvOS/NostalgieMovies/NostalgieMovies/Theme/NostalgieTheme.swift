@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - Design tokens
+
 enum NostalgieTheme {
     static let background = LinearGradient(
         colors: [
@@ -16,12 +18,72 @@ enum NostalgieTheme {
     static let card = Color.white.opacity(0.06)
     static let cardFocused = Color.white.opacity(0.14)
 
-    static let posterCornerRadius: CGFloat = 14
-    static let cardCornerRadius: CGFloat = 18
+    static let posterCornerRadius: CGFloat = 12
+    static let cardCornerRadius: CGFloat = 16
     static let posterAspectRatio: CGFloat = 16 / 9
 
-    static let focusAnimation = Animation.easeOut(duration: 0.22)
+    static let focusSpring = Animation.spring(response: 0.32, dampingFraction: 0.78)
+    static let tabSpring = Animation.spring(response: 0.32, dampingFraction: 0.82)
+    static let contentSpring = Animation.spring(response: 0.32, dampingFraction: 0.76)
+
+    /// Legacy alias — prefer focusSpring in new code.
+    static let focusAnimation = focusSpring
 }
+
+enum NostalgieSpacing {
+    static let screenH: CGFloat = 72
+    static let screenTop: CGFloat = 48
+    static let section: CGFloat = 14
+    static let row: CGFloat = 6
+    static let listRow: CGFloat = 6
+    static let scrollBottom: CGFloat = 56
+    static let grid: CGFloat = 28
+}
+
+enum NostalgieRadius {
+    static let chip: CGFloat = 10
+    static let panel: CGFloat = 14
+    static let card: CGFloat = 16
+    static let sheet: CGFloat = 20
+}
+
+enum NostalgieGlassLevel {
+    case chip, panel, card, sheet
+
+    var radius: CGFloat {
+        switch self {
+        case .chip: return NostalgieRadius.chip
+        case .panel: return NostalgieRadius.panel
+        case .card: return NostalgieRadius.card
+        case .sheet: return NostalgieRadius.sheet
+        }
+    }
+}
+
+enum NostalgieFont {
+    static func rounded(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .system(size: size, weight: weight, design: .rounded)
+    }
+
+    static func rounded(_ style: Font.TextStyle, weight: Font.Weight = .regular) -> Font {
+        .system(style, design: .rounded).weight(weight)
+    }
+
+    static let brand = rounded(22, weight: .bold)
+    static let hero = rounded(40, weight: .bold)
+    static let pageTitle = rounded(.title, weight: .bold)
+    static let sectionTitle = rounded(.title3, weight: .semibold)
+    static let detailTitle = rounded(30, weight: .bold)
+    static let rowTitle = rounded(.subheadline, weight: .semibold)
+    static let listTitle = rounded(.callout, weight: .semibold)
+    static let body = rounded(.body)
+    static let metadata = rounded(.caption)
+    static let caption = rounded(.caption2, weight: .medium)
+    static let badge = rounded(.caption2, weight: .bold)
+    static let field = rounded(.headline)
+}
+
+// MARK: - Background
 
 struct NostalgieAmbientBackground: View {
     var body: some View {
@@ -46,9 +108,7 @@ struct NostalgieBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background {
-                NostalgieAmbientBackground()
-            }
+            .background { NostalgieAmbientBackground() }
     }
 }
 
@@ -57,7 +117,14 @@ extension View {
         modifier(NostalgieBackground())
     }
 
-    func glassCapsule(paddingH: CGFloat = 10, paddingV: CGFloat = 6) -> some View {
+    /// Pozioma półka rozciągnięta do krawędzi ekranu — treść ma marginesy,
+    /// a skalowane karty nie są przycinane na brzegach obszaru treści.
+    func fullBleedShelf() -> some View {
+        padding(.horizontal, -NostalgieSpacing.screenH)
+            .contentMargins(.horizontal, NostalgieSpacing.screenH, for: .scrollContent)
+    }
+
+    func glassCapsule(paddingH: CGFloat = 8, paddingV: CGFloat = 5) -> some View {
         padding(.horizontal, paddingH)
             .padding(.vertical, paddingV)
             .background {
@@ -81,22 +148,52 @@ extension View {
                 }
         }
     }
+
+    func glassPanel(_ level: NostalgieGlassLevel) -> some View {
+        glassPanel(cornerRadius: level.radius)
+    }
 }
 
+// MARK: - Typography headers
+
 struct ScreenTitle: View {
+    enum Level { case page, section, detail }
+
+    let title: String
+    var subtitle: String?
+    var level: Level = .page
+
+    private var titleFont: Font {
+        switch level {
+        case .page: return NostalgieFont.pageTitle
+        case .section: return NostalgieFont.sectionTitle
+        case .detail: return NostalgieFont.detailTitle
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(titleFont)
+                .lineLimit(level == .detail ? 1 : 2)
+                .minimumScaleFactor(level == .detail ? 0.85 : 1)
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(NostalgieFont.metadata)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+    }
+}
+
+/// Alias — use ScreenTitle(level: .section) in new code.
+struct MusicSectionHeader: View {
     let title: String
     var subtitle: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.largeTitle.bold())
-            if let subtitle, !subtitle.isEmpty {
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
+        ScreenTitle(title: title, subtitle: subtitle, level: .section)
     }
 }
 
@@ -108,23 +205,22 @@ struct EmptyStateView: View {
     var action: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 16) {
             Image(systemName: icon)
-                .font(.system(size: 44, weight: .light))
+                .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.secondary)
             Text(title)
-                .font(.title2.weight(.semibold))
+                .font(NostalgieFont.sectionTitle)
             Text(message)
-                .font(.body)
+                .font(NostalgieFont.body)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 620, alignment: .leading)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .buttonStyle(FocusCardButtonStyle())
-                    .frame(width: 280)
             }
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
     }
 }
 
@@ -143,37 +239,90 @@ struct NostalgieTextField: View {
             }
         }
         .textFieldStyle(.plain)
-        .font(.title3)
-        .padding(.horizontal, 22)
-        .padding(.vertical, 18)
+        .font(NostalgieFont.field)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .font(NostalgieFont.field)
         .background(isFocused ? NostalgieTheme.cardFocused : NostalgieTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: NostalgieTheme.cardCornerRadius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: NostalgieTheme.cardCornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous)
                 .stroke(isFocused ? Color.white.opacity(0.9) : Color.white.opacity(0.08), lineWidth: isFocused ? 3 : 1)
         }
-        .animation(NostalgieTheme.focusAnimation, value: isFocused)
+        .animation(NostalgieTheme.focusSpring, value: isFocused)
     }
 }
+
+// MARK: - Button styles
 
 struct FocusCardButtonStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .font(NostalgieFont.rowTitle)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 28)
-            .padding(.vertical, 18)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 11)
             .background(focused ? NostalgieTheme.cardFocused : NostalgieTheme.card)
-            .clipShape(RoundedRectangle(cornerRadius: NostalgieTheme.cardCornerRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: NostalgieTheme.cardCornerRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous)
                     .stroke(focused ? Color.white.opacity(0.95) : Color.white.opacity(0.08), lineWidth: focused ? 3 : 1)
             }
-            .shadow(color: focused ? Color.white.opacity(0.12) : .clear, radius: 16, y: 4)
-            .offset(y: focused ? -2 : 0)
-            .animation(NostalgieTheme.focusAnimation, value: focused)
+            .shadow(color: focused ? Color.white.opacity(0.12) : .clear, radius: 12, y: 2)
+            .scaleEffect(focused ? 1.06 : 1.0)
+            .animation(NostalgieTheme.focusSpring, value: focused)
+    }
+}
+
+struct BackLinkButtonStyle: ButtonStyle {
+    @Environment(\.isFocused) private var focused
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(NostalgieFont.caption)
+            .lineLimit(1)
+            .foregroundStyle(focused ? .white : .white.opacity(0.62))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(focused ? Color.white.opacity(0.14) : Color.white.opacity(0.04))
+            .clipShape(Capsule())
+            .overlay {
+                Capsule().stroke(focused ? Color.white.opacity(0.9) : Color.clear, lineWidth: 2)
+            }
+            .scaleEffect(focused ? 1.06 : 1.0)
+            .animation(NostalgieTheme.focusSpring, value: focused)
+    }
+}
+
+struct ListRowButtonStyle: ButtonStyle {
+    @Environment(\.isFocused) private var focused
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background {
+                RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous)
+                    .fill(focused ? NostalgieTheme.cardFocused : Color.white.opacity(0.025))
+                    .overlay(alignment: .leading) {
+                        if focused {
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .fill(NostalgieTheme.accent)
+                                .frame(width: 4)
+                                .padding(.vertical, 8)
+                                .padding(.leading, 2)
+                        }
+                    }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous)
+                    .stroke(focused ? Color.white.opacity(0.85) : Color.white.opacity(0.05), lineWidth: focused ? 1.5 : 1)
+            }
+            .shadow(color: focused ? Color.black.opacity(0.35) : .clear, radius: 10, y: 4)
+            .brightness(focused ? 0.02 : 0)
+            .animation(NostalgieTheme.focusSpring, value: focused)
     }
 }
 
@@ -182,62 +331,62 @@ struct PrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .font(NostalgieFont.rounded(.title3, weight: .semibold))
             .lineLimit(1)
-            .font(.title3.weight(.semibold))
             .foregroundStyle(focused ? Color.black.opacity(0.88) : .white)
-            .padding(.horizontal, 32)
-            .padding(.vertical, 18)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 16)
             .frame(maxWidth: .infinity)
             .background(focused ? Color.white : NostalgieTheme.accent.opacity(0.55))
-            .clipShape(RoundedRectangle(cornerRadius: NostalgieTheme.cardCornerRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: NostalgieTheme.cardCornerRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous)
                     .stroke(focused ? Color.white : Color.clear, lineWidth: 3)
             }
-            .shadow(color: focused ? Color.white.opacity(0.18) : .clear, radius: 18, y: 6)
-            .animation(NostalgieTheme.focusAnimation, value: focused)
+            .shadow(color: focused ? Color.white.opacity(0.18) : .clear, radius: 16, y: 5)
+            .scaleEffect(focused ? 1.06 : 1.0)
+            .animation(NostalgieTheme.focusSpring, value: focused)
     }
 }
 
-/// Primary CTA on the movie detail screen — sized to content, never truncates.
 struct DetailPlayButtonStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(focused ? Color.black.opacity(0.9) : .white)
-            .padding(.horizontal, 44)
-            .padding(.vertical, 20)
+            .padding(.horizontal, 40)
+            .padding(.vertical, 18)
             .background(focused ? Color.white : Color.white.opacity(0.14))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous)
                     .stroke(focused ? Color.white : Color.white.opacity(0.2), lineWidth: focused ? 3 : 1)
             }
-            .shadow(color: focused ? Color.white.opacity(0.22) : .clear, radius: 20, y: 8)
+            .shadow(color: focused ? Color.white.opacity(0.22) : .clear, radius: 18, y: 6)
             .scaleEffect(focused ? 1.06 : 1.0)
-            .animation(NostalgieTheme.focusAnimation, value: focused)
+            .animation(NostalgieTheme.focusSpring, value: focused)
     }
 }
 
-/// Secondary actions on the detail screen — equal height, Apple TV–style toolbar pills.
 struct DetailToolbarButtonStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .font(NostalgieFont.rowTitle)
             .foregroundStyle(focused ? Color.black.opacity(0.9) : .white.opacity(0.92))
-            .padding(.horizontal, 30)
-            .padding(.vertical, 20)
+            .padding(.horizontal, 26)
+            .padding(.vertical, 16)
             .background(focused ? Color.white : Color.white.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous)
                     .stroke(focused ? Color.white : Color.white.opacity(0.14), lineWidth: focused ? 3 : 1)
             }
-            .shadow(color: focused ? Color.white.opacity(0.16) : .clear, radius: 16, y: 6)
-            .scaleEffect(focused ? 1.05 : 1.0)
-            .animation(NostalgieTheme.focusAnimation, value: focused)
+            .shadow(color: focused ? Color.white.opacity(0.16) : .clear, radius: 14, y: 5)
+            .scaleEffect(focused ? 1.06 : 1.0)
+            .animation(NostalgieTheme.focusSpring, value: focused)
     }
 }
 
@@ -247,34 +396,77 @@ struct MediaCardButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(focused ? NostalgieTheme.cardFocused : NostalgieTheme.card)
-            .clipShape(RoundedRectangle(cornerRadius: NostalgieTheme.cardCornerRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: NostalgieTheme.cardCornerRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous)
                     .stroke(focused ? Color.white.opacity(0.95) : Color.white.opacity(0.06), lineWidth: focused ? 3 : 1)
             }
-            .shadow(color: focused ? Color.white.opacity(0.16) : .clear, radius: 22, y: focused ? 8 : 0)
-            .offset(y: focused ? -3 : 0)
-            .animation(NostalgieTheme.focusAnimation, value: focused)
+            .shadow(color: focused ? Color.white.opacity(0.16) : .clear, radius: 18, y: focused ? 6 : 0)
+            .scaleEffect(focused ? 1.04 : 1.0)
+            .animation(NostalgieTheme.focusSpring, value: focused)
     }
 }
 
-struct TabBarButtonStyle: ButtonStyle {
+struct PrimaryTabButtonStyle: ButtonStyle {
+    @Environment(\.isFocused) private var focused
+    let isSelected: Bool
+    var namespace: Namespace.ID? = nil
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(NostalgieFont.rounded(17, weight: .bold))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .foregroundStyle(isSelected ? .white : .white.opacity(0.68))
+            .padding(.horizontal, 20)
+            .padding(.vertical, 13)
+            .background {
+                Group {
+                    if isSelected, let namespace {
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [NostalgieTheme.accent, NostalgieTheme.accentSecondary],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .matchedGeometryEffect(id: "primaryTabPill", in: namespace)
+                    } else {
+                        Capsule().fill(Color.white.opacity(focused ? 0.16 : 0.055))
+                    }
+                }
+            }
+            .overlay {
+                Capsule().stroke(focused ? Color.white : Color.clear, lineWidth: 3)
+            }
+            .shadow(color: isSelected ? NostalgieTheme.accent.opacity(0.45) : .clear, radius: focused ? 20 : 12, y: 5)
+            .scaleEffect(focused ? 1.07 : (isSelected ? 1.02 : 1.0))
+            .animation(NostalgieTheme.tabSpring, value: focused)
+            .animation(NostalgieTheme.tabSpring, value: isSelected)
+    }
+}
+
+struct SecondaryTabButtonStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
     let isSelected: Bool
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.subheadline.weight(.semibold))
-            .padding(.horizontal, 26)
-            .padding(.vertical, 12)
-            .background(isSelected ? Color.white.opacity(0.14) : Color.white.opacity(0.06))
-            .foregroundStyle(isSelected ? .white : .white.opacity(0.72))
+            .font(NostalgieFont.rounded(13, weight: .semibold))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .foregroundStyle(isSelected ? .white : .white.opacity(0.5))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(isSelected ? Color.white.opacity(0.12) : Color.white.opacity(0.035))
             .clipShape(Capsule())
             .overlay {
-                Capsule()
-                    .stroke(focused ? Color.white : (isSelected ? Color.white.opacity(0.35) : Color.clear), lineWidth: focused ? 3 : 1)
+                Capsule().stroke(focused ? Color.white.opacity(0.9) : Color.clear, lineWidth: 2)
             }
-            .animation(NostalgieTheme.focusAnimation, value: focused)
+            .scaleEffect(focused ? 1.06 : 1.0)
+            .animation(NostalgieTheme.tabSpring, value: focused)
+            .animation(NostalgieTheme.tabSpring, value: isSelected)
     }
 }
 
@@ -284,9 +476,11 @@ struct ChipButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
+            .font(NostalgieFont.caption)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
             .background(isSelected ? Color.white.opacity(0.16) : Color.white.opacity(0.05))
             .foregroundStyle(isSelected ? .white : .white.opacity(0.68))
             .clipShape(Capsule())
@@ -294,6 +488,7 @@ struct ChipButtonStyle: ButtonStyle {
                 Capsule()
                     .stroke(focused ? Color.white : (isSelected ? Color.white.opacity(0.28) : Color.clear), lineWidth: focused ? 2 : 1)
             }
-            .animation(NostalgieTheme.focusAnimation, value: focused)
+            .scaleEffect(focused ? 1.03 : 1.0)
+            .animation(NostalgieTheme.focusSpring, value: focused)
     }
 }

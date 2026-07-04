@@ -1,11 +1,13 @@
 import Foundation
 
 enum AppConfig {
-    /// Produkcja — NOSTALGIE™ Movies API (ten sam backend co panel www).
+    /// Produkcja — EstateOS™ Media API (ten sam backend co panel www).
     static let apiBaseURL = URL(string: "https://lineage.mycloudnas.com/admin_pro/api/movies/proxy")!
     static let keychainService = "pl.nostalgie.movies.auth"
     static let keychainAccount = "session"
-    static let appName = "NOSTALGIE™ MOVIES"
+    static let appName = "EstateOS™ Media"
+    static let brandMark = "ESTATEOS™"
+    static let brandProduct = "MEDIA"
 }
 
 enum APIError: LocalizedError {
@@ -63,6 +65,93 @@ struct SearchResultItem: Codable, Identifiable, Hashable {
     let quality: String?
     let isSerial: Bool?
     let premium: Bool?
+    let previewUrl: String?
+    let artistId: String?
+    let albumId: String?
+    let trackNumber: Int?
+}
+
+struct MusicArtist: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let genre: String?
+    let thumbnail: String?
+    let url: String?
+    let source: String?
+}
+
+struct MusicAlbum: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let artist: String?
+    let artistId: String?
+    let thumbnail: String?
+    let trackCount: Int?
+    let releaseDate: String?
+    let url: String?
+    let source: String?
+
+    var releaseYear: String? {
+        guard let releaseDate, releaseDate.count >= 4 else { return nil }
+        return String(releaseDate.prefix(4))
+    }
+}
+
+struct MusicCatalogSearchResponse: Codable {
+    let query: String
+    let artists: [MusicArtist]
+    let albums: [MusicAlbum]
+    let songs: [SearchResultItem]
+}
+
+struct MusicArtistDetailResponse: Codable {
+    let artist: MusicArtist
+    let albums: [MusicAlbum]
+    let topSongs: [SearchResultItem]
+}
+
+struct MusicAlbumDetailResponse: Codable {
+    let album: MusicAlbum
+    let tracks: [SearchResultItem]
+}
+
+struct MusicPlaylistSummary: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let trackCount: Int?
+    let thumbnail: String?
+    let url: String?
+    let source: String?
+}
+
+struct MusicPlaylistCatalogResponse: Codable {
+    let playlist: MusicPlaylistSummary
+    let tracks: [SearchResultItem]
+}
+
+struct MusicPlaylistImportResponse: Codable {
+    let ok: Bool?
+    let playlist: MusicPlaylistSummary
+    let folder: MusicFolder
+    let added: Int?
+    let skipped: Int?
+    let trackCount: Int?
+}
+
+struct MusicPlaylistSyncResponse: Codable {
+    let ok: Bool?
+    let playlist: MusicPlaylistSummary?
+    let folder: MusicFolder
+    let added: Int?
+    let skipped: Int?
+    let remoteTrackCount: Int?
+    let localTrackCount: Int?
+}
+
+struct MusicPlayTokenResponse: Codable {
+    let jobId: String
+    let token: String
+    let expiresIn: Int?
 }
 
 struct SearchResponse: Codable {
@@ -159,8 +248,42 @@ struct MusicFolder: Codable, Identifiable, Hashable {
     let id: String
     let name: String
     let trackCount: Int?
+    let downloadedTrackCount: Int?
+    let fileCount: Int?
+    let thumbnail: String?
     let createdAt: Double?
     let updatedAt: Double?
+    let applePlaylistUrl: String?
+    let applePlaylistId: String?
+    let applePlaylistSyncedAt: Double?
+
+    var isLinkedApplePlaylist: Bool {
+        guard let applePlaylistUrl, !applePlaylistUrl.isEmpty else { return false }
+        return true
+    }
+
+    var artworkURL: URL? {
+        thumbnail.flatMap(URL.init(string:))
+    }
+
+    /// Utwory faktycznie na serwerze (pliki MP3).
+    var serverTrackCount: Int {
+        if let downloadedTrackCount, downloadedTrackCount > 0 { return downloadedTrackCount }
+        if let fileCount, fileCount > 0 { return fileCount }
+        return trackCount ?? 0
+    }
+
+    var countLabel: String {
+        let total = trackCount ?? 0
+        let onServer = downloadedTrackCount ?? fileCount ?? 0
+        if total > 0, onServer > 0, onServer < total {
+            return "\(onServer) z \(total) na serwerze"
+        }
+        if onServer > 0 {
+            return "\(onServer) utworów na serwerze"
+        }
+        return "\(total) utworów"
+    }
 }
 
 struct MusicTrack: Codable, Identifiable, Hashable {
@@ -174,7 +297,18 @@ struct MusicTrack: Codable, Identifiable, Hashable {
     let duration: Double?
     let quality: String?
     let source: String?
+    let previewUrl: String?
+    let artistId: String?
+    let albumId: String?
+    let trackNumber: Int?
+    let downloadJobId: String?
+    let downloadedAt: Double?
     let addedAt: Double?
+
+    var isDownloaded: Bool {
+        guard let downloadJobId, !downloadJobId.isEmpty else { return false }
+        return true
+    }
 }
 
 struct MusicLibraryResponse: Codable {

@@ -51,10 +51,110 @@ final class MoviesAPIClient {
         return response.jobId
     }
 
-    func startMusicDownload(url: String) async throws -> String {
-        let body: [String: Any] = ["url": url]
+    func startMusicDownload(url: String, folderId: String? = nil, trackUrl: String? = nil) async throws -> String {
+        var body: [String: Any] = ["url": url]
+        if let folderId { body["folderId"] = folderId }
+        if let trackUrl { body["trackUrl"] = trackUrl }
         let response: DownloadStartResponse = try await request("POST", path: "/api/download", body: body)
         return response.jobId
+    }
+
+    func searchMusicCatalog(query: String) async throws -> MusicCatalogSearchResponse {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        let response: MusicCatalogSearchResponse = try await request("GET", path: "/api/music/catalog/search?q=\(encoded)")
+        return response
+    }
+
+    func fetchMusicArtist(id: String) async throws -> MusicArtistDetailResponse {
+        try await request("GET", path: "/api/music/catalog/artist/\(id)")
+    }
+
+    func fetchMusicAlbum(id: String) async throws -> MusicAlbumDetailResponse {
+        try await request("GET", path: "/api/music/catalog/album/\(id)")
+    }
+
+    func previewAppleMusicPlaylist(url: String) async throws -> MusicPlaylistCatalogResponse {
+        let encoded = url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? url
+        let response: MusicPlaylistCatalogResponse = try await request(
+            "GET",
+            path: "/api/music/catalog/playlist?url=\(encoded)"
+        )
+        return response
+    }
+
+    func importAppleMusicPlaylist(url: String, folderId: String? = nil, folderName: String? = nil) async throws -> MusicPlaylistImportResponse {
+        var body: [String: Any] = ["url": url]
+        if let folderId { body["folderId"] = folderId }
+        if let folderName { body["folderName"] = folderName }
+        let response: MusicPlaylistImportResponse = try await request(
+            "POST",
+            path: "/api/music/playlists/import",
+            body: body
+        )
+        return response
+    }
+
+    func syncAppleMusicPlaylist(folderId: String, url: String? = nil) async throws -> MusicPlaylistSyncResponse {
+        var body: [String: Any] = [:]
+        if let url, !url.isEmpty { body["url"] = url }
+        return try await request("POST", path: "/api/music/folders/\(folderId)/sync-playlist", body: body.isEmpty ? nil : body)
+    }
+
+    func startMusicPlay(url: String) async throws -> String {
+        let response: DownloadStartResponse = try await request(
+            "POST",
+            path: "/api/music/play",
+            body: ["url": url]
+        )
+        return response.jobId
+    }
+
+    func waitForMusicPlayReady(
+        jobId: String,
+        timeoutSeconds: Int = 180,
+        onProgress: ((Int) -> Void)? = nil
+    ) async throws {
+        let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
+        var poll = 0
+        while Date() < deadline {
+            let job = try await fetchJobStatus(jobId: jobId)
+            if job.status == "error" {
+                throw APIError.server(job.error ?? "Odtwarzanie nie powiodło się.")
+            }
+            if let progress = job.progress {
+                onProgress?(Int(progress.rounded()))
+            }
+            if job.ready == true || job.status == "done" {
+                return
+            }
+            poll += 1
+            let delayNs: UInt64 = poll < 30 ? 500_000_000 : 1_000_000_000
+            try await Task.sleep(nanoseconds: delayNs)
+        }
+        throw APIError.server("Przekroczono czas oczekiwania na przygotowanie utworu.")
+    }
+
+    func musicPlayToken(jobId: String) async throws -> MusicPlayTokenResponse {
+        try await request("GET", path: "/api/music/play-token/\(jobId)")
+    }
+
+    func musicStreamURL(jobId: String, token: String) -> URL {
+        AppConfig.apiBaseURL
+            .appendingPathComponent("api/music/stream/\(jobId)")
+            .appending(queryItems: [
+                URLQueryItem(name: "token", value: token),
+                URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970))),
+            ])
+    }
+
+    func linkTrackDownload(folderId: String, url: String, downloadJobId: String) async throws -> MusicTrack {
+        struct Response: Codable { let track: MusicTrack }
+        let response: Response = try await request(
+            "PATCH",
+            path: "/api/music/folders/\(folderId)/tracks/download",
+            body: ["url": url, "downloadJobId": downloadJobId]
+        )
+        return response.track
     }
 
     func searchAppleMusic(query: String, page: Int = 1, sort: MusicSort = .relevance) async throws -> SearchResponse {
@@ -72,11 +172,15 @@ final class MoviesAPIClient {
         try await request("GET", path: "/api/music/library")
     }
 
-    func createMusicFolder(name: String) async throws -> MusicFolder {
+    func createMusicFolder(name: String, thumbnail: String? = nil) async throws -> MusicFolder {
+        var body: [String: String] = ["name": name]
+        if let thumbnail {
+            body["thumbnail"] = thumbnail
+        }
         let response: MusicFolderCreateResponse = try await request(
             "POST",
             path: "/api/music/folders",
-            body: ["name": name]
+            body: body
         )
         return response.folder
     }
@@ -123,6 +227,10 @@ final class MoviesAPIClient {
         let duration: Double?
         let quality: String?
         let source: String?
+        let previewUrl: String?
+        let artistId: String?
+        let albumId: String?
+        let trackNumber: Int?
     }
 
     func fetchJobStatus(jobId: String) async throws -> JobStatusResponse {

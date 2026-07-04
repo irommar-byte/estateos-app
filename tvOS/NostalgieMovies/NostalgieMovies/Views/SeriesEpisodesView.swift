@@ -91,7 +91,8 @@ struct SeriesEpisodesView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.bottom, 80)
+            .padding(.horizontal, NostalgieSpacing.screenH)
+            .padding(.bottom, NostalgieSpacing.scrollBottom)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onExitCommand { onBack() }
@@ -152,7 +153,7 @@ struct SeriesEpisodesView: View {
         HStack(spacing: 12) {
             SourceBadgeView(source: MediaCardCopy.normalizedSourceKey(info.uploader))
             Text("SERIAL · \(info.seasons?.count ?? seasonSections.count) sez. · \(info.episodeCount ?? info.playableEpisodes.count) odc.")
-                .font(.subheadline.weight(.medium))
+                .font(NostalgieFont.metadata)
                 .foregroundStyle(.secondary)
         }
     }
@@ -168,10 +169,10 @@ struct SeriesEpisodesView: View {
     private var seasonPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Sezon")
-                .font(.caption.weight(.semibold))
+                .font(NostalgieFont.caption)
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
-                .tracking(0.8)
+                .tracking(0.6)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {

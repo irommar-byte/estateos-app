@@ -12,9 +12,8 @@ struct LatestCdaHdRow: View {
     @State private var isLoading = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Najnowsze z CDA-HD")
-                .font(.title3.weight(.semibold))
+        VStack(alignment: .leading, spacing: NostalgieSpacing.section) {
+            MusicSectionHeader(title: "Najnowsze z CDA-HD")
 
             if isLoading {
                 ProgressView()
@@ -23,14 +22,14 @@ struct LatestCdaHdRow: View {
             } else if items.isEmpty {
                 Text("Brak pozycji do wyświetlenia.")
                     .foregroundStyle(.secondary)
-                    .font(.callout)
+                    .font(NostalgieFont.metadata)
                     .frame(height: 80, alignment: .leading)
             } else {
                 TVHorizontalShelf(
                     items: items,
                     focusedID: focusedItemID,
-                    cardWidth: 300,
-                    cardSpacing: 28,
+                    cardWidth: 280,
+                    cardSpacing: 22,
                     onMoveUp: onMoveUp,
                     onMoveDown: onMoveDown
                 ) { item, _ in

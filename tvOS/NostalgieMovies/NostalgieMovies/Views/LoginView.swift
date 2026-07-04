@@ -11,15 +11,28 @@ struct LoginView: View {
     @State private var rememberMe = false
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var appeared = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 96) {
-            brandPanel
-            loginPanel
+        HStack(alignment: .center, spacing: 0) {
+            Spacer(minLength: 0)
+
+            HStack(alignment: .center, spacing: 88) {
+                brandPanel
+                    .frame(width: 460, alignment: .leading)
+                loginPanel
+                    .frame(width: 480)
+            }
+
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 88)
-        .padding(.vertical, 72)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .opacity(appeared ? 1 : 0)
+        .offset(y: appeared ? 0 : 14)
         .onAppear {
+            withAnimation(NostalgieTheme.contentSpring.delay(0.05)) {
+                appeared = true
+            }
             if let saved = CredentialsStore.load() {
                 login = saved.login
                 password = saved.password
@@ -30,91 +43,94 @@ struct LoginView: View {
     }
 
     private var brandPanel: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Image(systemName: "play.tv.fill")
-                .font(.system(size: 52, weight: .light))
-                .foregroundStyle(NostalgieTheme.accentSecondary.opacity(0.9))
+        VStack(alignment: .leading, spacing: 22) {
+            appIconTile
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("NOSTALGIE™")
-                    .font(.system(size: 22, weight: .semibold))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(AppConfig.brandMark)
+                    .font(NostalgieFont.caption)
                     .foregroundStyle(NostalgieTheme.accentSecondary)
-                    .tracking(1.4)
-                Text("MOVIES")
-                    .font(.system(size: 64, weight: .bold))
-                    .tracking(-1)
+                    .tracking(2.2)
+                Text(AppConfig.brandProduct)
+                    .font(NostalgieFont.hero)
+                    .tracking(-0.5)
             }
 
-            Text("Filmy i seriale z TVP, CDA-HD\ni YouTube — na dużym ekranie.")
-                .font(.title3)
+            Text("Filmy, seriale i muzyka\nw jednym miejscu — na dużym ekranie.")
+                .font(NostalgieFont.body)
                 .foregroundStyle(.secondary)
-                .lineSpacing(4)
+                .lineSpacing(3)
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 SourceBadgeView(source: "tvp")
                 SourceBadgeView(source: "cda-hd")
                 SourceBadgeView(source: "youtube")
+                SourceBadgeView(source: "apple-music")
             }
-            .padding(.top, 8)
+            .padding(.top, 4)
         }
-        .frame(maxWidth: 540, alignment: .leading)
+    }
+
+    private var appIconTile: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [NostalgieTheme.accent, NostalgieTheme.accentSecondary],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 88, height: 88)
+                .shadow(color: NostalgieTheme.accent.opacity(0.35), radius: 22, y: 10)
+            Image(systemName: "play.tv.fill")
+                .font(NostalgieFont.rounded(40, weight: .medium))
+                .foregroundStyle(.white)
+        }
     }
 
     private var loginPanel: some View {
-        VStack(alignment: .leading, spacing: 28) {
-            VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Zaloguj się")
-                    .font(.title.weight(.bold))
-                Text("Kontem Nostalgie Legacy")
-                    .font(.subheadline)
+                    .font(NostalgieFont.sectionTitle)
+                Text("Kontem EstateOS")
+                    .font(NostalgieFont.metadata)
                     .foregroundStyle(.secondary)
             }
 
-            VStack(alignment: .leading, spacing: 18) {
-                fieldBlock(title: "Login gry") {
-                    styledField(isFocused: focusedField == .login) {
-                        TextField("Wpisz login", text: $login)
-                            .textContentType(.none)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                    }
+            VStack(alignment: .leading, spacing: 14) {
+                fieldBlock(title: "Login") {
+                    NostalgieTextField(
+                        placeholder: "Wpisz login",
+                        text: $login,
+                        isFocused: focusedField == .login
+                    )
                     .focused($focusedField, equals: .login)
                 }
 
                 fieldBlock(title: "Hasło") {
-                    styledField(isFocused: focusedField == .password) {
-                        SecureField("Wpisz hasło", text: $password)
-                            .textContentType(.none)
-                    }
+                    NostalgieTextField(
+                        placeholder: "Wpisz hasło",
+                        text: $password,
+                        isSecure: true,
+                        isFocused: focusedField == .password
+                    )
                     .focused($focusedField, equals: .password)
                 }
             }
 
-            Button {
-                rememberMe.toggle()
-            } label: {
-                HStack(spacing: 14) {
-                    Image(systemName: rememberMe ? "checkmark.square.fill" : "square")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(rememberMe ? NostalgieTheme.accentSecondary : .secondary)
-                    Text("Zapamiętaj login i hasło na tym Apple TV")
-                        .font(.body)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 8)
-            }
-            .buttonStyle(.plain)
-            .focused($focusedField, equals: .remember)
+            rememberRow
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.circle.fill")
                     .foregroundStyle(NostalgieTheme.accent)
-                    .font(.callout)
+                    .font(NostalgieFont.caption)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             Button(action: submit) {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     if isLoading {
                         ProgressView()
                     }
@@ -126,35 +142,48 @@ struct LoginView: View {
             .disabled(isLoading || login.isEmpty || password.isEmpty)
             .focused($focusedField, equals: .submit)
         }
-        .padding(40)
-        .frame(width: 520)
-        .glassPanel(cornerRadius: 24)
+        .padding(30)
+        .glassPanel(.sheet)
+        .animation(NostalgieTheme.contentSpring, value: errorMessage)
+    }
+
+    private var rememberRow: some View {
+        Button {
+            rememberMe.toggle()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: rememberMe ? "checkmark.circle.fill" : "circle")
+                    .font(NostalgieFont.rounded(.headline, weight: .semibold))
+                    .foregroundStyle(rememberMe ? NostalgieTheme.accentSecondary : .secondary)
+                Text("Zapamiętaj na tym Apple TV")
+                    .font(NostalgieFont.metadata)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background {
+                RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous)
+                    .fill(focusedField == .remember ? NostalgieTheme.cardFocused : Color.clear)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous)
+                    .stroke(focusedField == .remember ? Color.white.opacity(0.85) : Color.clear, lineWidth: 2)
+            }
+            .animation(NostalgieTheme.focusSpring, value: focusedField == .remember)
+        }
+        .buttonStyle(.plain)
+        .focused($focusedField, equals: .remember)
     }
 
     private func fieldBlock<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.caption.weight(.semibold))
+                .font(NostalgieFont.caption)
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
-                .tracking(0.8)
+                .tracking(0.6)
             content()
         }
-    }
-
-    private func styledField<F: View>(isFocused: Bool, @ViewBuilder content: () -> F) -> some View {
-        content()
-            .textFieldStyle(.plain)
-            .font(.title3)
-            .padding(.horizontal, 22)
-            .padding(.vertical, 18)
-            .background(isFocused ? NostalgieTheme.cardFocused : NostalgieTheme.card)
-            .clipShape(RoundedRectangle(cornerRadius: NostalgieTheme.cardCornerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: NostalgieTheme.cardCornerRadius, style: .continuous)
-                    .stroke(isFocused ? Color.white.opacity(0.9) : Color.white.opacity(0.08), lineWidth: isFocused ? 3 : 1)
-            }
-            .animation(NostalgieTheme.focusAnimation, value: isFocused)
     }
 
     private func submit() {

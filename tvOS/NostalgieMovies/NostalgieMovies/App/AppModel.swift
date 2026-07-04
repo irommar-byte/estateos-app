@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -8,10 +9,23 @@ final class AppModel: ObservableObject {
     @Published var pendingMediaURL: String?
     @Published private(set) var favoriteURLs: Set<String> = []
     @Published private(set) var musicFolders: [MusicFolder] = []
+    @Published private(set) var musicTracks: [MusicTrack] = []
 
     let api = MoviesAPIClient()
+    let musicPlayback = MusicPlaybackService()
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        musicPlayback.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+    }
 
     func bootstrap() async {
+        musicPlayback.attachIfNeeded()
         defer { isBootstrapping = false }
         if let saved = SessionStore.load() {
             api.setToken(saved.token)
@@ -34,11 +48,13 @@ final class AppModel: ObservableObject {
     }
 
     func logout() {
+        musicPlayback.stopPlayback()
         SessionStore.clear()
         api.setToken(nil)
         session = nil
         favoriteURLs = []
         musicFolders = []
+        musicTracks = []
     }
 
     func refreshMusicLibrary() async {
@@ -46,13 +62,23 @@ final class AppModel: ObservableObject {
         do {
             let library = try await api.fetchMusicLibrary()
             musicFolders = library.folders
+            musicTracks = library.tracks
         } catch {
             musicFolders = []
+            musicTracks = []
         }
     }
 
-    func createMusicFolder(name: String) async throws -> MusicFolder {
-        let folder = try await api.createMusicFolder(name: name)
+    func downloadJobId(for url: String) -> String? {
+        musicTracks.first { $0.url == url && $0.isDownloaded }?.downloadJobId
+    }
+
+    func isMusicDownloaded(url: String) -> Bool {
+        downloadJobId(for: url) != nil
+    }
+
+    func createMusicFolder(name: String, thumbnail: String? = nil) async throws -> MusicFolder {
+        let folder = try await api.createMusicFolder(name: name, thumbnail: thumbnail)
         await refreshMusicLibrary()
         return folder
     }
@@ -71,7 +97,11 @@ final class AppModel: ObservableObject {
             thumbnail: item.thumbnail,
             duration: item.duration,
             quality: item.quality ?? "320 kbps",
-            source: item.source ?? "apple-music"
+            source: item.source ?? "apple-music",
+            previewUrl: item.previewUrl,
+            artistId: item.artistId,
+            albumId: item.albumId,
+            trackNumber: item.trackNumber
         )
         _ = try await api.addTrackToFolder(folderId: folderId, track: payload)
         await refreshMusicLibrary()
@@ -86,7 +116,11 @@ final class AppModel: ObservableObject {
             thumbnail: track.thumbnail,
             duration: track.duration,
             quality: track.quality ?? "320 kbps",
-            source: track.source ?? "apple-music"
+            source: track.source ?? "apple-music",
+            previewUrl: track.previewUrl,
+            artistId: track.artistId,
+            albumId: track.albumId,
+            trackNumber: track.trackNumber
         )
         _ = try await api.addTrackToFolder(folderId: folderId, track: payload)
         await refreshMusicLibrary()

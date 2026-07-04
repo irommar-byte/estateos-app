@@ -35,17 +35,17 @@ struct RootView: View {
     }
 
     private var splash: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 24) {
             Image(systemName: "play.tv.fill")
-                .font(.system(size: 56, weight: .light))
+                .font(NostalgieFont.rounded(52, weight: .light))
                 .foregroundStyle(NostalgieTheme.accentSecondary)
             VStack(spacing: 6) {
-                Text("NOSTALGIE™")
-                    .font(.caption.weight(.semibold))
+                Text(AppConfig.brandMark)
+                    .font(NostalgieFont.caption)
                     .foregroundStyle(NostalgieTheme.accentSecondary)
                     .tracking(1.6)
-                Text("MOVIES")
-                    .font(.title.weight(.bold))
+                Text(AppConfig.brandProduct)
+                    .font(NostalgieFont.rounded(.title, weight: .bold))
             }
             ProgressView()
                 .padding(.top, 8)

@@ -256,8 +256,8 @@ struct SourceBadgeView: View {
                 .fill(meta.accent)
                 .frame(width: 7, height: 7)
             Text(meta.label)
-                .font(.caption2.weight(.semibold))
-                .tracking(0.8)
+                .font(NostalgieFont.badge)
+                .tracking(0.6)
         }
         .foregroundStyle(.white.opacity(0.94))
         .glassCapsule(paddingH: 11, paddingV: 7)
@@ -267,8 +267,8 @@ struct SourceBadgeView: View {
 struct PremiumBadge: View {
     var body: some View {
         Text("PREMIUM")
-            .font(.caption2.weight(.bold))
-            .tracking(1.1)
+            .font(NostalgieFont.badge)
+            .tracking(1)
             .foregroundStyle(Color(red: 1, green: 0.82, blue: 0.45))
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
@@ -285,8 +285,8 @@ struct MediaTypeBadge: View {
 
     var body: some View {
         Text(label)
-            .font(.caption2.weight(.bold))
-            .tracking(1.1)
+            .font(NostalgieFont.badge)
+            .tracking(1)
             .foregroundStyle(.white.opacity(0.92))
             .glassCapsule(paddingH: 10, paddingV: 7)
     }
@@ -295,7 +295,7 @@ struct MediaTypeBadge: View {
 struct FavoriteIndicator: View {
     var body: some View {
         Image(systemName: "heart.fill")
-            .font(.system(size: 14, weight: .semibold))
+            .font(NostalgieFont.rounded(13, weight: .semibold))
             .foregroundStyle(NostalgieTheme.accent)
             .frame(width: 32, height: 32)
             .background {
@@ -318,7 +318,7 @@ struct PosterPlaceholder: View {
                 endPoint: .bottomTrailing
             )
             Image(systemName: "film")
-                .font(.system(size: 36, weight: .light))
+                .font(NostalgieFont.rounded(32, weight: .light))
                 .foregroundStyle(.white.opacity(0.28))
         }
     }
@@ -343,8 +343,7 @@ struct MediaDurationBadge: View {
 
     var body: some View {
         Text(text)
-            .font(.caption2.weight(.semibold))
-            .monospacedDigit()
+            .font(NostalgieFont.badge.monospacedDigit())
             .foregroundStyle(.white.opacity(0.94))
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
@@ -378,14 +377,14 @@ struct MediaCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: layout == .shelf ? 10 : 14) {
+            VStack(alignment: .leading, spacing: layout == .shelf ? 8 : 10) {
                 poster
                 textBlock
             }
-            .padding(layout == .shelf ? 10 : 12)
+            .padding(layout == .shelf ? 8 : 10)
             .frame(
                 maxWidth: layout == .shelf ? nil : .infinity,
-                minHeight: layout == .shelf ? 250 : 280,
+                minHeight: layout == .shelf ? 228 : 252,
                 alignment: .topLeading
             )
             .overlay {
@@ -395,7 +394,7 @@ struct MediaCard: View {
                         ProgressView()
                             .scaleEffect(1.4)
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
                 }
             }
         }
@@ -442,23 +441,23 @@ struct MediaCard: View {
     }
 
     private var textBlock: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(displayTitle)
-                .font(layout == .shelf ? .subheadline.weight(.semibold) : .headline.weight(.semibold))
-                .lineLimit(layout == .shelf ? 2 : 2)
+                .font(layout == .shelf ? NostalgieFont.rounded(.subheadline, weight: .semibold) : NostalgieFont.rowTitle)
+                .lineLimit(2)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Text(subtitle)
-                    .font(.subheadline)
+                    .font(NostalgieFont.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if let quality, !quality.isEmpty {
                     Text(quality.uppercased())
-                        .font(.caption2.weight(.bold))
+                        .font(NostalgieFont.badge)
                         .tracking(0.6)
                         .foregroundStyle(.white.opacity(0.85))
                         .glassCapsule(paddingH: 8, paddingV: 4)

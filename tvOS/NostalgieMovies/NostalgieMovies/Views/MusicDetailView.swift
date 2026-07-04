@@ -6,12 +6,28 @@ struct MusicDetailView: View {
 
     let selection: MusicSelection
     let folders: [MusicFolder]
+    var contextQueue: [MusicPlaybackTrack] = []
+    var folderName: String? = nil
     var onAddedToFolder: (() -> Void)?
 
     @State private var downloadJob: DownloadJobState?
+    @State private var isPreparingPlay = false
+    @State private var playProgress: Int = 0
     @State private var statusMessage: String?
     @State private var statusIsError = false
     @State private var isBusy = false
+    @State private var localDownloadJobId: String?
+
+    private var effectiveDownloadJobId: String? {
+        if let localDownloadJobId, !localDownloadJobId.isEmpty { return localDownloadJobId }
+        if let id = selection.downloadJobId, !id.isEmpty { return id }
+        return app.downloadJobId(for: selection.url)
+    }
+
+    private var isTrackDownloaded: Bool {
+        guard let effectiveDownloadJobId, !effectiveDownloadJobId.isEmpty else { return false }
+        return true
+    }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -26,45 +42,44 @@ struct MusicDetailView: View {
                     if let statusMessage {
                         statusBanner(statusMessage, isError: statusIsError)
                     }
+                    if isPreparingPlay {
+                        ProgressView("Pobieram pełny utwór MP3… \(playProgress)%")
+                    }
                     actionToolbar
                     folderPicker
                 }
                 .frame(maxWidth: 980, alignment: .leading)
-                .padding(.horizontal, 90)
-                .padding(.bottom, 76)
+                .padding(.horizontal, NostalgieSpacing.screenH)
+                .padding(.bottom, 68)
             }
         }
         .ignoresSafeArea()
+        .task {
+            if localDownloadJobId == nil {
+                localDownloadJobId = app.downloadJobId(for: selection.url)
+            }
+        }
         .onExitCommand { dismiss() }
         .fullScreenCover(item: $downloadJob) { job in
-            MusicDownloadProgressView(jobId: job.id, title: selection.title) {
+            MusicDownloadProgressView(
+                jobId: job.id,
+                title: selection.title,
+                folderId: selection.folderId,
+                trackUrl: selection.url
+            ) {
                 downloadJob = nil
+                Task {
+                    await app.refreshMusicLibrary()
+                    localDownloadJobId = app.downloadJobId(for: selection.url)
+                    onAddedToFolder?()
+                }
             }
+            .environmentObject(app)
         }
     }
 
     private var musicBackdrop: some View {
-        GeometryReader { geo in
-            ZStack {
-                if let url = selection.thumbnail.flatMap(URL.init(string:)) {
-                    PosterRemoteImage(url: url)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .clipped()
-                        .blur(radius: 56, opaque: true)
-                        .scaleEffect(1.12)
-                        .overlay { Color.black.opacity(0.42) }
-                } else {
-                    NostalgieAmbientBackground()
-                }
-
-                LinearGradient(
-                    colors: [.black.opacity(0.15), .black.opacity(0.45), .black.opacity(0.92)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-        }
-        .ignoresSafeArea()
+        MusicHeroBackdrop(imageURL: selection.thumbnail.flatMap(URL.init(string:)))
     }
 
     private var metadataRow: some View {
@@ -76,6 +91,12 @@ struct MusicDetailView: View {
                 .tracking(0.8)
                 .foregroundStyle(.white.opacity(0.9))
                 .glassCapsule(paddingH: 12, paddingV: 8)
+            if isTrackDownloaded {
+                Label("Pobrany", systemImage: "checkmark.circle.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.green)
+                    .glassCapsule(paddingH: 12, paddingV: 8)
+            }
         }
     }
 
@@ -90,19 +111,19 @@ struct MusicDetailView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text(selection.title)
-                    .font(.system(size: 52, weight: .bold))
+                    .font(NostalgieFont.hero)
                     .lineLimit(2)
                     .minimumScaleFactor(0.75)
                 if !selection.subtitle.isEmpty {
                     Text(selection.subtitle)
-                        .font(.title3)
+                        .font(NostalgieFont.metadata)
                         .foregroundStyle(.white.opacity(0.72))
                         .lineLimit(2)
                 }
                 if let duration = selection.duration, duration > 0,
                    let label = MediaDurationFormat.label(for: duration) {
                     Text(label)
-                        .font(.headline)
+                        .font(NostalgieFont.rowTitle)
                         .foregroundStyle(.white.opacity(0.55))
                 }
             }
@@ -114,7 +135,7 @@ struct MusicDetailView: View {
             Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(isError ? Color.orange : NostalgieTheme.accent)
             Text(message)
-                .font(.callout)
+                .font(NostalgieFont.body)
                 .foregroundStyle(.white.opacity(0.85))
         }
         .padding(.horizontal, 18)
@@ -124,15 +145,28 @@ struct MusicDetailView: View {
     }
 
     private var actionToolbar: some View {
-        HStack(spacing: 22) {
+        HStack(spacing: 18) {
             Button {
-                Task { await startDownload() }
+                startFullPlay()
             } label: {
-                Label("Pobierz MP3", systemImage: "arrow.down.circle.fill")
-                    .font(.title3.weight(.semibold))
+                Label("Odtwórz", systemImage: "play.fill")
+                    .font(NostalgieFont.rounded(.title3, weight: .semibold))
             }
             .buttonStyle(DetailPlayButtonStyle())
-            .disabled(isBusy)
+            .disabled(isBusy || isPreparingPlay)
+
+            if isTrackDownloaded {
+                MusicDownloadedBadge()
+            } else {
+                Button {
+                    Task { await startDownload() }
+                } label: {
+                    Label("Pobierz MP3", systemImage: "arrow.down.circle.fill")
+                        .font(NostalgieFont.rounded(.title3, weight: .semibold))
+                }
+                .buttonStyle(FocusCardButtonStyle())
+                .disabled(isBusy || isPreparingPlay)
+            }
         }
     }
 
@@ -141,7 +175,7 @@ struct MusicDetailView: View {
         if !folders.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Dodaj do folderu")
-                    .font(.headline)
+                    .font(NostalgieFont.rowTitle)
                     .foregroundStyle(.white.opacity(0.72))
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
@@ -159,13 +193,56 @@ struct MusicDetailView: View {
         }
     }
 
+    private func startFullPlay() {
+        statusMessage = nil
+        statusIsError = false
+
+        let queue: [MusicPlaybackTrack]
+        let startIndex: Int
+        if contextQueue.isEmpty {
+            queue = [MusicPlaybackTrack(from: selection)]
+            startIndex = 0
+        } else {
+            queue = contextQueue
+            startIndex = contextQueue.firstIndex(where: { $0.url == selection.url }) ?? 0
+        }
+
+        let session = MusicPlaybackSession(
+            queue: queue,
+            startIndex: startIndex,
+            folderId: selection.folderId,
+            folderName: folderName
+        )
+        dismiss()
+        Task { await app.musicPlayback.play(session: session, app: app) }
+    }
+
+    private func openStream(jobId: String) {
+        startFullPlay()
+    }
+
     private func startDownload() async {
         statusMessage = nil
         statusIsError = false
         isBusy = true
         defer { isBusy = false }
         do {
-            let jobId = try await app.api.startMusicDownload(url: selection.url)
+            var folderId = selection.folderId ?? app.musicFolders.first?.id
+            if folderId == nil {
+                await app.refreshMusicLibrary()
+                folderId = app.musicFolders.first?.id
+            }
+            guard let folderId else {
+                statusIsError = true
+                statusMessage = "Utwórz folder playlisty przed pobieraniem."
+                return
+            }
+            _ = try await app.api.addTrackToFolder(folderId: folderId, track: selection.trackPayload)
+            let jobId = try await app.api.startMusicDownload(
+                url: selection.url,
+                folderId: folderId,
+                trackUrl: selection.url
+            )
             downloadJob = DownloadJobState(id: jobId)
         } catch {
             statusIsError = true
@@ -193,6 +270,8 @@ struct MusicDownloadProgressView: View {
 
     let jobId: String
     let title: String
+    var folderId: String?
+    var trackUrl: String?
     let onDone: () -> Void
 
     @State private var progress: Double = 0
@@ -205,23 +284,16 @@ struct MusicDownloadProgressView: View {
             NostalgieAmbientBackground()
             VStack(alignment: .leading, spacing: 24) {
                 Text("Pobieranie MP3")
-                    .font(.largeTitle.bold())
+                    .font(NostalgieFont.pageTitle)
                 Text(title)
                     .foregroundStyle(.secondary)
-                    .font(.title3)
+                    .font(NostalgieFont.field)
 
                 if let errorMessage {
                     Text(errorMessage).foregroundStyle(NostalgieTheme.accent)
                 } else if fileReady {
-                    Text("MP3 gotowy na serwerze — 320 kbps z okładką.")
+                    Text("MP3 gotowy — możesz odtwarzać z playlisty.")
                         .foregroundStyle(.green)
-                    Text("Pobierz plik w panelu www albo skopiuj link poniżej.")
-                        .foregroundStyle(.secondary)
-                        .font(.callout)
-                    Text(app.api.downloadFileURL(jobId: jobId).absoluteString)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
                 } else {
                     ProgressView(value: progress, total: 100) {
                         Text(statusLabel)
@@ -265,6 +337,14 @@ struct MusicDownloadProgressView: View {
                 status = job.status
                 if job.ready == true {
                     fileReady = true
+                    if let folderId, let trackUrl {
+                        _ = try? await app.api.linkTrackDownload(
+                            folderId: folderId,
+                            url: trackUrl,
+                            downloadJobId: jobId
+                        )
+                        await app.refreshMusicLibrary()
+                    }
                     return
                 }
                 if job.status == "error" {
