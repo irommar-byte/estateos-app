@@ -39,9 +39,12 @@ export function inferCityFromImportSlug(url: string, title: string): string {
   }
 
   for (const segment of slug.split('-').filter(Boolean)) {
+    if (segment.length < 3) continue;
     if (isNonCityLabel(segment)) continue;
     const fromSegment = canonicalizeCity(segment.replace(/-/g, ' '));
-    if (fromSegment) return fromSegment;
+    if (fromSegment && (isStrictCity(fromSegment) || fromSegment.length >= 4)) {
+      return fromSegment;
+    }
   }
 
   return '';

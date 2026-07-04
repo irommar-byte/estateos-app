@@ -1,4 +1,5 @@
-import { canonicalizeCity, canonicalizeDistrict } from '@/lib/location/locationCatalog';
+import { canonicalizeCity, canonicalizeDistrict, isStrictCity } from '@/lib/location/locationCatalog';
+import { locationNamesEquivalent } from '@/lib/location/locationNameMatch';
 import { inferCityFromImportSlug, inferCityFromLocationHints } from '@/lib/portalImportEnrich';
 
 const OTODOM_HOST = 'otodom.pl';
@@ -548,10 +549,19 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
       }
     }
   }
+
+  const hintedCity = inferCityFromLocationHints(
+    otodomDistrict,
+    neighborhood,
+    String(ad.title ?? ''),
+    sourceUrl,
+  );
+  if (hintedCity && (!city || (!isStrictCity(city) && !locationNamesEquivalent(city, hintedCity)))) {
+    city = hintedCity;
+  }
+
   if (!city) {
-    city =
-      inferCityFromLocationHints(otodomDistrict, neighborhood, String(ad.title ?? ''), sourceUrl) ||
-      inferCityFromImportSlug(sourceUrl, String(ad.title ?? ''));
+    city = inferCityFromImportSlug(sourceUrl, String(ad.title ?? ''));
   }
 
   const district = canonicalizeDistrict(city, otodomDistrict || neighborhood || '');

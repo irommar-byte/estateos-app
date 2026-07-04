@@ -3,6 +3,7 @@ import { importOfferFromUrl, isSupportedImportOfferUrl, type OtodomImportDraft }
 import { createOfferFromOtodomDraft, findExistingImportedOffer, findExistingImportedOfferByPortalUrl } from '@/lib/otodomImportCreate';
 import { isOtodomImportAiConfigured } from '@/lib/otodomImportRewrite';
 import { peekLastImageInfo } from '@/lib/otodomImportFloorPlan';
+import { enrichOtodomImportDraft } from '@/lib/portalImportEnrich';
 import { activateOfferPublication } from '@/lib/offerPublication';
 import type { KeiExportProgressEmitter } from '@/lib/keiAmerExportProgress';
 import {
@@ -332,7 +333,7 @@ export async function exportKeiListingsToEstateOS(options?: {
       });
 
       const draft = alignDraftWithKeiExportFilters(
-        await importOfferFromUrl(portalUrl),
+        await enrichOtodomImportDraft(await importOfferFromUrl(portalUrl)),
         propertyKind,
         transactionKind,
       );
