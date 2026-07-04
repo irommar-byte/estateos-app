@@ -1,4 +1,4 @@
-import { canonicalizeCity, isStrictCity, normalizeText } from '@/lib/location/locationCatalog';
+import { canonicalizeCity, isStrictCity, isNonCityLabel, normalizeText } from '@/lib/location/locationCatalog';
 import {
   isInternationalCountryCode,
   isOutsidePolandBounds,
@@ -63,6 +63,12 @@ function shouldTrustPinAsSourceOfTruth(params: {
   }
   if (isStrictCity(params.city)) {
     return false;
+  }
+  if (isNonCityLabel(params.city)) {
+    return true;
+  }
+  if (normalizeText(params.city).length <= 2) {
+    return true;
   }
   if (normalizeText(params.city) === normalizeText(REST_OF_COUNTRY_LABEL)) {
     return false;

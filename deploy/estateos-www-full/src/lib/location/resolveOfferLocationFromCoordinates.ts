@@ -4,12 +4,14 @@ import {
   inferAreaLabelFromMapboxFeature,
   inferCityFromMapboxFeature,
   inferStrictDistrictFromMapboxFeature,
+  isNonCityLabel,
   isPlaceholderDistrict,
   isStrictCity,
   matchDistrictAlias,
   pickDistrictFromPlaceName,
   validateCityDistrict,
 } from "@/lib/location/locationCatalog";
+import { locationNamesEquivalent } from "@/lib/location/locationNameMatch";
 import {
   resolveStrictDistrictForForm,
   resolveStrictDistrictFromPin,
@@ -110,7 +112,16 @@ export async function resolveOfferLocationFromCoordinates(params: {
 
   const cityFromFeature = inferCityFromMapboxFeature(feature);
   const preferred = canonicalizeCity(params.preferredCity || "");
-  const city = preferred || canonicalizeCity(cityFromFeature);
+  const pinCity = canonicalizeCity(cityFromFeature);
+  let city = preferred || pinCity;
+  if (
+    preferred &&
+    pinCity &&
+    !isStrictCity(preferred) &&
+    !locationNamesEquivalent(preferred, pinCity)
+  ) {
+    city = pinCity;
+  }
   const strict = isStrictCity(city);
   const placeLabel = String(feature.place_name_pl || feature.place_name || "");
 

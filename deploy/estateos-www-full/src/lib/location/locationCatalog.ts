@@ -212,6 +212,29 @@ const NON_CITY_LABEL_TOKENS = new Set([
   "balkon",
   "ogrod",
   "taras",
+  // Przyimki / słowa z tytułu w slug OtoDom (np. po-generalnym-remoncie…)
+  "po",
+  "na",
+  "od",
+  "do",
+  "za",
+  "bez",
+  "przy",
+  "pod",
+  "nad",
+  "dla",
+  "oraz",
+  "generalnym",
+  "generalny",
+  "remoncie",
+  "remontu",
+  "oddzielna",
+  "oddzielny",
+  "kuchnia",
+  "kuchni",
+  "balkon",
+  "prowizji",
+  "prowizja",
 ]);
 
 export function isNonCityLabel(input?: string | null): boolean {
@@ -247,7 +270,14 @@ export function canonicalizeCity(input?: string | null): string {
   const normalizedCandidate = normalizeText(candidate);
 
   const strictHit = getStrictCities().find((city) => normalizeText(city) === normalizedCandidate);
-  return strictHit || candidate;
+  if (strictHit) return strictHit;
+
+  // Krótkie tokeny ze slugów (np. „po” z „po-generalnym-remoncie”) — nie miasta.
+  if (normalizedCandidate.length <= 2) {
+    return "";
+  }
+
+  return candidate;
 }
 
 export function isStrictCity(city?: string | null): boolean {
