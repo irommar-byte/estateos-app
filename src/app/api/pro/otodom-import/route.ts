@@ -4,7 +4,10 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
+import { enrichOtodomImportDraft } from '@/lib/portalImportEnrich';
 import { requireInvestorProWeb } from '@/lib/requireInvestorProWeb';
+
+export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const gate = await requireInvestorProWeb(req);
@@ -23,7 +26,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const draft = await importOfferFromUrl(url);
+    const rawDraft = await importOfferFromUrl(url);
+    const draft = await enrichOtodomImportDraft(rawDraft);
     const presentation = await buildOtodomPresentationCopy(draft);
     return NextResponse.json({ success: true, draft, presentation });
   } catch (error) {

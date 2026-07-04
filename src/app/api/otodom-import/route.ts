@@ -6,6 +6,8 @@ import { collectOtodomImportDraftIssues } from "@/lib/importDraftValidate";
 import { enrichOtodomImportDraft } from "@/lib/portalImportEnrich";
 import { peekLastImageInfo } from "@/lib/otodomImportFloorPlan";
 
+export const maxDuration = 120;
+
 export async function POST(req: Request) {
   try {
     const user = await requireOtodomImporter();

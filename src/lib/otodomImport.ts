@@ -1,4 +1,4 @@
-import { canonicalizeCity, canonicalizeDistrict, isStrictCity } from '@/lib/location/locationCatalog';
+import { canonicalizeCity, canonicalizeDistrict, isStrictCity, pickDistrictFromPlaceName } from '@/lib/location/locationCatalog';
 import { locationNamesEquivalent } from '@/lib/location/locationNameMatch';
 import { inferCityFromImportSlug, inferCityFromLocationHints } from '@/lib/portalImportEnrich';
 
@@ -922,6 +922,34 @@ function parseNierOnlineHeating(html: string): string | null {
   return media.length <= 80 ? media : null;
 }
 
+function parseNierOnlineLocation(html: string): { locationText: string; street: string | null; districtHint: string } {
+  const locationText =
+    extractNierOnlineListValue(html, 'Lokalizacja') ||
+    extractNierOnlineListValue(html, 'Adres') ||
+    decodeImportHtmlText(
+      html.match(/class="[^"]*(?:location|ad-location|offer-location)[^"]*"[^>]*>([\s\S]*?)<\//i)?.[1] || '',
+    )
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const streetFromLabel = locationText.match(/(?:ul\.?|al\.?|os\.?)\s*([^,]+)/i)?.[1]?.trim() || '';
+  const streetFromStrong = decodeImportHtmlText(
+    html.match(/<strong>\s*(?:ul\.?|al\.?)\s*([^<]+)<\/strong>/i)?.[1] || '',
+  )
+    .replace(/\s+/g, ' ')
+    .trim();
+  const street = (streetFromLabel || streetFromStrong || '').trim() || null;
+
+  const districtHint =
+    locationText
+      .split(',')
+      .map((part) => part.trim())
+      .find((part) => part && !/(?:ul\.?|al\.?|os\.?)\s/i.test(part) && !/^\d/.test(part)) || '';
+
+  return { locationText, street, districtHint };
+}
+
 function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft {
   const normalizedHtml = decodeImportHtmlText(html);
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
@@ -1005,13 +1033,25 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
   const lat = parseNumber(html.match(/"latitude"\s*:\s*"?(-?\d+(?:\.\d+)?)"?/i)?.[1]);
   const lng = parseNumber(html.match(/"longitude"\s*:\s*"?(-?\d+(?:\.\d+)?)"?/i)?.[1]);
 
+  const { locationText, street: streetFromLocation, districtHint } = parseNierOnlineLocation(html);
+
   const cityRaw =
     cityFromHost ||
     html.match(/"addressLocality"\s*:\s*"([^"]+)"/i)?.[1] ||
+    html.match(/\b(?:miasto|lokalizacja)[:\s]+([A-ZĄĆĘŁŃÓŚŹŻ][A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż\- ]+)/i)?.[1] ||
     html.match(/\b,\s*([A-ZĄĆĘŁŃÓŚŹŻ][A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż\- ]+)\s*$/m)?.[1] ||
     '';
-  const city = canonicalizeCity(String(cityRaw || '').trim());
-  const district = canonicalizeDistrict(city, '');
+  let city = canonicalizeCity(String(cityRaw || '').trim());
+  if (!city) {
+    city = inferCityFromLocationHints(locationText, districtHint, title, descriptionText, cleanCanonical);
+  }
+  if (!city) {
+    city = inferCityFromImportSlug(cleanCanonical, title);
+  }
+  let district = city
+    ? pickDistrictFromPlaceName(city, [locationText, districtHint, title, descriptionText].filter(Boolean).join(' ')) ||
+      canonicalizeDistrict(city, districtHint)
+    : '';
   const htmlWithUnescapedSlashes = html.replace(/\\\//g, '/');
   const photosJsonMatch = html.match(/photos:\s*(\{[\s\S]*?\})\s*,\s*adType\s*:/i);
   let photosPreferred: string[] = [];
@@ -1105,8 +1145,8 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
     buildingType: null,
     city,
     district,
-    neighborhood: null,
-    street: null,
+    neighborhood: districtHint || null,
+    street: streetFromLocation,
     lat,
     lng,
     localityCountryCode: 'PL',

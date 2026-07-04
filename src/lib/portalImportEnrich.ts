@@ -4,6 +4,7 @@ import {
   canonicalizeDistrict,
   getStrictCities,
   inferCityFromMapboxFeature,
+  inferDistrictFromStreet,
   isNonCityLabel,
   isStrictCity,
   normalizeText,
@@ -71,11 +72,14 @@ async function reconcileImportCityWithPin(
   return city;
 }
 
-export function inferDistrictForCity(city: string, draft: Pick<OtodomImportDraft, 'district' | 'neighborhood' | 'title' | 'externalUrl'>): string {
+export function inferDistrictForCity(city: string, draft: Pick<OtodomImportDraft, 'district' | 'neighborhood' | 'title' | 'externalUrl' | 'street'>): string {
   const canonicalCity = canonicalizeCity(city);
   if (!canonicalCity) return '';
 
-  const blob = [draft.district, draft.neighborhood, draft.title, draft.externalUrl].filter(Boolean).join(' ');
+  const fromStreet = inferDistrictFromStreet(canonicalCity, draft.street);
+  if (fromStreet) return fromStreet;
+
+  const blob = [draft.district, draft.neighborhood, draft.street, draft.title, draft.externalUrl].filter(Boolean).join(' ');
   const fromCatalog = pickDistrictFromPlaceName(canonicalCity, blob);
   if (fromCatalog) return fromCatalog;
 
