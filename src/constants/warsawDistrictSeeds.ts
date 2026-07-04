@@ -48,6 +48,7 @@ export const WARSZAWA_DISTRICT_SEEDS: Record<string, Array<{ lat: number; lng: n
     { lat: 52.2520, lng: 20.9100 },
     { lat: 52.2400, lng: 20.8950 },
     { lat: 52.2620, lng: 20.9050 },
+    { lat: 52.2230, lng: 20.9040 },
   ],
   Ursynów: [
     { lat: 52.1480, lng: 21.0450 },

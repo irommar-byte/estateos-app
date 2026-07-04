@@ -551,6 +551,16 @@ export const offer = {
       mapHintExact: 'Pinezka pokazuje dokładny budynek.',
       mapHintCircle:
         'Zielony krąg ukrywa budynek — a środek tarczy jest celowo przesunięty, więc nie pokazuje też położenia domu.',
+      mapEditHint: 'Przesuń mapę, aby zmienić położenie pinezki. Adres i dzielnica zaktualizują się automatycznie.',
+      mapNoCoords: 'Brak współrzędnych GPS — nie można edytować pinezki na mapie.',
+      mapCoordsFallback: 'Ustaw lokalizację przesuwając mapę.',
+    },
+    ai: {
+      generate: 'AI opis',
+      errorTitle: 'Generowanie opisu',
+      insufficientData: 'Uzupełnij podstawowe parametry (typ, miasto, powierzchnia lub cenę), aby wygenerować opis.',
+      requiresLogin: 'Zaloguj się ponownie, aby użyć AI.',
+      failed: 'Nie udało się wygenerować opisu. Spróbuj ponownie za chwilę.',
     },
     sticky: {
       allSaved: 'Wszystko zapisane',

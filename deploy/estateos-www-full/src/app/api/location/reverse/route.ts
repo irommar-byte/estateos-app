@@ -9,13 +9,20 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const lat = Number(url.searchParams.get("lat"));
   const lng = Number(url.searchParams.get("lng"));
+  const preferredCity = url.searchParams.get("preferredCity");
+  const streetHint = url.searchParams.get("streetHint");
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return NextResponse.json({ error: "Nieprawidłowe współrzędne." }, { status: 400 });
   }
 
   try {
-    const resolved = await resolveOfferLocationFromCoordinates({ lat, lng });
+    const resolved = await resolveOfferLocationFromCoordinates({
+      lat,
+      lng,
+      preferredCity,
+      streetHint,
+    });
     if (!resolved) {
       return NextResponse.json({ error: "Brak tokenu MAPBOX_TOKEN lub błąd reverse geocoding." }, { status: 500 });
     }

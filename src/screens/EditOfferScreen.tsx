@@ -80,6 +80,8 @@ import {
 } from '../utils/mobileOfferUpdate';
 import { normalizeOfferConditionForEdit } from '../utils/offerFieldLabels';
 import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDisplay';
+import EditOfferLocationEditor, { type EditOfferLocationState } from './EditOffer/EditOfferLocationEditor';
+import { generateListingDescriptionWithGpt } from '../services/offerDescriptionAiService';
 
 const { width } = Dimensions.get('window');
 const MAX_IMAGES = 15;
@@ -236,6 +238,14 @@ export default function EditOfferScreen({ route }: any) {
   const [commissionAmountFocused, setCommissionAmountFocused] = useState(false);
   const [condition, setCondition] = useState<'READY' | 'DEVELOPER' | 'TO_RENOVATION'>('READY');
   const [isExactLocation, setIsExactLocation] = useState(true);
+  const [locationState, setLocationState] = useState<EditOfferLocationState>({
+    lat: 52.2297,
+    lng: 21.0122,
+    city: '',
+    district: '',
+    street: '',
+  });
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
   const [amenities, setAmenities] = useState({
     hasBalcony: false,
     hasParking: false,
@@ -331,6 +341,13 @@ export default function EditOfferScreen({ route }: any) {
           // Dzięki temu, jeśli backend zwraca `false` w dowolnej formie,
           // przełącznik utrzyma stan po reopen.
           setIsExactLocation(resolveIsExactLocation(offer.isExactLocation));
+          setLocationState({
+            lat: Number(offer.lat) || 52.2297,
+            lng: Number(offer.lng) || 21.0122,
+            city: String(offer.city || '').trim(),
+            district: String(offer.district || '').trim(),
+            street: String(offer.street || offer.addressStreet || '').trim(),
+          });
 
           let parsedImages: string[] = [];
           if (offer.images) {
@@ -455,6 +472,11 @@ export default function EditOfferScreen({ route }: any) {
     if (!sameText(landRegistryNumber, originalData.landRegistryNumber)) diffs.push('landRegistry');
     if (!sameText(condition, originalData.condition || 'READY')) diffs.push('condition');
     if (Boolean(isExactLocation) !== resolveIsExactLocation(originalData.isExactLocation)) diffs.push('location');
+    if (!sameNumber(locationState.lat, originalData.lat)) diffs.push('location');
+    if (!sameNumber(locationState.lng, originalData.lng)) diffs.push('location');
+    if (!sameText(locationState.city, originalData.city)) diffs.push('location');
+    if (!sameText(locationState.district, originalData.district)) diffs.push('location');
+    if (!sameText(locationState.street, originalData.street || originalData.addressStreet)) diffs.push('location');
     (
       ['hasBalcony', 'hasParking', 'hasStorage', 'hasElevator', 'hasGarden', 'isTwoLevel', 'isFurnished'] as const
     ).forEach((k) => {
@@ -489,6 +511,7 @@ export default function EditOfferScreen({ route }: any) {
     landRegistryNumber,
     condition,
     isExactLocation,
+    locationState,
     amenities,
     images,
     translateDirtyField,
@@ -638,6 +661,13 @@ export default function EditOfferScreen({ route }: any) {
     setLandRegistryNumber(String(originalData.landRegistryNumber || ''));
     setCondition(originalData.condition || 'READY');
     setIsExactLocation(resolveIsExactLocation(originalData.isExactLocation));
+    setLocationState({
+      lat: Number(originalData.lat) || 52.2297,
+      lng: Number(originalData.lng) || 21.0122,
+      city: String(originalData.city || '').trim(),
+      district: String(originalData.district || '').trim(),
+      street: String(originalData.street || originalData.addressStreet || '').trim(),
+    });
     setAmenities({
       hasBalcony: isTrue(originalData.hasBalcony),
       hasParking: isTrue(originalData.hasParking),
@@ -655,6 +685,58 @@ export default function EditOfferScreen({ route }: any) {
         serverPath: key.startsWith('/uploads') ? key : toServerPath(key),
       }))
     );
+  };
+
+  const handleGenerateDescription = async () => {
+    if (isGeneratingDescription) return;
+    const hasBasics =
+      String(originalData?.propertyType || '').trim() ||
+      String(locationState.city || '').trim() ||
+      String(area || '').trim() ||
+      String(price || '').trim();
+    if (!hasBasics) {
+      Alert.alert(t('offer.edit.ai.errorTitle'), t('offer.edit.ai.insufficientData'));
+      return;
+    }
+    if (!token) {
+      Alert.alert(t('offer.edit.ai.errorTitle'), t('offer.edit.ai.requiresLogin'));
+      return;
+    }
+
+    setIsGeneratingDescription(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    try {
+      const draftPayload = {
+        title: title.trim(),
+        description: description.trim(),
+        propertyType: originalData?.propertyType,
+        transactionType: originalData?.transactionType,
+        city: locationState.city,
+        district: locationState.district,
+        street: locationState.street,
+        area: area ? Number(String(area).replace(',', '.')) : null,
+        plotArea: plotArea.trim() ? Number(String(plotArea).replace(',', '.')) : null,
+        rooms: rooms ? Number(rooms) : null,
+        floor: floor !== '' ? Number(floor) : null,
+        yearBuilt: yearBuilt ? Number(yearBuilt) : null,
+        price: price ? Number(String(price).replace(/\s/g, '')) : null,
+        adminFee: adminFee ? Number(adminFee) : null,
+        condition,
+        heating: heating.trim() || null,
+        isExactLocation,
+        ...amenities,
+      };
+      const { description: generated } = await generateListingDescriptionWithGpt(token, draftPayload, locale);
+      setDescription(generated);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err: any) {
+      Alert.alert(
+        t('offer.edit.ai.errorTitle'),
+        String(err?.message || t('offer.edit.ai.failed')),
+      );
+    } finally {
+      setIsGeneratingDescription(false);
+    }
   };
 
   // -------- ZAPIS --------
@@ -777,6 +859,11 @@ export default function EditOfferScreen({ route }: any) {
       isExactLocation: isExactLocationBool,
       is_exact_location: isExactLocationBool,
       hideExactAddress: !isExactLocationBool,
+      lat: locationState.lat,
+      lng: locationState.lng,
+      city: locationState.city || originalData?.city || null,
+      district: locationState.district || originalData?.district || null,
+      street: locationState.street || null,
       status: originalData?.status || 'ACTIVE',
       images: remoteImages,
       ...amenities,
@@ -1479,6 +1566,26 @@ export default function EditOfferScreen({ route }: any) {
                   {t('offer.edit.mainInfo.descriptionHint')}
                 </Text>
               </View>
+              <Pressable
+                onPress={handleGenerateDescription}
+                disabled={isGeneratingDescription}
+                style={({ pressed }) => [
+                  styles.aiDescBtn,
+                  {
+                    backgroundColor: isDark ? '#2C1F45' : '#F4ECFF',
+                    opacity: pressed || isGeneratingDescription ? 0.75 : 1,
+                  },
+                ]}
+              >
+                {isGeneratingDescription ? (
+                  <ActivityIndicator size="small" color="#AF52DE" />
+                ) : (
+                  <>
+                    <Ionicons name="sparkles" size={14} color="#AF52DE" />
+                    <Text style={styles.aiDescBtnText}>{t('offer.edit.ai.generate')}</Text>
+                  </>
+                )}
+              </Pressable>
             </View>
             <TextInput 
               style={[
@@ -2375,13 +2482,21 @@ export default function EditOfferScreen({ route }: any) {
               />
             </View>
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
+            <EditOfferLocationEditor
+              value={locationState}
+              isExactLocation={isExactLocation}
+              isDark={isDark}
+              token={token}
+              onChange={(patch) => setLocationState((prev) => ({ ...prev, ...patch }))}
+            />
+            <View style={[styles.divider, { backgroundColor: borderColor }]} />
             <LocationPreview
               isExactLocation={isExactLocation}
               isDark={isDark}
               txtColor={txtColor}
-              city={originalData?.city}
-              district={originalData?.district}
-              street={originalData?.street || originalData?.addressStreet}
+              city={locationState.city || originalData?.city}
+              district={locationState.district || originalData?.district}
+              street={locationState.street || originalData?.street || originalData?.addressStreet}
               localityCountry={originalData?.localityCountry}
               localityCountryCode={originalData?.localityCountryCode}
             />
@@ -3115,6 +3230,20 @@ const styles = StyleSheet.create({
   },
   fieldTitle: { fontSize: 15.5, fontWeight: '800', letterSpacing: -0.25 },
   fieldHint: { fontSize: 12, lineHeight: 16, marginTop: 2, fontWeight: '500' },
+  aiDescBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    alignSelf: 'flex-start',
+  },
+  aiDescBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#AF52DE',
+  },
   titleInputPremium: {
     fontSize: 18,
     fontWeight: '700',

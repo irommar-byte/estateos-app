@@ -4,6 +4,9 @@ import { authorizeMobile } from '@/lib/mobileAuth';
 import { computeIsProActive } from '@/lib/mobileUserShape';
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
+import { enrichOtodomImportDraft } from '@/lib/portalImportEnrich';
+
+export const maxDuration = 120;
 
 async function requireInvestorPro(req: Request) {
   const auth = await authorizeMobile(req);
@@ -55,7 +58,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const draft = await importOfferFromUrl(url);
+    const rawDraft = await importOfferFromUrl(url);
+    const draft = await enrichOtodomImportDraft(rawDraft);
     const presentation = await buildOtodomPresentationCopy(draft);
     return NextResponse.json({ success: true, draft, presentation });
   } catch (error) {

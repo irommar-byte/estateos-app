@@ -548,6 +548,16 @@ export const offer = {
       mapHintExact: 'The pin shows the exact building.',
       mapHintCircle:
         'The green circle hides the building — and the center is deliberately offset, so it does not reveal the home’s position either.',
+      mapEditHint: 'Drag the map to move the pin. Address and district update automatically.',
+      mapNoCoords: 'No GPS coordinates — pin cannot be edited on the map.',
+      mapCoordsFallback: 'Set location by dragging the map.',
+    },
+    ai: {
+      generate: 'AI description',
+      errorTitle: 'Description generation',
+      insufficientData: 'Fill in basics (type, city, area or price) before generating a description.',
+      requiresLogin: 'Sign in again to use AI.',
+      failed: 'Could not generate the description. Please try again shortly.',
     },
     sticky: {
       allSaved: 'All saved',

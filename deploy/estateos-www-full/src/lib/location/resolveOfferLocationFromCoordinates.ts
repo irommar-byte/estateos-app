@@ -4,6 +4,7 @@ import {
   inferAreaLabelFromMapboxFeature,
   inferCityFromMapboxFeature,
   inferStrictDistrictFromMapboxFeature,
+  inferDistrictFromStreet,
   isNonCityLabel,
   isPlaceholderDistrict,
   isStrictCity,
@@ -74,6 +75,11 @@ export function collectOtodomDistrictCandidates(
 
   push(draft.district);
   push(draft.neighborhood);
+
+  if (draft.street) {
+    const fromStreet = inferDistrictFromStreet(canonicalCity, draft.street);
+    if (fromStreet) hints.push(fromStreet);
+  }
 
   const combined = [draft.district, draft.neighborhood, draft.street].filter(isDistrictHint).join(", ");
   if (combined) {

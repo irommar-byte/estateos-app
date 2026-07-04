@@ -528,6 +528,16 @@ export const offer = {
       mapHintExact: 'На булавке показано точное здание.',
       mapHintCircle:
         'The green circle hides the building — and the center is deliberately offset, so it does not reveal the home’s position either.',
+      mapEditHint: 'Переместите карту, чтобы изменить положение метки. Адрес и район обновятся автоматически.',
+      mapNoCoords: 'Нет GPS-координат — нельзя редактировать метку на карте.',
+      mapCoordsFallback: 'Укажите местоположение, перемещая карту.',
+    },
+    ai: {
+      generate: 'AI описание',
+      errorTitle: 'Генерация описания',
+      insufficientData: 'Заполните основные параметры (тип, город, площадь или цену), чтобы сгенерировать описание.',
+      requiresLogin: 'Войдите снова, чтобы использовать AI.',
+      failed: 'Не удалось сгенерировать описание. Попробуйте ещё раз чуть позже.',
     },
     sticky: {
       allSaved: 'Все сохранено',

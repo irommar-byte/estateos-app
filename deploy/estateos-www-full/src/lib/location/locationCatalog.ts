@@ -84,6 +84,15 @@ const DISTRICT_ALIAS_RULES: Array<{ city: string; patterns: string[]; district: 
     district: "Żoliborz",
   },
   {
+    city: "Warszawa",
+    patterns: [
+      "rozlogi", "rozłogi", "lucerny", "chomicza", "chomicz", "grotow", "grotów",
+      "powstancow slaskich", "powstańców śląskich", "karńska", "karnska", "górczewska", "gorczewska",
+      "boernera", "batalionow chlopskich", "batalionów chłopskich",
+    ],
+    district: "Bemowo",
+  },
+  {
     city: "Poznań",
     patterns: [
       "ogrody", "goplana", "osiedle goplana", "sw wawrzynca", "sw. wawrzyńca", "wawrzynca", "wawrzyńca",
@@ -125,9 +134,25 @@ const CITY_ALIASES: Record<string, string> = {
   "trojmiasto sopot": "Sopot",
   lodz: "Łódź",
   gdansk: "Gdańsk",
+  wroclaw: "Wrocław",
+  warszawa: "Warszawa",
+  krakow: "Kraków",
+  poznan: "Poznań",
   bialystok: "Białystok",
   zamosc: "Zamość",
 };
+
+/** Ulice (bez numeru) → dzielnica strict-city, gdy geokoder myli sąsiednie dzielnice. */
+const STREET_DISTRICT_RULES: Array<{ city: string; streetPatterns: string[]; district: string }> = [
+  {
+    city: "Warszawa",
+    streetPatterns: [
+      "rozlogi", "rozłogi", "lucerny", "chomicza", "chomicz", "grotow", "grotów",
+      "powstancow slaskich", "powstańców śląskich", "karńska", "karnska",
+    ],
+    district: "Bemowo",
+  },
+];
 
 export function normalizeText(value: string): string {
   return value
@@ -290,6 +315,31 @@ export function getDistrictsForCity(city?: string | null): string[] {
   return STRICT_CITY_DISTRICTS[canonical] || [];
 }
 
+/** Dopasowuje ulicę (np. „Rozłogi”) do dzielnicy w strict city. */
+export function inferDistrictFromStreet(city: string, street?: string | null): string {
+  const canonicalCity = canonicalizeCity(city);
+  if (!canonicalCity || !street) return "";
+
+  const normStreet = normalizeText(String(street).trim());
+  if (!normStreet) return "";
+
+  for (const rule of STREET_DISTRICT_RULES) {
+    if (canonicalizeCity(rule.city) !== canonicalCity) continue;
+    for (const pattern of rule.streetPatterns) {
+      const patternNorm = normalizeText(pattern);
+      if (!patternNorm) continue;
+      if (normStreet.includes(patternNorm)) {
+        const allowed = getDistrictsForCity(canonicalCity);
+        if (allowed.some((entry) => normalizeText(entry) === normalizeText(rule.district))) {
+          return rule.district;
+        }
+      }
+    }
+  }
+
+  return "";
+}
+
 /** Dopasowuje synonim (np. „Nowa Praga”) do dzielnicy z katalogu strict city. */
 export function matchDistrictAlias(city: string, rawDistrict?: string | null): string {
   const canonicalCity = canonicalizeCity(city);
@@ -322,6 +372,9 @@ export function pickDistrictFromPlaceName(city: string, text: string, allowedDis
 
   const alias = matchDistrictAlias(canonicalCity, text);
   if (alias) return alias;
+
+  const fromStreet = inferDistrictFromStreet(canonicalCity, text);
+  if (fromStreet) return fromStreet;
 
   const candidates =
     allowedDistricts && allowedDistricts.length > 0

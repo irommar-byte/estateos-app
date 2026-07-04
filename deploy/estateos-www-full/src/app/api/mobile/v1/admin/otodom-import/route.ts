@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
+import { enrichOtodomImportDraft } from '@/lib/portalImportEnrich';
+
+export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const gate = await requireMobileAdmin(req);
@@ -23,7 +26,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const draft = await importOfferFromUrl(url);
+    const rawDraft = await importOfferFromUrl(url);
+    const draft = await enrichOtodomImportDraft(rawDraft);
     const presentation = await buildOtodomPresentationCopy(draft);
     return NextResponse.json({ success: true, draft, presentation });
   } catch (error) {

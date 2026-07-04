@@ -5,7 +5,10 @@ import { computeIsProActive } from '@/lib/mobileUserShape';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { createOfferFromOtodomDraft } from '@/lib/otodomImportCreate';
+import { enrichOtodomImportDraft } from '@/lib/portalImportEnrich';
 import type { OtodomPublicationInput } from '@/lib/otodomImportPublication';
+
+export const maxDuration = 180;
 
 async function requireInvestorPro(req: Request) {
   const auth = await authorizeMobile(req);
@@ -87,7 +90,9 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-      draft = await importOfferFromUrl(url);
+      draft = await enrichOtodomImportDraft(await importOfferFromUrl(url));
+    } else if (draft) {
+      draft = await enrichOtodomImportDraft(draft);
     }
 
     if (!draft) {
