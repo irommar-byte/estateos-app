@@ -24,6 +24,8 @@ import { normalizeTransactionType } from "@/lib/transactionType";
 import { useLocale } from "@/contexts/LocaleContext";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
+import OfferNewBadge from "@/components/offer/OfferNewBadge";
+import { isOfferNew } from "@/lib/offerNewBadge";
 import CatalogAuctionCard from "@/components/catalog/CatalogAuctionCard";
 import CatalogLocationFilter, {
   offerMatchesCatalogLocationFilter,
@@ -72,13 +74,13 @@ type GallerySection =
   | "auction";
 
 const SECTION_ORDER: GallerySection[] = [
+  "newest",
   "all",
   "mine",
   "auction",
   "nearest",
   "sale",
   "rent",
-  "newest",
   "discounted",
   "featured",
 ];
@@ -192,7 +194,7 @@ export default function CatalogPage() {
   const [loadingMine, setLoadingMine] = useState(false);
   const [loadingAuction, setLoadingAuction] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<GallerySection>("all");
+  const [activeSection, setActiveSection] = useState<GallerySection>("newest");
   const [gridDensity, setGridDensity] = useState<CatalogGridDensity>(2);
   const [locationFilter, setLocationFilter] = useState<CatalogLocationFilterValue>({
     countryCode: null,
@@ -436,7 +438,7 @@ export default function CatalogPage() {
       case "featured":
         return featuredOffers.length > 0 ? featuredOffers : sortedByNewest.slice(0, 8);
       default:
-        return locationFilteredOffers;
+        return sortedByNewest;
     }
   })();
 
@@ -698,7 +700,9 @@ export default function CatalogPage() {
               transition={{ duration: 0.25 }}
               className={cardStyles.gridClass}
             >
-              {offersInSection.map((offer, i) => (
+              {offersInSection.map((offer, i) => {
+                const showNewBadge = isOfferNew(offer.createdAt);
+                return (
                 <Link href={`/oferta/${offer.id}`} key={offer.id} className="block group">
                   <motion.article
                     initial={{ opacity: 0, y: 24 }}
@@ -715,9 +719,14 @@ export default function CatalogPage() {
                           active
                           label={offerCopy.legalVerifiedKw}
                           sublabel={offerCopy.legalVerifiedKwSublabel}
-                          className="absolute left-3 top-3 z-10"
+                          className={`absolute left-3 z-10 ${showNewBadge ? "top-12" : "top-3"}`}
                         />
                       ) : null}
+                      <OfferNewBadge
+                        createdAt={offer.createdAt}
+                        size="sm"
+                        className="absolute left-3 top-3 z-10"
+                      />
                       <OfferFavoriteButton
                         offerId={offer.id}
                         variant="icon"
@@ -782,7 +791,8 @@ export default function CatalogPage() {
                     </div>
                   </motion.article>
                 </Link>
-              ))}
+              );
+              })}
             </motion.div>
           )}
         </AnimatePresence>

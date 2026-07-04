@@ -1018,8 +1018,29 @@ html.light .premium-home-shell h2 {
   animation: featured-deal-room-blink 1.35s ease-in-out infinite;
 }
 
+@keyframes offer-new-badge-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.55);
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.82;
+    box-shadow: 0 0 22px rgba(96, 165, 250, 0.85);
+    transform: scale(1.04);
+  }
+}
+
+.offer-new-badge {
+  animation: offer-new-badge-pulse 2.1s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .featured-deal-room-badge {
+    animation: none;
+  }
+  .offer-new-badge {
     animation: none;
   }
 }

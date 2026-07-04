@@ -311,10 +311,10 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       statsMarketCities: "Міст у мережі",
       statsRegisteredMembers: "Довірених клієнтів",
       galleryEyebrow: "Активний ринок",
-      galleryTitle: "Обрані",
+      galleryTitle: "Найновіші",
       galleryTitleHighlight: "оголошення",
       gallerySubtitle:
-        "Актуальні оголошення з бази EstateOS — продаж і оренда, той самий каталог, що на карті.",
+        "Свіжі оголошення за останні 24 години — продаж і оренда, той самий каталог, що на карті.",
       galleryViewAll: "Переглянути весь каталог",
       galleryPriceLabel: "Ціна",
       galleryAreaLabel: "Площа",
@@ -427,6 +427,7 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
         clear: "Скинути фільтри",
       },
     },
+    offerNewBadge: "Нове",
     pricing: {
       eyebrow: "Оберіть рівень",
       title: "Інвестуй",
