@@ -263,7 +263,16 @@ export default function ProWidget({
   };
 
   return (
-    <div className="eos-pro-widget eos-pro-shell relative mb-12 overflow-hidden rounded-[2.5rem] backdrop-blur-3xl">
+    <div className="mb-12">
+      <header className="eos-pro-system-title mb-5 px-1 md:mb-6">
+        <p className="eos-pro-system-title-brand">
+          <span className="text-emerald-500">E</span>state<span className="text-emerald-500">OS</span>
+          <sup className="eos-pro-system-title-tm">™</sup>
+        </p>
+        <p className="eos-pro-system-title-suffix">{pw.systemTitleSuffix}</p>
+      </header>
+
+    <div className="eos-pro-widget eos-pro-shell relative overflow-hidden rounded-[2.5rem] backdrop-blur-3xl">
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent"></div>
       
       <div className="relative z-10 flex flex-col gap-6 p-6 md:p-8">
@@ -442,6 +451,7 @@ export default function ProWidget({
         )}
       </AnimatePresence>
 
+    </div>
     </div>
   );
 }
