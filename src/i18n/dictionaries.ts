@@ -492,6 +492,11 @@ export type Dictionary = {
       allCities: string;
       allDistricts: string;
       clear: string;
+      offersCount: string;
+    };
+    transactionToggle: {
+      sale: string;
+      rent: string;
     };
   };
   offerNewBadge: string;
@@ -1165,6 +1170,11 @@ const pl: Dictionary = {
       allCities: "Wszystkie miasta",
       allDistricts: "Całe miasto",
       clear: "Wyczyść filtry",
+      offersCount: "{n} ofert w wybranej lokalizacji",
+    },
+    transactionToggle: {
+      sale: "Kupno",
+      rent: "Wynajem",
     },
   },
   offerNewBadge: "Nowe",
@@ -1856,6 +1866,11 @@ const en: Dictionary = {
       allCities: "All cities",
       allDistricts: "Whole city",
       clear: "Clear filters",
+      offersCount: "{n} listings in selected location",
+    },
+    transactionToggle: {
+      sale: "Buy",
+      rent: "Rent",
     },
   },
   offerNewBadge: "New",

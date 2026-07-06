@@ -425,6 +425,11 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
         allCities: "Усі міста",
         allDistricts: "Усе місто",
         clear: "Скинути фільтри",
+        offersCount: "{n} оголошень у вибраній локації",
+      },
+      transactionToggle: {
+        sale: "Купівля",
+        rent: "Оренда",
       },
     },
     offerNewBadge: "Нове",

@@ -25,8 +25,12 @@ import { useLocale } from "@/contexts/LocaleContext";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 import OfferNewBadge from "@/components/offer/OfferNewBadge";
+import OfferTransactionBadge from "@/components/offer/OfferTransactionBadge";
 import { isOfferNew } from "@/lib/offerNewBadge";
 import CatalogAuctionCard from "@/components/catalog/CatalogAuctionCard";
+import CatalogTransactionToggle, {
+  type CatalogTransactionMode,
+} from "@/components/catalog/CatalogTransactionToggle";
 import CatalogLocationFilter, {
   offerMatchesCatalogLocationFilter,
   type CatalogLocationFilterValue,
@@ -73,17 +77,7 @@ type GallerySection =
   | "mine"
   | "auction";
 
-const SECTION_ORDER: GallerySection[] = [
-  "newest",
-  "all",
-  "mine",
-  "auction",
-  "nearest",
-  "sale",
-  "rent",
-  "discounted",
-  "featured",
-];
+const SECTION_ORDER: GallerySection[] = ["newest", "nearest", "discounted", "featured", "mine"];
 
 type CatalogGridDensity = 1 | 2 | 4;
 
@@ -195,6 +189,7 @@ export default function CatalogPage() {
   const [loadingAuction, setLoadingAuction] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<GallerySection>("newest");
+  const [transactionMode, setTransactionMode] = useState<CatalogTransactionMode>("sale");
   const [gridDensity, setGridDensity] = useState<CatalogGridDensity>(2);
   const [locationFilter, setLocationFilter] = useState<CatalogLocationFilterValue>({
     countryCode: null,
@@ -360,15 +355,24 @@ export default function CatalogPage() {
     [denied, location, request],
   );
 
+  const saleOffers = useMemo(
+    () => offers.filter((o) => normalizeTransactionType(o.transactionType) === "sale"),
+    [offers],
+  );
+  const rentOffers = useMemo(
+    () => offers.filter((o) => normalizeTransactionType(o.transactionType) === "rent"),
+    [offers],
+  );
+  const transactionOffers = transactionMode === "sale" ? saleOffers : rentOffers;
+
   const locationFilteredOffers = useMemo(
-    () => offers.filter((offer) => offerMatchesCatalogLocationFilter(offer, locationFilter)),
-    [offers, locationFilter],
+    () => transactionOffers.filter((offer) => offerMatchesCatalogLocationFilter(offer, locationFilter)),
+    [transactionOffers, locationFilter],
   );
 
   useEffect(() => {
     if (activeSection === "mine" && loggedIn) void loadMine();
-    if (activeSection === "auction") void loadAuctions();
-  }, [activeSection, loggedIn, loadMine, loadAuctions]);
+  }, [activeSection, loggedIn, loadMine]);
 
   const sortedByNewest = [...locationFilteredOffers].sort((a, b) => {
     const ta = a.createdAt ? Date.parse(a.createdAt) : Number(a.id) * 1000;
@@ -409,28 +413,30 @@ export default function CatalogPage() {
     (offer) => offer.featured || offer.badges?.isPartner || offer.badges?.isPro,
   );
 
+  const filteredMyOffers = useMemo(
+    () =>
+      myOffers.filter((o) => normalizeTransactionType(o.transactionType) === transactionMode),
+    [myOffers, transactionMode],
+  );
+
   const sectionCounts: Record<GallerySection, number> = {
     all: locationFilteredOffers.length,
     nearest: location ? nearestOffers.length : geolocatedCount,
-    sale: locationFilteredOffers.filter((o) => normalizeTransactionType(o.transactionType) === "sale").length,
-    rent: locationFilteredOffers.filter((o) => normalizeTransactionType(o.transactionType) === "rent").length,
+    sale: saleOffers.length,
+    rent: rentOffers.length,
     newest: sortedByNewest.length,
     discounted: discountedOffers.length,
     featured: featuredOffers.length,
-    mine: myOffers.length,
+    mine: filteredMyOffers.length,
     auction: auctionEvents.length,
   };
 
   const offersInSection = (() => {
     switch (activeSection) {
       case "mine":
-        return myOffers;
+        return filteredMyOffers;
       case "nearest":
         return nearestOffers;
-      case "sale":
-        return locationFilteredOffers.filter((o) => normalizeTransactionType(o.transactionType) === "sale");
-      case "rent":
-        return locationFilteredOffers.filter((o) => normalizeTransactionType(o.transactionType) === "rent");
       case "newest":
         return sortedByNewest;
       case "discounted":
@@ -442,22 +448,28 @@ export default function CatalogPage() {
     }
   })();
 
-  const resultLabel = labels.resultSummary.replace("{n}", String(
-    activeSection === "auction" ? auctionEvents.length : offersInSection.length,
-  ));
+  const resultLabel = labels.resultSummary.replace("{n}", String(offersInSection.length));
 
-  const sectionLoading =
-    (activeSection === "mine" && loadingMine) || (activeSection === "auction" && loadingAuction);
+  const sectionLoading = activeSection === "mine" && loadingMine;
 
-  const sectionLead =
-    activeSection === "mine"
-      ? labels.mineLead
-      : activeSection === "auction"
-        ? labels.auctionLead
-        : null;
+  const sectionLead = activeSection === "mine" ? labels.mineLead : null;
+
+  const sectionAccentClass =
+    transactionMode === "rent"
+      ? "border-sky-500/40 bg-sky-500/10 shadow-[0_0_20px_rgba(59,130,246,0.12)]"
+      : "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_20px_rgba(16,185,129,0.12)]";
+  const sectionAccentIcon = transactionMode === "rent" ? "text-sky-500" : "text-emerald-500";
+  const sectionAccentCount =
+    transactionMode === "rent"
+      ? "bg-sky-500/20 text-sky-600 dark:text-sky-300"
+      : "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300";
 
   return (
-    <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-24 pt-36 md:pt-40 font-sans text-[var(--eos-text)]">
+    <main
+      className={`theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-24 pt-36 md:pt-40 font-sans text-[var(--eos-text)] transition-colors duration-500 ${
+        transactionMode === "rent" ? "catalog-accent-rent" : "catalog-accent-sale"
+      }`}
+    >
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <header className="mb-8 md:mb-10 border-b border-[var(--eos-border)] pb-6 md:pb-8">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
@@ -476,13 +488,25 @@ export default function CatalogPage() {
           </motion.div>
 
           {!loading && !error ? (
-            <CatalogLocationFilter
-              offers={offers}
-              value={locationFilter}
-              onChange={setLocationFilter}
-              labels={labels.locationFilter}
-              strictCityDistricts={strictCityDistricts}
-            />
+            <>
+              <div className="mt-6 md:mt-8">
+                <CatalogTransactionToggle
+                  value={transactionMode}
+                  onChange={setTransactionMode}
+                  labels={labels.transactionToggle}
+                  saleCount={saleOffers.length}
+                  rentCount={rentOffers.length}
+                />
+              </div>
+              <CatalogLocationFilter
+                offers={transactionOffers}
+                value={locationFilter}
+                onChange={setLocationFilter}
+                labels={labels.locationFilter}
+                strictCityDistricts={strictCityDistricts}
+                accent={transactionMode}
+              />
+            </>
           ) : null}
 
           {!loading && !error && (
@@ -498,7 +522,6 @@ export default function CatalogPage() {
                   const Icon = sectionIcons[section];
                   const active = activeSection === section;
                   const count = sectionCounts[section];
-                  const accentAuction = section === "auction";
                   return (
                     <button
                       key={section}
@@ -506,24 +529,12 @@ export default function CatalogPage() {
                       onClick={() => handleSectionChange(section)}
                       className={`flex shrink-0 items-center gap-2.5 rounded-xl px-4 py-3 text-left transition-all duration-200 border ${
                         active
-                          ? accentAuction
-                            ? "border-violet-500/40 bg-violet-500/10 text-[var(--eos-text)] shadow-[0_0_20px_rgba(139,92,246,0.12)]"
-                            : "border-emerald-500/40 bg-emerald-500/10 text-[var(--eos-text)] shadow-[0_0_20px_rgba(16,185,129,0.12)]"
-                          : accentAuction
-                            ? "border-violet-500/15 bg-transparent text-[var(--eos-muted)] hover:bg-violet-500/8 hover:text-[var(--eos-text)]"
-                            : "border-transparent bg-transparent text-[var(--eos-muted)] hover:bg-[var(--eos-card)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)]"
+                          ? `${sectionAccentClass} text-[var(--eos-text)]`
+                          : "border-transparent bg-transparent text-[var(--eos-muted)] hover:bg-[var(--eos-card)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)]"
                       }`}
                     >
                       <Icon
-                        className={`h-4 w-4 shrink-0 ${
-                          active
-                            ? accentAuction
-                              ? "text-violet-500"
-                              : "text-emerald-500"
-                            : accentAuction
-                              ? "text-violet-400"
-                              : "text-[var(--eos-subtle)]"
-                        }`}
+                        className={`h-4 w-4 shrink-0 ${active ? sectionAccentIcon : "text-[var(--eos-subtle)]"}`}
                         strokeWidth={2.25}
                       />
                       <span className="text-[11px] font-black uppercase tracking-[0.1em] leading-snug whitespace-nowrap">
@@ -531,11 +542,7 @@ export default function CatalogPage() {
                       </span>
                       <span
                         className={`min-w-[1.75rem] rounded-md px-1.5 py-0.5 text-center text-[10px] font-bold tabular-nums ${
-                          active
-                            ? accentAuction
-                              ? "bg-violet-500/20 text-violet-600 dark:text-violet-300"
-                              : "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300"
-                            : "bg-[var(--eos-border)]/80 text-[var(--eos-subtle)]"
+                          active ? sectionAccentCount : "bg-[var(--eos-border)]/80 text-[var(--eos-subtle)]"
                         }`}
                       >
                         {count}
@@ -713,20 +720,27 @@ export default function CatalogPage() {
                     <div
                       className={`relative ${cardStyles.imageMb} aspect-[4/3] w-full overflow-hidden ${cardStyles.imageRounded} border border-[var(--eos-border)] bg-[var(--eos-card)]`}
                     >
+                      <OfferTransactionBadge
+                        transactionType={offer.transactionType}
+                        size="sm"
+                        className="absolute left-3 top-3 z-10"
+                      />
+                      {showNewBadge ? (
+                        <OfferNewBadge
+                          createdAt={offer.createdAt}
+                          size="sm"
+                          className="absolute left-3 top-10 z-10"
+                        />
+                      ) : null}
                       {offer.isLegalSafeVerified === true ? (
                         <LegalVerifiedShieldBadge
                           variant="card"
                           active
                           label={offerCopy.legalVerifiedKw}
                           sublabel={offerCopy.legalVerifiedKwSublabel}
-                          className={`absolute left-3 z-10 ${showNewBadge ? "top-12" : "top-3"}`}
+                          className={`absolute left-3 z-10 ${showNewBadge ? "top-[4.75rem]" : "top-10"}`}
                         />
                       ) : null}
-                      <OfferNewBadge
-                        createdAt={offer.createdAt}
-                        size="sm"
-                        className="absolute left-3 top-3 z-10"
-                      />
                       <OfferFavoriteButton
                         offerId={offer.id}
                         variant="icon"
@@ -768,7 +782,11 @@ export default function CatalogPage() {
                     <div className="flex items-end justify-between gap-4 px-0.5">
                       <div className="min-w-0">
                         <h2
-                          className={`${cardStyles.titleClass} text-[var(--eos-text)] transition-colors group-hover:text-emerald-600 dark:group-hover:text-emerald-400`}
+                          className={`${cardStyles.titleClass} text-[var(--eos-text)] transition-colors ${
+                            transactionMode === "rent"
+                              ? "group-hover:text-sky-600 dark:group-hover:text-sky-400"
+                              : "group-hover:text-emerald-600 dark:group-hover:text-emerald-400"
+                          }`}
                         >
                           {offer.title?.trim() ||
                             labels.offerTitleFallback.replace("{id}", String(offer.id))}
@@ -782,7 +800,11 @@ export default function CatalogPage() {
                           {formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth)}
                         </p>
                         <span
-                          className={`${cardStyles.discoverClass} inline-flex items-center gap-1 text-[var(--eos-subtle)] group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors`}
+                          className={`${cardStyles.discoverClass} inline-flex items-center gap-1 text-[var(--eos-subtle)] transition-colors ${
+                            transactionMode === "rent"
+                              ? "group-hover:text-sky-600 dark:group-hover:text-sky-400"
+                              : "group-hover:text-emerald-600 dark:group-hover:text-emerald-400"
+                          }`}
                         >
                           {labels.discover}
                           <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
