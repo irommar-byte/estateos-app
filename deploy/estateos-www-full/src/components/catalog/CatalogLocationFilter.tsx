@@ -30,6 +30,7 @@ export type CatalogLocationFilterLabels = {
   allCities: string;
   allDistricts: string;
   clear: string;
+  offersCount: string;
 };
 
 type Props = {
@@ -38,6 +39,7 @@ type Props = {
   onChange: (next: CatalogLocationFilterValue) => void;
   labels: CatalogLocationFilterLabels;
   strictCityDistricts?: DistrictCatalog;
+  accent?: "sale" | "rent";
 };
 
 function resolveOfferCountryCode(offer: CatalogLocationOffer): string {
@@ -50,14 +52,47 @@ function resolveOfferCountryName(offer: CatalogLocationOffer, code: string): str
   return name || countryDisplayName(code);
 }
 
+function matchesLocationSlice(
+  offer: CatalogLocationOffer,
+  slice: { countryCode?: string | null; city?: string | null; district?: string | null },
+): boolean {
+  if (slice.countryCode) {
+    if (resolveOfferCountryCode(offer) !== slice.countryCode) return false;
+  }
+  if (slice.city) {
+    const city = canonicalizeCity(offer.city);
+    if (normalizeText(city) !== normalizeText(slice.city)) return false;
+  }
+  if (slice.district) {
+    const city = slice.city || canonicalizeCity(offer.city);
+    const district = canonicalizeDistrict(city, offer.district);
+    if (normalizeText(district) !== normalizeText(slice.district)) return false;
+  }
+  return true;
+}
+
+function formatCountLabel(template: string, count: number): string {
+  return template.replace("{n}", String(count));
+}
+
 export default function CatalogLocationFilter({
   offers,
   value,
   onChange,
   labels,
   strictCityDistricts = {},
+  accent = "sale",
 }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const accentIcon = accent === "rent" ? "text-sky-500" : "text-emerald-500";
+  const accentActive =
+    accent === "rent"
+      ? "border-sky-500/40 bg-sky-500/12 text-sky-600 dark:text-sky-400"
+      : "border-emerald-500/40 bg-emerald-500/12 text-emerald-600 dark:text-emerald-400";
+  const accentGlow =
+    accent === "rent"
+      ? "bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_50%)]"
+      : "bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.1),transparent_50%)]";
 
   const countries = useMemo(() => {
     const map = new Map<string, string>();
@@ -75,64 +110,101 @@ export default function CatalogLocationFilter({
     });
   }, [offers]);
 
+  const countryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const offer of offers) {
+      const code = resolveOfferCountryCode(offer);
+      counts.set(code, (counts.get(code) ?? 0) + 1);
+    }
+    return counts;
+  }, [offers]);
+
   const cities = useMemo(() => {
-    const set = new Set<string>();
+    const map = new Map<string, number>();
     const strict = getStrictCities();
 
     for (const offer of offers) {
       const code = resolveOfferCountryCode(offer);
       if (value.countryCode && code !== value.countryCode) continue;
       const city = canonicalizeCity(offer.city);
-      if (city) set.add(city);
+      if (!city) continue;
+      map.set(city, (map.get(city) ?? 0) + 1);
     }
 
     if (!value.countryCode || value.countryCode === "PL") {
-      for (const city of strict) set.add(city);
+      for (const city of strict) {
+        if (!map.has(city)) map.set(city, 0);
+      }
     }
 
-    return [...set].sort((a, b) => a.localeCompare(b, "pl"));
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, "pl"));
   }, [offers, value.countryCode]);
 
   const districts = useMemo(() => {
-    if (!value.city) return [] as string[];
+    if (!value.city) return [] as Array<[string, number]>;
 
     const strict = strictCityDistricts[value.city] || [];
-    if (strict.length) return strict;
+    const map = new Map<string, number>();
 
-    const set = new Set<string>();
     for (const offer of offers) {
       const code = resolveOfferCountryCode(offer);
       if (value.countryCode && code !== value.countryCode) continue;
       const city = canonicalizeCity(offer.city);
       if (normalizeText(city) !== normalizeText(value.city)) continue;
       const district = canonicalizeDistrict(value.city, offer.district);
-      if (district) set.add(district);
+      if (district) map.set(district, (map.get(district) ?? 0) + 1);
     }
-    return [...set].sort((a, b) => a.localeCompare(b, "pl"));
+
+    if (strict.length) {
+      for (const district of strict) {
+        if (!map.has(district)) map.set(district, 0);
+      }
+    }
+
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, "pl"));
   }, [offers, strictCityDistricts, value.city, value.countryCode]);
+
+  const activeMatchCount = useMemo(
+    () => offers.filter((offer) => matchesLocationSlice(offer, value)).length,
+    [offers, value],
+  );
 
   const hasActiveFilter = Boolean(value.countryCode || value.city || value.district);
   const activeSummary = useMemo(() => {
     const parts: string[] = [];
     if (value.countryCode) {
       const country = countries.find(([code]) => code === value.countryCode);
-      parts.push(country ? `${flagEmojiFromCountryCode(value.countryCode)} ${country[1]}` : value.countryCode);
+      const count = countryCounts.get(value.countryCode) ?? 0;
+      parts.push(
+        country
+          ? `${flagEmojiFromCountryCode(value.countryCode)} ${country[1]} (${count})`
+          : value.countryCode,
+      );
     }
-    if (value.city) parts.push(value.city);
-    if (value.district) parts.push(value.district);
+    if (value.city) {
+      const city = value.city;
+      const cityCount = cities.find(([c]) => normalizeText(c) === normalizeText(city))?.[1] ?? 0;
+      parts.push(`${city} (${cityCount})`);
+    }
+    if (value.district) {
+      const district = value.district;
+      const districtCount =
+        districts.find(([d]) => normalizeText(d) === normalizeText(district))?.[1] ?? 0;
+      parts.push(`${district} (${districtCount})`);
+    }
     return parts.join(" · ");
-  }, [countries, value.countryCode, value.city, value.district]);
+  }, [cities, countries, countryCounts, districts, value.city, value.countryCode, value.district]);
 
   useEffect(() => {
     const selectedCity = value.city;
-    if (selectedCity && !cities.some((city) => normalizeText(city) === normalizeText(selectedCity))) {
+    if (selectedCity && !cities.some(([city]) => normalizeText(city) === normalizeText(selectedCity))) {
       onChange({ ...value, city: null, district: null });
     }
   }, [cities, onChange, value]);
 
   useEffect(() => {
     const selectedDistrict = value.district;
-    if (selectedDistrict && !districts.some((d) => normalizeText(d) === normalizeText(selectedDistrict))) {
+    if (selectedDistrict && !districts.some(([d]) => normalizeText(d) === normalizeText(selectedDistrict))) {
       onChange({ ...value, district: null });
     }
   }, [districts, onChange, value]);
@@ -144,10 +216,10 @@ export default function CatalogLocationFilter({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.04 }}
-      className="mt-6 md:mt-8"
+      className="mt-5 md:mt-6"
     >
       <div className="eos-glass relative overflow-hidden rounded-[2rem] border border-[var(--eos-border)]/80">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.1),transparent_50%)]" />
+        <div className={`pointer-events-none absolute inset-0 ${accentGlow}`} />
 
         <button
           type="button"
@@ -155,7 +227,11 @@ export default function CatalogLocationFilter({
           className="relative flex w-full items-center gap-3 px-4 py-4 text-left sm:px-5 md:py-4"
           aria-expanded={expanded}
         >
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-500">
+          <span
+            className={`flex size-10 shrink-0 items-center justify-center rounded-2xl ${
+              accent === "rent" ? "bg-sky-500/12" : "bg-emerald-500/12"
+            } ${accentIcon}`}
+          >
             <Globe2 className="size-5" strokeWidth={2.25} />
           </span>
           <span className="min-w-0 flex-1">
@@ -164,6 +240,9 @@ export default function CatalogLocationFilter({
             </span>
             <span className="mt-0.5 block truncate text-sm font-medium text-[var(--eos-text)]">
               {hasActiveFilter ? activeSummary : labels.allCountries}
+            </span>
+            <span className="mt-0.5 block text-[11px] font-semibold tabular-nums text-[var(--eos-muted)]">
+              {formatCountLabel(labels.offersCount, activeMatchCount)}
             </span>
           </span>
           <ChevronDown
@@ -182,15 +261,14 @@ export default function CatalogLocationFilter({
                   type="button"
                   onClick={() => onChange({ countryCode: null, city: null, district: null })}
                   className={`shrink-0 rounded-full border px-3.5 py-2 text-[11px] font-bold transition-all ${
-                    !value.countryCode
-                      ? "border-emerald-500/40 bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
-                      : "border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+                    !value.countryCode ? accentActive : "border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
                   }`}
                 >
-                  {labels.allCountries}
+                  {labels.allCountries} ({offers.length})
                 </button>
                 {countries.map(([code, name]) => {
                   const active = value.countryCode === code;
+                  const count = countryCounts.get(code) ?? 0;
                   return (
                     <button
                       key={code}
@@ -203,13 +281,13 @@ export default function CatalogLocationFilter({
                         })
                       }
                       className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-[11px] font-bold transition-all ${
-                        active
-                          ? "border-emerald-500/40 bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
-                          : "border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+                        active ? accentActive : "border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
                       }`}
                     >
                       <span className="text-base leading-none">{flagEmojiFromCountryCode(code)}</span>
-                      <span>{name}</span>
+                      <span>
+                        {name} <span className="tabular-nums opacity-80">({count})</span>
+                      </span>
                     </button>
                   );
                 })}
@@ -218,7 +296,7 @@ export default function CatalogLocationFilter({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex min-h-[3.25rem] items-center rounded-2xl bg-[var(--eos-input)] px-4">
-                <MapPin className="size-4 shrink-0 text-emerald-500/85" aria-hidden />
+                <MapPin className={`size-4 shrink-0 ${accentIcon}`} aria-hidden />
                 <select
                   value={value.city || ""}
                   onChange={(event) =>
@@ -231,11 +309,11 @@ export default function CatalogLocationFilter({
                   className="ml-3 w-full appearance-none bg-transparent text-sm font-medium text-[var(--eos-text)] outline-none"
                 >
                   <option className="bg-[var(--eos-bg-elevated)]" value="">
-                    {labels.allCities}
+                    {labels.allCities} ({cities.reduce((sum, [, c]) => sum + c, 0)})
                   </option>
-                  {cities.map((city) => (
+                  {cities.map(([city, count]) => (
                     <option key={city} className="bg-[var(--eos-bg-elevated)]" value={city}>
-                      {city}
+                      {city} ({count})
                     </option>
                   ))}
                 </select>
@@ -259,11 +337,17 @@ export default function CatalogLocationFilter({
                   className="ml-3 w-full appearance-none bg-transparent text-sm font-medium text-[var(--eos-text)] outline-none disabled:cursor-not-allowed"
                 >
                   <option className="bg-[var(--eos-bg-elevated)]" value="">
-                    {labels.allDistricts}
+                    {labels.allDistricts} (
+                    {(() => {
+                      const selectedCity = value.city;
+                      if (!selectedCity) return 0;
+                      return cities.find(([c]) => normalizeText(c) === normalizeText(selectedCity))?.[1] ?? 0;
+                    })()}
+                    )
                   </option>
-                  {districts.map((district) => (
+                  {districts.map(([district, count]) => (
                     <option key={district} className="bg-[var(--eos-bg-elevated)]" value={district}>
-                      {district}
+                      {district} ({count})
                     </option>
                   ))}
                 </select>
@@ -274,7 +358,9 @@ export default function CatalogLocationFilter({
               <button
                 type="button"
                 onClick={clearFilters}
-                className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--eos-muted)] transition hover:text-emerald-600 dark:hover:text-emerald-400"
+                className={`mt-3 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--eos-muted)] transition ${
+                  accent === "rent" ? "hover:text-sky-600 dark:hover:text-sky-400" : "hover:text-emerald-600 dark:hover:text-emerald-400"
+                }`}
               >
                 <X className="size-3.5" />
                 {labels.clear}
@@ -291,21 +377,5 @@ export function offerMatchesCatalogLocationFilter(
   offer: CatalogLocationOffer,
   filter: CatalogLocationFilterValue,
 ): boolean {
-  if (filter.countryCode) {
-    const code = resolveOfferCountryCode(offer);
-    if (code !== filter.countryCode) return false;
-  }
-
-  if (filter.city) {
-    const city = canonicalizeCity(offer.city);
-    if (normalizeText(city) !== normalizeText(filter.city)) return false;
-  }
-
-  if (filter.district) {
-    const city = filter.city || canonicalizeCity(offer.city);
-    const district = canonicalizeDistrict(city, offer.district);
-    if (normalizeText(district) !== normalizeText(filter.district)) return false;
-  }
-
-  return true;
+  return matchesLocationSlice(offer, filter);
 }

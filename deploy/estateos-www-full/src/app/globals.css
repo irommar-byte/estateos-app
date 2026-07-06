@@ -1036,6 +1036,14 @@ html.light .premium-home-shell h2 {
   animation: offer-new-badge-pulse 2.1s ease-in-out infinite;
 }
 
+.catalog-accent-rent header {
+  --catalog-hover: rgb(59 130 246);
+}
+
+.catalog-accent-sale header {
+  --catalog-hover: rgb(16 185 129);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .featured-deal-room-badge {
     animation: none;
