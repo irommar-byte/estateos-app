@@ -123,6 +123,8 @@ export type CrmExtendedDictionary = {
     importSourceOfferFallback: string;
   };
   proWidget: {
+    systemTitleBrand: string;
+    systemTitleSuffix: string;
     investmentDemand: string;
     marketAverage: string;
     pulseTitle: string;
@@ -506,6 +508,8 @@ const pl: CrmExtendedDictionary = {
     importSourceOfferFallback: "Oferta źródłowa",
   },
   proWidget: {
+    systemTitleBrand: "EstateOS™",
+    systemTitleSuffix: "Professional Dashboard System",
     investmentDemand: "Popyt inwestycyjny",
     marketAverage: "Średnia rynkowa",
     pulseTitle: "Puls Rynku",
@@ -926,6 +930,8 @@ const en: CrmExtendedDictionary = {
     importSourceOfferFallback: "Source listing",
   },
   proWidget: {
+    systemTitleBrand: "EstateOS™",
+    systemTitleSuffix: "Professional Dashboard System",
     investmentDemand: "Investment demand",
     marketAverage: "Market average",
     pulseTitle: "Market Pulse",
@@ -1335,6 +1341,8 @@ const uk: CrmExtendedDictionary = {
     importSourceOfferFallback: "Вихідне оголошення",
   },
   proWidget: {
+    systemTitleBrand: "EstateOS™",
+    systemTitleSuffix: "Professional Dashboard System",
     investmentDemand: "Інвестиційний попит",
     marketAverage: "Середня ринкова",
     pulseTitle: "Пульс ринку",

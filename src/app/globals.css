@@ -1951,6 +1951,52 @@ html.dark button[class*="bg-[#111]"]:hover {
 }
 
 /* Pro Widget — theme-aware premium panels (CRM dashboard) */
+.eos-pro-system-title {
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Display",
+    "SF Pro Text",
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+  text-align: center;
+}
+
+@media (min-width: 1024px) {
+  .eos-pro-system-title {
+    text-align: left;
+  }
+}
+
+.eos-pro-system-title-brand {
+  margin: 0;
+  font-size: clamp(1.625rem, 2.8vw, 2.25rem);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.045em;
+  color: var(--eos-text);
+}
+
+.eos-pro-system-title-tm {
+  margin-left: 0.12em;
+  font-size: 0.42em;
+  font-weight: 500;
+  line-height: 0;
+  vertical-align: super;
+  color: var(--eos-muted);
+  opacity: 0.85;
+}
+
+.eos-pro-system-title-suffix {
+  margin: 0.35rem 0 0;
+  font-size: clamp(1rem, 1.8vw, 1.375rem);
+  font-weight: 300;
+  line-height: 1.2;
+  letter-spacing: -0.028em;
+  color: var(--eos-muted);
+}
+
 .eos-pro-widget {
   color: var(--eos-text);
 }
