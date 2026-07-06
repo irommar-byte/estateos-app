@@ -6,6 +6,7 @@ import {
   mergeSelectedOfferIntoMapPins,
   capMapPinsNearCenter,
   shouldShowMapPrivacyCircles,
+  calculateClusterQueryBBox,
 } from '../../src/utils/radarMapViewport';
 
 describe('radarMapViewport', () => {
@@ -60,5 +61,20 @@ describe('radarMapViewport', () => {
       }),
       true,
     );
+  });
+
+  it('expands cluster query bbox beyond visible viewport', () => {
+    const [west, south, east, north] = calculateClusterQueryBBox(region);
+    const halfLat = region.latitudeDelta / 2;
+    const halfLng = region.longitudeDelta / 2;
+    const visibleWest = region.longitude - halfLng;
+    const visibleEast = region.longitude + halfLng;
+    const visibleSouth = region.latitude - halfLat;
+    const visibleNorth = region.latitude + halfLat;
+
+    assert.ok(west < visibleWest);
+    assert.ok(east > visibleEast);
+    assert.ok(south < visibleSouth);
+    assert.ok(north > visibleNorth);
   });
 });

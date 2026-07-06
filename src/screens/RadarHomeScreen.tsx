@@ -2297,9 +2297,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const activeOffers = filteredOffers;
 
   const offersForMapPins = useMemo(() => {
+    const selected = activeOffers[activeIndex] ?? null;
+    if (MAP_CLUSTERING_ENABLED) {
+      // Supercluster filters by viewport bbox — pre-filtering with a different
+      // padding caused clusters to vanish without showing individual pins.
+      return mergeSelectedOfferIntoMapPins(activeOffers, selected);
+    }
     const inView = filterOffersInMapRegion(activeOffers, mapViewportRegion);
     const capped = capMapPinsNearCenter(inView, mapViewportRegion, MAP_MAX_PINS_IN_VIEW);
-    return mergeSelectedOfferIntoMapPins(capped, activeOffers[activeIndex] ?? null);
+    return mergeSelectedOfferIntoMapPins(capped, selected);
   }, [activeOffers, activeIndex, mapViewportRegion]);
 
   const showMapPrivacyCircles = shouldShowMapPrivacyCircles(mapViewportRegion);

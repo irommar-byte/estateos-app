@@ -6,6 +6,9 @@ type MappableOffer = {
   lng: unknown;
 };
 
+/** Padding for supercluster bbox — wider than viewport so edge clusters do not vanish on pan. */
+export const CLUSTER_QUERY_BBOX_PADDING = 1.34;
+
 /** Expand visible bounds so pins near edges do not pop in/out while panning. */
 export function expandMapRegion(region: Region, paddingFactor = 1.28): Region {
   return {
@@ -13,6 +16,23 @@ export function expandMapRegion(region: Region, paddingFactor = 1.28): Region {
     latitudeDelta: region.latitudeDelta * paddingFactor,
     longitudeDelta: region.longitudeDelta * paddingFactor,
   };
+}
+
+/** Bbox for react-native-map-clustering / supercluster ([west, south, east, north]). */
+export function calculateClusterQueryBBox(
+  region: Region,
+  paddingFactor = CLUSTER_QUERY_BBOX_PADDING,
+): [number, number, number, number] {
+  const expanded = expandMapRegion(region, paddingFactor);
+  let lngD = expanded.longitudeDelta;
+  if (lngD < 0) lngD += 360;
+
+  return [
+    expanded.longitude - lngD,
+    expanded.latitude - expanded.latitudeDelta,
+    expanded.longitude + lngD,
+    expanded.latitude + expanded.latitudeDelta,
+  ];
 }
 
 export function isCoordinateInMapRegion(
