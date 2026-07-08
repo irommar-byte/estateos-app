@@ -1,0 +1,313 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0F026C91DB9A491681A8A7A1 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E0CD1FA4B104B388EBD11AB /* LoginView.swift */; };
+		463D877B8A654204AC988A48 /* EstateAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D2676D3FC754E25BE3AB4AE /* EstateAPIClient.swift */; };
+		5DC87318629E4EF68D705315 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7373861F6C454426BD13F3EF /* HomeView.swift */; };
+		65DCA9B1C3474A45B92AB18F /* EstateOSTvApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AFBE89450154D9FA1FEC43C /* EstateOSTvApp.swift */; };
+		7711D76B7CA84319A9D4C00F /* OfferDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E19B9FF80FE4BFABE433ECE /* OfferDetailView.swift */; };
+		7D540C67C24D45E4A365F14B /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF670BA5EBE44506A5376F2D /* AppConfig.swift */; };
+		7D6C4478256A4DDBB2D212B2 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBB1092FFE4E43E599651317 /* SessionStore.swift */; };
+		8913ABD4F9C148A9969AB184 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A05FA6D16A6A44E3BF6839BE /* Assets.xcassets */; };
+		985FF5C3667D4B5397CF5F32 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2142A77DB34250976535E1 /* Models.swift */; };
+		994AEAD1953A430A864CAEB7 /* ContactQrSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07C838BAD9634D4EBB7EC93F /* ContactQrSheet.swift */; };
+		B2462DEA96EA436BADEE58C5 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDE8E64462644D07B41BE18A /* SearchView.swift */; };
+		C888B2563C10406395CFF85C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4873C8007BB498CB1C3B983 /* AppModel.swift */; };
+		F7F73CB8BFA24B55B581AE23 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9DF29F1AF8C4494BA480E8B /* RootView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		07C838BAD9634D4EBB7EC93F /* ContactQrSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactQrSheet.swift; sourceTree = "<group>"; };
+		2D2676D3FC754E25BE3AB4AE /* EstateAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstateAPIClient.swift; sourceTree = "<group>"; };
+		3AFBE89450154D9FA1FEC43C /* EstateOSTvApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstateOSTvApp.swift; sourceTree = "<group>"; };
+		3E0CD1FA4B104B388EBD11AB /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		3E19B9FF80FE4BFABE433ECE /* OfferDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfferDetailView.swift; sourceTree = "<group>"; };
+		6C2142A77DB34250976535E1 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		7373861F6C454426BD13F3EF /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		A05FA6D16A6A44E3BF6839BE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A5427D1EFA364CBE9773BA53 /* EstateOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EstateOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A9DF29F1AF8C4494BA480E8B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		BF670BA5EBE44506A5376F2D /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		F4873C8007BB498CB1C3B983 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		FBB1092FFE4E43E599651317 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		FDE8E64462644D07B41BE18A /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5B0C2A90A04C40FAB089EFFB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		10170A513B274F31895B065D /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				07C838BAD9634D4EBB7EC93F /* ContactQrSheet.swift */,
+				7373861F6C454426BD13F3EF /* HomeView.swift */,
+				3E0CD1FA4B104B388EBD11AB /* LoginView.swift */,
+				3E19B9FF80FE4BFABE433ECE /* OfferDetailView.swift */,
+				FDE8E64462644D07B41BE18A /* SearchView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		2D574336E3F54B2498EA2F89 = {
+			isa = PBXGroup;
+			children = (
+				EA59A7EFBAC849B389C3B457 /* EstateOS */,
+				AC4EF3854CF84F0094F5C4E8 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		53C486C14055445590358514 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A05FA6D16A6A44E3BF6839BE /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		6EB75865833844D6942BD7E7 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				BF670BA5EBE44506A5376F2D /* AppConfig.swift */,
+				6C2142A77DB34250976535E1 /* Models.swift */,
+				FBB1092FFE4E43E599651317 /* SessionStore.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		AC4EF3854CF84F0094F5C4E8 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A5427D1EFA364CBE9773BA53 /* EstateOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D6F716B2FF574BC78F1BD5AE /* App */ = {
+			isa = PBXGroup;
+			children = (
+				F4873C8007BB498CB1C3B983 /* AppModel.swift */,
+				3AFBE89450154D9FA1FEC43C /* EstateOSTvApp.swift */,
+				A9DF29F1AF8C4494BA480E8B /* RootView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		DB5620F877104E2ABA70DCDC /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				2D2676D3FC754E25BE3AB4AE /* EstateAPIClient.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		EA59A7EFBAC849B389C3B457 /* EstateOS */ = {
+			isa = PBXGroup;
+			children = (
+				D6F716B2FF574BC78F1BD5AE /* App */,
+				6EB75865833844D6942BD7E7 /* Core */,
+				53C486C14055445590358514 /* Resources */,
+				DB5620F877104E2ABA70DCDC /* Services */,
+				10170A513B274F31895B065D /* Views */,
+			);
+			path = EstateOS;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		9087B64148544F57AB48BB5A /* EstateOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 16444AFA8B604238B35C43AD /* Build configuration list for PBXNativeTarget "EstateOS" */;
+			buildPhases = (
+				B40C3EBDE6984FE289E13CDB /* Sources */,
+				5B0C2A90A04C40FAB089EFFB /* Frameworks */,
+				97AC091E9DCA43F59C6C196A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EstateOS;
+			productName = EstateOS;
+			productReference = A5427D1EFA364CBE9773BA53 /* EstateOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		01E1A9A601B8476BBAF09ED4 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+			};
+			buildConfigurationList = 20A7E50243E14C7783F72B2F /* Build configuration list for PBXProject "EstateOS" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 2D574336E3F54B2498EA2F89;
+			productRefGroup = AC4EF3854CF84F0094F5C4E8 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9087B64148544F57AB48BB5A /* EstateOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		97AC091E9DCA43F59C6C196A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8913ABD4F9C148A9969AB184 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B40C3EBDE6984FE289E13CDB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C888B2563C10406395CFF85C /* AppModel.swift in Sources */,
+				65DCA9B1C3474A45B92AB18F /* EstateOSTvApp.swift in Sources */,
+				F7F73CB8BFA24B55B581AE23 /* RootView.swift in Sources */,
+				7D540C67C24D45E4A365F14B /* AppConfig.swift in Sources */,
+				985FF5C3667D4B5397CF5F32 /* Models.swift in Sources */,
+				7D6C4478256A4DDBB2D212B2 /* SessionStore.swift in Sources */,
+				463D877B8A654204AC988A48 /* EstateAPIClient.swift in Sources */,
+				994AEAD1953A430A864CAEB7 /* ContactQrSheet.swift in Sources */,
+				5DC87318629E4EF68D705315 /* HomeView.swift in Sources */,
+				0F026C91DB9A491681A8A7A1 /* LoginView.swift in Sources */,
+				7711D76B7CA84319A9D4C00F /* OfferDetailView.swift in Sources */,
+				B2462DEA96EA436BADEE58C5 /* SearchView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		36DE33C2CF214C9F81CA9B1D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EstateOS/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.tvos;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Release;
+		};
+		5CA586131337472EAAA0DC4B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = appletvos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		863F75A44388451FBD15732D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				SDKROOT = appletvos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		9EDBE617B47E485E987F36B8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EstateOS/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.tvos;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		16444AFA8B604238B35C43AD /* Build configuration list for PBXNativeTarget "EstateOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9EDBE617B47E485E987F36B8 /* Debug */,
+				36DE33C2CF214C9F81CA9B1D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		20A7E50243E14C7783F72B2F /* Build configuration list for PBXProject "EstateOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5CA586131337472EAAA0DC4B /* Debug */,
+				863F75A44388451FBD15732D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 01E1A9A601B8476BBAF09ED4 /* Project object */;
+}
