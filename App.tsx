@@ -1096,6 +1096,45 @@ const parseLinkToPushTarget = (url: string): PushNavigationTarget | null => {
   return null;
 };
 
+type EstateDeeplinkAction =
+  | { type: 'passkeyLogin'; emailHint?: string | null; pairCode?: string | null }
+  | { type: 'openAuthLogin'; emailHint?: string | null; pairCode?: string | null };
+
+const parseEstateDeeplinkAction = (url: string): EstateDeeplinkAction | null => {
+  try {
+    const normalized = String(url || '').trim();
+    if (!normalized) return null;
+    const u = new URL(normalized);
+    const host = String(u.hostname || '').toLowerCase();
+    const path = String(u.pathname || '').replace(/^\/+/, '').toLowerCase();
+    const emailHint = String(u.searchParams.get('email') || '').trim().toLowerCase() || null;
+    const pairCode = String(u.searchParams.get('pair') || u.searchParams.get('pairCode') || '')
+      .trim()
+      .toUpperCase() || null;
+    const mode = String(u.searchParams.get('mode') || '').trim().toLowerCase();
+
+    const isEstateScheme = u.protocol === 'estateos:';
+    const isEstateWeb = (u.protocol === 'https:' || u.protocol === 'http:') && /(^|\.)estateos\.pl$/.test(host);
+    if (!isEstateScheme && !isEstateWeb) return null;
+
+    if (host === 'passkey-login' || path === 'passkey-login' || mode === 'passkey') {
+      return { type: 'passkeyLogin', emailHint, pairCode };
+    }
+    if (
+      host === 'auth' ||
+      host === 'login' ||
+      path === 'auth' ||
+      path === 'login' ||
+      path === 'auth/login'
+    ) {
+      return { type: 'openAuthLogin', emailHint, pairCode };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
 const parsePushTargetFromResponse = (
   response: Notifications.NotificationResponse | null
 ): PushNavigationTarget | null => {
@@ -1434,6 +1473,30 @@ export default function App() {
   const handleIncomingLink = useCallback(
     (url: string | null) => {
       if (!url) return;
+
+      const estateAction = parseEstateDeeplinkAction(url);
+      if (estateAction) {
+        if (estateAction.type === 'passkeyLogin') {
+          void useAuthStore.getState().loginWithPasskey(
+            estateAction.emailHint || null,
+            { pairCode: estateAction.pairCode || null },
+          );
+          return;
+        }
+        if (estateAction.type === 'openAuthLogin') {
+          if (navigationRef.isReady()) {
+            (navigationRef as any).navigate('MainTabs', {
+              screen: 'Profil',
+              params: {
+                authIntent: 'login',
+                ...(estateAction.emailHint ? { prefillEmail: estateAction.emailHint } : {}),
+              },
+            });
+          }
+          return;
+        }
+      }
+
       const target = parseLinkToPushTarget(url);
       if (!target) return;
       const navigated = navigateFromPushTarget(target);

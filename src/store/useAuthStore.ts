@@ -86,7 +86,10 @@ interface AuthState {
       joinCompanyId?: number;
     },
   ) => Promise<boolean>;
-  loginWithPasskey: (email?: string | null) => Promise<boolean>;
+  loginWithPasskey: (
+    email?: string | null,
+    options?: { pairCode?: string | null }
+  ) => Promise<boolean>;
   refreshUser: () => Promise<void>;
   refreshAgencyMembership: () => Promise<void>;
   logout: () => Promise<void>;
@@ -458,7 +461,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   // 🔥 PRAWDZIWE LOGOWANIE PASSKEY 🔥
-  loginWithPasskey: async (email?: string | null) => {
+  loginWithPasskey: async (email?: string | null, options?: { pairCode?: string | null }) => {
     set({ isLoading: true, error: null });
     try {
       let hintEmail = String(email || '').trim().toLowerCase();
@@ -484,6 +487,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           await markPasskeyEnabledForUser(normUser.id);
         }
         set({ user: normUser, token: normalizedToken, isLoading: false });
+        const pairCode = String(options?.pairCode || '').trim().toUpperCase();
+        if (pairCode) {
+          try {
+            await fetch(`${API_URL}/api/mobile/v1/tv/pair/complete`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${normalizedToken}`,
+                'x-access-token': normalizedToken,
+                'auth-token': normalizedToken,
+              },
+              body: JSON.stringify({ pairCode }),
+            });
+          } catch {
+            // best-effort signal for TV auto-login; mobile login itself stays successful
+          }
+        }
         await get().refreshUser();
         const grantUser = get().user;
         if (grantUser?.id) {
