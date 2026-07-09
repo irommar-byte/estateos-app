@@ -153,62 +153,64 @@ export default function Navbar() {
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-[var(--eos-border)] bg-[var(--eos-glass)] font-sans text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl [padding-top:env(safe-area-inset-top)]">
       <div
-        className="relative mx-auto flex h-20 max-w-[1400px] items-center justify-between gap-2 px-4 md:px-6"
+        className="relative mx-auto flex h-20 max-w-[1400px] items-center justify-between gap-2 px-4 md:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center lg:gap-3"
         style={{
           paddingLeft: "max(1rem, env(safe-area-inset-left))",
           paddingRight: "max(1rem, env(safe-area-inset-right))",
         }}
       >
-        <button
-          type="button"
-          onClick={() => router.push("/")}
-          className="group relative z-20 flex shrink-0 items-center gap-2 rounded-full px-1 text-left sm:gap-3"
-          aria-label="EstateOS home"
-        >
-          <span
-            className={`eos-nav-mark flex size-10 items-center justify-center rounded-full border bg-[var(--eos-surface)] text-[11px] font-black sm:size-11 sm:text-xs ${
-              isCar ? "border-sky-400/35 text-sky-300" : "border-[var(--eos-border)]"
-            }`}
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="group relative z-20 flex shrink-0 items-center gap-2 rounded-full px-1 text-left sm:gap-3"
+            aria-label="EstateOS home"
           >
-            EOS
-          </span>
-          <span className="eos-nav-wordmark hidden md:block">
-            <span className="eos-nav-wordmark-body">
-              <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>E</span>state
-              <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>OS</span>
-              <sup className="eos-nav-wordmark-tm">TM</sup>
-              {isCar ? <span className="ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Car</span> : null}
+            <span
+              className={`eos-nav-mark flex size-10 items-center justify-center rounded-full border bg-[var(--eos-surface)] text-[11px] font-black sm:size-11 sm:text-xs ${
+                isCar ? "border-sky-400/35 text-sky-300" : "border-[var(--eos-border)]"
+              }`}
+            >
+              EOS
             </span>
-          </span>
-        </button>
+            <span className="eos-nav-wordmark hidden md:block">
+              <span className="eos-nav-wordmark-body">
+                <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>E</span>state
+                <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>OS</span>
+                <sup className="eos-nav-wordmark-tm">TM</sup>
+                {isCar ? <span className="ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Car</span> : null}
+              </span>
+            </span>
+          </button>
 
-        <div className="hidden lg:flex items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1">
-          <button
-            type="button"
-            onClick={() => switchVertical("home")}
-            className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${
-              vertical === "home"
-                ? "bg-emerald-500/20 text-emerald-400"
-                : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
-            }`}
-          >
-            EstateOS™Home
-          </button>
-          <button
-            type="button"
-            onClick={() => switchVertical("car")}
-            className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${
-              vertical === "car"
-                ? "bg-sky-500/20 text-sky-300"
-                : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
-            }`}
-          >
-            EstateOS™Car
-          </button>
+          <div className="hidden items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 lg:flex">
+            <button
+              type="button"
+              onClick={() => switchVertical("home")}
+              className={`rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] transition xl:px-3 xl:text-[10px] ${
+                vertical === "home"
+                  ? "bg-emerald-500/20 text-emerald-400"
+                  : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+              }`}
+            >
+              Home
+            </button>
+            <button
+              type="button"
+              onClick={() => switchVertical("car")}
+              className={`rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] transition xl:px-3 xl:text-[10px] ${
+                vertical === "car"
+                  ? "bg-sky-500/20 text-sky-300"
+                  : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+              }`}
+            >
+              Car
+            </button>
+          </div>
         </div>
 
-        <div className="pointer-events-none absolute inset-0 hidden items-center justify-center px-[9.5rem] lg:flex xl:px-[12rem] 2xl:px-[15rem]">
-          <div className="eos-nav-primary-group pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 shadow-[var(--eos-shadow-soft)] [scrollbar-width:none] lg:gap-1 lg:p-1.5 [&::-webkit-scrollbar]:hidden">
+        <div className="hidden justify-center lg:flex">
+          <div className="eos-nav-primary-group flex items-center gap-0.5 overflow-x-auto rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 shadow-[var(--eos-shadow-soft)] [scrollbar-width:none] lg:gap-1 lg:p-1.5 [&::-webkit-scrollbar]:hidden">
             {primaryNavLinks.map((link) => (
               <button
                 key={link.path}
@@ -222,15 +224,12 @@ export default function Navbar() {
           </div>
         </div>
 
-        {user && (
-          <div className={`absolute left-1/2 hidden -translate-x-1/2 2xl:block ${isOpen ? "opacity-0" : ""}`}>
-            <PremiumModeToggle currentUser={user} />
-          </div>
-        )}
-
-        <div className="relative z-20 hidden min-w-0 shrink-0 items-center justify-end gap-1 lg:flex lg:gap-1.5 2xl:gap-2">
+        <div className="relative z-20 hidden min-w-0 items-center justify-end gap-1 lg:flex lg:gap-1.5 2xl:gap-2">
           {user && (
             <>
+              <div className="hidden 2xl:block">
+                <PremiumModeToggle currentUser={user} />
+              </div>
               <PublicationWalletNavButton />
               <ContactMessagesNavButton />
               <NotificationCenter />
