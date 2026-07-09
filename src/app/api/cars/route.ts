@@ -34,6 +34,11 @@ export async function GET(req: Request) {
     const mine = await listCarsByUser(userId, 100);
     return NextResponse.json(mine, { status: 200 });
   }
+  const sellerId = Number(searchParams.get("userId") || "");
+  if (Number.isFinite(sellerId) && sellerId > 0) {
+    const sellerCars = await listCarsByUser(sellerId, 50);
+    return NextResponse.json(sellerCars, { status: 200 });
+  }
   const all = await listCars(100);
   return NextResponse.json(all, { status: 200 });
 }

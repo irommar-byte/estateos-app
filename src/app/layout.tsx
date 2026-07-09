@@ -20,6 +20,7 @@ import { ThemeInitScript, ThemeProvider } from "@/contexts/ThemeContext";
 import { UserModeProvider } from "@/contexts/UserModeContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { EcosystemProvider } from "@/contexts/EcosystemContext";
+import EcosystemThemeBridge from "@/components/ecosystem/EcosystemThemeBridge";
 import { LOCALE_COOKIE, resolveLocale } from "@/i18n/config";
 const inter = Inter({ subsets: ["latin"] });
 
@@ -100,6 +101,7 @@ export default async function RootLayout({
                 <LocaleDocumentMeta />
                 <UserModeProvider>
                   <EcosystemProvider>
+                    <EcosystemThemeBridge />
                     <FavoritesProvider>
                     <SkipToContent />
                     <CampaignAttributionBoundary />
