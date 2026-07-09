@@ -3,16 +3,31 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState } from "react";
+import CarCatalogFields from "@/components/cars/CarCatalogFields";
 
 export type CarFormState = {
   title: string;
   make: string;
   model: string;
+  makeSlug: string;
+  modelSlug: string;
   year: string;
   mileageKm: string;
   fuelType: string;
+  fuelSlug: string;
   transmission: string;
+  gearboxSlug: string;
   bodyType: string;
+  generation: string;
+  generationSlug: string;
+  enginePower: string;
+  enginePowerSlug: string;
+  engineCapacity: string;
+  engineCapacitySlug: string;
+  trimVersion: string;
+  trimVersionSlug: string;
+  doorCount: string;
+  doorCountSlug: string;
   pricePln: string;
   city: string;
   imageUrl: string;
@@ -22,11 +37,25 @@ export const initialCarForm: CarFormState = {
   title: "",
   make: "",
   model: "",
+  makeSlug: "",
+  modelSlug: "",
   year: "",
   mileageKm: "",
-  fuelType: "Benzyna",
+  fuelType: "",
+  fuelSlug: "",
   transmission: "Automatyczna",
-  bodyType: "Sedan",
+  gearboxSlug: "",
+  bodyType: "SUV",
+  generation: "",
+  generationSlug: "",
+  enginePower: "",
+  enginePowerSlug: "",
+  engineCapacity: "",
+  engineCapacitySlug: "",
+  trimVersion: "",
+  trimVersionSlug: "",
+  doorCount: "",
+  doorCountSlug: "",
   pricePln: "",
   city: "",
   imageUrl: "",
@@ -40,6 +69,7 @@ type CarListingFormProps = {
 };
 
 function toPayload(form: CarFormState) {
+  const doorCount = Number(form.doorCountSlug || form.doorCount);
   return {
     title: form.title.trim(),
     make: form.make.trim(),
@@ -49,6 +79,11 @@ function toPayload(form: CarFormState) {
     fuelType: form.fuelType.trim(),
     transmission: form.transmission.trim(),
     bodyType: form.bodyType.trim(),
+    generation: form.generation.trim(),
+    enginePower: form.enginePower.trim(),
+    engineCapacity: form.engineCapacity.trim(),
+    trimVersion: form.trimVersion.trim(),
+    doorCount: Number.isFinite(doorCount) && doorCount > 0 ? doorCount : null,
     pricePln: Number(form.pricePln),
     city: form.city.trim(),
     imageUrl: form.imageUrl.trim(),
@@ -107,6 +142,11 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       setSubmitting(false);
       return;
     }
+    if (!payload.fuelType) {
+      setError("Wybierz rodzaj paliwa z katalogu.");
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const response = await fetch(mode === "create" ? "/api/cars" : `/api/cars/${carId}`, {
@@ -135,51 +175,20 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
 
   return (
     <form onSubmit={handleSubmit} className="mt-8 grid gap-4">
+      <CarCatalogFields form={form} setForm={setForm} />
+
       <label className="grid gap-1.5 text-sm">
         <span className="text-[var(--eos-muted)]">Tytuł ogłoszenia</span>
         <input
           value={form.title}
           onChange={(e) => setField("title", e.target.value)}
           className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
-          placeholder="np. Porsche Taycan 4S, bezwypadkowy, serwis ASO"
+          placeholder="np. BMW X5 xDrive30d M Sport"
           required
         />
       </label>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Marka</span>
-          <input
-            value={form.make}
-            onChange={(e) => setField("make", e.target.value)}
-            className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
-            placeholder="BMW"
-            required
-          />
-        </label>
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Model</span>
-          <input
-            value={form.model}
-            onChange={(e) => setField("model", e.target.value)}
-            className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
-            placeholder="X5"
-            required
-          />
-        </label>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Rocznik</span>
-          <input
-            type="number"
-            value={form.year}
-            onChange={(e) => setField("year", e.target.value)}
-            className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
-            placeholder="2022"
-          />
-        </label>
         <label className="grid gap-1.5 text-sm">
           <span className="text-[var(--eos-muted)]">Przebieg (km)</span>
           <input
@@ -199,33 +208,6 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
             className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
             placeholder="319000"
             required
-          />
-        </label>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Paliwo</span>
-          <input
-            value={form.fuelType}
-            onChange={(e) => setField("fuelType", e.target.value)}
-            className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
-          />
-        </label>
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Skrzynia</span>
-          <input
-            value={form.transmission}
-            onChange={(e) => setField("transmission", e.target.value)}
-            className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
-          />
-        </label>
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Nadwozie</span>
-          <input
-            value={form.bodyType}
-            onChange={(e) => setField("bodyType", e.target.value)}
-            className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
           />
         </label>
       </div>

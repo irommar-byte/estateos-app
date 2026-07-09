@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Calendar, Fuel, Gauge, MapPin, Settings2, Car as CarIcon } from "lucide-react";
+import { Calendar, Fuel, Gauge, MapPin, Settings2, Car as CarIcon, Cog } from "lucide-react";
 import CarInquiryPanel from "@/components/cars/CarInquiryPanel";
 import CarOwnerActions from "@/components/cars/CarOwnerActions";
 import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
@@ -86,6 +86,11 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
                   <SpecItem icon={Fuel} label="Paliwo" value={car.fuelType} />
                   <SpecItem icon={Settings2} label="Skrzynia" value={car.transmission} />
                   <SpecItem icon={CarIcon} label="Nadwozie" value={car.bodyType} />
+                  {car.generation ? <SpecItem icon={Calendar} label="Generacja" value={car.generation} /> : null}
+                  {car.enginePower ? <SpecItem icon={Cog} label="Moc" value={car.enginePower} /> : null}
+                  {car.engineCapacity ? <SpecItem icon={Cog} label="Pojemność" value={`${car.engineCapacity} cm³`} /> : null}
+                  {car.trimVersion ? <SpecItem icon={CarIcon} label="Wersja" value={car.trimVersion} /> : null}
+                  {car.doorCount ? <SpecItem icon={CarIcon} label="Drzwi" value={String(car.doorCount)} /> : null}
                   <SpecItem icon={MapPin} label="Miasto" value={car.city} />
                 </div>
               </div>

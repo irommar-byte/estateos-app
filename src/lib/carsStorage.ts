@@ -11,6 +11,11 @@ export type CarListingRecord = {
   fuelType: string;
   transmission: string;
   bodyType: string;
+  generation: string;
+  enginePower: string;
+  engineCapacity: string;
+  trimVersion: string;
+  doorCount: number | null;
   pricePln: number;
   city: string;
   imageUrl: string;
@@ -33,6 +38,11 @@ const CREATE_SQL = `
     pricePln DECIMAL(12,2) NOT NULL,
     city VARCHAR(120) NOT NULL,
     imageUrl TEXT NULL,
+    generation VARCHAR(120) NULL,
+    enginePower VARCHAR(80) NULL,
+    engineCapacity VARCHAR(40) NULL,
+    trimVersion VARCHAR(160) NULL,
+    doorCount TINYINT NULL,
     createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     PRIMARY KEY (id),
@@ -76,6 +86,11 @@ function mapRow(row: any): CarListingRecord {
     fuelType: toStringValue(row.fuelType),
     transmission: toStringValue(row.transmission),
     bodyType: toStringValue(row.bodyType),
+    generation: toStringValue(row.generation),
+    enginePower: toStringValue(row.enginePower),
+    engineCapacity: toStringValue(row.engineCapacity),
+    trimVersion: toStringValue(row.trimVersion),
+    doorCount: row.doorCount == null ? null : toNumber(row.doorCount),
     pricePln: toNumber(row.pricePln),
     city: toStringValue(row.city),
     imageUrl: toStringValue(row.imageUrl),
@@ -84,8 +99,20 @@ function mapRow(row: any): CarListingRecord {
   };
 }
 
+async function ensureCarListingColumn(column: string, definition: string) {
+  const rows = await prisma.$queryRawUnsafe<any[]>(`SHOW COLUMNS FROM CarListing LIKE ?`, column);
+  if (!rows.length) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE CarListing ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 export async function ensureCarsStorage() {
   await prisma.$executeRawUnsafe(CREATE_SQL);
+  await ensureCarListingColumn("generation", "VARCHAR(120) NULL");
+  await ensureCarListingColumn("enginePower", "VARCHAR(80) NULL");
+  await ensureCarListingColumn("engineCapacity", "VARCHAR(40) NULL");
+  await ensureCarListingColumn("trimVersion", "VARCHAR(160) NULL");
+  await ensureCarListingColumn("doorCount", "TINYINT NULL");
   await prisma.$executeRawUnsafe(SEED_SQL);
 }
 
@@ -127,6 +154,11 @@ export async function createCarListing(input: {
   fuelType: string;
   transmission: string;
   bodyType: string;
+  generation?: string;
+  enginePower?: string;
+  engineCapacity?: string;
+  trimVersion?: string;
+  doorCount?: number | null;
   pricePln: number;
   city: string;
   imageUrl?: string;
@@ -135,8 +167,9 @@ export async function createCarListing(input: {
   await prisma.$executeRawUnsafe(
     `
       INSERT INTO CarListing
-      (userId, title, make, model, year, mileageKm, fuelType, transmission, bodyType, pricePln, city, imageUrl)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (userId, title, make, model, year, mileageKm, fuelType, transmission, bodyType,
+       generation, enginePower, engineCapacity, trimVersion, doorCount, pricePln, city, imageUrl)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     input.userId,
     input.title,
@@ -147,6 +180,11 @@ export async function createCarListing(input: {
     input.fuelType,
     input.transmission,
     input.bodyType,
+    input.generation ?? "",
+    input.enginePower ?? "",
+    input.engineCapacity ?? "",
+    input.trimVersion ?? "",
+    input.doorCount ?? null,
     input.pricePln,
     input.city,
     input.imageUrl ?? "",
@@ -167,6 +205,11 @@ export type CarListingUpdateInput = {
   fuelType: string;
   transmission: string;
   bodyType: string;
+  generation?: string;
+  enginePower?: string;
+  engineCapacity?: string;
+  trimVersion?: string;
+  doorCount?: number | null;
   pricePln: number;
   city: string;
   imageUrl?: string;
@@ -185,7 +228,8 @@ export async function updateCarListing(
     `
       UPDATE CarListing
       SET title = ?, make = ?, model = ?, year = ?, mileageKm = ?, fuelType = ?,
-          transmission = ?, bodyType = ?, pricePln = ?, city = ?, imageUrl = ?,
+          transmission = ?, bodyType = ?, generation = ?, enginePower = ?, engineCapacity = ?,
+          trimVersion = ?, doorCount = ?, pricePln = ?, city = ?, imageUrl = ?,
           updatedAt = CURRENT_TIMESTAMP(3)
       WHERE id = ? AND userId = ?
     `,
@@ -197,6 +241,11 @@ export async function updateCarListing(
     input.fuelType,
     input.transmission,
     input.bodyType,
+    input.generation ?? "",
+    input.enginePower ?? "",
+    input.engineCapacity ?? "",
+    input.trimVersion ?? "",
+    input.doorCount ?? null,
     input.pricePln,
     input.city,
     input.imageUrl ?? existing.imageUrl,

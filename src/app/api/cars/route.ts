@@ -9,6 +9,12 @@ function toSafeNumber(v: unknown, fallback: number): number {
 }
 
 function validateBody(raw: Record<string, unknown>): Omit<CarListingRecord, "id" | "createdAt" | "updatedAt"> {
+  const doorCountRaw = raw?.doorCount;
+  const doorCount =
+    doorCountRaw == null || String(doorCountRaw).trim() === ""
+      ? null
+      : toSafeNumber(doorCountRaw, 0) || null;
+
   return {
     userId: raw?.userId == null ? null : toSafeNumber(raw.userId, 0),
     title: String(raw?.title || "").trim(),
@@ -19,6 +25,11 @@ function validateBody(raw: Record<string, unknown>): Omit<CarListingRecord, "id"
     fuelType: String(raw?.fuelType || "").trim() || "Benzyna",
     transmission: String(raw?.transmission || "").trim() || "Automatyczna",
     bodyType: String(raw?.bodyType || "").trim() || "Sedan",
+    generation: String(raw?.generation || "").trim(),
+    enginePower: String(raw?.enginePower || "").trim(),
+    engineCapacity: String(raw?.engineCapacity || "").trim(),
+    trimVersion: String(raw?.trimVersion || "").trim(),
+    doorCount,
     pricePln: toSafeNumber(raw?.pricePln, 0),
     city: String(raw?.city || "").trim() || "Polska",
     imageUrl: String(raw?.imageUrl || "").trim(),
