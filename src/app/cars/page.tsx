@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { EstateOsCarListing } from "@/lib/carsCatalog";
 
 function formatPrice(price: number) {
@@ -17,9 +17,24 @@ function carImageSrc(imageUrl?: string) {
   return trimmed;
 }
 
+type Filters = {
+  query: string;
+  make: string;
+  fuelType: string;
+  maxPrice: string;
+};
+
+const EMPTY_FILTERS: Filters = {
+  query: "",
+  make: "",
+  fuelType: "",
+  maxPrice: "",
+};
+
 export default function CarsCatalogPage() {
   const [cars, setCars] = useState<EstateOsCarListing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,6 +53,33 @@ export default function CarsCatalogPage() {
       cancelled = true;
     };
   }, []);
+
+  const makes = useMemo(
+    () => Array.from(new Set(cars.map((c) => c.make).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pl")),
+    [cars],
+  );
+
+  const fuelTypes = useMemo(
+    () => Array.from(new Set(cars.map((c) => c.fuelType).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pl")),
+    [cars],
+  );
+
+  const filtered = useMemo(() => {
+    const q = filters.query.trim().toLowerCase();
+    const maxPrice = Number(filters.maxPrice);
+    return cars.filter((car) => {
+      if (filters.make && car.make !== filters.make) return false;
+      if (filters.fuelType && car.fuelType !== filters.fuelType) return false;
+      if (Number.isFinite(maxPrice) && maxPrice > 0 && car.pricePln > maxPrice) return false;
+      if (!q) return true;
+      const haystack = [car.title, car.make, car.model, car.city, car.fuelType].join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [cars, filters]);
+
+  const setFilter = (key: keyof Filters, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-36 text-[var(--eos-text)] sm:px-6">
@@ -65,13 +107,78 @@ export default function CarsCatalogPage() {
           </div>
         </header>
 
+        <section className="mb-6 grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="grid gap-1.5 text-sm">
+            <span className="text-[var(--eos-muted)]">Szukaj</span>
+            <input
+              value={filters.query}
+              onChange={(e) => setFilter("query", e.target.value)}
+              placeholder="BMW, Warszawa, diesel..."
+              className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm">
+            <span className="text-[var(--eos-muted)]">Marka</span>
+            <select
+              value={filters.make}
+              onChange={(e) => setFilter("make", e.target.value)}
+              className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
+            >
+              <option value="">Wszystkie</option>
+              {makes.map((make) => (
+                <option key={make} value={make}>
+                  {make}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-sm">
+            <span className="text-[var(--eos-muted)]">Paliwo</span>
+            <select
+              value={filters.fuelType}
+              onChange={(e) => setFilter("fuelType", e.target.value)}
+              className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
+            >
+              <option value="">Wszystkie</option>
+              {fuelTypes.map((fuel) => (
+                <option key={fuel} value={fuel}>
+                  {fuel}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-sm">
+            <span className="text-[var(--eos-muted)]">Maks. cena (PLN)</span>
+            <input
+              type="number"
+              value={filters.maxPrice}
+              onChange={(e) => setFilter("maxPrice", e.target.value)}
+              placeholder="np. 300000"
+              className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
+            />
+          </label>
+        </section>
+
+        <p className="mb-4 text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">
+          {loading ? "Ładowanie..." : `${filtered.length} z ${cars.length} ogłoszeń`}
+        </p>
+
         {loading ? (
           <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">Ładowanie ofert samochodów...</p>
-        ) : cars.length === 0 ? (
-          <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">Brak ogłoszeń samochodowych.</p>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
+            <p className="text-sm text-[var(--eos-muted)]">Brak ogłoszeń pasujących do filtrów.</p>
+            <button
+              type="button"
+              onClick={() => setFilters(EMPTY_FILTERS)}
+              className="mt-4 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-xs font-black uppercase tracking-[0.12em]"
+            >
+              Wyczyść filtry
+            </button>
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {cars.map((car) => (
+            {filtered.map((car) => (
               <Link
                 key={car.id}
                 href={`/cars/${car.id}`}

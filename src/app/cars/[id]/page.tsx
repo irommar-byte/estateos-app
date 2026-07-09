@@ -42,12 +42,16 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
               <p>Skrzynia: {car.transmission}</p>
               <p>Nadwozie: {car.bodyType}</p>
               <p>Rocznik: {car.year}</p>
-              <button
-                type="button"
-                className="mt-4 w-full rounded-full border border-sky-400/40 bg-sky-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-sky-300"
-              >
-                Kontakt ze sprzedającym
-              </button>
+              {car.userId ? (
+                <Link
+                  href={`/profil/${car.userId}`}
+                  className="mt-4 block w-full rounded-full border border-sky-400/40 bg-sky-500/10 px-4 py-2 text-center text-xs font-black uppercase tracking-[0.14em] text-sky-300"
+                >
+                  Kontakt ze sprzedającym
+                </Link>
+              ) : (
+                <p className="mt-4 text-xs text-[var(--eos-muted)]">Kontakt będzie dostępny po przypisaniu sprzedającego do ogłoszenia.</p>
+              )}
             </div>
           </div>
         </section>
