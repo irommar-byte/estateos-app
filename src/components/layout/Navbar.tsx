@@ -165,14 +165,19 @@ export default function Navbar() {
           className="group relative z-20 flex shrink-0 items-center gap-2 rounded-full px-1 text-left sm:gap-3"
           aria-label="EstateOS home"
         >
-          <span className="eos-nav-mark flex size-10 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] text-[11px] font-black sm:size-11 sm:text-xs">
+          <span
+            className={`eos-nav-mark flex size-10 items-center justify-center rounded-full border bg-[var(--eos-surface)] text-[11px] font-black sm:size-11 sm:text-xs ${
+              isCar ? "border-sky-400/35 text-sky-300" : "border-[var(--eos-border)]"
+            }`}
+          >
             EOS
           </span>
           <span className="eos-nav-wordmark hidden md:block">
             <span className="eos-nav-wordmark-body">
-              <span className="eos-nav-wordmark-accent">E</span>state
-              <span className="eos-nav-wordmark-accent">OS</span>
+              <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>E</span>state
+              <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>OS</span>
               <sup className="eos-nav-wordmark-tm">TM</sup>
+              {isCar ? <span className="ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Car</span> : null}
             </span>
           </span>
         </button>
