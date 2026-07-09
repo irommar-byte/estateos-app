@@ -1,0 +1,184 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+
+type HomeListing = {
+  id: number;
+  title?: string | null;
+  city?: string | null;
+  district?: string | null;
+  pricePln?: number | null;
+  status?: string | null;
+  images?: string | null;
+  imageUrl?: string | null;
+};
+
+type CarListing = {
+  id: number;
+  title: string;
+  make: string;
+  model: string;
+  year: number;
+  city: string;
+  pricePln: number;
+  userId?: number | null;
+};
+
+type Vertical = "home" | "car";
+
+function formatPrice(price: number | null | undefined) {
+  if (!price || !Number.isFinite(Number(price))) return "Cena na zapytanie";
+  return `${new Intl.NumberFormat("pl-PL").format(Number(price))} PLN`;
+}
+
+export default function AccountListingsPage() {
+  const [vertical, setVertical] = useState<Vertical>("home");
+  const [homeListings, setHomeListings] = useState<HomeListing[]>([]);
+  const [carListings, setCarListings] = useState<CarListing[]>([]);
+  const [loadingHome, setLoadingHome] = useState(true);
+  const [loadingCars, setLoadingCars] = useState(true);
+  const [deletingCarId, setDeletingCarId] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/user/profile", { cache: "no-store", credentials: "include" })
+      .then((res) => res.json())
+      .then((payload) => {
+        const offers = Array.isArray(payload?.offers) ? payload.offers : [];
+        setHomeListings(offers as HomeListing[]);
+      })
+      .catch(() => setHomeListings([]))
+      .finally(() => setLoadingHome(false));
+
+    fetch("/api/cars?scope=mine", { cache: "no-store", credentials: "include" })
+      .then((res) => res.json())
+      .then((payload) => {
+        setCarListings(Array.isArray(payload) ? (payload as CarListing[]) : []);
+      })
+      .catch(() => setCarListings([]))
+      .finally(() => setLoadingCars(false));
+  }, []);
+
+  const activeItems = useMemo(() => (vertical === "home" ? homeListings : carListings), [vertical, homeListings, carListings]);
+  const loading = vertical === "home" ? loadingHome : loadingCars;
+
+  const handleDeleteCar = async (carId: number) => {
+    if (!window.confirm("Usunąć to ogłoszenie samochodu?")) return;
+    setDeletingCarId(carId);
+    try {
+      const response = await fetch(`/api/cars/${carId}`, { method: "DELETE", credentials: "include" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert(typeof data?.error === "string" ? data.error : "Nie udało się usunąć ogłoszenia.");
+        return;
+      }
+      setCarListings((prev) => prev.filter((item) => item.id !== carId));
+    } catch {
+      alert("Błąd sieci podczas usuwania ogłoszenia.");
+    } finally {
+      setDeletingCarId(null);
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-36 text-[var(--eos-text)] sm:px-6">
+      <div className="mx-auto max-w-6xl">
+        <header className="mb-8 border-b border-[var(--eos-border)] pb-6">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">Moje konto</p>
+          <h1 className="mt-3 text-4xl font-semibold tracking-tight">Moje ogłoszenia</h1>
+          <p className="mt-3 text-sm text-[var(--eos-muted)]">
+            Jedno konto EstateOS i dwa brandy operacyjne: EstateOS™Home oraz EstateOS™Car.
+          </p>
+        </header>
+
+        <div className="mb-6 inline-flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1">
+          <button
+            type="button"
+            onClick={() => setVertical("home")}
+            className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${
+              vertical === "home" ? "bg-emerald-500/20 text-emerald-300" : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+            }`}
+          >
+            EstateOS™Home ({homeListings.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setVertical("car")}
+            className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${
+              vertical === "car" ? "bg-sky-500/20 text-sky-300" : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+            }`}
+          >
+            EstateOS™Car ({carListings.length})
+          </button>
+        </div>
+
+        {loading ? (
+          <p className="text-xs uppercase tracking-[0.2em] text-[var(--eos-muted)]">Ładowanie ogłoszeń...</p>
+        ) : activeItems.length === 0 ? (
+          <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
+            <p className="text-sm text-[var(--eos-muted)]">
+              {vertical === "home" ? "Nie masz jeszcze aktywnych ogłoszeń nieruchomości." : "Nie masz jeszcze ogłoszeń samochodowych."}
+            </p>
+            <div className="mt-4">
+              <Link
+                href={vertical === "home" ? "/dodaj-oferte" : "/cars/dodaj"}
+                className="inline-flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-xs font-black uppercase tracking-[0.12em]"
+              >
+                {vertical === "home" ? "Dodaj ofertę Home" : "Dodaj ofertę Car"}
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            {vertical === "home"
+              ? (homeListings as HomeListing[]).map((offer) => (
+                  <Link
+                    key={`home-${offer.id}`}
+                    href={`/oferta/${offer.id}`}
+                    className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 transition hover:border-emerald-400/40"
+                  >
+                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-300">EstateOS™Home</p>
+                    <h2 className="mt-2 text-lg font-semibold">{offer.title || `Oferta #${offer.id}`}</h2>
+                    <p className="mt-1 text-sm text-[var(--eos-muted)]">
+                      {[offer.city, offer.district].filter(Boolean).join(" · ") || "Lokalizacja"}
+                    </p>
+                    <p className="mt-2 text-base font-bold">{formatPrice(offer.pricePln ?? null)}</p>
+                  </Link>
+                ))
+              : (carListings as CarListing[]).map((car) => (
+                  <div
+                    key={`car-${car.id}`}
+                    className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 transition hover:border-sky-400/40"
+                  >
+                    <Link href={`/cars/${car.id}`}>
+                      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-sky-300">EstateOS™Car</p>
+                      <h2 className="mt-2 text-lg font-semibold">{car.title}</h2>
+                      <p className="mt-1 text-sm text-[var(--eos-muted)]">
+                        {car.make} · {car.model} · {car.year} · {car.city}
+                      </p>
+                      <p className="mt-2 text-base font-bold">{formatPrice(car.pricePln)}</p>
+                    </Link>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Link
+                        href={`/cars/${car.id}/edytuj`}
+                        className="rounded-full border border-sky-400/35 bg-sky-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-sky-300"
+                      >
+                        Edytuj
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCar(car.id)}
+                        disabled={deletingCarId === car.id}
+                        className="rounded-full border border-red-400/35 bg-red-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-300 disabled:opacity-60"
+                      >
+                        {deletingCarId === car.id ? "Usuwanie..." : "Usuń"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}

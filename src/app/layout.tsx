@@ -19,6 +19,7 @@ import { LocaleProvider } from "@/contexts/LocaleContext";
 import { ThemeInitScript, ThemeProvider } from "@/contexts/ThemeContext";
 import { UserModeProvider } from "@/contexts/UserModeContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
+import { EcosystemProvider } from "@/contexts/EcosystemContext";
 import { LOCALE_COOKIE, resolveLocale } from "@/i18n/config";
 const inter = Inter({ subsets: ["latin"] });
 
@@ -98,7 +99,8 @@ export default async function RootLayout({
               <FxRateProvider>
                 <LocaleDocumentMeta />
                 <UserModeProvider>
-                  <FavoritesProvider>
+                  <EcosystemProvider>
+                    <FavoritesProvider>
                     <SkipToContent />
                     <CampaignAttributionBoundary />
                     <Tracker />
@@ -109,7 +111,8 @@ export default async function RootLayout({
                     <div id="main-content" tabIndex={-1} className="outline-none">
                       {children}
                     </div>
-                  </FavoritesProvider>
+                    </FavoritesProvider>
+                  </EcosystemProvider>
                 </UserModeProvider>
                 <UpgradeModal />
                 <ModeTransition />

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Building2,
+  Car,
   Home,
   LogIn,
   LogOut,
@@ -20,6 +21,7 @@ import NavbarProfileChip from "@/components/layout/NavbarProfileChip";
 import PremiumModeToggle from "@/components/ui/PremiumModeToggle";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useUserMode } from "@/contexts/UserModeContext";
+import { useEcosystem, type EcosystemVertical } from "@/contexts/EcosystemContext";
 
 type CurrentUser = {
   id?: string | number;
@@ -43,6 +45,7 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const { initModeFromUser } = useUserMode();
+  const { vertical, setVertical, isCar } = useEcosystem();
   const isOfferShareLanding = pathname?.startsWith("/o/");
 
   useEffect(() => {
@@ -116,6 +119,15 @@ export default function Navbar() {
     setIsOpen(false);
   };
 
+  const switchVertical = (next: EcosystemVertical) => {
+    setVertical(next);
+    if (next === "car") {
+      router.push("/cars");
+      return;
+    }
+    router.push("/oferty");
+  };
+
   const isAdmin = user?.role === "ADMIN";
   const manageLabel = dict.nav.manageCentral;
   const manageLabelShort = dict.nav.manageCentralShort;
@@ -128,7 +140,7 @@ export default function Navbar() {
     active?: boolean;
   }> = [
     { path: "/odkryj-mape", isMap: true, short: dict.nav.discoverMapShort, full: dict.nav.discoverMap },
-    { path: "/oferty", isMap: false, short: dict.nav.marketShort, full: dict.nav.market },
+    { path: isCar ? "/cars" : "/oferty", isMap: false, short: dict.nav.marketShort, full: dict.nav.market },
     {
       path: "/agencje",
       isMap: false,
@@ -164,6 +176,31 @@ export default function Navbar() {
             </span>
           </span>
         </button>
+
+        <div className="hidden lg:flex items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1">
+          <button
+            type="button"
+            onClick={() => switchVertical("home")}
+            className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${
+              vertical === "home"
+                ? "bg-emerald-500/20 text-emerald-400"
+                : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+            }`}
+          >
+            EstateOS™Home
+          </button>
+          <button
+            type="button"
+            onClick={() => switchVertical("car")}
+            className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${
+              vertical === "car"
+                ? "bg-sky-500/20 text-sky-300"
+                : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+            }`}
+          >
+            EstateOS™Car
+          </button>
+        </div>
 
         <div className="pointer-events-none absolute inset-0 hidden items-center justify-center px-[9.5rem] lg:flex xl:px-[12rem] 2xl:px-[15rem]">
           <div className="eos-nav-primary-group pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 shadow-[var(--eos-shadow-soft)] [scrollbar-width:none] lg:gap-1 lg:p-1.5 [&::-webkit-scrollbar]:hidden">
@@ -283,6 +320,24 @@ export default function Navbar() {
                 )}
 
                 <div className="grid gap-2">
+                  <MobileNavButton
+                    icon={Home}
+                    label="EstateOS™Home"
+                    onClick={() => {
+                      setVertical("home");
+                      handleNavClick("/oferty");
+                    }}
+                    variant="primary"
+                  />
+                  <MobileNavButton
+                    icon={Car}
+                    label="EstateOS™Car"
+                    onClick={() => {
+                      setVertical("car");
+                      handleNavClick("/cars");
+                    }}
+                    variant="primary"
+                  />
                   <MobileNavButton
                     icon={Home}
                     label={dict.nav.discoverMap}
