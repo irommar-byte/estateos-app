@@ -9,22 +9,42 @@ final class EstateAPIClient {
     }
 
     func login(login: String, password: String) async throws -> EstateSession {
-        let response: EstateLoginResponse = try await request(
+        let normalizedLogin = login.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let response: EstateLoginEnvelope = try await request(
             "POST",
             path: "/api/mobile/v1/auth/login",
-            body: ["login": login, "password": password],
+            body: [
+                "email": normalizedLogin,
+                "login": normalizedLogin,
+                "identifier": normalizedLogin,
+                "password": password,
+            ],
             authorized: false
         )
-        let session = EstateSession(token: response.token, user: response.user)
+
+        guard response.success != false,
+              let token = response.token,
+              let user = response.user else {
+            throw APIError.server(response.error ?? response.message ?? "Nie udało się zalogować.")
+        }
+
+        let session = EstateSession(token: token, user: user)
         try SessionStore.save(session)
-        token = response.token
+        self.token = token
         return session
     }
 
     func me() async throws -> EstateUser {
-        struct MeEnvelope: Codable { let user: EstateUser }
-        let response: MeEnvelope = try await request("GET", path: "/api/auth/me")
-        return response.user
+        struct MeEnvelope: Codable {
+            let success: Bool?
+            let user: EstateUser?
+            let message: String?
+        }
+        let response: MeEnvelope = try await request("GET", path: "/api/mobile/v1/user/me")
+        guard let user = response.user else {
+            throw APIError.server(response.message ?? "Nie udało się pobrać profilu.")
+        }
+        return user
     }
 
     func fetchOffers() async throws -> [EstateOffer] {
@@ -46,7 +66,7 @@ final class EstateAPIClient {
                 continue
             }
         }
-        throw APIError.server("Could not fetch offers.")
+        throw APIError.server("Nie udało się pobrać ofert.")
     }
 
     func searchOffers(query: String, source: [EstateOffer]) -> [EstateOffer] {
@@ -78,7 +98,7 @@ final class EstateAPIClient {
         if let exact = all.first(where: { $0.id == id }) {
             return exact
         }
-        throw APIError.server("Offer not found.")
+        throw APIError.server("Nie znaleziono oferty.")
     }
 
     func startTvPairing(mode: String, pairCode: String? = nil) async throws -> TvPairStartResponse {
@@ -103,6 +123,18 @@ final class EstateAPIClient {
         )
     }
 
+    func fetchFavorites() async throws -> EstateFavoritesEnvelope {
+        try await request("GET", path: "/api/favorites")
+    }
+
+    func setFavorite(offerId: Int, added: Bool) async throws {
+        struct OkEnvelope: Decodable { let success: Bool? }
+        let _: OkEnvelope = try await request(
+            added ? "POST" : "DELETE",
+            path: "/api/offers/\(offerId)/favorite"
+        )
+    }
+
     private func request<T: Decodable>(
         _ method: String,
         path: String,
@@ -116,6 +148,7 @@ final class EstateAPIClient {
         req.setValue(AppConfig.userAgent, forHTTPHeaderField: "User-Agent")
         if authorized, let token {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            req.setValue(token, forHTTPHeaderField: "x-access-token")
         }
         if let body {
             req.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
@@ -125,17 +158,44 @@ final class EstateAPIClient {
         guard let http = response as? HTTPURLResponse else {
             throw APIError.decode
         }
+
+        if let apiError = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data),
+           let message = apiError.resolvedMessage,
+           !(200..<300).contains(http.statusCode) {
+            throw APIError.server(message)
+        }
+
         if http.statusCode == 401 {
             throw APIError.unauthorized
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw APIError.server("Server error (\(http.statusCode)).")
+            throw APIError.server("Błąd serwera (\(http.statusCode)).")
         }
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
             throw APIError.decode
         }
+    }
+}
+
+struct EstateLoginEnvelope: Decodable {
+    let success: Bool?
+    let token: String?
+    let user: EstateUser?
+    let error: String?
+    let message: String?
+}
+
+struct APIErrorEnvelope: Decodable {
+    let success: Bool?
+    let error: String?
+    let message: String?
+
+    var resolvedMessage: String? {
+        if let error, !error.isEmpty { return error }
+        if let message, !message.isEmpty { return message }
+        return nil
     }
 }
 
@@ -155,6 +215,12 @@ struct TvPairStatusResponse: Decodable {
     let user: EstateUser?
 }
 
+struct EstateFavoritesEnvelope: Decodable {
+    let success: Bool?
+    let offerIds: [Int]?
+    let offers: [EstateOffer]?
+}
+
 enum APIError: LocalizedError {
     case unauthorized
     case decode
@@ -162,8 +228,8 @@ enum APIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unauthorized: return "Your session is no longer valid."
-        case .decode: return "Could not parse server response."
+        case .unauthorized: return "Sesja wygasła. Zaloguj się ponownie."
+        case .decode: return "Nie udało się odczytać odpowiedzi serwera."
         case .server(let msg): return msg
         }
     }

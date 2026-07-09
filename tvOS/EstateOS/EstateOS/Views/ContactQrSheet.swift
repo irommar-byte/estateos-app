@@ -26,6 +26,16 @@ struct ContactQrSheet: View {
                 .lineLimit(1)
         }
         .padding(40)
+        .background(
+            LinearGradient(
+                colors: [Color.black, Color(red: 0.05, green: 0.08, blue: 0.12)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+        )
+        .eosGlass(cornerRadius: 32, opacity: 0.35)
+        .padding(48)
     }
 
     private var deepLink: String {

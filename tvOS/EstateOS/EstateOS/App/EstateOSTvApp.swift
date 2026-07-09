@@ -11,6 +11,9 @@ struct EstateOSTvApp: App {
                 .task {
                     await appModel.bootstrap()
                 }
+                .onOpenURL { url in
+                    appModel.handleDeepLink(url)
+                }
         }
     }
 }

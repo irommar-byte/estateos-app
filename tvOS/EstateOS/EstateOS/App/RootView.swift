@@ -14,8 +14,12 @@ struct RootView: View {
         }
         .background(Color.black.ignoresSafeArea())
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $app.isLoginSheetPresented) {
+        .fullScreenCover(isPresented: $app.isLoginSheetPresented) {
             LoginView()
+                .environmentObject(app)
+        }
+        .fullScreenCover(item: $app.immersiveBrowse, onDismiss: app.closeImmersiveBrowse) { context in
+            TopShelfImmersiveView(offers: context.offers, startIndex: context.startIndex)
                 .environmentObject(app)
         }
         .alert("Error", isPresented: .constant(app.globalError != nil)) {

@@ -6,107 +6,188 @@ struct LoginView: View {
     @State private var login = ""
     @State private var password = ""
     @State private var isLoading = false
+    @State private var localError: String?
+    @State private var mode: LoginMode = .passkey
     @FocusState private var focusedField: Field?
+
     private let ciContext = CIContext()
     private let qrFilter = CIFilter.qrCodeGenerator()
 
+    enum LoginMode: String, CaseIterable {
+        case passkey = "Passkey (iPhone)"
+        case password = "Hasło"
+    }
+
     enum Field: Hashable {
-        case login, password, submit
+        case login, password, submit, cancel
     }
 
     var body: some View {
-        VStack(spacing: 28) {
-            VStack(spacing: 8) {
-                Text("EstateOS")
-                    .font(.system(size: 56, weight: .bold, design: .rounded))
-                Text("Zaloguj się, aby przeglądać oferty na Apple TV")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-            }
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 28) {
+                header
+                modePicker
 
-            HStack(alignment: .top, spacing: 22) {
-                passwordPane
-                VStack(spacing: 14) {
-                    qrCard(
-                        title: "QR logowania",
-                        subtitle: "Szybkie otwarcie logowania na iPhonie",
-                        pairingCode: app.loginPairingCode,
-                        payload: loginQrPayload
-                    ) {
-                        Task { await app.refreshTvPairCode(mode: "password") }
-                    }
-                    qrCard(
-                        title: "QR Passkey",
-                        subtitle: "Skanuj i zaloguj Face ID/Touch ID",
-                        pairingCode: app.passkeyPairingCode,
-                        payload: passkeyQrPayload
-                    ) {
-                        Task { await app.refreshTvPairCode(mode: "passkey") }
-                    }
+                switch mode {
+                case .passkey:
+                    passkeyPane
+                case .password:
+                    passwordPane
+                }
+
+                if let localError {
+                    Text(localError)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if let status = app.pairingStatusMessage {
+                    Text(status)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .frame(width: 1100)
+            .padding(.horizontal, 72)
+            .padding(.vertical, 48)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [Color.black, Color.black.opacity(0.92), Color(red: 0.05, green: 0.08, blue: 0.12)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        )
+        .focusSection()
         .onAppear {
-            focusedField = .login
+            focusedField = mode == .password ? .login : nil
         }
+    }
+
+    private var header: some View {
+        VStack(spacing: 8) {
+            Text("Logowanie EstateOS")
+                .font(.system(size: 52, weight: .bold, design: .rounded))
+            Text("Passkey przez iPhone albo login i hasło z bazy EstateOS")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var modePicker: some View {
+        HStack(spacing: 14) {
+            ForEach(LoginMode.allCases, id: \.self) { item in
+                Button(item.rawValue) {
+                    mode = item
+                    localError = nil
+                    if item == .password {
+                        focusedField = .login
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(mode == item ? .white : .white.opacity(0.14))
+                .foregroundStyle(mode == item ? .black : .white)
+            }
+        }
+        .padding(8)
+        .eosGlass(cornerRadius: 20, opacity: 0.28)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var passkeyPane: some View {
+        HStack(alignment: .top, spacing: 24) {
+            qrCard(
+                title: "Passkey / Face ID",
+                subtitle: "Zeskanuj iPhonem — logowanie biometryczne sparuje TV automatycznie",
+                pairingCode: app.passkeyPairingCode,
+                payload: passkeyQrPayload
+            ) {
+                Task { await app.refreshTvPairCode(mode: "passkey") }
+            }
+
+            qrCard(
+                title: "QR logowania hasłem",
+                subtitle: "Otwiera logowanie na iPhonie z kodem parowania",
+                pairingCode: app.loginPairingCode,
+                payload: loginQrPayload
+            ) {
+                Task { await app.refreshTvPairCode(mode: "password") }
+            }
+        }
+        .focusSection()
     }
 
     private var passwordPane: some View {
-        VStack(spacing: 14) {
-            TextField("Login", text: $login)
-                .textFieldStyle(.plain)
-                .padding(14)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12)))
-                .focused($focusedField, equals: .login)
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Konto EstateOS")
+                .font(.title2.bold())
 
-            SecureField("Password", text: $password)
+            TextField("E-mail", text: $login)
                 .textFieldStyle(.plain)
-                .padding(14)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.12)))
+                .font(.title3)
+                .padding(18)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.12)))
+                .focused($focusedField, equals: .login)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+
+            SecureField("Hasło", text: $password)
+                .textFieldStyle(.plain)
+                .font(.title3)
+                .padding(18)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.12)))
                 .focused($focusedField, equals: .password)
 
-            Button {
-                Task {
-                    isLoading = true
-                    await app.login(login: login, password: password)
-                    isLoading = false
-                    if app.session != nil {
-                        app.closeLoginSheet()
+            HStack(spacing: 16) {
+                Button {
+                    Task { await submitPasswordLogin() }
+                } label: {
+                    if isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Zaloguj")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
                     }
                 }
-            } label: {
-                if isLoading {
-                    ProgressView()
-                } else {
-                    Text("Kontynuuj")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.green)
-            .disabled(login.isEmpty || password.isEmpty || isLoading)
-            .focused($focusedField, equals: .submit)
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+                .focused($focusedField, equals: .submit)
 
-            Button("Anuluj") {
-                app.closeLoginSheet()
+                Button("Anuluj") {
+                    app.closeLoginSheet()
+                }
+                .buttonStyle(.bordered)
+                .focused($focusedField, equals: .cancel)
             }
-            .buttonStyle(.bordered)
         }
-        .frame(width: 620)
-        .padding(22)
-        .background(glassPanel)
+        .padding(28)
+        .eosGlass(cornerRadius: 28, opacity: 0.4)
+        .frame(maxWidth: 760, alignment: .leading)
+        .focusSection()
     }
 
-    private var glassPanel: some View {
-        RoundedRectangle(cornerRadius: 28, style: .continuous)
-            .fill(.ultraThinMaterial.opacity(0.35))
-            .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
-            )
+    private func submitPasswordLogin() async {
+        localError = nil
+        let trimmedLogin = login.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedLogin.isEmpty, !password.isEmpty else {
+            localError = "Podaj e-mail i hasło."
+            return
+        }
+        isLoading = true
+        defer { isLoading = false }
+        await app.login(login: trimmedLogin, password: password)
+        if let error = app.globalError {
+            localError = error
+            app.globalError = nil
+        } else if app.session == nil {
+            localError = "Nie udało się zalogować."
+        }
     }
 
     private func qrCard(
@@ -116,14 +197,14 @@ struct LoginView: View {
         payload: String,
         onRefresh: @escaping () -> Void
     ) -> some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             if let image = qrImage(from: payload) {
                 Image(uiImage: image)
                     .interpolation(.none)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 155, height: 155)
-                    .padding(10)
+                    .frame(width: 180, height: 180)
+                    .padding(12)
                     .background(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
@@ -136,17 +217,16 @@ struct LoginView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            Text(pairingCode)
-                .font(.title3.weight(.bold))
+            Text(pairingCode.isEmpty ? "Ładowanie kodu…" : pairingCode)
+                .font(.title2.weight(.bold))
+                .monospaced()
 
-            Button("Odśwież kod") {
-                onRefresh()
-            }
-            .buttonStyle(.bordered)
+            Button("Odśwież kod") { onRefresh() }
+                .buttonStyle(.bordered)
         }
         .frame(width: 420)
-        .padding(16)
-        .background(glassPanel)
+        .padding(20)
+        .eosGlass(cornerRadius: 24, opacity: 0.38)
     }
 
     private var loginQrPayload: String {

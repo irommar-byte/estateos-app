@@ -14,9 +14,23 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "9087B64148544F57AB48BB5A"
+               BlueprintIdentifier = "6E91A41E17A44E0D9168CA4E"
                BuildableName = "EstateOS.app"
                BlueprintName = "EstateOS"
+               ReferencedContainer = "container:EstateOS.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "NO"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "ESTSHELF014TGT0001"
+               BuildableName = "EstateOSTopShelf.appex"
+               BlueprintName = "EstateOSTopShelf"
                ReferencedContainer = "container:EstateOS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -43,7 +57,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "9087B64148544F57AB48BB5A"
+            BlueprintIdentifier = "6E91A41E17A44E0D9168CA4E"
             BuildableName = "EstateOS.app"
             BlueprintName = "EstateOS"
             ReferencedContainer = "container:EstateOS.xcodeproj">
@@ -60,7 +74,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "9087B64148544F57AB48BB5A"
+            BlueprintIdentifier = "6E91A41E17A44E0D9168CA4E"
             BuildableName = "EstateOS.app"
             BlueprintName = "EstateOS"
             ReferencedContainer = "container:EstateOS.xcodeproj">

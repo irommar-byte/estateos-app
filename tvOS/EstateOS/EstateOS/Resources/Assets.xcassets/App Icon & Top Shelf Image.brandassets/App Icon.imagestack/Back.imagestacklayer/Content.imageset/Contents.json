@@ -1,14 +1,14 @@
 {
   "images" : [
     {
+      "filename" : "Content.png",
       "idiom" : "tv",
-      "size" : "1280x768",
       "scale" : "1x"
     },
     {
+      "filename" : "Content@2x.png",
       "idiom" : "tv",
-      "size" : "400x240",
-      "scale" : "1x"
+      "scale" : "2x"
     }
   ],
   "info" : {

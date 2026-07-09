@@ -3,7 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<string>pl</string>
+	<key>CFBundleDisplayName</key>
+	<string>EstateOS Top Shelf</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,41 +15,21 @@
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
-	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<string>XPC!</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>CFBundleIcons</key>
+	<key>NSExtension</key>
 	<dict>
-		<key>CFBundlePrimaryIcon</key>
-		<string>App Icon</string>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.tv-top-shelf</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).TopShelfContentProvider</string>
 	</dict>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
-	</dict>
-	<key>UILaunchStoryboardName</key>
-	<string></string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>
-	</array>
-	<key>UIUserInterfaceStyle</key>
-	<string>Dark</string>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>pl.estateos.app.tvos</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>estateos</string>
-			</array>
-		</dict>
 	</array>
 </dict>
 </plist>

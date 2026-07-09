@@ -24,11 +24,22 @@ struct EstateUser: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(Int.self, forKey: .id)
         email = try c.decodeIfPresent(String.self, forKey: .email)
-        login =
-            (try c.decodeIfPresent(String.self, forKey: .login)) ??
-            (try c.decodeIfPresent(String.self, forKey: .name)) ??
-            email ??
-            "EstateOS"
+        if let explicitLogin = try c.decodeIfPresent(String.self, forKey: .login), !explicitLogin.isEmpty {
+            login = explicitLogin
+        } else if let fallbackName = try c.decodeIfPresent(String.self, forKey: .name), !fallbackName.isEmpty {
+            login = fallbackName
+        } else if let email, !email.isEmpty {
+            login = email
+        } else {
+            login = "EstateOS"
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(id, forKey: .id)
+        try c.encode(login, forKey: .login)
+        try c.encodeIfPresent(email, forKey: .email)
     }
 }
 
@@ -49,12 +60,14 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
     let transactionType: String?
     let propertyType: String?
     let imageUrl: String?
+    let imageCandidates: [String]
     let createdAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, description, city, district, price, area, rooms
         case transactionType, propertyType, createdAt
         case imageUrl, mainImage, thumbnail, image
+        case images
     }
 
     init(from decoder: Decoder) throws {
@@ -70,15 +83,23 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
         transactionType = try c.decodeIfPresent(String.self, forKey: .transactionType)
         propertyType = try c.decodeIfPresent(String.self, forKey: .propertyType)
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
-        if let url = try c.decodeIfPresent(String.self, forKey: .imageUrl) {
-            imageUrl = url
-        } else if let url = try c.decodeIfPresent(String.self, forKey: .mainImage) {
-            imageUrl = url
-        } else if let url = try c.decodeIfPresent(String.self, forKey: .thumbnail) {
-            imageUrl = url
+        let directImages = EstateOffer.decodeFlexibleStringArray(from: c, key: .images)
+        let primaryImage: String?
+        if let v = try c.decodeIfPresent(String.self, forKey: .imageUrl), !v.isEmpty {
+            primaryImage = v
+        } else if let v = try c.decodeIfPresent(String.self, forKey: .mainImage), !v.isEmpty {
+            primaryImage = v
+        } else if let v = try c.decodeIfPresent(String.self, forKey: .thumbnail), !v.isEmpty {
+            primaryImage = v
+        } else if let v = try c.decodeIfPresent(String.self, forKey: .image), !v.isEmpty {
+            primaryImage = v
         } else {
-            imageUrl = try c.decodeIfPresent(String.self, forKey: .image)
+            primaryImage = directImages.first
         }
+        imageUrl = primaryImage
+        imageCandidates = ([primaryImage].compactMap { $0 } + directImages)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     init(
@@ -93,6 +114,7 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
         transactionType: String?,
         propertyType: String?,
         imageUrl: String?,
+        imageCandidates: [String] = [],
         createdAt: String?
     ) {
         self.id = id
@@ -106,6 +128,7 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
         self.transactionType = transactionType
         self.propertyType = propertyType
         self.imageUrl = imageUrl
+        self.imageCandidates = imageCandidates
         self.createdAt = createdAt
     }
 
@@ -123,6 +146,25 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
             return Double(str.replacingOccurrences(of: ",", with: "."))
         }
         return nil
+    }
+
+    private static func decodeFlexibleStringArray(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        key: CodingKeys
+    ) -> [String] {
+        if let list = try? container.decode([String].self, forKey: key) {
+            return list
+        }
+        if let asSingle = try? container.decode(String.self, forKey: key) {
+            let trimmed = asSingle.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("["),
+               let data = trimmed.data(using: .utf8),
+               let parsed = try? JSONDecoder().decode([String].self, from: data) {
+                return parsed
+            }
+            return trimmed.isEmpty ? [] : [trimmed]
+        }
+        return []
     }
 }
 
