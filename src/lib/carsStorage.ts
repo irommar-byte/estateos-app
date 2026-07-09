@@ -99,9 +99,28 @@ function mapRow(row: any): CarListingRecord {
   };
 }
 
+const ALLOWED_CAR_LISTING_COLUMNS = new Set([
+  "generation",
+  "enginePower",
+  "engineCapacity",
+  "trimVersion",
+  "doorCount",
+]);
+
 async function ensureCarListingColumn(column: string, definition: string) {
-  const rows = await prisma.$queryRawUnsafe<any[]>(`SHOW COLUMNS FROM CarListing LIKE ?`, column);
-  if (!rows.length) {
+  if (!ALLOWED_CAR_LISTING_COLUMNS.has(column)) return;
+
+  const rows = await prisma.$queryRawUnsafe<any[]>(
+    `
+      SELECT COUNT(*) AS count
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'CarListing'
+        AND COLUMN_NAME = '${column}'
+    `,
+  );
+  const exists = Number(rows?.[0]?.count || 0) > 0;
+  if (!exists) {
     await prisma.$executeRawUnsafe(`ALTER TABLE CarListing ADD COLUMN ${column} ${definition}`);
   }
 }
