@@ -8,6 +8,13 @@ import Link from "next/link";
 import { Fingerprint, Lock, Loader2, AlertCircle, Mail, Key, ArrowLeft, CheckCircle } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { resolvePostAuthDestination } from "@/lib/offerShareIntent";
+import { TvPairingStatusBanner } from "@/components/TvPairingUi";
+import {
+  isTvosPairingRequest,
+  pairTvAfterMobileLogin,
+  pairTvAfterMobilePasskey,
+  readTvPairCode,
+} from "@/lib/tvPairingClient";
 
 function resolveSafeNextPath(raw: string | null): string {
   const next = String(raw || "").trim();
@@ -22,6 +29,8 @@ function LoginPageInner() {
   const searchParams = useSearchParams();
   const afterLoginPath = resolveSafeNextPath(searchParams.get("next"));
   const intentParam = searchParams.get("intent");
+  const pairCode = readTvPairCode(searchParams);
+  const isTvPairing = isTvosPairingRequest(searchParams);
   const registerHref = (() => {
     if (afterLoginPath.startsWith("/dodaj-oferte")) return "/rejestracja?next=/dodaj-oferte";
     const next = encodeURIComponent(afterLoginPath);
@@ -45,11 +54,23 @@ function LoginPageInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [tvPairSuccess, setTvPairSuccess] = useState(false);
 
   
   const handlePasskeyLogin = async () => {
-    setLoading(true); setError(""); setSuccessMsg("");
+    setLoading(true); setError(""); setSuccessMsg(""); setTvPairSuccess(false);
     try {
+      if (isTvPairing && pairCode) {
+        const result = await pairTvAfterMobilePasskey(pairCode, email || null);
+        if (result.success) {
+          setTvPairSuccess(true);
+          setSuccessMsg("Połączono z Apple TV. Możesz wrócić na telewizor.");
+        } else {
+          setError(result.error || t.passkeyFailed);
+        }
+        return;
+      }
+
       const resp = await fetch('/api/passkeys/auth-options');
       const options = await resp.json();
       if (options.error) throw new Error(options.error);
@@ -80,9 +101,22 @@ function LoginPageInner() {
   };
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true); setError(""); setSuccessMsg("");
+    setLoading(true); setError(""); setSuccessMsg(""); setTvPairSuccess(false);
 
     try {
+      if (isTvPairing && pairCode) {
+        const result = await pairTvAfterMobileLogin(pairCode, email, password);
+        if (result.success) {
+          setTvPairSuccess(true);
+          setSuccessMsg("Połączono z Apple TV. Możesz wrócić na telewizor.");
+          setLoading(false);
+        } else {
+          setError(result.error || t.invalidCredentials);
+          setLoading(false);
+        }
+        return;
+      }
+
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -345,12 +379,21 @@ function LoginPageInner() {
             </h1>
           </div>
 
+          {isTvPairing ? (
+            <TvPairingStatusBanner
+              pairCode={pairCode}
+              loading={loading}
+              error={error}
+              success={tvPairSuccess}
+            />
+          ) : null}
+
           <AnimatePresence mode="wait">
-            {error && (
+            {error && !isTvPairing ? (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-4 bg-red-500/10 border border-red-500/20 rounded-[1rem] flex items-center gap-3 text-red-500 text-xs font-bold uppercase tracking-widest">
                 <AlertCircle size={16} /> {error}
               </motion.div>
-            )}
+            ) : null}
             {successMsg && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-[1rem] flex items-center gap-3 text-emerald-500 text-xs font-bold uppercase tracking-widest">
                 <CheckCircle size={16} /> {successMsg}
@@ -359,8 +402,20 @@ function LoginPageInner() {
           </AnimatePresence>
           
           <AnimatePresence mode="wait">
-            {renderForm()}
+            {!tvPairSuccess ? renderForm() : null}
           </AnimatePresence>
+
+          {isTvPairing && !tvPairSuccess ? (
+            <p className="text-center text-[11px] text-[var(--eos-muted)]">
+              Wolisz Passkey?{" "}
+              <Link
+                href={`/passkey-login?source=tvos&pair=${encodeURIComponent(pairCode)}&mode=passkey`}
+                className="text-emerald-500 hover:text-emerald-400"
+              >
+                Zaloguj się Passkey
+              </Link>
+            </p>
+          ) : null}
 
         </motion.div>
       </div>
