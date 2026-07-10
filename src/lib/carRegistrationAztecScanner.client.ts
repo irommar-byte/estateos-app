@@ -7,7 +7,7 @@ function buildAztecReader() {
   const hints = new Map<DecodeHintType, unknown>();
   hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.AZTEC]);
   hints.set(DecodeHintType.TRY_HARDER, true);
-  return new BrowserMultiFormatReader(hints, 220);
+  return new BrowserMultiFormatReader(hints, 180);
 }
 
 export type StartAztecVideoScanOptions = {
@@ -38,12 +38,38 @@ export function startAztecVideoScan({
     }
   };
 
-  onPhase("starting");
+  const handleResult = (result: { getText: () => string } | undefined) => {
+    if (stopped || decodeInFlight) return;
+
+    const payload = result?.getText()?.trim() || "";
+    if (!payload) {
+      onPhase("searching");
+      return;
+    }
+
+    if (payload === lastPayload) {
+      stableHits += 1;
+    } else {
+      lastPayload = payload;
+      stableHits = 1;
+    }
+
+    if (stableHits < stableHitsRequired) {
+      onPhase("hold");
+      return;
+    }
+
+    decodeInFlight = true;
+    onPhase("decoding");
+    stop();
+    onPayload(payload);
+  };
+
+  onPhase("searching");
 
   void reader
-    .decodeFromVideoDevice(null, video, (result, error) => {
+    .decodeFromVideoElementContinuously(video, (result, error) => {
       if (stopped || decodeInFlight) return;
-
       if (error) {
         if (stableHits > 0) {
           stableHits = 0;
@@ -52,36 +78,55 @@ export function startAztecVideoScan({
         onPhase("searching");
         return;
       }
-
-      const payload = result?.getText()?.trim() || "";
-      if (!payload) {
-        onPhase("searching");
-        return;
-      }
-
-      if (payload === lastPayload) {
-        stableHits += 1;
-      } else {
-        lastPayload = payload;
-        stableHits = 1;
-      }
-
-      if (stableHits < stableHitsRequired) {
-        onPhase("hold");
-        return;
-      }
-
-      decodeInFlight = true;
-      onPhase("decoding");
-      stop();
-      onPayload(payload);
-    })
-    .then(() => {
-      if (!stopped) onPhase("searching");
+      handleResult(result);
     })
     .catch(() => {
       if (!stopped) onPhase("position");
     });
 
   return stop;
+}
+
+export async function requestCameraStream(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Przeglądarka nie obsługuje aparatu. Wgraj zdjęcie dowodu.");
+  }
+
+  const attempts: MediaStreamConstraints[] = [
+    {
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+      audio: false,
+    },
+    {
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+      },
+      audio: false,
+    },
+    { video: { facingMode: "user", width: { ideal: 1280 } }, audio: false },
+    { video: true, audio: false },
+  ];
+
+  let lastError: unknown = null;
+  for (const constraints of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  const name = lastError instanceof DOMException ? lastError.name : "";
+  if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+    throw new Error("Brak zgody na aparat. Zezwól w przeglądarce lub wgraj zdjęcie dowodu.");
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    throw new Error("Nie znaleziono aparatu na tym urządzeniu. Wgraj zdjęcie dowodu.");
+  }
+  throw new Error("Nie udało się uruchomić aparatu. Wgraj zdjęcie dowodu.");
 }
