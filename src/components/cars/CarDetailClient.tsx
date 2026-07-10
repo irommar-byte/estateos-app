@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Calendar, Fuel, Gauge, MapPin, Settings2, Car as CarIcon, Cog } from "lucide-react";
+import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
 import CarInquiryPanel from "@/components/cars/CarInquiryPanel";
 import CarOwnerActions from "@/components/cars/CarOwnerActions";
 import CarVehicleChecksClient from "@/components/cars/CarVehicleChecksClient";
@@ -40,6 +41,9 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
           <div className="relative aspect-[16/8]">
             <Image src={imageSrc} alt={car.title} fill className="object-cover" priority unoptimized />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+            <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
+              <CarFavoriteButton carId={car.id} />
+            </div>
             <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-300">
                 {car.make} · {car.model} · {car.year}
@@ -96,7 +100,14 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
                 </div>
               </div>
 
+              {car.description?.trim() ? (
               <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-5">
+                <p className="text-sm font-semibold">Opis</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--eos-muted)]">{car.description.trim()}</p>
+              </div>
+            ) : null}
+
+            <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-5">
                 <p className="text-sm font-semibold">O ogłoszeniu</p>
                 <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">
                   Ogłoszenie opublikowane w module EstateOS™Car — jednym ekosystemie z nieruchomościami EstateOS™Home.

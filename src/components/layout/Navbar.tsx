@@ -178,7 +178,11 @@ export default function Navbar() {
                 <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>E</span>state
                 <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>OS</span>
                 <sup className="eos-nav-wordmark-tm">TM</sup>
-                {isCar ? <span className="ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Car</span> : null}
+                {isCar ? (
+                  <span className="ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Car</span>
+                ) : (
+                  <span className="ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Home</span>
+                )}
               </span>
             </span>
           </button>
