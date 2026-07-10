@@ -4,6 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import CarCatalogFields from "@/components/cars/CarCatalogFields";
+import CarCityMapPicker from "@/components/cars/CarCityMapPicker";
+import CarFormattedNumberInput from "@/components/cars/CarFormattedNumberInput";
 import CarRegistrationScanGate, {
   highlightClass,
   missingFieldsBanner,
@@ -39,6 +41,9 @@ export type CarFormState = CarVehicleDocsFormState & {
   doorCountSlug: string;
   pricePln: string;
   city: string;
+  cityLat: number | null;
+  cityLng: number | null;
+  localityCountry: string;
   imageUrl: string;
 };
 
@@ -68,6 +73,9 @@ export const initialCarForm: CarFormState = {
   doorCountSlug: "",
   pricePln: "",
   city: "",
+  cityLat: null,
+  cityLng: null,
+  localityCountry: "Polska",
   imageUrl: "",
   vin: "",
   registrationNumber: "",
@@ -101,6 +109,9 @@ function toPayload(form: CarFormState) {
     doorCount: Number.isFinite(doorCount) && doorCount > 0 ? doorCount : null,
     pricePln: Number(form.pricePln),
     city: form.city.trim(),
+    cityLat: form.cityLat,
+    cityLng: form.cityLng,
+    localityCountry: form.localityCountry.trim() || "Polska",
     imageUrl: form.imageUrl.trim(),
     vin: form.vin.trim().toUpperCase(),
     registrationNumber: form.registrationNumber.trim().toUpperCase(),
@@ -208,6 +219,11 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       setSubmitting(false);
       return;
     }
+    if (form.cityLat == null || form.cityLng == null) {
+      setError("Ustaw miejscowość na mapie — przeciągnij mapę lub wybierz z wyszukiwarki.");
+      setSubmitting(false);
+      return;
+    }
     if (!payload.fuelType) {
       setError("Wybierz rodzaj paliwa z katalogu.");
       setSubmitting(false);
@@ -304,37 +320,45 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="grid gap-1.5 text-sm">
           <span className="text-[var(--eos-muted)]">Przebieg (km)</span>
-          <input
-            type="number"
+          <CarFormattedNumberInput
             value={form.mileageKm}
-            onChange={(e) => setField("mileageKm", e.target.value)}
+            onChange={(digits) => setField("mileageKm", digits)}
             className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("mileageKm"))}`}
-            placeholder="58000"
+            placeholder="58 000"
           />
         </label>
         <label className="grid gap-1.5 text-sm">
           <span className="text-[var(--eos-muted)]">Cena (PLN)</span>
-          <input
-            type="number"
+          <CarFormattedNumberInput
             value={form.pricePln}
-            onChange={(e) => setField("pricePln", e.target.value)}
+            onChange={(digits) => setField("pricePln", digits)}
             className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("pricePln"))}`}
-            placeholder="319000"
+            placeholder="319 000"
             required
           />
         </label>
       </div>
 
-      <label className="grid gap-1.5 text-sm">
-        <span className="text-[var(--eos-muted)]">Miejscowość</span>
-        <input
-          value={form.city}
-          onChange={(e) => setField("city", e.target.value)}
-          className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("city"))}`}
-          placeholder="np. Warszawa Mokotów"
-          required
-        />
-      </label>
+      <CarCityMapPicker
+        city={form.city}
+        cityLat={form.cityLat}
+        cityLng={form.cityLng}
+        localityCountry={form.localityCountry}
+        highlighted={isHighlighted("city")}
+        onChange={(selection) => {
+          setForm((prev) => {
+            const next = {
+              ...prev,
+              city: selection.city,
+              cityLat: selection.cityLat,
+              cityLng: selection.cityLng,
+              localityCountry: selection.localityCountry || prev.localityCountry,
+            };
+            refreshHighlights(next);
+            return next;
+          });
+        }}
+      />
 
       <div
         className={`grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 ${highlightClass(isHighlighted("images"))}`}
