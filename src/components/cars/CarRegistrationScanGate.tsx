@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CarFormState } from "@/components/cars/CarListingForm";
 import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
 
@@ -26,7 +26,14 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill }: Car
   const [stream, setStream] = useState<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const scanLockRef = useRef(false);
+
+  useEffect(() => {
+    if (!cameraOpen || !stream || !videoRef.current) return;
+    videoRef.current.srcObject = stream;
+    void videoRef.current.play().catch(() => {
+      setError("Nie udało się uruchomić podglądu aparatu.");
+    });
+  }, [cameraOpen, stream]);
 
   if (!open) return null;
 
@@ -40,26 +47,6 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill }: Car
       ? (data.missingFields as CarListingMissingFieldKey[])
       : [];
     onPrefill(prefill, missingFields);
-  };
-
-  const decodePayload = async (aztecPayload: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/cars/decode-registration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ aztecPayload }),
-      });
-      await applyResponse(response);
-      stopCamera();
-    } catch (decodeError) {
-      setError(decodeError instanceof Error ? decodeError.message : "Nie udało się odczytać dowodu.");
-    } finally {
-      setLoading(false);
-      scanLockRef.current = false;
-    }
   };
 
   const decodeImageFile = async (file: File) => {
@@ -76,7 +63,11 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill }: Car
       await applyResponse(response);
       stopCamera();
     } catch (decodeError) {
-      setError(decodeError instanceof Error ? decodeError.message : "Nie udało się odczytać zdjęcia dowodu.");
+      setError(
+        decodeError instanceof Error
+          ? decodeError.message
+          : "Nie udało się odczytać kodu Aztec — ustaw dowód w kadrze i spróbuj ponownie.",
+      );
     } finally {
       setLoading(false);
     }
@@ -99,33 +90,45 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill }: Car
       });
       setStream(media);
       setCameraOpen(true);
-      scanLockRef.current = false;
-      requestAnimationFrame(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = media;
-          void videoRef.current.play();
-        }
-      });
     } catch {
       setError("Brak dostępu do aparatu. Możesz wgrać zdjęcie dowodu.");
     }
   };
 
-  const scanFrame = async () => {
-    if (!videoRef.current || scanLockRef.current || loading) return;
-    scanLockRef.current = true;
-    try {
-      const { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } = await import("@zxing/library");
-      const hints = new Map();
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.AZTEC]);
-      const reader = new BrowserMultiFormatReader(hints);
-      const result = await reader.decodeFromVideoElement(videoRef.current);
-      const payload = result.getText();
-      if (payload) await decodePayload(payload);
-      else scanLockRef.current = false;
-    } catch {
-      scanLockRef.current = false;
+  const captureFrameFile = async (): Promise<File | null> => {
+    const video = videoRef.current;
+    if (!video) return null;
+    if (video.readyState < 2 || video.videoWidth <= 0 || video.videoHeight <= 0) {
+      setError("Kamera jeszcze się ładuje — poczekaj chwilę i spróbuj ponownie.");
+      return null;
     }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      setError("Nie udało się przechwycić obrazu z aparatu.");
+      return null;
+    }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((value) => resolve(value), "image/jpeg", 0.95);
+    });
+    if (!blob) {
+      setError("Nie udało się przechwycić obrazu z aparatu.");
+      return null;
+    }
+    return new File([blob], "registration-scan.jpg", { type: "image/jpeg" });
+  };
+
+  const scanFrame = async () => {
+    if (loading) return;
+    setError(null);
+    const file = await captureFrameFile();
+    if (!file) return;
+    await decodeImageFile(file);
   };
 
   return (
@@ -151,6 +154,9 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill }: Car
             >
               {loading ? "Odczytywanie..." : "Skanuj klatkę"}
             </button>
+            <p className="text-center text-[11px] text-[var(--eos-muted)]">
+              Ustaw kod Aztec z prawej strony dowodu w środku kadru.
+            </p>
             <button
               type="button"
               onClick={stopCamera}
