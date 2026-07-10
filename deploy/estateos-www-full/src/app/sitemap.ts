@@ -9,6 +9,8 @@ const STATIC_PATHS = [
   '/dla-prasy',
   '/dolacz',
   '/oferty',
+  '/cars',
+  '/cars/dodaj',
   '/odkryj-mape',
   '/cennik',
   '/agencje',

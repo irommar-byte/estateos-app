@@ -126,6 +126,227 @@ function isVoeEmbedHost(url) {
   }
 }
 
+const CDA_HD_PLAYER_HOSTS =
+  /(?:^|\.)player\.cda-hd\.(?:co|cc)|(?:^|\.)player\.cvary\.org|(?:^|\.)divxplayer\.ml|(?:^|\.)metaverseid\.tk|(?:^|\.)akpdm\.top$/i;
+
+export function isCdaHdPlayerHost(url) {
+  try {
+    return CDA_HD_PLAYER_HOSTS.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function cdaHdPlayerPageUrl(embedUrl) {
+  try {
+    const u = new URL(embedUrl);
+    const vid = u.searchParams.get("vid");
+    if (vid) return `${u.origin}/e/${vid}`;
+    const m = u.pathname.match(/\/(?:e|f)\/([^/?#]+)/i);
+    if (m?.[1] && m[1] !== "yyy") return `${u.origin}/e/${m[1]}`;
+  } catch {
+    /* ignore */
+  }
+  return embedUrl;
+}
+
+function stripHtmlComments(html) {
+  return (html || "").replace(/<!--[\s\S]*?-->/g, "");
+}
+
+/** Port of player.cda-hd.co `un()` — decodes obf_link from get_md5.php. */
+function cdaHdUnescapeLink(raw) {
+  if (!raw) return "";
+  let text = raw;
+  if (!text.includes(".")) {
+    text = text.slice(1);
+    let decoded = "";
+    for (let i = 0; i < text.length; i += 3) {
+      decoded += `%u0${text.slice(i, i + 3)}`;
+    }
+    text = decodeURIComponent(decoded);
+  }
+  return text;
+}
+
+function pickCdaHdVar(html, name) {
+  const patterns = [
+    new RegExp(`${name}\\s*=\\s*"([^"]+)"`, "i"),
+    new RegExp(`${name}\\s*=\\s*'([^']+)'`, "i"),
+    new RegExp(`'${name}':\\s*'([^']+)'`, "i"),
+  ];
+  for (const re of patterns) {
+    const m = html.match(re);
+    if (m?.[1]) return m[1];
+  }
+  return "";
+}
+
+function curlPostJson(url, body, { cookieJar, referer, origin } = {}) {
+  const args = ["-sL", "-A", UA, "--max-time", "45", "-H", "Content-Type: application/json"];
+  if (cookieJar) {
+    args.push("-c", cookieJar, "-b", cookieJar);
+  }
+  if (referer) {
+    args.push("-H", `Referer: ${referer}`);
+  }
+  if (origin) {
+    args.push("-H", `Origin: ${origin}`);
+  }
+  args.push("-H", "X-Requested-With: XMLHttpRequest");
+  args.push("-X", "POST", "-d", JSON.stringify(body), url);
+  const result = spawnSync("curl", args, { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 });
+  if (result.error || result.status !== 0) return null;
+  const raw = (result.stdout || "").trim();
+  if (!raw || raw === "0.00" || raw === "0.1") return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function pickStreamFromCdaHdMd5(data, playUrl) {
+  if (!data?.obf_link) return null;
+  const decoded = cdaHdUnescapeLink(data.obf_link);
+  if (!decoded || /127\.0\.0\.1|no_video|bipbop/i.test(decoded)) return null;
+  let ext = /\.m3u8/i.test(decoded) ? "" : ".mp4.m3u8";
+  if (decoded.includes(".mp4.m3u8")) ext = "";
+  const streamUrl = normalizeUrl(`https:${decoded}${ext}`, playUrl);
+  if (!/^https?:\/\//i.test(streamUrl)) return null;
+  return {
+    url: streamUrl,
+    type: "hls",
+    referer: playUrl,
+  };
+}
+
+function probeCdaHdStreamUrl(streamUrl, referer) {
+  if (!streamUrl) return false;
+  const args = ["-sS", "-L", "-k", "-A", UA, "--max-time", "20"];
+  if (referer) args.push("-H", `Referer: ${referer}`);
+  args.push("-r", "0-2047", streamUrl);
+  const result = spawnSync("curl", args, { encoding: "utf8", maxBuffer: 4096 });
+  if (result.error || result.status !== 0) return false;
+  const body = (result.stdout || "").trim();
+  if (/^#EXTM3U/m.test(body)) return true;
+  return /\.m3u8|#EXT-X-/i.test(body);
+}
+
+/** Live stream via /player/get_md5.php (same flow as the browser player). */
+function resolveCdaHdPlayerViaMd5(playUrl, html, options = {}) {
+  const pageReferer = options.referer || "https://cda-hd.cc/";
+  const origin = "https://player.cda-hd.co";
+  const tmpDir = mkdtempSync(join(tmpdir(), "cda-hd-"));
+  const cookiePath = join(tmpDir, "cookies.txt");
+  try {
+    curlText(playUrl, {
+      cookieJar: cookiePath,
+      referer: pageReferer,
+    });
+
+    const videokeyorig = pickCdaHdVar(html, "videokeyorig");
+    const videoid = pickCdaHdVar(html, "videoid");
+    const imageVideokey = pickCdaHdVar(html, "videokey") || videokeyorig;
+    const adbn = pickCdaHdVar(html, "adbn") || pickCdaHdVar(html, "userid");
+    const secure = pickCdaHdVar(html, "secure") || "0";
+    if (!videokeyorig || !videoid) return null;
+
+    let clickHash = "";
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const imageData = curlPostJson(
+        `${new URL(playUrl).origin}/player/get_player_image.php`,
+        { videoid, videokey: imageVideokey, width: 1280, height: 720 },
+        { cookieJar: cookiePath, referer: playUrl, origin }
+      );
+      if (imageData?.hash_image) {
+        clickHash = imageData.hash_image;
+        break;
+      }
+      if (imageData?.try_again === "1" || imageData?.try_again === 1) {
+        if (attempt < 5) spawnSync("sleep", ["2"]);
+        continue;
+      }
+      if (attempt < 5) spawnSync("sleep", ["1"]);
+    }
+    if (!clickHash) {
+      clickHash = options.clickHash || pickCdaHdVar(html, "hash") || "f4e9d";
+    }
+
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const md5Data = curlPostJson(
+        `${new URL(playUrl).origin}/player/get_md5.php`,
+        {
+          htoken: "",
+          sh: pickCdaHdVar(html, "shh") || "",
+          ver: "4",
+          secure,
+          adb: adbn,
+          v: encodeURIComponent(videokeyorig),
+          token: "",
+          gt: pickCdaHdVar(html, "gtr") || "",
+          embed_from: pickCdaHdVar(html, "embedfrm") || "0",
+          wasmcheck: attempt,
+          adscore: "1",
+          click_hash: encodeURIComponent(clickHash),
+          clickx: "640",
+          clicky: "360",
+        },
+        { cookieJar: cookiePath, referer: playUrl, origin }
+      );
+      const stream = pickStreamFromCdaHdMd5(md5Data, playUrl);
+      if (stream) return stream;
+      if (md5Data?.["407"] === "1" || md5Data?.["407"] === 1) {
+        const err = new Error(
+          "CDA-HD: film niedostępny do odtworzenia (źródło usunięte lub wygasło, kod 407)"
+        );
+        err.code = "CDAHD_UNAVAILABLE";
+        throw err;
+      }
+      if (md5Data?.try_again !== "1" && md5Data?.try_again !== 1) break;
+      spawnSync("sleep", ["2"]);
+    }
+    return null;
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+function pickStaticCdaHdStream(html, playUrl) {
+  const active = stripHtmlComments(html);
+  const m3u8 =
+    active.match(/src:\s*['"](https?:\/\/[^'"]+\.m3u8[^'"]*)['"]/i)?.[1] ||
+    active.match(/(https?:\/\/[^"'\s<>]+\.m3u8[^"'\s<>]*)/i)?.[1];
+  const mp4 =
+    active.match(/src:\s*['"](https?:\/\/[^'"]+\.mp4[^'"]*)['"]/i)?.[1] ||
+    active.match(/(https?:\/\/[^"'\s<>]+\.mp4[^"'\s<>]*)/i)?.[1];
+  const streamUrl = m3u8 || mp4;
+  if (!streamUrl) return null;
+  return {
+    url: normalizeUrl(streamUrl, playUrl),
+    type: /\.m3u8/i.test(streamUrl) ? "hls" : "mp4",
+    referer: playUrl,
+  };
+}
+
+/** CDA-HD uses player.cda-hd.co (Video.js + HLS), not VOE/Dood. */
+export function resolveCdaHdPlayerPage(pageUrl, options = {}) {
+  const referer = options.referer || "https://cda-hd.cc/";
+  const playUrl = cdaHdPlayerPageUrl(pageUrl);
+  const html = curlText(playUrl, { referer });
+  if (!html) return null;
+
+  const candidates = [
+    resolveCdaHdPlayerViaMd5(playUrl, html, options),
+    pickStaticCdaHdStream(html, playUrl),
+  ].filter(Boolean);
+
+  for (const stream of candidates) {
+    if (probeCdaHdStreamUrl(stream.url, stream.referer)) return stream;
+  }
+  return null;
+}
+
 function looksLikeDoodHtml(html) {
   return /pass_md5\//i.test(html || "");
 }
@@ -241,6 +462,10 @@ async function fetchVoeHtml(startUrl) {
 export async function resolveVoePage(startUrl, depth = 0) {
   if (depth > 5) return null;
 
+  if (isCdaHdPlayerHost(startUrl)) {
+    return resolveCdaHdPlayerPage(startUrl);
+  }
+
   if (!isVoeEmbedHost(startUrl) && isDoodHost(startUrl)) {
     const dood = resolveDoodPage(startUrl);
     if (dood) return dood;
@@ -303,6 +528,43 @@ function parsePageDuration(html) {
   return 0;
 }
 
+/** Nowe strony CDA-HD: wbudowany player.cda-hd.co zamiast linków w <ul class="enlaces">. */
+function extractCdaHdInlineEmbeds(html, pageUrl) {
+  const out = [];
+  const seen = new Set();
+  const hashScriptRe =
+    /<script[^>]+src=["'](https?:\/\/player\.cda-hd\.[^"']+\/player\/hash\.php\?hash=([a-zA-Z0-9]+))["']/gi;
+  let m;
+  while ((m = hashScriptRe.exec(html))) {
+    const vid = m[2];
+    const playerUrl = `https://player.cda-hd.co/e/${vid}`;
+    if (seen.has(playerUrl)) continue;
+    seen.add(playerUrl);
+    out.push({
+      url: playerUrl,
+      label: "player.cda-hd.co",
+      hashScriptUrl: normalizeUrl(m[1], pageUrl),
+    });
+  }
+  return out;
+}
+
+function fetchCdaHdHashFromScript(hashScriptUrl, referer) {
+  const raw = curlText(hashScriptUrl, {
+    referer,
+    extraHeaders: ["Origin: https://cda-hd.cc"],
+  });
+  if (!raw) return null;
+  const escaped = raw.match(/unescape\(\s*"([^"]+)"/i)?.[1];
+  if (!escaped) return null;
+  try {
+    const decoded = decodeURIComponent(escaped);
+    return decoded.match(/hash_from['"]\s*:\s*['"]([^'"]+)/i)?.[1]?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveMirrorPage(pageUrl) {
   const res = await fetch(pageUrl, {
     headers: { "User-Agent": UA, Accept: "text/html,*/*" },
@@ -320,15 +582,13 @@ export async function resolveMirrorPage(pageUrl) {
   const thumbnail =
     html.match(/<meta property="og:image" content="([^"]+)"/i)?.[1]?.trim() || "";
 
-  const iframeRe = /<iframe[^>]+src=["']([^"']+)["']/gi;
   const embeds = [];
-  let m;
-  while ((m = iframeRe.exec(html))) {
-    const embedUrl = normalizeUrl(m[1], pageUrl);
+  const addEmbed = (embedUrl) => {
+    if (!embedUrl) return;
     try {
-      if (SKIP_IFRAME_HOSTS.test(new URL(embedUrl).hostname)) continue;
+      if (SKIP_IFRAME_HOSTS.test(new URL(embedUrl).hostname)) return;
     } catch {
-      continue;
+      return;
     }
     if (!embeds.some((e) => e.url === embedUrl)) {
       embeds.push({
@@ -336,21 +596,63 @@ export async function resolveMirrorPage(pageUrl) {
         label: new URL(embedUrl).hostname.replace(/^www\./, ""),
       });
     }
+  };
+
+  const enlacesRe = /<ul class="enlaces">([\s\S]*?)<\/ul>/gi;
+  let enlacesBlock;
+  while ((enlacesBlock = enlacesRe.exec(html))) {
+    const hrefRe = /<a\s+href="(https?:\/\/[^"]+)"[^>]*>/gi;
+    let hrefMatch;
+    while ((hrefMatch = hrefRe.exec(enlacesBlock[1]))) {
+      addEmbed(normalizeUrl(hrefMatch[1], pageUrl));
+    }
+  }
+
+  const iframeRe = /<iframe[^>]+src=["']([^"']+)["']/gi;
+  let m;
+  while ((m = iframeRe.exec(html))) {
+    addEmbed(normalizeUrl(m[1], pageUrl));
+  }
+
+  for (const inline of extractCdaHdInlineEmbeds(html, pageUrl)) {
+    if (!embeds.some((e) => e.url === inline.url)) {
+      embeds.push(inline);
+    }
   }
 
   let stream = null;
+  let playbackError = null;
   for (const embed of embeds) {
     try {
-      stream = await resolveVoePage(embed.url);
+      if (isCdaHdPlayerHost(embed.url)) {
+        const clickHash = embed.hashScriptUrl
+          ? fetchCdaHdHashFromScript(embed.hashScriptUrl, pageUrl)
+          : null;
+        stream = resolveCdaHdPlayerPage(embed.url, {
+          referer: pageUrl,
+          clickHash: clickHash || undefined,
+        });
+      } else {
+        stream = await resolveVoePage(embed.url);
+      }
       if (stream) {
         stream.embedUrl = embed.url;
         stream.label = embed.label;
         break;
       }
-    } catch {
-      /* try next embed */
+    } catch (err) {
+      if (err?.code === "CDAHD_UNAVAILABLE") playbackError = err;
     }
   }
 
-  return { title, thumbnail, embeds, stream, webpageUrl: pageUrl, duration: parsePageDuration(html) };
+  return {
+    title,
+    thumbnail,
+    embeds,
+    stream,
+    playbackError,
+    webpageUrl: pageUrl,
+    duration: parsePageDuration(html),
+    html,
+  };
 }

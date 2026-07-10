@@ -10,9 +10,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var favoriteURLs: Set<String> = []
     @Published private(set) var musicFolders: [MusicFolder] = []
     @Published private(set) var musicTracks: [MusicTrack] = []
+    @Published private(set) var movieDownloads: [MovieDownload] = []
 
     let api = MoviesAPIClient()
     let musicPlayback = MusicPlaybackService()
+    let movieDownloadService = MovieDownloadService()
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -22,6 +24,13 @@ final class AppModel: ObservableObject {
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+        movieDownloadService.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+        movieDownloadService.attach(app: self)
     }
 
     func bootstrap() async {
@@ -34,6 +43,7 @@ final class AppModel: ObservableObject {
                 _ = try await api.me()
                 await refreshFavorites()
                 await refreshMusicLibrary()
+                await refreshMovieDownloads()
             } catch {
                 logout()
             }
@@ -45,16 +55,37 @@ final class AppModel: ObservableObject {
         self.session = session
         await refreshFavorites()
         await refreshMusicLibrary()
+        await refreshMovieDownloads()
     }
 
     func logout() {
         musicPlayback.stopPlayback()
+        movieDownloadService.cancelBatch()
         SessionStore.clear()
         api.setToken(nil)
         session = nil
         favoriteURLs = []
         musicFolders = []
         musicTracks = []
+        movieDownloads = []
+    }
+
+    func refreshMovieDownloads() async {
+        guard session != nil else { return }
+        do {
+            let response = try await api.fetchMovieDownloads()
+            movieDownloads = response.downloads.filter(\.isDownloaded)
+        } catch {
+            movieDownloads = []
+        }
+    }
+
+    func movieDownloadJobId(for url: String) -> String? {
+        movieDownloads.first { $0.url == url && $0.isDownloaded }?.downloadJobId
+    }
+
+    func isMovieDownloaded(url: String) -> Bool {
+        movieDownloadJobId(for: url) != nil
     }
 
     func refreshMusicLibrary() async {

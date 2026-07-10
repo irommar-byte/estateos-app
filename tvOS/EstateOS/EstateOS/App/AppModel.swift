@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(TVServices)
+import TVServices
+#endif
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -55,6 +58,9 @@ final class AppModel: ObservableObject {
     func setTopShelfStyle(_ style: TopShelfPresentationStyle) {
         topShelfStyle = style
         TvPreferences.topShelfStyle = style
+#if canImport(TVServices)
+        TVTopShelfContentProvider.topShelfContentDidChange()
+#endif
     }
 
     func logout() {

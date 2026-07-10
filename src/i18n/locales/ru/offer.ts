@@ -329,6 +329,12 @@ export const offer = {
       enlarge: 'Увеличить план',
       emptyTitle: 'План недоступен',
       emptySubtitle: 'К этому объявлению пока не прикреплён план помещения.',
+      walkthrough3d: '3D-тур',
+      walkthrough3dHint: 'Пройдите по квартире в реальном масштабе (iPhone / iPad).',
+      scannedPlan: 'План со скана LiDAR',
+      roomsCount: '{{count}} комн.',
+      exportPdf: 'Экспорт PDF-плана',
+      exportPdfFailed: 'Не удалось создать PDF-файл.',
     },
     offerId: 'Идентификатор объявления: {{id}}',
     profile: {
@@ -412,6 +418,7 @@ export const offer = {
       plotArea: 'размер участка',
       isFurnished: 'меблированный',
       images: 'фотографии',
+      floorPlan: 'план этажа',
     },
     gallery: {
       sectionTitle: 'ФОТОГАЛЕРЕЯ',
@@ -421,6 +428,16 @@ export const offer = {
       cover: 'Крышка',
       footer:
         'We show the first photo in Radar results and as the public listing cover. Reorder until the first frame is perfect.',
+    },
+    floorPlan: {
+      sectionTitle: 'ПЛАН ЭТАЖА',
+      upload: 'Добавить или изменить план',
+      replace: 'Изменить план',
+      remove: 'Удалить план',
+      hint: 'План повышает доверие — покупатели видят планировку до просмотра.',
+      scan: 'Сканировать квартиру (LiDAR)',
+      scanHint: 'Нативный скан Apple RoomPlan — план 2D с размерами и 3D-тур.',
+      scanned: 'План со скана LiDAR',
     },
     mainInfo: {
       sectionTitle: 'ОСНОВНАЯ ИНФОРМАЦИЯ',

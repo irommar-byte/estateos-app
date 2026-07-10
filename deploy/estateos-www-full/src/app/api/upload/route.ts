@@ -5,6 +5,7 @@ import {
   MAX_OFFER_FILE_BYTES,
   releaseOfferUploadLock,
   saveOfferGalleryOrFloorplan,
+  saveOfferFloorPlan3d,
 } from '@/lib/upload/offerMediaUpload';
 import { resolveUploaderUserId } from '@/lib/upload/resolveUploader';
 
@@ -66,6 +67,8 @@ export async function POST(req: Request) {
 
   const file = formData.get('file') as File | null;
   const isFloorPlan = String(formData.get('isFloorPlan') || '') === 'true';
+  const isFloorPlan3d = String(formData.get('isFloorPlan3d') || '') === 'true';
+  const scanMetaJson = String(formData.get('floorPlanScanMeta') || '').trim() || null;
 
   if (!file || typeof file.arrayBuffer !== 'function') {
     return NextResponse.json({ error: 'Brak pliku.' }, { status: 400 });
@@ -80,6 +83,26 @@ export async function POST(req: Request) {
   try {
     const bytes = await file.arrayBuffer();
     const fileBuffer = Buffer.from(bytes);
+    const lowerName = String((file as File & { name?: string }).name || '').toLowerCase();
+    const mimeType = String(file.type || '');
+    const isUsdz =
+      isFloorPlan3d ||
+      mimeType === 'model/vnd.usdz+zip' ||
+      lowerName.endsWith('.usdz');
+
+    if (isUsdz) {
+      const model = await saveOfferFloorPlan3d({
+        offerId,
+        ownerUserId: userId,
+        fileBuffer,
+        originalFileName: lowerName,
+        scanMetaJson,
+      });
+      if (!model.ok) {
+        return NextResponse.json({ error: model.error }, { status: model.status });
+      }
+      return NextResponse.json({ url: model.url, success: true });
+    }
 
     const result = await saveOfferGalleryOrFloorplan({
       offerId,

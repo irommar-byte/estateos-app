@@ -733,6 +733,10 @@ export async function updateOffer(body: any) {
       }),
       ...(body.videoUrl !== undefined && { videoUrl: body.videoUrl || null }),
       ...(body.floorPlanUrl !== undefined && { floorPlanUrl: body.floorPlanUrl || null }),
+      ...(body.floorPlan3dUrl !== undefined && { floorPlan3dUrl: body.floorPlan3dUrl || null }),
+      ...(body.floorPlanScanMeta !== undefined && {
+        floorPlanScanMeta: body.floorPlanScanMeta ? String(body.floorPlanScanMeta) : null,
+      }),
       ...(body.hasBalcony !== undefined && { hasBalcony: !!body.hasBalcony }),
       ...(body.hasElevator !== undefined && { hasElevator: !!body.hasElevator }),
       ...(body.hasStorage !== undefined && { hasStorage: !!body.hasStorage }),

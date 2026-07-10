@@ -85,7 +85,10 @@ const initialDraft = {
   /** Rozmiary plików (bajty) wg URI — suma MB i limit bez „znikania” po nawigacji */
   imageByteSizes: {} as Record<string, number>,
   videoUrl: '',
-  floorPlanUrl: ''
+  floorPlanUrl: '',
+  floorPlan: null as string | null,
+  floorPlan3d: null as string | null,
+  floorPlanScanMeta: null as string | null,
 };
 
 export const useOfferStore = create<OfferStore>((set) => ({

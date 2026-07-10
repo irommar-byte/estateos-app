@@ -14,8 +14,9 @@ struct FavoritesView: View {
     @State private var latestItems: [SearchResultItem] = []
     @State private var isLoading = true
     @State private var loadError: String?
-    @State private var selectedDetail: MediaSelection?
     @State private var seriesInfo: VideoInfoResponse?
+    @State private var selectedDetail: MediaSelection?
+    @State private var showLatestCatalog = false
     @State private var reloadToken = UUID()
     @State private var openingSeries = false
     @State private var gridColumnCount = 4
@@ -28,26 +29,26 @@ struct FavoritesView: View {
 
     var body: some View {
         Group {
-            if let seriesInfo {
-                SeriesEpisodesView(
-                    info: seriesInfo,
-                    backLabel: "Wróć do ulubionych",
-                    navigationTab: navigationTab,
-                    focusedTab: focusedTab
-                ) {
-                    self.seriesInfo = nil
+            if let series = seriesInfo {
+                SeriesEpisodesView(info: series, backLabel: "Wróć do ulubionych") {
+                    seriesInfo = nil
                 }
+                .environmentObject(app)
             } else {
                 favoritesList
+                    .fullScreenCover(item: $selectedDetail) { detail in
+                        MediaDetailView(selection: detail) {
+                            Task { await openSeriesFromDetail(detail.url) }
+                        }
+                        .environmentObject(app)
+                    }
+                    .fullScreenCover(isPresented: $showLatestCatalog) {
+                        LatestCdaHdCatalogView()
+                            .environmentObject(app)
+                    }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .fullScreenCover(item: $selectedDetail) { detail in
-            MediaDetailView(selection: detail) {
-                Task { await openSeriesFromDetail(detail.url) }
-            }
-            .environmentObject(app)
-        }
         .task(id: reloadToken) { await load() }
         .onChange(of: app.session?.token) { _, _ in
             reloadToken = UUID()
@@ -94,7 +95,10 @@ struct FavoritesView: View {
                     LatestCdaHdRow(
                         focusedItemID: $latestFocusedID,
                         onSelect: { item in
-                            selectedDetail = MediaSelection(from: item)
+                            Task { await openLatestItem(item) }
+                        },
+                        onShowAll: {
+                            showLatestCatalog = true
                         },
                         onMoveUp: {
                             localFocus = .refresh
@@ -214,6 +218,7 @@ struct FavoritesView: View {
                 album: nil,
                 duration: item.duration,
                 quality: nil,
+                rating: nil,
                 isSerial: item.type == "series",
                 premium: item.detail?.localizedCaseInsensitiveContains("premium") == true ? true : nil,
                 previewUrl: nil,
@@ -239,7 +244,24 @@ struct FavoritesView: View {
         selectedDetail = selection
     }
 
+    private func openLatestItem(_ item: SearchResultItem) async {
+        if item.isSerial == true {
+            do {
+                let info = try await app.api.fetchInfo(url: item.url)
+                if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
+                    seriesInfo = info
+                    return
+                }
+            } catch {
+                loadError = error.localizedDescription
+                return
+            }
+        }
+        selectedDetail = MediaSelection(from: item)
+    }
+
     private func openSeriesFromDetail(_ url: String) async {
+        selectedDetail = nil
         do {
             let info = try await app.api.fetchInfo(url: url)
             if info.isPlaylist == true, !info.playableEpisodes.isEmpty {

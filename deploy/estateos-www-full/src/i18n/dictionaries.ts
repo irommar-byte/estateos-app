@@ -1131,8 +1131,8 @@ const pl: Dictionary = {
     sellerPanelLead: "Po utworzeniu klienta dodajesz ogłoszenie tak jak każdą inną ofertę w systemie.",
   },
   catalog: {
-    title: "Katalog",
-    subtitle: "EstateOS™",
+    title: "Profesjonalny katalog",
+    subtitle: "nieruchomości",
     lead: "Oferty na sprzedaż i wynajem — ten sam zestaw co na mapie i w aplikacji mobilnej.",
     loading: "Ładowanie katalogu",
     retry: "Spróbuj ponownie",

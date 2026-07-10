@@ -1,0 +1,52 @@
+# dependencies
+node_modules
+
+# builds/cache
+.next
+.expo
+dist
+build
+coverage
+*.log
+
+# native generated
+ios/Pods
+ios/build
+android/build
+
+# archives
+*.ipa
+*.zip
+*.tar
+*.gz
+
+# other projects/backups
+deploy
+estateos-server
+EstateOS
+video-downloader
+tvOS
+lineage-launcher
+
+# git
+.git
+
+# native android generated
+android/.gradle
+android/app/build
+
+# apple/xcode cache
+ios/DerivedData
+
+# env / generated
+.venv-l2
+.venv-i18n
+
+# IDE
+.idea
+
+# reports
+struktura_mac.txt
+
+# old app builds
+build-*.ipa

@@ -21,14 +21,23 @@ export type InsuranceCheckResult = {
   source?: 'CEPIK' | 'UFG' | 'CEPIK_FALLBACK';
 };
 
-export async function fetchVehicleHistoryReport(input: {
-  vin: string;
-  registrationNumber: string;
-  firstRegistrationDate: string;
-}): Promise<VehicleHistoryReport> {
+function authHeaders(token?: string | null): HeadersInit {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+export async function fetchVehicleHistoryReport(
+  input: {
+    vin: string;
+    registrationNumber: string;
+    firstRegistrationDate: string;
+  },
+  token?: string | null,
+): Promise<VehicleHistoryReport> {
   const response = await fetch(`${API_URL}/api/cars/vehicle-history`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(token),
     body: JSON.stringify(input),
   });
   const data = await response.json().catch(() => ({}));
@@ -38,15 +47,18 @@ export async function fetchVehicleHistoryReport(input: {
   return data.report as VehicleHistoryReport;
 }
 
-export async function checkCarInsurance(input: {
-  registrationNumber: string;
-  insuranceValidUntil?: string;
-  vin?: string;
-  firstRegistrationDate?: string;
-}): Promise<InsuranceCheckResult> {
+export async function checkCarInsurance(
+  input: {
+    registrationNumber: string;
+    insuranceValidUntil?: string;
+    vin?: string;
+    firstRegistrationDate?: string;
+  },
+  token?: string | null,
+): Promise<InsuranceCheckResult> {
   const response = await fetch(`${API_URL}/api/cars/insurance-check`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(token),
     body: JSON.stringify(input),
   });
   const data = await response.json().catch(() => ({}));

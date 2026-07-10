@@ -399,6 +399,9 @@ struct MusicTrackRow: View {
 
 struct MusicHeroBackdrop: View {
     let imageURL: URL?
+    var blurRadius: CGFloat = 64
+    var darkOverlayOpacity: CGFloat = 0.48
+    var imageScale: CGFloat = 1.15
     var cornerStyle: HeroCornerStyle = .rounded
 
     enum HeroCornerStyle {
@@ -413,9 +416,9 @@ struct MusicHeroBackdrop: View {
                     PosterRemoteImage(url: imageURL)
                         .frame(width: geo.size.width, height: geo.size.height)
                         .clipped()
-                        .blur(radius: 64, opaque: true)
-                        .scaleEffect(1.15)
-                        .overlay { Color.black.opacity(0.48) }
+                        .blur(radius: blurRadius, opaque: true)
+                        .scaleEffect(imageScale)
+                        .overlay { Color.black.opacity(darkOverlayOpacity) }
                 } else {
                     NostalgieAmbientBackground()
                 }
@@ -499,6 +502,73 @@ struct MusicFolderCard: View {
                 .frame(width: size, height: size)
                 .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
         } else {
+            folderPlaceholder(icon: "folder.fill")
+        }
+    }
+
+    @ViewBuilder
+    private func folderPlaceholder(icon: String) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            NostalgieTheme.accent.opacity(0.35),
+                            NostalgieTheme.accentSecondary.opacity(0.28),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: size, height: size)
+            Image(systemName: icon)
+                .font(NostalgieFont.rounded(size * 0.24, weight: .medium))
+                .foregroundStyle(.white.opacity(0.92))
+        }
+    }
+}
+
+struct DownloadedMediaFolderCard: View {
+    let folder: DownloadedMediaFolder
+    let action: () -> Void
+    var size: CGFloat = 168
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                cover
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(folder.title)
+                        .font(NostalgieFont.rowTitle)
+                        .lineLimit(2)
+                    Text(folder.countLabel)
+                        .font(NostalgieFont.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(width: size, height: 40, alignment: .topLeading)
+            }
+        }
+        .buttonStyle(MediaCardButtonStyle())
+    }
+
+    @ViewBuilder
+    private var cover: some View {
+        if let artworkURL = folder.artworkURL {
+            PosterRemoteImage(url: artworkURL)
+                .scaledToFill()
+                .frame(width: size, height: size * 1.45)
+                .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
+                .overlay(alignment: .bottomLeading) {
+                    if folder.isSeries {
+                        Text("SERIAL")
+                            .font(NostalgieFont.badge)
+                            .glassCapsule(paddingH: 8, paddingV: 4)
+                            .padding(8)
+                    }
+                }
+        } else {
             ZStack {
                 RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous)
                     .fill(
@@ -511,8 +581,8 @@ struct MusicFolderCard: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: size, height: size)
-                Image(systemName: "folder.fill")
+                    .frame(width: size, height: size * 1.45)
+                Image(systemName: folder.isSeries ? "tv.fill" : "film.fill")
                     .font(NostalgieFont.rounded(size * 0.24, weight: .medium))
                     .foregroundStyle(.white.opacity(0.92))
             }

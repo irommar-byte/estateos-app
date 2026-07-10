@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown, Globe2, MapPin, X } from "lucide-react";
-import { canonicalizeCity, canonicalizeDistrict, getStrictCities, normalizeText } from "@/lib/location/locationCatalog";
+import { canonicalizeCity, canonicalizeDistrict, normalizeText } from "@/lib/location/locationCatalog";
 import { countryDisplayName, flagEmojiFromCountryCode } from "@/lib/visitGeo";
 
 export type CatalogLocationFilterValue = {
@@ -121,7 +121,6 @@ export default function CatalogLocationFilter({
 
   const cities = useMemo(() => {
     const map = new Map<string, number>();
-    const strict = getStrictCities();
 
     for (const offer of offers) {
       const code = resolveOfferCountryCode(offer);
@@ -131,19 +130,14 @@ export default function CatalogLocationFilter({
       map.set(city, (map.get(city) ?? 0) + 1);
     }
 
-    if (!value.countryCode || value.countryCode === "PL") {
-      for (const city of strict) {
-        if (!map.has(city)) map.set(city, 0);
-      }
-    }
-
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, "pl"));
+    return [...map.entries()]
+      .filter(([, count]) => count > 0)
+      .sort(([a], [b]) => a.localeCompare(b, "pl"));
   }, [offers, value.countryCode]);
 
   const districts = useMemo(() => {
     if (!value.city) return [] as Array<[string, number]>;
 
-    const strict = strictCityDistricts[value.city] || [];
     const map = new Map<string, number>();
 
     for (const offer of offers) {
@@ -155,13 +149,9 @@ export default function CatalogLocationFilter({
       if (district) map.set(district, (map.get(district) ?? 0) + 1);
     }
 
-    if (strict.length) {
-      for (const district of strict) {
-        if (!map.has(district)) map.set(district, 0);
-      }
-    }
-
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, "pl"));
+    return [...map.entries()]
+      .filter(([, count]) => count > 0)
+      .sort(([a], [b]) => a.localeCompare(b, "pl"));
   }, [offers, strictCityDistricts, value.city, value.countryCode]);
 
   const activeMatchCount = useMemo(

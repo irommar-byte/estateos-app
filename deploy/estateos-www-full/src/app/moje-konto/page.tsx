@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
 export default function AccountRedirect() {
-  redirect('/moje-konto/crm');
+  redirect('/moje-konto/ogloszenia');
 }

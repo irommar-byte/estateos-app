@@ -1,21 +1,70 @@
 import SwiftUI
 
-struct StrobeBackgroundView: View {
+/// Rozmyta okładka albumu w tle playera — delikatnie „oddycha” w rytm muzyki,
+/// ze stroboskopem zsynchronizowanym z basem (bez rozjaśniania całego tła).
+struct MusicPlayerBackdropView: View {
     @ObservedObject var player: MusicPlayerController
-    let isEnabled: Bool
+    let imageURL: URL?
+    let strobeEnabled: Bool
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 120.0)) { _ in
+        TimelineView(.animation(minimumInterval: 1.0 / 120.0)) { timeline in
             let pulse = player.bassLevel
             let beatHit = player.beatHit
-            let slam = isEnabled ? min(1.0, max(beatHit, pulse * 0.5)) : 0.0
+            let t = timeline.date.timeIntervalSinceReferenceDate
 
-            if slam > 0.3 {
-                Color.white.opacity(slam * 0.45)
+            // Delikatne oddalanie / przybliżanie — wolny oddech + puls basu
+            let slowBreathe = sin(t * 0.62) * 0.024
+            let bassZoom = pulse * 0.05 + beatHit * 0.065
+            let strobeZoom = strobeEnabled ? beatHit * 0.045 : 0
+            let livingScale = 1.10 + slowBreathe + bassZoom + strobeZoom
+
+            // Ostre błyski stroboskopu — tylko na uderzeniach, bez rozjaśniania całego tła
+            let strobeFlash = strobeEnabled ? min(1.0, beatHit * 1.15 + pulse * 0.08) : 0
+
+            ZStack {
+                MusicHeroBackdrop(
+                    imageURL: imageURL,
+                    blurRadius: 46,
+                    darkOverlayOpacity: 0.42,
+                    imageScale: livingScale
+                )
+
+                if strobeEnabled, strobeFlash > 0.28 {
+                    // Pierścienie błysku od krawędzi — wyraźne, ale tło zostaje ciemne
+                    RoundedRectangle(cornerRadius: 0, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(strobeFlash * 0.85),
+                                    NostalgieTheme.accent.opacity(strobeFlash * 0.65),
+                                    Color.white.opacity(strobeFlash * 0.35),
+                                    Color.clear,
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 3 + strobeFlash * 14
+                        )
+                        .padding(-8)
+                        .blur(radius: 1.5 + strobeFlash * 2)
+                        .ignoresSafeArea()
+                        .blendMode(.screen)
+
+                    // Krótki, ostry błysk — niska przezroczystość, bez wypłukiwania okładki
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(strobeFlash * 0.14),
+                            NostalgieTheme.accentSecondary.opacity(strobeFlash * 0.10),
+                            Color.clear,
+                        ],
+                        center: .center,
+                        startRadius: 40,
+                        endRadius: 680
+                    )
                     .ignoresSafeArea()
-                    .blendMode(.overlay)
-            } else {
-                Color.clear
+                    .blendMode(.screen)
+                }
             }
         }
     }
@@ -31,10 +80,14 @@ struct MusicPlayerScreen: View {
     @State private var isStrobeEnabled = false
     @State private var actionMessage: String?
     @State private var actionIsError = false
+    @State private var browseArtist: MusicArtist?
+    @State private var browseAlbum: MusicAlbum?
+    @State private var activeFolder: MusicFolder?
     @FocusState private var focusedControl: PlayerControl?
+    @FocusState private var musicTabFocus: HomeTabView.Tab?
 
     private enum PlayerControl: Hashable {
-        case previous, playPause, next, favorite, addToFolder, shuffle, repeatMode, minimize, stop, strobe
+        case previous, playPause, next, favorite, addToFolder, openFolder, artist, album, shuffle, repeatMode, minimize, stop, strobe
         case folder(String), createFolder
     }
 
@@ -50,26 +103,87 @@ struct MusicPlayerScreen: View {
     }
 
     private var availableFolders: [MusicFolder] {
-        app.musicFolders.filter { $0.id != player.folderId }
+        app.musicFolders
+    }
+
+    private var currentPlaylistFolder: MusicFolder? {
+        guard let folderId = player.folderId else { return nil }
+        return app.musicFolders.first { $0.id == folderId }
     }
 
     var body: some View {
+        Group {
+            if let album = browseAlbum {
+                MusicAlbumView(
+                    album: album,
+                    onBack: { browseAlbum = nil },
+                    onTrack: { track, context in
+                        Task {
+                            await app.musicPlayback.play(
+                                session: MusicPlaybackSession(
+                                    queue: context,
+                                    startIndex: context.firstIndex(where: { $0.id == track.url }) ?? 0,
+                                    folderId: player.folderId,
+                                    folderName: player.folderName
+                                ),
+                                app: app
+                            )
+                        }
+                    }
+                )
+                .environmentObject(app)
+            } else if let artist = browseArtist {
+                MusicArtistView(
+                    artist: artist,
+                    onBack: { browseArtist = nil },
+                    onAlbum: { browseAlbum = $0 },
+                    onTrack: { track, context in
+                        Task {
+                            await app.musicPlayback.play(
+                                session: MusicPlaybackSession(
+                                    queue: context,
+                                    startIndex: context.firstIndex(where: { $0.id == track.url }) ?? 0,
+                                    folderId: player.folderId,
+                                    folderName: player.folderName
+                                ),
+                                app: app
+                            )
+                        }
+                    }
+                )
+                .environmentObject(app)
+            } else if let folder = activeFolder {
+                MusicFolderView(
+                    folder: folder,
+                    navigationTab: .music,
+                    focusedTab: $musicTabFocus,
+                    onBack: { activeFolder = nil }
+                )
+                .environmentObject(app)
+            } else {
+                playerContent
+            }
+        }
+    }
+
+    private var playerContent: some View {
         ZStack {
-            NostalgieAmbientBackground()
-            StrobeBackgroundView(player: player, isEnabled: isStrobeEnabled)
+            MusicPlayerBackdropView(
+                player: player,
+                imageURL: currentTrack?.artworkURL,
+                strobeEnabled: isStrobeEnabled
+            )
 
             VStack(alignment: .leading, spacing: 22) {
                 headerRow
                 HStack(alignment: .bottom, spacing: 18) {
-                    SubwooferBeatView(player: player)
-                        .scaleEffect(1.2)
-                        .frame(width: 86, height: 86)
+                    SubwooferBeatView(player: player, strobeEnabled: isStrobeEnabled)
+                        .frame(width: 96, height: 96)
                         .focusable(false)
                     MusicOscillographView(player: player)
                         .focusable(false)
-                    SubwooferBeatView(player: player)
-                        .scaleEffect(1.2)
-                        .frame(width: 86, height: 86)
+                    SubwooferBeatView(player: player, strobeEnabled: isStrobeEnabled)
+                        .frame(width: 96, height: 96)
                         .focusable(false)
                     Spacer(minLength: 0)
                 }
@@ -169,16 +283,37 @@ struct MusicPlayerScreen: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
                 if let artist = currentTrack?.artist, !artist.isEmpty {
-                    Text(artist)
-                        .font(NostalgieFont.rounded(.title3, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.78))
-                        .lineLimit(1)
+                    Button {
+                        Task { await openArtistCatalog() }
+                    } label: {
+                        Text(artist)
+                            .font(NostalgieFont.rounded(.title3, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.78))
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                    .focused($focusedControl, equals: .artist)
+                    .onMoveCommand { direction in
+                        if direction == .down { focusedControl = .playPause }
+                        if direction == .up { focusedControl = .minimize }
+                    }
                 }
                 if let album = currentTrack?.album, !album.isEmpty {
-                    Text(album)
-                        .font(NostalgieFont.metadata)
-                        .foregroundStyle(.white.opacity(0.5))
-                        .lineLimit(1)
+                    Button {
+                        Task { await openAlbumCatalog() }
+                    } label: {
+                        Text(album)
+                            .font(NostalgieFont.metadata)
+                            .foregroundStyle(.white.opacity(0.5))
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(currentTrack?.albumId == nil)
+                    .focused($focusedControl, equals: .album)
+                    .onMoveCommand { direction in
+                        if direction == .down { focusedControl = .playPause }
+                        if direction == .up { focusedControl = .minimize }
+                    }
                 }
                 Label("MP3 · Apple Music", systemImage: "opticaldisc.fill")
                     .font(NostalgieFont.caption)
@@ -304,7 +439,12 @@ struct MusicPlayerScreen: View {
                 withAnimation(NostalgieTheme.contentSpring) { showFolderPicker.toggle() }
             }
             .disabled(currentTrack == nil)
-            
+
+            if currentPlaylistFolder != nil {
+                playerButton("Otwórz playlistę", systemImage: "music.note.list", control: .openFolder, moveUp: .playPause) {
+                    activeFolder = currentPlaylistFolder
+                }
+            }
             playerButton("Stroboskop", systemImage: "bolt.fill", control: .strobe, tint: isStrobeEnabled ? .yellow : nil, moveUp: .playPause) {
                 isStrobeEnabled.toggle()
             }
@@ -439,5 +579,49 @@ struct MusicPlayerScreen: View {
             actionMessage = error.localizedDescription
             actionIsError = true
         }
+    }
+
+    private func openArtistCatalog() async {
+        guard let track = currentTrack else { return }
+        if let artistId = track.artistId, !artistId.isEmpty {
+            browseArtist = MusicArtist(
+                id: artistId,
+                name: track.artist ?? "Wykonawca",
+                genre: nil,
+                thumbnail: track.thumbnail,
+                url: nil,
+                source: "apple-music"
+            )
+            return
+        }
+        guard let name = track.artist, !name.isEmpty else { return }
+        do {
+            let results = try await app.api.searchMusicCatalog(query: name)
+            if let artist = results.artists.first(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame })
+                ?? results.artists.first {
+                browseArtist = artist
+            } else {
+                actionMessage = "Nie znaleziono wykonawcy w Apple Music."
+                actionIsError = true
+            }
+        } catch {
+            actionMessage = error.localizedDescription
+            actionIsError = true
+        }
+    }
+
+    private func openAlbumCatalog() async {
+        guard let track = currentTrack, let albumId = track.albumId, !albumId.isEmpty else { return }
+        browseAlbum = MusicAlbum(
+            id: albumId,
+            title: track.album ?? "Album",
+            artist: track.artist,
+            artistId: track.artistId,
+            thumbnail: track.thumbnail,
+            trackCount: nil,
+            releaseDate: nil,
+            url: nil,
+            source: "apple-music"
+        )
     }
 }

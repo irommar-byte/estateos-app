@@ -5,7 +5,8 @@ struct HomeTabView: View {
     @State private var tab: Tab = .favorites
     @FocusState private var focusedTab: Tab?
     @Namespace private var primaryTabNamespace
-    @State private var deepLinkSelection: MediaSelection?
+    @State private var deepLinkSeries: VideoInfoResponse?
+    @State private var deepLinkDetail: MediaSelection?
     @State private var searchContentFocus = false
     @State private var favoritesContentFocus = false
     @State private var musicContentFocus = false
@@ -51,6 +52,12 @@ struct HomeTabView: View {
                     app.musicPlayback.presentPlayerIfActive()
                 }
                 .padding(.horizontal, NostalgieSpacing.screenH)
+            }
+            if app.movieDownloadService.hasActiveBatch {
+                MovieDownloadBatchBanner()
+                    .environmentObject(app)
+                    .padding(.horizontal, NostalgieSpacing.screenH)
+                    .padding(.bottom, 8)
             }
 
             Group {
@@ -100,7 +107,13 @@ struct HomeTabView: View {
         }
         .onAppear { consumeDeepLinkIfNeeded() }
         .onChange(of: app.pendingMediaURL) { _, _ in consumeDeepLinkIfNeeded() }
-        .fullScreenCover(item: $deepLinkSelection) { detail in
+        .fullScreenCover(item: $deepLinkSeries) { info in
+            SeriesEpisodesView(info: info, backLabel: "Zamknij") {
+                deepLinkSeries = nil
+            }
+            .environmentObject(app)
+        }
+        .fullScreenCover(item: $deepLinkDetail) { detail in
             MediaDetailView(selection: detail)
                 .environmentObject(app)
         }
@@ -121,29 +134,14 @@ struct HomeTabView: View {
 
     private func consumeDeepLinkIfNeeded() {
         guard let url = app.consumePendingMediaURL() else { return }
-        deepLinkSelection = MediaSelection(
-            from: SearchResultItem(
-                title: "Otwieram…",
-                url: url,
-                thumbnail: nil,
-                detail: "CDA-HD",
-                source: "cda-hd",
-                uploader: nil,
-                album: nil,
-                duration: nil,
-                quality: nil,
-                isSerial: url.localizedCaseInsensitiveContains("/tvshow"),
-                premium: nil,
-                previewUrl: nil,
-                artistId: nil,
-                albumId: nil,
-                trackNumber: nil
-            )
-        )
         Task {
             if let info = try? await app.api.fetchInfo(url: url) {
                 await MainActor.run {
-                    deepLinkSelection = MediaSelection(from: info)
+                    if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
+                        deepLinkSeries = info
+                    } else {
+                        deepLinkDetail = MediaSelection(from: info)
+                    }
                 }
             }
         }
@@ -304,49 +302,22 @@ struct AccountView: View {
     @Binding var requestContentFocus: Bool
 
     @FocusState private var logoutFocused: Bool
+    @State private var deleteError: String?
+    @State private var deletingURL: String?
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 24) {
                 ScreenTitle(title: "Konto", subtitle: "Profil EstateOS")
 
-                HStack(spacing: 22) {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [NostalgieTheme.accentSecondary.opacity(0.5), NostalgieTheme.accent.opacity(0.35)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 80, height: 80)
-                        Text(initials)
-                            .font(NostalgieFont.rounded(28, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
+                profileCard
+                sourceBadges
+                downloadedMoviesSection
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(app.session?.user.login ?? "—")
-                            .font(NostalgieFont.sectionTitle)
-                        Label("\(app.favoriteURLs.count) ulubionych", systemImage: "heart.fill")
-                            .font(NostalgieFont.metadata)
-                            .foregroundStyle(.secondary)
-                        Text("Ulubione synchronizują się z panelem www.")
-                            .font(NostalgieFont.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(24)
-                .frame(maxWidth: 680, alignment: .leading)
-                .glassPanel(.card)
-
-                HStack(spacing: 10) {
-                    SourceBadgeView(source: "tvp")
-                    SourceBadgeView(source: "cda-hd")
-                    SourceBadgeView(source: "cda")
-                    SourceBadgeView(source: "youtube")
-                    SourceBadgeView(source: "apple-music")
+                if let deleteError {
+                    Text(deleteError)
+                        .font(NostalgieFont.metadata)
+                        .foregroundStyle(.orange)
                 }
 
                 Button {
@@ -366,10 +337,130 @@ struct AccountView: View {
             .padding(.horizontal, NostalgieSpacing.screenH)
             .padding(.bottom, NostalgieSpacing.scrollBottom)
         }
+        .task { await app.refreshMovieDownloads() }
         .onChange(of: requestContentFocus) { _, requested in
             guard requested else { return }
             logoutFocused = true
             requestContentFocus = false
+        }
+    }
+
+    private var profileCard: some View {
+        HStack(spacing: 22) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [NostalgieTheme.accentSecondary.opacity(0.5), NostalgieTheme.accent.opacity(0.35)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 80, height: 80)
+                Text(initials)
+                    .font(NostalgieFont.rounded(28, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(app.session?.user.login ?? "—")
+                    .font(NostalgieFont.sectionTitle)
+                Label("\(app.favoriteURLs.count) ulubionych", systemImage: "heart.fill")
+                    .font(NostalgieFont.metadata)
+                    .foregroundStyle(.secondary)
+                Label("\(app.movieDownloads.count) pobranych filmów", systemImage: "internaldrive.fill")
+                    .font(NostalgieFont.metadata)
+                    .foregroundStyle(.secondary)
+                Text("Ulubione i pobrania synchronizują się z panelem www.")
+                    .font(NostalgieFont.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: 680, alignment: .leading)
+        .glassPanel(.card)
+    }
+
+    private var sourceBadges: some View {
+        HStack(spacing: 10) {
+            SourceBadgeView(source: "tvp")
+            SourceBadgeView(source: "cda-hd")
+            SourceBadgeView(source: "cda")
+            SourceBadgeView(source: "youtube")
+            SourceBadgeView(source: "apple-music")
+        }
+    }
+
+    @ViewBuilder
+    private var downloadedMoviesSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            MusicSectionHeader(
+                title: "Pobrane filmy",
+                subtitle: "Folder MOVIES na serwerze · odtwarzaj offline"
+            )
+
+            if app.movieDownloads.isEmpty {
+                EmptyStateView(
+                    icon: "internaldrive",
+                    title: "Brak pobranych filmów",
+                    message: "Pobierz film lub odcinki serialu — pojawią się tutaj i w folderze MOVIES."
+                )
+            } else {
+                LazyVStack(spacing: NostalgieSpacing.listRow) {
+                    ForEach(app.movieDownloads) { item in
+                        downloadedRow(item)
+                    }
+                }
+            }
+        }
+    }
+
+    private func downloadedRow(_ item: MovieDownload) -> some View {
+        HStack(spacing: 14) {
+            if let thumb = item.thumbnail.flatMap(URL.init(string:)) {
+                PosterRemoteImage(url: thumb)
+                    .scaledToFill()
+                    .frame(width: 56, height: 84)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title)
+                    .font(NostalgieFont.listTitle)
+                    .lineLimit(2)
+                if let source = item.source, !source.isEmpty {
+                    Text(MediaSourceMeta.normalize(source).label)
+                        .font(NostalgieFont.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            if deletingURL == item.url {
+                ProgressView()
+            } else {
+                Button {
+                    Task { await deleteItem(item) }
+                } label: {
+                    Label("Usuń", systemImage: "trash")
+                }
+                .buttonStyle(ChipButtonStyle(isSelected: false))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .glassPanel(.panel)
+    }
+
+    private func deleteItem(_ item: MovieDownload) async {
+        deleteError = nil
+        deletingURL = item.url
+        defer { deletingURL = nil }
+        do {
+            try await app.movieDownloadService.deleteDownload(url: item.url)
+        } catch {
+            deleteError = error.localizedDescription
         }
     }
 

@@ -63,6 +63,7 @@ struct SearchResultItem: Codable, Identifiable, Hashable {
     let album: String?
     let duration: Double?
     let quality: String?
+    let rating: Double?
     let isSerial: Bool?
     let premium: Bool?
     let previewUrl: String?
@@ -178,9 +179,16 @@ struct VideoInfoResponse: Codable, Identifiable {
     let isPlaylist: Bool?
     let isSeasoned: Bool?
     let isMusicTrack: Bool?
+    let isMirror: Bool?
+    let mirrorSite: String?
+    let source: String?
+    let quality: String?
+    let cdaHd: CdaHdMeta?
     let episodeCount: Int?
     let seasons: [SeasonInfo]?
     let episodes: [EpisodeItem]?
+    let videoOptions: [MediaQualityOption]?
+    let audioOptions: MediaAudioOptions?
 
     var playableEpisodes: [EpisodeItem] {
         if let seasons, !seasons.isEmpty {
@@ -188,6 +196,86 @@ struct VideoInfoResponse: Codable, Identifiable {
         }
         return episodes ?? []
     }
+}
+
+struct CdaHdLink: Codable, Hashable, Identifiable {
+    var id: String { url }
+    let name: String
+    let url: String
+}
+
+struct CdaHdRating: Codable, Hashable {
+    let value: Double?
+    let max: Double?
+    let votes: Int?
+    let barPercent: Double?
+}
+
+struct CdaHdMeta: Codable, Hashable {
+    let title: String?
+    let subtitle: String?
+    let originalTitle: String?
+    let description: String?
+    let status: String?
+    let year: Int?
+    let duration: Double?
+    let country: String?
+    let thumbnail: String?
+    let genres: [CdaHdLink]?
+    let director: CdaHdLink?
+    let creators: [CdaHdLink]?
+    let cast: [CdaHdLink]?
+    let networks: [CdaHdLink]?
+    let studios: [CdaHdLink]?
+    let firstAirDate: String?
+    let lastAirDate: String?
+    let episodeRuntime: String?
+    let showType: String?
+    let photos: [String]?
+    let seasonCount: Int?
+    let episodeCount: Int?
+    let rating: CdaHdRating?
+}
+
+struct CdaHdBrowseResponse: Codable {
+    let title: String
+    let pageUrl: String
+    let page: Int?
+    let pageSize: Int?
+    let hasMore: Bool?
+    let items: [SearchResultItem]
+}
+
+struct CdaHdBrowseContext: Identifiable, Hashable {
+    let id = UUID()
+    let title: String
+    let pageURL: String
+}
+
+enum CdaHdCatalogMode: String, CaseIterable, Identifiable {
+    case latest
+    case topRated = "top-rated"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .latest: return "Najnowsze"
+        case .topRated: return "Najlepiej oceniane"
+        }
+    }
+}
+
+struct CdaHdCatalogResponse: Codable {
+    let mode: String
+    let page: Int
+    let pageSize: Int
+    let totalPages: Int?
+    let totalItems: Int
+    let hasMore: Bool?
+    let items: [SearchResultItem]
+    let cached: Bool?
+    let stale: Bool?
 }
 
 struct SeasonInfo: Codable, Identifiable {
@@ -232,6 +320,198 @@ struct JobStatusResponse: Codable {
     let downloadPath: String?
 }
 
+struct MediaQualityOption: Codable, Hashable, Identifiable {
+    let id: String
+    let label: String
+    let detail: String?
+    let sizeBytes: Int?
+    let sizeLabel: String?
+    let height: Int?
+    let bitrate: Int?
+
+    var isBest: Bool { id == "best" }
+
+    var displaySubtitle: String {
+        [detail, sizeLabel].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, label, detail, sizeBytes, sizeLabel, height, bitrate
+    }
+
+    init(
+        id: String,
+        label: String,
+        detail: String? = nil,
+        sizeBytes: Int? = nil,
+        sizeLabel: String? = nil,
+        height: Int? = nil,
+        bitrate: Int? = nil
+    ) {
+        self.id = id
+        self.label = label
+        self.detail = detail
+        self.sizeBytes = sizeBytes
+        self.sizeLabel = sizeLabel
+        self.height = height
+        self.bitrate = bitrate
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        label = try container.decode(String.self, forKey: .label)
+        detail = try container.decodeIfPresent(String.self, forKey: .detail)
+        sizeBytes = try container.decodeIfPresent(Int.self, forKey: .sizeBytes)
+        sizeLabel = try container.decodeIfPresent(String.self, forKey: .sizeLabel)
+        if let numericBitrate = try? container.decode(Int.self, forKey: .bitrate) {
+            bitrate = numericBitrate
+        } else {
+            _ = try? container.decode(String.self, forKey: .bitrate)
+            bitrate = nil
+        }
+        if let numericHeight = try? container.decode(Int.self, forKey: .height) {
+            height = numericHeight
+        } else {
+            _ = try? container.decode(String.self, forKey: .height)
+            height = nil
+        }
+    }
+
+    static func defaultStreamTiers(duration: Double?) -> [MediaQualityOption] {
+        let dur = (duration ?? 0) > 0 ? duration! : 45 * 60
+        func estLabel(_ kbps: Int) -> String {
+            let bytes = Double(kbps) * 1000 * dur / 8
+            if bytes >= 1_073_741_824 { return String(format: "%.1f GB ~", bytes / 1_073_741_824) }
+            if bytes >= 1_048_576 { return String(format: "%.0f MB ~", bytes / 1_048_576) }
+            return String(format: "%.0f KB ~", bytes / 1024)
+        }
+        return [
+            MediaQualityOption(id: "best", label: "Najlepsza", detail: "Auto", sizeLabel: estLabel(5000)),
+            MediaQualityOption(id: "1080", label: "1080p", detail: "Full HD", sizeLabel: estLabel(5000), height: 1080),
+            MediaQualityOption(id: "720", label: "720p", detail: "HD", sizeLabel: estLabel(2800), height: 720),
+            MediaQualityOption(id: "480", label: "480p", detail: "SD", sizeLabel: estLabel(1200), height: 480),
+        ]
+    }
+
+    static func apiHeight(for option: MediaQualityOption, options: [MediaQualityOption]) -> Int {
+        if option.isBest {
+            return options.compactMap(\.height).max() ?? 720
+        }
+        return option.height ?? 720
+    }
+
+    func estimatedBytes(duration: Double) -> Int {
+        if let sizeBytes, sizeBytes > 0 { return sizeBytes }
+        let seconds = max(duration, 60)
+        let kbps: Int
+        if let height {
+            kbps = height >= 1080 ? 5000 : height >= 720 ? 2800 : 1200
+        } else if isBest {
+            kbps = 5000
+        } else {
+            kbps = 2800
+        }
+        return Int(Double(kbps) * 1000 * seconds / 8)
+    }
+
+    func totalEstimateLabel(itemCount: Int, totalDuration: Double) -> String {
+        guard itemCount > 0 else { return "—" }
+        let perItemDuration = totalDuration > 0 ? totalDuration / Double(itemCount) : 45 * 60
+        let bytes = estimatedBytes(duration: perItemDuration) * itemCount
+        return "\(MediaByteFormat.label(bytes: bytes)) ~"
+    }
+}
+
+enum MediaByteFormat {
+    static func label(bytes: Int) -> String {
+        let value = Double(max(bytes, 0))
+        if value >= 1_073_741_824 {
+            return String(format: "%.1f GB", value / 1_073_741_824)
+        }
+        if value >= 1_048_576 {
+            return String(format: "%.0f MB", value / 1_048_576)
+        }
+        if value >= 1024 {
+            return String(format: "%.0f KB", value / 1024)
+        }
+        return "\(bytes) B"
+    }
+}
+
+struct MediaAudioOptions: Codable, Hashable {
+    let mp3: [MediaQualityOption]?
+    let m4a: [MediaQualityOption]?
+}
+
+struct MediaDownloadFormat: Identifiable, Hashable {
+    let id: String
+    let kind: String
+    let container: String
+    let label: String
+
+    static let videoMP4 = MediaDownloadFormat(id: "mp4", kind: "video", container: "mp4", label: "Wideo · MP4")
+    static let videoWebM = MediaDownloadFormat(id: "webm", kind: "video", container: "webm", label: "Wideo · WebM")
+    static let videoMKV = MediaDownloadFormat(id: "mkv", kind: "video", container: "mkv", label: "Wideo · MKV")
+    static let audioMP3 = MediaDownloadFormat(id: "mp3", kind: "audio", container: "mp3", label: "Audio · MP3")
+    static let audioM4A = MediaDownloadFormat(id: "m4a", kind: "audio", container: "m4a", label: "Audio · M4A")
+}
+
+extension VideoInfoResponse {
+    var effectiveStreamOptions: [MediaQualityOption] {
+        if let videoOptions, !videoOptions.isEmpty { return videoOptions }
+        return MediaQualityOption.defaultStreamTiers(duration: duration)
+    }
+
+    var availableDownloadFormats: [MediaDownloadFormat] {
+        if isMusicTrack == true {
+            return [.audioMP3]
+        }
+        var formats: [MediaDownloadFormat] = [.videoMP4]
+        if isMirror != true {
+            formats.append(contentsOf: [.videoWebM, .videoMKV])
+        }
+        if let mp3 = audioOptions?.mp3, !mp3.isEmpty { formats.append(.audioMP3) }
+        if let m4a = audioOptions?.m4a, !m4a.isEmpty { formats.append(.audioM4A) }
+        return formats
+    }
+
+    func qualityOptions(for format: MediaDownloadFormat) -> [MediaQualityOption] {
+        switch format.kind {
+        case "audio":
+            if format.container == "m4a" { return audioOptions?.m4a ?? [] }
+            return audioOptions?.mp3 ?? []
+        default:
+            return effectiveStreamOptions
+        }
+    }
+
+    func defaultStreamQualityID() -> String {
+        if effectiveStreamOptions.contains(where: { $0.id == "720" }) { return "720" }
+        if let best = effectiveStreamOptions.first(where: { $0.isBest }) { return best.id }
+        return effectiveStreamOptions.first?.id ?? "720"
+    }
+
+    func defaultDownloadSelection() -> (format: MediaDownloadFormat, quality: MediaQualityOption) {
+        let format = availableDownloadFormats.first ?? .videoMP4
+        let qualities = qualityOptions(for: format)
+        let quality = qualities.first(where: { $0.id == "720" })
+            ?? qualities.first(where: { $0.isBest })
+            ?? qualities.first
+            ?? MediaQualityOption(id: "720", label: "720p", height: 720)
+        return (format, quality)
+    }
+}
+
+struct MediaPlaybackContext: Identifiable {
+    let id = UUID()
+    let sourceURL: String
+    let title: String
+    let streamOptions: [MediaQualityOption]
+    var session: PlaybackSession
+    var selectedQualityID: String
+}
+
 struct PlaybackSession: Identifiable, Hashable {
     let jobId: String
     let streamURL: URL
@@ -242,6 +522,121 @@ struct PlaybackSession: Identifiable, Hashable {
 
 struct DownloadStartResponse: Codable {
     let jobId: String
+}
+
+struct MovieDownload: Codable, Identifiable, Hashable {
+    var id: String { url }
+
+    let url: String
+    let title: String
+    let thumbnail: String?
+    let source: String?
+    let downloadJobId: String?
+    let filename: String?
+    let downloadedAt: Double?
+
+    var isDownloaded: Bool {
+        guard let downloadJobId, !downloadJobId.isEmpty else { return false }
+        return true
+    }
+}
+
+struct MovieDownloadsResponse: Codable {
+    let folder: String
+    let downloads: [MovieDownload]
+}
+
+struct DownloadedMediaFolder: Identifiable, Hashable {
+    enum Kind: String, Hashable {
+        case film
+        case series
+    }
+
+    let id: String
+    let title: String
+    let thumbnail: String?
+    let source: String?
+    let items: [MovieDownload]
+    let kind: Kind
+
+    var artworkURL: URL? {
+        thumbnail.flatMap(URL.init(string:))
+    }
+
+    var countLabel: String {
+        switch kind {
+        case .film:
+            return "Film · offline"
+        case .series:
+            return "\(items.count) odcinków · offline"
+        }
+    }
+
+    var isSeries: Bool { kind == .series }
+}
+
+enum DownloadedMediaLibrary {
+    private static let episodeSeparator = " · "
+
+    static func folders(from downloads: [MovieDownload]) -> [DownloadedMediaFolder] {
+        var seriesGroups: [String: [MovieDownload]] = [:]
+        var films: [MovieDownload] = []
+
+        for download in downloads where download.isDownloaded {
+            if let range = download.title.range(of: episodeSeparator) {
+                let seriesName = String(download.title[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+                seriesGroups[seriesName, default: []].append(download)
+            } else {
+                films.append(download)
+            }
+        }
+
+        var folders: [DownloadedMediaFolder] = []
+
+        for (name, items) in seriesGroups {
+            let sorted = items.sorted { lhs, rhs in
+                displayEpisodeTitle(for: lhs).localizedStandardCompare(displayEpisodeTitle(for: rhs)) == .orderedAscending
+            }
+            folders.append(
+                DownloadedMediaFolder(
+                    id: "series:\(name)",
+                    title: name,
+                    thumbnail: sorted.compactMap(\.thumbnail).first,
+                    source: sorted.compactMap(\.source).first,
+                    items: sorted,
+                    kind: .series
+                )
+            )
+        }
+
+        for film in films.sorted(by: { $0.title.localizedStandardCompare($1.title) == .orderedAscending }) {
+            folders.append(
+                DownloadedMediaFolder(
+                    id: "film:\(film.url)",
+                    title: film.title,
+                    thumbnail: film.thumbnail,
+                    source: film.source,
+                    items: [film],
+                    kind: .film
+                )
+            )
+        }
+
+        return folders.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
+    static func displayEpisodeTitle(for download: MovieDownload) -> String {
+        if let range = download.title.range(of: episodeSeparator) {
+            return String(download.title[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        }
+        return download.title
+    }
+}
+
+struct MoviePlayTokenResponse: Codable {
+    let jobId: String
+    let token: String
+    let expiresIn: Int?
 }
 
 struct MusicFolder: Codable, Identifiable, Hashable {

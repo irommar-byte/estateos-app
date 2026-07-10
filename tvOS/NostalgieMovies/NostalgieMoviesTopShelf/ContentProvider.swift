@@ -13,7 +13,7 @@ private struct LatestItem: Decodable {
 
 public class TopShelfContentProvider: TVTopShelfContentProvider {
     private let feedURL = URL(
-        string: "https://lineage.mycloudnas.com/admin_pro/api/movies/proxy/api/cda-hd/latest?limit=10"
+        string: "https://lineage.mycloudnas.com/admin_pro/api/movies/proxy/api/cda-hd/latest?limit=20"
     )!
 
     public override func loadTopShelfContent(completionHandler: @escaping (TVTopShelfContent?) -> Void) {

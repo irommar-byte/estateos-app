@@ -112,10 +112,10 @@ export default function AgentPublicProfile({ data }: { data: AgentProfilePayload
                 <ProfileMediaAvatar src={agent.avatarUrl} alt={displayName} iconSize={40} />
               </div>
               <span
-                className={`absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-4 py-1 text-[10px] font-black uppercase tracking-[0.18em] shadow-lg ${
+                className={`absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] shadow-lg ${
                   isAgent
-                    ? "bg-gradient-to-r from-amber-400 to-amber-500 text-black"
-                    : "bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/30"
+                    ? "bg-gradient-to-r from-amber-400 to-amber-500 text-black ring-2 ring-white/80"
+                    : "bg-emerald-600 text-white ring-2 ring-white dark:ring-[var(--eos-card)]"
                 }`}
               >
                 {agent.titleLabel}

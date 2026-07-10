@@ -33,7 +33,7 @@
         "NSCalendarsFullAccessUsageDescription": "EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).",
         "NSRemindersUsageDescription": "Opcjonalnie możemy powiązać termin prezentacji z przypomnieniami systemowymi.",
         "NSRemindersFullAccessUsageDescription": "Opcjonalnie możemy powiązać termin prezentacji z przypomnieniami systemowymi.",
-        "NSCameraUsageDescription": "EstateOS używa aparatu, aby robić zdjęcia nieruchomości publikowanych w ofercie oraz aby zeskanować kod QR przy logowaniu.",
+        "NSCameraUsageDescription": "EstateOS używa aparatu i skanera LiDAR, aby robić zdjęcia nieruchomości, skanować pomieszczenia na plan mieszkania oraz kod QR przy logowaniu.",
         "NSPhotoLibraryUsageDescription": "EstateOS używa zdjęć z Twojej biblioteki, aby dodać je do publikowanej oferty nieruchomości.",
         "NSPhotoLibraryAddUsageDescription": "EstateOS zapisuje wybrane materiały (np. plan PDF mieszkania) do Twojej biblioteki na życzenie.",
         "NSFaceIDUsageDescription": "EstateOS używa Face ID lub Touch ID, aby zalogować Cię bez podawania hasła (Passkey).",
@@ -112,9 +112,13 @@
         {
           "android": {
             "kotlinVersion": "2.2.0"
+          },
+          "ios": {
+            "deploymentTarget": "17.0"
           }
         }
       ],
+      "expo-roomplan",
       [
         "expo-calendar",
         {

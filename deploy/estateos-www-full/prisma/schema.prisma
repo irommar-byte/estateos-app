@@ -201,6 +201,8 @@ model Offer {
   images          String?        @db.Text
   videoUrl        String?
   floorPlanUrl    String?
+  floorPlan3dUrl  String?
+  floorPlanScanMeta String?      @db.Text
   landRegistryNumber String?        @db.VarChar(64)
   apartmentNumber    String?        @db.VarChar(32)
   legalCheckStatus String           @default("NONE") @db.VarChar(16)

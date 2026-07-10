@@ -1,0 +1,91 @@
+import SwiftUI
+
+struct ArtistDetailView: View {
+    @EnvironmentObject private var app: AppModel
+    let artistId: String
+    let artistName: String
+
+    @State private var detail: MusicArtistDetailResponse?
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+
+    private let albumColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
+    private var sortedAlbums: [MusicAlbum] {
+        guard let detail else { return [] }
+        return detail.albums.sorted { lhs, rhs in
+            if lhs.isSingleRelease != rhs.isSingleRelease {
+                return !lhs.isSingleRelease && rhs.isSingleRelease
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            if isLoading {
+                EOSLoadingView(title: "Ładuję artystę…")
+                    .padding(.top, 40)
+                    .transition(.opacity.combined(with: .scale(scale: 0.985)))
+            } else if let detail {
+                VStack(alignment: .leading, spacing: 24) {
+                    if !sortedAlbums.isEmpty {
+                        Text("Albumy")
+                            .font(.headline)
+                            .foregroundStyle(EOSTheme.textPrimary)
+                        LazyVGrid(columns: albumColumns, spacing: 12) {
+                            ForEach(sortedAlbums) { album in
+                                NavigationLink {
+                                    AlbumDetailView(albumId: album.id)
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        ArtworkImage(url: album.thumbnail.flatMap(URL.init(string:)), size: 140, cornerRadius: 10)
+                                        Text(album.title)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(EOSTheme.textPrimary)
+                                            .lineLimit(2)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    if !detail.topSongs.isEmpty {
+                        Text("Popularne utwory")
+                            .font(.headline)
+                            .foregroundStyle(EOSTheme.textPrimary)
+                        VStack(spacing: 0) {
+                            ForEach(Array(detail.topSongs.enumerated()), id: \.element.id) { index, song in
+                                CatalogTrackRow(item: song, index: index, queue: detail.topSongs)
+                            }
+                        }
+                        .padding(12)
+                        .eosCard()
+                    }
+                }
+                .padding(16)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: isLoading)
+        .background(EOSAmbientBackground())
+        .navigationTitle(detail?.artist.name ?? artistName)
+        .navigationBarTitleDisplayMode(.large)
+        .task { await load() }
+        .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private func load() async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            detail = try await app.api.fetchMusicArtist(id: artistId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}

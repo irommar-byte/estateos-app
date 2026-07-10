@@ -42,6 +42,7 @@ yarn-error.*
 
 # 🚫 build / native
 ios/Pods
+ios/.rn-dsyms-cache
 *.ipa
 
 # 🚫 backupy
@@ -68,5 +69,7 @@ tmp-*
 # Osobna kopia serwera w tym repo — nie mieszaj z appką w statusie (commituj tylko celowo)
 estateos-server/
 EstateOS/
+!tvOS/EstateOS/
+!tvOS/EstateOS/**
 lineage-launcher/
 *.ts.new

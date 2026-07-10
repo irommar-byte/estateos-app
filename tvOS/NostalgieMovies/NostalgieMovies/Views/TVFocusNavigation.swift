@@ -106,3 +106,21 @@ struct TVHorizontalShelf<Item: Identifiable, Content: View>: View where Item.ID:
         )
     }
 }
+
+// MARK: - Infinite scroll (doładowanie przy dojechaniu na dół)
+
+extension View {
+    /// Wywołuje `loadMore` gdy ostatnia karta staje się widoczna.
+    func onInfiniteScrollLoadMore(
+        itemID: String,
+        lastItemID: String?,
+        canLoadMore: Bool,
+        isLoading: Bool,
+        loadMore: @escaping () -> Void
+    ) -> some View {
+        onAppear {
+            guard canLoadMore, !isLoading, itemID == lastItemID else { return }
+            loadMore()
+        }
+    }
+}

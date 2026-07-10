@@ -264,6 +264,111 @@
         color: #fff;
         border-color: var(--accent);
       }
+      .catalog-bar { margin-bottom: 4px; }
+      .catalog-mode-tabs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      .catalog-mode-tab {
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.35);
+        color: var(--ink);
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      @media (prefers-color-scheme: dark) {
+        .catalog-mode-tab { background: rgba(255, 255, 255, 0.06); }
+      }
+      .catalog-mode-tab.active {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
+      .catalog-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+        gap: 14px;
+        margin-top: 12px;
+      }
+      .catalog-card {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.35);
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s, transform 0.15s;
+        text-align: left;
+        font-family: inherit;
+        color: inherit;
+      }
+      @media (prefers-color-scheme: dark) {
+        .catalog-card { background: rgba(255, 255, 255, 0.04); }
+      }
+      .catalog-card:hover {
+        border-color: rgba(0, 113, 227, 0.35);
+        background: rgba(0, 113, 227, 0.08);
+        transform: translateY(-2px);
+      }
+      .catalog-thumb {
+        width: 100%;
+        aspect-ratio: 2 / 3;
+        border-radius: 10px;
+        object-fit: cover;
+        background: #333;
+        display: block;
+      }
+      .catalog-title {
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.3;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .catalog-meta {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.3;
+      }
+      .catalog-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      .catalog-tag {
+        font-size: 11px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--muted);
+      }
+      .catalog-tag.rating { color: #ffd60a; background: rgba(255, 214, 10, 0.12); }
+      .catalog-tag.serial { color: #64d2ff; background: rgba(100, 210, 255, 0.12); }
+      .catalog-sentinel { height: 1px; }
+      .catalog-loading {
+        text-align: center;
+        padding: 16px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .search-divider {
+        margin: 22px 0 14px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
       .search-results { margin-top: 16px; }
       .search-hint {
         font-size: 13px;
@@ -354,6 +459,18 @@
       }
       .result-badge.cda { background: rgba(255, 102, 0, 0.12); color: #e85d00; }
       .result-badge.tvp { background: rgba(220, 20, 60, 0.12); color: #dc143c; }
+      .result-badge.apple-music { background: rgba(255, 45, 85, 0.14); color: #ff2d55; }
+      .thumb.music-cover {
+        width: 72px;
+        height: 72px;
+        border-radius: 12px;
+      }
+      .result-thumb.music-cover {
+        width: 64px;
+        height: 64px;
+        border-radius: 10px;
+        object-fit: cover;
+      }
 
       .progress-wrap { margin-top: 18px; }
       .bar {
@@ -998,6 +1115,7 @@
         justify-content: center;
       }
     </style>
+    <link rel="stylesheet" href="music-ui.css" />
   </head>
   <body>
     <div class="wrap">
@@ -1006,12 +1124,13 @@
 
       <div class="card">
         <div class="mode-tabs">
-          <button id="modeLink" class="mode-tab active" type="button">Wklej link</button>
-          <button id="modeSearch" class="mode-tab" type="button">Szukaj</button>
+          <button id="modeSearch" class="mode-tab active" type="button"><span class="mode-tab-icon">▶</span>Filmy</button>
+          <button id="modeMusic" class="mode-tab" type="button"><span class="mode-tab-icon">♫</span>Muzyka</button>
+          <button id="modeLink" class="mode-tab" type="button">Wklej link</button>
           <button id="modeFavorites" class="mode-tab" type="button">Ulubione</button>
         </div>
 
-        <div id="linkPanel">
+        <div id="linkPanel" class="hidden">
         <div class="row">
           <input
             id="url"
@@ -1024,11 +1143,25 @@
         </div>
         </div>
 
-        <div id="searchPanel" class="hidden">
+        <div id="searchPanel">
+          <div id="catalogBar" class="catalog-bar">
+            <div class="catalog-mode-tabs">
+              <button type="button" class="catalog-mode-tab active" data-catalog-mode="latest">Najnowsze</button>
+              <button type="button" class="catalog-mode-tab" data-catalog-mode="top-rated">Najlepiej oceniane</button>
+            </div>
+            <div id="catalogStatus" class="search-hint">CDA-HD · najnowsze premiery</div>
+          </div>
+          <div id="catalogSection">
+            <div id="catalogGrid" class="catalog-grid"></div>
+            <div id="catalogSentinel" class="catalog-sentinel" aria-hidden="true"></div>
+            <div id="catalogLoading" class="catalog-loading hidden">Wczytuję kolejne pozycje…</div>
+          </div>
+
+          <div class="search-divider">Szukaj w portalach</div>
           <div class="source-tabs">
-            <button class="source-tab active" data-source="youtube" type="button">YouTube</button>
+            <button class="source-tab" data-source="youtube" type="button">YouTube</button>
             <button class="source-tab" data-source="cda" type="button">CDA</button>
-            <button class="source-tab" data-source="cda-hd" type="button">CDA-HD</button>
+            <button class="source-tab active" data-source="cda-hd" type="button">CDA-HD</button>
             <button class="source-tab" data-source="tvp" type="button">TVP</button>
           </div>
           <div class="row">
@@ -1055,6 +1188,10 @@
           <div class="search-hint">Filmy i całe seriale — zapisane na Twoim koncie (widoczne po zalogowaniu).</div>
           <div id="favoritesEmpty" class="search-hint hidden">Brak ulubionych. Kliknij ♡ przy wyniku wyszukiwania, filmie lub serialu.</div>
           <div id="favoritesList" class="search-results"></div>
+        </div>
+
+        <div id="musicPanel">
+          <div id="musicPanelBody"></div>
         </div>
 
         <div class="options">
@@ -1237,26 +1374,114 @@
       </div>
     </div>
 
+    <div id="musicPlayerOverlay">
+      <div class="music-player-top">
+        <button type="button" class="music-btn" id="musicPlayerClose">← Wróć</button>
+        <span class="music-section-sub" id="musicPlayerPos">1 / 1</span>
+      </div>
+      <div class="music-osc-wrap"><canvas id="musicOscCanvas"></canvas></div>
+      <div class="music-player-main">
+        <img id="musicPlayerArt" class="music-player-art" alt="" />
+        <div class="music-player-info">
+          <h2 id="musicPlayerTitle">—</h2>
+          <button type="button" class="music-player-link" id="musicPlayerArtistBtn" hidden></button>
+          <button type="button" class="music-player-link music-player-link-meta" id="musicPlayerAlbumBtn" hidden></button>
+        </div>
+      </div>
+      <div id="musicPlayerBrowse" class="music-player-browse hidden" aria-hidden="true"></div>
+      <div class="music-progress">
+        <input type="range" id="musicProgress" min="0" max="100" value="0" />
+        <div class="music-progress-times">
+          <span id="musicTimeCur">0:00</span>
+          <span id="musicTimeDur">0:00</span>
+        </div>
+      </div>
+      <div class="music-controls">
+        <button type="button" class="music-btn" id="musicShuffleBtn">Losowo</button>
+        <button type="button" class="music-btn" id="musicPrevBtn">⏮</button>
+        <button type="button" class="music-btn music-btn-play" id="musicPlayPauseBtn">▶</button>
+        <button type="button" class="music-btn" id="musicNextBtn">⏭</button>
+        <button type="button" class="music-btn" id="musicRepeatBtn">Powt. playlistę</button>
+        <button type="button" class="music-btn" id="musicFavBtn">♡ Ulubione</button>
+        <button type="button" class="music-btn" id="musicAddPlaylistBtn">＋ Do playlisty</button>
+        <button type="button" class="music-btn" id="musicOpenPlaylistBtn" hidden>📂 Playlistę</button>
+      </div>
+    </div>
+
+    <div id="musicAddToPlaylistModal" class="music-import-modal">
+      <div class="music-import-box music-playlist-pick-box">
+        <h3 class="music-section-title">Dodaj utwór do playlisty</h3>
+        <p class="music-section-sub" id="musicAddToPlaylistTrack">—</p>
+        <div class="music-playlist-pick-list" id="musicAddToPlaylistList"></div>
+        <div class="music-toolbar">
+          <button type="button" class="music-btn" id="musicAddToPlaylistCancel">Anuluj</button>
+          <button type="button" class="music-btn music-btn-primary" id="musicAddToPlaylistNew">Nowy folder</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="musicImportModal" class="music-import-modal">
+      <div class="music-import-box">
+        <h3 class="music-section-title">Import playlisty Apple Music</h3>
+        <p class="music-section-sub">Wklej link do playlisty — utwory trafią do folderu na serwerze.</p>
+        <input id="musicImportUrl" type="url" placeholder="https://music.apple.com/pl/playlist/…" />
+        <div class="music-toolbar">
+          <button type="button" class="music-btn" id="musicImportCancel">Anuluj</button>
+          <button type="button" class="music-btn music-btn-primary" id="musicImportConfirm">Importuj</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       const $ = (id) => document.getElementById(id);
       const __apiQs = new URLSearchParams(location.search);
       const UI_BUILD = __apiQs.get("ui") || "dev";
       const __defaultPfx = location.pathname.includes("/admin_pro/movies") ? "/admin_pro/api/movies/proxy" : "";
       const __API_PFX = __apiQs.get("apiPrefix") || __defaultPfx;
-      const __NC_LOGIN = (__apiQs.get("ncLogin") || "").trim().toLowerCase();
+      const __NC_LOGIN = (() => {
+        const stop = new Set([
+          "admin", "built", "by", "coins", "filmy", "legacy", "login", "logout",
+          "movies", "muzyka", "nc", "nostalgie", "panel", "players", "premium",
+          "preserved", "ranking", "register", "swiat", "wspieram", "wyloguj", "zglos",
+        ]);
+        const pick = (raw) => {
+          const v = String(raw || "").trim().toLowerCase();
+          return v && /^[a-z0-9_]{2,32}$/.test(v) && !stop.has(v) ? v : "";
+        };
+        const fromQs = pick(__apiQs.get("ncLogin"));
+        if (fromQs) return fromQs;
+        try {
+          const parentLogin = pick(window.parent?.__nostalgiePlayerLogin);
+          if (parentLogin) return parentLogin;
+        } catch {
+          /* cross-origin */
+        }
+        return "";
+      })();
       const apiUrl = (path) => __API_PFX + path;
       const moviesApiFetch = (path, opts = {}) => {
         const headers = { ...(opts.headers || {}) };
         if (__NC_LOGIN) headers["X-Movies-User-Login"] = __NC_LOGIN;
         return fetch(apiUrl(path), { ...opts, headers });
       };
+      window.apiUrl = apiUrl;
+      window.moviesApiFetch = moviesApiFetch;
+      window.__NC_LOGIN = __NC_LOGIN;
       const state = {
         info: null,
         playlist: null,
         format: null,
         quality: null,
-        mode: "link",
-        searchSource: "youtube",
+        mode: "search",
+        searchSource: "cda-hd",
+        catalogMode: "latest",
+        catalogPage: 1,
+        catalogItems: [],
+        catalogHasMore: true,
+        catalogLoading: false,
+        catalogLoadingMore: false,
+        catalogError: null,
+        catalogObserver: null,
         previewJobId: null,
         previewStreamProxy: false,
         airplayBuffered: false,
@@ -1944,6 +2169,7 @@
         cda: "CDA — filmy i seriale. Niektóre pozycje wymagają konta premium (sesja z przeglądarki).",
         "cda-hd": "CDA-HD — filmy i seriale online. Po wyborze serialu zobaczysz sezony i odcinki.",
         tvp: "TVP VOD i tvp.pl — seriale, filmy dokumentalne, programy. Płatne odcinki wymagają wykupionego dostępu.",
+        "apple-music": "Apple Music — wpisz tytuł i wykonawcę (np. «Hey Jude Beatles»). Pobierz MP3 320 kbps z okładką albumu.",
       };
 
       const FORMATS = [
@@ -1999,17 +2225,178 @@
         };
       }
 
+      function updateCatalogVisibility() {
+        const show =
+          state.mode === "search" &&
+          state.searchSource === "cda-hd" &&
+          $("searchResults").classList.contains("hidden");
+        $("catalogBar")?.classList.toggle("hidden", !show);
+        $("catalogSection")?.classList.toggle("hidden", !show);
+      }
+
+      function updateCatalogLoadingUI() {
+        const el = $("catalogLoading");
+        if (!el) return;
+        const busy = state.catalogLoading || state.catalogLoadingMore;
+        el.classList.toggle("hidden", !busy);
+        el.textContent = state.catalogLoading
+          ? "Wczytuję listę…"
+          : "Wczytuję kolejne pozycje…";
+      }
+
+      function catalogRatingLabel(item) {
+        if (item.rating != null && Number.isFinite(Number(item.rating))) {
+          return `${Number(item.rating)}/10`;
+        }
+        if (item.quality && /\/10/.test(item.quality)) return item.quality;
+        return null;
+      }
+
+      function buildCatalogCard(item) {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "catalog-card";
+        const rating = catalogRatingLabel(item);
+        const meta = [item.detail, item.uploader].filter(Boolean).join(" · ");
+        const tags = [];
+        if (rating) tags.push(`<span class="catalog-tag rating">★ ${rating}</span>`);
+        if (item.isSerial) tags.push('<span class="catalog-tag serial">SERIAL</span>');
+        if (item.duration) tags.push(`<span class="catalog-tag">${fmtDuration(item.duration)}</span>`);
+        card.innerHTML = `
+          <img class="catalog-thumb" src="${item.thumbnail || ""}" alt="" loading="lazy" />
+          <div class="catalog-title">${item.title || "Bez tytułu"}</div>
+          ${meta ? `<div class="catalog-meta">${meta}</div>` : ""}
+          ${tags.length ? `<div class="catalog-tags">${tags.join("")}</div>` : ""}
+        `;
+        card.onclick = () => pickSearchResult(item);
+        return card;
+      }
+
+      function renderCatalog() {
+        const grid = $("catalogGrid");
+        if (!grid) return;
+        if (state.catalogError && !state.catalogItems.length) {
+          grid.innerHTML = `<div class="search-hint">${state.catalogError}</div>`;
+          return;
+        }
+        grid.innerHTML = "";
+        for (const item of state.catalogItems) {
+          grid.appendChild(buildCatalogCard(item));
+        }
+        if (!state.catalogItems.length && !state.catalogLoading) {
+          grid.innerHTML = '<div class="search-hint">Brak pozycji w katalogu.</div>';
+        }
+      }
+
+      async function loadCatalogPage(reset = false) {
+        if (state.mode !== "search" || state.searchSource !== "cda-hd") return;
+        if (!$("searchResults").classList.contains("hidden")) return;
+        if (state.catalogLoading || state.catalogLoadingMore) return;
+        if (!reset && !state.catalogHasMore) return;
+
+        if (reset) {
+          state.catalogPage = 1;
+          state.catalogItems = [];
+          state.catalogHasMore = true;
+          state.catalogError = null;
+          renderCatalog();
+        }
+
+        if (reset) state.catalogLoading = true;
+        else state.catalogLoadingMore = true;
+        updateCatalogLoadingUI();
+
+        const pageToFetch = state.catalogPage;
+        try {
+          const r = await fetch(
+            apiUrl(
+              `/api/cda-hd/catalog?mode=${encodeURIComponent(state.catalogMode)}&page=${pageToFetch}&pageSize=20`
+            )
+          );
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error || "Błąd katalogu CDA-HD.");
+
+          const batch = data.items || [];
+          if (reset) {
+            state.catalogItems = batch;
+          } else {
+            const seen = new Set(state.catalogItems.map((x) => x.url));
+            state.catalogItems.push(...batch.filter((x) => !seen.has(x.url)));
+          }
+          state.catalogHasMore = !!data.hasMore;
+          if (!batch.length) state.catalogHasMore = false;
+          else state.catalogPage = pageToFetch + 1;
+          renderCatalog();
+        } catch (err) {
+          if (reset) {
+            state.catalogError = err.message || "Nie udało się wczytać katalogu.";
+            renderCatalog();
+          }
+          state.catalogHasMore = false;
+        } finally {
+          state.catalogLoading = false;
+          state.catalogLoadingMore = false;
+          updateCatalogLoadingUI();
+        }
+      }
+
+      async function ensureCatalogLoaded() {
+        if (state.mode !== "search" || state.searchSource !== "cda-hd") return;
+        if (!$("searchResults").classList.contains("hidden")) return;
+        if (state.catalogItems.length && !state.catalogError) return;
+        await loadCatalogPage(true);
+      }
+
+      function setCatalogMode(mode) {
+        if (state.catalogMode === mode) return;
+        state.catalogMode = mode;
+        document.querySelectorAll("[data-catalog-mode]").forEach((btn) =>
+          btn.classList.toggle("active", btn.dataset.catalogMode === mode)
+        );
+        $("catalogStatus").textContent =
+          mode === "top-rated"
+            ? "CDA-HD · najlepiej oceniane filmy i seriale"
+            : "CDA-HD · najnowsze premiery";
+        void loadCatalogPage(true);
+      }
+
+      function initCatalogObserver() {
+        const sentinel = $("catalogSentinel");
+        if (!sentinel || state.catalogObserver) return;
+        state.catalogObserver = new IntersectionObserver(
+          (entries) => {
+            if (!entries.some((e) => e.isIntersecting)) return;
+            if (state.catalogLoading || state.catalogLoadingMore || !state.catalogHasMore) return;
+            if (state.mode !== "search" || state.searchSource !== "cda-hd") return;
+            if (!$("searchResults").classList.contains("hidden")) return;
+            void loadCatalogPage(false);
+          },
+          { rootMargin: "240px" }
+        );
+        state.catalogObserver.observe(sentinel);
+      }
+
       function setMode(mode) {
+        if (state.mode === "music" && mode !== "music" && window.MusicUI?.onTabHide) {
+          window.MusicUI.onTabHide();
+        }
         state.mode = mode;
         $("modeLink").classList.toggle("active", mode === "link");
         $("modeSearch").classList.toggle("active", mode === "search");
+        $("modeMusic").classList.toggle("active", mode === "music");
         $("modeFavorites").classList.toggle("active", mode === "favorites");
         $("linkPanel").classList.toggle("hidden", mode !== "link");
         $("searchPanel").classList.toggle("hidden", mode !== "search");
         $("favoritesPanel").classList.toggle("hidden", mode !== "favorites");
-        if (mode === "favorites") {
+        if (mode === "music") {
+          hideAllViews();
+          if (window.MusicUI?.onTabShow) window.MusicUI.onTabShow();
+        } else if (mode === "favorites") {
           hideAllViews();
           renderFavoritesList();
+        } else if (mode === "search") {
+          updateCatalogVisibility();
+          void ensureCatalogLoaded();
         }
         clearError();
       }
@@ -2020,6 +2407,17 @@
           tab.classList.toggle("active", tab.dataset.source === source)
         );
         $("searchHint").textContent = SOURCE_HINTS[source] || "";
+        const q = $("searchQuery");
+        if (q) {
+          q.placeholder =
+            source === "apple-music"
+              ? "Tytuł, wykonawca — np. Bohemian Rhapsody Queen"
+              : "Szukaj filmu, serialu…";
+        }
+        updateCatalogVisibility();
+        if (source === "cda-hd" && $("searchResults").classList.contains("hidden")) {
+          void ensureCatalogLoaded();
+        }
       }
 
       function renderSearchResults(results) {
@@ -2045,9 +2443,15 @@
                 ? "tvp"
                 : item.source === "cda-hd"
                   ? "cda-hd"
-                  : "";
+                  : item.source === "apple-music"
+                    ? "apple-music"
+                    : "";
           const badgeLabel =
-            item.source === "cda-hd" ? "CDA-HD" : item.source;
+            item.source === "cda-hd"
+              ? "CDA-HD"
+              : item.source === "apple-music"
+                ? "Muzyka"
+                : item.source;
           const meta = [item.uploader, item.detail].filter(Boolean).join(" · ");
           const tags = [];
           if (item.duration) tags.push(`<span class="result-tag duration">${fmtDuration(item.duration)}</span>`);
@@ -2062,7 +2466,7 @@
             <label class="pick-check" onclick="event.stopPropagation()">
               <input type="checkbox" class="pick-item-cb" data-url="${item.url}" data-title="${item.title.replace(/"/g, "&quot;")}" />
             </label>
-            <img class="result-thumb" src="${item.thumbnail || ""}" alt="" />
+            <img class="result-thumb${item.source === "apple-music" ? " music-cover" : ""}" src="${item.thumbnail || ""}" alt="" />
             <div class="result-main">
               <div class="result-title">${item.title}</div>
               <div class="result-meta">${meta}</div>
@@ -2083,6 +2487,7 @@
         wrap.classList.remove("hidden");
         initBatchFormatUI();
         showBatchSettings("search");
+        updateCatalogVisibility();
       }
 
       function pickSearchResult(item) {
@@ -2104,12 +2509,22 @@
 
       async function runSearch() {
         const query = $("searchQuery").value.trim();
-        if (!query) return;
+        if (!query) {
+          state.searchSnapshot = null;
+          $("searchResults").classList.add("hidden");
+          hideBatchSettings();
+          updateCatalogVisibility();
+          await ensureCatalogLoaded();
+          return;
+        }
         clearError();
         hideAllViews();
         const btn = $("searchBtn");
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner"></span>Szukam… (pobieram czas i jakość)';
+        btn.innerHTML =
+          state.searchSource === "apple-music"
+            ? '<span class="spinner"></span>Szukam w Apple Music…'
+            : '<span class="spinner"></span>Szukam… (pobieram czas i jakość)';
         try {
           const r = await fetch(apiUrl("/api/search"), {
             method: "POST",
@@ -2773,14 +3188,19 @@
       }
 
       function renderResult(data, opts = {}) {
+        const isMusic = !!data.isMusicTrack;
         $("thumb").src = data.thumbnail || "";
         $("thumb").style.display = data.thumbnail ? "block" : "none";
+        $("thumb").classList.toggle("music-cover", isMusic);
         $("metaTitle").textContent =
           opts.fromEpisode && state.playlist?.title
             ? `${state.playlist.title} · ${data.title}`
             : data.title;
         const bits = [];
-        if (data.isMirror) bits.push(`Mirror · ${data.mirrorSite || "embed"}`);
+        if (isMusic) {
+          if (data.uploader) bits.push(data.uploader);
+          if (data.album) bits.push(data.album);
+        } else if (data.isMirror) bits.push(`Mirror · ${data.mirrorSite || "embed"}`);
         else if (data.uploader) bits.push(data.uploader);
         if (data.embedLabel && !bits.includes(data.embedLabel)) bits.push(data.embedLabel);
         if (data.duration) bits.push(fmtDuration(data.duration));
@@ -2791,24 +3211,33 @@
             ? `${state.playlist.title} · ${data.title}`
             : data.title,
           thumbnail: data.thumbnail,
-          source: data.isMirror ? data.mirrorSite : data.uploader,
+          source: isMusic ? "apple-music" : data.isMirror ? data.mirrorSite : data.uploader,
           detail: bits.join(" · "),
           duration: data.duration,
         }, false);
 
         const fc = $("formatChips");
         fc.innerHTML = "";
-        FORMATS.forEach((f, i) => {
+        const formats = isMusic
+          ? [{ id: "mp3", kind: "audio", container: "mp3", label: "Audio · MP3" }]
+          : FORMATS;
+        formats.forEach((f, i) => {
           const c = document.createElement("div");
           c.className = "chip" + (i === 0 ? " active" : "");
           c.textContent = f.label;
           c.onclick = () => selectFormat(f, c);
           fc.appendChild(c);
         });
-        selectFormat(FORMATS[0], fc.firstChild);
+        selectFormat(formats[0], fc.firstChild);
         $("result").classList.remove("hidden");
-        const tvp = isTvpSource(data);
-        $("tvpHint").style.display = tvp ? "block" : "none";
+        const tvp = !isMusic && isTvpSource(data);
+        $("tvpHint").style.display = tvp ? "block" : isMusic ? "block" : "none";
+        if (isMusic) {
+          $("tvpHint").innerHTML =
+            "<strong>Apple Music</strong> — pobierz MP3 320 kbps z osadzoną okładką albumu (ID3).";
+        }
+        $("previewBtn").classList.toggle("hidden", isMusic);
+        $("airplayStartBtn").classList.toggle("hidden", isMusic);
         $("airplayStartBtn").style.boxShadow = tvp
           ? "0 0 0 3px rgba(0, 113, 227, 0.45)"
           : "";
@@ -3001,10 +3430,18 @@
       $("airplayBtn").onclick = openAirPlayPicker;
       $("modeLink").onclick = () => setMode("link");
       $("modeSearch").onclick = () => setMode("search");
+      $("modeMusic").onclick = () => setMode("music");
       $("modeFavorites").onclick = () => setMode("favorites");
       document.querySelectorAll(".source-tab").forEach((tab) => {
         tab.onclick = () => setSearchSource(tab.dataset.source);
       });
+      document.querySelectorAll("[data-catalog-mode]").forEach((tab) => {
+        tab.onclick = () => setCatalogMode(tab.dataset.catalogMode);
+      });
+      initCatalogObserver();
+      setSearchSource("cda-hd");
+      setMode("search");
+      void ensureCatalogLoaded();
       $("searchBtn").onclick = runSearch;
       $("searchQuery").addEventListener("keydown", (e) => {
         if (e.key === "Enter") runSearch();
@@ -3024,6 +3461,10 @@
 
       const buildTag = $("uiBuildTag");
       if (buildTag) buildTag.textContent = `UI ${UI_BUILD} · ▶ Odtwórz (stream) · AirPlay na TV (bufor) · anuluj pobieranie`;
+    </script>
+    <script src="music-ui.js"></script>
+    <script>
+      if (window.MusicUI) MusicUI.init();
     </script>
   </body>
 </html>

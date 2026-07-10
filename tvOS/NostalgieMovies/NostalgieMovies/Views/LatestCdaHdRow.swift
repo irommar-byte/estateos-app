@@ -4,16 +4,40 @@ struct LatestCdaHdRow: View {
     @EnvironmentObject private var app: AppModel
     var focusedItemID: FocusState<String?>.Binding
     let onSelect: (SearchResultItem) -> Void
+    var onShowAll: (() -> Void)? = nil
     var onMoveUp: (() -> Void)? = nil
     var onMoveDown: (() -> Void)? = nil
     var onItemsChange: (([SearchResultItem]) -> Void)? = nil
 
     @State private var items: [SearchResultItem] = []
     @State private var isLoading = true
+    @FocusState private var showAllFocused: Bool
+
+    private let shelfLimit = 20
 
     var body: some View {
         VStack(alignment: .leading, spacing: NostalgieSpacing.section) {
-            MusicSectionHeader(title: "Najnowsze z CDA-HD")
+            HStack(alignment: .firstTextBaseline) {
+                MusicSectionHeader(title: "Najnowsze z CDA-HD", subtitle: "\(shelfLimit) pozycji")
+                Spacer()
+                if let onShowAll {
+                    Button(action: onShowAll) {
+                        Label("Zobacz wszystkie", systemImage: "square.grid.2x2")
+                    }
+                    .buttonStyle(FocusCardButtonStyle())
+                    .focused($showAllFocused)
+                    .onMoveCommand { direction in
+                        if direction == .down {
+                            showAllFocused = false
+                            if let first = items.first {
+                                focusedItemID.wrappedValue = first.id
+                            }
+                        } else if direction == .up {
+                            onMoveUp?()
+                        }
+                    }
+                }
+            }
 
             if isLoading {
                 ProgressView()
@@ -30,7 +54,13 @@ struct LatestCdaHdRow: View {
                     focusedID: focusedItemID,
                     cardWidth: 280,
                     cardSpacing: 22,
-                    onMoveUp: onMoveUp,
+                    onMoveUp: {
+                        if onShowAll != nil {
+                            showAllFocused = true
+                        } else {
+                            onMoveUp?()
+                        }
+                    },
                     onMoveDown: onMoveDown
                 ) { item, _ in
                     MediaCard(
@@ -56,7 +86,7 @@ struct LatestCdaHdRow: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            items = try await app.api.fetchCdaHdLatest(limit: 10)
+            items = try await app.api.fetchCdaHdLatest(limit: shelfLimit)
             onItemsChange?(items)
             if focusedItemID.wrappedValue == nil, let first = items.first {
                 focusedItemID.wrappedValue = first.id

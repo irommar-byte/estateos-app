@@ -16,6 +16,7 @@ import {
   fetchVehicleHistoryReport,
   type VehicleHistoryReport,
 } from '../../services/carVehicleChecks';
+import { useAuthStore } from '../../store/useAuthStore';
 import { formatPolishDateInput, isCompletePolishDate } from '../../utils/polishDateInput';
 import { useCarScreenTheme, type CarScreenColors } from '../../theme/carScreenTheme';
 
@@ -38,6 +39,7 @@ function isValidVinQuick(vin: string) {
 
 export default function CarVehicleDocsSection({ value, onChange }: CarVehicleDocsSectionProps) {
   const { colors, elevation } = useCarScreenTheme();
+  const token = useAuthStore((s) => s.token);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [insuranceLoading, setInsuranceLoading] = useState(false);
@@ -49,23 +51,27 @@ export default function CarVehicleDocsSection({ value, onChange }: CarVehicleDoc
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
-  const canAutoVerify = Boolean(
+  const canCheckHistory = Boolean(
     isValidVinQuick(value.vin) &&
       value.registrationNumber.trim() &&
       isCompletePolishDate(value.firstRegistrationDate),
   );
+  const canCheckInsurance = Boolean(value.registrationNumber.trim());
 
   useEffect(() => {
-    if (!canAutoVerify) return;
+    if (!canCheckInsurance || !token) return;
     const seq = ++autoCheckSeq.current;
     const timer = setTimeout(() => {
       setAutoChecking(true);
-      checkCarInsurance({
-        registrationNumber: value.registrationNumber,
-        vin: value.vin,
-        firstRegistrationDate: value.firstRegistrationDate,
-        insuranceValidUntil: value.insuranceValidUntil,
-      })
+      checkCarInsurance(
+        {
+          registrationNumber: value.registrationNumber,
+          vin: value.vin,
+          firstRegistrationDate: value.firstRegistrationDate,
+          insuranceValidUntil: value.insuranceValidUntil,
+        },
+        token,
+      )
         .then((result) => {
           if (seq !== autoCheckSeq.current) return;
           setInsuranceOk(result.hasInsurance);
@@ -82,16 +88,23 @@ export default function CarVehicleDocsSection({ value, onChange }: CarVehicleDoc
         });
     }, 900);
     return () => clearTimeout(timer);
-  }, [canAutoVerify, value.vin, value.registrationNumber, value.firstRegistrationDate, value.insuranceValidUntil]);
+  }, [canCheckInsurance, token, value.vin, value.registrationNumber, value.firstRegistrationDate, value.insuranceValidUntil]);
 
   const handleHistory = async () => {
+    if (!token) {
+      Alert.alert('Historia pojazdu', 'Zaloguj się, aby sprawdzić historię.');
+      return;
+    }
     setHistoryLoading(true);
     try {
-      const report = await fetchVehicleHistoryReport({
-        vin: value.vin,
-        registrationNumber: value.registrationNumber,
-        firstRegistrationDate: value.firstRegistrationDate,
-      });
+      const report = await fetchVehicleHistoryReport(
+        {
+          vin: value.vin,
+          registrationNumber: value.registrationNumber,
+          firstRegistrationDate: value.firstRegistrationDate,
+        },
+        token,
+      );
       setHistoryReport(report);
     } catch (error) {
       Alert.alert('Historia pojazdu', error instanceof Error ? error.message : 'Błąd sprawdzania.');
@@ -101,14 +114,21 @@ export default function CarVehicleDocsSection({ value, onChange }: CarVehicleDoc
   };
 
   const handleInsurance = async () => {
+    if (!token) {
+      Alert.alert('Ubezpieczenie', 'Zaloguj się, aby sprawdzić OC.');
+      return;
+    }
     setInsuranceLoading(true);
     try {
-      const result = await checkCarInsurance({
-        registrationNumber: value.registrationNumber,
-        insuranceValidUntil: value.insuranceValidUntil,
-        vin: value.vin,
-        firstRegistrationDate: value.firstRegistrationDate,
-      });
+      const result = await checkCarInsurance(
+        {
+          registrationNumber: value.registrationNumber,
+          insuranceValidUntil: value.insuranceValidUntil,
+          vin: value.vin,
+          firstRegistrationDate: value.firstRegistrationDate,
+        },
+        token,
+      );
       setInsuranceOk(result.hasInsurance);
       setInsuranceMessage(result.message);
       if (result.validUntil) {
@@ -146,7 +166,7 @@ export default function CarVehicleDocsSection({ value, onChange }: CarVehicleDoc
         colors={colors}
       />
 
-      <Pressable onPress={() => void handleHistory()} disabled={historyLoading || !canAutoVerify} style={styles.actionBtn}>
+      <Pressable onPress={() => void handleHistory()} disabled={historyLoading || !canCheckHistory || !token} style={styles.actionBtn}>
         {historyLoading ? (
           <ActivityIndicator color={colors.buttonText} />
         ) : (
@@ -174,7 +194,7 @@ export default function CarVehicleDocsSection({ value, onChange }: CarVehicleDoc
         </View>
       ) : null}
 
-      <Pressable onPress={() => void handleInsurance()} disabled={insuranceLoading || !canAutoVerify} style={styles.actionBtnSecondary}>
+      <Pressable onPress={() => void handleInsurance()} disabled={insuranceLoading || !canCheckInsurance || !token} style={styles.actionBtnSecondary}>
         {insuranceLoading ? (
           <ActivityIndicator color={colors.successButtonText} />
         ) : (

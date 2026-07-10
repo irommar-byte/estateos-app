@@ -28,6 +28,8 @@ import {
 } from '../../utils/offerMediaCapacity';
 import { REST_OF_COUNTRY_CITY } from '../../constants/locationEcosystem';
 import { getAppLocale, t, useI18n } from '../../i18n';
+import RoomScanModal, { isRoomScanSupportedOnDevice } from '../../components/roomScan/RoomScanModal';
+import type { RoomScanDraftAssets } from '../../types/roomScan';
 import { pl } from '../../i18n/locales/pl';
 import { en } from '../../i18n/locales/en';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -344,6 +346,8 @@ export default function Step5_Media({ theme }: { theme: any }) {
   /** Kolejność podczas przeciągania — bez ciągłego zapisu do Zustand (brak „skakania”). */
   const [dragSnapshot, setDragSnapshot] = useState<string[] | null>(null);
   const dragSnapshotRef = useRef<string[] | null>(null);
+  const [roomScanOpen, setRoomScanOpen] = useState(false);
+  const roomScanAvailable = isRoomScanSupportedOnDevice();
 
   const draftImages = Array.isArray(draft.images) ? draft.images : [];
   const displayImages = dragSnapshot ?? draftImages;
@@ -499,7 +503,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
       });
       if (!result.canceled && result.assets?.[0]?.uri) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        updateDraft({ floorPlan: result.assets[0].uri });
+        updateDraft({ floorPlan: result.assets[0].uri, floorPlan3d: null, floorPlanScanMeta: null });
       }
     } catch (err: any) {
       Alert.alert(
@@ -508,7 +512,20 @@ export default function Step5_Media({ theme }: { theme: any }) {
       );
     }
   };
-  const removeFloorPlan = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); updateDraft({ floorPlan: null }); };
+  const removeFloorPlan = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    updateDraft({ floorPlan: null, floorPlan3d: null, floorPlanScanMeta: null });
+  };
+
+  const handleRoomScanComplete = (assets: RoomScanDraftAssets) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    updateDraft({
+      floorPlan: assets.floorPlanPngUri,
+      floorPlan3d: assets.floorPlan3dUri,
+      floorPlanScanMeta: JSON.stringify(assets.scanMeta),
+    });
+    setRoomScanOpen(false);
+  };
 
   const isDescriptionBusy = isGenerating || isGeneratingGpt;
 
@@ -860,11 +877,50 @@ export default function Step5_Media({ theme }: { theme: any }) {
         </View>
 
           <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 15 }}>{translate('addOffer.step5.sections.floorPlan')}</Text>
+
+          {roomScanAvailable ? (
+            <AppleHover onPress={() => setRoomScanOpen(true)} scaleTo={0.98}>
+              <View
+                style={[
+                  styles.roomScanCta,
+                  {
+                    borderColor: isDark ? 'rgba(56,189,248,0.35)' : 'rgba(14,165,233,0.35)',
+                    backgroundColor: isDark ? 'rgba(15,23,42,0.85)' : 'rgba(240,249,255,0.95)',
+                  },
+                ]}
+              >
+                <View style={styles.roomScanIconWrap}>
+                  <Ionicons name="scan-outline" size={22} color="#0ea5e9" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: theme.text }}>
+                      {translate('addOffer.step5.floorPlan.scan')}
+                    </Text>
+                    <View style={styles.roomScanBadge}>
+                      <Text style={styles.roomScanBadgeText}>{translate('addOffer.step5.floorPlan.scanBadge')}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 12, fontWeight: '500', color: theme.subtitle, marginTop: 4, lineHeight: 17 }}>
+                    {translate('addOffer.step5.floorPlan.scanHint')}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={theme.subtitle} />
+              </View>
+            </AppleHover>
+          ) : null}
+
           <AppleHover onPress={pickFloorPlan} scaleTo={0.98}>
-            <View style={[styles.floorPlanContainer, { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)', height: draft.floorPlan ? 220 : 70 }]}>
+            <View style={[styles.floorPlanContainer, { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)', height: draft.floorPlan ? 220 : 70, marginTop: roomScanAvailable ? 10 : 0 }]}>
               {draft.floorPlan ? (
                 <View style={{ width: '100%', height: '100%', position: 'relative' }}>
                   <Image source={{ uri: draft.floorPlan }} style={{ width: '100%', height: '100%', borderRadius: 16 }} resizeMode="cover" />
+                  {draft.floorPlan3d ? (
+                    <View style={styles.scannedBadge}>
+                      <Ionicons name="cube-outline" size={12} color="#e0f2fe" />
+                      <Text style={styles.scannedBadgeText}>{translate('addOffer.step5.floorPlan.scanned')}</Text>
+                    </View>
+                  ) : null}
                   <Pressable onPress={removeFloorPlan} style={styles.removeFloorPlanBtn}>
                     <Ionicons name="close" size={18} color="#fff" />
                   </Pressable>
@@ -877,6 +933,12 @@ export default function Step5_Media({ theme }: { theme: any }) {
               )}
             </View>
           </AppleHover>
+
+          <RoomScanModal
+            visible={roomScanOpen}
+            onClose={() => setRoomScanOpen(false)}
+            onComplete={handleRoomScanComplete}
+          />
 
           <View style={{ marginTop: 20, marginBottom: 8 }}>
             <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle }}>
@@ -982,6 +1044,44 @@ const styles = StyleSheet.create({
 
   addMediaBtn: { width: '100%', height: 65, borderRadius: 18, borderStyle: 'dashed', borderWidth: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
   floorPlanContainer: { width: '100%', borderRadius: 18, borderStyle: 'dashed', borderWidth: 2 },
+  roomScanCta: {
+    width: '100%',
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  roomScanIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(14,165,233,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roomScanBadge: {
+    backgroundColor: 'rgba(14,165,233,0.15)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  roomScanBadgeText: { color: '#0284c7', fontSize: 10, fontWeight: '900', letterSpacing: 0.4 },
+  scannedBadge: {
+    position: 'absolute',
+    left: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(15,23,42,0.82)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  scannedBadgeText: { color: '#e0f2fe', fontSize: 11, fontWeight: '800' },
   removeFloorPlanBtn: { position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.6)', width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
   aiButtonsRow: {
     flexDirection: 'row',

@@ -22,9 +22,32 @@ function hashCookie(cookie) {
 function normalizeLogin(name) {
   const login = String(name || "").trim().toLowerCase();
   if (!login || !/^[a-z0-9_]{2,32}$/.test(login)) return null;
-  if (/logowanie|login|undefined|hasło|password|dołącz|register|wyloguj|logout/i.test(login)) {
-    return null;
-  }
+  const stop = new Set([
+    "admin",
+    "built",
+    "by",
+    "coins",
+    "filmy",
+    "legacy",
+    "login",
+    "logout",
+    "movies",
+    "muzyka",
+    "nc",
+    "nostalgie",
+    "panel",
+    "players",
+    "premium",
+    "preserved",
+    "ranking",
+    "register",
+    "swiat",
+    "wspieram",
+    "wyloguj",
+    "zglos",
+  ]);
+  if (stop.has(login)) return null;
+  if (/logowanie|undefined|hasło|password|dołącz/i.test(login)) return null;
   return login;
 }
 
@@ -99,7 +122,15 @@ async function checkUserPanelSession(cookie, req) {
     const clientLogin = normalizeLogin(
       req.headers["x-movies-user-login"] || req.headers["X-Movies-User-Login"] || ""
     );
-    const login = extractUserLogin(html) || (loginAppearsInPanel(html, clientLogin) ? clientLogin : null);
+    const htmlLogin = extractUserLogin(html);
+    let login = htmlLogin;
+    if (!login && clientLogin && loginAppearsInPanel(html, clientLogin)) {
+      login = clientLogin;
+    }
+    // iframe przekazuje ncLogin= — ufaj mu przy aktywnej sesji panelu
+    if (!login && clientLogin && html.length > 4000 && !isLoginRedirect(html)) {
+      login = clientLogin;
+    }
     if (login) return { userId: `player:${login}`, login, role: "user" };
 
     if (html.length > 4000 && !/Nostalgie™Gate|Kontrola Bezpieczeństwa/i.test(html)) {
@@ -144,7 +175,9 @@ async function resolveAuth(req) {
 function isTokenizedPlay(req) {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
   const raw = req.originalUrl || req.url || "";
-  if (!raw.includes("/api/play/")) return false;
+  const tokenizedPath =
+    raw.includes("/api/play/") || raw.includes("/api/music/stream/");
+  if (!tokenizedPath) return false;
   try {
     const u = new URL(raw, "http://movies.local");
     return !!u.searchParams.get("token");

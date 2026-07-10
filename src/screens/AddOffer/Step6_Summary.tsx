@@ -773,6 +773,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       if (createdOfferId && draft.floorPlan) {
           let fpUri = draft.floorPlan;
           let fpName = fpUri.split('/').pop() || 'floorplan.jpg';
+          const fpMime = fpName.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
           
           if (fpUri.toLowerCase().endsWith('.heic') || fpUri.toLowerCase().endsWith('.heif')) {
               setUploadProgressText(t('addOffer.step6.publish.convertingFloorPlan'));
@@ -786,7 +787,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           setUploadProgressText(t('addOffer.step6.publish.uploadingFloorPlan'));
           const fpFormData = new FormData();
           fpFormData.append('offerId', String(createdOfferId));
-          fpFormData.append('file', { uri: fpUri, name: fpName, type: 'image/jpeg' } as any);
+          fpFormData.append('file', { uri: fpUri, name: fpName, type: fpMime } as any);
           fpFormData.append('isFloorPlan', 'true');
 
           const fpUploadRes = await fetch(`${API_URL}/api/upload/mobile`, {
@@ -797,6 +798,36 @@ export default function Step6_Summary({ theme }: { theme: any }) {
 
           if (!fpUploadRes.ok) {
             const errText = await fpUploadRes.json().catch(() => ({ error: t('addOffer.step6.alerts.publishError.floorPlanUnknown') }));
+            throw new Error(
+              t('addOffer.step6.alerts.publishError.floorPlanError', {
+                message: errText.error || t('addOffer.step6.alerts.publishError.uploadRejected'),
+              }),
+            );
+          }
+      }
+
+      if (createdOfferId && draft.floorPlan3d) {
+          setUploadProgressText(t('addOffer.step6.publish.uploadingFloorPlan3d'));
+          const modelForm = new FormData();
+          modelForm.append('offerId', String(createdOfferId));
+          modelForm.append('file', {
+            uri: draft.floorPlan3d,
+            name: 'floorplan-3d.usdz',
+            type: 'model/vnd.usdz+zip',
+          } as any);
+          modelForm.append('isFloorPlan3d', 'true');
+          if (draft.floorPlanScanMeta) {
+            modelForm.append('floorPlanScanMeta', String(draft.floorPlanScanMeta));
+          }
+
+          const modelUploadRes = await fetch(`${API_URL}/api/upload/mobile`, {
+            method: 'POST',
+            body: modelForm,
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          if (!modelUploadRes.ok) {
+            const errText = await modelUploadRes.json().catch(() => ({ error: t('addOffer.step6.alerts.publishError.floorPlanUnknown') }));
             throw new Error(
               t('addOffer.step6.alerts.publishError.floorPlanError', {
                 message: errText.error || t('addOffer.step6.alerts.publishError.uploadRejected'),

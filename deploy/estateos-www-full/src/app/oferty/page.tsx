@@ -35,6 +35,11 @@ import CatalogLocationFilter, {
   offerMatchesCatalogLocationFilter,
   type CatalogLocationFilterValue,
 } from "@/components/catalog/CatalogLocationFilter";
+import CatalogPropertyTypeToggle, {
+  type CatalogPropertyTypeFilter,
+} from "@/components/catalog/CatalogPropertyTypeToggle";
+import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
+import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { formatDistanceKm, haversineKm } from "@/lib/geo/haversine";
@@ -53,6 +58,9 @@ type CatalogOffer = {
   transactionType?: string | null;
   createdAt?: string | null;
   featured?: boolean | null;
+  promotedUntil?: string | null;
+  propertyType?: string | null;
+  status?: string | null;
   previousPrice?: unknown;
   oldPrice?: unknown;
   listPricePln?: unknown;
@@ -186,6 +194,7 @@ export default function CatalogPage() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMine, setLoadingMine] = useState(false);
+  const [archivingId, setArchivingId] = useState<number | null>(null);
   const [loadingAuction, setLoadingAuction] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<GallerySection>("newest");
@@ -196,6 +205,7 @@ export default function CatalogPage() {
     city: null,
     district: null,
   });
+  const [propertyTypeFilter, setPropertyTypeFilter] = useState<CatalogPropertyTypeFilter>("ALL");
   const [strictCityDistricts, setStrictCityDistricts] = useState<Record<string, string[]>>({});
   const { location, denied, pending, request } = useUserLocation();
 
@@ -260,6 +270,24 @@ export default function CatalogPage() {
       setMyOffers([]);
     } finally {
       setLoadingMine(false);
+    }
+  }, []);
+
+  const archiveOffer = useCallback(async (offerId: number) => {
+    if (!window.confirm("Zakończyć publikację tego ogłoszenia?")) return;
+    setArchivingId(offerId);
+    try {
+      const res = await fetch(`/api/offers/${offerId}/archive`, { method: "POST", credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(typeof data?.error === "string" ? data.error : "Nie udało się zarchiwizować ogłoszenia.");
+        return;
+      }
+      setMyOffers((prev) => prev.filter((offer) => offer.id !== offerId));
+    } catch {
+      alert("Błąd sieci podczas archiwizacji.");
+    } finally {
+      setArchivingId(null);
     }
   }, []);
 
@@ -370,17 +398,39 @@ export default function CatalogPage() {
     [transactionOffers, locationFilter],
   );
 
+  const propertyTypeCounts = useMemo(() => {
+    const counts: Record<CatalogPropertyTypeFilter, number> = {
+      ALL: transactionOffers.length,
+      FLAT: 0,
+      HOUSE: 0,
+      PLOT: 0,
+      COMMERCIAL: 0,
+    };
+    for (const offer of transactionOffers) {
+      const key = String(offer.propertyType || "").toUpperCase() as CatalogPropertyTypeFilter;
+      if (key in counts && key !== "ALL") counts[key] += 1;
+    }
+    return counts;
+  }, [transactionOffers]);
+
+  const propertyFilteredOffers = useMemo(() => {
+    if (propertyTypeFilter === "ALL") return locationFilteredOffers;
+    return locationFilteredOffers.filter(
+      (offer) => String(offer.propertyType || "").toUpperCase() === propertyTypeFilter,
+    );
+  }, [locationFilteredOffers, propertyTypeFilter]);
+
   useEffect(() => {
     if (activeSection === "mine" && loggedIn) void loadMine();
   }, [activeSection, loggedIn, loadMine]);
 
-  const sortedByNewest = [...locationFilteredOffers].sort((a, b) => {
+  const sortedByNewest = [...propertyFilteredOffers].sort((a, b) => {
     const ta = a.createdAt ? Date.parse(a.createdAt) : Number(a.id) * 1000;
     const tb = b.createdAt ? Date.parse(b.createdAt) : Number(b.id) * 1000;
     return tb - ta;
   });
 
-  const discountedOffers = locationFilteredOffers.filter((offer) => {
+  const discountedOffers = propertyFilteredOffers.filter((offer) => {
     if (offer.isDiscounted) return true;
     const current = Number(offer.pricePln ?? offer.price ?? 0);
     const prev = Number(offer.previousPrice ?? offer.oldPrice ?? offer.listPricePln ?? 0);
@@ -389,7 +439,7 @@ export default function CatalogPage() {
 
   const distanceByOfferId = new Map<number, number>();
   if (location) {
-    for (const offer of locationFilteredOffers) {
+    for (const offer of propertyFilteredOffers) {
       const lat = Number(offer.lat);
       const lng = Number(offer.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
@@ -398,20 +448,22 @@ export default function CatalogPage() {
   }
 
   const nearestOffers = location
-    ? [...locationFilteredOffers]
+    ? [...propertyFilteredOffers]
         .filter((o) => distanceByOfferId.has(o.id))
         .sort((a, b) => (distanceByOfferId.get(a.id)! - distanceByOfferId.get(b.id)!))
     : [];
 
-  const geolocatedCount = locationFilteredOffers.filter((o) => {
+  const geolocatedCount = propertyFilteredOffers.filter((o) => {
     const lat = Number(o.lat);
     const lng = Number(o.lng);
     return Number.isFinite(lat) && Number.isFinite(lng);
   }).length;
 
-  const featuredOffers = locationFilteredOffers.filter(
-    (offer) => offer.featured || offer.badges?.isPartner || offer.badges?.isPro,
-  );
+  const paidFeaturedOffers = propertyFilteredOffers
+    .filter((offer) => offer.featured)
+    .sort((a, b) => Date.parse(String(b.promotedUntil || b.createdAt || 0)) - Date.parse(String(a.promotedUntil || a.createdAt || 0)));
+
+  const featuredOffers = paidFeaturedOffers;
 
   const filteredMyOffers = useMemo(
     () =>
@@ -420,7 +472,7 @@ export default function CatalogPage() {
   );
 
   const sectionCounts: Record<GallerySection, number> = {
-    all: locationFilteredOffers.length,
+    all: propertyFilteredOffers.length,
     nearest: location ? nearestOffers.length : geolocatedCount,
     sale: saleOffers.length,
     rent: rentOffers.length,
@@ -442,7 +494,7 @@ export default function CatalogPage() {
       case "discounted":
         return discountedOffers;
       case "featured":
-        return featuredOffers.length > 0 ? featuredOffers : sortedByNewest.slice(0, 8);
+        return featuredOffers;
       default:
         return sortedByNewest;
     }
@@ -452,7 +504,12 @@ export default function CatalogPage() {
 
   const sectionLoading = activeSection === "mine" && loadingMine;
 
-  const sectionLead = activeSection === "mine" ? labels.mineLead : null;
+  const sectionLead =
+    activeSection === "mine"
+      ? labels.mineLead
+      : activeSection === "featured"
+        ? "Tylko ogłoszenia z aktywnym, opłaconym wyróżnieniem (1 kredyt / 7 dni)."
+        : null;
 
   const sectionAccentClass =
     transactionMode === "rent"
@@ -463,6 +520,21 @@ export default function CatalogPage() {
     transactionMode === "rent"
       ? "bg-sky-500/20 text-sky-600 dark:text-sky-300"
       : "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300";
+
+  const spotlightItems = useMemo(
+    () =>
+      paidFeaturedOffers.map((offer) => ({
+        id: offer.id,
+        href: `/oferta/${offer.id}`,
+        title:
+          offer.title?.trim() || labels.offerTitleFallback.replace("{id}", String(offer.id)),
+        subtitle: formatLocationLabel(offer, labels.countryDefault),
+        priceLabel: formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth),
+        imageUrl: offer.imageUrl || "/fallback-luxury.svg",
+        badge: "Wyróżnione",
+      })),
+    [paidFeaturedOffers, labels, formatOffer, dict.homePremium.pricePerMonth],
+  );
 
   return (
     <main
@@ -475,7 +547,7 @@ export default function CatalogPage() {
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <h1 className="text-3xl font-bold leading-[1.08] tracking-tight text-[var(--eos-text)] md:text-5xl lg:text-6xl">
               {labels.title}
-              <span className="block font-serif italic font-normal text-[var(--eos-muted)] mt-1 md:mt-2">
+              <span className="block mt-1 md:mt-2 text-2xl md:text-3xl font-black uppercase tracking-[0.08em] text-emerald-600 dark:text-emerald-400">
                 {labels.subtitle}
               </span>
             </h1>
@@ -498,6 +570,12 @@ export default function CatalogPage() {
                   rentCount={rentOffers.length}
                 />
               </div>
+              <CatalogPropertyTypeToggle
+                value={propertyTypeFilter}
+                onChange={setPropertyTypeFilter}
+                counts={propertyTypeCounts}
+                accent={transactionMode}
+              />
               <CatalogLocationFilter
                 offers={transactionOffers}
                 value={locationFilter}
@@ -507,6 +585,17 @@ export default function CatalogPage() {
                 accent={transactionMode}
               />
             </>
+          ) : null}
+
+          {!loading && !error && activeSection !== "mine" && spotlightItems.length > 0 ? (
+            <div className="mt-6 md:mt-8">
+              <FeaturedSpotlightCarousel
+                items={spotlightItems}
+                accent="home"
+                title="Oferty wyróżnione"
+                lead="Premiumowa ekspozycja — rotacja co 30 sekund."
+              />
+            </div>
           ) : null}
 
           {!loading && !error && (
@@ -694,9 +783,85 @@ export default function CatalogPage() {
                     {nearestCopy.enable}
                   </button>
                 </>
+              ) : activeSection === "featured" ? (
+                <>
+                  <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+                    Brak opłaconych wyróżnień w tym widoku
+                  </p>
+                  <p className="mx-auto mt-4 max-w-md text-sm normal-case leading-relaxed text-[var(--eos-muted)]">
+                    Wyróżnienie premium to osobna płatna ekspozycja — nie mylić z odznaką partnera PRO.
+                    Wyróżnij swoje ogłoszenie w zakładce Moje lub w Moje konto → Ogłoszenia.
+                  </p>
+                </>
               ) : (
                 <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">{labels.empty}</p>
               )}
+            </motion.div>
+          ) : activeSection === "mine" ? (
+            <motion.div
+              key="mine-list"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="grid grid-cols-1 gap-4"
+            >
+              {offersInSection.map((offer) => (
+                <article
+                  key={offer.id}
+                  className="flex flex-col gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 sm:flex-row sm:items-center"
+                >
+                  <Link href={`/oferta/${offer.id}`} className="relative aspect-[4/3] w-full shrink-0 overflow-hidden rounded-xl border border-[var(--eos-border)] sm:w-48">
+                    <Image
+                      src={offer.imageUrl || "/fallback-luxury.svg"}
+                      alt={offer.title || `Oferta ${offer.id}`}
+                      fill
+                      sizes="192px"
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </Link>
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/oferta/${offer.id}`} className="block group">
+                      <h2 className="text-lg font-bold tracking-tight text-[var(--eos-text)] group-hover:text-emerald-500">
+                        {offer.title?.trim() || labels.offerTitleFallback.replace("{id}", String(offer.id))}
+                      </h2>
+                      <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--eos-muted)]">
+                        {formatAreaLabel(offer)} · {formatLocationLabel(offer, labels.countryDefault)}
+                      </p>
+                      <p className="mt-2 text-base font-bold tabular-nums">
+                        {formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth)}
+                      </p>
+                      {offer.featured ? (
+                        <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-500">
+                          Wyróżnione do {offer.promotedUntil ? new Date(offer.promotedUntil).toLocaleDateString("pl-PL") : "—"}
+                        </p>
+                      ) : null}
+                    </Link>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Link
+                        href={`/edytuj-oferte/${offer.id}`}
+                        className="rounded-full border border-emerald-400/35 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-500"
+                      >
+                        Edytuj
+                      </Link>
+                      <PromoteListingButton
+                        endpoint={`/api/offers/${offer.id}/promote`}
+                        onPromoted={() => void loadMine()}
+                        disabled={Boolean(offer.featured)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void archiveOffer(offer.id)}
+                        disabled={archivingId === offer.id}
+                        className="rounded-full border border-red-400/35 bg-red-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-400 disabled:opacity-60"
+                      >
+                        {archivingId === offer.id ? "Kończenie..." : "Zakończ"}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
             </motion.div>
           ) : (
             <motion.div

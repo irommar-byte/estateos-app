@@ -18,21 +18,27 @@ struct SeriesEpisodesView: View {
 
     let info: VideoInfoResponse
     var backLabel: String = "Wróć"
-    let navigationTab: HomeTabView.Tab
-    var focusedTab: FocusState<HomeTabView.Tab?>.Binding
     let onBack: () -> Void
 
-    @State private var selectedDetail: MediaSelection?
-    @State private var playbackSession: PlaybackSession?
+    @State private var playbackContext: MediaPlaybackContext?
     @State private var playError: String?
     @State private var playingEpisodeID: String?
     @State private var selectedSeasonIndex = 0
-    @State private var gridColumnCount = 4
+    @State private var isSelectionMode = false
+    @State private var selectedEpisodeIDs = Set<String>()
+    @State private var showDownloadSheet = false
+    @State private var pendingDownloadEpisodes: [EpisodeItem]?
+    @State private var deletingEpisodeURL: String?
+    @State private var browseContext: CdaHdBrowseContext?
+    @State private var showCdaDetails = false
     @FocusState private var localFocus: SeriesFocus?
 
-    private let cardMinimum: CGFloat = 340
-    private let gridSpacing: CGFloat = 40
-    private let columns = [GridItem(.adaptive(minimum: 340, maximum: 380), spacing: 40)]
+    private var downloadService: MovieDownloadService { app.movieDownloadService }
+
+    private var cdaMeta: CdaHdMeta? { info.cdaHd }
+    private var displayTitle: String { MediaCardCopy.decodedTitle(cdaMeta?.title ?? info.title) }
+    private var posterURL: URL? { (cdaMeta?.thumbnail ?? info.thumbnail).flatMap(URL.init(string:)) }
+    private var sourceLabel: String { MediaSourceMeta.normalize(info.uploader ?? info.source).label }
 
     private var seasonSections: [SeasonSection] {
         if let seasons = info.seasons, !seasons.isEmpty {
@@ -66,45 +72,84 @@ struct SeriesEpisodesView: View {
         return seasonSections[index]
     }
 
+    private var visibleEpisodes: [EpisodeItem] {
+        selectedSeason?.episodes ?? info.playableEpisodes
+    }
+
+    private var allEpisodes: [EpisodeItem] {
+        seasonSections.flatMap(\.episodes)
+    }
+
+    private var episodeCount: Int {
+        cdaMeta?.episodeCount ?? info.episodeCount ?? allEpisodes.count
+    }
+
+    private var isBatchRunning: Bool {
+        downloadService.isRunning && downloadService.batchMatches(contextKey: info.webpageUrl)
+    }
+
+    private var completedDownloadCount: Int {
+        allEpisodes.filter { isEpisodeDownloaded($0) }.count
+    }
+
+    private var pendingDownloadCount: Int {
+        allEpisodes.filter { !isEpisodeDownloaded($0) }.count
+    }
+
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 20) {
-                toolbar
-                metadataRow
-                ScreenTitle(title: info.title, subtitle: seasonSubtitle)
+        ZStack(alignment: .bottomLeading) {
+            MusicHeroBackdrop(imageURL: posterURL)
 
-                if seasonSections.count > 1 {
-                    seasonPicker
-                }
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 28) {
+                    header
 
-                GridColumnReader(minimumCardWidth: cardMinimum, spacing: gridSpacing, columnCount: $gridColumnCount)
-
-                if let season = selectedSeason {
-                    if season.episodes.isEmpty {
-                        Text("Brak odcinków w tym sezonie.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        episodeGrid(season.episodes)
+                    if seasonSections.count > 1 {
+                        seasonPicker
                     }
-                } else {
-                    Text("Nie znaleziono odcinków.")
-                        .foregroundStyle(.secondary)
+
+                    if showCdaDetails, let cdaMeta {
+                        cdaDetailsSection(cdaMeta)
+                    }
+
+                    episodePlaylist
                 }
+                .padding(.horizontal, NostalgieSpacing.screenH)
+                .padding(.bottom, NostalgieSpacing.scrollBottom)
             }
-            .padding(.horizontal, NostalgieSpacing.screenH)
-            .padding(.bottom, NostalgieSpacing.scrollBottom)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onExitCommand { onBack() }
+        .background(Color.black)
+        .onExitCommand {
+            if isSelectionMode {
+                isSelectionMode = false
+                selectedEpisodeIDs.removeAll()
+            } else {
+                onBack()
+            }
+        }
         .onAppear {
             selectedSeasonIndex = 0
         }
-        .fullScreenCover(item: $selectedDetail) { detail in
-            MediaDetailView(selection: detail)
-                .environmentObject(app)
+        .sheet(isPresented: $showDownloadSheet) {
+            if let episodes = pendingDownloadEpisodes {
+                MediaDownloadOptionsSheet(
+                    title: displayTitle,
+                    info: info,
+                    itemCount: episodes.count,
+                    totalDuration: episodesTotalDuration(episodes),
+                    itemsSubtitle: "\(episodes.count) odcinków · wybierz jakość przed pobraniem"
+                ) { format, quality in
+                    startDownloadBatch(episodes: episodes, format: format, quality: quality)
+                }
+            }
         }
-        .fullScreenCover(item: $playbackSession) { session in
-            PlayerScreen(session: session)
+        .fullScreenCover(item: $playbackContext) { context in
+            PlayerScreen(context: context)
+        }
+        .fullScreenCover(item: $browseContext) { context in
+            CdaHdBrowseView(context: context)
+                .environmentObject(app)
         }
         .alert("Odtwarzanie", isPresented: Binding(
             get: { playError != nil },
@@ -116,55 +161,246 @@ struct SeriesEpisodesView: View {
         }
     }
 
-    private var toolbar: some View {
-        HStack(spacing: 16) {
-            Button(action: onBack) {
-                Label(backLabel, systemImage: "chevron.left")
+    // MARK: - Header (jak MusicAlbumView)
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 16) {
+                Button(action: onBack) {
+                    Label(backLabel, systemImage: "chevron.left")
+                }
+                .buttonStyle(BackLinkButtonStyle())
+                .focused($localFocus, equals: .back)
+
+                Spacer()
+
+                Button {
+                    Task { await toggleSeriesFavorite() }
+                } label: {
+                    Label(
+                        app.isFavorite(info.webpageUrl) ? "W ulubionych" : "Dodaj serial",
+                        systemImage: app.isFavorite(info.webpageUrl) ? "heart.fill" : "heart"
+                    )
+                }
+                .buttonStyle(ChipButtonStyle(isSelected: app.isFavorite(info.webpageUrl)))
+                .focused($localFocus, equals: .favorite)
             }
-            .buttonStyle(FocusCardButtonStyle())
-            .focused($localFocus, equals: .back)
-            .onMoveCommand { direction in
-                if direction == .up {
-                    focusedTab.wrappedValue = navigationTab
+
+            HStack(alignment: .center, spacing: 14) {
+                seriesCoverThumb(size: 88)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        SourceBadgeView(source: MediaCardCopy.normalizedSourceKey(info.uploader ?? info.source))
+                        Text("SERIAL")
+                            .font(NostalgieFont.badge)
+                            .glassCapsule(paddingH: 10, paddingV: 6)
+                    }
+
+                    ScreenTitle(
+                        title: displayTitle,
+                        subtitle: seriesSubtitle,
+                        level: .detail
+                    )
+
+                    if let rating = cdaMeta?.rating, (rating.value ?? 0) > 0 {
+                        CdaHdRatingView(rating: rating)
+                    }
                 }
             }
 
-            Button {
-                Task { await toggleSeriesFavorite() }
-            } label: {
-                Label(
-                    app.isFavorite(info.webpageUrl) ? "W ulubionych" : "Dodaj serial",
-                    systemImage: app.isFavorite(info.webpageUrl) ? "heart.fill" : "heart"
-                )
-            }
-            .buttonStyle(FocusCardButtonStyle())
-            .focused($localFocus, equals: .favorite)
-            .onMoveCommand { direction in
-                if direction == .up {
-                    focusedTab.wrappedValue = navigationTab
+            if !visibleEpisodes.isEmpty {
+                HStack(spacing: 12) {
+                    if isSelectionMode {
+                        Button {
+                            prepareDownload(episodes: visibleEpisodes.filter { selectedEpisodeIDs.contains($0.id) })
+                        } label: {
+                            Label("Pobierz zaznaczone (\(selectedEpisodeIDs.count))", systemImage: "arrow.down.circle.fill")
+                        }
+                        .buttonStyle(ChipButtonStyle(isSelected: false))
+                        .disabled(selectedEpisodeIDs.isEmpty)
+
+                        Button {
+                            isSelectionMode = false
+                            selectedEpisodeIDs.removeAll()
+                        } label: {
+                            Label("Anuluj", systemImage: "xmark.circle.fill")
+                        }
+                        .buttonStyle(ChipButtonStyle(isSelected: false))
+                    } else {
+                        if pendingDownloadCount == 0, !allEpisodes.isEmpty {
+                            Label("Wszystkie pobrane", systemImage: "checkmark.circle.fill")
+                                .font(NostalgieFont.caption)
+                                .foregroundStyle(.green)
+                                .glassCapsule(paddingH: 10, paddingV: 5)
+                        } else {
+                            Button {
+                                prepareDownload(episodes: allEpisodes.filter { !isEpisodeDownloaded($0) })
+                            } label: {
+                                Label("Pobierz cały serial", systemImage: "arrow.down.circle.fill")
+                            }
+                            .buttonStyle(ChipButtonStyle(isSelected: false))
+                            .disabled(isBatchRunning)
+                        }
+
+                        Button {
+                            isSelectionMode = true
+                            selectedEpisodeIDs.removeAll()
+                        } label: {
+                            Label("Zaznacz", systemImage: "checklist")
+                        }
+                        .buttonStyle(ChipButtonStyle(isSelected: false))
+
+                        if cdaMeta != nil {
+                            Button {
+                                showCdaDetails.toggle()
+                            } label: {
+                                Label(showCdaDetails ? "Ukryj opis" : "O serialu", systemImage: "info.circle")
+                            }
+                            .buttonStyle(ChipButtonStyle(isSelected: showCdaDetails))
+                        }
+                    }
                 }
             }
-
-            Spacer()
         }
     }
 
-    private var metadataRow: some View {
-        HStack(spacing: 12) {
-            SourceBadgeView(source: MediaCardCopy.normalizedSourceKey(info.uploader))
-            Text("SERIAL · \(info.seasons?.count ?? seasonSections.count) sez. · \(info.episodeCount ?? info.playableEpisodes.count) odc.")
-                .font(NostalgieFont.metadata)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var seasonSubtitle: String {
-        guard let season = selectedSeason else { return "Wybierz odcinek" }
+    private var seriesSubtitle: String {
+        var parts: [String] = [sourceLabel]
         if seasonSections.count > 1 {
-            return "\(season.title) · \(season.episodes.count) odcinków"
+            parts.append("\(seasonSections.count) sezonów")
         }
-        return "Wybierz odcinek · \(season.episodes.count) łącznie"
+        parts.append("\(episodeCount) odcinków")
+        if let year = cdaMeta?.year {
+            parts.append("\(year)")
+        }
+        if completedDownloadCount > 0 {
+            parts.append("\(completedDownloadCount) pobranych")
+        }
+        return parts.joined(separator: " · ")
     }
+
+    @ViewBuilder
+    private func seriesCoverThumb(size: CGFloat) -> some View {
+        if let posterURL {
+            PosterRemoteImage(url: posterURL)
+                .scaledToFill()
+                .frame(width: size, height: size * 1.45)
+                .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous))
+                .shadow(color: .black.opacity(0.35), radius: 16, y: 8)
+        } else {
+            RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous)
+                .fill(NostalgieTheme.card)
+                .frame(width: size, height: size * 1.45)
+                .overlay {
+                    Image(systemName: "tv.fill")
+                        .font(NostalgieFont.rounded(28))
+                        .foregroundStyle(.secondary)
+                }
+        }
+    }
+
+    // MARK: - Episodes playlist
+
+    private var episodePlaylist: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            MusicSectionHeader(
+                title: seasonSections.count > 1 ? (selectedSeason?.title ?? "Odcinki") : "Odcinki",
+                subtitle: "Odtwórz lub pobierz wybrane odcinki"
+            )
+
+            if visibleEpisodes.isEmpty {
+                Text("Nie znaleziono odcinków.")
+                    .font(NostalgieFont.metadata)
+                    .foregroundStyle(.secondary)
+            } else {
+                LazyVStack(spacing: NostalgieSpacing.listRow) {
+                    ForEach(Array(visibleEpisodes.enumerated()), id: \.element.id) { index, episode in
+                        MusicTrackRow(
+                            index: episode.episodeNumber ?? (index + 1),
+                            title: episode.title,
+                            subtitle: episodeRowSubtitle(episode),
+                            duration: episode.duration,
+                            showsPlayHint: !isSelectionMode && playingEpisodeID != episode.id,
+                            isDownloaded: isEpisodeDownloaded(episode),
+                            downloadState: downloadService.itemState(for: episode.url),
+                            isActiveDownload: {
+                                if case .downloading = downloadService.itemState(for: episode.url) { return true }
+                                return false
+                            }(),
+                            isSelected: isSelectionMode ? selectedEpisodeIDs.contains(episode.id) : nil
+                        ) {
+                            if isSelectionMode {
+                                toggleEpisodeSelection(episode)
+                            } else {
+                                Task { await playEpisode(episode) }
+                            }
+                        }
+                        .contextMenu {
+                            Button("Odtwórz") {
+                                Task { await playEpisode(episode) }
+                            }
+                            Button("Pobierz odcinek") {
+                                prepareDownload(episodes: [episode])
+                            }
+                            .disabled(isEpisodeDownloaded(episode))
+                            Button("Usuń pobranie", role: .destructive) {
+                                Task { await deleteEpisodeDownload(episode) }
+                            }
+                            .disabled(!isEpisodeDownloaded(episode) || deletingEpisodeURL == episode.url)
+                        }
+                        .disabled(playingEpisodeID == episode.id)
+                    }
+                }
+            }
+        }
+    }
+
+    private func episodeRowSubtitle(_ episode: EpisodeItem) -> String {
+        if let sn = episode.seasonNumber, let en = episode.episodeNumber, seasonSections.count > 1 {
+            return "Sezon \(sn) · Odcinek \(en)"
+        }
+        if let en = episode.episodeNumber {
+            return "Odcinek \(en)"
+        }
+        return sourceLabel
+    }
+
+    // MARK: - CDA-HD details
+
+    @ViewBuilder
+    private func cdaDetailsSection(_ meta: CdaHdMeta) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if let description = meta.description, !description.isEmpty {
+                Text(description)
+                    .font(NostalgieFont.body)
+                    .foregroundStyle(.white.opacity(0.84))
+                    .lineSpacing(4)
+            }
+
+            if let creators = meta.creators, !creators.isEmpty {
+                CdaHdLinkRow(label: "Twórca", links: creators, onTap: openBrowse(link:))
+            }
+
+            if let cast = meta.cast, !cast.isEmpty {
+                MusicSectionHeader(title: "Obsada")
+                VStack(spacing: NostalgieSpacing.listRow) {
+                    ForEach(cast) { person in
+                        CdaHdCastRow(name: person.name) {
+                            openBrowse(title: person.name, url: person.url)
+                        }
+                    }
+                }
+            }
+
+            if let photos = meta.photos, !photos.isEmpty {
+                CdaHdPhotoShelf(photos: photos)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
+    // MARK: - Season picker
 
     private var seasonPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -179,17 +415,13 @@ struct SeriesEpisodesView: View {
                     ForEach(Array(seasonSections.enumerated()), id: \.element.id) { index, season in
                         Button {
                             selectedSeasonIndex = index
+                            selectedEpisodeIDs.removeAll()
                         } label: {
-                            Text("Sezon \(season.number)")
+                            Text(season.title)
                                 .lineLimit(1)
                         }
                         .buttonStyle(ChipButtonStyle(isSelected: selectedSeasonIndex == index))
                         .focused($localFocus, equals: .season(index))
-                        .onMoveCommand { direction in
-                            if direction == .up {
-                                localFocus = .back
-                            }
-                        }
                     }
                 }
                 .padding(.vertical, 2)
@@ -197,44 +429,75 @@ struct SeriesEpisodesView: View {
         }
     }
 
-    private func focusTargetAboveGrid() {
-        if seasonSections.count > 1 {
-            localFocus = .season(selectedSeasonIndex)
+    // MARK: - Actions
+
+    private func episodesTotalDuration(_ episodes: [EpisodeItem]) -> Double {
+        let sum = episodes.reduce(0.0) { $0 + ($1.duration ?? 0) }
+        if sum > 0 { return sum }
+        return Double(episodes.count) * 45 * 60
+    }
+
+    private func prepareDownload(episodes: [EpisodeItem]) {
+        let pending = episodes.filter { !isEpisodeDownloaded($0) }
+        guard !pending.isEmpty else { return }
+        isSelectionMode = false
+        selectedEpisodeIDs.removeAll()
+        pendingDownloadEpisodes = pending
+        showDownloadSheet = true
+    }
+
+    private func startDownloadBatch(
+        episodes: [EpisodeItem],
+        format: MediaDownloadFormat,
+        quality: MediaQualityOption
+    ) {
+        pendingDownloadEpisodes = nil
+        let options = info.qualityOptions(for: format)
+        let items = episodes.map { episode in
+            MovieDownloadQueueItem(
+                url: episode.url,
+                title: "\(displayTitle) · \(episode.title)",
+                thumbnail: episode.thumbnail ?? info.thumbnail,
+                source: info.uploader ?? info.source
+            )
+        }
+        downloadService.startBatch(
+            items: items,
+            label: displayTitle,
+            thumbnail: info.thumbnail ?? cdaMeta?.thumbnail,
+            contextKey: info.webpageUrl,
+            format: format,
+            quality: quality,
+            allQualityOptions: options
+        )
+    }
+
+    private func deleteEpisodeDownload(_ episode: EpisodeItem) async {
+        deletingEpisodeURL = episode.url
+        defer { deletingEpisodeURL = nil }
+        try? await downloadService.deleteDownload(url: episode.url)
+    }
+
+    private func toggleEpisodeSelection(_ episode: EpisodeItem) {
+        if selectedEpisodeIDs.contains(episode.id) {
+            selectedEpisodeIDs.remove(episode.id)
         } else {
-            localFocus = .back
+            selectedEpisodeIDs.insert(episode.id)
         }
     }
 
-    @ViewBuilder
-    private func episodeGrid(_ episodes: [EpisodeItem]) -> some View {
-        LazyVGrid(columns: columns, spacing: gridSpacing) {
-            ForEach(Array(episodes.enumerated()), id: \.element.id) { index, episode in
-                MediaCard(
-                    title: episode.title,
-                    subtitle: episodeSubtitle(episode),
-                    thumbnailURL: (episode.thumbnail ?? info.thumbnail).flatMap(URL.init(string:)),
-                    source: MediaCardCopy.normalizedSourceKey(info.uploader),
-                    typeLabel: "ODC.",
-                    quality: nil,
-                    duration: episode.duration,
-                    isFavorite: app.isFavorite(episode.url),
-                    isLoading: playingEpisodeID == episode.id
-                ) {
-                    Task { await playEpisode(episode) }
-                }
-                .onGridMoveUp(isTopRow: index < gridColumnCount) {
-                    focusTargetAboveGrid()
-                }
-            }
-        }
-        .padding(.top, 4)
+    private func isEpisodeDownloaded(_ episode: EpisodeItem) -> Bool {
+        if app.isMovieDownloaded(url: episode.url) { return true }
+        if case .done = downloadService.itemState(for: episode.url) { return true }
+        return false
     }
 
-    private func episodeSubtitle(_ episode: EpisodeItem) -> String {
-        if let sn = episode.seasonNumber, let en = episode.episodeNumber {
-            return "Sezon \(sn) · Odcinek \(en)"
-        }
-        return MediaSourceMeta.normalize(info.uploader).label
+    private func openBrowse(link: CdaHdLink) {
+        browseContext = CdaHdBrowseContext(title: link.name, pageURL: link.url)
+    }
+
+    private func openBrowse(title: String, url: String) {
+        browseContext = CdaHdBrowseContext(title: title, pageURL: url)
     }
 
     private func toggleSeriesFavorite() async {
@@ -256,13 +519,33 @@ struct SeriesEpisodesView: View {
         defer { playingEpisodeID = nil }
         for attempt in 0..<2 {
             do {
-                let preview = try await app.api.startPreview(url: episode.url)
-                if preview.instant == false {
-                    try await app.api.waitForPreviewReady(jobId: preview.jobId)
+                if let jobId = app.movieDownloadJobId(for: episode.url) {
+                    let token = try await app.api.moviePlayToken(jobId: jobId)
+                    let url = app.api.movieStreamURL(jobId: jobId, token: token.token)
+                    let session = PlaybackSession(jobId: jobId, streamURL: url, token: token.token)
+                    playbackContext = MediaPlaybackContext(
+                        sourceURL: episode.url,
+                        title: episode.title,
+                        streamOptions: info.effectiveStreamOptions,
+                        session: session,
+                        selectedQualityID: info.defaultStreamQualityID()
+                    )
+                    return
                 }
-                let token = try await app.api.playToken(jobId: preview.jobId)
-                let url = app.api.streamURL(jobId: token.jobId, token: token.token)
-                playbackSession = PlaybackSession(jobId: token.jobId, streamURL: url, token: token.token)
+
+                var episodeInfo: VideoInfoResponse?
+                do {
+                    episodeInfo = try await app.api.fetchInfo(url: episode.url)
+                } catch {
+                    episodeInfo = nil
+                }
+                let context = try await MediaPlaybackLauncher.startPlayback(
+                    api: app.api,
+                    url: episode.url,
+                    title: episode.title,
+                    info: episodeInfo ?? info
+                )
+                playbackContext = context
                 return
             } catch {
                 if attempt == 0 {

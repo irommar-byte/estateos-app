@@ -316,6 +316,84 @@ export async function saveOfferGalleryOrFloorplan(params: {
   return { ok: true, url: publicUrl };
 }
 
+const FLOOR_PLAN_3D_MAX_BYTES = 40 * 1024 * 1024;
+
+export async function saveOfferFloorPlan3d(params: {
+  offerId: number;
+  ownerUserId: number;
+  fileBuffer: Buffer;
+  originalFileName?: string;
+  scanMetaJson?: string | null;
+}): Promise<
+  | { ok: true; url: string }
+  | { ok: false; status: number; error: string }
+> {
+  if (params.fileBuffer.length > FLOOR_PLAN_3D_MAX_BYTES) {
+    return { ok: false, status: 413, error: 'Model 3D jest za duży (max 40 MB).' };
+  }
+  if (params.fileBuffer.length === 0) {
+    return { ok: false, status: 400, error: 'Pusty plik modelu 3D.' };
+  }
+
+  const offer = await prisma.offer.findUnique({
+    where: { id: params.offerId },
+    select: { id: true, userId: true },
+  });
+  if (!offer) {
+    return { ok: false, status: 404, error: 'Nie znaleziono oferty.' };
+  }
+  if (offer.userId !== params.ownerUserId) {
+    return { ok: false, status: 403, error: 'Brak uprawnień do edycji oferty.' };
+  }
+
+  const offerDir = path.join(OFFER_UPLOAD_BASE_FS, String(params.offerId));
+  await fs.mkdir(offerDir, { recursive: true });
+
+  const fileName = `floorplan-3d-${crypto.randomUUID()}.usdz`;
+  const filePath = path.join(offerDir, fileName);
+  await fs.writeFile(filePath, params.fileBuffer);
+
+  const publicUrl = `${OFFER_UPLOAD_PUBLIC_PREFIX}/${params.offerId}/${fileName}`;
+  const meta =
+    typeof params.scanMetaJson === 'string' && params.scanMetaJson.trim()
+      ? params.scanMetaJson.trim()
+      : null;
+
+  await prisma.offer.update({
+    where: { id: params.offerId },
+    data: {
+      floorPlan3dUrl: publicUrl,
+      ...(meta ? { floorPlanScanMeta: meta } : {}),
+    },
+  });
+
+  return { ok: true, url: publicUrl };
+}
+
+export async function saveOfferFloorPlanScanMeta(params: {
+  offerId: number;
+  ownerUserId: number;
+  scanMetaJson: string;
+}): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const offer = await prisma.offer.findUnique({
+    where: { id: params.offerId },
+    select: { id: true, userId: true },
+  });
+  if (!offer) {
+    return { ok: false, status: 404, error: 'Nie znaleziono oferty.' };
+  }
+  if (offer.userId !== params.ownerUserId) {
+    return { ok: false, status: 403, error: 'Brak uprawnień do edycji oferty.' };
+  }
+
+  await prisma.offer.update({
+    where: { id: params.offerId },
+    data: { floorPlanScanMeta: params.scanMetaJson.trim() },
+  });
+
+  return { ok: true };
+}
+
 export async function saveDealroomParticipantWatermarkedImage(params: {
   offerId: number;
   participantUserId: number;

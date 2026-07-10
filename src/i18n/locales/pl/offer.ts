@@ -339,6 +339,12 @@ export const offer = {
       enlarge: 'Powiększ rzut',
       emptyTitle: 'Plan niedostępny',
       emptySubtitle: 'Do tej oferty nie dołączono jeszcze planu lokalu.',
+      walkthrough3d: 'Spacer 3D',
+      walkthrough3dHint: 'Przejdź przez mieszkanie w rzeczywistej skali (iPhone / iPad).',
+      scannedPlan: 'Plan ze skanu LiDAR',
+      roomsCount: '{{count}} pokoi',
+      exportPdf: 'Eksportuj plan PDF',
+      exportPdfFailed: 'Nie udało się wygenerować pliku PDF.',
     },
     offerId: 'ID Oferty: {{id}}',
     profile: {
@@ -422,6 +428,7 @@ export const offer = {
       plotArea: 'metraż działki',
       isFurnished: 'umeblowanie',
       images: 'zdjęcia',
+      floorPlan: 'plan mieszkania',
     },
     gallery: {
       sectionTitle: 'GALERIA ZDJĘĆ',
@@ -438,6 +445,9 @@ export const offer = {
       replace: 'Zmień plan',
       remove: 'Usuń plan',
       hint: 'Rzut lokalu zwiększa zaufanie — kupujący widzą układ pomieszczeń przed wizytą.',
+      scan: 'Zeskanuj mieszkanie (LiDAR)',
+      scanHint: 'Natywny skan Apple RoomPlan — plan 2D z wymiarami i spacer 3D.',
+      scanned: 'Plan ze skanu LiDAR',
     },
     mainInfo: {
       sectionTitle: 'INFORMACJE GŁÓWNE',

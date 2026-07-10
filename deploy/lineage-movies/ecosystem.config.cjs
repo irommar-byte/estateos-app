@@ -8,6 +8,7 @@ module.exports = {
         PORT: "4321",
         NODE_ENV: "production",
         DOWNLOAD_DIR: "/home/rommar/lineage-movies/downloads/jobs",
+        MUSIC_PLAYLIST_DOWNLOADS_DIR: "/home/rommar/lineage-movies/downloads",
         MOVIES_JWT_SECRET: "lineage-movies-jwt-prod-set-on-vps",
         LINEAGE_LOGIN_URL: "http://192.168.50.200/login.php",
       },

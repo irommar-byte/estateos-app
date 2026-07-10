@@ -15,6 +15,7 @@ import {
   fetchVehicleHistoryReport,
   type VehicleHistoryReport,
 } from '../../services/carVehicleChecks';
+import { useAuthStore } from '../../store/useAuthStore';
 import { useCarScreenTheme, type CarScreenColors } from '../../theme/carScreenTheme';
 
 type CarVehicleChecksPanelProps = {
@@ -33,6 +34,7 @@ export default function CarVehicleChecksPanel({
   title = 'Weryfikacja pojazdu',
 }: CarVehicleChecksPanelProps) {
   const { colors, elevation } = useCarScreenTheme();
+  const token = useAuthStore((s) => s.token);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [insuranceLoading, setInsuranceLoading] = useState(false);
@@ -43,20 +45,23 @@ export default function CarVehicleChecksPanel({
   const hasHistoryData = Boolean(
     vin.trim().length === 17 && registrationNumber.trim() && firstRegistrationDate.trim(),
   );
-  const hasInsuranceData = hasHistoryData;
+  const hasInsuranceData = Boolean(registrationNumber.trim());
 
   const handleHistory = async () => {
+    if (!token) {
+      Alert.alert('Historia pojazdu', 'Zaloguj się, aby sprawdzić historię w CEPIK.');
+      return;
+    }
     if (!hasHistoryData) {
       Alert.alert('Historia pojazdu', 'Sprzedająca osoba nie podała pełnych danych (VIN, tablica, data pierwszej rejestracji).');
       return;
     }
     setHistoryLoading(true);
     try {
-      const report = await fetchVehicleHistoryReport({
-        vin,
-        registrationNumber,
-        firstRegistrationDate,
-      });
+      const report = await fetchVehicleHistoryReport(
+        { vin, registrationNumber, firstRegistrationDate },
+        token,
+      );
       setHistoryReport(report);
     } catch (error) {
       Alert.alert('Historia pojazdu', error instanceof Error ? error.message : 'Błąd sprawdzania.');
@@ -66,18 +71,20 @@ export default function CarVehicleChecksPanel({
   };
 
   const handleInsurance = async () => {
+    if (!token) {
+      Alert.alert('Ubezpieczenie', 'Zaloguj się, aby sprawdzić ważność OC.');
+      return;
+    }
     if (!hasInsuranceData) {
       Alert.alert('Ubezpieczenie', 'Brak numeru rejestracyjnego do weryfikacji OC.');
       return;
     }
     setInsuranceLoading(true);
     try {
-      const result = await checkCarInsurance({
-        registrationNumber,
-        insuranceValidUntil,
-        vin,
-        firstRegistrationDate,
-      });
+      const result = await checkCarInsurance(
+        { registrationNumber, insuranceValidUntil, vin, firstRegistrationDate },
+        token,
+      );
       setInsuranceOk(result.hasInsurance);
       setInsuranceMessage(result.message);
     } catch (error) {
@@ -108,7 +115,15 @@ export default function CarVehicleChecksPanel({
         <Text style={styles.hint}>Pełna historia CEPIK wymaga VIN, tablicy i daty pierwszej rejestracji od sprzedającego.</Text>
       ) : null}
 
-      <Pressable onPress={() => void handleHistory()} disabled={historyLoading || !hasHistoryData} style={[styles.actionBtn, !hasHistoryData && styles.actionDisabled]}>
+      {!hasInsuranceData ? (
+        <Text style={styles.hint}>Sprawdzenie OC wymaga numeru rejestracyjnego od sprzedającego.</Text>
+      ) : null}
+
+      {!token ? (
+        <Text style={styles.hint}>Zaloguj się, aby uruchomić weryfikację CEPIK / UFG.</Text>
+      ) : null}
+
+      <Pressable onPress={() => void handleHistory()} disabled={historyLoading || !hasHistoryData || !token} style={[styles.actionBtn, (!hasHistoryData || !token) && styles.actionDisabled]}>
         {historyLoading ? (
           <ActivityIndicator color={colors.buttonText} />
         ) : (
@@ -121,8 +136,8 @@ export default function CarVehicleChecksPanel({
 
       <Pressable
         onPress={() => void handleInsurance()}
-        disabled={insuranceLoading || !hasInsuranceData}
-        style={[styles.actionBtnSecondary, !hasInsuranceData && styles.actionDisabled]}
+        disabled={insuranceLoading || !hasInsuranceData || !token}
+        style={[styles.actionBtnSecondary, (!hasInsuranceData || !token) && styles.actionDisabled]}
       >
         {insuranceLoading ? (
           <ActivityIndicator color={colors.successButtonText} />

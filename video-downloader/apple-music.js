@@ -90,20 +90,345 @@ export async function lookupAppleTrack(trackId, country = ITUNES_COUNTRY) {
   return track;
 }
 
-export async function searchAppleMusic(query, limit = 24, country = ITUNES_COUNTRY) {
-  const target = Math.min(Math.max(Number(limit) || 24, 1), 50);
-  const api = new URL("https://itunes.apple.com/search");
-  api.searchParams.set("term", query);
-  api.searchParams.set("entity", "song");
-  api.searchParams.set("limit", String(target));
-  api.searchParams.set("country", country);
+function mapAppleTrack(track, country = ITUNES_COUNTRY) {
+  return {
+    id: String(track.trackId),
+    title: track.trackName || "Bez tytułu",
+    url: buildAppleMusicUrl(track),
+    thumbnail: upscaleArtwork(track.artworkUrl100 || track.artworkUrl60, 600),
+    uploader: track.artistName || "Apple Music",
+    artist: track.artistName || "",
+    duration: Math.round((track.trackTimeMillis || 0) / 1000),
+    quality: "MP3",
+    qualities: ["320 kbps"],
+    album: track.collectionName || "",
+    albumId: track.collectionId ? String(track.collectionId) : "",
+    artistId: track.artistId ? String(track.artistId) : "",
+    trackNumber: track.trackNumber || null,
+    previewUrl: track.previewUrl || "",
+    trackId: String(track.trackId),
+    source: "apple-music",
+    detail: track.collectionName ? `${track.collectionName} · Apple Music` : "Apple Music",
+  };
+}
 
+function mapAppleArtist(raw) {
+  return {
+    id: String(raw.artistId),
+    name: raw.artistName || "Wykonawca",
+    genre: raw.primaryGenreName || "",
+    thumbnail: upscaleArtwork(raw.artworkUrl100 || raw.artworkUrl60, 600),
+    url: raw.artistLinkUrl || `https://music.apple.com/${ITUNES_COUNTRY.toLowerCase()}/artist/${raw.artistId}`,
+    source: "apple-music",
+  };
+}
+
+function mapAppleAlbum(raw) {
+  return {
+    id: String(raw.collectionId),
+    title: raw.collectionName || "Album",
+    artist: raw.artistName || "",
+    artistId: raw.artistId ? String(raw.artistId) : "",
+    thumbnail: upscaleArtwork(raw.artworkUrl100 || raw.artworkUrl60, 600),
+    trackCount: raw.trackCount || 0,
+    releaseDate: raw.releaseDate || "",
+    url: raw.collectionViewUrl || buildAlbumUrl(raw),
+    source: "apple-music",
+  };
+}
+
+function buildAlbumUrl(album) {
+  const country = (album.country || ITUNES_COUNTRY).toLowerCase();
+  const slug = String(album.collectionName || "album")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `https://music.apple.com/${country}/album/${slug}/${album.collectionId}`;
+}
+
+async function itunesSearch(params, country = ITUNES_COUNTRY) {
+  const api = new URL("https://itunes.apple.com/search");
+  api.searchParams.set("country", country);
+  for (const [key, value] of Object.entries(params)) {
+    if (value != null) api.searchParams.set(key, String(value));
+  }
   const res = await fetch(api, {
     headers: { "User-Agent": UA, Accept: "application/json" },
     signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) throw new Error(`iTunes search HTTP ${res.status}`);
-  const data = await res.json();
+  return res.json();
+}
+
+async function itunesLookup(id, entity, limit = 50, country = ITUNES_COUNTRY) {
+  const api = new URL("https://itunes.apple.com/lookup");
+  api.searchParams.set("id", String(id));
+  api.searchParams.set("country", country);
+  if (entity) api.searchParams.set("entity", entity);
+  if (limit) api.searchParams.set("limit", String(limit));
+  const res = await fetch(api, {
+    headers: { "User-Agent": UA, Accept: "application/json" },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error(`iTunes lookup HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function searchAppleMusicCatalog(query, limits = {}, country = ITUNES_COUNTRY) {
+  const q = String(query || "").trim();
+  if (!q) return { query: q, artists: [], albums: [], songs: [] };
+
+  const artistLimit = Math.min(Math.max(Number(limits.artists) || 8, 1), 20);
+  const albumLimit = Math.min(Math.max(Number(limits.albums) || 12, 1), 24);
+  const songLimit = Math.min(Math.max(Number(limits.songs) || 16, 1), 30);
+
+  const [artistsData, albumsData, songsData] = await Promise.all([
+    itunesSearch({ term: q, entity: "musicArtist", limit: artistLimit }, country),
+    itunesSearch({ term: q, entity: "album", limit: albumLimit }, country),
+    itunesSearch({ term: q, entity: "song", limit: songLimit }, country),
+  ]);
+
+  const seenArtists = new Set();
+  const artists = (artistsData.results || [])
+    .filter((item) => item.artistId && !seenArtists.has(item.artistId))
+    .map((item) => {
+      seenArtists.add(item.artistId);
+      return mapAppleArtist(item);
+    });
+
+  const seenAlbums = new Set();
+  const albums = (albumsData.results || [])
+    .filter((item) => item.collectionId && !seenAlbums.has(item.collectionId))
+    .map((item) => {
+      seenAlbums.add(item.collectionId);
+      return mapAppleAlbum(item);
+    });
+
+  const seenSongs = new Set();
+  const songs = (songsData.results || [])
+    .filter((track) => track.trackId && !seenSongs.has(track.trackId))
+    .map((track) => {
+      seenSongs.add(track.trackId);
+      return mapAppleTrack(track, country);
+    });
+
+  return { query: q, artists, albums, songs };
+}
+
+export async function fetchAppleMusicArtist(artistId, country = ITUNES_COUNTRY) {
+  const data = await itunesLookup(artistId, "album", 100, country);
+  const rows = data.results || [];
+  const artistRaw = rows.find((r) => r.wrapperType === "artist") || rows[0];
+  if (!artistRaw?.artistId) throw new Error("Nie znaleziono wykonawcy.");
+
+  const artist = mapAppleArtist(artistRaw);
+  const seenAlbums = new Set();
+  const albums = rows
+    .filter((r) => r.wrapperType === "collection" && r.collectionId)
+    .filter((r) => {
+      if (seenAlbums.has(r.collectionId)) return false;
+      seenAlbums.add(r.collectionId);
+      return true;
+    })
+    .map(mapAppleAlbum)
+    .sort((a, b) => String(b.releaseDate || "").localeCompare(String(a.releaseDate || "")));
+
+  const topData = await itunesLookup(artistId, "song", 25, country);
+  const seenSongs = new Set();
+  const topSongs = (topData.results || [])
+    .filter((r) => r.wrapperType === "track" && r.trackId)
+    .filter((r) => {
+      if (seenSongs.has(r.trackId)) return false;
+      seenSongs.add(r.trackId);
+      return true;
+    })
+    .map((track) => mapAppleTrack(track, country));
+
+  return { artist, albums, topSongs };
+}
+
+export async function fetchAppleMusicAlbum(albumId, country = ITUNES_COUNTRY) {
+  const data = await itunesLookup(albumId, "song", 200, country);
+  const rows = data.results || [];
+  const albumRaw = rows.find((r) => r.wrapperType === "collection") || rows[0];
+  if (!albumRaw?.collectionId) throw new Error("Nie znaleziono albumu.");
+
+  const album = mapAppleAlbum(albumRaw);
+  const tracks = rows
+    .filter((r) => r.wrapperType === "track" && r.trackId)
+    .sort((a, b) => (a.trackNumber || 0) - (b.trackNumber || 0))
+    .map((track) => mapAppleTrack(track, country));
+
+  return { album, tracks };
+}
+
+export function parseAppleMusicPlaylistUrl(input) {
+  try {
+    let raw = String(input || "").trim();
+    if (!raw) return null;
+    if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
+    const u = new URL(raw);
+    const host = u.hostname.replace(/^www\./i, "").replace(/^embed\./i, "");
+    if (host !== "music.apple.com") return null;
+
+    const parts = u.pathname.split("/").filter(Boolean);
+    const plIdx = parts.indexOf("playlist");
+    if (plIdx < 0 || !parts[plIdx + 2]) return null;
+
+    const country = String(parts[0] || ITUNES_COUNTRY).toUpperCase();
+    const playlistId = parts[plIdx + 2];
+    if (!/^pl\./i.test(playlistId)) return null;
+
+    const canonicalPath = `/${country.toLowerCase()}/playlist/${parts[plIdx + 1]}/${playlistId}`;
+    const fetchUrl = new URL(`https://music.apple.com${canonicalPath}`);
+    fetchUrl.searchParams.set("l", country.toLowerCase());
+
+    return {
+      country,
+      playlistId,
+      slug: parts[plIdx + 1] || "playlist",
+      canonicalUrl: fetchUrl.origin + canonicalPath,
+      fetchUrl: fetchUrl.toString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseIso8601Duration(iso) {
+  const value = String(iso || "").trim();
+  if (!/^PT/i.test(value)) return 0;
+  const match = value.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/i);
+  if (!match) return 0;
+  const hours = Number(match[1]) || 0;
+  const minutes = Number(match[2]) || 0;
+  const seconds = Number(match[3]) || 0;
+  return Math.round(hours * 3600 + minutes * 60 + seconds);
+}
+
+async function lookupAppleTracksBatch(trackIds, country = ITUNES_COUNTRY) {
+  const byId = new Map();
+  const unique = [...new Set(trackIds.map(String).filter(Boolean))];
+  for (let i = 0; i < unique.length; i += 50) {
+    const chunk = unique.slice(i, i + 50);
+    const api = new URL("https://itunes.apple.com/lookup");
+    api.searchParams.set("id", chunk.join(","));
+    api.searchParams.set("country", country);
+    const res = await fetch(api, {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) throw new Error(`iTunes lookup HTTP ${res.status}`);
+    const data = await res.json();
+    for (const row of data.results || []) {
+      if (row.wrapperType === "track" && row.trackId) {
+        byId.set(String(row.trackId), row);
+      }
+    }
+  }
+  return byId;
+}
+
+function titleFromSongSlug(slug) {
+  return decodeURIComponent(String(slug || "utwor"))
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b([\p{L}\p{N}])/gu, (m) => m.toUpperCase());
+}
+
+export async function fetchAppleMusicPlaylist(inputUrl) {
+  const parsed = parseAppleMusicPlaylistUrl(inputUrl);
+  if (!parsed) {
+    throw new Error("Podaj poprawny link playlisty Apple Music (music.apple.com/.../playlist/...).");
+  }
+
+  const res = await fetch(parsed.fetchUrl, {
+    headers: {
+      "User-Agent": UA,
+      Accept: "text/html,application/xhtml+xml",
+      "Accept-Language": `${parsed.country.toLowerCase()},en;q=0.8`,
+    },
+    redirect: "follow",
+    signal: AbortSignal.timeout(45000),
+  });
+  if (!res.ok) throw new Error(`Apple Music HTTP ${res.status}`);
+
+  const html = await res.text();
+  const titleMatch = html.match(/<meta name="apple:title" content="([^"]*)"/i);
+  const countMatch = html.match(/property="music:song_count" content="(\d+)"/i);
+  const thumbMatch = html.match(/property="og:image" content="([^"]+)"/i);
+  const songUrls = [...html.matchAll(/<meta property="music:song" content="([^"]+)"/gi)].map((m) => m[1]);
+  const durations = [...html.matchAll(/property="music:song:duration" content="([^"]+)"/gi)].map((m) => m[1]);
+  const trackNums = [...html.matchAll(/property="music:song:track" content="(\d+)"/gi)].map((m) => Number(m[1]));
+
+  if (!songUrls.length) {
+    throw new Error("Nie udało się odczytać utworów z playlisty — sprawdź, czy link jest publiczny.");
+  }
+
+  const entries = songUrls
+    .map((songUrl, idx) => {
+      const trackId =
+        parseAppleMusicTrackId(songUrl) ||
+        String(songUrl.split("/").pop()?.split("?")[0] || "").trim();
+      return {
+        songUrl: songUrl.split("&")[0],
+        trackId,
+        trackNumber: trackNums[idx] || idx + 1,
+        duration: parseIso8601Duration(durations[idx]),
+      };
+    })
+    .filter((entry) => entry.trackId);
+
+  const lookup = await lookupAppleTracksBatch(
+    entries.map((entry) => entry.trackId),
+    parsed.country
+  );
+
+  const tracks = entries.map((entry) => {
+    const raw = lookup.get(entry.trackId);
+    if (raw) {
+      const mapped = mapAppleTrack(raw, parsed.country);
+      return { ...mapped, trackNumber: entry.trackNumber || mapped.trackNumber };
+    }
+    const slug = entry.songUrl.split("/song/")[1]?.split("/")[0] || "utwor";
+    return {
+      id: entry.trackId,
+      title: titleFromSongSlug(slug),
+      url: entry.songUrl,
+      thumbnail: "",
+      uploader: "",
+      artist: "",
+      album: "",
+      duration: entry.duration,
+      quality: "MP3",
+      qualities: ["320 kbps"],
+      albumId: "",
+      artistId: "",
+      trackNumber: entry.trackNumber,
+      previewUrl: "",
+      trackId: entry.trackId,
+      source: "apple-music",
+      detail: "Apple Music",
+    };
+  });
+
+  return {
+    playlist: {
+      id: parsed.playlistId,
+      title: titleMatch?.[1]?.trim() || "Playlista Apple Music",
+      trackCount: Number(countMatch?.[1]) || tracks.length,
+      thumbnail: thumbMatch?.[1] || "",
+      url: parsed.canonicalUrl,
+      source: "apple-music",
+    },
+    tracks,
+  };
+}
+
+export async function searchAppleMusic(query, limit = 24, country = ITUNES_COUNTRY) {
+  const target = Math.min(Math.max(Number(limit) || 24, 1), 50);
+  const data = await itunesSearch({ term: query, entity: "song", limit: target }, country);
   const seen = new Set();
 
   return (data.results || [])
@@ -112,20 +437,7 @@ export async function searchAppleMusic(query, limit = 24, country = ITUNES_COUNT
       seen.add(track.trackId);
       return true;
     })
-    .map((track) => ({
-    id: String(track.trackId),
-    title: track.trackName || "Bez tytułu",
-    url: buildAppleMusicUrl(track),
-    thumbnail: upscaleArtwork(track.artworkUrl100 || track.artworkUrl60, 600),
-    uploader: track.artistName || "Apple Music",
-    duration: Math.round((track.trackTimeMillis || 0) / 1000),
-    quality: "MP3",
-    qualities: ["320 kbps"],
-    album: track.collectionName || "",
-    trackId: String(track.trackId),
-    source: "apple-music",
-    detail: track.collectionName ? `${track.collectionName} · Apple Music` : "Apple Music",
-  }));
+    .map((track) => mapAppleTrack(track, country));
 }
 
 function estimateMp3Bytes(durationSec, kbps = 320) {

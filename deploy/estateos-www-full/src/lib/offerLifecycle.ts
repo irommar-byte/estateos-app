@@ -1,4 +1,4 @@
-const OFFER_NEW_LISTING_WINDOW_MS = 48 * 60 * 60 * 1000;
+const OFFER_NEW_LISTING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function normalize(value: unknown): string {
   return String(value ?? '')

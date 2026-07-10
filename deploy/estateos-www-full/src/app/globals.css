@@ -28,6 +28,18 @@ html, body {
   --eos-shadow-soft: 0 16px 40px rgba(0, 0, 0, 0.34);
   --eos-shadow-strong: 0 28px 90px rgba(0, 0, 0, 0.72);
   --eos-nav-height: calc(env(safe-area-inset-top, 0px) + 5rem);
+  --eos-brand-label: "Home";
+}
+
+html[data-ecosystem="car"] {
+  --eos-accent: #0ea5e9;
+  --eos-accent-soft: rgba(14, 165, 233, 0.14);
+  --eos-brand-label: "Car";
+}
+
+html.light[data-ecosystem="car"] {
+  --eos-accent: #0284c7;
+  --eos-accent-soft: rgba(2, 132, 199, 0.14);
 }
 
 html.light {

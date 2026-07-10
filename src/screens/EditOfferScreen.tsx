@@ -24,6 +24,9 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Image } from 'expo-image';
+import RoomScanModal, { isRoomScanSupportedOnDevice } from '../components/roomScan/RoomScanModal';
+import type { RoomScanDraftAssets } from '../types/roomScan';
+import { normalizeStoredScanMeta } from '../lib/roomScan/parseRoomPlanJson';
 import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import type { AddOfferOption } from './AddOffer/AddOfferOptionField';
 import { useThemeStore } from '../store/useThemeStore';
@@ -208,8 +211,16 @@ export default function EditOfferScreen({ route }: any) {
   const [originalImageKeys, setOriginalImageKeys] = useState<string[]>([]);
   const [floorPlanPreview, setFloorPlanPreview] = useState<string | null>(null);
   const [floorPlanLocalUri, setFloorPlanLocalUri] = useState<string | null>(null);
+  const [floorPlan3dLocalUri, setFloorPlan3dLocalUri] = useState<string | null>(null);
+  const [floorPlanScanMetaLocal, setFloorPlanScanMetaLocal] = useState<string | null>(null);
   const [floorPlanCleared, setFloorPlanCleared] = useState(false);
+  /** Ręczny rzut zastępuje skan LiDAR — przy zapisie czyścimy model 3D i meta na serwerze. */
+  const [dropServerFloorPlan3d, setDropServerFloorPlan3d] = useState(false);
   const [originalFloorPlanKey, setOriginalFloorPlanKey] = useState<string | null>(null);
+  const [originalFloorPlan3dKey, setOriginalFloorPlan3dKey] = useState<string | null>(null);
+  const [originalFloorPlanScanMeta, setOriginalFloorPlanScanMeta] = useState<string | null>(null);
+  const [roomScanOpen, setRoomScanOpen] = useState(false);
+  const roomScanAvailable = isRoomScanSupportedOnDevice();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [area, setArea] = useState('');
@@ -380,6 +391,18 @@ export default function EditOfferScreen({ route }: any) {
             setFloorPlanCleared(false);
           }
 
+          const floorPlan3dRaw = String(offer.floorPlan3dUrl || '').trim();
+          if (floorPlan3dRaw) {
+            setOriginalFloorPlan3dKey(toServerPath(floorPlan3dRaw));
+          } else {
+            setOriginalFloorPlan3dKey(null);
+          }
+          setFloorPlan3dLocalUri(null);
+          const scanMetaRaw = offer.floorPlanScanMeta ? String(offer.floorPlanScanMeta) : null;
+          setOriginalFloorPlanScanMeta(scanMetaRaw);
+          setFloorPlanScanMetaLocal(scanMetaRaw);
+          setDropServerFloorPlan3d(false);
+
           setAmenities({
             hasBalcony: isTrue(offer.hasBalcony), 
             hasParking: isTrue(offer.hasParking), 
@@ -489,6 +512,9 @@ export default function EditOfferScreen({ route }: any) {
       currentKeys.every((k, i) => k === originalKeys[i]) &&
       images.every((i) => i.isRemote);
     if (!sameImages) diffs.push('images');
+    if (floorPlanCleared && (originalFloorPlanKey || originalFloorPlan3dKey)) diffs.push('floorPlan');
+    if (floorPlanLocalUri || floorPlan3dLocalUri) diffs.push('floorPlan');
+    if (dropServerFloorPlan3d && (originalFloorPlan3dKey || originalFloorPlanScanMeta)) diffs.push('floorPlan');
     const dirtySummaryLabels = diffs.map((key) => translateDirtyField(key));
     const dirtySummary =
       dirtySummaryLabels.length <= 3
@@ -514,6 +540,13 @@ export default function EditOfferScreen({ route }: any) {
     locationState,
     amenities,
     images,
+    floorPlanCleared,
+    dropServerFloorPlan3d,
+    floorPlanLocalUri,
+    floorPlan3dLocalUri,
+    originalFloorPlanScanMeta,
+    originalFloorPlanKey,
+    originalFloorPlan3dKey,
     translateDirtyField,
   ]);
 
@@ -581,14 +614,31 @@ export default function EditOfferScreen({ route }: any) {
     if (!result.canceled && result.assets?.[0]?.uri) {
       setFloorPlanLocalUri(result.assets[0].uri);
       setFloorPlanPreview(result.assets[0].uri);
+      setFloorPlan3dLocalUri(null);
+      setFloorPlanScanMetaLocal(null);
+      setDropServerFloorPlan3d(Boolean(originalFloorPlan3dKey || originalFloorPlanScanMeta));
       setFloorPlanCleared(false);
     }
+  };
+
+  const handleRoomScanComplete = (assets: RoomScanDraftAssets) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setFloorPlanLocalUri(assets.floorPlanPngUri);
+    setFloorPlanPreview(assets.floorPlanPngUri);
+    setFloorPlan3dLocalUri(assets.floorPlan3dUri);
+    setFloorPlanScanMetaLocal(JSON.stringify(assets.scanMeta));
+    setDropServerFloorPlan3d(false);
+    setFloorPlanCleared(false);
+    setRoomScanOpen(false);
   };
 
   const removeFloorPlan = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setFloorPlanPreview(null);
     setFloorPlanLocalUri(null);
+    setFloorPlan3dLocalUri(null);
+    setFloorPlanScanMetaLocal(null);
+    setDropServerFloorPlan3d(false);
     setFloorPlanCleared(true);
   };
 
@@ -880,6 +930,11 @@ export default function EditOfferScreen({ route }: any) {
     }
     if (floorPlanCleared) {
       updatePayload.floorPlanUrl = null;
+      updatePayload.floorPlan3dUrl = null;
+      updatePayload.floorPlanScanMeta = null;
+    } else if (dropServerFloorPlan3d && !floorPlan3dLocalUri) {
+      updatePayload.floorPlan3dUrl = null;
+      updatePayload.floorPlanScanMeta = null;
     }
 
     try {
@@ -965,6 +1020,15 @@ export default function EditOfferScreen({ route }: any) {
       // Upload tylko nowych lokalnych zdjęć — uploadu nie próbujemy, jeśli
       // backend nie potwierdził zapisu meta. Dzięki temu nie zostają „sieroty"
       // w storage.
+      let nextFloorPlanKey = originalFloorPlanKey;
+      let nextFloorPlan3dKey = originalFloorPlan3dKey;
+      let nextScanMeta = originalFloorPlanScanMeta;
+      const floorPlanTouched =
+        floorPlanCleared ||
+        Boolean(floorPlanLocalUri) ||
+        Boolean(floorPlan3dLocalUri) ||
+        dropServerFloorPlan3d;
+
       for (let i = 0; i < localImages.length; i += 1) {
         const img = localImages[i];
         let localUri = img.uri;
@@ -1002,6 +1066,7 @@ export default function EditOfferScreen({ route }: any) {
         let localUri = floorPlanLocalUri;
         let filename = localUri.split('/').pop() || `floorplan_${Date.now()}.jpg`;
         const lower = localUri.toLowerCase();
+        const mime = lower.endsWith('.png') ? 'image/png' : 'image/jpeg';
         if (lower.endsWith('.heic') || lower.endsWith('.heif')) {
           const converted = await ImageManipulator.manipulateAsync(localUri, [], {
             format: ImageManipulator.SaveFormat.JPEG,
@@ -1015,7 +1080,7 @@ export default function EditOfferScreen({ route }: any) {
         const fpForm = new FormData();
         fpForm.append('offerId', String(offerId));
         fpForm.append('isFloorPlan', 'true');
-        fpForm.append('file', { uri: localUri, name: filename, type: 'image/jpeg' } as any);
+        fpForm.append('file', { uri: localUri, name: filename, type: mime } as any);
         const fpRes = await fetch(`${API_URL}/api/upload/mobile`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
@@ -1025,6 +1090,60 @@ export default function EditOfferScreen({ route }: any) {
           const fpErr = await fpRes.text();
           throw new Error(fpErr || t('addOffer.step5.alerts.floorPlanFailed.message'));
         }
+        const fpJson = await fpRes.json().catch(() => ({}));
+        const fpUrl = String(fpJson?.url || fpJson?.path || '').trim();
+        if (fpUrl) {
+          nextFloorPlanKey = toServerPath(fpUrl.startsWith('http') ? fpUrl : fpUrl);
+          setFloorPlanPreview(toAbsoluteImageUrl(nextFloorPlanKey));
+        }
+      }
+
+      if (floorPlan3dLocalUri) {
+        const modelForm = new FormData();
+        modelForm.append('offerId', String(offerId));
+        modelForm.append('isFloorPlan3d', 'true');
+        modelForm.append('file', {
+          uri: floorPlan3dLocalUri,
+          name: 'floorplan-3d.usdz',
+          type: 'model/vnd.usdz+zip',
+        } as any);
+        if (floorPlanScanMetaLocal) {
+          modelForm.append('floorPlanScanMeta', floorPlanScanMetaLocal);
+        }
+        const modelRes = await fetch(`${API_URL}/api/upload/mobile`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: modelForm,
+        });
+        if (!modelRes.ok) {
+          const modelErr = await modelRes.text();
+          throw new Error(modelErr || t('addOffer.step5.alerts.floorPlanFailed.message'));
+        }
+        const modelJson = await modelRes.json().catch(() => ({}));
+        const modelUrl = String(modelJson?.url || modelJson?.path || '').trim();
+        if (modelUrl) nextFloorPlan3dKey = toServerPath(modelUrl.startsWith('http') ? modelUrl : modelUrl);
+        nextScanMeta = floorPlanScanMetaLocal;
+      }
+
+      if (floorPlanCleared) {
+        nextFloorPlanKey = null;
+        nextFloorPlan3dKey = null;
+        nextScanMeta = null;
+        setFloorPlanPreview(null);
+      } else if (dropServerFloorPlan3d && !floorPlan3dLocalUri) {
+        nextFloorPlan3dKey = null;
+        nextScanMeta = null;
+      }
+
+      if (floorPlanTouched) {
+        setOriginalFloorPlanKey(nextFloorPlanKey);
+        setOriginalFloorPlan3dKey(nextFloorPlan3dKey);
+        setOriginalFloorPlanScanMeta(nextScanMeta);
+        setFloorPlanLocalUri(null);
+        setFloorPlan3dLocalUri(null);
+        setFloorPlanScanMetaLocal(nextScanMeta);
+        setFloorPlanCleared(false);
+        setDropServerFloorPlan3d(false);
       }
 
       // Lokalnie aktualizujemy „original snapshot", żeby `isDirty` zgasł
@@ -1486,6 +1605,32 @@ export default function EditOfferScreen({ route }: any) {
             <Text style={styles.sectionTitle}>{t('offer.edit.floorPlan.sectionTitle')}</Text>
           </View>
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, padding: 12 }]}>
+            {roomScanAvailable ? (
+              <Pressable
+                onPress={() => setRoomScanOpen(true)}
+                style={[
+                  styles.editRoomScanCta,
+                  {
+                    borderColor: isDark ? 'rgba(56,189,248,0.35)' : 'rgba(14,165,233,0.35)',
+                    backgroundColor: isDark ? 'rgba(15,23,42,0.85)' : 'rgba(240,249,255,0.95)',
+                    marginBottom: 10,
+                  },
+                ]}
+              >
+                <View style={styles.editRoomScanIcon}>
+                  <Ionicons name="scan-outline" size={20} color="#0ea5e9" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.editRoomScanTitle, { color: txtColor }]}>
+                    {t('offer.edit.floorPlan.scan')}
+                  </Text>
+                  <Text style={[styles.editRoomScanHint, { color: subColor }]}>
+                    {t('offer.edit.floorPlan.scanHint')}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={subColor} />
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={pickFloorPlan}
               style={[
@@ -1498,7 +1643,15 @@ export default function EditOfferScreen({ route }: any) {
               ]}
             >
               {floorPlanPreview ? (
-                <Image source={{ uri: floorPlanPreview }} style={styles.floorPlanImage} contentFit="cover" />
+                <View style={{ width: '100%', height: '100%' }}>
+                  <Image source={{ uri: floorPlanPreview }} style={styles.floorPlanImage} contentFit="cover" />
+                  {floorPlan3dLocalUri || floorPlanScanMetaLocal || ((originalFloorPlan3dKey || originalFloorPlanScanMeta) && !dropServerFloorPlan3d) ? (
+                    <View style={styles.editScannedBadge}>
+                      <Ionicons name="cube-outline" size={12} color="#e0f2fe" />
+                      <Text style={styles.editScannedBadgeText}>{t('offer.edit.floorPlan.scanned')}</Text>
+                    </View>
+                  ) : null}
+                </View>
               ) : (
                 <View style={styles.floorPlanPlaceholder}>
                   <Ionicons name="map-outline" size={24} color={primaryColor} />
@@ -1523,6 +1676,11 @@ export default function EditOfferScreen({ route }: any) {
               </View>
             ) : null}
           </View>
+          <RoomScanModal
+            visible={roomScanOpen}
+            onClose={() => setRoomScanOpen(false)}
+            onComplete={handleRoomScanComplete}
+          />
           <Text style={styles.sectionFooter}>{t('offer.edit.floorPlan.hint')}</Text>
 
           {/* ====== INFORMACJE GŁÓWNE ====== */}
@@ -2938,6 +3096,38 @@ const styles = StyleSheet.create({
   floorPlanActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, gap: 12 },
   floorPlanActionBtn: { flex: 1, alignItems: 'center', paddingVertical: 8 },
   floorPlanActionText: { fontSize: 13, fontWeight: '700' },
+  editRoomScanCta: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  editRoomScanIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(14,165,233,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editRoomScanTitle: { fontSize: 14, fontWeight: '800' },
+  editRoomScanHint: { fontSize: 11, fontWeight: '500', marginTop: 3, lineHeight: 15 },
+  editScannedBadge: {
+    position: 'absolute',
+    left: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(15,23,42,0.82)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  editScannedBadgeText: { color: '#e0f2fe', fontSize: 11, fontWeight: '800' },
 
   /* ===== SECTION HEADERS ===== */
   sectionHeaderContainer: {

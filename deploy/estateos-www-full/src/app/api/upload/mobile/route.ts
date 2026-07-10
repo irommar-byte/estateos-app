@@ -7,6 +7,8 @@ import {
   saveDealroomParticipantWatermarkedImage,
   saveOfferBinaryAttachment,
   saveOfferGalleryOrFloorplan,
+  saveOfferFloorPlan3d,
+  saveOfferFloorPlanScanMeta,
   sniffImageMimeFromMagic,
 } from '@/lib/upload/offerMediaUpload';
 import { resolveUploaderUserId } from '@/lib/upload/resolveUploader';
@@ -101,6 +103,8 @@ export async function POST(req: Request) {
     }
 
     const isFloorPlan = String(formData.get('isFloorPlan') || '') === 'true';
+    const isFloorPlan3d = String(formData.get('isFloorPlan3d') || '') === 'true';
+    const scanMetaJson = String(formData.get('floorPlanScanMeta') || '').trim() || null;
     const mimeType = String(file.type || '');
     const lowerName = String((file as Blob & { name?: string }).name || '').toLowerCase();
     let isImage =
@@ -116,6 +120,40 @@ export async function POST(req: Request) {
         : sniffImageMimeFromMagic(buffer) || 'image/jpeg';
 
     if (!isImage) {
+      const lower = lowerName;
+      const isUsdz =
+        isFloorPlan3d ||
+        mimeType === 'model/vnd.usdz+zip' ||
+        lower.endsWith('.usdz') ||
+        (mimeType === 'application/octet-stream' && lower.endsWith('.usdz'));
+
+      if (isUsdz) {
+        await acquireOfferUploadLock(offerIdNum);
+        try {
+          const model = await saveOfferFloorPlan3d({
+            offerId: offerIdNum,
+            ownerUserId: userId,
+            fileBuffer: buffer,
+            originalFileName: lowerName,
+            scanMetaJson,
+          });
+          if (!model.ok) {
+            return NextResponse.json(
+              { success: false, error: model.error },
+              { status: model.status }
+            );
+          }
+          return NextResponse.json({
+            success: true,
+            url: model.url,
+            path: model.url,
+            backendRegistered: true,
+          });
+        } finally {
+          releaseOfferUploadLock(offerIdNum);
+        }
+      }
+
       const att = await saveOfferBinaryAttachment({
         offerId: offerIdNum,
         actorUserId: userId,

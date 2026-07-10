@@ -7,12 +7,23 @@ struct MediaDetailView: View {
     let selection: MediaSelection
     let onOpenEpisodes: (() -> Void)?
 
-    @State private var playbackSession: PlaybackSession?
-    @State private var downloadJob: DownloadJobState?
+    @State private var playbackContext: MediaPlaybackContext?
+    @State private var showDownloadOptions = false
     @State private var statusMessage: String?
     @State private var statusIsError = false
     @State private var isFavorite: Bool
     @State private var isBusy = false
+    @State private var mediaInfo: VideoInfoResponse?
+    @State private var isLoadingInfo = false
+    @State private var infoError: String?
+    @State private var detailTab: CdaHdDetailTab = .description
+    @State private var browseContext: CdaHdBrowseContext?
+    @State private var localDownloadJobId: String?
+
+    private enum CdaHdDetailTab: String, CaseIterable {
+        case description = "Opis filmu"
+        case cast = "Obsada"
+    }
 
     init(selection: MediaSelection, onOpenEpisodes: (() -> Void)? = nil) {
         self.selection = selection
@@ -20,62 +31,267 @@ struct MediaDetailView: View {
         _isFavorite = State(initialValue: false)
     }
 
+    private var cdaMeta: CdaHdMeta? { mediaInfo?.cdaHd }
+    private var isCdaHdDetail: Bool { cdaMeta != nil || isCdaHdSource }
+
+    private var isCdaHdSource: Bool {
+        if case .cdaHd = MediaSourceMeta.normalize(selection.source) { return true }
+        return false
+    }
+
+    private var displayTitle: String {
+        MediaCardCopy.decodedTitle(cdaMeta?.title ?? selection.title)
+    }
+
+    private var displayDuration: Double? {
+        if let duration = cdaMeta?.duration, duration > 0 { return duration }
+        if let duration = mediaInfo?.duration, duration > 0 { return duration }
+        if let duration = selection.duration, duration > 0 { return duration }
+        return nil
+    }
+
+    private var effectiveDownloadJobId: String? {
+        if let localDownloadJobId, !localDownloadJobId.isEmpty { return localDownloadJobId }
+        return app.movieDownloadJobId(for: selection.url)
+    }
+
+    private var isDownloaded: Bool {
+        effectiveDownloadJobId != nil
+    }
+
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            DetailBackdrop(url: selection.thumbnail.flatMap(URL.init(string:)))
+            DetailBackdrop(url: backdropURL)
 
             VStack(alignment: .leading, spacing: 0) {
                 Spacer(minLength: 0)
 
-                VStack(alignment: .leading, spacing: 26) {
-                    metadataRow
-                    titleBlock
-                    if let statusMessage {
-                        statusBanner(statusMessage, isError: statusIsError)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 22) {
+                        metadataRow
+                        titleBlock
+
+                        if isCdaHdDetail {
+                            cdaHdMetaSection
+                            cdaHdTabs
+                            cdaHdTabContent
+                        }
+
+                        if let statusMessage {
+                            statusBanner(statusMessage, isError: statusIsError)
+                        }
+                        if let infoError, cdaMeta == nil {
+                            statusBanner(infoError, isError: true)
+                        }
+
+                        actionToolbar
+                        serialHint
                     }
-                    actionToolbar
-                    serialHint
+                    .frame(maxWidth: 1120, alignment: .leading)
+                    .padding(.horizontal, NostalgieSpacing.screenH)
+                    .padding(.bottom, 68)
                 }
-                .frame(maxWidth: 1040, alignment: .leading)
-                .padding(.horizontal, NostalgieSpacing.screenH)
-                .padding(.bottom, 68)
             }
         }
         .ignoresSafeArea()
         .onExitCommand { dismiss() }
         .task {
             isFavorite = app.isFavorite(selection.url)
-        }
-        .fullScreenCover(item: $playbackSession) { session in
-            PlayerScreen(session: session)
-        }
-        .fullScreenCover(item: $downloadJob) { job in
-            DownloadProgressView(jobId: job.id, title: selection.title) {
-                downloadJob = nil
+            localDownloadJobId = app.movieDownloadJobId(for: selection.url)
+            if !selection.isSerial {
+                await loadMediaInfo()
             }
+        }
+        .onChange(of: app.movieDownloads) { _, _ in
+            localDownloadJobId = app.movieDownloadJobId(for: selection.url)
+        }
+        .fullScreenCover(item: $playbackContext) { context in
+            PlayerScreen(context: context)
+        }
+        .sheet(isPresented: $showDownloadOptions) {
+            if let mediaInfo {
+                MediaDownloadOptionsSheet(
+                    title: displayTitle,
+                    info: mediaInfo,
+                    itemCount: 1,
+                    totalDuration: displayDuration,
+                    itemsSubtitle: "1 film · wybierz jakość przed pobraniem"
+                ) { format, quality in
+                    startDownload(format: format, quality: quality)
+                }
+            }
+        }
+        .fullScreenCover(item: $browseContext) { context in
+            CdaHdBrowseView(context: context)
+                .environmentObject(app)
+        }
+    }
+
+    private var downloadService: MovieDownloadService { app.movieDownloadService }
+
+    private var backdropURL: URL? {
+        if let thumb = cdaMeta?.thumbnail ?? mediaInfo?.thumbnail ?? selection.thumbnail {
+            return URL(string: thumb)
+        }
+        return nil
+    }
+
+    @ViewBuilder
+    private var cdaHdMetaSection: some View {
+        if let cdaMeta {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    if let year = cdaMeta.year {
+                        metaChip("\(year)")
+                    }
+                    if let duration = displayDuration {
+                        metaChip(formatDuration(duration), icon: "clock")
+                    }
+                }
+
+                if let genres = cdaMeta.genres, !genres.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(genres) { genre in
+                                CdaHdLinkChip(title: genre.name, icon: "tag.fill") {
+                                    openBrowse(title: genre.name, url: genre.url)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let rating = cdaMeta.rating, (rating.value ?? 0) > 0 {
+                    CdaHdRatingView(rating: rating)
+                }
+
+                if let director = cdaMeta.director {
+                    HStack(spacing: 10) {
+                        Label("Reżyser", systemImage: "megaphone.fill")
+                            .font(NostalgieFont.caption)
+                            .foregroundStyle(.white.opacity(0.55))
+                        CdaHdLinkChip(title: director.name, icon: "person.crop.circle") {
+                            openBrowse(title: director.name, url: director.url)
+                        }
+                    }
+                }
+
+                if let country = cdaMeta.country, !country.isEmpty {
+                    Label(country, systemImage: "globe")
+                        .font(NostalgieFont.metadata)
+                        .foregroundStyle(.white.opacity(0.62))
+                }
+            }
+        } else if isLoadingInfo {
+            ProgressView("Wczytuję opis filmu…")
+        }
+    }
+
+    @ViewBuilder
+    private var cdaHdTabs: some View {
+        if cdaMeta != nil {
+            HStack(spacing: 12) {
+                ForEach(CdaHdDetailTab.allCases, id: \.self) { tab in
+                    Button(tab.rawValue) {
+                        withAnimation(NostalgieTheme.contentSpring) {
+                            detailTab = tab
+                        }
+                    }
+                    .buttonStyle(DetailToolbarButtonStyle(isSelected: detailTab == tab))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var cdaHdTabContent: some View {
+        if let cdaMeta {
+            switch detailTab {
+            case .description:
+                if let description = cdaMeta.description, !description.isEmpty {
+                    Text(description)
+                        .font(NostalgieFont.body)
+                        .foregroundStyle(.white.opacity(0.82))
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Brak opisu filmu.")
+                        .font(NostalgieFont.metadata)
+                        .foregroundStyle(.secondary)
+                }
+            case .cast:
+                if let cast = cdaMeta.cast, !cast.isEmpty {
+                    VStack(spacing: NostalgieSpacing.listRow) {
+                        ForEach(cast) { person in
+                            CdaHdCastRow(name: person.name) {
+                                openBrowse(title: person.name, url: person.url)
+                            }
+                        }
+                    }
+                } else {
+                    Text("Brak listy obsady.")
+                        .font(NostalgieFont.metadata)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func metaChip(_ text: String, icon: String? = nil) -> some View {
+        Group {
+            if let icon {
+                Label(text, systemImage: icon)
+            } else {
+                Text(text)
+            }
+        }
+        .font(NostalgieFont.caption)
+        .foregroundStyle(.white.opacity(0.88))
+        .glassCapsule(paddingH: 12, paddingV: 7)
+    }
+
+    private func openBrowse(title: String, url: String) {
+        browseContext = CdaHdBrowseContext(title: title, pageURL: url)
+    }
+
+    private func loadMediaInfo() async {
+        isLoadingInfo = true
+        infoError = nil
+        defer { isLoadingInfo = false }
+        do {
+            mediaInfo = try await app.api.fetchInfo(url: selection.url)
+        } catch {
+            infoError = error.localizedDescription
         }
     }
 
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(selection.title)
+            Text(displayTitle)
                 .font(NostalgieFont.hero)
-                .lineLimit(2)
-                .minimumScaleFactor(0.75)
+                .lineLimit(3)
+                .minimumScaleFactor(0.72)
                 .shadow(color: .black.opacity(0.45), radius: 12, y: 4)
 
+            if let subtitle = cdaMeta?.subtitle, !subtitle.isEmpty {
+                Text(MediaCardCopy.decodedTitle(subtitle))
+                    .font(NostalgieFont.sectionTitle)
+                    .foregroundStyle(.white.opacity(0.78))
+                    .lineLimit(2)
+            }
+
             HStack(spacing: 8) {
-                if let detail = selection.detail, !detail.isEmpty {
+                if let detail = selection.detail, !detail.isEmpty, cdaMeta == nil {
                     Text(MediaCardCopy.cleanedSubtitle(detail: detail, source: selection.source))
                 }
-                if let duration = selection.duration, duration > 0 {
-                    if selection.detail != nil { Text("·").foregroundStyle(.secondary) }
+                if let duration = displayDuration {
+                    if selection.detail != nil || cdaMeta != nil { Text("·").foregroundStyle(.secondary) }
                     Text(formatDuration(duration))
                 }
             }
             .font(NostalgieFont.metadata)
             .foregroundStyle(.white.opacity(0.72))
-            .lineLimit(1)
+            .lineLimit(2)
         }
     }
 
@@ -86,7 +302,7 @@ struct MediaDetailView: View {
                 PremiumBadge()
             }
             MediaTypeBadge(label: typeBadgeLabel)
-            if let quality = selection.quality, !quality.isEmpty {
+            if let quality = mediaInfo?.quality ?? selection.quality, !quality.isEmpty {
                 Text(quality.uppercased())
                     .font(NostalgieFont.caption)
                     .tracking(0.6)
@@ -97,6 +313,12 @@ struct MediaDetailView: View {
                 Label("Ulubione", systemImage: "heart.fill")
                     .font(NostalgieFont.caption)
                     .foregroundStyle(NostalgieTheme.accent)
+                    .glassCapsule(paddingH: 10, paddingV: 6)
+            }
+            if isDownloaded {
+                Label("Pobrany", systemImage: "checkmark.circle.fill")
+                    .font(NostalgieFont.caption)
+                    .foregroundStyle(.green)
                     .glassCapsule(paddingH: 10, paddingV: 6)
             }
         }
@@ -147,10 +369,28 @@ struct MediaDetailView: View {
                 Task { await toggleFavorite() }
             }
 
-            toolbarButton(title: "Pobierz", icon: "arrow.down.circle") {
-                Task { await startDownload() }
+            if isDownloaded {
+                MediaDownloadedBadge()
+                toolbarButton(title: "Usuń z dysku", icon: "trash") {
+                    Task { await deleteDownloaded() }
+                }
+            } else if downloadService.isRunning && downloadService.batchMatches(contextKey: selection.url) {
+                Label("Pobieranie…", systemImage: "arrow.down.circle")
+                    .font(NostalgieFont.rowTitle)
+                    .foregroundStyle(.green)
+            } else {
+                toolbarButton(title: "Pobierz", icon: "arrow.down.circle") {
+                    if mediaInfo != nil {
+                        showDownloadOptions = true
+                    } else {
+                        Task {
+                            await loadMediaInfo()
+                            if mediaInfo != nil { showDownloadOptions = true }
+                        }
+                    }
+                }
+                .disabled(selection.isSerial && onOpenEpisodes != nil)
             }
-            .disabled(selection.isSerial && onOpenEpisodes != nil)
         }
     }
 
@@ -178,20 +418,33 @@ struct MediaDetailView: View {
         statusIsError = false
         defer { isBusy = false }
         do {
-            let preview = try await app.api.startPreview(url: selection.url)
-            if preview.instant == false {
-                statusIsError = false
-                statusMessage = "Przygotowuję odtwarzanie…"
-                try await app.api.waitForPreviewReady(jobId: preview.jobId) { progress in
-                    statusMessage = progress > 0
-                        ? "Przygotowuję odtwarzanie… \(progress)%"
-                        : "Przygotowuję odtwarzanie…"
-                }
-                statusMessage = nil
+            if let jobId = effectiveDownloadJobId {
+                let token = try await app.api.moviePlayToken(jobId: jobId)
+                let url = app.api.movieStreamURL(jobId: jobId, token: token.token)
+                let session = PlaybackSession(jobId: jobId, streamURL: url, token: token.token)
+                playbackContext = MediaPlaybackContext(
+                    sourceURL: selection.url,
+                    title: displayTitle,
+                    streamOptions: mediaInfo?.effectiveStreamOptions ?? MediaQualityOption.defaultStreamTiers(duration: displayDuration),
+                    session: session,
+                    selectedQualityID: mediaInfo?.defaultStreamQualityID() ?? "720"
+                )
+                return
             }
-            let token = try await app.api.playToken(jobId: preview.jobId)
-            let url = app.api.streamURL(jobId: token.jobId, token: token.token)
-            playbackSession = PlaybackSession(jobId: token.jobId, streamURL: url, token: token.token)
+
+            if mediaInfo == nil {
+                await loadMediaInfo()
+            }
+            statusIsError = false
+            statusMessage = "Przygotowuję odtwarzanie…"
+            let context = try await MediaPlaybackLauncher.startPlayback(
+                api: app.api,
+                url: selection.url,
+                title: displayTitle,
+                info: mediaInfo
+            )
+            statusMessage = nil
+            playbackContext = context
         } catch {
             statusIsError = true
             statusMessage = error.localizedDescription
@@ -217,12 +470,38 @@ struct MediaDetailView: View {
         }
     }
 
-    private func startDownload() async {
+    private func startDownload(format: MediaDownloadFormat, quality: MediaQualityOption) {
+        statusMessage = nil
+        statusIsError = false
+        guard let mediaInfo else { return }
+        let options = mediaInfo.qualityOptions(for: format)
+        let item = MovieDownloadQueueItem(
+            url: selection.url,
+            title: displayTitle,
+            thumbnail: selection.thumbnail ?? mediaInfo.thumbnail ?? cdaMeta?.thumbnail,
+            source: selection.source
+        )
+        downloadService.startBatch(
+            items: [item],
+            label: displayTitle,
+            thumbnail: selection.thumbnail ?? mediaInfo.thumbnail,
+            contextKey: selection.url,
+            format: format,
+            quality: quality,
+            allQualityOptions: options
+        )
+        statusIsError = false
+        statusMessage = "Pobieranie w tle — możesz wrócić do listy."
+    }
+
+    private func deleteDownloaded() async {
         statusMessage = nil
         statusIsError = false
         do {
-            let jobId = try await app.api.startDownload(url: selection.url, height: 720)
-            downloadJob = DownloadJobState(id: jobId)
+            try await downloadService.deleteDownload(url: selection.url)
+            localDownloadJobId = nil
+            statusIsError = false
+            statusMessage = "Usunięto z biblioteki MOVIES."
         } catch {
             statusIsError = true
             statusMessage = error.localizedDescription
@@ -290,6 +569,10 @@ struct DownloadProgressView: View {
 
     let jobId: String
     let title: String
+    var mediaUrl: String?
+    var mediaTitle: String?
+    var mediaThumbnail: String?
+    var mediaSource: String?
     let onDone: () -> Void
 
     @State private var progress: Double = 0
@@ -301,7 +584,7 @@ struct DownloadProgressView: View {
         ZStack {
             NostalgieAmbientBackground()
             VStack(alignment: .leading, spacing: 24) {
-                Text("Pobieranie")
+                Text("Pobieranie filmu")
                     .font(NostalgieFont.pageTitle)
                 Text(title)
                     .foregroundStyle(.secondary)
@@ -310,15 +593,8 @@ struct DownloadProgressView: View {
                 if let errorMessage {
                     Text(errorMessage).foregroundStyle(NostalgieTheme.accent)
                 } else if fileReady {
-                    Text("Plik gotowy na serwerze.")
+                    Text("Film gotowy w folderze MOVIES — odtwarzaj bez ponownego pobierania.")
                         .foregroundStyle(.green)
-                    Text("Pobierz w panelu www (MOVIES) lub użyj linku w przeglądarce na komputerze.")
-                        .foregroundStyle(.secondary)
-                        .font(NostalgieFont.caption)
-                    Text(app.api.downloadFileURL(jobId: jobId).absoluteString)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
                 } else {
                     ProgressView(value: progress, total: 100) {
                         Text(statusLabel)
@@ -362,6 +638,16 @@ struct DownloadProgressView: View {
                 status = job.status
                 if job.ready == true {
                     fileReady = true
+                    if let mediaUrl {
+                        _ = try? await app.api.linkMovieDownload(
+                            url: mediaUrl,
+                            title: mediaTitle ?? title,
+                            downloadJobId: jobId,
+                            thumbnail: mediaThumbnail,
+                            source: mediaSource
+                        )
+                        await app.refreshMovieDownloads()
+                    }
                     return
                 }
                 if job.status == "error" {

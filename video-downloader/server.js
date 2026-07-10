@@ -9,13 +9,18 @@ import { Readable } from "node:stream";
 import { spawnSync, spawn } from "node:child_process";
 import os from "node:os";
 import crypto from "node:crypto";
-import { isMirrorHost, resolveMirrorPage } from "./voe-resolver.js";
+import { isCdaHdPlayerHost, isMirrorHost, resolveMirrorPage } from "./voe-resolver.js";
 import {
   isCdaHdTvShowUrl,
+  isCdaHdFilmUrl,
+  isCdaHdBrowseUrl,
   fetchCdaHdTvShow,
   buildCdaHdSeriesInfo,
+  parseCdaHdMoviePage,
+  fetchCdaHdBrowse,
   searchCdaHd,
   fetchCdaHdLatest,
+  fetchCdaHdCatalog,
 } from "./cda-hd.js";
 import {
   detectPortal,
@@ -31,7 +36,23 @@ import {
   addFavorite,
   removeFavorite,
   mergeFavoritesStoreKey,
+  favoritesUserKeyFromReq,
 } from "./movies-favorites.js";
+import {
+  listMovieDownloads,
+  linkMovieDownload,
+  linkMovieDownloadByKey,
+  deleteMovieDownload,
+  findDownloadByJobId,
+  findDownloadByUrl,
+  resolvePersistedMovieFile,
+  moviesDownloadDir,
+  buildMovieFilename,
+  mergeMoviesLibraryStoreKey,
+  MOVIES_FOLDER_NAME,
+  moviesFileDestPath,
+  seriesFolderFromTitle,
+} from "./movies-library.js";
 import {
   listMusicLibrary,
   createMusicFolder,
@@ -40,6 +61,16 @@ import {
   listFolderTracks,
   addTrackToFolder,
   removeTrackFromFolder,
+  reorderFolderTracks,
+  updateTrackDownload,
+  updateTrackDownloadByKey,
+  getMusicFolderByKey,
+  playlistDownloadDir,
+  findTrackByDownloadJob,
+  importTracksToFolder,
+  linkFolderToApplePlaylist,
+  syncAppleMusicPlaylistFolder,
+  findMusicFolderForImport,
 } from "./music-library.js";
 import {
   signMoviesToken,
@@ -48,10 +79,20 @@ import {
   applyAuthToRequest,
 } from "./movies-auth.js";
 import {
+  loginOrLinkAppleAccount,
+  unlinkAppleAccount,
+  appleAuthSuccessResponse,
+} from "./apple-auth.js";
+import {
   searchAppleMusic,
+  searchAppleMusicCatalog,
+  fetchAppleMusicArtist,
+  fetchAppleMusicAlbum,
+  fetchAppleMusicPlaylist,
   buildAppleMusicInfo,
   downloadAppleMusicToFile,
   buildAppleMusicFilename,
+  resolveAppleMusicDownloadUrl,
 } from "./apple-music.js";
 
 const require = createRequire(import.meta.url);
@@ -167,6 +208,10 @@ function friendlyError(err) {
     return "Nierozpoznany link. Sprawdź adres albo spróbuj innego serwisu (YouTube, CDA, Vimeo itd.).";
   if (/mirror nie ma osadzonego/i.test(msg))
     return msg;
+  if (/CDA-HD używa wbudowanego odtwarzacza/i.test(msg))
+    return msg;
+  if (/CDA-HD: film niedostępny|kod 407/i.test(msg))
+    return "Ten film nie jest już dostępny do odtworzenia na CDA-HD — źródło wideo zostało usunięte lub wygasło. Strona z opisem może nadal istnieć.";
   if (/Nie udało się otworzyć strony mirror/i.test(msg))
     return "Nie udało się otworzyć strony mirror (cda-hd itp.). Sprawdź link.";
   if (/No space left on device|ENOSPC|errno 28/i.test(msg))
@@ -338,6 +383,28 @@ function buildMirrorVideoOptions(durationSec, exactBytes) {
   });
 }
 
+function buildTvpVideoOptions(durationSec) {
+  const dur = durationSec > 0 ? durationSec : 45 * 60;
+  const suffix = " ~";
+  const tiers = [
+    { id: "1080", label: "1080p", height: 1080, bw: 11281000 },
+    { id: "720", label: "720p", height: 720, bw: 6287000 },
+    { id: "540", label: "540p", height: 540, bw: 3128000 },
+    { id: "360", label: "360p", height: 360, bw: 1362000 },
+  ];
+  return tiers.map((t) => {
+    const sizeBytes = Math.round((t.bw * dur) / 8);
+    return {
+      id: t.id,
+      label: t.label,
+      height: t.height,
+      detail: "TVP VOD · szacunek",
+      sizeBytes,
+      sizeLabel: formatBytes(sizeBytes) + suffix,
+    };
+  });
+}
+
 function buildMirrorAudioOptions(durationSec) {
   const dur = durationSec > 0 ? durationSec : 45 * 60;
   const estimated = !durationSec;
@@ -392,7 +459,7 @@ async function buildMirrorMediaInfoAsync(mirror) {
     isPlaylist: false,
     isMirror: true,
     mirrorSite: new URL(mirror.webpageUrl).hostname.replace(/^www\./, ""),
-    embedLabel: mirror.stream.label || "mirror",
+    embedLabel: mirror.stream?.label || "cda-hd",
     title: mirror.title,
     thumbnail: absUrl(mirror.thumbnail),
     webpageUrl: mirror.webpageUrl,
@@ -402,16 +469,43 @@ async function buildMirrorMediaInfoAsync(mirror) {
   };
 }
 
+async function buildCdaHdFilmInfoAsync(mirror) {
+  const base = await buildMirrorMediaInfoAsync(mirror);
+  try {
+    const meta = parseCdaHdMoviePage(mirror.html || "", mirror.webpageUrl);
+    return {
+      ...base,
+      source: "cda-hd",
+      title: meta.title || base.title,
+      thumbnail: meta.thumbnail || base.thumbnail,
+      duration: meta.duration || base.duration,
+      uploader: meta.director?.name || "CDA-HD",
+      quality: meta.rating?.value != null ? `${meta.rating.value}/10` : base.quality,
+      cdaHd: meta,
+    };
+  } catch {
+    return { ...base, source: "cda-hd" };
+  }
+}
+
 async function resolveMediaInfo(url, browser, req = null) {
   if (/music\.apple\.com/i.test(url)) {
     return buildAppleMusicInfo(url);
   }
 
+  let result;
   if (isMirrorHost(url)) {
     if (isCdaHdTvShowUrl(url)) {
-      return buildCdaHdSeriesInfo(await fetchCdaHdTvShow(url));
+      result = buildCdaHdSeriesInfo(await fetchCdaHdTvShow(url));
+    } else {
+      const mirror = await resolveMirrorPage(url);
+      if (isCdaHdFilmUrl(mirror.webpageUrl || url)) {
+        result = await buildCdaHdFilmInfoAsync(mirror);
+      } else {
+        result = await buildMirrorMediaInfoAsync(mirror);
+      }
     }
-    return buildMirrorMediaInfoAsync(await resolveMirrorPage(url));
+    return ensureMediaInfoOptions(result);
   }
 
   try {
@@ -449,7 +543,7 @@ async function resolveMediaInfo(url, browser, req = null) {
     const formats = Array.isArray(info.formats) ? info.formats : [];
     const duration = info.duration || 0;
 
-    return {
+    result = {
       isPlaylist: false,
       title: info.title || "Bez tytułu",
       uploader: info.uploader || info.channel || info.extractor_key || "",
@@ -463,12 +557,33 @@ async function resolveMediaInfo(url, browser, req = null) {
         m4a: buildAudioOptions(formats, duration, "m4a"),
       },
     };
+    return ensureMediaInfoOptions(result);
   } catch (err) {
     if (/Unsupported URL/i.test(String(err?.message || err))) {
-      return buildMirrorMediaInfoAsync(await resolveMirrorPage(url));
+      result = await buildMirrorMediaInfoAsync(await resolveMirrorPage(url));
+      return ensureMediaInfoOptions(result);
     }
     throw err;
   }
+}
+
+function ensureMediaInfoOptions(info) {
+  if (!info || info.isPlaylist) return info;
+  const duration = info.duration || 0;
+  const isTvp =
+    /tvp/i.test(String(info.uploader || info.source || "")) ||
+    /vod\.tvp\.pl/i.test(String(info.webpageUrl || ""));
+  if (!Array.isArray(info.videoOptions) || !info.videoOptions.length) {
+    info.videoOptions = isTvp
+      ? buildTvpVideoOptions(duration)
+      : buildMirrorVideoOptions(duration, 0);
+  } else if (isTvp) {
+    info.videoOptions = buildTvpVideoOptions(duration);
+  }
+  if (!info.audioOptions) {
+    info.audioOptions = buildMirrorAudioOptions(duration);
+  }
+  return info;
 }
 
 function finalizeJob(job, jobDir) {
@@ -521,6 +636,10 @@ function finalizeJob(job, jobDir) {
 
   if (job.purpose === "preview") {
     setTimeout(() => cleanupJob(job.id), 60 * 60 * 1000);
+  }
+
+  if (job.kind === "movie") {
+    persistMovieFile(job);
   }
 }
 
@@ -588,14 +707,90 @@ function ensureSafariPlayable(filePath, jobDir) {
 
 function cleanupJob(jobId) {
   const job = jobs.get(jobId);
-  if (!job?.file) return;
+  if (!job?.file || job.persistent) return;
   try {
     fs.rmSync(path.dirname(job.file), { recursive: true, force: true });
   } catch {}
   jobs.delete(jobId);
 }
 
-function startTransferJob({ jobId, url, args, purpose = "download" }) {
+function assertValidMovieFile(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    throw new Error("Brak pliku po pobraniu.");
+  }
+  const stat = fs.statSync(filePath);
+  if (stat.size < 512 * 1024) {
+    let head = "";
+    try {
+      const fd = fs.openSync(filePath, "r");
+      const buf = Buffer.alloc(200);
+      fs.readSync(fd, buf, 0, 200, 0);
+      fs.closeSync(fd);
+      head = buf.toString("utf8");
+    } catch {
+      /* ignore */
+    }
+    if (/^#EXTM3U/i.test(head)) {
+      throw new Error(
+        "Pobrano tylko listę odtwarzania (HLS), a nie cały film — spróbuj ponownie."
+      );
+    }
+    throw new Error(`Plik jest za mały (${stat.size} B) — pobieranie nie powiodło się.`);
+  }
+}
+
+function finalizeMovieDownload(job) {
+  if (!job?.userKey || !job?.movieUrl || !job?.file) return;
+  try {
+    linkMovieDownloadByKey(
+      job.userKey,
+      {
+        url: job.movieUrl,
+        title: job.movieTitle || job.name || "Film",
+        thumbnail: job.movieThumbnail || "",
+        source: job.movieSource || "",
+        downloadJobId: job.id,
+        filename: job.relativeMovieName || path.basename(job.file),
+      },
+      MUSIC_PLAYLIST_DOWNLOADS_DIR
+    );
+  } catch (err) {
+    console.warn("movies library download link:", err?.message || err);
+  }
+}
+
+function persistMovieFile(job) {
+  if (job.kind !== "movie" || !job.persistent || !job.file) return;
+  const title = job.movieTitle || job.name;
+  const destInfo = moviesFileDestPath(MUSIC_PLAYLIST_DOWNLOADS_DIR, {
+    title,
+    jobId: job.id,
+  }, { ensureDir: false });
+  const dest = destInfo.filePath;
+  if (job.file !== dest) {
+    try {
+      fs.renameSync(job.file, dest);
+    } catch {
+      fs.copyFileSync(job.file, dest);
+      try {
+        fs.unlinkSync(job.file);
+      } catch {}
+      try {
+        const tempDir = path.dirname(job.file);
+        if (tempDir.includes(path.join("downloads", "jobs"))) {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      } catch {}
+    }
+    job.file = dest;
+  }
+  job.name = path.basename(dest);
+  job.relativeMovieName = destInfo.relativeName;
+  assertValidMovieFile(job.file);
+  finalizeMovieDownload(job);
+}
+
+function startTransferJob({ jobId, url, args, purpose = "download", movieDownload = null }) {
   const jobDir = path.join(DOWNLOAD_DIR, jobId);
   fs.mkdirSync(jobDir, { recursive: true });
 
@@ -606,6 +801,17 @@ function startTransferJob({ jobId, url, args, purpose = "download" }) {
     progress: 0,
     clients: new Set(),
   };
+  if (movieDownload) {
+    Object.assign(job, {
+      kind: "movie",
+      persistent: true,
+      userKey: movieDownload.userKey,
+      movieUrl: movieDownload.url,
+      movieTitle: movieDownload.title || "",
+      movieThumbnail: movieDownload.thumbnail || "",
+      movieSource: movieDownload.source || "",
+    });
+  }
   jobs.set(jobId, job);
 
   const proc = ytDlp.exec(args);
@@ -630,13 +836,19 @@ function startTransferJob({ jobId, url, args, purpose = "download" }) {
     sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
   });
 
-  proc.on("close", (code) => {
+  proc.on("close", (code, signal) => {
     if (job.status === "error" || job.status === "cancelled") return;
-    if (code !== 0 && code !== null) {
+    if (signal || (code != null && code !== 0)) {
       job.status = "error";
       job.error =
         job.error ||
-        friendlyError(new Error(`Proces pobierania zakończył się błędem (kod ${code}).`));
+        friendlyError(
+          new Error(
+            signal
+              ? `Pobieranie przerwane (${signal}).`
+              : `Proces pobierania zakończył się błędem (kod ${code}).`
+          )
+        );
       sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
       return;
     }
@@ -664,8 +876,14 @@ async function getMirrorStream(url) {
     try {
       mirror = await resolveMirrorPage(target.url);
       if (mirror.stream?.url) break;
+      if (mirror.playbackError) {
+        lastErr = mirror.playbackError;
+        break;
+      }
       lastErr = new Error(
-        "Ten link z serwisu mirror nie ma osadzonego odtwarzacza obsługiwanego automatycznie."
+        mirror?.embeds?.length === 1 && isCdaHdPlayerHost(mirror.embeds[0]?.url)
+          ? "Ten film na CDA-HD nie jest już dostępny do odtworzenia — źródło wideo zostało usunięte lub wygasło."
+          : "Ten link z serwisu mirror nie ma osadzonego odtwarzacza obsługiwanego automatycznie."
       );
     } catch (err) {
       lastErr = err;
@@ -703,7 +921,7 @@ async function resolveMirrorPlayUrl(url) {
 }
 
 function detectStreamType(streamUrl) {
-  return /\.m3u8(\?|$)/i.test(streamUrl) ? "hls" : "mp4";
+  return /\.m3u8?(\?|$)/i.test(streamUrl) ? "hls" : "mp4";
 }
 
 function playBaseFromReq(req) {
@@ -1254,6 +1472,224 @@ function startTvpRemuxPreview({ jobId, videoUrl, audioUrl, referer }) {
   return job;
 }
 
+function startTvpMovieDownloadJob({
+  jobId,
+  videoUrl,
+  audioUrl,
+  referer,
+  movieDownload,
+}) {
+  const jobDir = path.join(DOWNLOAD_DIR, jobId);
+  fs.mkdirSync(jobDir, { recursive: true });
+  const tempOut = path.join(jobDir, "download-tvp.mp4");
+  const destInfo = moviesFileDestPath(MUSIC_PLAYLIST_DOWNLOADS_DIR, {
+    title: movieDownload.title,
+    jobId,
+  }, { ensureDir: false });
+
+  const job = {
+    id: jobId,
+    purpose: "download",
+    kind: "movie",
+    persistent: true,
+    userKey: movieDownload.userKey,
+    movieUrl: movieDownload.url,
+    movieTitle: movieDownload.title || "",
+    movieThumbnail: movieDownload.thumbnail || "",
+    movieSource: movieDownload.source || "",
+    status: "starting",
+    progress: 0,
+    clients: new Set(),
+    file: tempOut,
+    name: path.basename(destInfo.relativeName),
+    relativeMovieName: destInfo.relativeName,
+  };
+  jobs.set(jobId, job);
+
+  const header = `Referer: ${referer || ""}\r\nUser-Agent: ${UA}\r\n`;
+  const ff = spawn(ffmpegStatic, [
+    "-nostdin",
+    "-y",
+    "-headers",
+    header,
+    "-i",
+    videoUrl,
+    "-headers",
+    header,
+    "-i",
+    audioUrl,
+    "-c",
+    "copy",
+    "-movflags",
+    "+faststart",
+    tempOut,
+  ]);
+  job.proc = ff;
+  job.status = "downloading";
+
+  const poll = setInterval(() => {
+    if (job.cancelled) {
+      clearInterval(poll);
+      return;
+    }
+    if (!fs.existsSync(tempOut)) return;
+    const stat = fs.statSync(tempOut);
+    const pct = Math.min(99, Math.round(stat.size / (50 * 1024 * 1024) * 10));
+    job.progress = Math.max(job.progress || 0, pct);
+    sendEvent(job, {
+      status: "downloading",
+      progress: job.progress,
+      purpose: job.purpose,
+    });
+  }, 1000);
+
+  ff.on("close", (code, signal) => {
+    clearInterval(poll);
+    if (job.cancelled) return;
+    if (signal || code !== 0 || !fs.existsSync(tempOut)) {
+      job.status = "error";
+      job.error = signal
+        ? `Nie udało się pobrać materiału TVP (${signal}).`
+        : "Nie udało się pobrać materiału TVP.";
+      sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
+      return;
+    }
+    try {
+      assertValidMovieFile(tempOut);
+      job.file = ensureSafariPlayable(tempOut, jobDir);
+      if (job.file !== destInfo.filePath) {
+        fs.mkdirSync(path.dirname(destInfo.filePath), { recursive: true });
+        fs.renameSync(job.file, destInfo.filePath);
+        job.file = destInfo.filePath;
+      }
+      job.name = path.basename(destInfo.filePath);
+      job.relativeMovieName = destInfo.relativeName;
+      job.status = "done";
+      job.progress = 100;
+      job.ready = true;
+      finalizeMovieDownload(job);
+      sendEvent(job, {
+        status: "done",
+        progress: 100,
+        jobId: job.id,
+        purpose: job.purpose,
+        ready: true,
+      });
+    } catch (err) {
+      try {
+        fs.unlinkSync(tempOut);
+      } catch {}
+      try {
+        if (fs.existsSync(destInfo.filePath)) fs.unlinkSync(destInfo.filePath);
+      } catch {}
+      job.status = "error";
+      job.error = friendlyError(err);
+      sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
+    }
+  });
+
+  ff.on("error", (err) => {
+    clearInterval(poll);
+    job.status = "error";
+    job.error = friendlyError(err);
+    sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
+  });
+
+  return job;
+}
+
+function startHlsMovieDownloadJob({
+  jobId,
+  streamUrl,
+  referer,
+  movieDownload,
+  title,
+}) {
+  const jobDir = path.join(DOWNLOAD_DIR, jobId);
+  fs.mkdirSync(jobDir, { recursive: true });
+
+  const job = {
+    id: jobId,
+    purpose: "download",
+    kind: movieDownload ? "movie" : undefined,
+    persistent: !!movieDownload,
+    userKey: movieDownload?.userKey || null,
+    movieUrl: movieDownload?.url || null,
+    movieTitle: movieDownload?.title || title || "",
+    movieThumbnail: movieDownload?.thumbnail || "",
+    movieSource: movieDownload?.source || "",
+    status: "starting",
+    progress: 0,
+    clients: new Set(),
+  };
+  jobs.set(jobId, job);
+
+  const args = [
+    streamUrl,
+    "-o",
+    path.join(jobDir, "download.%(ext)s"),
+    "--referer",
+    referer || "",
+    "--ffmpeg-location",
+    path.dirname(ffmpegStatic),
+    "--merge-output-format",
+    "mp4",
+    "--no-playlist",
+    "--no-warnings",
+  ];
+
+  const proc = ytDlp.exec(args);
+  job.proc = proc;
+
+  proc.on("progress", (p) => {
+    if (job.cancelled) return;
+    job.status = "downloading";
+    if (typeof p.percent === "number") job.progress = p.percent;
+    sendEvent(job, {
+      status: job.status,
+      progress: job.progress,
+      speed: p.currentSpeed,
+      eta: p.eta,
+      purpose: job.purpose,
+    });
+  });
+
+  proc.on("error", (err) => {
+    job.status = "error";
+    job.error = friendlyError(err);
+    sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
+  });
+
+  proc.on("close", (code, signal) => {
+    if (job.cancelled || job.status === "error" || job.status === "cancelled") return;
+    if (signal || (code != null && code !== 0)) {
+      job.status = "error";
+      job.error =
+        job.error ||
+        friendlyError(
+          new Error(
+            signal
+              ? `Pobieranie HLS przerwane (${signal}).`
+              : `Pobieranie HLS zakończyło się błędem (kod ${code}).`
+          )
+        );
+      sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
+      return;
+    }
+    sendEvent(job, { status: "processing", progress: 99, purpose: job.purpose });
+    try {
+      finalizeJob(job, jobDir);
+      job.ready = true;
+    } catch (err) {
+      job.status = "error";
+      job.error = friendlyError(err);
+      sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
+    }
+  });
+
+  return job;
+}
+
 function stopJobTransfer(job) {
   job.cancelled = true;
   job.status = "cancelled";
@@ -1316,6 +1752,38 @@ function rewriteHlsLine(line, job, req) {
   return buildSegmentProxyUrl(req, job.id, abs);
 }
 
+const CURL_INSECURE_HOSTS = /(?:^|\.)cfglobalcdn\.com$/i;
+
+function curlFetchText(url, { referer, insecure = false } = {}) {
+  const args = ["-sL", "-A", UA, "--max-time", String(Math.ceil(STREAM_PROXY_TIMEOUT_MS / 1000))];
+  if (insecure) args.push("-k");
+  if (referer) args.push("-H", `Referer: ${referer}`);
+  args.push(url);
+  const result = spawnSync("curl", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+  if (result.error || result.status !== 0) return null;
+  const body = (result.stdout || "").trim();
+  return body || null;
+}
+
+async function fetchRemoteText(url, referer) {
+  let insecure = false;
+  try {
+    insecure = CURL_INSECURE_HOSTS.test(new URL(url).hostname);
+  } catch {
+    /* ignore */
+  }
+  try {
+    const upstream = await fetch(url, {
+      headers: { "User-Agent": UA, Referer: referer || "" },
+      signal: AbortSignal.timeout(STREAM_PROXY_TIMEOUT_MS),
+    });
+    if (upstream.ok) return await upstream.text();
+  } catch {
+    /* curl fallback below */
+  }
+  return curlFetchText(url, { referer, insecure: insecure || true });
+}
+
 async function proxyHlsPlaylist(req, res, job) {
   const cacheKey = `${job.id}:${job.streamUrl}`;
   const hit = hlsPlaylistCache.get(cacheKey);
@@ -1328,12 +1796,10 @@ async function proxyHlsPlaylist(req, res, job) {
     return res.send(hit.body);
   }
 
-  const headers = { "User-Agent": UA, Referer: job.streamReferer || "" };
-  const upstream = await fetch(job.streamUrl, { headers });
-  if (!upstream.ok) {
-    return res.status(upstream.status).send("Błąd playlisty HLS.");
+  let text = await fetchRemoteText(job.streamUrl, job.streamReferer || "");
+  if (!text) {
+    return res.status(502).send("Błąd playlisty HLS.");
   }
-  const text = await upstream.text();
   const body = text
     .split("\n")
     .map((line) => rewriteHlsLine(line, job, req))
@@ -1373,6 +1839,40 @@ async function proxyRemoteUrl(req, res, job, targetUrl) {
     }
   }
   if (!upstream?.ok && upstream?.status !== 206) {
+    if (/\.m3u8(\?|$)/i.test(targetUrl)) {
+      const text = await fetchRemoteText(targetUrl, job.streamReferer || "");
+      if (text) {
+        const body = text
+          .split("\n")
+          .map((line) => rewriteHlsLine(line, { ...job, streamUrl: targetUrl }, req))
+          .join("\n");
+        res.set("Content-Type", "application/vnd.apple.mpegurl");
+        res.set("Cache-Control", "no-cache");
+        return res.send(body);
+      }
+    }
+    let insecure = false;
+    try {
+      insecure = CURL_INSECURE_HOSTS.test(new URL(targetUrl).hostname);
+    } catch {
+      /* ignore */
+    }
+    if (!/\.m3u8(\?|$)/i.test(targetUrl)) {
+      const maxTime = String(Math.ceil(STREAM_PROXY_TIMEOUT_MS / 1000));
+      const args = ["-sL", "-A", UA, "--max-time", maxTime];
+      if (insecure) args.push("-k");
+      if (job.streamReferer) args.push("-H", `Referer: ${job.streamReferer}`);
+      if (req.headers.range) args.push("--range", String(req.headers.range).replace(/^bytes=/, ""));
+      args.push(targetUrl);
+      res.set("Accept-Ranges", "bytes");
+      res.status(200);
+      const proc = spawn("curl", args);
+      proc.stdout.pipe(res);
+      proc.on("error", () => {
+        if (!res.headersSent) res.status(502).send("Błąd streamu wideo.");
+      });
+      return;
+    }
     return res.status(upstream?.status || 502).send("Błąd streamu wideo.");
   }
 
@@ -1476,6 +1976,10 @@ async function downloadStreamToFile(job, streamUrl, referer, destPath, opts = {}
     job.status = forAirPlay ? "airplay-ready" : "done";
     job.progress = 100;
     if (forAirPlay) ensurePlayToken(job);
+    if (job.kind === "movie" && !forAirPlay) {
+      assertValidMovieFile(destPath);
+      persistMovieFile(job);
+    }
     sendEvent(job, {
       status: job.status,
       progress: 100,
@@ -1487,19 +1991,24 @@ async function downloadStreamToFile(job, streamUrl, referer, destPath, opts = {}
     });
   } catch (err) {
     if (job.cancelled || err?.name === "AbortError") return;
+    try {
+      if (destPath && fs.existsSync(destPath)) fs.unlinkSync(destPath);
+    } catch {}
     job.status = "error";
     job.error = friendlyError(err);
     sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
   }
 }
 
-function startAppleMusicDownloadJob({ jobId, url }) {
-  const jobDir = path.join(DOWNLOAD_DIR, jobId);
-  fs.mkdirSync(jobDir, { recursive: true });
-
+function startAppleMusicDownloadJob({ jobId, url, userKey, folderId, trackUrl }) {
   const job = {
     id: jobId,
     purpose: "download",
+    kind: "music",
+    persistent: true,
+    userKey: userKey || null,
+    folderId: folderId || null,
+    trackUrl: trackUrl || null,
     status: "starting",
     progress: 0,
     clients: new Set(),
@@ -1513,8 +2022,86 @@ function startAppleMusicDownloadJob({ jobId, url }) {
 
       const track = await buildAppleMusicInfo(url);
       const safeName = buildAppleMusicFilename(track);
+      const filePath = resolveMusicPlaylistFilePath({
+        userKey,
+        folderId,
+        jobId,
+        filename: safeName,
+      });
+
+      await downloadAppleMusicToFile({
+        appleUrl: url,
+        destPath: filePath,
+        trackMeta: track,
+        onProgress: (pct) => {
+          if (job.cancelled) return;
+          job.progress = Math.min(99, Math.round(pct));
+          sendEvent(job, {
+            status: "downloading",
+            progress: job.progress,
+            purpose: job.purpose,
+          });
+        },
+      });
+
+      if (job.cancelled) return;
+
+      job.file = filePath;
+      job.name = safeName;
+      job.status = "done";
+      job.progress = 100;
+      sendEvent(job, {
+        status: "done",
+        progress: 100,
+        name: job.name,
+        jobId: job.id,
+        purpose: job.purpose,
+      });
+
+      if (userKey && folderId && trackUrl) {
+        try {
+          updateTrackDownloadByKey(userKey, folderId, trackUrl, jobId);
+        } catch (err) {
+          console.warn("music library download link:", err?.message || err);
+        }
+      }
+    } catch (err) {
+      if (job.cancelled) return;
+      job.status = "error";
+      job.error = friendlyAppleMusicError(err);
+      sendEvent(job, { status: "error", error: job.error, purpose: job.purpose });
+    }
+  })();
+
+  return job;
+}
+
+function startAppleMusicPlayJob({ jobId, url }) {
+  const jobDir = path.join(DOWNLOAD_DIR, jobId);
+  fs.mkdirSync(jobDir, { recursive: true });
+
+  const job = {
+    id: jobId,
+    purpose: "music-play",
+    kind: "music",
+    persistent: false,
+    status: "starting",
+    progress: 0,
+    clients: new Set(),
+  };
+  jobs.set(jobId, job);
+
+  (async () => {
+    try {
+      job.status = "preparing";
+      sendEvent(job, { status: "preparing", progress: 5, purpose: job.purpose });
+
+      const track = await buildAppleMusicInfo(url);
+      job.name = track.title;
+      const safeName = buildAppleMusicFilename(track);
       const filePath = path.join(jobDir, safeName);
 
+      job.status = "downloading";
       await downloadAppleMusicToFile({
         appleUrl: url,
         destPath: filePath,
@@ -1554,6 +2141,177 @@ function startAppleMusicDownloadJob({ jobId, url }) {
   return job;
 }
 
+function musicJobReady(job) {
+  if (!job || job.kind !== "music") return false;
+  if (job.file && fs.existsSync(job.file)) return true;
+  return job.mode === "stream-proxy" && job.status === "done" && !!job.streamUrl;
+}
+
+function movieJobReady(job) {
+  if (!job || job.kind !== "movie") return false;
+  return !!(job.file && fs.existsSync(job.file));
+}
+
+function getOrRestoreMovieJob(jobId, req) {
+  const existing = jobs.get(jobId);
+  if (existing?.kind === "movie" && movieJobReady(existing)) return existing;
+
+  const userKey = favoritesUserKeyFromReq(req);
+  if (!userKey) return existing?.kind === "movie" ? existing : null;
+
+  const filePath = resolvePersistedMovieFile(
+    userKey,
+    jobId,
+    MUSIC_PLAYLIST_DOWNLOADS_DIR
+  );
+  if (!filePath) return existing?.kind === "movie" ? existing : null;
+
+  const restored = {
+    id: jobId,
+    kind: "movie",
+    purpose: "download",
+    persistent: true,
+    status: "done",
+    progress: 100,
+    file: filePath,
+    name: path.basename(filePath),
+    clients: existing?.clients || new Set(),
+  };
+  ensurePlayToken(restored);
+  jobs.set(jobId, restored);
+  return restored;
+}
+
+function serveVideoFile(req, res, filePath) {
+  const stat = fs.statSync(filePath);
+  const mime = "video/mp4";
+  const range = req.headers.range;
+
+  if (range) {
+    const parts = range.replace(/bytes=/, "").split("-");
+    let start = parseInt(parts[0], 10) || 0;
+    let end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+    if (Number.isNaN(start) || start < 0) start = 0;
+    if (Number.isNaN(end) || end >= stat.size) end = stat.size - 1;
+    if (start > end || start >= stat.size) {
+      res.status(416);
+      res.set("Content-Range", `bytes */${stat.size}`);
+      return res.end();
+    }
+    res.status(206);
+    res.set({
+      "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+      "Accept-Ranges": "bytes",
+      "Content-Length": String(end - start + 1),
+      "Content-Type": mime,
+      "Content-Disposition": "inline",
+      "Cache-Control": "private, max-age=3600",
+    });
+    createReadStream(filePath, { start, end }).pipe(res);
+    return;
+  }
+
+  res.set({
+    "Content-Length": String(stat.size),
+    "Content-Type": mime,
+    "Accept-Ranges": "bytes",
+    "Content-Disposition": "inline",
+    "Cache-Control": "private, max-age=3600",
+  });
+  createReadStream(filePath).pipe(res);
+}
+
+function normalizeMusicTitleKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function resolvePersistedMusicFile(userKey, jobId) {
+  const track = findTrackByDownloadJob(userKey, jobId);
+  if (!track) return null;
+
+  const folder = getMusicFolderByKey(userKey, track.folderId);
+  const candidates = [];
+  const pushCandidate = (filePath) => {
+    if (filePath && !candidates.includes(filePath)) candidates.push(filePath);
+  };
+
+  const expectedName = buildAppleMusicFilename({
+    title: track.title,
+    uploader: track.artist || "",
+    artistName: track.artist || "",
+  });
+
+  if (folder?.name) {
+    const dir = playlistDownloadDir(MUSIC_PLAYLIST_DOWNLOADS_DIR, folder.name);
+    pushCandidate(path.join(dir, expectedName));
+    if (fs.existsSync(dir)) {
+      for (const name of fs.readdirSync(dir)) {
+        if (/\.mp3$/i.test(name)) pushCandidate(path.join(dir, name));
+      }
+    }
+  }
+
+  const jobDir = path.join(DOWNLOAD_DIR, jobId);
+  pushCandidate(path.join(jobDir, expectedName));
+  if (fs.existsSync(jobDir)) {
+    for (const name of fs.readdirSync(jobDir)) {
+      if (/\.mp3$/i.test(name)) pushCandidate(path.join(jobDir, name));
+    }
+  }
+
+  const titleKey = normalizeMusicTitleKey(track.title);
+  const artistKey = normalizeMusicTitleKey(track.artist);
+  let bestPath = null;
+  let bestScore = 0;
+
+  for (const filePath of candidates) {
+    if (!fs.existsSync(filePath)) continue;
+    const baseKey = normalizeMusicTitleKey(path.basename(filePath, path.extname(filePath)));
+    let score = 0;
+    if (titleKey && baseKey.includes(titleKey)) score += 4;
+    if (artistKey && baseKey.includes(artistKey)) score += 2;
+    if (baseKey.includes(titleKey.split(" ").slice(0, 3).join(" "))) score += 1;
+    if (score > bestScore) {
+      bestScore = score;
+      bestPath = filePath;
+    }
+  }
+
+  if (bestPath) return bestPath;
+  return candidates.find((filePath) => fs.existsSync(filePath)) || null;
+}
+
+function getOrRestoreMusicJob(jobId, req) {
+  const existing = jobs.get(jobId);
+  if (existing?.kind === "music" && musicJobReady(existing)) return existing;
+
+  const userKey = favoritesUserKeyFromReq(req);
+  if (!userKey) return existing?.kind === "music" ? existing : null;
+
+  const filePath = resolvePersistedMusicFile(userKey, jobId);
+  if (!filePath) return existing?.kind === "music" ? existing : null;
+
+  const restored = {
+    id: jobId,
+    kind: "music",
+    purpose: "download",
+    persistent: true,
+    status: "done",
+    progress: 100,
+    file: filePath,
+    name: path.basename(filePath),
+    clients: existing?.clients || new Set(),
+  };
+  ensurePlayToken(restored);
+  jobs.set(jobId, restored);
+  return restored;
+}
+
 function friendlyAppleMusicError(err) {
   const msg = String(err?.message || err || "");
   if (/Nie znaleziono utworu/i.test(msg)) return msg;
@@ -1563,20 +2321,50 @@ function friendlyAppleMusicError(err) {
   return msg || "Nie udało się pobrać utworu z Apple Music.";
 }
 
-function startMirrorDownloadJob({ jobId, streamUrl, streamReferer, name }) {
+function startMirrorDownloadJob({
+  jobId,
+  streamUrl,
+  streamReferer,
+  name,
+  userKey = null,
+  movieUrl = null,
+  movieTitle = "",
+  movieThumbnail = "",
+  movieSource = "",
+}) {
+  const isMovie = !!(userKey && movieUrl);
   const jobDir = path.join(DOWNLOAD_DIR, jobId);
   fs.mkdirSync(jobDir, { recursive: true });
-  const safeName = sanitizeName((name || "video").replace(/\.[^.]+$/, "") + ".mp4");
-  const filePath = path.join(jobDir, safeName);
+  const destInfo = isMovie
+    ? moviesFileDestPath(MUSIC_PLAYLIST_DOWNLOADS_DIR, {
+        title: movieTitle || name,
+        jobId,
+      })
+    : null;
+  const safeName = destInfo?.relativeName || buildMovieFilename({
+    title: movieTitle || name,
+    jobId,
+  });
+  const filePath = isMovie
+    ? destInfo.filePath
+    : path.join(jobDir, path.basename(safeName));
 
   const job = {
     id: jobId,
     purpose: "download",
+    kind: isMovie ? "movie" : undefined,
+    persistent: isMovie,
+    userKey: userKey || null,
+    movieUrl: movieUrl || null,
+    movieTitle: movieTitle || name || "",
+    movieThumbnail: movieThumbnail || "",
+    movieSource: movieSource || "",
     status: "starting",
     progress: 0,
     clients: new Set(),
     file: filePath,
-    name: safeName,
+    name: path.basename(destInfo?.filePath || safeName),
+    relativeMovieName: destInfo?.relativeName || null,
   };
   jobs.set(jobId, job);
   downloadStreamToFile(job, streamUrl, streamReferer, filePath);
@@ -1723,9 +2511,28 @@ const BINARY_PATH = path.join(
 );
 const DOWNLOAD_DIR =
   process.env.DOWNLOAD_DIR || path.join(__dirname, "downloads", "jobs");
+const MUSIC_PLAYLIST_DOWNLOADS_DIR =
+  process.env.MUSIC_PLAYLIST_DOWNLOADS_DIR || path.dirname(DOWNLOAD_DIR);
+const MOVIES_DOWNLOADS_DIR = moviesDownloadDir(MUSIC_PLAYLIST_DOWNLOADS_DIR);
 
 fs.mkdirSync(BIN_DIR, { recursive: true });
 fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
+fs.mkdirSync(MUSIC_PLAYLIST_DOWNLOADS_DIR, { recursive: true });
+fs.mkdirSync(MOVIES_DOWNLOADS_DIR, { recursive: true });
+
+function resolveMusicPlaylistFilePath({ userKey, folderId, jobId, filename }) {
+  if (userKey && folderId) {
+    const folder = getMusicFolderByKey(userKey, folderId);
+    if (folder?.name) {
+      const dir = playlistDownloadDir(MUSIC_PLAYLIST_DOWNLOADS_DIR, folder.name);
+      fs.mkdirSync(dir, { recursive: true });
+      return path.join(dir, filename);
+    }
+  }
+  const jobDir = path.join(DOWNLOAD_DIR, jobId);
+  fs.mkdirSync(jobDir, { recursive: true });
+  return path.join(jobDir, filename);
+}
 
 // --- Ensure the yt-dlp binary is present (auto-download on first run) --------
 async function ensureBinary() {
@@ -2415,6 +3222,7 @@ const SOURCE_FETCH_LIMITS = {
 };
 
 let cdaHdLatestCache = { at: 0, items: [] };
+let cdaHdCatalogCache = { at: 0, entries: {} };
 const CDA_HD_LATEST_TTL_MS = 15 * 60 * 1000;
 
 const SEARCH_HANDLERS = {
@@ -2425,15 +3233,15 @@ const SEARCH_HANDLERS = {
   "apple-music": (q, limit) => searchAppleMusic(q, Math.min(limit, SOURCE_FETCH_LIMITS["apple-music"])),
 };
 
-// GET /api/cda-hd/latest?limit=10 — public feed for Top Shelf (cached)
+// GET /api/cda-hd/latest?limit=20 — public feed for Top Shelf (cached)
 app.get("/api/cda-hd/latest", async (req, res) => {
-  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 24);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 60);
   const now = Date.now();
   if (now - cdaHdLatestCache.at < CDA_HD_LATEST_TTL_MS && cdaHdLatestCache.items.length >= limit) {
     return res.json({ items: cdaHdLatestCache.items.slice(0, limit), cached: true });
   }
   try {
-    const items = mapSearchThumbnails(await fetchCdaHdLatest(24));
+    const items = mapSearchThumbnails(await fetchCdaHdLatest(60));
     cdaHdLatestCache = { at: now, items };
     res.json({ items: items.slice(0, limit), cached: false });
   } catch (err) {
@@ -2442,6 +3250,57 @@ app.get("/api/cda-hd/latest", async (req, res) => {
       return res.json({ items: cdaHdLatestCache.items.slice(0, limit), cached: true, stale: true });
     }
     res.status(502).json({ error: "Nie udało się pobrać najnowszych z CDA-HD." });
+  }
+});
+
+// GET /api/cda-hd/catalog?mode=latest|top-rated&page=1&pageSize=20
+app.get("/api/cda-hd/catalog", async (req, res) => {
+  const mode = String(req.query.mode || "latest").toLowerCase() === "top-rated" ? "top-rated" : "latest";
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 20, 1), 24);
+  const now = Date.now();
+  const cacheKey = `${mode}|${page}|${pageSize}`;
+  const cacheHit = cdaHdCatalogCache.entries?.[cacheKey];
+  if (now - cdaHdCatalogCache.at < CDA_HD_LATEST_TTL_MS && cacheHit) {
+    return res.json({ ...cacheHit, cached: true });
+  }
+  try {
+    const data = await fetchCdaHdCatalog({ mode, page, pageSize });
+    const payload = {
+      mode: data.mode,
+      page: data.page,
+      pageSize: data.pageSize,
+      totalItems: data.totalItems,
+      hasMore: data.hasMore,
+      items: mapSearchThumbnails(data.items),
+      cached: false,
+    };
+    cdaHdCatalogCache.at = now;
+    cdaHdCatalogCache.entries = cdaHdCatalogCache.entries || {};
+    cdaHdCatalogCache.entries[cacheKey] = payload;
+    res.json(payload);
+  } catch (err) {
+    console.error("cda-hd catalog:", err?.message || err);
+    if (cacheHit) {
+      return res.json({ ...cacheHit, cached: true, stale: true });
+    }
+    res.status(502).json({ error: "Nie udało się pobrać katalogu CDA-HD." });
+  }
+});
+
+// GET /api/cda-hd/browse?url=&limit=24 — filmy wg reżysera, aktora, gatunku, roku
+app.get("/api/cda-hd/browse", async (req, res) => {
+  const pageUrl = String(req.query.url || "").trim();
+  const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 48);
+  const page = Math.max(1, Number(req.query.page) || 1);
+  if (!pageUrl || !isCdaHdBrowseUrl(pageUrl)) {
+    return res.status(400).json({ error: "Podaj prawidłowy link CDA-HD (reżyser, aktor, gatunek, rok)." });
+  }
+  try {
+    const data = await fetchCdaHdBrowse(pageUrl, limit, page);
+    res.json({ ok: true, ...data, items: mapSearchThumbnails(data.items) });
+  } catch (err) {
+    res.status(502).json({ error: err.message || "Nie udało się wczytać listy." });
   }
 });
 
@@ -2523,6 +3382,33 @@ app.post("/api/auth/login", async (req, res) => {
     });
   } catch (err) {
     res.status(401).json({ error: err.message || "Logowanie nie powiodło się." });
+  }
+});
+
+app.post("/api/auth/apple", async (req, res) => {
+  try {
+    const { identityToken, login, password, linkOnly } = req.body || {};
+    const result = await loginOrLinkAppleAccount({
+      identityToken,
+      login,
+      password,
+      linkOnly: Boolean(linkOnly),
+    });
+    appleAuthSuccessResponse(res, result);
+  } catch (err) {
+    const status = err.code === "APPLE_NOT_LINKED" ? 409 : 401;
+    res.status(status).json({ error: err.message || "Logowanie Apple nie powiodło się." });
+  }
+});
+
+app.delete("/api/auth/apple/link", (req, res) => {
+  try {
+    const { appleUserId } = req.body || {};
+    if (!appleUserId) return res.status(400).json({ error: "Brak identyfikatora Apple." });
+    unlinkAppleAccount(appleUserId);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message || "Nie udało się odłączyć konta Apple." });
   }
 });
 
@@ -2665,13 +3551,364 @@ app.delete("/api/favorites", (req, res) => {
   }
 });
 
+// GET /api/movies/downloads — pobrane filmy użytkownika (folder MOVIES)
+app.get("/api/movies/downloads", (req, res) => {
+  try {
+    reconcileSessionStorage(req, mergeMoviesLibraryStoreKey);
+    res.json({
+      folder: MOVIES_FOLDER_NAME,
+      downloads: listMovieDownloads(req, MUSIC_PLAYLIST_DOWNLOADS_DIR),
+    });
+  } catch (err) {
+    const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
+    res.status(code).json({ error: err.message || "Nie udało się wczytać pobranych filmów." });
+  }
+});
+
+// PATCH /api/movies/downloads/link { url, title, thumbnail, source, downloadJobId, filename }
+app.patch("/api/movies/downloads/link", (req, res) => {
+  try {
+    const download = linkMovieDownload(req, req.body || {});
+    res.json({ ok: true, download });
+  } catch (err) {
+    const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
+    res.status(code).json({ error: err.message || "Nie udało się zapisać pobrania." });
+  }
+});
+
+// DELETE /api/movies/downloads?url= — usuń pobrany film z biblioteki i dysku
+app.delete("/api/movies/downloads", (req, res) => {
+  try {
+    const url = String(req.query.url || req.body?.url || "").trim();
+    const result = deleteMovieDownload(req, url, MUSIC_PLAYLIST_DOWNLOADS_DIR);
+    res.json(result);
+  } catch (err) {
+    const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
+    res.status(code).json({ error: err.message || "Nie udało się usunąć pobrania." });
+  }
+});
+
+// GET /api/movies/play-token/:jobId — token do streamu pobranego filmu
+app.get("/api/movies/play-token/:jobId", (req, res) => {
+  const job = getOrRestoreMovieJob(req.params.jobId, req);
+  if (!movieJobReady(job)) {
+    return res.status(404).json({ error: "Film niedostępny." });
+  }
+  const token = ensurePlayToken(job);
+  res.json({
+    jobId: job.id,
+    token,
+    expiresIn: Math.max(0, Math.floor((job.playTokenExpires - Date.now()) / 1000)),
+  });
+});
+
+// GET /api/movies/stream/:jobId — stream pobranego MP4 (Range)
+app.get("/api/movies/stream/:jobId", (req, res) => {
+  const job = getOrRestoreMovieJob(req.params.jobId, req);
+  if (!movieJobReady(job)) {
+    return res.status(404).send("Film niedostępny.");
+  }
+  if (!canAccessPlay(req, job)) {
+    return res.status(403).send("Brak dostępu.");
+  }
+  return serveVideoFile(req, res, job.file);
+});
+
+app.head("/api/movies/stream/:jobId", (req, res) => {
+  const job = getOrRestoreMovieJob(req.params.jobId, req);
+  if (!movieJobReady(job)) {
+    return res.status(404).end();
+  }
+  if (!canAccessPlay(req, job)) {
+    return res.status(403).end();
+  }
+  const stat = fs.statSync(job.file);
+  res.set({
+    "Content-Length": String(stat.size),
+    "Content-Type": "video/mp4",
+    "Accept-Ranges": "bytes",
+    "Content-Disposition": "inline",
+  });
+  return res.status(200).end();
+});
+
 // GET /api/music/library — foldery + utwory użytkownika
 app.get("/api/music/library", (req, res) => {
   try {
-    res.json(listMusicLibrary(req));
+    res.json(listMusicLibrary(req, MUSIC_PLAYLIST_DOWNLOADS_DIR));
   } catch (err) {
     const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
     res.status(code).json({ error: err.message || "Nie udało się wczytać biblioteki." });
+  }
+});
+
+// GET /api/music/catalog/search?q= — wykonawcy, albumy, utwory (Apple Music / iTunes)
+app.get("/api/music/catalog/search", async (req, res) => {
+  const query = String(req.query.q || req.query.query || "").trim();
+  if (!query) return res.status(400).json({ error: "Podaj frazę wyszukiwania." });
+  try {
+    const catalog = await searchAppleMusicCatalog(query);
+    res.json(catalog);
+  } catch (err) {
+    console.error("music catalog search:", err?.message || err);
+    res.status(500).json({ error: friendlyAppleMusicError(err) });
+  }
+});
+
+// GET /api/music/catalog/artist/:id — albumy + top utwory wykonawcy
+app.get("/api/music/catalog/artist/:id", async (req, res) => {
+  try {
+    const data = await fetchAppleMusicArtist(req.params.id);
+    res.json(data);
+  } catch (err) {
+    console.error("music artist:", err?.message || err);
+    res.status(404).json({ error: err.message || "Nie znaleziono wykonawcy." });
+  }
+});
+
+// GET /api/music/catalog/album/:id — utwory albumu
+app.get("/api/music/catalog/album/:id", async (req, res) => {
+  try {
+    const data = await fetchAppleMusicAlbum(req.params.id);
+    res.json(data);
+  } catch (err) {
+    console.error("music album:", err?.message || err);
+    res.status(404).json({ error: err.message || "Nie znaleziono albumu." });
+  }
+});
+
+// GET /api/music/catalog/playlist?url= — podgląd playlisty Apple Music
+app.get("/api/music/catalog/playlist", async (req, res) => {
+  const url = String(req.query.url || "").trim();
+  if (!url) return res.status(400).json({ error: "Podaj link playlisty Apple Music." });
+  try {
+    const data = await fetchAppleMusicPlaylist(url);
+    res.json(data);
+  } catch (err) {
+    console.error("music playlist preview:", err?.message || err);
+    res.status(400).json({ error: friendlyAppleMusicError(err) });
+  }
+});
+
+// POST /api/music/playlists/import { url, folderId?, folderName? }
+app.post("/api/music/playlists/import", async (req, res) => {
+  const { url, folderId, folderName } = req.body || {};
+  const rawUrl = String(url || "").trim();
+  if (!rawUrl) return res.status(400).json({ error: "Podaj link playlisty Apple Music." });
+
+  try {
+    const data = await fetchAppleMusicPlaylist(rawUrl);
+    let folder;
+
+    if (folderId) {
+      const userKey = favoritesUserKeyFromReq(req);
+      if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+      folder = getMusicFolderByKey(userKey, String(folderId).trim());
+      if (!folder) return res.status(404).json({ error: "Folder nie istnieje." });
+    } else {
+      const desiredName = String(folderName || data.playlist.title || "Playlista").trim();
+      const userKey = favoritesUserKeyFromReq(req);
+      if (userKey) {
+        folder = findMusicFolderForImport(userKey, {
+          playlistId: data.playlist?.id,
+          url: rawUrl,
+          name: desiredName,
+        });
+      }
+      if (!folder) {
+        folder = createMusicFolder(req, { name: desiredName });
+      }
+    }
+
+    const trackPayloads = data.tracks.map((track, idx) => ({
+      url: track.url,
+      title: track.title,
+      artist: track.artist || track.uploader,
+      album: track.album,
+      thumbnail: track.thumbnail,
+      duration: track.duration,
+      quality: track.quality || "320 kbps",
+      source: track.source || "apple-music",
+      previewUrl: track.previewUrl,
+      artistId: track.artistId,
+      albumId: track.albumId,
+      trackNumber: track.trackNumber || idx + 1,
+      playlistIndex: idx + 1,
+    }));
+
+    const result = importTracksToFolder(req, folder.id, trackPayloads);
+    const userKey = favoritesUserKeyFromReq(req);
+    if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+    const linkedFolder = linkFolderToApplePlaylist(userKey, folder.id, {
+      url: rawUrl,
+      playlistId: data.playlist?.id,
+      title: data.playlist?.title,
+      thumbnail: data.playlist?.thumbnail,
+    });
+    res.json({
+      ok: true,
+      playlist: data.playlist,
+      folder: { ...result.folder, ...linkedFolder },
+      added: result.added,
+      skipped: result.skipped,
+      trackCount: result.folder.trackCount,
+      importedBatch: result.tracks.length,
+    });
+  } catch (err) {
+    console.error("music playlist import:", err?.message || err);
+    const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
+    res.status(code).json({ error: friendlyAppleMusicError(err) });
+  }
+});
+
+// POST /api/music/play { url } — pełny utwór MP3 (stream przez proxy, nie podgląd iTunes)
+app.post("/api/music/play", async (req, res) => {
+  const { url } = req.body || {};
+  if (!url || !/^https?:\/\//i.test(url) || !/music\.apple\.com/i.test(url)) {
+    return res.status(400).json({ error: "Podaj link utworu Apple Music." });
+  }
+  const jobId = crypto.randomUUID();
+  startAppleMusicPlayJob({ jobId, url });
+  res.json({ jobId });
+});
+
+// GET /api/music/play-token/:jobId — token do streamu MP3 na Apple TV
+app.get("/api/music/play-token/:jobId", (req, res) => {
+  const job = getOrRestoreMusicJob(req.params.jobId, req);
+  if (!musicJobReady(job)) {
+    return res.status(404).json({ error: "Utwór niedostępny." });
+  }
+  const token = ensurePlayToken(job);
+  res.json({
+    jobId: job.id,
+    token,
+    expiresIn: Math.max(0, Math.floor((job.playTokenExpires - Date.now()) / 1000)),
+  });
+});
+
+function serveAudioFile(req, res, filePath) {
+  const stat = fs.statSync(filePath);
+  const mime = "audio/mpeg";
+  const range = req.headers.range;
+
+  if (range) {
+    const parts = range.replace(/bytes=/, "").split("-");
+    let start = parseInt(parts[0], 10) || 0;
+    let end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+    if (Number.isNaN(start) || start < 0) start = 0;
+    if (Number.isNaN(end) || end >= stat.size) end = stat.size - 1;
+    if (start > end || start >= stat.size) {
+      res.status(416);
+      res.set("Content-Range", `bytes */${stat.size}`);
+      return res.end();
+    }
+    res.status(206);
+    res.set({
+      "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+      "Accept-Ranges": "bytes",
+      "Content-Length": String(end - start + 1),
+      "Content-Type": mime,
+      "Content-Disposition": "inline",
+      "Cache-Control": "private, max-age=3600",
+    });
+    createReadStream(filePath, { start, end }).pipe(res);
+    return;
+  }
+
+  res.set({
+    "Content-Length": String(stat.size),
+    "Content-Type": mime,
+    "Accept-Ranges": "bytes",
+    "Content-Disposition": "inline",
+    "Cache-Control": "private, max-age=3600",
+  });
+  createReadStream(filePath).pipe(res);
+}
+
+// GET /api/music/stream/:jobId — pełny MP3: lokalny plik lub proxy APLMate (Range)
+app.get("/api/music/stream/:jobId", async (req, res) => {
+  const job = getOrRestoreMusicJob(req.params.jobId, req);
+  if (!job || job.kind !== "music") {
+    return res.status(404).send("Utwór niedostępny.");
+  }
+  if (!canAccessPlay(req, job)) {
+    return res.status(403).send("Brak dostępu.");
+  }
+  if (job.file && fs.existsSync(job.file)) {
+    return serveAudioFile(req, res, job.file);
+  }
+  if (job.mode === "stream-proxy" && job.streamUrl && job.status === "done") {
+    try {
+      return await proxyRemoteUrl(req, res, job, job.streamUrl);
+    } catch (err) {
+      console.error("music stream proxy:", err?.message || err);
+      return res.status(502).send("Błąd streamu audio.");
+    }
+  }
+  return res.status(404).send("Utwór niedostępny.");
+});
+
+app.head("/api/music/stream/:jobId", async (req, res) => {
+  const job = getOrRestoreMusicJob(req.params.jobId, req);
+  if (!job || job.kind !== "music") {
+    return res.status(404).end();
+  }
+  if (!canAccessPlay(req, job)) {
+    return res.status(403).end();
+  }
+  if (job.file && fs.existsSync(job.file)) {
+    const stat = fs.statSync(job.file);
+    res.set({
+      "Content-Length": String(stat.size),
+      "Content-Type": "audio/mpeg",
+      "Accept-Ranges": "bytes",
+    });
+    return res.end();
+  }
+  if (job.mode === "stream-proxy" && job.streamUrl && job.status === "done") {
+    try {
+      const upstream = await fetch(job.streamUrl, {
+        method: "HEAD",
+        headers: { "User-Agent": UA, Referer: job.streamReferer || "" },
+        signal: AbortSignal.timeout(15000),
+      });
+      res.status(upstream.status);
+      res.set("Accept-Ranges", upstream.headers.get("accept-ranges") || "bytes");
+      const len = upstream.headers.get("content-length");
+      if (len) res.set("Content-Length", len);
+      res.set("Content-Type", "audio/mpeg");
+      return res.end();
+    } catch {
+      return res.status(502).end();
+    }
+  }
+  return res.status(404).end();
+});
+
+// PATCH /api/music/folders/:id/tracks/reorder { urls: string[] }
+app.patch("/api/music/folders/:id/tracks/reorder", (req, res) => {
+  try {
+    const result = reorderFolderTracks(req, req.params.id, req.body?.urls);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
+    res.status(code).json({ error: err.message || "Nie udało się zmienić kolejności." });
+  }
+});
+
+// PATCH /api/music/folders/:id/tracks/download { url, downloadJobId }
+app.patch("/api/music/folders/:id/tracks/download", (req, res) => {
+  try {
+    const track = updateTrackDownload(
+      req,
+      req.params.id,
+      req.body?.url,
+      req.body?.downloadJobId
+    );
+    res.json({ ok: true, track });
+  } catch (err) {
+    const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
+    res.status(code).json({ error: err.message || "Nie udało się zapisać pobrania." });
   }
 });
 
@@ -2689,7 +3926,12 @@ app.post("/api/music/folders", (req, res) => {
 // PATCH /api/music/folders/:id { name }
 app.patch("/api/music/folders/:id", (req, res) => {
   try {
-    const folder = renameMusicFolder(req, req.params.id, req.body || {});
+    const folder = renameMusicFolder(
+      req,
+      req.params.id,
+      req.body || {},
+      MUSIC_PLAYLIST_DOWNLOADS_DIR
+    );
     res.json({ ok: true, folder });
   } catch (err) {
     const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
@@ -2711,10 +3953,42 @@ app.delete("/api/music/folders/:id", (req, res) => {
 // GET /api/music/folders/:id/tracks
 app.get("/api/music/folders/:id/tracks", (req, res) => {
   try {
-    res.json(listFolderTracks(req, req.params.id));
+    res.json(listFolderTracks(req, req.params.id, MUSIC_PLAYLIST_DOWNLOADS_DIR));
   } catch (err) {
     const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
     res.status(code).json({ error: err.message || "Nie udało się wczytać utworów." });
+  }
+});
+
+// POST /api/music/folders/:id/sync-playlist — odśwież powiązaną playlistę Apple Music
+app.post("/api/music/folders/:id/sync-playlist", async (req, res) => {
+  try {
+    const folderId = String(req.params.id || "").trim();
+    const bodyUrl = String(req.body?.url || "").trim();
+    const userKey = favoritesUserKeyFromReq(req);
+    if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+
+    if (bodyUrl) {
+      const preview = await fetchAppleMusicPlaylist(bodyUrl);
+      linkFolderToApplePlaylist(userKey, folderId, {
+        url: bodyUrl,
+        playlistId: preview.playlist?.id,
+        title: preview.playlist?.title,
+        thumbnail: preview.playlist?.thumbnail,
+      });
+    }
+
+    const result = await syncAppleMusicPlaylistFolder(
+      req,
+      folderId,
+      fetchAppleMusicPlaylist,
+      MUSIC_PLAYLIST_DOWNLOADS_DIR
+    );
+    res.json(result);
+  } catch (err) {
+    console.error("music playlist sync:", err?.message || err);
+    const code = /nie istnieje/i.test(err.message || "") ? 404 : 400;
+    res.status(code).json({ error: friendlyAppleMusicError(err) });
   }
 });
 
@@ -2858,27 +4132,119 @@ function buildPreviewArgs({ url, height, jobDir, browser, req = null }) {
 
 // POST /api/download  { url, kind, container, height } -> { jobId }
 app.post("/api/download", async (req, res) => {
-  const { url, kind, container, height, audioBitrate, useCookies, browser } = req.body || {};
+  const { url, kind, container, height, audioBitrate, useCookies, browser, title, thumbnail, source } =
+    req.body || {};
   const cookieBrowser = useCookies ? browser : null;
   if (!url || !/^https?:\/\//i.test(url)) {
     return res.status(400).json({ error: "Podaj poprawny link." });
   }
 
   const jobId = crypto.randomUUID();
+  const userKey = favoritesUserKeyFromReq(req);
+  const movieDownload =
+    userKey && !/music\.apple\.com/i.test(url)
+      ? {
+          userKey,
+          url,
+          title: String(title || "").slice(0, 500),
+          thumbnail: String(thumbnail || "").slice(0, 2000),
+          source: String(source || "").slice(0, 200),
+        }
+      : null;
+
+  if (movieDownload?.userKey) {
+    const existing = findDownloadByUrl(movieDownload.userKey, url);
+    if (existing?.downloadJobId) {
+      const existingFile = resolvePersistedMovieFile(
+        movieDownload.userKey,
+        existing.downloadJobId,
+        MUSIC_PLAYLIST_DOWNLOADS_DIR
+      );
+      if (existingFile) {
+        try {
+          assertValidMovieFile(existingFile);
+          return res.json({ jobId: existing.downloadJobId, reused: true });
+        } catch {
+          try {
+            fs.unlinkSync(existingFile);
+          } catch {}
+        }
+      }
+    }
+    for (const active of jobs.values()) {
+      if (
+        active.movieUrl === url &&
+        active.userKey === movieDownload.userKey &&
+        !active.cancelled &&
+        active.status !== "error" &&
+        active.status !== "done"
+      ) {
+        return res.json({ jobId: active.id, reused: true });
+      }
+    }
+  }
 
   if (/music\.apple\.com/i.test(url)) {
-    startAppleMusicDownloadJob({ jobId, url });
+    const userKey = favoritesUserKeyFromReq(req);
+    startAppleMusicDownloadJob({
+      jobId,
+      url,
+      userKey,
+      folderId: req.body?.folderId || null,
+      trackUrl: req.body?.trackUrl || url,
+    });
     return res.json({ jobId });
   }
 
   if (isMirrorHost(url)) {
     try {
       const mirror = await getMirrorStream(url);
-      startMirrorDownloadJob({
+      const streamType = mirror.stream.type || detectStreamType(mirror.stream.url);
+      const isHls =
+        streamType === "hls" || /\.m3u8?(\?|$)/i.test(mirror.stream.url);
+      if (isHls) {
+        startHlsMovieDownloadJob({
+          jobId,
+          streamUrl: mirror.stream.url,
+          referer: mirror.stream.referer,
+          title: movieDownload?.title || mirror.title,
+          movieDownload,
+        });
+      } else {
+        startMirrorDownloadJob({
+          jobId,
+          streamUrl: mirror.stream.url,
+          streamReferer: mirror.stream.referer,
+          name: mirror.title,
+          userKey: movieDownload?.userKey,
+          movieUrl: movieDownload?.url,
+          movieTitle: movieDownload?.title,
+          movieThumbnail: movieDownload?.thumbnail,
+          movieSource: movieDownload?.source,
+        });
+      }
+      return res.json({ jobId });
+    } catch (err) {
+      return res.status(500).json({ error: friendlyError(err) });
+    }
+  }
+
+  if (/vod\.tvp\.pl/i.test(url) && movieDownload && kind !== "audio") {
+    const h =
+      height === "best" || height === 0 || !height
+        ? 1080
+        : Number(height) || 720;
+    try {
+      const dual = await resolveTvpDualStream(url, h, cookieBrowser, req);
+      if (!dual?.videoUrl || !dual?.audioUrl) {
+        throw new Error("Nie udało się ustalić strumienia TVP w wybranej jakości.");
+      }
+      startTvpMovieDownloadJob({
         jobId,
-        streamUrl: mirror.stream.url,
-        streamReferer: mirror.stream.referer,
-        name: mirror.title,
+        videoUrl: dual.videoUrl,
+        audioUrl: dual.audioUrl,
+        referer: url,
+        movieDownload,
       });
       return res.json({ jobId });
     } catch (err) {
@@ -2895,7 +4261,7 @@ app.post("/api/download", async (req, res) => {
     jobDir: path.join(DOWNLOAD_DIR, jobId),
     browser: cookieBrowser,
   });
-  startTransferJob({ jobId, url, args, purpose: "download" });
+  startTransferJob({ jobId, url, args, purpose: "download", movieDownload });
   res.json({ jobId });
 });
 
@@ -2909,7 +4275,7 @@ app.post("/api/preview", async (req, res) => {
   }
 
   const jobId = crypto.randomUUID();
-  const previewHeight = height && height !== "best" ? height : 480;
+  const previewHeight = height && height !== "best" ? Number(height) || 720 : 720;
 
   let previewUrl = url;
   let previewTitle = null;
@@ -3068,6 +4434,8 @@ app.get("/api/job/:jobId", (req, res) => {
   const job = jobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: "Zadanie nie istnieje." });
   const ready =
+    musicJobReady(job) ||
+    movieJobReady(job) ||
     !!(job.file && fs.existsSync(job.file)) ||
     (job.mode === "stream-proxy" && job.status === "done" && !!job.streamUrl);
   res.json({
@@ -3121,7 +4489,13 @@ app.post("/api/cancel/:jobId", (req, res) => {
 
   try {
     if (job.file) {
-      fs.rmSync(path.dirname(job.file), { recursive: true, force: true });
+      if (job.persistent && job.kind === "movie") {
+        try {
+          fs.unlinkSync(job.file);
+        } catch {}
+      } else {
+        fs.rmSync(path.dirname(job.file), { recursive: true, force: true });
+      }
     } else {
       fs.rmSync(path.join(DOWNLOAD_DIR, job.id), { recursive: true, force: true });
     }
@@ -3144,7 +4518,7 @@ app.get("/api/file/:jobId", (req, res) => {
     return res.status(404).send("Plik niedostępny.");
   }
   res.download(job.file, sanitizeName(job.name), (err) => {
-    cleanupJob(req.params.jobId);
+    if (!job.persistent) cleanupJob(req.params.jobId);
     if (err && !res.headersSent) res.status(500).end();
   });
 });
@@ -3224,7 +4598,7 @@ function cleanupStaleJobDirs() {
       if (Date.now() - stat.mtimeMs < maxAge) continue;
       if (jobs.has(id)) {
         const job = jobs.get(id);
-        if (job?.clients?.size) continue;
+        if (job?.clients?.size || job?.persistent) continue;
       }
       fs.rmSync(dir, { recursive: true, force: true });
       jobs.delete(id);

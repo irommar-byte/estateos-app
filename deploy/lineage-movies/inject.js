@@ -1,6 +1,6 @@
 (function () {
-  const INJECT_BUILD = "20260703144708";
-  const UI_VERSION = "20260703144708";
+  const INJECT_BUILD = "20260707053844";
+  const UI_VERSION = "20260707053844";
 
   if (window.__nostalgieMoviesBuild === INJECT_BUILD) return;
 
@@ -22,14 +22,57 @@
     const actions = document.querySelector(".nc-header__actions");
     if (actions?.querySelector('a[href*="login.php"]')) return "";
 
+    const stop = new Set([
+      "admin",
+      "built",
+      "by",
+      "coins",
+      "filmy",
+      "legacy",
+      "login",
+      "logout",
+      "movies",
+      "muzyka",
+      "nc",
+      "nostalgie",
+      "panel",
+      "players",
+      "premium",
+      "preserved",
+      "ranking",
+      "register",
+      "swiat",
+      "wspieram",
+      "wyloguj",
+      "zglos",
+    ]);
+
+    function pickLogin(raw) {
+      const login = String(raw || "").trim().toLowerCase();
+      if (!login || !/^[a-z0-9_]{2,32}$/.test(login)) return "";
+      if (stop.has(login)) return "";
+      return login;
+    }
+
     for (const el of document.querySelectorAll("[data-login],[data-account],[data-user]")) {
-      const raw =
+      const login = pickLogin(
         el.getAttribute("data-login") ||
-        el.getAttribute("data-account") ||
-        el.getAttribute("data-user") ||
-        "";
-      const login = String(raw).trim().toLowerCase();
-      if (login && /^[a-z0-9_]{2,32}$/.test(login)) return login;
+          el.getAttribute("data-account") ||
+          el.getAttribute("data-user")
+      );
+      if (login) return login;
+    }
+
+    // Tylko pasek użytkownika (monety, nick, ADMIN) — nie tagline „Built by players…"
+    if (actions) {
+      const tokens = String(actions.innerText || "")
+        .split(/[\s·|•,]+/)
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean);
+      for (const token of tokens) {
+        const login = pickLogin(token);
+        if (login) return login;
+      }
     }
 
     const main =
@@ -43,13 +86,15 @@
     ];
     for (const re of patterns) {
       const m = text.match(re);
-      if (m?.[1]) return m[1].toLowerCase();
+      const login = pickLogin(m?.[1]);
+      if (login) return login;
     }
     return "";
   }
 
   function moviesUrl() {
     const login = detectPlayerLogin();
+    if (login) window.__nostalgiePlayerLogin = login;
     return login ? MOVIES_BASE + "&ncLogin=" + encodeURIComponent(login) : MOVIES_BASE;
   }
 

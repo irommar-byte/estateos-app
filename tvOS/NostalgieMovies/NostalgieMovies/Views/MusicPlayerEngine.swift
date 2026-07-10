@@ -278,6 +278,8 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
     let album: String?
     let thumbnail: String?
     let duration: Double?
+    let artistId: String?
+    let albumId: String?
     let folderId: String?
     let downloadJobId: String?
 
@@ -295,6 +297,8 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
         duration = track.duration
         folderId = track.folderId
         downloadJobId = track.downloadJobId
+        artistId = track.artistId
+        albumId = track.albumId
     }
 
     init(from selection: MusicSelection) {
@@ -307,6 +311,8 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
         duration = selection.duration
         folderId = selection.folderId
         downloadJobId = selection.downloadJobId
+        artistId = selection.artistId
+        albumId = selection.albumId
     }
 
     var trackPayload: MoviesAPIClient.MusicTrackPayload {
@@ -320,8 +326,8 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
             quality: "320 kbps",
             source: "apple-music",
             previewUrl: nil,
-            artistId: nil,
-            albumId: nil,
+            artistId: artistId,
+            albumId: albumId,
             trackNumber: nil
         )
     }
@@ -866,44 +872,58 @@ private final class VisualizerDisplayLinkDriver: NSObject {
 
 struct SubwooferBeatView: View {
     @ObservedObject var player: MusicPlayerController
+    var strobeEnabled: Bool = false
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 120.0)) { _ in
             let pulse = player.bassLevel
             let beatHit = player.beatHit
-            let slam = min(0.68, max(beatHit, pulse * 0.28))
+            let slamCap: CGFloat = strobeEnabled ? 1.0 : 0.68
+            let slam = min(slamCap, max(beatHit, pulse * (strobeEnabled ? 0.34 : 0.28)))
+            let strobeSlam = strobeEnabled ? min(1.0, beatHit * 1.1 + slam * 0.35) : slam
+            let pumpScale = strobeEnabled
+                ? 0.82 + strobeSlam * 0.58 + beatHit * 0.22
+                : 0.78 + slam * 0.38
 
             ZStack {
-                if slam > 0.22 {
+                if strobeSlam > 0.18 {
                     Circle()
-                        .stroke(Color.white.opacity(0.35 * slam), lineWidth: 1.5 + slam * 1.5)
-                        .frame(width: 44 + slam * 36, height: 44 + slam * 36)
-                        .blur(radius: slam * 1.5)
+                        .stroke(Color.white.opacity((strobeEnabled ? 0.55 : 0.35) * strobeSlam), lineWidth: 1.5 + strobeSlam * (strobeEnabled ? 2.5 : 1.5))
+                        .frame(width: 44 + strobeSlam * (strobeEnabled ? 52 : 36), height: 44 + strobeSlam * (strobeEnabled ? 52 : 36))
+                        .blur(radius: strobeSlam * (strobeEnabled ? 2.5 : 1.5))
                 }
 
-                if slam > 0.28 {
+                if strobeSlam > 0.24 {
                     Circle()
-                        .stroke(NostalgieTheme.accent.opacity(0.55 * slam), lineWidth: 2)
-                        .frame(width: 52 + slam * 32, height: 52 + slam * 32)
+                        .stroke(NostalgieTheme.accent.opacity((strobeEnabled ? 0.75 : 0.55) * strobeSlam), lineWidth: strobeEnabled ? 2.5 : 2)
+                        .frame(width: 52 + strobeSlam * (strobeEnabled ? 48 : 32), height: 52 + strobeSlam * (strobeEnabled ? 48 : 32))
+                }
+
+                if strobeEnabled, beatHit > 0.32 {
+                    Circle()
+                        .fill(Color.white.opacity(beatHit * 0.22))
+                        .frame(width: 36 + beatHit * 44, height: 36 + beatHit * 44)
+                        .blur(radius: 4)
+                        .blendMode(.screen)
                 }
 
                 Circle()
                     .fill(
                         RadialGradient(
                             colors: [
-                                NostalgieTheme.accent.opacity(0.22 + slam * 0.35),
-                                NostalgieTheme.accentSecondary.opacity(0.1 + slam * 0.15),
+                                NostalgieTheme.accent.opacity(0.22 + strobeSlam * (strobeEnabled ? 0.45 : 0.35)),
+                                NostalgieTheme.accentSecondary.opacity(0.1 + strobeSlam * (strobeEnabled ? 0.22 : 0.15)),
                                 Color.clear,
                             ],
                             center: .center,
                             startRadius: 2,
-                            endRadius: 22 + slam * 20
+                            endRadius: 22 + strobeSlam * (strobeEnabled ? 28 : 20)
                         )
                     )
-                    .frame(width: 48 + slam * 26, height: 48 + slam * 26)
+                    .frame(width: 48 + strobeSlam * (strobeEnabled ? 34 : 26), height: 48 + strobeSlam * (strobeEnabled ? 34 : 26))
 
                 Image(systemName: "hifispeaker.fill")
-                    .font(.system(size: 20 + slam * 14, weight: .bold))
+                    .font(.system(size: 20 + strobeSlam * (strobeEnabled ? 20 : 14), weight: .bold))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [
@@ -915,11 +935,12 @@ struct SubwooferBeatView: View {
                             endPoint: .top
                         )
                     )
-                .shadow(color: NostalgieTheme.accent.opacity(0.35 + slam * 0.3), radius: 5 + slam * 10, y: 2)
-                .scaleEffect(0.78 + slam * 0.38)
-                .offset(y: -slam * 3)
+                .shadow(color: NostalgieTheme.accent.opacity(0.35 + strobeSlam * (strobeEnabled ? 0.45 : 0.3)), radius: 5 + strobeSlam * (strobeEnabled ? 14 : 10), y: 2)
+                .scaleEffect(pumpScale)
+                .offset(y: -strobeSlam * (strobeEnabled ? 5 : 3))
             }
             .frame(width: 72, height: 68)
+            .scaleEffect(strobeEnabled ? 1.08 + beatHit * 0.18 : 1.0)
         }
     }
 }

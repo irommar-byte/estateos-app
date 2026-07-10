@@ -12,13 +12,59 @@ function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-function hashUserId(id) {
+export function hashUserId(id) {
   return crypto.createHash("sha256").update(id).digest("hex").slice(0, 24);
+}
+
+/** Legacy bucket from web iframe before login was resolved (session cookie hash). */
+export function sessionLegacyUserIdFromReq(req) {
+  const session = String(
+    req.get("X-Movies-Session") || req.get("x-movies-session") || ""
+  ).trim();
+  if (!session) return null;
+  return `session:${session}`;
+}
+
+/** Merge anonymous session storage into player:login when both exist. */
+export function reconcileSessionStorage(req, mergeByKey) {
+  const userId = favoritesUserIdFromReq(req);
+  if (!userId?.startsWith("player:")) return null;
+  const legacyId = sessionLegacyUserIdFromReq(req);
+  if (!legacyId) return null;
+  const legacyKey = hashUserId(legacyId);
+  const targetKey = hashUserId(userId);
+  if (legacyKey === targetKey) return null;
+  return mergeByKey(legacyKey, userId);
 }
 
 function playerId(login) {
   const name = String(login || "").trim().toLowerCase();
   if (!name || !/^[a-z0-9_]{2,32}$/.test(name)) return null;
+  const stop = new Set([
+    "admin",
+    "built",
+    "by",
+    "coins",
+    "filmy",
+    "legacy",
+    "login",
+    "logout",
+    "movies",
+    "muzyka",
+    "nc",
+    "nostalgie",
+    "panel",
+    "players",
+    "premium",
+    "preserved",
+    "ranking",
+    "register",
+    "swiat",
+    "wspieram",
+    "wyloguj",
+    "zglos",
+  ]);
+  if (stop.has(name)) return null;
   return `player:${name}`;
 }
 
@@ -143,12 +189,14 @@ function writeStore(userKey, items) {
 }
 
 export function listFavorites(req) {
+  reconcileSessionStorage(req, mergeFavoritesStoreKey);
   const userKey = favoritesUserKeyFromReq(req);
   if (!userKey) throw new Error("Brak konta użytkownika.");
   return readStore(userKey);
 }
 
 export function addFavorite(req, raw) {
+  reconcileSessionStorage(req, mergeFavoritesStoreKey);
   const userKey = favoritesUserKeyFromReq(req);
   if (!userKey) throw new Error("Brak konta użytkownika.");
   const item = normalizeItem(raw);
@@ -165,6 +213,7 @@ export function addFavorite(req, raw) {
 }
 
 export function removeFavorite(req, url) {
+  reconcileSessionStorage(req, mergeFavoritesStoreKey);
   const userKey = favoritesUserKeyFromReq(req);
   if (!userKey) throw new Error("Brak konta użytkownika.");
   const target = String(url || "").trim();

@@ -371,18 +371,34 @@ struct DetailPlayButtonStyle: ButtonStyle {
 
 struct DetailToolbarButtonStyle: ButtonStyle {
     @Environment(\.isFocused) private var focused
+    var isSelected: Bool = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(NostalgieFont.rowTitle)
-            .foregroundStyle(focused ? Color.black.opacity(0.9) : .white.opacity(0.92))
+            .foregroundStyle(focused ? Color.black.opacity(0.9) : .white.opacity(isSelected ? 0.98 : 0.92))
             .padding(.horizontal, 26)
             .padding(.vertical, 16)
-            .background(focused ? Color.white : Color.white.opacity(0.1))
+            .background {
+                if focused {
+                    Color.white
+                } else if isSelected {
+                    LinearGradient(
+                        colors: [NostalgieTheme.accent.opacity(0.35), NostalgieTheme.accentSecondary.opacity(0.28)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                } else {
+                    Color.white.opacity(0.1)
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous)
-                    .stroke(focused ? Color.white : Color.white.opacity(0.14), lineWidth: focused ? 3 : 1)
+                    .stroke(
+                        focused ? Color.white : (isSelected ? NostalgieTheme.accent.opacity(0.55) : Color.white.opacity(0.14)),
+                        lineWidth: focused ? 3 : 1
+                    )
             }
             .shadow(color: focused ? Color.white.opacity(0.16) : .clear, radius: 14, y: 5)
             .scaleEffect(focused ? 1.06 : 1.0)

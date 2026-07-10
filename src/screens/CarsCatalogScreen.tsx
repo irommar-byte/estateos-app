@@ -12,7 +12,6 @@ import {
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useEcosystemStore } from '../store/useEcosystemStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { fetchCarsCatalog, fetchMyCars, formatCarPrice, type CarListing } from '../services/carsApi';
 import CarFavoriteButton from '../components/cars/CarFavoriteButton';
@@ -28,7 +27,6 @@ export default function CarsCatalogScreen() {
   const insets = useSafeAreaInsets();
   const { colors, elevation } = useCarScreenTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const setActiveVertical = useEcosystemStore((s) => s.setActiveVertical);
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const [tab, setTab] = useState<Tab>('catalog');
@@ -116,9 +114,6 @@ export default function CarsCatalogScreen() {
       <View style={styles.actionsRow}>
         <Pressable onPress={openAdd} style={styles.addBtn}>
           <Text style={styles.addBtnLabel}>+ Dodaj auto</Text>
-        </Pressable>
-        <Pressable onPress={() => setActiveVertical('home')} style={styles.switchBtn}>
-          <Text style={styles.switchBtnLabel}>Home</Text>
         </Pressable>
       </View>
 
@@ -282,21 +277,6 @@ function createStyles(colors: CarScreenColors) {
       fontSize: 11,
       fontWeight: '900',
       letterSpacing: 1.4,
-      textTransform: 'uppercase',
-    },
-    switchBtn: {
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.homeSwitchBorder,
-      backgroundColor: colors.homeSwitchBg,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-    },
-    switchBtnLabel: {
-      color: colors.homeSwitchText,
-      fontSize: 11,
-      fontWeight: '900',
-      letterSpacing: 1.5,
       textTransform: 'uppercase',
     },
     tabs: {

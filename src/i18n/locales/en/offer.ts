@@ -338,6 +338,12 @@ export const offer = {
       enlarge: 'Enlarge floor plan',
       emptyTitle: 'Floor plan unavailable',
       emptySubtitle: 'No floor plan has been attached to this listing yet.',
+      walkthrough3d: '3D walkthrough',
+      walkthrough3dHint: 'Walk through the apartment at real scale (iPhone / iPad).',
+      scannedPlan: 'LiDAR scanned plan',
+      roomsCount: '{{count}} rooms',
+      exportPdf: 'Export PDF plan',
+      exportPdfFailed: 'Could not generate the PDF file.',
     },
     offerId: 'Listing ID: {{id}}',
     profile: {
@@ -421,6 +427,7 @@ export const offer = {
       plotArea: 'plot size',
       isFurnished: 'furnished',
       images: 'photos',
+      floorPlan: 'floor plan',
     },
     gallery: {
       sectionTitle: 'PHOTO GALLERY',
@@ -437,6 +444,9 @@ export const offer = {
       replace: 'Change plan',
       remove: 'Remove plan',
       hint: 'A floor plan builds trust — buyers see the layout before a viewing.',
+      scan: 'Scan apartment (LiDAR)',
+      scanHint: 'Native Apple RoomPlan scan — 2D plan with dimensions and 3D walkthrough.',
+      scanned: 'LiDAR scanned plan',
     },
     mainInfo: {
       sectionTitle: 'MAIN INFORMATION',

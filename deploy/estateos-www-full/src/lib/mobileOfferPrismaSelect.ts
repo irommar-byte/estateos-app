@@ -46,6 +46,8 @@ export const MOBILE_OFFER_PRISMA_SELECT = {
   images: true,
   videoUrl: true,
   floorPlanUrl: true,
+  floorPlan3dUrl: true,
+  floorPlanScanMeta: true,
   status: true,
   expiresAt: true,
   promotedUntil: true,

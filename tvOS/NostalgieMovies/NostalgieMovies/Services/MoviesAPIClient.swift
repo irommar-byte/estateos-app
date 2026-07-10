@@ -45,10 +45,73 @@ final class MoviesAPIClient {
         let _: OkResponse = try await request("DELETE", path: "/api/favorites?url=\(encoded)")
     }
 
-    func startDownload(url: String, height: Int = 720) async throws -> String {
-        let body: [String: Any] = ["url": url, "height": height, "container": "mp4", "kind": "video"]
+    func startDownload(
+        url: String,
+        height: Int = 720,
+        title: String? = nil,
+        thumbnail: String? = nil,
+        source: String? = nil,
+        kind: String = "video",
+        container: String = "mp4",
+        audioBitrate: Int? = nil
+    ) async throws -> String {
+        var body: [String: Any] = [
+            "url": url,
+            "height": height == 0 ? "best" : height,
+            "container": container,
+            "kind": kind,
+        ]
+        if kind == "audio", let audioBitrate {
+            body["audioBitrate"] = audioBitrate == 0 ? "best" : audioBitrate
+        }
+        if let title, !title.isEmpty { body["title"] = title }
+        if let thumbnail, !thumbnail.isEmpty { body["thumbnail"] = thumbnail }
+        if let source, !source.isEmpty { body["source"] = source }
         let response: DownloadStartResponse = try await request("POST", path: "/api/download", body: body)
         return response.jobId
+    }
+
+    func fetchMovieDownloads() async throws -> MovieDownloadsResponse {
+        try await request("GET", path: "/api/movies/downloads")
+    }
+
+    func linkMovieDownload(
+        url: String,
+        title: String,
+        downloadJobId: String,
+        thumbnail: String? = nil,
+        source: String? = nil,
+        filename: String? = nil
+    ) async throws -> MovieDownload {
+        var body: [String: Any] = [
+            "url": url,
+            "title": title,
+            "downloadJobId": downloadJobId,
+        ]
+        if let thumbnail, !thumbnail.isEmpty { body["thumbnail"] = thumbnail }
+        if let source, !source.isEmpty { body["source"] = source }
+        if let filename, !filename.isEmpty { body["filename"] = filename }
+        struct Response: Codable { let download: MovieDownload }
+        let response: Response = try await request("PATCH", path: "/api/movies/downloads/link", body: body)
+        return response.download
+    }
+
+    func deleteMovieDownload(url: String) async throws {
+        let encoded = url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? url
+        let _: OkResponse = try await request("DELETE", path: "/api/movies/downloads?url=\(encoded)")
+    }
+
+    func moviePlayToken(jobId: String) async throws -> MoviePlayTokenResponse {
+        try await request("GET", path: "/api/movies/play-token/\(jobId)")
+    }
+
+    func movieStreamURL(jobId: String, token: String) -> URL {
+        AppConfig.apiBaseURL
+            .appendingPathComponent("api/movies/stream/\(jobId)")
+            .appending(queryItems: [
+                URLQueryItem(name: "token", value: token),
+                URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970))),
+            ])
     }
 
     func startMusicDownload(url: String, folderId: String? = nil, trackUrl: String? = nil) async throws -> String {
@@ -267,13 +330,33 @@ final class MoviesAPIClient {
         return try await request("POST", path: "/api/search", body: body)
     }
 
-    func fetchCdaHdLatest(limit: Int = 10) async throws -> [SearchResultItem] {
+    func fetchCdaHdLatest(limit: Int = 20) async throws -> [SearchResultItem] {
         let response: LatestFeedResponse = try await request(
             "GET",
             path: "/api/cda-hd/latest?limit=\(limit)",
             authorized: true
         )
         return response.items
+    }
+
+    func fetchCdaHdCatalog(
+        mode: CdaHdCatalogMode,
+        page: Int = 1,
+        pageSize: Int = 20
+    ) async throws -> CdaHdCatalogResponse {
+        try await request(
+            "GET",
+            path: "/api/cda-hd/catalog?mode=\(mode.rawValue)&page=\(page)&pageSize=\(pageSize)",
+            authorized: true
+        )
+    }
+
+    func fetchCdaHdBrowse(url: String, page: Int = 1, limit: Int = 20) async throws -> CdaHdBrowseResponse {
+        let encoded = url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? url
+        return try await request(
+            "GET",
+            path: "/api/cda-hd/browse?url=\(encoded)&page=\(page)&limit=\(limit)"
+        )
     }
 
     private struct LatestFeedResponse: Codable {
@@ -284,12 +367,15 @@ final class MoviesAPIClient {
         try await request("POST", path: "/api/info", body: ["url": url])
     }
 
-    func startPreview(url: String) async throws -> PreviewResponse {
-        try await request("POST", path: "/api/preview", body: [
+    func startPreview(url: String, height: Int? = nil) async throws -> PreviewResponse {
+        var body: [String: Any] = [
             "url": url,
-            "height": 480,
             "playMode": "stream",
-        ])
+        ]
+        if let height {
+            body["height"] = height
+        }
+        return try await request("POST", path: "/api/preview", body: body)
     }
 
     func playToken(jobId: String) async throws -> PlayTokenResponse {

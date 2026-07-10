@@ -1,4 +1,5 @@
 import FloorPlanViewer from '../components/FloorPlanViewer';
+import { normalizeStoredScanMeta } from '../lib/roomScan/parseRoomPlanJson';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert, Modal, Platform, Pressable, ScrollView, ActivityIndicator, useColorScheme, type GestureResponderEvent } from 'react-native';
@@ -1650,6 +1651,22 @@ export default function OfferDetail({ route, navigation }: any) {
                   : offer.floorPlanUrl
                 : null
             }
+            model3dUrl={
+              offer?.floorPlan3dUrl
+                ? String(offer.floorPlan3dUrl).startsWith('/uploads')
+                  ? `${API_URL}${offer.floorPlan3dUrl}`
+                  : offer.floorPlan3dUrl
+                : null
+            }
+            scanMeta={(() => {
+              try {
+                const raw = offer?.floorPlanScanMeta;
+                if (!raw || typeof raw !== 'string') return null;
+                return normalizeStoredScanMeta(JSON.parse(raw));
+              } catch {
+                return null;
+              }
+            })()}
             theme={theme}
           />
 

@@ -2,6 +2,7 @@
 
 import { Suspense, use, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
+import SellerCarsSection from "@/components/cars/SellerCarsSection";
 import AgentPublicProfile from "@/components/profile/AgentPublicProfile";
 import PortalImportProfileGuide from "@/components/onboarding/PortalImportProfileGuide";
 
@@ -45,6 +46,7 @@ export default function UserProfile({ params }: { params: Promise<{ id: string }
         </Suspense>
       ) : null}
       <AgentPublicProfile data={data} />
+      {Number.isFinite(profileId) && profileId > 0 ? <SellerCarsSection userId={profileId} /> : null}
     </>
   );
 }

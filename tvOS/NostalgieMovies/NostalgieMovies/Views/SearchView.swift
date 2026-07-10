@@ -6,8 +6,7 @@ private enum SearchFocus: Hashable {
     case source(SearchSource)
     case access(CdaAccessFilter)
     case sort(SearchSort)
-    case pagePrevious
-    case pageNext
+    case downloadedFolder(String)
 }
 
 struct SearchView: View {
@@ -22,13 +21,14 @@ struct SearchView: View {
     @State private var access: CdaAccessFilter = .all
     @State private var results: [SearchResultItem] = []
     @State private var page = 1
-    @State private var totalPages = 1
     @State private var totalResults = 0
     @State private var hasMore = false
     @State private var isLoading = false
+    @State private var isLoadingMore = false
     @State private var errorMessage: String?
-    @State private var selectedDetail: MediaSelection?
     @State private var seriesInfo: VideoInfoResponse?
+    @State private var selectedDetail: MediaSelection?
+    @State private var activeDownloadFolder: DownloadedMediaFolder?
     @State private var gridColumnCount = 4
     @FocusState private var localFocus: SearchFocus?
 
@@ -37,29 +37,40 @@ struct SearchView: View {
     private let gridSpacing: CGFloat = 32
     private let columns = [GridItem(.adaptive(minimum: 300, maximum: 360), spacing: 32)]
 
+    private var downloadedFolders: [DownloadedMediaFolder] {
+        DownloadedMediaLibrary.folders(from: app.movieDownloads)
+    }
+
     var body: some View {
         Group {
-            if let seriesInfo {
-                SeriesEpisodesView(
-                    info: seriesInfo,
-                    backLabel: "Wróć do wyników",
-                    navigationTab: navigationTab,
-                    focusedTab: focusedTab
-                ) {
-                    self.seriesInfo = nil
+            if let series = seriesInfo {
+                SeriesEpisodesView(info: series, backLabel: "Wróć do wyników") {
+                    seriesInfo = nil
                 }
+                .environmentObject(app)
+            } else if let folder = activeDownloadFolder {
+                DownloadedMediaFolderView(
+                    folder: folder,
+                    navigationTab: navigationTab,
+                    focusedTab: focusedTab,
+                    onBack: { activeDownloadFolder = nil }
+                )
+                .environmentObject(app)
             } else {
                 searchContent
+                    .fullScreenCover(item: $selectedDetail) { detail in
+                        MediaDetailView(selection: detail) {
+                            Task { await openSeriesFromDetail(detail.url) }
+                        }
+                        .environmentObject(app)
+                    }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .fullScreenCover(item: $selectedDetail) { detail in
-            MediaDetailView(selection: detail) {
-                Task { await openSeriesEpisodes(url: detail.url) }
-            }
-            .environmentObject(app)
+        .task {
+            await app.refreshFavorites()
+            await app.refreshMovieDownloads()
         }
-        .task { await app.refreshFavorites() }
         .onChange(of: requestContentFocus) { _, requested in
             guard requested else { return }
             localFocus = .query
@@ -77,6 +88,8 @@ struct SearchView: View {
 
                     searchControls
                         .defaultFocus($localFocus, .query)
+
+                    downloadedFoldersSection
 
                     GridColumnReader(minimumCardWidth: cardMinimum, spacing: gridSpacing, columnCount: $gridColumnCount)
 
@@ -120,11 +133,51 @@ struct SearchView: View {
             .onChange(of: localFocus) { _, focus in
                 guard let focus else { return }
                 switch focus {
-                case .query, .searchButton, .source, .access, .sort, .pagePrevious, .pageNext:
+                case .query, .searchButton, .source, .access, .sort:
                     withAnimation(NostalgieTheme.contentSpring) {
                         scrollProxy.scrollTo("searchTop", anchor: .top)
                     }
+                case .downloadedFolder:
+                    withAnimation(NostalgieTheme.contentSpring) {
+                        scrollProxy.scrollTo("downloadedFolders", anchor: .top)
+                    }
                 }
+            }
+        }
+    }
+
+    private var downloadedFoldersSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Color.clear.frame(height: 1).id("downloadedFolders")
+
+            MusicSectionHeader(
+                title: "Pobrane filmy i seriale",
+                subtitle: "Foldery MOVIES · odtwarzanie offline z dysku"
+            )
+
+            if downloadedFolders.isEmpty {
+                Text("Brak pobranych materiałów — pobierz film lub odcinki serialu z wyszukiwania.")
+                    .font(NostalgieFont.metadata)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 16) {
+                        ForEach(downloadedFolders) { folder in
+                            DownloadedMediaFolderCard(folder: folder) {
+                                activeDownloadFolder = folder
+                            }
+                            .focused($localFocus, equals: .downloadedFolder(folder.id))
+                            .onMoveCommand { direction in
+                                if direction == .up {
+                                    localFocus = .query
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 10)
+                }
+                .fullBleedShelf()
             }
         }
     }
@@ -276,7 +329,9 @@ struct SearchView: View {
 
     private var resultsHeader: some View {
         HStack(spacing: 16) {
-            Text("\(totalResults) wyników · \(page)/\(totalPages)")
+            Text(results.count >= totalResults && totalResults > 0
+                ? "\(results.count) wyników"
+                : "\(results.count) z \(totalResults) wyników")
                 .font(NostalgieFont.metadata)
                 .foregroundStyle(.secondary)
             if !app.favoriteURLs.isEmpty {
@@ -284,35 +339,10 @@ struct SearchView: View {
                     .foregroundStyle(.secondary)
                     .font(NostalgieFont.caption)
             }
+            if isLoadingMore {
+                ProgressView()
+            }
             Spacer()
-            if page > 1 {
-                Button {
-                    Task { await changePage(page - 1) }
-                } label: {
-                    Label("Poprzednia", systemImage: "chevron.left")
-                }
-                .buttonStyle(FocusCardButtonStyle())
-                .focused($localFocus, equals: .pagePrevious)
-                .onMoveCommand { direction in
-                    if direction == .up {
-                        localFocus = .sort(sort)
-                    }
-                }
-            }
-            if hasMore {
-                Button {
-                    Task { await changePage(page + 1) }
-                } label: {
-                    Label("Następna", systemImage: "chevron.right")
-                }
-                .buttonStyle(FocusCardButtonStyle())
-                .focused($localFocus, equals: .pageNext)
-                .onMoveCommand { direction in
-                    if direction == .up {
-                        localFocus = .sort(sort)
-                    }
-                }
-            }
         }
     }
 
@@ -330,10 +360,18 @@ struct SearchView: View {
                     isPremium: item.premium == true,
                     isFavorite: app.isFavorite(item.url)
                 ) {
-                    selectedDetail = MediaSelection(from: item)
+                    Task { await openSearchResult(item) }
                 }
                 .onGridMoveUp(columnCount: gridColumnCount, index: index) {
                     focusTargetAboveResults()
+                }
+                .onInfiniteScrollLoadMore(
+                    itemID: item.id,
+                    lastItemID: results.last?.id,
+                    canLoadMore: hasMore,
+                    isLoading: isLoadingMore
+                ) {
+                    Task { await loadMoreResults() }
                 }
             }
         }
@@ -345,29 +383,35 @@ struct SearchView: View {
     }
 
     private func focusTargetAboveResults() {
-        if page > 1 {
-            localFocus = .pagePrevious
-        } else if hasMore {
-            localFocus = .pageNext
-        } else if !results.isEmpty || totalResults > 0 {
+        if !results.isEmpty || totalResults > 0 {
             localFocus = .sort(sort)
         } else {
             localFocus = .searchButton
         }
     }
 
-    private func changePage(_ newPage: Int) async {
-        page = max(1, newPage)
-        await runSearch(resetPage: false)
+    private func loadMoreResults() async {
+        guard hasMore, !isLoading, !isLoadingMore else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        page += 1
+        await runSearch(resetPage: false, append: true)
     }
 
-    private func runSearch(resetPage: Bool) async {
+    private func runSearch(resetPage: Bool, append: Bool = false) async {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        if resetPage { page = 1 }
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
+        if resetPage {
+            page = 1
+            hasMore = false
+        }
+        if append {
+            guard hasMore else { return }
+        } else {
+            isLoading = true
+            errorMessage = nil
+        }
+        defer { if !append { isLoading = false } }
         do {
             let response = try await app.api.search(
                 query: trimmed,
@@ -377,21 +421,49 @@ struct SearchView: View {
                 sort: sort,
                 access: showsCdaAccessFilter ? access : .all
             )
-            results = response.results
-            totalResults = response.total ?? response.results.count
-            totalPages = max(response.totalPages ?? 1, 1)
+            if append {
+                let existing = Set(results.map(\.id))
+                results.append(contentsOf: response.results.filter { !existing.contains($0.id) })
+            } else {
+                results = response.results
+            }
+            totalResults = response.total ?? max(results.count, response.results.count)
             hasMore = response.hasMore ?? false
+            if response.results.isEmpty {
+                hasMore = false
+            }
             page = response.page ?? page
         } catch {
-            errorMessage = error.localizedDescription
-            results = []
-            totalResults = 0
-            totalPages = 1
-            hasMore = false
+            if append {
+                page = max(1, page - 1)
+                hasMore = false
+            } else {
+                errorMessage = error.localizedDescription
+                results = []
+                totalResults = 0
+                hasMore = false
+            }
         }
     }
 
-    private func openSeriesEpisodes(url: String) async {
+    private func openSearchResult(_ item: SearchResultItem) async {
+        if item.isSerial == true {
+            do {
+                let info = try await app.api.fetchInfo(url: item.url)
+                if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
+                    seriesInfo = info
+                    return
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+                return
+            }
+        }
+        selectedDetail = MediaSelection(from: item)
+    }
+
+    private func openSeriesFromDetail(_ url: String) async {
+        selectedDetail = nil
         do {
             let info = try await app.api.fetchInfo(url: url)
             if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
