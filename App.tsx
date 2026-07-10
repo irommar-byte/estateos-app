@@ -54,6 +54,7 @@ import { useAuthStore } from './src/store/useAuthStore';
 import { useBlockedUsersStore } from './src/store/useBlockedUsersStore';
 import { useUnreadBadgeStore } from './src/store/useUnreadBadgeStore';
 import { useProfileTabBadgeStore } from './src/store/useProfileTabBadgeStore';
+import { useEcosystemStore } from './src/store/useEcosystemStore';
 import { refreshAdminAttentionBadgeCounts } from './src/services/adminAttentionRefresh';
 import { bootstrapFxRateRefresh } from './src/store/useFxRateStore';
 import { RELEASE_BUILD_FINGERPRINT } from './src/releaseBuildMarker';
@@ -97,6 +98,9 @@ import AdminKeiAmerScreen from './src/screens/AdminKeiAmerScreen';
 import AgencyOfficeScreen from './src/screens/AgencyOfficeScreen';
 import AgencyLeadInboxScreen from './src/screens/AgencyLeadInboxScreen';
 import OfferCommentsScreen from './src/screens/OfferCommentsScreen';
+import CarsCatalogScreen from './src/screens/CarsCatalogScreen';
+import CarDetailScreen from './src/screens/CarDetailScreen';
+import AddCarListingScreen from './src/screens/AddCarListingScreen';
 import { extractIdFromDeeplink } from './src/utils/deeplinkParse';
 import {
   extractPushDealAndOfferIds,
@@ -185,6 +189,7 @@ const FloatingNextButton = (props: any) => {
   const user = useAuthStore(state => state.user); 
   const isLoggedIn = !!user;
   const navigation = useNavigation<any>();
+  const activeVertical = useEcosystemStore((state) => state.activeVertical);
   
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const holdScale = useRef(new Animated.Value(1)).current;
@@ -254,6 +259,15 @@ const FloatingNextButton = (props: any) => {
   const handlePress = (e: any) => {
     if (!isFocused) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (activeVertical === 'car') {
+        if (!isLoggedIn) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          navigation.navigate('Profil');
+          return;
+        }
+        navigation.navigate('AddCarListing', { mode: 'create' });
+        return;
+      }
       const store = useOfferStore.getState();
       const shouldStartFresh =
         store.needsFreshAddOfferEntry && !hasAddOfferDraftProgress(store.draft);
@@ -816,6 +830,8 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
   const unreadContactCount = useUnreadBadgeStore((state) => state.unreadContactCount);
   const messagesTabBadgeCount = unreadDealCount + unreadContactCount;
   const profilePendingCount = useProfileTabBadgeStore((state) => state.profilePendingCount);
+  const activeVertical = useEcosystemStore((state) => state.activeVertical);
+  const setActiveVertical = useEcosystemStore((state) => state.setActiveVertical);
   useEffect(() => { restoreSession(); }, []);
 
   useEffect(() => {
@@ -926,7 +942,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       tabBarHideOnKeyboard: true,
       tabBarButton: (props) => <LuxuryTabBarButton {...props} />,
       tabBarShowLabel: true, 
-      tabBarActiveTintColor: Colors.primary, 
+      tabBarActiveTintColor: activeVertical === 'car' ? '#0EA5E9' : Colors.primary, 
       tabBarInactiveTintColor: currentColors.subtitle, 
       tabBarLabelStyle: {
         fontSize: 11,
@@ -963,12 +979,40 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
     >
       <Tab.Screen
         name="Radar"
+        listeners={{
+          tabPress: () => setActiveVertical('home'),
+        }}
         options={{ tabBarLabel: t('tabs.radar'), tabBarIcon: ({color}) => <Ionicons name="map" size={26} color={color} /> }}
       >
         {props => <RadarHomeScreen {...props} splashDone={splashDone} />}
       </Tab.Screen>
       <Tab.Screen
+        name="Cars"
+        listeners={{
+          tabPress: () => setActiveVertical('car'),
+        }}
+        options={{
+          tabBarLabel: 'Cars',
+          tabBarIcon: ({ color }) => <Ionicons name="car-sport" size={24} color={color} />,
+          tabBarBadge: activeVertical === 'car' ? '•' : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#0EA5E9',
+            color: '#0EA5E9',
+            fontSize: 9,
+            minWidth: 12,
+            height: 12,
+            lineHeight: 10,
+            borderRadius: 6,
+          },
+        }}
+      >
+        {() => <CarsCatalogScreen />}
+      </Tab.Screen>
+      <Tab.Screen
         name="Ulubione"
+        listeners={{
+          tabPress: () => setActiveVertical('home'),
+        }}
         initialParams={{ favoritesOnly: true, favoritesScope: 'MINE' }}
         options={{ tabBarLabel: t('tabs.favorites'), tabBarIcon: ({ color }) => <Ionicons name="heart" size={24} color={color} /> }}
       >
@@ -979,6 +1023,9 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       </Tab.Screen>
       <Tab.Screen
         name="Wiadomości"
+        listeners={{
+          tabPress: () => setActiveVertical('home'),
+        }}
         options={{
           tabBarLabel: t('tabs.messages'),
           tabBarIcon: ({ color }) => (
@@ -1005,6 +1052,9 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       </Tab.Screen>
       <Tab.Screen
         name="Profil"
+        listeners={{
+          tabPress: () => setActiveVertical('home'),
+        }}
         options={{
           tabBarLabel: t('tabs.profile'),
           tabBarIcon: ({ color }) => <Ionicons name="person-circle" size={28} color={color} />,
@@ -1625,6 +1675,16 @@ export default function App() {
             <AppStack.Screen
               name="OfferDetail"
               component={OfferDetail}
+            />
+            <AppStack.Screen
+              name="CarDetail"
+              component={CarDetailScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="AddCarListing"
+              component={AddCarListingScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
             />
             <AppStack.Screen name="EditOffer" component={EditOfferScreen} />
             <AppStack.Screen name="Terms" component={TermsScreen} options={{ presentation: 'modal' }} />

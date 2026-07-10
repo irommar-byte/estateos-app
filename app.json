@@ -3,7 +3,7 @@
     "name": "EstateOS™",
     "slug": "apple-style-app",
     "scheme": "estateos",
-    "version": "1.0.3",
+    "version": "1.0.5",
     "orientation": "default",
     "icon": "./assets/app.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "requireFullScreen": false,
-      "buildNumber": "43",
+      "buildNumber": "11",
       "bundleIdentifier": "pl.estateos.app",
       "associatedDomains": [
         "webcredentials:estateos.pl",
@@ -134,8 +134,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "EstateOS używa zdjęć z galerii, aby dodać je do oferty.",
-          "cameraPermission": "EstateOS używa aparatu do zdjęć oferty i skanowania kodu QR."
+          "photosPermission": "EstateOS używa zdjęć z galerii, aby dodać je do oferty lub odczytać kod z dowodu rejestracyjnego.",
+          "cameraPermission": "EstateOS używa aparatu do zdjęć oferty, skanowania kodu QR i kodu Aztec z dowodu rejestracyjnego."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "EstateOS skanuje kod Aztec z dowodu rejestracyjnego, aby uzupełnić dane auta."
         }
       ],
       [
