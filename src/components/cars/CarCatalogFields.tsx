@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { BODY_TYPE_OPTIONS } from "@/lib/otomotoCatalog";
+import { pickDoorCountOption, pickGenerationForYear } from "@/lib/carCatalogInference";
 import { findEngineCapacityOption, findEnginePowerOption, findOptionByLabel, useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
 import type { CarFormState } from "@/components/cars/CarListingForm";
 
@@ -140,6 +141,22 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
   }, [form.model, form.modelSlug, models, setForm]);
 
   useEffect(() => {
+    if (form.generationSlug || !generations.length || !form.year || !hasModel) return;
+    const match = pickGenerationForYear(generations, form.year, form.generation);
+    if (match) {
+      setForm((prev) => ({ ...prev, generationSlug: match.value, generation: match.label }));
+    }
+  }, [form.generationSlug, form.generation, form.year, hasModel, generations, setForm]);
+
+  useEffect(() => {
+    if (form.doorCountSlug || !doorCounts.length || !form.engineCapacitySlug) return;
+    const match = pickDoorCountOption(doorCounts, form.bodyType);
+    if (match) {
+      setForm((prev) => ({ ...prev, doorCountSlug: match.value, doorCount: match.label }));
+    }
+  }, [form.doorCountSlug, form.bodyType, form.engineCapacitySlug, doorCounts, setForm]);
+
+  useEffect(() => {
     if (!form.generation || form.generationSlug || !generations.length) return;
     const match = findOptionByLabel(generations, form.generation);
     if (match) {
@@ -157,7 +174,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
 
   useEffect(() => {
     if (!form.enginePower || form.enginePowerSlug || !enginePowers.length) return;
-    const match = findOptionByLabel(enginePowers, form.enginePower);
+    const match = findEnginePowerOption(enginePowers, form.enginePower);
     if (match) {
       setForm((prev) => ({ ...prev, enginePowerSlug: match.value, enginePower: match.label }));
     }
@@ -165,7 +182,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
 
   useEffect(() => {
     if (!form.engineCapacity || form.engineCapacitySlug || !engineCapacities.length) return;
-    const match = findOptionByLabel(engineCapacities, form.engineCapacity);
+    const match = findEngineCapacityOption(engineCapacities, form.engineCapacity);
     if (match) {
       setForm((prev) => ({ ...prev, engineCapacitySlug: match.value, engineCapacity: match.label }));
     }
