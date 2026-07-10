@@ -58,6 +58,35 @@ export function findOptionByLabel(options: CatalogOption[], label: string): Cata
   return (
     options.find((item) => item.label.trim().toLowerCase() === normalized) ||
     options.find((item) => item.value.trim().toLowerCase() === normalized) ||
+    options.find((item) => item.label.trim().toLowerCase().includes(normalized)) ||
+    options.find((item) => normalized.includes(item.label.trim().toLowerCase())) ||
+    null
+  );
+}
+
+export function findEnginePowerOption(options: CatalogOption[], label: string): CatalogOption | null {
+  const direct = findOptionByLabel(options, label);
+  if (direct) return direct;
+  const kw = Number(label.replace(/[^\d.]/g, ""));
+  if (!Number.isFinite(kw) || kw <= 0) return null;
+  return (
+    options.find((item) => item.label.replace(/[^\d.]/g, "") === String(kw)) ||
+    options.find((item) => item.label.toLowerCase().includes(`${kw} kw`)) ||
+    options.find((item) => item.label.toLowerCase().startsWith(`${kw}`)) ||
+    null
+  );
+}
+
+export function findEngineCapacityOption(options: CatalogOption[], label: string): CatalogOption | null {
+  const direct = findOptionByLabel(options, label);
+  if (direct) return direct;
+  const cm3 = Number(label.replace(/[^\d.]/g, ""));
+  if (!Number.isFinite(cm3) || cm3 <= 0) return null;
+  const rounded = String(Math.round(cm3));
+  return (
+    options.find((item) => item.label.replace(/[^\d.]/g, "") === rounded) ||
+    options.find((item) => item.label.toLowerCase().includes(`${rounded} cm`)) ||
+    options.find((item) => item.label.toLowerCase().startsWith(rounded)) ||
     null
   );
 }

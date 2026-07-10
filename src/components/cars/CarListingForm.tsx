@@ -142,6 +142,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
         enginePower: prefill.enginePower || prev.enginePower,
         engineCapacity: prefill.engineCapacity || prev.engineCapacity,
         trimVersion: prefill.trimVersion || prev.trimVersion,
+        generation: prefill.generation || prev.generation,
         vin: prefill.vin || prev.vin,
         registrationNumber: prefill.registrationNumber || prev.registrationNumber,
         firstRegistrationDate: prefill.firstRegistrationDate || prev.firstRegistrationDate,

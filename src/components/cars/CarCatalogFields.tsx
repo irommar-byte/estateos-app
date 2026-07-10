@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { BODY_TYPE_OPTIONS } from "@/lib/otomotoCatalog";
-import { findOptionByLabel, useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
+import { findEngineCapacityOption, findEnginePowerOption, findOptionByLabel, useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
 import type { CarFormState } from "@/components/cars/CarListingForm";
 
 const selectClassName =
