@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { findCarById, updateCarListing, deleteCarListing } from "@/lib/carsStorage";
-import type { CarListingRecord } from "@/lib/carsStorage";
+import type { CarListingUpdateInput } from "@/lib/carsStorage";
 import { resolveUploaderUserId } from "@/lib/upload/resolveUploader";
 
 function toSafeNumber(v: unknown, fallback: number): number {
@@ -8,7 +8,7 @@ function toSafeNumber(v: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function validateBody(raw: Record<string, unknown>): Omit<CarListingRecord, "id" | "userId" | "createdAt" | "updatedAt"> {
+function validateBody(raw: Record<string, unknown>): CarListingUpdateInput {
   const doorCountRaw = raw?.doorCount;
   const doorCount =
     doorCountRaw == null || String(doorCountRaw).trim() === ""
@@ -32,6 +32,18 @@ function validateBody(raw: Record<string, unknown>): Omit<CarListingRecord, "id"
     pricePln: toSafeNumber(raw?.pricePln, 0),
     city: String(raw?.city || "").trim() || "Polska",
     imageUrl: String(raw?.imageUrl || "").trim(),
+    images: Array.isArray(raw?.images)
+      ? raw.images.map((item) => String(item || "").trim()).filter(Boolean)
+      : undefined,
+    description: String(raw?.description || "").trim(),
+    cityLat:
+      raw?.cityLat == null || String(raw.cityLat).trim() === ""
+        ? null
+        : toSafeNumber(raw.cityLat, 0) || null,
+    cityLng:
+      raw?.cityLng == null || String(raw.cityLng).trim() === ""
+        ? null
+        : toSafeNumber(raw.cityLng, 0) || null,
   };
 }
 

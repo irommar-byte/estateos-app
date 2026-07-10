@@ -19,6 +19,10 @@ export type CarListingRecord = {
   pricePln: number;
   city: string;
   imageUrl: string;
+  images: string;
+  description: string;
+  cityLat: number | null;
+  cityLng: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -38,6 +42,10 @@ const CREATE_SQL = `
     pricePln DECIMAL(12,2) NOT NULL,
     city VARCHAR(120) NOT NULL,
     imageUrl TEXT NULL,
+    images TEXT NULL,
+    description TEXT NULL,
+    cityLat DECIMAL(10,7) NULL,
+    cityLng DECIMAL(10,7) NULL,
     generation VARCHAR(120) NULL,
     enginePower VARCHAR(80) NULL,
     engineCapacity VARCHAR(40) NULL,
@@ -74,7 +82,33 @@ function toStringValue(value: unknown, fallback = ""): string {
   return txt || fallback;
 }
 
+function parseImagesJson(raw: unknown, fallbackImageUrl = ""): string[] {
+  const fallback = String(fallbackImageUrl || "").trim();
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const urls = parsed.map((item) => String(item || "").trim()).filter(Boolean);
+        if (urls.length) return urls;
+      }
+    } catch {
+      // ignore malformed JSON
+    }
+  }
+  return fallback ? [fallback] : [];
+}
+
+function serializeImages(images: string[] | undefined, imageUrl = ""): string {
+  const list = Array.isArray(images)
+    ? images.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const normalized = list.length ? list : imageUrl ? [imageUrl] : [];
+  return JSON.stringify(normalized);
+}
+
 function mapRow(row: any): CarListingRecord {
+  const imageUrl = toStringValue(row.imageUrl);
+  const images = parseImagesJson(row.images, imageUrl);
   return {
     id: toNumber(row.id),
     userId: row.userId == null ? null : toNumber(row.userId),
@@ -93,7 +127,11 @@ function mapRow(row: any): CarListingRecord {
     doorCount: row.doorCount == null ? null : toNumber(row.doorCount),
     pricePln: toNumber(row.pricePln),
     city: toStringValue(row.city),
-    imageUrl: toStringValue(row.imageUrl),
+    imageUrl: images[0] || imageUrl,
+    images: serializeImages(images, imageUrl),
+    description: toStringValue(row.description),
+    cityLat: row.cityLat == null ? null : toNumber(row.cityLat),
+    cityLng: row.cityLng == null ? null : toNumber(row.cityLng),
     createdAt: new Date(row.createdAt).toISOString(),
     updatedAt: new Date(row.updatedAt).toISOString(),
   };
@@ -105,6 +143,10 @@ const ALLOWED_CAR_LISTING_COLUMNS = new Set([
   "engineCapacity",
   "trimVersion",
   "doorCount",
+  "images",
+  "description",
+  "cityLat",
+  "cityLng",
 ]);
 
 async function ensureCarListingColumn(column: string, definition: string) {
@@ -132,6 +174,10 @@ export async function ensureCarsStorage() {
   await ensureCarListingColumn("engineCapacity", "VARCHAR(40) NULL");
   await ensureCarListingColumn("trimVersion", "VARCHAR(160) NULL");
   await ensureCarListingColumn("doorCount", "TINYINT NULL");
+  await ensureCarListingColumn("images", "TEXT NULL");
+  await ensureCarListingColumn("description", "TEXT NULL");
+  await ensureCarListingColumn("cityLat", "DECIMAL(10,7) NULL");
+  await ensureCarListingColumn("cityLng", "DECIMAL(10,7) NULL");
   await prisma.$executeRawUnsafe(SEED_SQL);
 }
 
@@ -181,14 +227,24 @@ export async function createCarListing(input: {
   pricePln: number;
   city: string;
   imageUrl?: string;
+  images?: string[];
+  description?: string;
+  cityLat?: number | null;
+  cityLng?: number | null;
 }): Promise<CarListingRecord> {
   await ensureCarsStorage();
+  const imageList = Array.isArray(input.images)
+    ? input.images.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const coverImage = imageList[0] || String(input.imageUrl || "").trim();
+  const imagesJson = serializeImages(imageList, coverImage);
   await prisma.$executeRawUnsafe(
     `
       INSERT INTO CarListing
       (userId, title, make, model, year, mileageKm, fuelType, transmission, bodyType,
-       generation, enginePower, engineCapacity, trimVersion, doorCount, pricePln, city, imageUrl)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       generation, enginePower, engineCapacity, trimVersion, doorCount, pricePln, city,
+       imageUrl, images, description, cityLat, cityLng)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     input.userId,
     input.title,
@@ -206,7 +262,11 @@ export async function createCarListing(input: {
     input.doorCount ?? null,
     input.pricePln,
     input.city,
-    input.imageUrl ?? "",
+    coverImage,
+    imagesJson,
+    input.description ?? "",
+    input.cityLat ?? null,
+    input.cityLng ?? null,
   );
 
   const created = await prisma.$queryRawUnsafe<any[]>(
@@ -232,6 +292,10 @@ export type CarListingUpdateInput = {
   pricePln: number;
   city: string;
   imageUrl?: string;
+  images?: string[];
+  description?: string;
+  cityLat?: number | null;
+  cityLng?: number | null;
 };
 
 export async function updateCarListing(
@@ -243,12 +307,19 @@ export async function updateCarListing(
   const existing = await findCarById(id);
   if (!existing || existing.userId !== userId) return null;
 
+  const imageList = Array.isArray(input.images)
+    ? input.images.map((item) => String(item || "").trim()).filter(Boolean)
+    : parseImagesJson(existing.images, existing.imageUrl);
+  const coverImage = imageList[0] || String(input.imageUrl ?? existing.imageUrl).trim();
+  const imagesJson = serializeImages(imageList, coverImage);
+
   await prisma.$executeRawUnsafe(
     `
       UPDATE CarListing
       SET title = ?, make = ?, model = ?, year = ?, mileageKm = ?, fuelType = ?,
           transmission = ?, bodyType = ?, generation = ?, enginePower = ?, engineCapacity = ?,
-          trimVersion = ?, doorCount = ?, pricePln = ?, city = ?, imageUrl = ?,
+          trimVersion = ?, doorCount = ?, pricePln = ?, city = ?, imageUrl = ?, images = ?,
+          description = ?, cityLat = ?, cityLng = ?,
           updatedAt = CURRENT_TIMESTAMP(3)
       WHERE id = ? AND userId = ?
     `,
@@ -267,7 +338,11 @@ export async function updateCarListing(
     input.doorCount ?? null,
     input.pricePln,
     input.city,
-    input.imageUrl ?? existing.imageUrl,
+    coverImage,
+    imagesJson,
+    input.description ?? existing.description,
+    input.cityLat ?? existing.cityLat,
+    input.cityLng ?? existing.cityLng,
     id,
     userId,
   );
