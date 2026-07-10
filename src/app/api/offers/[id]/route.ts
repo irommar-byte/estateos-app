@@ -480,6 +480,18 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             : body.floorPlan != null
               ? String(body.floorPlan)
               : currentOffer.floorPlanUrl,
+        floorPlan3dUrl:
+          body.floorPlan3dUrl !== undefined
+            ? body.floorPlan3dUrl
+              ? String(body.floorPlan3dUrl)
+              : null
+            : (currentOffer as { floorPlan3dUrl?: string | null }).floorPlan3dUrl ?? null,
+        floorPlanScanMeta:
+          body.floorPlanScanMeta !== undefined
+            ? body.floorPlanScanMeta
+              ? String(body.floorPlanScanMeta)
+              : null
+            : (currentOffer as { floorPlanScanMeta?: string | null }).floorPlanScanMeta ?? null,
         street: body.street != null ? String(body.street) : currentOffer.street,
         buildingNumber: body.buildingNumber != null ? String(body.buildingNumber) : currentOffer.buildingNumber,
         isExactLocation: body.isExactLocation !== undefined ? !!body.isExactLocation : currentOffer.isExactLocation,
