@@ -4,7 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import CarCatalogFields from "@/components/cars/CarCatalogFields";
+import CarRegistrationScanGate, {
+  highlightClass,
+  missingFieldsBanner,
+} from "@/components/cars/CarRegistrationScanGate";
 import CarVehicleDocsFields, { type CarVehicleDocsFormState } from "@/components/cars/CarVehicleDocsFields";
+import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument";
+import { listMissingListingFields } from "@/lib/polishRegistrationDocument";
 import { formatDateForForm } from "@/utils/polishDateInput";
 
 export type CarFormState = CarVehicleDocsFormState & {
@@ -109,10 +115,52 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<number | null>(null);
+  const [scanGateOpen, setScanGateOpen] = useState(mode === "create");
+  const [highlightKeys, setHighlightKeys] = useState<CarListingMissingFieldKey[]>([]);
+  const [scanNotice, setScanNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const refreshHighlights = (nextForm: CarFormState, hasImages = Boolean(nextForm.imageUrl.trim())) => {
+    setHighlightKeys(listMissingListingFields(nextForm, hasImages));
+  };
+
+  const applyRegistrationPrefill = (
+    prefill: Partial<CarFormState>,
+    missingFields: CarListingMissingFieldKey[],
+  ) => {
+    setScanGateOpen(false);
+    setForm((prev) => {
+      const next = {
+        ...prev,
+        ...prefill,
+        title: prefill.title || prev.title,
+        make: prefill.make || prev.make,
+        model: prefill.model || prev.model,
+        year: prefill.year || prev.year,
+        fuelType: prefill.fuelType || prev.fuelType,
+        bodyType: prefill.bodyType || prev.bodyType,
+        enginePower: prefill.enginePower || prev.enginePower,
+        engineCapacity: prefill.engineCapacity || prev.engineCapacity,
+        trimVersion: prefill.trimVersion || prev.trimVersion,
+        vin: prefill.vin || prev.vin,
+        registrationNumber: prefill.registrationNumber || prev.registrationNumber,
+        firstRegistrationDate: prefill.firstRegistrationDate || prev.firstRegistrationDate,
+      };
+      const keys = missingFields.length ? missingFields : listMissingListingFields(next, Boolean(next.imageUrl.trim()));
+      setHighlightKeys(keys);
+      setScanNotice(
+        `Dane z dowodu wczytane. ${missingFieldsBanner(keys) || "Sprawdź katalog i uzupełnij ogłoszenie."}`,
+      );
+      return next;
+    });
+  };
+
   const setField = (key: keyof CarFormState, value: string) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      refreshHighlights(next);
+      return next;
+    });
   };
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -133,7 +181,11 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
         throw new Error(typeof data?.error === "string" ? data.error : "Upload zdjęcia nie powiódł się.");
       }
       if (typeof data?.url === "string" && data.url) {
-        setField("imageUrl", data.url);
+        setForm((prev) => {
+          const next = { ...prev, imageUrl: data.url };
+          refreshHighlights(next, true);
+          return next;
+        });
       }
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Upload zdjęcia nie powiódł się.");
@@ -196,30 +248,47 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
     }
   };
 
+  const isHighlighted = (key: CarListingMissingFieldKey) => highlightKeys.includes(key);
+
   return (
-    <form onSubmit={handleSubmit} className="mt-8 grid gap-4">
-      <CarCatalogFields form={form} setForm={setForm} />
-
-      <label className="grid gap-1.5 text-sm">
-        <span className="text-[var(--eos-muted)]">Tytuł ogłoszenia</span>
-        <input
-          value={form.title}
-          onChange={(e) => setField("title", e.target.value)}
-          className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
-          placeholder="np. BMW X5 xDrive30d M Sport"
-          required
+    <>
+      {mode === "create" ? (
+        <CarRegistrationScanGate
+          open={scanGateOpen}
+          onSkip={() => setScanGateOpen(false)}
+          onPrefill={applyRegistrationPrefill}
         />
-      </label>
+      ) : null}
 
-      <label className="grid gap-1.5 text-sm">
-        <span className="text-[var(--eos-muted)]">Opis</span>
-        <textarea
-          value={form.description}
-          onChange={(e) => setField("description", e.target.value)}
-          className="min-h-[120px] rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
-          placeholder="Opisz stan auta, historię serwisową, wyposażenie..."
-        />
-      </label>
+      <form onSubmit={handleSubmit} className="mt-8 grid gap-4">
+        {scanNotice ? (
+          <p className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            {scanNotice}
+          </p>
+        ) : null}
+
+        <CarCatalogFields form={form} setForm={setForm} />
+
+        <label className="grid gap-1.5 text-sm">
+          <span className="text-[var(--eos-muted)]">Tytuł ogłoszenia</span>
+          <input
+            value={form.title}
+            onChange={(e) => setField("title", e.target.value)}
+            className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("title"))}`}
+            placeholder="np. BMW X5 xDrive30d M Sport"
+            required
+          />
+        </label>
+
+        <label className="grid gap-1.5 text-sm">
+          <span className="text-[var(--eos-muted)]">Opis</span>
+          <textarea
+            value={form.description}
+            onChange={(e) => setField("description", e.target.value)}
+            className={`min-h-[120px] rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("description"))}`}
+            placeholder="Opisz stan auta, historię serwisową, wyposażenie..."
+          />
+        </label>
 
       <CarVehicleDocsFields
         value={{
@@ -238,7 +307,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
             type="number"
             value={form.mileageKm}
             onChange={(e) => setField("mileageKm", e.target.value)}
-            className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
+            className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("mileageKm"))}`}
             placeholder="58000"
           />
         </label>
@@ -248,7 +317,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
             type="number"
             value={form.pricePln}
             onChange={(e) => setField("pricePln", e.target.value)}
-            className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
+            className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("pricePln"))}`}
             placeholder="319000"
             required
           />
@@ -260,13 +329,15 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
         <input
           value={form.city}
           onChange={(e) => setField("city", e.target.value)}
-          className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
+          className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("city"))}`}
           placeholder="np. Warszawa Mokotów"
           required
         />
       </label>
 
-      <div className="grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4">
+      <div
+        className={`grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 ${highlightClass(isHighlighted("images"))}`}
+      >
         <p className="text-sm font-semibold">Zdjęcie główne</p>
         {form.imageUrl ? (
           <div className="relative aspect-[16/9] overflow-hidden rounded-xl border border-[var(--eos-border)]">
@@ -322,6 +393,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
           Anuluj
         </Link>
       </div>
-    </form>
+      </form>
+    </>
   );
 }
