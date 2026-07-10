@@ -72,6 +72,9 @@ const LABELS: Record<string, string> = {
   insuranceCompany: 'Ubezpieczyciel',
   policyNumber: 'Numer polisy',
   insuranceValidUntil: 'Ważność OC',
+  insuranceExpiryDate: 'Ważność OC',
+  validOcInsurance: 'Ważne OC',
+  hasCurrentOCPolicy: 'Ważne OC',
   ocValidUntil: 'Ważność OC',
   liabilityInsuranceValidUntil: 'Ważność OC',
   mandatoryInsuranceStatus: 'Status OC',
@@ -253,6 +256,30 @@ function buildTimelineSection(timelineData: Record<string, unknown>): VehicleHis
   return { title: 'Historia i zdarzenia', rows };
 }
 
+function readBooleanFlag(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === 'tak' || normalized === 'yes') return true;
+    if (normalized === 'false' || normalized === 'nie' || normalized === 'no') return false;
+  }
+  return null;
+}
+
+function extractCepikOcFromSources(
+  vehicleData: Record<string, unknown> | null | undefined,
+  timelineData: Record<string, unknown> | null | undefined,
+) {
+  const timeline = asRecord(asRecord(timelineData)?.timelineData) || asRecord(timelineData) || {};
+  const basic = asRecord(asRecord(asRecord(vehicleData)?.technicalData)?.basicData) || {};
+
+  const validUntil = timeline.insuranceExpiryDate ?? timeline.insuranceValidUntil ?? null;
+  const statusFlag =
+    readBooleanFlag(timeline.validOcInsurance) ?? readBooleanFlag(basic.hasCurrentOCPolicy);
+
+  return { validUntil, statusFlag };
+}
+
 function extractInsuranceInfo(payload: Record<string, unknown>) {
   const rows: { label: string; value: string }[] = [];
   const insurer = findNestedValue(
@@ -262,11 +289,11 @@ function extractInsuranceInfo(payload: Record<string, unknown>) {
   const policy = findNestedValue(payload, /(policyNumber|numerPolisy|policyNo|numerUmowy|policy)/i);
   const validUntil = findNestedValue(
     payload,
-    /(validUntil|validTo|ocValidUntil|insuranceValidUntil|koniecOchrony|endDate|expirationDate|policyEndDate|insuranceEndDate|dateTo|doDnia)/i,
+    /(validUntil|validTo|ocValidUntil|insuranceValidUntil|insuranceExpiryDate|koniecOchrony|endDate|expirationDate|policyEndDate|insuranceEndDate|dateTo|doDnia)/i,
   );
   const hasInsurance = findNestedValue(
     payload,
-    /(hasValidInsurance|isInsured|ocValid|ubezpieczenie|insuranceStatus|mandatoryInsurance|liabilityInsurance)/i,
+    /(hasValidInsurance|validOcInsurance|hasCurrentOCPolicy|isInsured|ocValid|ubezpieczenie|insuranceStatus|mandatoryInsurance|liabilityInsurance)/i,
   );
 
   if (insurer) rows.push({ label: 'Ubezpieczyciel', value: formatValue(insurer) });
@@ -402,12 +429,16 @@ export async function checkVehicleInsurance(input: InsuranceCheckRequest): Promi
         ...(timelineData || {}),
         ...(insuranceData || {}),
       };
+      const cepikOc = extractCepikOcFromSources(vehicleData, timelineData);
       const extracted = extractInsuranceInfo(payload);
-      const validUntilDate = parseInsuranceValidity(extracted.validUntil);
-      const active = isInsuranceActive(validUntilDate, checkDate);
+      const validUntilRaw = extracted.validUntil ?? cepikOc.validUntil;
+      const validUntilDate = parseInsuranceValidity(validUntilRaw);
+      const activeFromDate = isInsuranceActive(validUntilDate, checkDate);
+      const activeFromFlag = readBooleanFlag(extracted.hasInsurance) ?? cepikOc.statusFlag;
+      const active = activeFromDate ?? activeFromFlag;
 
       if (active != null) {
-        const validUntilDisplay = extracted.validUntil ? formatDisplayDate(String(extracted.validUntil)) : null;
+        const validUntilDisplay = validUntilRaw ? formatDisplayDate(String(validUntilRaw)) : null;
         return {
           hasInsurance: active,
           validUntil: validUntilDisplay,
@@ -416,8 +447,8 @@ export async function checkVehicleInsurance(input: InsuranceCheckRequest): Promi
           vehicleMake: formatValue(findNestedValue(payload, /^(make|marka)$/i)) || null,
           vehicleModel: formatValue(findNestedValue(payload, /^(model)$/i)) || null,
           message: active
-            ? `Pojazd ${registrationNumber} ma ważne OC${validUntilDisplay ? ` do ${validUntilDisplay}` : ''}${extracted.insurer ? ` (${extracted.insurer})` : ''}.`
-            : `Brak ważnego OC dla ${registrationNumber}${validUntilDisplay ? ` (ostatnia ochrona do ${validUntilDisplay})` : ''}.`,
+            ? `Pojazd ${registrationNumber} ma ważne OC${validUntilDisplay ? ` do ${validUntilDisplay}` : ' (CEPIK)'}${extracted.insurer ? ` — ${extracted.insurer}` : ''}.`
+            : `Brak ważnego OC dla ${registrationNumber}${validUntilDisplay ? ` (ochrona wygasła ${validUntilDisplay})` : ' (CEPIK)'}.`,
           checkedAt: new Date().toISOString(),
           source: insuranceData ? 'UFG' : 'CEPIK',
         };
@@ -429,17 +460,17 @@ export async function checkVehicleInsurance(input: InsuranceCheckRequest): Promi
         return {
           hasInsurance,
           message: hasInsurance
-            ? `CEPIK/UFG: pojazd ${registrationNumber} posiada aktywne OC.`
-            : `CEPIK/UFG: brak aktywnego OC dla ${registrationNumber}.`,
+            ? `CEPIK: pojazd ${registrationNumber} posiada aktywne OC.`
+            : `CEPIK: brak aktywnego OC dla ${registrationNumber}.`,
           checkedAt: new Date().toISOString(),
           source: insuranceData ? 'UFG' : 'CEPIK',
         };
       }
 
-      if (vehicleData) {
+      if (vehicleData || timelineData) {
         return {
           hasInsurance: false,
-          message: `Pojazd ${registrationNumber} potwierdzony w CEPIK. Automatyczny odczyt daty OC niedostępny — uzupełnij ważność polisy ręcznie lub sprawdź na ufg.pl.`,
+          message: `Pojazd ${registrationNumber} potwierdzony w CEPIK, ale nie udało się odczytać statusu OC.`,
           checkedAt: new Date().toISOString(),
           source: 'CEPIK',
         };
@@ -474,8 +505,8 @@ export async function checkVehicleInsurance(input: InsuranceCheckRequest): Promi
     return {
       hasInsurance: false,
       message: cepikConfirmed
-        ? `Pojazd ${registrationNumber} potwierdzony w CEPIK. Nie udało się odczytać daty OC z UFG — uzupełnij ważność polisy ręcznie lub sprawdź na ufg.pl.`
-        : `Nie udało się zweryfikować OC w CEPIK/UFG dla ${registrationNumber}. Uzupełnij pole ważności polisy lub sprawdź na ufg.pl.`,
+        ? `Pojazd ${registrationNumber} potwierdzony w CEPIK, ale brak danych o OC w odpowiedzi.`
+        : `Nie udało się zweryfikować OC w CEPIK dla ${registrationNumber}.`,
       checkedAt: new Date().toISOString(),
       source: 'CEPIK',
     };
