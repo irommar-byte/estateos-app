@@ -1,11 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import CarCatalogFields from "@/components/cars/CarCatalogFields";
 import CarCityMapPicker from "@/components/cars/CarCityMapPicker";
 import CarFormattedNumberInput from "@/components/cars/CarFormattedNumberInput";
+import CarPhotoGalleryField from "@/components/cars/CarPhotoGalleryField";
 import CarRegistrationScanGate, {
   highlightClass,
   missingFieldsBanner,
@@ -45,6 +45,7 @@ export type CarFormState = CarVehicleDocsFormState & {
   cityLng: number | null;
   localityCountry: string;
   imageUrl: string;
+  images: string[];
 };
 
 export const initialCarForm: CarFormState = {
@@ -77,6 +78,7 @@ export const initialCarForm: CarFormState = {
   cityLng: null,
   localityCountry: "Polska",
   imageUrl: "",
+  images: [],
   vin: "",
   registrationNumber: "",
   firstRegistrationDate: "",
@@ -92,6 +94,8 @@ type CarListingFormProps = {
 
 function toPayload(form: CarFormState) {
   const doorCount = Number(form.doorCountSlug || form.doorCount);
+  const images = form.images.map((item) => item.trim()).filter(Boolean);
+  const coverImage = images[0] || form.imageUrl.trim();
   return {
     title: form.title.trim(),
     description: form.description.trim(),
@@ -112,7 +116,8 @@ function toPayload(form: CarFormState) {
     cityLat: form.cityLat,
     cityLng: form.cityLng,
     localityCountry: form.localityCountry.trim() || "Polska",
-    imageUrl: form.imageUrl.trim(),
+    imageUrl: coverImage,
+    images,
     vin: form.vin.trim().toUpperCase(),
     registrationNumber: form.registrationNumber.trim().toUpperCase(),
     firstRegistrationDate: form.firstRegistrationDate.trim(),
@@ -129,9 +134,8 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
   const [scanGateOpen, setScanGateOpen] = useState(mode === "create");
   const [highlightKeys, setHighlightKeys] = useState<CarListingMissingFieldKey[]>([]);
   const [scanNotice, setScanNotice] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const refreshHighlights = (nextForm: CarFormState, hasImages = Boolean(nextForm.imageUrl.trim())) => {
+  const refreshHighlights = (nextForm: CarFormState, hasImages = nextForm.images.length > 0) => {
     setHighlightKeys(listMissingListingFields(nextForm, hasImages));
   };
 
@@ -158,7 +162,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
         registrationNumber: prefill.registrationNumber || prev.registrationNumber,
         firstRegistrationDate: prefill.firstRegistrationDate || prev.firstRegistrationDate,
       };
-      const keys = missingFields.length ? missingFields : listMissingListingFields(next, Boolean(next.imageUrl.trim()));
+      const keys = missingFields.length ? missingFields : listMissingListingFields(next, next.images.length > 0);
       setHighlightKeys(keys);
       setScanNotice(
         `Dane z dowodu wczytane. ${missingFieldsBanner(keys) || "Sprawdź katalog i uzupełnij ogłoszenie."}`,
@@ -173,38 +177,6 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       refreshHighlights(next);
       return next;
     });
-  };
-
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    setError(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch("/api/upload/cars", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(typeof data?.error === "string" ? data.error : "Upload zdjęcia nie powiódł się.");
-      }
-      if (typeof data?.url === "string" && data.url) {
-        setForm((prev) => {
-          const next = { ...prev, imageUrl: data.url };
-          refreshHighlights(next, true);
-          return next;
-        });
-      }
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Upload zdjęcia nie powiódł się.");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -226,6 +198,11 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
     }
     if (!payload.fuelType) {
       setError("Wybierz rodzaj paliwa z katalogu.");
+      setSubmitting(false);
+      return;
+    }
+    if (!payload.images.length) {
+      setError("Dodaj co najmniej jedno zdjęcie auta.");
       setSubmitting(false);
       return;
     }
@@ -360,38 +337,22 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
         }}
       />
 
-      <div
-        className={`grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 ${highlightClass(isHighlighted("images"))}`}
-      >
-        <p className="text-sm font-semibold">Zdjęcie główne</p>
-        {form.imageUrl ? (
-          <div className="relative aspect-[16/9] overflow-hidden rounded-xl border border-[var(--eos-border)]">
-            <Image src={form.imageUrl} alt="Podgląd auta" fill className="object-cover" unoptimized />
-          </div>
-        ) : (
-          <p className="text-sm text-[var(--eos-muted)]">Brak zdjęcia — możesz wgrać plik lub wkleić URL poniżej.</p>
-        )}
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="rounded-full border border-sky-400/40 bg-sky-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-sky-300 disabled:opacity-60"
-          >
-            {uploading ? "Wgrywanie..." : "Wgraj zdjęcie"}
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-        </div>
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">URL zdjęcia (opcjonalnie)</span>
-          <input
-            value={form.imageUrl}
-            onChange={(e) => setField("imageUrl", e.target.value)}
-            className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg)] px-3 py-2 outline-none focus:border-sky-400/50"
-            placeholder="https://..."
-          />
-        </label>
-      </div>
+      <CarPhotoGalleryField
+        images={form.images}
+        highlighted={isHighlighted("images")}
+        onUploadingChange={setUploading}
+        onChange={(images) => {
+          setForm((prev) => {
+            const next = {
+              ...prev,
+              images,
+              imageUrl: images[0] || "",
+            };
+            refreshHighlights(next, images.length > 0);
+            return next;
+          });
+        }}
+      />
 
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
       {successId ? (

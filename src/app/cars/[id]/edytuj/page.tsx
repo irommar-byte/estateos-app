@@ -2,6 +2,19 @@ import { notFound } from "next/navigation";
 import { findCarById } from "@/lib/carsStorage";
 import EditCarPageClient from "./EditCarPageClient";
 
+function parseCarImages(car: { images: string; imageUrl: string }): string[] {
+  try {
+    const parsed = JSON.parse(car.images || "[]");
+    if (Array.isArray(parsed)) {
+      const urls = parsed.map((item) => String(item || "").trim()).filter(Boolean);
+      if (urls.length) return urls;
+    }
+  } catch {
+    // ignore malformed JSON
+  }
+  return car.imageUrl ? [car.imageUrl] : [];
+}
+
 export default async function EditCarPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const car = await findCarById(Number(id));
@@ -40,6 +53,7 @@ export default async function EditCarPage({ params }: { params: Promise<{ id: st
         cityLng: car.cityLng,
         localityCountry: car.localityCountry || "Polska",
         imageUrl: car.imageUrl,
+        images: parseCarImages(car),
         vin: car.vin || "",
         registrationNumber: car.registrationNumber || "",
         firstRegistrationDate: car.firstRegistrationDate || "",

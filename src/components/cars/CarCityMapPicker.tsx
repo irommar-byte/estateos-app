@@ -89,10 +89,17 @@ export default function CarCityMapPicker({
 
   const [query, setQuery] = useState(city);
   const [suggestions, setSuggestions] = useState<GeocodeFeature[]>([]);
+  const [searchFocused, setSearchFocused] = useState(false);
   const [searching, setSearching] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [locating, setLocating] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+
+  const dismissSuggestions = useCallback(() => {
+    setSuggestions([]);
+    setSearchFocused(false);
+    manualQueryRef.current = false;
+  }, []);
 
   const centerLat = cityLat ?? DEFAULT_CENTER.lat;
   const centerLng = cityLng ?? DEFAULT_CENTER.lng;
@@ -100,6 +107,7 @@ export default function CarCityMapPicker({
   useEffect(() => {
     if (manualQueryRef.current) return;
     setQuery(city);
+    setSuggestions([]);
   }, [city]);
 
   const applySelection = useCallback(
@@ -148,6 +156,9 @@ export default function CarCityMapPicker({
       attributionControl: false,
     });
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+    map.on("movestart", () => {
+      dismissSuggestions();
+    });
     map.on("moveend", () => {
       const c = map.getCenter();
       void resolveCenter(c.lat, c.lng);
@@ -193,7 +204,7 @@ export default function CarCityMapPicker({
 
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 3) {
+    if (!searchFocused || !manualQueryRef.current || q.length < 3) {
       setSuggestions([]);
       return;
     }
@@ -203,7 +214,7 @@ export default function CarCityMapPicker({
 
     const handle = window.setTimeout(() => {
       setSearching(true);
-      fetch(mapboxForwardGeocodeUrl(q, token, { limit: 6, autocomplete: true, cityHint: q }))
+      fetch(mapboxForwardGeocodeUrl(q, token, { limit: 4, autocomplete: true, cityHint: q }))
         .then((res) => res.json())
         .then((geo) => setSuggestions(Array.isArray(geo?.features) ? geo.features : []))
         .catch(() => setSuggestions([]))
@@ -211,14 +222,13 @@ export default function CarCityMapPicker({
     }, 280);
 
     return () => window.clearTimeout(handle);
-  }, [query]);
+  }, [query, searchFocused]);
 
   const selectSuggestion = async (feature: GeocodeFeature) => {
     const coords = feature.center;
     if (!Array.isArray(coords) || coords.length < 2) return;
     const [lng, lat] = coords;
-    setSuggestions([]);
-    manualQueryRef.current = false;
+    dismissSuggestions();
     flyTo(lat, lng, 12);
     await resolveCenter(lat, lng);
   };
@@ -254,8 +264,13 @@ export default function CarCityMapPicker({
       <div className="relative">
         <input
           value={query}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => {
+            window.setTimeout(() => dismissSuggestions(), 160);
+          }}
           onChange={(event) => {
             manualQueryRef.current = true;
+            setSearchFocused(true);
             setQuery(event.target.value);
             onChange({
               city: event.target.value,
@@ -273,8 +288,8 @@ export default function CarCityMapPicker({
             Szukam…
           </span>
         ) : null}
-        {suggestions.length > 0 ? (
-          <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-lg">
+        {searchFocused && suggestions.length > 0 ? (
+          <ul className="absolute z-20 mt-1 max-h-32 w-full overflow-auto rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-lg">
             {suggestions.map((feature) => (
               <li key={String(feature.id || feature.place_name)}>
                 <button
@@ -290,7 +305,10 @@ export default function CarCityMapPicker({
         ) : null}
       </div>
 
-      <div className="relative overflow-hidden rounded-xl border border-[var(--eos-border)]">
+      <div
+        className="relative overflow-hidden rounded-xl border border-[var(--eos-border)]"
+        onPointerDown={dismissSuggestions}
+      >
         <div ref={mapContainerRef} style={{ height: MAP_HEIGHT }} className="w-full" />
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <MapPin className="h-8 w-8 -translate-y-3 text-sky-400 drop-shadow-md" strokeWidth={2.2} />
