@@ -1,5 +1,3 @@
-import nrv2eDecompress from "nrv2e-decompress";
-
 export type ParsedRegistrationDocument = {
   registrationNumber: string;
   make: string;
@@ -105,30 +103,6 @@ export function parseRegistrationFields(fields: string[]): ParsedRegistrationDoc
   };
 }
 
-export function decodeAztecPayload(base64Input: string): ParsedRegistrationDocument {
-  const cleaned = base64Input.trim().replace(/\s+/g, "");
-  if (!cleaned) throw new Error("Pusty kod Aztec z dowodu rejestracyjnego.");
-
-  const binInput = Buffer.from(cleaned, "base64");
-  if (binInput.length < 8) throw new Error("Nieprawidłowy kod Aztec z dowodu rejestracyjnego.");
-
-  const outputLength = binInput.readUInt32LE(0);
-  if (outputLength <= 0 || outputLength > 100_000) {
-    throw new Error("Nieprawidłowy kod Aztec z dowodu rejestracyjnego.");
-  }
-
-  const utf16Output = Buffer.alloc(outputLength);
-  nrv2eDecompress(binInput.subarray(4), utf16Output);
-
-  const textOutput = utf16Output.toString("utf16le");
-  const fields = textOutput.split("|");
-  if (fields.length < 20) {
-    throw new Error("Odczytany kod nie wygląda na polski dowód rejestracyjny.");
-  }
-
-  return parseRegistrationFields(fields);
-}
-
 export function mapToCarFormPrefill(parsed: ParsedRegistrationDocument): CarRegistrationPrefill {
   const capacityNum = Number(parsed.engineCapacityCm3);
   const powerKw = Number(parsed.enginePowerKw);
@@ -166,43 +140,4 @@ export function listMissingListingFields(
   if (!String(form.city || "").trim()) missing.push("city");
   if (!hasImages && !String(form.imageUrl || "").trim()) missing.push("images");
   return missing;
-}
-
-export async function decodeAztecFromImageBuffer(buffer: Buffer): Promise<string> {
-  const sharp = (await import("sharp")).default;
-  const {
-    MultiFormatReader,
-    BarcodeFormat,
-    DecodeHintType,
-    BinaryBitmap,
-    HybridBinarizer,
-    RGBLuminanceSource,
-  } = await import("@zxing/library");
-
-  const hints = new Map();
-  hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.AZTEC]);
-  hints.set(DecodeHintType.TRY_HARDER, true);
-
-  const reader = new MultiFormatReader();
-  reader.setHints(hints);
-
-  const attempts = [
-    sharp(buffer).rotate().grayscale().raw(),
-    sharp(buffer).rotate().resize({ width: 2200, withoutEnlargement: false }).grayscale().raw(),
-    sharp(buffer).rotate().resize({ width: 1400, withoutEnlargement: false }).normalize().grayscale().raw(),
-  ];
-
-  let lastError: Error | null = null;
-  for (const pipeline of attempts) {
-    try {
-      const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
-      const source = new RGBLuminanceSource(new Uint8ClampedArray(data), info.width, info.height);
-      const bitmap = new BinaryBitmap(new HybridBinarizer(source));
-      return reader.decode(bitmap).getText();
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Nie udało się odczytać kodu Aztec ze zdjęcia.");
-    }
-  }
-
-  throw lastError || new Error("Nie udało się odczytać kodu Aztec ze zdjęcia.");
 }

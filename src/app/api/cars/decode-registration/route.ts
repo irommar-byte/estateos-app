@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import {
   decodeAztecFromImageBuffer,
   decodeAztecPayload,
+} from "@/lib/polishRegistrationDocument.server";
+import {
   listMissingListingFields,
   mapToCarFormPrefill,
-} from "@/lib/polishRegistrationDocument";
+} from "@/lib/polishRegistrationDocument.shared";
 import { getWebFormData } from "@/lib/requestFormData";
 
 const rateByIp = new Map<string, { count: number; resetAt: number }>();

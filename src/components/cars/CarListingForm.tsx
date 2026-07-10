@@ -9,8 +9,8 @@ import CarRegistrationScanGate, {
   missingFieldsBanner,
 } from "@/components/cars/CarRegistrationScanGate";
 import CarVehicleDocsFields, { type CarVehicleDocsFormState } from "@/components/cars/CarVehicleDocsFields";
-import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument";
-import { listMissingListingFields } from "@/lib/polishRegistrationDocument";
+import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
+import { listMissingListingFields } from "@/lib/polishRegistrationDocument.shared";
 import { formatDateForForm } from "@/utils/polishDateInput";
 
 export type CarFormState = CarVehicleDocsFormState & {

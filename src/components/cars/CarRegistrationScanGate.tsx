@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { CarFormState } from "@/components/cars/CarListingForm";
-import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument";
+import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
 
 type CarRegistrationScanGateProps = {
   open: boolean;
