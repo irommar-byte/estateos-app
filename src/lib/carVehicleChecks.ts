@@ -96,24 +96,21 @@ function plateForCepik(plate: string) {
   return plate.replace(/\s+/g, '');
 }
 
-function isValidVin(vin: string) {
-  if (vin.length !== 17) return false;
-  if (/[IOQ]/.test(vin)) return false;
-  const weights = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
-  const translit: Record<string, number> = {
-    A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8,
-    J: 1, K: 2, L: 3, M: 4, N: 5, P: 7, R: 9,
-    S: 2, T: 3, U: 4, V: 5, W: 6, X: 7, Y: 8, Z: 9,
-  };
-  let sum = 0;
-  for (let i = 0; i < 17; i += 1) {
-    const ch = vin[i];
-    const value = ch >= '0' && ch <= '9' ? Number(ch) : translit[ch] ?? 0;
-    sum += value * weights[i];
-  }
-  const check = sum % 11;
-  const expected = check === 10 ? 'X' : String(check);
-  return vin[8] === expected;
+/** 17 znaków bez I/O/Q — CEPIK weryfikuje VIN po swojej stronie. */
+function isValidVinFormat(vin: string) {
+  const normalized = normalizeVin(vin);
+  return normalized.length === 17 && !/[IOQ]/.test(normalized);
+}
+
+function hasCompleteVehicleDocs(input: {
+  vin?: string;
+  registrationNumber?: string;
+  firstRegistrationDate?: string;
+}) {
+  const vin = normalizeVin(input.vin || '');
+  const plate = normalizePlate(input.registrationNumber || '');
+  const firstReg = parseIsoDate(String(input.firstRegistrationDate || ''));
+  return isValidVinFormat(vin) && isValidPolishPlate(plate) && firstReg != null;
 }
 
 function isValidPolishPlate(plate: string) {
@@ -258,10 +255,19 @@ function buildTimelineSection(timelineData: Record<string, unknown>): VehicleHis
 
 function extractInsuranceInfo(payload: Record<string, unknown>) {
   const rows: { label: string; value: string }[] = [];
-  const insurer = findNestedValue(payload, /(insurer|ubezpieczyciel|insuranceCompany|zaklad)/i);
-  const policy = findNestedValue(payload, /(policyNumber|numerPolisy|policyNo|numerUmowy)/i);
-  const validUntil = findNestedValue(payload, /(validUntil|ocValidUntil|insuranceValidUntil|koniecOchrony|endDate)/i);
-  const hasInsurance = findNestedValue(payload, /(hasValidInsurance|isInsured|ocValid|ubezpieczenie)/i);
+  const insurer = findNestedValue(
+    payload,
+    /(insurer|ubezpieczyciel|insuranceCompany|zaklad|insuranceProvider|companyName)/i,
+  );
+  const policy = findNestedValue(payload, /(policyNumber|numerPolisy|policyNo|numerUmowy|policy)/i);
+  const validUntil = findNestedValue(
+    payload,
+    /(validUntil|validTo|ocValidUntil|insuranceValidUntil|koniecOchrony|endDate|expirationDate|policyEndDate|insuranceEndDate|dateTo|doDnia)/i,
+  );
+  const hasInsurance = findNestedValue(
+    payload,
+    /(hasValidInsurance|isInsured|ocValid|ubezpieczenie|insuranceStatus|mandatoryInsurance|liabilityInsurance)/i,
+  );
 
   if (insurer) rows.push({ label: 'Ubezpieczyciel', value: formatValue(insurer) });
   if (policy) rows.push({ label: 'Numer polisy', value: formatValue(policy) });
@@ -300,8 +306,8 @@ function buildCepikQuery(input: VehicleHistoryRequest): CepikVehicleQuery {
   const vin = normalizeVin(input.vin);
   const registrationNumber = normalizePlate(input.registrationNumber);
 
-  if (!isValidVin(vin)) {
-    throw new Error('Nieprawidłowy numer VIN (wymagane 17 znaków i poprawna suma kontrolna).');
+  if (!isValidVinFormat(vin)) {
+    throw new Error('Nieprawidłowy numer VIN (wymagane 17 znaków, bez liter I, O, Q).');
   }
   if (!isValidPolishPlate(registrationNumber)) {
     throw new Error('Nieprawidłowy format numeru rejestracyjnego.');
@@ -370,19 +376,32 @@ export async function checkVehicleInsurance(input: InsuranceCheckRequest): Promi
     throw new Error('Podaj poprawny numer rejestracyjny (np. WW 12345).');
   }
 
-  if (vin && isValidVin(vin) && input.firstRegistrationDate) {
+  const docsComplete = hasCompleteVehicleDocs({
+    vin,
+    registrationNumber,
+    firstRegistrationDate: input.firstRegistrationDate,
+  });
+
+  if (docsComplete) {
+    let cepikConfirmed = false;
     try {
       const query = buildCepikQuery({
         vin,
         registrationNumber,
-        firstRegistrationDate: input.firstRegistrationDate,
+        firstRegistrationDate: input.firstRegistrationDate!,
       });
-      const { insuranceData, vehicleData } = await queryCepikInsurance({
+      const { insuranceData, vehicleData, timelineData } = await queryCepikInsurance({
         ...query,
         checkDate: checkDateIso,
       });
 
-      const payload = insuranceData || vehicleData || {};
+      cepikConfirmed = Boolean(vehicleData || timelineData || insuranceData);
+
+      const payload = {
+        ...(vehicleData || {}),
+        ...(timelineData || {}),
+        ...(insuranceData || {}),
+      };
       const extracted = extractInsuranceInfo(payload);
       const validUntilDate = parseInsuranceValidity(extracted.validUntil);
       const active = isInsuranceActive(validUntilDate, checkDate);
@@ -416,11 +435,50 @@ export async function checkVehicleInsurance(input: InsuranceCheckRequest): Promi
           source: insuranceData ? 'UFG' : 'CEPIK',
         };
       }
+
+      if (vehicleData) {
+        return {
+          hasInsurance: false,
+          message: `Pojazd ${registrationNumber} potwierdzony w CEPIK. Automatyczny odczyt daty OC niedostępny — uzupełnij ważność polisy ręcznie lub sprawdź na ufg.pl.`,
+          checkedAt: new Date().toISOString(),
+          source: 'CEPIK',
+        };
+      }
     } catch (error) {
       if (error instanceof CepikHistoriaPojazduError && error.code !== 'NOT_FOUND' && error.code !== 'HIPO-0002') {
         throw new Error(error.message);
       }
+      if (!(error instanceof CepikHistoriaPojazduError)) {
+        const message = error instanceof Error ? error.message : '';
+        if (message && !message.includes('Podaj datę')) {
+          throw error;
+        }
+      }
     }
+
+    const validUntilRaw = String(input.insuranceValidUntil || '').trim();
+    const manualValidUntil = parseIsoDate(validUntilRaw);
+    if (manualValidUntil) {
+      const hasInsurance = manualValidUntil >= checkDate;
+      return {
+        hasInsurance,
+        validUntil: formatDisplayDate(validUntilRaw),
+        message: hasInsurance
+          ? `Na podstawie podanej daty: OC ważne do ${formatDisplayDate(validUntilRaw)}.`
+          : `Na podstawie podanej daty: polisa wygasła ${formatDisplayDate(validUntilRaw)}.`,
+        checkedAt: new Date().toISOString(),
+        source: 'CEPIK_FALLBACK',
+      };
+    }
+
+    return {
+      hasInsurance: false,
+      message: cepikConfirmed
+        ? `Pojazd ${registrationNumber} potwierdzony w CEPIK. Nie udało się odczytać daty OC z UFG — uzupełnij ważność polisy ręcznie lub sprawdź na ufg.pl.`
+        : `Nie udało się zweryfikować OC w CEPIK/UFG dla ${registrationNumber}. Uzupełnij pole ważności polisy lub sprawdź na ufg.pl.`,
+      checkedAt: new Date().toISOString(),
+      source: 'CEPIK',
+    };
   }
 
   const validUntilRaw = String(input.insuranceValidUntil || '').trim();
@@ -439,6 +497,6 @@ export async function checkVehicleInsurance(input: InsuranceCheckRequest): Promi
   }
 
   throw new Error(
-    'Podaj VIN i datę pierwszej rejestracji, aby sprawdzić OC w CEPIK/UFG, lub uzupełnij pole ważności polisy.',
+    'Podaj VIN (17 znaków), numer rejestracyjny i datę pierwszej rejestracji (DD.MM.RRRR), aby sprawdzić OC w CEPIK/UFG, lub uzupełnij pole ważności polisy.',
   );
 }

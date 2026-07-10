@@ -4,9 +4,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import CarCatalogFields from "@/components/cars/CarCatalogFields";
+import CarVehicleDocsFields, { type CarVehicleDocsFormState } from "@/components/cars/CarVehicleDocsFields";
+import { formatDateForForm } from "@/utils/polishDateInput";
 
-export type CarFormState = {
+export type CarFormState = CarVehicleDocsFormState & {
   title: string;
+  description: string;
   make: string;
   model: string;
   makeSlug: string;
@@ -35,6 +38,7 @@ export type CarFormState = {
 
 export const initialCarForm: CarFormState = {
   title: "",
+  description: "",
   make: "",
   model: "",
   makeSlug: "",
@@ -59,6 +63,10 @@ export const initialCarForm: CarFormState = {
   pricePln: "",
   city: "",
   imageUrl: "",
+  vin: "",
+  registrationNumber: "",
+  firstRegistrationDate: "",
+  insuranceValidUntil: "",
 };
 
 type CarListingFormProps = {
@@ -72,6 +80,7 @@ function toPayload(form: CarFormState) {
   const doorCount = Number(form.doorCountSlug || form.doorCount);
   return {
     title: form.title.trim(),
+    description: form.description.trim(),
     make: form.make.trim(),
     model: form.model.trim(),
     year: Number(form.year),
@@ -87,6 +96,10 @@ function toPayload(form: CarFormState) {
     pricePln: Number(form.pricePln),
     city: form.city.trim(),
     imageUrl: form.imageUrl.trim(),
+    vin: form.vin.trim().toUpperCase(),
+    registrationNumber: form.registrationNumber.trim().toUpperCase(),
+    firstRegistrationDate: form.firstRegistrationDate.trim(),
+    insuranceValidUntil: form.insuranceValidUntil.trim(),
   };
 }
 
@@ -138,7 +151,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
 
     const payload = toPayload(form);
     if (!payload.title || !payload.make || !payload.model || !payload.city || payload.pricePln <= 0) {
-      setError("Uzupełnij tytuł, markę, model, miasto i poprawną cenę.");
+      setError("Uzupełnij tytuł, markę, model, miejscowość i poprawną cenę.");
       setSubmitting(false);
       return;
     }
@@ -163,6 +176,16 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       }
 
       const savedId = Number(data?.listing?.id || carId || 0) || null;
+      if (data?.listing) {
+        const listing = data.listing as Record<string, string>;
+        setForm((prev) => ({
+          ...prev,
+          vin: listing.vin || prev.vin,
+          registrationNumber: listing.registrationNumber || prev.registrationNumber,
+          firstRegistrationDate: formatDateForForm(listing.firstRegistrationDate || prev.firstRegistrationDate),
+          insuranceValidUntil: formatDateForForm(listing.insuranceValidUntil || prev.insuranceValidUntil),
+        }));
+      }
       setSuccessId(savedId);
       if (savedId) onSuccess?.(savedId);
       if (mode === "create") setForm(initialCarForm);
@@ -187,6 +210,26 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
           required
         />
       </label>
+
+      <label className="grid gap-1.5 text-sm">
+        <span className="text-[var(--eos-muted)]">Opis</span>
+        <textarea
+          value={form.description}
+          onChange={(e) => setField("description", e.target.value)}
+          className="min-h-[120px] rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
+          placeholder="Opisz stan auta, historię serwisową, wyposażenie..."
+        />
+      </label>
+
+      <CarVehicleDocsFields
+        value={{
+          vin: form.vin,
+          registrationNumber: form.registrationNumber,
+          firstRegistrationDate: form.firstRegistrationDate,
+          insuranceValidUntil: form.insuranceValidUntil,
+        }}
+        onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="grid gap-1.5 text-sm">
@@ -213,12 +256,12 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       </div>
 
       <label className="grid gap-1.5 text-sm">
-        <span className="text-[var(--eos-muted)]">Miasto</span>
+        <span className="text-[var(--eos-muted)]">Miejscowość</span>
         <input
           value={form.city}
           onChange={(e) => setField("city", e.target.value)}
           className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50"
-          placeholder="Warszawa"
+          placeholder="np. Warszawa Mokotów"
           required
         />
       </label>

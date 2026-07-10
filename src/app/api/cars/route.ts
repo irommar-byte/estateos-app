@@ -8,6 +8,13 @@ function toSafeNumber(v: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function normalizeVinInput(raw: unknown): string {
+  return String(raw || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-HJ-NPR-Z0-9]/g, "");
+}
+
 function validateBody(raw: Record<string, unknown>): CarListingUpdateInput & { userId: number | null } {
   const doorCountRaw = raw?.doorCount;
   const doorCount =
@@ -45,6 +52,11 @@ function validateBody(raw: Record<string, unknown>): CarListingUpdateInput & { u
       raw?.cityLng == null || String(raw.cityLng).trim() === ""
         ? null
         : toSafeNumber(raw.cityLng, 0) || null,
+    localityCountry: String(raw?.localityCountry || "").trim() || "Polska",
+    vin: normalizeVinInput(raw?.vin),
+    registrationNumber: String(raw?.registrationNumber || "").trim().toUpperCase(),
+    firstRegistrationDate: String(raw?.firstRegistrationDate || "").trim(),
+    insuranceValidUntil: String(raw?.insuranceValidUntil || "").trim(),
   };
 }
 
