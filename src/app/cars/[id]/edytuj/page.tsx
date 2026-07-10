@@ -12,6 +12,7 @@ export default async function EditCarPage({ params }: { params: Promise<{ id: st
       carId={car.id}
       initialValues={{
         title: car.title,
+        description: car.description || "",
         make: car.make,
         model: car.model,
         makeSlug: "",
@@ -36,6 +37,10 @@ export default async function EditCarPage({ params }: { params: Promise<{ id: st
         pricePln: String(car.pricePln),
         city: car.city,
         imageUrl: car.imageUrl,
+        vin: car.vin || "",
+        registrationNumber: car.registrationNumber || "",
+        firstRegistrationDate: car.firstRegistrationDate || "",
+        insuranceValidUntil: car.insuranceValidUntil || "",
       }}
     />
   );
