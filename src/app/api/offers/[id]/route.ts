@@ -303,6 +303,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       buildYearLabel: formatOfferBuildYear(legalOffer as Record<string, unknown>),
       floorPlanUrl: (legalOffer as { floorPlanUrl?: string | null }).floorPlanUrl || null,
       floorPlan: (legalOffer as { floorPlanUrl?: string | null }).floorPlanUrl || null,
+      floorPlan3dUrl: (legalOffer as { floorPlan3dUrl?: string | null }).floorPlan3dUrl || null,
+      floorPlanScanMeta: (legalOffer as { floorPlanScanMeta?: string | null }).floorPlanScanMeta || null,
       marketListedAt: marketListing.marketListedAt,
       marketRenewedAt: marketListing.marketRenewedAt,
       localityCountry: localityResolved.localityCountry,

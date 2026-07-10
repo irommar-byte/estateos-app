@@ -32,6 +32,7 @@ import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
 import { isOfferNewListing } from "@/lib/offerLifecycle";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
+import FloorPlan3dWalkthrough from "@/components/offers/FloorPlan3dWalkthrough";
 import OpenHouseOfferBanner from "@/components/offer/OpenHouseOfferBanner";
 import OpenHouseReserveModal from "@/components/offer/OpenHouseReserveModal";
 import AuctionOfferBanner from "@/components/offer/AuctionOfferBanner";
@@ -392,6 +393,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const yearBuiltLabel = formatOfferBuildYear(offer);
   const heatingLabel = offer.heating ? String(offer.heating) : null;
   const floorPlanSrc = String(offer.floorPlanUrl || offer.floorPlan || "").trim();
+  const floorPlan3dSrc = String(offer.floorPlan3dUrl || "").trim();
   const propertyTypeLabel = formatOfferPropertyType(offer.propertyType, locale);
   const floorDisplay = (() => {
     const floorVal = offer.floor != null && offer.floor !== "" ? String(offer.floor) : null;
@@ -1007,6 +1009,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                         </div>
                       </div>
                     </button>
+                    {floorPlan3dSrc ? <FloorPlan3dWalkthrough modelUrl={floorPlan3dSrc} locale={locale} /> : null}
                   </section>
                 ) : null}
 
