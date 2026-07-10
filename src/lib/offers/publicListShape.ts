@@ -97,7 +97,7 @@ export function shapePublicListOffer(
     ? enrichOfferWithLegalAliases(withDiscount)
     : withDiscount;
 
-  const promotedUntilRaw = withAliases.promotedUntil;
+  const promotedUntilRaw = (rest as { promotedUntil?: Date | string | null }).promotedUntil;
   const featured = isPromotionActive(
     promotedUntilRaw instanceof Date
       ? promotedUntilRaw
