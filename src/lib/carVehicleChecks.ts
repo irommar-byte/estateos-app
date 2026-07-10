@@ -286,7 +286,7 @@ function extractInsuranceInfo(payload: Record<string, unknown>) {
     payload,
     /(insurer|ubezpieczyciel|insuranceCompany|zaklad|insuranceProvider|companyName)/i,
   );
-  const policy = findNestedValue(payload, /(policyNumber|numerPolisy|policyNo|numerUmowy|policy)/i);
+  const policy = findNestedValue(payload, /(policyNumber|numerPolisy|policyNo|numerUmowy)/i);
   const validUntil = findNestedValue(
     payload,
     /(validUntil|validTo|ocValidUntil|insuranceValidUntil|insuranceExpiryDate|koniecOchrony|endDate|expirationDate|policyEndDate|insuranceEndDate|dateTo|doDnia)/i,
