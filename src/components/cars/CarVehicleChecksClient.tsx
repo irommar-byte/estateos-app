@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { FileSearch, ShieldCheck, X } from "lucide-react";
 
@@ -18,6 +19,7 @@ type CarVehicleChecksClientProps = {
   registrationNumber?: string;
   firstRegistrationDate?: string;
   insuranceValidUntil?: string;
+  loggedIn?: boolean;
 };
 
 export default function CarVehicleChecksClient({
@@ -25,6 +27,7 @@ export default function CarVehicleChecksClient({
   registrationNumber = "",
   firstRegistrationDate = "",
   insuranceValidUntil = "",
+  loggedIn = false,
 }: CarVehicleChecksClientProps) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [insuranceLoading, setInsuranceLoading] = useState(false);
@@ -32,16 +35,20 @@ export default function CarVehicleChecksClient({
   const [insuranceMessage, setInsuranceMessage] = useState<string | null>(null);
   const [insuranceOk, setInsuranceOk] = useState<boolean | null>(null);
 
-  const hasHistoryData = Boolean(vin.trim() && registrationNumber.trim() && firstRegistrationDate.trim());
-  const hasInsuranceData = Boolean(registrationNumber.trim() && (insuranceValidUntil.trim() || vin.trim()));
+  const hasHistoryData = Boolean(
+    vin.trim().length === 17 && registrationNumber.trim() && firstRegistrationDate.trim(),
+  );
+  const hasInsuranceData = hasHistoryData;
 
   const handleHistory = async () => {
+    if (!loggedIn) return;
     if (!hasHistoryData) return;
     setHistoryLoading(true);
     try {
       const response = await fetch("/api/cars/vehicle-history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ vin, registrationNumber, firstRegistrationDate }),
       });
       const data = await response.json().catch(() => ({}));
@@ -57,12 +64,14 @@ export default function CarVehicleChecksClient({
   };
 
   const handleInsurance = async () => {
+    if (!loggedIn) return;
     if (!hasInsuranceData) return;
     setInsuranceLoading(true);
     try {
       const response = await fetch("/api/cars/insurance-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ vin, registrationNumber, firstRegistrationDate, insuranceValidUntil }),
       });
       const data = await response.json().catch(() => ({}));
@@ -84,6 +93,15 @@ export default function CarVehicleChecksClient({
       <p className="mt-2 text-sm text-[var(--eos-muted)]">
         Sprawdź historię w CEPIK i ważność OC (UFG) na podstawie danych z ogłoszenia.
       </p>
+
+      {!loggedIn ? (
+        <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-50">
+          Sprawdzenie historii pojazdu i OC wymaga zalogowania.{" "}
+          <Link href="/login" className="font-bold underline underline-offset-2">
+            Zaloguj się
+          </Link>
+        </p>
+      ) : null}
 
       <div className="mt-4 grid gap-2 text-sm">
         {vin.trim() ? (
@@ -116,8 +134,8 @@ export default function CarVehicleChecksClient({
         <button
           type="button"
           onClick={() => void handleHistory()}
-          disabled={historyLoading || !hasHistoryData}
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-400/35 bg-sky-900/30 px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-sky-200 disabled:opacity-45"
+          disabled={historyLoading || !loggedIn || !hasHistoryData}
+          className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-400/35 bg-sky-500/10 px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-sky-700 disabled:opacity-45 dark:text-sky-200"
         >
           <FileSearch className="size-4" />
           {historyLoading ? "Sprawdzanie..." : "Sprawdź historię pojazdu"}
@@ -125,8 +143,8 @@ export default function CarVehicleChecksClient({
         <button
           type="button"
           onClick={() => void handleInsurance()}
-          disabled={insuranceLoading || !hasInsuranceData}
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-400/35 bg-emerald-900/20 px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-emerald-200 disabled:opacity-45"
+          disabled={insuranceLoading || !loggedIn || !hasInsuranceData}
+          className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-400/35 bg-emerald-500/10 px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-emerald-800 disabled:opacity-45 dark:text-emerald-200"
         >
           <ShieldCheck className="size-4" />
           {insuranceLoading ? "Sprawdzanie..." : "Sprawdź ubezpieczenie"}

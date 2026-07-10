@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import CarCatalogFields from "@/components/cars/CarCatalogFields";
 import CarCityMapPicker from "@/components/cars/CarCityMapPicker";
 import CarFormattedNumberInput from "@/components/cars/CarFormattedNumberInput";
@@ -134,6 +134,14 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
   const [scanGateOpen, setScanGateOpen] = useState(mode === "create");
   const [highlightKeys, setHighlightKeys] = useState<CarListingMissingFieldKey[]>([]);
   const [scanNotice, setScanNotice] = useState<string | null>(null);
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/check", { cache: "no-store", credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => setLoggedIn(Boolean(data?.loggedIn && data?.user?.id)))
+      .catch(() => setLoggedIn(false));
+  }, []);
 
   const refreshHighlights = (nextForm: CarFormState, hasImages = nextForm.images.length > 0) => {
     setHighlightKeys(listMissingListingFields(nextForm, hasImages));
@@ -256,7 +264,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
 
       <form onSubmit={handleSubmit} className="mt-8 grid gap-4">
         {scanNotice ? (
-          <p className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          <p className="rounded-2xl border border-amber-500/30 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-50">
             {scanNotice}
           </p>
         ) : null}
@@ -292,6 +300,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
           insuranceValidUntil: form.insuranceValidUntil,
         }}
         onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+        loggedIn={loggedIn}
       />
 
       <div className="grid gap-4 sm:grid-cols-2">

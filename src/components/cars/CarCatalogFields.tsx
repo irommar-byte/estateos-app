@@ -1,13 +1,25 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { BODY_TYPE_OPTIONS } from "@/lib/otomotoCatalog";
 import { pickDoorCountOption, pickGenerationForYear } from "@/lib/carCatalogInference";
 import { findEngineCapacityOption, findEnginePowerOption, findOptionByLabel, useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
 import type { CarFormState } from "@/components/cars/CarListingForm";
 
-const selectClassName =
-  "rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50";
+const fieldLabelClass =
+  "text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]";
+
+const fieldInputClass =
+  "w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3.5 py-2.5 text-sm text-[var(--eos-text)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.05)] outline-none transition focus:border-sky-400/55 focus:ring-2 focus:ring-sky-400/20 disabled:cursor-not-allowed disabled:opacity-50";
+
+function CatalogField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="grid gap-2">
+      <span className={fieldLabelClass}>{label}</span>
+      {children}
+    </label>
+  );
+}
 
 type CarCatalogFieldsProps = {
   form: CarFormState;
@@ -34,10 +46,10 @@ function CatalogSelect({
   placeholder?: string;
 }) {
   return (
-    <label className="grid gap-1.5 text-sm">
-      <span className="text-[var(--eos-muted)]">
+    <label className="grid gap-2">
+      <span className={fieldLabelClass}>
         {label}
-        {loading ? " (ładowanie...)" : ""}
+        {loading ? "…" : ""}
       </span>
       <select
         value={value}
@@ -46,7 +58,7 @@ function CatalogSelect({
           const option = options.find((item) => item.value === slug);
           onChange(slug, option?.label || "");
         }}
-        className={selectClassName}
+        className={fieldInputClass}
         disabled={disabled || loading}
         required={required}
       >
@@ -218,22 +230,66 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
   const patch = (partial: Partial<CarFormState>) => setForm((prev) => ({ ...prev, ...partial }));
 
   return (
-    <div className="grid gap-4 rounded-2xl border border-sky-400/20 bg-sky-500/5 p-4">
-      <div>
-        <p className="text-sm font-semibold text-sky-200">Katalog pojazdu</p>
+    <section className="overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_22px_70px_rgba(14,165,233,0.08)]">
+      <div className="border-b border-[var(--eos-border)] bg-gradient-to-r from-sky-500/[0.07] via-transparent to-cyan-500/[0.04] px-5 py-4 sm:px-6">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">Katalog pojazdu</p>
+        <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">Specyfikacja auta</h2>
         <p className="mt-1 text-xs text-[var(--eos-muted)]">
-          Dane jak na Otomoto — wybierz markę, model, paliwo, silnik i wersję po kolei.
+          Wybierz markę, model, paliwo, silnik i wersję po kolei — jak w profesjonalnym katalogu.
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Rocznik produkcji</span>
-          <select
-            value={form.year}
-            onChange={(event) =>
+      <div className="grid gap-5 p-5 sm:p-6">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <CatalogField label="Rocznik produkcji">
+            <select
+              value={form.year}
+              onChange={(event) =>
+                patch({
+                  year: event.target.value,
+                  fuelSlug: "",
+                  fuelType: "",
+                  enginePowerSlug: "",
+                  enginePower: "",
+                  engineCapacitySlug: "",
+                  engineCapacity: "",
+                  doorCountSlug: "",
+                  doorCount: "",
+                  gearboxSlug: "",
+                  transmission: "Automatyczna",
+                  trimVersionSlug: "",
+                  trimVersion: "",
+                })
+              }
+              className={fieldInputClass}
+              required
+            >
+              <option value="">Wybierz rocznik</option>
+              {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, index) => {
+                const year = String(new Date().getFullYear() - index);
+                return (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                );
+              })}
+            </select>
+          </CatalogField>
+
+          <CatalogSelect
+            label="Marka"
+            value={form.makeSlug}
+            options={makes}
+            loading={makesLoading}
+            required
+            onChange={(slug, label) =>
               patch({
-                year: event.target.value,
+                makeSlug: slug,
+                make: label,
+                modelSlug: "",
+                model: "",
+                generationSlug: "",
+                generation: "",
                 fuelSlug: "",
                 fuelType: "",
                 enginePowerSlug: "",
@@ -248,253 +304,216 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
                 trimVersion: "",
               })
             }
-            className={selectClassName}
+          />
+
+          <CatalogSelect
+            label="Model"
+            value={form.modelSlug}
+            options={models}
+            loading={modelsLoading}
+            disabled={!hasMake}
             required
-          >
-            <option value="">Wybierz rocznik</option>
-            {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, index) => {
-              const year = String(new Date().getFullYear() - index);
-              return (
-                <option key={year} value={year}>
-                  {year}
+            onChange={(slug, label) =>
+              patch({
+                modelSlug: slug,
+                model: label,
+                generationSlug: "",
+                generation: "",
+                fuelSlug: "",
+                fuelType: "",
+                enginePowerSlug: "",
+                enginePower: "",
+                engineCapacitySlug: "",
+                engineCapacity: "",
+                doorCountSlug: "",
+                doorCount: "",
+                gearboxSlug: "",
+                transmission: "Automatyczna",
+                trimVersionSlug: "",
+                trimVersion: "",
+              })
+            }
+          />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <CatalogSelect
+            label="Generacja"
+            value={form.generationSlug}
+            options={generations}
+            loading={generationsLoading}
+            disabled={!hasMake || !hasModel}
+            placeholder="Opcjonalnie"
+            onChange={(slug, label) =>
+              patch({
+                generationSlug: slug,
+                generation: label,
+                fuelSlug: "",
+                fuelType: "",
+                enginePowerSlug: "",
+                enginePower: "",
+                engineCapacitySlug: "",
+                engineCapacity: "",
+                doorCountSlug: "",
+                doorCount: "",
+                gearboxSlug: "",
+                transmission: "Automatyczna",
+                trimVersionSlug: "",
+                trimVersion: "",
+              })
+            }
+          />
+
+          <CatalogSelect
+            label="Rodzaj paliwa"
+            value={form.fuelSlug}
+            options={fuelTypes}
+            loading={fuelLoading}
+            disabled={!hasMake || !hasModel}
+            required
+            onChange={(slug, label) =>
+              patch({
+                fuelSlug: slug,
+                fuelType: label,
+                enginePowerSlug: "",
+                enginePower: "",
+                engineCapacitySlug: "",
+                engineCapacity: "",
+                doorCountSlug: "",
+                doorCount: "",
+                gearboxSlug: "",
+                transmission: "Automatyczna",
+                trimVersionSlug: "",
+                trimVersion: "",
+              })
+            }
+          />
+
+          <div className="hidden xl:block" aria-hidden />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <CatalogSelect
+            label="Moc silnika"
+            value={form.enginePowerSlug}
+            options={enginePowers}
+            loading={powerLoading}
+            disabled={!form.fuelSlug}
+            onChange={(slug, label) =>
+              patch({
+                enginePowerSlug: slug,
+                enginePower: label,
+                engineCapacitySlug: "",
+                engineCapacity: "",
+                doorCountSlug: "",
+                doorCount: "",
+                gearboxSlug: "",
+                transmission: "Automatyczna",
+                trimVersionSlug: "",
+                trimVersion: "",
+              })
+            }
+          />
+
+          <CatalogSelect
+            label="Pojemność silnika (cm³)"
+            value={form.engineCapacitySlug}
+            options={engineCapacities}
+            loading={capacityLoading}
+            disabled={!form.enginePowerSlug}
+            onChange={(slug, label) =>
+              patch({
+                engineCapacitySlug: slug,
+                engineCapacity: label,
+                doorCountSlug: "",
+                doorCount: "",
+                gearboxSlug: "",
+                transmission: "Automatyczna",
+                trimVersionSlug: "",
+                trimVersion: "",
+              })
+            }
+          />
+
+          <div className="hidden xl:block" aria-hidden />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <CatalogSelect
+            label="Liczba drzwi"
+            value={form.doorCountSlug}
+            options={doorCounts}
+            loading={doorsLoading}
+            disabled={!form.engineCapacitySlug}
+            onChange={(slug, label) =>
+              patch({
+                doorCountSlug: slug,
+                doorCount: label,
+                gearboxSlug: "",
+                transmission: "Automatyczna",
+                trimVersionSlug: "",
+                trimVersion: "",
+              })
+            }
+          />
+
+          <CatalogSelect
+            label="Skrzynia biegów"
+            value={form.gearboxSlug}
+            options={gearboxes}
+            loading={gearboxLoading}
+            disabled={!form.engineCapacitySlug}
+            onChange={(slug, label) =>
+              patch({
+                gearboxSlug: slug,
+                transmission: label || "Automatyczna",
+                trimVersionSlug: "",
+                trimVersion: "",
+              })
+            }
+          />
+
+          <CatalogField label="Nadwozie">
+            <select
+              value={form.bodyType}
+              onChange={(event) => patch({ bodyType: event.target.value })}
+              className={fieldInputClass}
+            >
+              {BODY_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.label}>
+                  {option.label}
                 </option>
-              );
-            })}
-          </select>
-        </label>
+              ))}
+            </select>
+          </CatalogField>
+        </div>
 
         <CatalogSelect
-          label="Marka"
-          value={form.makeSlug}
-          options={makes}
-          loading={makesLoading}
-          required
-          onChange={(slug, label) =>
+          label="Wersja / wyposażenie"
+          value={form.trimVersionSlug}
+          options={versions}
+          loading={versionsLoading}
+          disabled={!form.gearboxSlug}
+          placeholder="Opcjonalnie — wybierz po skrzyni biegów"
+          onChange={(slug, label) => {
+            const nextTitle =
+              !form.title.trim() && form.make && form.model && label
+                ? `${form.make} ${form.model} ${label}`.trim()
+                : form.title;
             patch({
-              makeSlug: slug,
-              make: label,
-              modelSlug: "",
-              model: "",
-              generationSlug: "",
-              generation: "",
-              fuelSlug: "",
-              fuelType: "",
-              enginePowerSlug: "",
-              enginePower: "",
-              engineCapacitySlug: "",
-              engineCapacity: "",
-              doorCountSlug: "",
-              doorCount: "",
-              gearboxSlug: "",
-              transmission: "Automatyczna",
-              trimVersionSlug: "",
-              trimVersion: "",
-            })
-          }
+              trimVersionSlug: slug,
+              trimVersion: label,
+              title: nextTitle,
+            });
+          }}
         />
 
-        <CatalogSelect
-          label="Model"
-          value={form.modelSlug}
-          options={models}
-          loading={modelsLoading}
-          disabled={!hasMake}
-          required
-          onChange={(slug, label) =>
-            patch({
-              modelSlug: slug,
-              model: label,
-              generationSlug: "",
-              generation: "",
-              fuelSlug: "",
-              fuelType: "",
-              enginePowerSlug: "",
-              enginePower: "",
-              engineCapacitySlug: "",
-              engineCapacity: "",
-              doorCountSlug: "",
-              doorCount: "",
-              gearboxSlug: "",
-              transmission: "Automatyczna",
-              trimVersionSlug: "",
-              trimVersion: "",
-            })
-          }
-        />
+        {!hasYear ? (
+          <p className="rounded-xl border border-amber-500/30 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
+            Uzupełnij rocznik, aby zawęzić dostępne silniki i wersje.
+          </p>
+        ) : null}
       </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <CatalogSelect
-          label="Generacja"
-          value={form.generationSlug}
-          options={generations}
-          loading={generationsLoading}
-          disabled={!hasMake || !hasModel}
-          placeholder="Opcjonalnie"
-          onChange={(slug, label) =>
-            patch({
-              generationSlug: slug,
-              generation: label,
-              fuelSlug: "",
-              fuelType: "",
-              enginePowerSlug: "",
-              enginePower: "",
-              engineCapacitySlug: "",
-              engineCapacity: "",
-              doorCountSlug: "",
-              doorCount: "",
-              gearboxSlug: "",
-              transmission: "Automatyczna",
-              trimVersionSlug: "",
-              trimVersion: "",
-            })
-          }
-        />
-
-        <CatalogSelect
-          label="Rodzaj paliwa"
-          value={form.fuelSlug}
-          options={fuelTypes}
-          loading={fuelLoading}
-          disabled={!hasMake || !hasModel}
-          required
-          onChange={(slug, label) =>
-            patch({
-              fuelSlug: slug,
-              fuelType: label,
-              enginePowerSlug: "",
-              enginePower: "",
-              engineCapacitySlug: "",
-              engineCapacity: "",
-              doorCountSlug: "",
-              doorCount: "",
-              gearboxSlug: "",
-              transmission: "Automatyczna",
-              trimVersionSlug: "",
-              trimVersion: "",
-            })
-          }
-        />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <CatalogSelect
-          label="Moc silnika"
-          value={form.enginePowerSlug}
-          options={enginePowers}
-          loading={powerLoading}
-          disabled={!form.fuelSlug}
-          onChange={(slug, label) =>
-            patch({
-              enginePowerSlug: slug,
-              enginePower: label,
-              engineCapacitySlug: "",
-              engineCapacity: "",
-              doorCountSlug: "",
-              doorCount: "",
-              gearboxSlug: "",
-              transmission: "Automatyczna",
-              trimVersionSlug: "",
-              trimVersion: "",
-            })
-          }
-        />
-
-        <CatalogSelect
-          label="Pojemność silnika (cm³)"
-          value={form.engineCapacitySlug}
-          options={engineCapacities}
-          loading={capacityLoading}
-          disabled={!form.enginePowerSlug}
-          onChange={(slug, label) =>
-            patch({
-              engineCapacitySlug: slug,
-              engineCapacity: label,
-              doorCountSlug: "",
-              doorCount: "",
-              gearboxSlug: "",
-              transmission: "Automatyczna",
-              trimVersionSlug: "",
-              trimVersion: "",
-            })
-          }
-        />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <CatalogSelect
-          label="Liczba drzwi"
-          value={form.doorCountSlug}
-          options={doorCounts}
-          loading={doorsLoading}
-          disabled={!form.engineCapacitySlug}
-          onChange={(slug, label) =>
-            patch({
-              doorCountSlug: slug,
-              doorCount: label,
-              gearboxSlug: "",
-              transmission: "Automatyczna",
-              trimVersionSlug: "",
-              trimVersion: "",
-            })
-          }
-        />
-
-        <CatalogSelect
-          label="Skrzynia biegów"
-          value={form.gearboxSlug}
-          options={gearboxes}
-          loading={gearboxLoading}
-          disabled={!form.engineCapacitySlug}
-          onChange={(slug, label) =>
-            patch({
-              gearboxSlug: slug,
-              transmission: label || "Automatyczna",
-              trimVersionSlug: "",
-              trimVersion: "",
-            })
-          }
-        />
-
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Nadwozie</span>
-          <select
-            value={form.bodyType}
-            onChange={(event) => patch({ bodyType: event.target.value })}
-            className={selectClassName}
-          >
-            {BODY_TYPE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.label}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <CatalogSelect
-        label="Wersja / wyposażenie"
-        value={form.trimVersionSlug}
-        options={versions}
-        loading={versionsLoading}
-        disabled={!form.gearboxSlug}
-        placeholder="Opcjonalnie — wybierz po skrzyni biegów"
-        onChange={(slug, label) => {
-          const nextTitle =
-            !form.title.trim() && form.make && form.model && label
-              ? `${form.make} ${form.model} ${label}`.trim()
-              : form.title;
-          patch({
-            trimVersionSlug: slug,
-            trimVersion: label,
-            title: nextTitle,
-          });
-        }}
-      />
-
-      {!hasYear ? (
-        <p className="text-xs text-amber-300/90">Uzupełnij rocznik, aby zawęzić dostępne silniki i wersje.</p>
-      ) : null}
-    </div>
+    </section>
   );
 }
