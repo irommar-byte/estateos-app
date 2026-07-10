@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { createCarListing, listCars, listCarsByUser } from "@/lib/carsStorage";
 import type { CarListingUpdateInput } from "@/lib/carsStorage";
+import { isPromotionActive } from "@/lib/listingPromotion";
 import { resolveUploaderUserId } from "@/lib/upload/resolveUploader";
+
+function withFeaturedFlag<T extends { promotedUntil?: string | null }>(listing: T) {
+  return {
+    ...listing,
+    featured: isPromotionActive(listing.promotedUntil),
+  };
+}
 
 function toSafeNumber(v: unknown, fallback: number): number {
   const n = Number(v);

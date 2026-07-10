@@ -12,6 +12,8 @@ export type EstateOsCarListing = {
   city: string;
   imageUrl: string;
   createdAt: string;
+  promotedUntil?: string | null;
+  featured?: boolean;
 };
 
 export const carsCatalogMock: EstateOsCarListing[] = [

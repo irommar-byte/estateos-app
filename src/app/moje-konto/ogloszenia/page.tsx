@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 
 type HomeListing = {
   id: number;
@@ -12,6 +13,8 @@ type HomeListing = {
   status?: string | null;
   images?: string | null;
   imageUrl?: string | null;
+  featured?: boolean | null;
+  promotedUntil?: string | null;
 };
 
 type CarListing = {
@@ -23,6 +26,8 @@ type CarListing = {
   city: string;
   pricePln: number;
   userId?: number | null;
+  featured?: boolean | null;
+  promotedUntil?: string | null;
 };
 
 type Vertical = "home" | "car";
@@ -39,25 +44,42 @@ export default function AccountListingsPage() {
   const [loadingHome, setLoadingHome] = useState(true);
   const [loadingCars, setLoadingCars] = useState(true);
   const [deletingCarId, setDeletingCarId] = useState<number | null>(null);
+  const [archivingHomeId, setArchivingHomeId] = useState<number | null>(null);
+
+  const loadHomeListings = useCallback(async () => {
+    setLoadingHome(true);
+    try {
+      const res = await fetch("/api/offers?scope=mine", { cache: "no-store", credentials: "include" });
+      if (res.status === 401) {
+        setHomeListings([]);
+        return;
+      }
+      const data = await res.json();
+      setHomeListings(Array.isArray(data) ? (data as HomeListing[]) : []);
+    } catch {
+      setHomeListings([]);
+    } finally {
+      setLoadingHome(false);
+    }
+  }, []);
+
+  const loadCarListings = useCallback(async () => {
+    setLoadingCars(true);
+    try {
+      const res = await fetch("/api/cars?scope=mine", { cache: "no-store", credentials: "include" });
+      const payload = await res.json();
+      setCarListings(Array.isArray(payload) ? (payload as CarListing[]) : []);
+    } catch {
+      setCarListings([]);
+    } finally {
+      setLoadingCars(false);
+    }
+  }, []);
 
   useEffect(() => {
-    fetch("/api/user/profile", { cache: "no-store", credentials: "include" })
-      .then((res) => res.json())
-      .then((payload) => {
-        const offers = Array.isArray(payload?.offers) ? payload.offers : [];
-        setHomeListings(offers as HomeListing[]);
-      })
-      .catch(() => setHomeListings([]))
-      .finally(() => setLoadingHome(false));
-
-    fetch("/api/cars?scope=mine", { cache: "no-store", credentials: "include" })
-      .then((res) => res.json())
-      .then((payload) => {
-        setCarListings(Array.isArray(payload) ? (payload as CarListing[]) : []);
-      })
-      .catch(() => setCarListings([]))
-      .finally(() => setLoadingCars(false));
-  }, []);
+    void loadHomeListings();
+    void loadCarListings();
+  }, [loadHomeListings, loadCarListings]);
 
   const activeItems = useMemo(() => (vertical === "home" ? homeListings : carListings), [vertical, homeListings, carListings]);
   const loading = vertical === "home" ? loadingHome : loadingCars;
@@ -77,6 +99,24 @@ export default function AccountListingsPage() {
       alert("Błąd sieci podczas usuwania ogłoszenia.");
     } finally {
       setDeletingCarId(null);
+    }
+  };
+
+  const handleArchiveHome = async (offerId: number) => {
+    if (!window.confirm("Zakończyć publikację tego ogłoszenia?")) return;
+    setArchivingHomeId(offerId);
+    try {
+      const response = await fetch(`/api/offers/${offerId}/archive`, { method: "POST", credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        alert(typeof data?.error === "string" ? data.error : "Nie udało się zarchiwizować ogłoszenia.");
+        return;
+      }
+      setHomeListings((prev) => prev.filter((item) => item.id !== offerId));
+    } catch {
+      alert("Błąd sieci podczas archiwizacji.");
+    } finally {
+      setArchivingHomeId(null);
     }
   };
 
@@ -132,18 +172,46 @@ export default function AccountListingsPage() {
           <div className="grid grid-cols-1 gap-4">
             {vertical === "home"
               ? (homeListings as HomeListing[]).map((offer) => (
-                  <Link
+                  <div
                     key={`home-${offer.id}`}
-                    href={`/oferta/${offer.id}`}
                     className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 transition hover:border-emerald-400/40"
                   >
-                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-300">EstateOS™Home</p>
-                    <h2 className="mt-2 text-lg font-semibold">{offer.title || `Oferta #${offer.id}`}</h2>
-                    <p className="mt-1 text-sm text-[var(--eos-muted)]">
-                      {[offer.city, offer.district].filter(Boolean).join(" · ") || "Lokalizacja"}
-                    </p>
-                    <p className="mt-2 text-base font-bold">{formatPrice(offer.pricePln ?? null)}</p>
-                  </Link>
+                    <Link href={`/oferta/${offer.id}`}>
+                      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-300">EstateOS™Home</p>
+                      <h2 className="mt-2 text-lg font-semibold">{offer.title || `Oferta #${offer.id}`}</h2>
+                      <p className="mt-1 text-sm text-[var(--eos-muted)]">
+                        {[offer.city, offer.district].filter(Boolean).join(" · ") || "Lokalizacja"}
+                      </p>
+                      <p className="mt-2 text-base font-bold">{formatPrice(offer.pricePln ?? null)}</p>
+                      {offer.featured ? (
+                        <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-500">
+                          Wyróżnione do{" "}
+                          {offer.promotedUntil ? new Date(offer.promotedUntil).toLocaleDateString("pl-PL") : "—"}
+                        </p>
+                      ) : null}
+                    </Link>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Link
+                        href={`/edytuj-oferte/${offer.id}`}
+                        className="rounded-full border border-emerald-400/35 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-300"
+                      >
+                        Edytuj
+                      </Link>
+                      <PromoteListingButton
+                        endpoint={`/api/offers/${offer.id}/promote`}
+                        onPromoted={() => void loadHomeListings()}
+                        disabled={Boolean(offer.featured)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleArchiveHome(offer.id)}
+                        disabled={archivingHomeId === offer.id}
+                        className="rounded-full border border-red-400/35 bg-red-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-300 disabled:opacity-60"
+                      >
+                        {archivingHomeId === offer.id ? "Kończenie..." : "Zakończ"}
+                      </button>
+                    </div>
+                  </div>
                 ))
               : (carListings as CarListing[]).map((car) => (
                   <div
@@ -157,6 +225,12 @@ export default function AccountListingsPage() {
                         {car.make} · {car.model} · {car.year} · {car.city}
                       </p>
                       <p className="mt-2 text-base font-bold">{formatPrice(car.pricePln)}</p>
+                      {car.featured ? (
+                        <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-500">
+                          Wyróżnione do{" "}
+                          {car.promotedUntil ? new Date(car.promotedUntil).toLocaleDateString("pl-PL") : "—"}
+                        </p>
+                      ) : null}
                     </Link>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Link
@@ -165,6 +239,11 @@ export default function AccountListingsPage() {
                       >
                         Edytuj
                       </Link>
+                      <PromoteListingButton
+                        endpoint={`/api/cars/${car.id}/promote`}
+                        onPromoted={() => void loadCarListings()}
+                        disabled={Boolean(car.featured)}
+                      />
                       <button
                         type="button"
                         onClick={() => handleDeleteCar(car.id)}

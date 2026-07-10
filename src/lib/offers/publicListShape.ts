@@ -9,6 +9,7 @@ import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
 import { resolveSellerDisplayName, resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
 import { resolvePersistedLocalityFields } from '@/lib/offerLocalityCountry';
+import { isPromotionActive } from '@/lib/listingPromotion';
 
 export type PublicListOffer = Record<string, unknown> & {
   id: number;
@@ -91,11 +92,30 @@ export function shapePublicListOffer(
     ? enrichOfferMoneyFieldsWithRate(base, fx.rate, fx.date)
     : base;
 
-  if (options.includeMobileLegalAliases) {
-    return enrichOfferWithLegalAliases(enrichOfferPriceDiscountFields(withMoney)) as unknown as PublicListOffer;
-  }
+  const withDiscount = enrichOfferPriceDiscountFields(withMoney);
+  const withAliases = options.includeMobileLegalAliases
+    ? enrichOfferWithLegalAliases(withDiscount)
+    : withDiscount;
 
-  return enrichOfferPriceDiscountFields(withMoney) as unknown as PublicListOffer;
+  const promotedUntilRaw = withAliases.promotedUntil;
+  const featured = isPromotionActive(
+    promotedUntilRaw instanceof Date
+      ? promotedUntilRaw
+      : promotedUntilRaw
+        ? String(promotedUntilRaw)
+        : null,
+  );
+
+  return {
+    ...withAliases,
+    featured,
+    promotedUntil:
+      promotedUntilRaw instanceof Date
+        ? promotedUntilRaw.toISOString()
+        : promotedUntilRaw
+          ? String(promotedUntilRaw)
+          : null,
+  } as unknown as PublicListOffer;
 }
 
 export async function loadOfferViewCounts(

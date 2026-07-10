@@ -32,8 +32,63 @@ export const dynamic = 'force-dynamic';
 // =======================
 // GET
 // =======================
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const url = new URL(req.url);
+    const scope = url.searchParams.get("scope");
+
+    if (scope === "mine") {
+      const cookieStore = await cookies();
+      const sessionCookie = cookieStore.get("estateos_session") || cookieStore.get("luxestate_user");
+      let userId: number | null = null;
+      if (sessionCookie?.value) {
+        try {
+          const sessionData = decryptSession(sessionCookie.value);
+          userId = Number(sessionData?.id) || null;
+        } catch {
+          userId = null;
+        }
+      }
+      if (!userId) {
+        return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
+      }
+
+      const mineOffers = await prisma.offer.findMany({
+        where: { userId },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+          transactionType: true,
+          propertyType: true,
+          price: true,
+          priceCurrency: true,
+          pricePln: true,
+          city: true,
+          district: true,
+          localityCountry: true,
+          localityCountryCode: true,
+          images: true,
+          status: true,
+          promotedUntil: true,
+          createdAt: true,
+          updatedAt: true,
+          lat: true,
+          lng: true,
+          isLegalSafeVerified: true,
+          user: { select: { role: true, planType: true, isPro: true } },
+        },
+      });
+
+      return NextResponse.json(
+        mineOffers.map((offer) =>
+          shapePublicListOffer(offer as unknown as Record<string, unknown>, {
+            viewsCount: 0,
+          }),
+        ),
+      );
+    }
+
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS OfferViewLog (
         id BIGINT NOT NULL AUTO_INCREMENT,

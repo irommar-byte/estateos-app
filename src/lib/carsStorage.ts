@@ -28,6 +28,7 @@ export type CarListingRecord = {
   registrationNumber: string;
   firstRegistrationDate: string;
   insuranceValidUntil: string;
+  promotedUntil: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -142,6 +143,7 @@ function mapRow(row: any): CarListingRecord {
     registrationNumber: toStringValue(row.registrationNumber),
     firstRegistrationDate: toStringValue(row.firstRegistrationDate),
     insuranceValidUntil: toStringValue(row.insuranceValidUntil),
+    promotedUntil: row.promotedUntil ? new Date(row.promotedUntil).toISOString() : null,
     createdAt: new Date(row.createdAt).toISOString(),
     updatedAt: new Date(row.updatedAt).toISOString(),
   };
@@ -162,6 +164,7 @@ const ALLOWED_CAR_LISTING_COLUMNS = new Set([
   "registrationNumber",
   "firstRegistrationDate",
   "insuranceValidUntil",
+  "promotedUntil",
 ]);
 
 async function ensureCarListingColumn(column: string, definition: string) {
@@ -198,6 +201,7 @@ export async function ensureCarsStorage() {
   await ensureCarListingColumn("registrationNumber", "VARCHAR(16) NULL");
   await ensureCarListingColumn("firstRegistrationDate", "VARCHAR(20) NULL");
   await ensureCarListingColumn("insuranceValidUntil", "VARCHAR(20) NULL");
+  await ensureCarListingColumn("promotedUntil", "DATETIME(3) NULL");
   await prisma.$executeRawUnsafe(SEED_SQL);
 }
 
