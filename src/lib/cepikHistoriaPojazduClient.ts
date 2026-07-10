@@ -195,8 +195,9 @@ export async function queryCepikVehicle(query: CepikVehicleQuery) {
 
 export async function queryCepikInsurance(query: CepikVehicleQuery & { checkDate: string }) {
   return withCepikSession(async (session) => {
+    const vehicleData = await fetchCepikVehicleData(session, query).catch(() => null);
+    const timelineData = vehicleData ? await fetchCepikTimelineData(session, query).catch(() => null) : null;
     const insuranceData = await fetchCepikInsuranceData(session, query).catch(() => null);
-    const vehicleData = insuranceData ? null : await fetchCepikVehicleData(session, query).catch(() => null);
-    return { insuranceData, vehicleData };
+    return { insuranceData, vehicleData, timelineData };
   });
 }
