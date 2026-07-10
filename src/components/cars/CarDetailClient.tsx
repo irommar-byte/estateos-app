@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Calendar, Fuel, Gauge, MapPin, Settings2, Car as CarIcon, Cog } from "lucide-react";
 import CarInquiryPanel from "@/components/cars/CarInquiryPanel";
 import CarOwnerActions from "@/components/cars/CarOwnerActions";
+import CarVehicleChecksClient from "@/components/cars/CarVehicleChecksClient";
 import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
 import type { CarListingRecord } from "@/lib/carsStorage";
 
@@ -102,6 +103,13 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
                   Zapytania trafiają bezpośrednio do sprzedającego przez EstateOS Contact.
                 </p>
               </div>
+
+              <CarVehicleChecksClient
+                vin={car.vin}
+                registrationNumber={car.registrationNumber}
+                firstRegistrationDate={car.firstRegistrationDate}
+                insuranceValidUntil={car.insuranceValidUntil}
+              />
             </div>
 
             <aside className="lg:sticky lg:top-28 lg:self-start">

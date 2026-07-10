@@ -23,6 +23,11 @@ export type CarListingRecord = {
   description: string;
   cityLat: number | null;
   cityLng: number | null;
+  localityCountry: string;
+  vin: string;
+  registrationNumber: string;
+  firstRegistrationDate: string;
+  insuranceValidUntil: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -132,6 +137,11 @@ function mapRow(row: any): CarListingRecord {
     description: toStringValue(row.description),
     cityLat: row.cityLat == null ? null : toNumber(row.cityLat),
     cityLng: row.cityLng == null ? null : toNumber(row.cityLng),
+    localityCountry: toStringValue(row.localityCountry, "Polska"),
+    vin: toStringValue(row.vin),
+    registrationNumber: toStringValue(row.registrationNumber),
+    firstRegistrationDate: toStringValue(row.firstRegistrationDate),
+    insuranceValidUntil: toStringValue(row.insuranceValidUntil),
     createdAt: new Date(row.createdAt).toISOString(),
     updatedAt: new Date(row.updatedAt).toISOString(),
   };
@@ -147,6 +157,11 @@ const ALLOWED_CAR_LISTING_COLUMNS = new Set([
   "description",
   "cityLat",
   "cityLng",
+  "localityCountry",
+  "vin",
+  "registrationNumber",
+  "firstRegistrationDate",
+  "insuranceValidUntil",
 ]);
 
 async function ensureCarListingColumn(column: string, definition: string) {
@@ -178,6 +193,11 @@ export async function ensureCarsStorage() {
   await ensureCarListingColumn("description", "TEXT NULL");
   await ensureCarListingColumn("cityLat", "DECIMAL(10,7) NULL");
   await ensureCarListingColumn("cityLng", "DECIMAL(10,7) NULL");
+  await ensureCarListingColumn("localityCountry", "VARCHAR(80) NULL");
+  await ensureCarListingColumn("vin", "VARCHAR(17) NULL");
+  await ensureCarListingColumn("registrationNumber", "VARCHAR(16) NULL");
+  await ensureCarListingColumn("firstRegistrationDate", "VARCHAR(20) NULL");
+  await ensureCarListingColumn("insuranceValidUntil", "VARCHAR(20) NULL");
   await prisma.$executeRawUnsafe(SEED_SQL);
 }
 
@@ -231,6 +251,11 @@ export async function createCarListing(input: {
   description?: string;
   cityLat?: number | null;
   cityLng?: number | null;
+  localityCountry?: string;
+  vin?: string;
+  registrationNumber?: string;
+  firstRegistrationDate?: string;
+  insuranceValidUntil?: string;
 }): Promise<CarListingRecord> {
   await ensureCarsStorage();
   const imageList = Array.isArray(input.images)
@@ -243,8 +268,9 @@ export async function createCarListing(input: {
       INSERT INTO CarListing
       (userId, title, make, model, year, mileageKm, fuelType, transmission, bodyType,
        generation, enginePower, engineCapacity, trimVersion, doorCount, pricePln, city,
-       imageUrl, images, description, cityLat, cityLng)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       imageUrl, images, description, cityLat, cityLng, localityCountry, vin, registrationNumber,
+       firstRegistrationDate, insuranceValidUntil)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     input.userId,
     input.title,
@@ -267,6 +293,11 @@ export async function createCarListing(input: {
     input.description ?? "",
     input.cityLat ?? null,
     input.cityLng ?? null,
+    input.localityCountry ?? "Polska",
+    input.vin ?? "",
+    input.registrationNumber ?? "",
+    input.firstRegistrationDate ?? "",
+    input.insuranceValidUntil ?? "",
   );
 
   const created = await prisma.$queryRawUnsafe<any[]>(
@@ -296,6 +327,11 @@ export type CarListingUpdateInput = {
   description?: string;
   cityLat?: number | null;
   cityLng?: number | null;
+  localityCountry?: string;
+  vin?: string;
+  registrationNumber?: string;
+  firstRegistrationDate?: string;
+  insuranceValidUntil?: string;
 };
 
 export async function updateCarListing(
@@ -319,7 +355,8 @@ export async function updateCarListing(
       SET title = ?, make = ?, model = ?, year = ?, mileageKm = ?, fuelType = ?,
           transmission = ?, bodyType = ?, generation = ?, enginePower = ?, engineCapacity = ?,
           trimVersion = ?, doorCount = ?, pricePln = ?, city = ?, imageUrl = ?, images = ?,
-          description = ?, cityLat = ?, cityLng = ?,
+          description = ?, cityLat = ?, cityLng = ?, localityCountry = ?, vin = ?,
+          registrationNumber = ?, firstRegistrationDate = ?, insuranceValidUntil = ?,
           updatedAt = CURRENT_TIMESTAMP(3)
       WHERE id = ? AND userId = ?
     `,
@@ -343,6 +380,11 @@ export async function updateCarListing(
     input.description ?? existing.description,
     input.cityLat ?? existing.cityLat,
     input.cityLng ?? existing.cityLng,
+    input.localityCountry ?? existing.localityCountry,
+    String(input.vin ?? "").trim() || existing.vin,
+    String(input.registrationNumber ?? "").trim() || existing.registrationNumber,
+    String(input.firstRegistrationDate ?? "").trim() || existing.firstRegistrationDate,
+    String(input.insuranceValidUntil ?? "").trim() || existing.insuranceValidUntil,
     id,
     userId,
   );
