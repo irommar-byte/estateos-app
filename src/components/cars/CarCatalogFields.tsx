@@ -147,6 +147,57 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
     }
   }, [form.generation, form.generationSlug, generations, setForm]);
 
+  useEffect(() => {
+    if (!form.fuelType || form.fuelSlug || !fuelTypes.length) return;
+    const match = findOptionByLabel(fuelTypes, form.fuelType);
+    if (match) {
+      setForm((prev) => ({ ...prev, fuelSlug: match.value, fuelType: match.label }));
+    }
+  }, [form.fuelType, form.fuelSlug, fuelTypes, setForm]);
+
+  useEffect(() => {
+    if (!form.enginePower || form.enginePowerSlug || !enginePowers.length) return;
+    const match = findOptionByLabel(enginePowers, form.enginePower);
+    if (match) {
+      setForm((prev) => ({ ...prev, enginePowerSlug: match.value, enginePower: match.label }));
+    }
+  }, [form.enginePower, form.enginePowerSlug, enginePowers, setForm]);
+
+  useEffect(() => {
+    if (!form.engineCapacity || form.engineCapacitySlug || !engineCapacities.length) return;
+    const match = findOptionByLabel(engineCapacities, form.engineCapacity);
+    if (match) {
+      setForm((prev) => ({ ...prev, engineCapacitySlug: match.value, engineCapacity: match.label }));
+    }
+  }, [form.engineCapacity, form.engineCapacitySlug, engineCapacities, setForm]);
+
+  useEffect(() => {
+    if (!form.doorCount || form.doorCountSlug || !doorCounts.length) return;
+    const match =
+      findOptionByLabel(doorCounts, form.doorCount) ||
+      doorCounts.find((item) => item.label.trim().startsWith(form.doorCount.trim())) ||
+      null;
+    if (match) {
+      setForm((prev) => ({ ...prev, doorCountSlug: match.value, doorCount: match.label }));
+    }
+  }, [form.doorCount, form.doorCountSlug, doorCounts, setForm]);
+
+  useEffect(() => {
+    if (!form.transmission || form.gearboxSlug || !gearboxes.length) return;
+    const match = findOptionByLabel(gearboxes, form.transmission);
+    if (match) {
+      setForm((prev) => ({ ...prev, gearboxSlug: match.value, transmission: match.label }));
+    }
+  }, [form.transmission, form.gearboxSlug, gearboxes, setForm]);
+
+  useEffect(() => {
+    if (!form.trimVersion || form.trimVersionSlug || !versions.length) return;
+    const match = findOptionByLabel(versions, form.trimVersion);
+    if (match) {
+      setForm((prev) => ({ ...prev, trimVersionSlug: match.value, trimVersion: match.label }));
+    }
+  }, [form.trimVersion, form.trimVersionSlug, versions, setForm]);
+
   const patch = (partial: Partial<CarFormState>) => setForm((prev) => ({ ...prev, ...partial }));
 
   return (
@@ -161,10 +212,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="grid gap-1.5 text-sm">
           <span className="text-[var(--eos-muted)]">Rocznik produkcji</span>
-          <input
-            type="number"
-            min={1950}
-            max={new Date().getFullYear() + 1}
+          <select
             value={form.year}
             onChange={(event) =>
               patch({
@@ -184,9 +232,18 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
               })
             }
             className={selectClassName}
-            placeholder="2022"
             required
-          />
+          >
+            <option value="">Wybierz rocznik</option>
+            {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, index) => {
+              const year = String(new Date().getFullYear() - index);
+              return (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              );
+            })}
+          </select>
         </label>
 
         <CatalogSelect

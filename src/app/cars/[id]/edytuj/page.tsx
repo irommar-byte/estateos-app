@@ -33,7 +33,7 @@ export default async function EditCarPage({ params }: { params: Promise<{ id: st
         trimVersion: car.trimVersion || "",
         trimVersionSlug: "",
         doorCount: car.doorCount ? String(car.doorCount) : "",
-        doorCountSlug: car.doorCount ? String(car.doorCount) : "",
+        doorCountSlug: "",
         pricePln: String(car.pricePln),
         city: car.city,
         imageUrl: car.imageUrl,
