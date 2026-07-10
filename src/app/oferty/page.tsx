@@ -463,10 +463,7 @@ export default function CatalogPage() {
     .filter((offer) => offer.featured)
     .sort((a, b) => Date.parse(String(b.promotedUntil || b.createdAt || 0)) - Date.parse(String(a.promotedUntil || a.createdAt || 0)));
 
-  const featuredOffers =
-    paidFeaturedOffers.length > 0
-      ? paidFeaturedOffers
-      : propertyFilteredOffers.filter((offer) => offer.badges?.isPartner || offer.badges?.isPro);
+  const featuredOffers = paidFeaturedOffers;
 
   const filteredMyOffers = useMemo(
     () =>
@@ -497,7 +494,7 @@ export default function CatalogPage() {
       case "discounted":
         return discountedOffers;
       case "featured":
-        return featuredOffers.length > 0 ? featuredOffers : sortedByNewest.slice(0, 8);
+        return featuredOffers;
       default:
         return sortedByNewest;
     }
@@ -507,7 +504,12 @@ export default function CatalogPage() {
 
   const sectionLoading = activeSection === "mine" && loadingMine;
 
-  const sectionLead = activeSection === "mine" ? labels.mineLead : null;
+  const sectionLead =
+    activeSection === "mine"
+      ? labels.mineLead
+      : activeSection === "featured"
+        ? "Tylko ogłoszenia z aktywnym, opłaconym wyróżnieniem (1 kredyt / 7 dni)."
+        : null;
 
   const sectionAccentClass =
     transactionMode === "rent"
@@ -780,6 +782,16 @@ export default function CatalogPage() {
                     {pending ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
                     {nearestCopy.enable}
                   </button>
+                </>
+              ) : activeSection === "featured" ? (
+                <>
+                  <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+                    Brak opłaconych wyróżnień w tym widoku
+                  </p>
+                  <p className="mx-auto mt-4 max-w-md text-sm normal-case leading-relaxed text-[var(--eos-muted)]">
+                    Wyróżnienie premium to osobna płatna ekspozycja — nie mylić z odznaką partnera PRO.
+                    Wyróżnij swoje ogłoszenie w zakładce Moje lub w Moje konto → Ogłoszenia.
+                  </p>
                 </>
               ) : (
                 <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">{labels.empty}</p>
