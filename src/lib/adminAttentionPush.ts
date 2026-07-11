@@ -107,6 +107,7 @@ export function notifyAdminPhotoSessionPending(
   requesterName?: string | null,
   proposedAt?: Date | null,
   propertyLabel?: string | null,
+  isProFree?: boolean,
 ) {
   const who = requesterName?.trim() ? requesterName.trim() : 'Klient';
   const when = proposedAt
@@ -119,17 +120,22 @@ export function notifyAdminPhotoSessionPending(
       })
     : '—';
   const where = propertyLabel?.trim() ? propertyLabel.trim().slice(0, 72) : 'Nieruchomość w kreatorze';
+  const payment = isProFree
+    ? 'GRATIS (Investor Pro — pierwsza sesja)'
+    : '199 zł do zapłaty';
 
   void sendNotification({
     userId: PHOTO_SESSION_ADMIN_USER_ID,
     type: 'ADMIN_ATTENTION',
     title: 'Sesja zdjęciowa — nowa rezerwacja',
-    body: `${who} proponuje termin ${when} (${where}).`,
+    body: `${who} · ${when} · ${where}. Rozliczenie: ${payment}.`,
     data: {
       kind: 'admin_attention',
       attentionType: 'photo_session',
       entityId: String(requestId),
       notificationType: 'admin_attention',
+      isProFree: isProFree ? '1' : '0',
+      paymentLabel: payment,
       screen: 'Profile',
       route: 'Profile',
       deeplink: 'estateos://profil',

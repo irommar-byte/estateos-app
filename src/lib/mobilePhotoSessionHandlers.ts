@@ -77,6 +77,7 @@ function serializeEvent(row: any) {
 
 function serializeRequest(row: any, user?: { name?: string | null; phone?: string | null; email?: string | null }) {
   const events = Array.isArray(row.events) ? row.events.map(serializeEvent) : [];
+  const isProFree = Boolean(row.isProFree);
   return {
     id: row.id,
     userId: row.userId,
@@ -87,8 +88,13 @@ function serializeRequest(row: any, user?: { name?: string | null; phone?: strin
     propertyLabel: row.propertyLabel,
     propertyType: row.propertyType,
     transactionType: row.transactionType,
-    isProFree: Boolean(row.isProFree),
+    isProFree,
+    paymentLabel: isProFree
+      ? 'GRATIS — Investor Pro (pierwsza sesja na koncie)'
+      : '199 zł — sesja płatna',
+    paymentAmountPln: isProFree ? 0 : 199,
     acceptedAt: row.acceptedAt ? row.acceptedAt.toISOString() : null,
+    adminNote: row.adminNote || null,
     createdAt: row.createdAt?.toISOString?.() || row.createdAt,
     requesterName: user?.name || null,
     requesterPhone: user?.phone || null,
@@ -197,7 +203,13 @@ export async function createPhotoSessionRequest(req: Request) {
     note,
   });
 
-  notifyAdminPhotoSessionPending(row.id, requester?.name || requester?.email || null, proposedAt, propertyLabel);
+  notifyAdminPhotoSessionPending(
+    row.id,
+    requester?.name || requester?.email || null,
+    proposedAt,
+    propertyLabel,
+    isProFree,
+  );
 
   const full = await loadRequestWithEvents(row.id);
   return NextResponse.json({
@@ -268,7 +280,13 @@ export async function respondPhotoSessionRequest(req: Request, requestId: number
       },
     });
     await appendEvent({ requestId, actorUserId: userId, action: 'ACCEPTED', proposedAt: row.proposedAt });
-    notifyAdminPhotoSessionPending(requestId, row.user?.name, row.proposedAt, row.propertyLabel);
+    notifyAdminPhotoSessionPending(
+      requestId,
+      row.user?.name,
+      row.proposedAt,
+      row.propertyLabel,
+      row.isProFree,
+    );
     return NextResponse.json({ success: true, request: serializeRequest(row, row.user) });
   }
 
@@ -309,7 +327,7 @@ export async function respondPhotoSessionRequest(req: Request, requestId: number
       },
     });
     await appendEvent({ requestId, actorUserId: userId, action: 'COUNTERED', proposedAt, note });
-    notifyAdminPhotoSessionPending(requestId, row.user?.name, proposedAt, row.propertyLabel);
+    notifyAdminPhotoSessionPending(requestId, row.user?.name, proposedAt, row.propertyLabel, row.isProFree);
     return NextResponse.json({ success: true, request: serializeRequest(row, row.user) });
   }
 
@@ -350,6 +368,15 @@ async function notifyUserPhotoSessionUpdate(
   title: string,
   body: string,
   extra?: Record<string, unknown>,
+  row?: {
+    proposedAt: Date;
+    propertyLabel?: string | null;
+    propertyType?: string | null;
+    transactionType?: string | null;
+    isProFree: boolean;
+    note?: string | null;
+    adminNote?: string | null;
+  },
 ) {
   void sendNotification({
     userId,
@@ -361,8 +388,17 @@ async function notifyUserPhotoSessionUpdate(
       requestId: String(requestId),
       screen: 'Profil',
       route: 'Profil',
-      openShop: true,
       openPhotoSessions: true,
+      proposedAt: row?.proposedAt?.toISOString?.(),
+      propertyLabel: row?.propertyLabel || null,
+      propertyType: row?.propertyType || null,
+      transactionType: row?.transactionType || null,
+      isProFree: row?.isProFree ? '1' : '0',
+      paymentLabel: row?.isProFree
+        ? 'GRATIS — Investor Pro (pierwsza sesja na koncie)'
+        : '199 zł — sesja płatna',
+      note: row?.note || null,
+      adminNote: row?.adminNote || null,
       ...extra,
     },
     idempotencyKey: `photo_session:${requestId}:user:${userId}:${title}`,
@@ -479,12 +515,14 @@ export async function acceptAdminPhotoSessionRequest(req: Request) {
   await appendEvent({ requestId: id, actorUserId: auth.adminId, action: 'ACCEPTED', proposedAt: row.proposedAt, note: adminNote });
 
   const whenLabel = formatWhen(row.proposedAt);
+  const paymentHint = row.isProFree ? 'Sesja gratis w ramach Investor Pro.' : 'Rozliczenie: 199 zł.';
   await notifyUserPhotoSessionUpdate(
     row.userId,
     id,
     'Sesja zdjęciowa potwierdzona',
-    `Termin ${whenLabel} został zaakceptowany. Wszystko umówione — do zobaczenia na miejscu!`,
+    `Termin ${whenLabel} został zaakceptowany. ${paymentHint} Wszystko umówione — do zobaczenia na miejscu!`,
     { action: 'accepted', proposedAt: row.proposedAt.toISOString() },
+    row,
   );
 
   return NextResponse.json({
