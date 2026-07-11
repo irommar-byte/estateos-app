@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getClientPortalDictionary } from "@/i18n/clientPortalDictionary";
 
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
@@ -58,6 +60,8 @@ type PortalData = {
 };
 
 export default function ClientPortalPage({ params }: { params: Promise<{ token: string }> }) {
+  const { locale } = useLocale();
+  const cpd = getClientPortalDictionary(locale);
   const [token, setToken] = useState<string | null>(null);
   const [portal, setPortal] = useState<PortalData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,7 +79,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     try {
       const res = await fetch(`/api/crm/client-portal/${token}`, { cache: "no-store" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Błąd ładowania");
+      if (!res.ok) throw new Error(json.error || cpd.loadError);
       setPortal(json.portal);
       const drafts: Record<number, string> = {};
       for (const m of json.portal.matches || []) {
@@ -83,7 +87,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       }
       setFeedbackDraft(drafts);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Błąd");
+      setError(e instanceof Error ? e.message : cpd.loadError);
     } finally {
       setLoading(false);
     }
@@ -104,10 +108,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         body: JSON.stringify({ action: "submit_feedback", matchId, feedback }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Nie udało się wysłać");
+      if (!res.ok) throw new Error(json.error || cpd.sendFail);
       await load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Błąd");
+      alert(e instanceof Error ? e.message : cpd.loadError);
     } finally {
       setSavingId(null);
     }
@@ -130,8 +134,8 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   if (error || !portal) {
     return (
       <div className="mx-auto max-w-lg px-4 py-20 text-center">
-        <p className="text-lg font-semibold text-[var(--eos-text)]">Panel niedostępny</p>
-        <p className="mt-2 text-sm text-[var(--eos-muted)]">{error || "Link wygasł lub jest nieprawidłowy."}</p>
+        <p className="text-lg font-semibold text-[var(--eos-text)]">{cpd.unavailableTitle}</p>
+        <p className="mt-2 text-sm text-[var(--eos-muted)]">{error || cpd.unavailableBody}</p>
         <Link href="/" className="mt-6 inline-block text-emerald-600 underline">
           Wróć na EstateOS
         </Link>
@@ -143,8 +147,8 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     <main className="min-h-screen bg-[var(--eos-bg)] pt-28 pb-32 text-[var(--eos-text)]">
     <div className="mx-auto max-w-3xl space-y-8 px-4 sm:px-6">
       <header className="rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-8 shadow-[var(--eos-shadow-soft)]">
-        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-500">Panel klienta</p>
-        <h1 className="mt-2 text-3xl font-bold text-[var(--eos-text)]">Witaj, {portal.clientName}</h1>
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-500">{cpd.eyebrow}</p>
+        <h1 className="mt-2 text-3xl font-bold text-[var(--eos-text)]">{cpd.welcome}, {portal.clientName}</h1>
         <p className="mt-2 text-sm text-[var(--eos-muted)]">
           {portal.type === "BUYER"
             ? `Twój agent ${portal.agentName} (${portal.agencyName}) prowadzi poszukiwania nieruchomości.`
@@ -177,7 +181,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 </p>
                 <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-600">
                   <CheckCircle2 className="size-3" />
-                  {portal.listing.managementStatus === "AGENCY_MANAGED" ? "Prowadzone przez agencję" : "Aktywne"}
+                  {portal.listing.managementStatus === "AGENCY_MANAGED" ? cpd.agencyManaged : cpd.active}
                 </p>
               </div>
               <Link
@@ -239,7 +243,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                     value={feedbackDraft[m.id] || ""}
                     onChange={(e) => setFeedbackDraft((d) => ({ ...d, [m.id]: e.target.value }))}
                     rows={2}
-                    placeholder="Np. za mała kuchnia, ale świetna lokalizacja…"
+                    placeholder={cpd.feedbackPlaceholder}
                     className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)]"
                   />
                   <button
@@ -249,7 +253,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                     className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
                   >
                     <Send className="size-3" />
-                    {m.clientFeedback ? "Zaktualizuj uwagi" : "Wyślij uwagi do agenta"}
+                    {m.clientFeedback ? cpd.updateFeedback : cpd.sendFeedback}
                   </button>
                   {m.clientFeedbackAt ? (
                     <p className="mt-2 text-[10px] text-[var(--eos-muted)]">

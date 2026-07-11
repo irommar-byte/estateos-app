@@ -23,6 +23,8 @@ import {
   X,
 } from "lucide-react";
 import ContactAttachmentBubble from "@/components/contact/ContactAttachmentBubble";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getContactInboxDictionary } from "@/i18n/contactInboxDictionary";
 import {
   formatContactBytes,
   isAllowedContactAttachment,
@@ -52,6 +54,8 @@ const ACCEPTED_FILE_TYPES =
   "image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar,.7z,.gif,.mp3,.mp4,.mov,.webm";
 
 export default function ContactInboxClient({ currentUser }: { currentUser: CurrentUser }) {
+  const { locale } = useLocale();
+  const d = getContactInboxDictionary(locale);
   const router = useRouter();
   const searchParams = useSearchParams();
   const [threads, setThreads] = useState<ContactThreadRow[]>([]);
@@ -240,11 +244,11 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       return;
     }
     if (!isAllowedContactAttachment(file.type, file.name)) {
-      window.alert("Niedozwolony typ pliku.");
+      window.alert(d.invalidFileType);
       return;
     }
     if (usageBytes + file.size > limitBytes) {
-      window.alert("Przekroczono łączny limit 100 MB załączników w tej rozmowie.");
+      window.alert(d.attachmentLimit);
       return;
     }
     setPendingFile(file);
@@ -288,7 +292,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       setDraft(content);
       if (fileSnapshot) setPendingFile(fileSnapshot);
-      window.alert(err instanceof Error ? err.message : "Nie udało się wysłać wiadomości.");
+      window.alert(err instanceof Error ? err.message : d.sendFail);
     } finally {
       setSending(false);
       setUploading(false);
@@ -300,11 +304,11 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
     setFindError(null);
     const peerId = Number(findUserId.trim());
     if (!Number.isFinite(peerId) || peerId <= 0) {
-      setFindError("Podaj prawidłowe ID użytkownika.");
+      setFindError(d.invalidUserId);
       return;
     }
     if (peerId === currentUser.id) {
-      setFindError("Nie możesz napisać do siebie.");
+      setFindError(d.cannotMessageSelf);
       return;
     }
     setFindLoading(true);
@@ -315,7 +319,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       await openThread(thread.id);
       setFindUserId("");
     } catch (err: unknown) {
-      setFindError(err instanceof Error ? err.message : "Nie udało się znaleźć użytkownika.");
+      setFindError(err instanceof Error ? err.message : d.findUserFail);
     } finally {
       setFindLoading(false);
     }
@@ -323,21 +327,21 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
 
   const handleDeleteThread = async () => {
     if (!activeThreadId) return;
-    if (!window.confirm("Usunąć tę rozmowę z listy?")) return;
+    if (!window.confirm(d.deleteThreadConfirm)) return;
     try {
       const res = await fetch(`/api/contact/threads/${activeThreadId}`, {
         method: "DELETE",
         credentials: "include",
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(String(json?.error || "Nie udało się usunąć wątku."));
+      if (!res.ok) throw new Error(String(json?.error || d.deleteThreadFail));
       setActiveThreadId(null);
       setMessages([]);
       setAttachmentsInfo(null);
       router.replace("/moje-konto/wiadomosci");
       await loadThreads();
     } catch (err: unknown) {
-      window.alert(err instanceof Error ? err.message : "Błąd usuwania.");
+      window.alert(err instanceof Error ? err.message : d.deleteError);
     }
   };
 
@@ -357,13 +361,13 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
           type="button"
           onClick={() => router.push("/moje-konto/crm")}
           className="rounded-full border border-[var(--eos-border)] p-2 text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
-          aria-label="Wróć"
+          aria-label={d.back}
         >
           <ArrowLeft className="size-5" />
         </button>
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">EstateOS™ Contact</p>
-          <h1 className="text-xl font-black tracking-tight text-[var(--eos-text)] md:text-2xl">Wiadomości bezpośrednie</h1>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">{d.eyebrow}</p>
+          <h1 className="text-xl font-black tracking-tight text-[var(--eos-text)] md:text-2xl">{d.title}</h1>
         </div>
       </div>
 
@@ -388,7 +392,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                 disabled={findLoading}
                 className="rounded-xl bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-60"
               >
-                {findLoading ? <Loader2 className="size-4 animate-spin" /> : "Dodaj"}
+                {findLoading ? <Loader2 className="size-4 animate-spin" /> : d.add}
               </button>
             </div>
             {findError ? <p className="mt-2 text-xs text-red-400">{findError}</p> : null}
@@ -438,9 +442,9 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                       <p className="truncate text-xs text-[var(--eos-muted)]">
                         {(() => {
                           const raw = String(thread.lastMessage || "");
-                          if (!raw) return "Brak wiadomości";
+                          if (!raw) return d.noMessages;
                           if (raw.includes(CONTACT_ATTACHMENT_PREFIX)) {
-                            return formatContactLastMessagePreview({ content: raw }) || "Brak wiadomości";
+                            return formatContactLastMessagePreview({ content: raw }) || d.noMessages;
                           }
                           return raw;
                         })()}
@@ -458,7 +462,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
           {!activeThread ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-white/50">
               <MessageCircle className="size-10 text-emerald-500/50" />
-              <p className="text-sm">Wybierz rozmowę z listy lub znajdź użytkownika po ID.</p>
+              <p className="text-sm">{d.selectThread}</p>
             </div>
           ) : (
             <>
@@ -476,7 +480,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                       type="button"
                       onClick={() => void handleDeleteThread()}
                       className="rounded-full p-2 text-white/40 hover:bg-red-500/10 hover:text-red-400"
-                      aria-label="Usuń rozmowę"
+                      aria-label={d.removeThread}
                     >
                       <Trash2 className="size-4" />
                     </button>
@@ -486,7 +490,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <div className="min-w-[180px] flex-1">
                     <div className="mb-1 flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-white/45">
-                      <span>Załączniki rozmowy</span>
+                      <span>{d.threadAttachments}</span>
                       <span>
                         {formatContactBytes(usageBytes)} / {formatContactBytes(limitBytes)}
                       </span>
@@ -530,7 +534,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                           <Loader2 className="size-4 animate-spin" /> Ładowanie…
                         </div>
                       ) : !attachmentsInfo?.attachments?.length ? (
-                        <p className="text-xs text-white/35">Brak załączników w tej rozmowie.</p>
+                        <p className="text-xs text-white/35">{d.noAttachments}</p>
                       ) : (
                         <div className="grid gap-2 sm:grid-cols-2">
                           {attachmentsInfo.attachments.map((att) => (
@@ -689,7 +693,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                         if (fileInputRef.current) fileInputRef.current.value = "";
                       }}
                       className="rounded-full p-1.5 text-white/50 hover:bg-white/10 hover:text-white"
-                      aria-label="Usuń załącznik"
+                      aria-label={d.removeAttachment}
                     >
                       <X className="size-4" />
                     </button>
@@ -711,7 +715,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     onClick={() => fileInputRef.current?.click()}
                     disabled={sending || uploading}
                     className="flex size-11 shrink-0 items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-emerald-400 disabled:opacity-40"
-                    aria-label="Dodaj załącznik"
+                    aria-label={d.addAttachment}
                   >
                     {uploading ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-5" />}
                   </button>
@@ -719,14 +723,14 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     ref={draftInputRef}
                     value={draft}
                     onChange={(e) => onDraftChange(e.target.value)}
-                    placeholder="Napisz wiadomość…"
+                    placeholder={d.writePlaceholder}
                     className="min-w-0 flex-1 bg-transparent px-2 py-3 text-sm text-white outline-none placeholder:text-white/30"
                   />
                   <button
                     type="submit"
                     disabled={(!draft.trim() && !pendingFile) || sending || uploading}
                     className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-black transition hover:bg-emerald-400 disabled:opacity-40"
-                    aria-label="Wyślij"
+                    aria-label={d.send}
                   >
                     {sending ? <Loader2 className="size-5 animate-spin" /> : <Send className="size-5" />}
                   </button>

@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getAgentPublicProfileDictionary } from "@/i18n/agentPublicProfileDictionary";
 
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -82,11 +84,13 @@ function formatCount(n: number) {
 }
 
 export default function AgentPublicProfile({ data }: { data: AgentProfilePayload }) {
+  const { locale } = useLocale();
+  const apd = getAgentPublicProfileDictionary(locale);
   const { isAgent, agent, company, stats, offers, reviews } = data;
   const rating = stats.averageRating ?? 0;
   const hasMoreOffers = stats.activeOffers > offers.length;
-  const profileKindLabel = isAgent ? "Profil agenta nieruchomości" : "Profil właściciela";
-  const displayName = agent.name || (isAgent ? "Agent" : "Użytkownik");
+  const profileKindLabel = isAgent ? apd.agentProfile : apd.ownerProfile;
+  const displayName = agent.name || (isAgent ? apd.defaultAgent : apd.defaultUser);
 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] pb-32 pt-28 text-[var(--eos-text)]">
@@ -157,7 +161,7 @@ export default function AgentPublicProfile({ data }: { data: AgentProfilePayload
 
             {company?.logoUrl ? (
               <div className="hidden shrink-0 lg:block">
-                <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-[var(--eos-muted)]">Biuro</p>
+                <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-[var(--eos-muted)]">{apd.office}</p>
                 <div className="size-20 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]">
                   <ProfileMediaAvatar src={company.logoUrl} alt={company.name} iconSize={28} />
                 </div>
@@ -216,7 +220,7 @@ export default function AgentPublicProfile({ data }: { data: AgentProfilePayload
             <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <h2 className="flex items-center gap-2 text-xl font-black">
                 <Briefcase className="text-emerald-500" size={20} />
-                {isAgent ? "Oferty agenta" : "Oferty"} ({formatCount(stats.activeOffers)})
+                {isAgent ? apd.agentOffers : apd.userOffers} ({formatCount(stats.activeOffers)})
               </h2>
               {hasMoreOffers ? (
                 <p className="text-xs font-medium text-[var(--eos-muted)]">
@@ -263,8 +267,8 @@ export default function AgentPublicProfile({ data }: { data: AgentProfilePayload
           {reviews.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-[var(--eos-border)] p-10 text-center text-sm text-[var(--eos-muted)]">
               {isAgent
-                ? "Ten agent nie ma jeszcze opinii od klientów."
-                : "Ten użytkownik nie ma jeszcze opinii."}
+                ? apd.noAgentReviews
+                : apd.noUserReviews}
             </div>
           ) : (
             <div className="space-y-3">
@@ -278,11 +282,11 @@ export default function AgentPublicProfile({ data }: { data: AgentProfilePayload
                       />
                     ))}
                     <span className="text-xs text-[var(--eos-muted)]">
-                      {review.reviewerName || "Klient"} · {new Date(review.createdAt).toLocaleDateString("pl-PL")}
+                      {review.reviewerName || apd.client} · {new Date(review.createdAt).toLocaleDateString("pl-PL")}
                     </span>
                   </div>
                   <p className="text-sm leading-relaxed text-[var(--eos-muted)]">
-                    {review.comment ? `"${review.comment}"` : "Ocena bez komentarza tekstowego."}
+                    {review.comment ? `"${review.comment}"` : apd.noComment}
                   </p>
                 </article>
               ))}

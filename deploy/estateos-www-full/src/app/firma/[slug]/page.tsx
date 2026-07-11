@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getCompanyPublicDictionary } from "@/i18n/companyPublicDictionary";
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
@@ -84,6 +86,8 @@ function formatPrice(offer: CompanyPublic["offers"][number]) {
 }
 
 export default function FirmaPublicPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { locale } = useLocale();
+  const cd = getCompanyPublicDictionary(locale);
   const { slug } = use(params);
   const [data, setData] = useState<CompanyPublic | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,13 +99,13 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
       .then((r) => r.json())
       .then((json) => {
         if (!json.success) {
-          setError(json.message || "Nie znaleziono biura.");
+          setError(json.message || cd.notFound);
           setData(null);
           return;
         }
         setData(json);
       })
-      .catch(() => setError("Błąd połączenia."))
+      .catch(() => setError(cd.connectionError))
       .finally(() => setLoading(false));
   }, [slug]);
 
@@ -117,7 +121,7 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
     return (
       <main className="min-h-screen bg-[var(--eos-bg)] px-6 pt-32 pb-24 text-center text-[var(--eos-text)]">
         <Building2 className="mx-auto mb-4 text-[var(--eos-muted)]" size={40} />
-        <h1 className="text-2xl font-black">{error || "Biuro niedostępne"}</h1>
+        <h1 className="text-2xl font-black">{error || cd.unavailable}</h1>
         <Link href="/agencje" className="mt-6 inline-block text-sm font-bold text-emerald-500 hover:underline">
           Wróć do katalogu agencji
         </Link>
@@ -185,11 +189,11 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {[
-                { label: "Agenci", value: stats.activeAgents },
-                { label: "Oferty", value: stats.activeListings },
-                { label: "Opinie", value: stats.reviewsCount },
+                { label: cd.agents, value: stats.activeAgents },
+                { label: cd.offers, value: stats.activeListings },
+                { label: cd.reviews, value: stats.reviewsCount },
                 {
-                  label: "Ocena",
+                  label: cd.rating,
                   value: stats.averageRating != null ? stats.averageRating.toFixed(1) : "—",
                 },
               ].map((kpi) => (
@@ -221,7 +225,7 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
 
         <section className="mt-12">
           <div className="mb-5 flex items-center justify-between gap-4">
-            <h2 className="text-xl font-black">Zespół ({agents.length})</h2>
+            <h2 className="text-xl font-black">{cd.team} ({agents.length})</h2>
             <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-emerald-500">
               <ShieldCheck size={12} /> Zweryfikowani partnerzy
             </span>
@@ -239,13 +243,13 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
                     <div className="size-12 overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
                       <ProfileMediaAvatar
                         src={pickTeamMemberAvatar({ userImage: agent.image, profilePhotoUrl: agent.profilePhotoUrl })}
-                        alt={agent.name || "Agent"}
+                        alt={agent.name || cd.teamAgent}
                         iconSize={20}
                         className="size-full object-cover"
                       />
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate font-bold">{agent.name || "Agent"}</p>
+                      <p className="truncate font-bold">{agent.name || cd.teamAgent}</p>
                       <span className="mt-1 inline-block rounded-full bg-amber-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-amber-600">
                         {formatAgentTitle(agent.agentTitle)}
                       </span>
@@ -264,7 +268,7 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
         </section>
 
         <section className="mt-14">
-          <h2 className="mb-5 text-xl font-black">Oferty biura ({offers.length})</h2>
+          <h2 className="mb-5 text-xl font-black">{cd.officeOffers} ({offers.length})</h2>
           {offers.length === 0 ? (
             <p className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-8 text-center text-sm text-[var(--eos-muted)]">
               To biuro nie ma jeszcze aktywnych ogłoszeń.
@@ -319,7 +323,7 @@ export default function FirmaPublicPage({ params }: { params: Promise<{ slug: st
 
         {reviews.length > 0 ? (
           <section className="mt-14">
-            <h2 className="mb-5 text-xl font-black">Opinie klientów</h2>
+            <h2 className="mb-5 text-xl font-black">{cd.clientReviews}</h2>
             <div className="space-y-3">
               {reviews.slice(0, 8).map((review) => (
                 <div

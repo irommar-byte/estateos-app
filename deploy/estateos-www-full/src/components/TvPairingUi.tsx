@@ -1,4 +1,7 @@
 "use client";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getPasskeyLoginDictionary } from "@/i18n/passkeyLoginDictionary";
+
 
 import { CheckCircle, Fingerprint, Loader2, Tv } from "lucide-react";
 
@@ -17,6 +20,8 @@ export function TvPairingStatusBanner({
   success,
   onRetry,
 }: TvPairingStatusProps) {
+  const { locale } = useLocale();
+  const pd = getPasskeyLoginDictionary(locale);
   if (success) {
     return (
       <div className="p-5 bg-emerald-500/10 border border-emerald-500/25 rounded-[1rem] space-y-3">
@@ -58,13 +63,15 @@ export function TvPairingStatusBanner({
         Kod na ekranie TV: <b className="text-[var(--eos-text)] tracking-[0.2em]">{pairCode || "—"}</b>
       </p>
       {loading ? (
-        <p className="text-xs text-[var(--eos-muted)]">Trwa logowanie i wysyłanie sesji na Apple TV…</p>
+        <p className="text-xs text-[var(--eos-muted)]">{pd.pairingLoading}</p>
       ) : null}
     </div>
   );
 }
 
 export function TvPasskeyHero() {
+  const { locale } = useLocale();
+  const pd = getPasskeyLoginDictionary(locale);
   return (
     <div className="flex items-center gap-4 mb-4">
       <div className="w-16 h-16 rounded-full border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-center text-emerald-500">
@@ -74,7 +81,7 @@ export function TvPasskeyHero() {
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-[var(--eos-text)]">
           Logowanie Passkey
         </h1>
-        <p className="text-[var(--eos-muted)] mt-1">Połącz Apple TV z kontem EstateOS</p>
+        <p className="text-[var(--eos-muted)] mt-1">{pd.pairTitle}</p>
       </div>
     </div>
   );

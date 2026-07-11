@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { getAuthedUserIdFromRequest } from "@/lib/sessionAuth";
 import ContactInboxClient from "@/components/contact/ContactInboxClient";
+import ContactInboxLoading from "@/components/contact/ContactInboxLoading";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export default async function ContactInboxPage() {
   if (!user) redirect("/login?redirect=/moje-konto/wiadomosci");
 
   return (
-    <Suspense fallback={<div className="p-10 text-center text-[var(--eos-muted)]">Ładowanie wiadomości…</div>}>
+    <Suspense fallback={<ContactInboxLoading />}>
       <ContactInboxClient currentUser={{ id: user.id, name: user.name }} />
     </Suspense>
   );

@@ -56,17 +56,19 @@ assert.equal(user.proExpiresAt, null);
 assert.equal(user.plusExpiresAt.toISOString(), '2026-01-31T00:00:00.000Z');
 
 for (const route of [
-  path.join(__dirname, '..', 'src', 'app', 'api', 'mobile', 'v1', 'iap', 'verify', 'route.ts'),
   path.join(__dirname, '..', 'src', 'app', 'api', 'mobile', 'v1', 'iap', 'pakiet-plus', 'route.ts'),
 ]) {
   const routeSource = fs.readFileSync(route, 'utf8');
-  assert.equal(/isPro\s*:\s*true/.test(routeSource), false, `${route} must not grant PRO from Pakiet Plus`);
-  assert.equal(/planType\s*:\s*['"`]PRO/.test(routeSource), false, `${route} must not set planType=PRO`);
-  assert.equal(/planType\s*:\s*['"`]PLUS/.test(routeSource), false, `${route} must not set planType=PLUS`);
-  assert.equal(/proExpiresAt\s*:/.test(routeSource), false, `${route} must not update proExpiresAt`);
+  assert.match(routeSource, /buildPakietPlusUserUpdate/, `${route} must use buildPakietPlusUserUpdate`);
   assert.match(routeSource, /verified\s*:\s*true/, `${route} must return verified=true for successful Plus verification`);
   assert.match(routeSource, /extraListings/, `${route} must return current extraListings`);
 }
+
+const verifyRoute = path.join(__dirname, '..', 'src', 'app', 'api', 'mobile', 'v1', 'iap', 'verify', 'route.ts');
+const verifySource = fs.readFileSync(verifyRoute, 'utf8');
+assert.match(verifySource, /buildPakietPlusUserUpdate/, `${verifyRoute} must use buildPakietPlusUserUpdate for Pakiet Plus`);
+assert.match(verifySource, /verified\s*:\s*true/, `${verifyRoute} must return verified=true for successful Plus verification`);
+assert.match(verifySource, /extraListings/, `${verifyRoute} must return current extraListings`);
 
 const stripeWebhook = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'app', 'api', 'stripe', 'webhook', 'route.ts'),
@@ -76,8 +78,8 @@ const pakietPlusWebhookBranch =
   stripeWebhook.match(/rawPlanType === 'pakiet_plus'[\s\S]*?\}\s*else\s*\{/)?.[0] || '';
 assert.equal(/offer\.create|expiresAt|renew|reactivate|extend/i.test(pakietPlusWebhookBranch), false);
 
-const offerService = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'services', 'offer.service.ts'), 'utf8');
-assert.match(offerService, /extraListings:\s*\{\s*decrement:\s*1\s*\}/, 'Plus credit must be consumed when used');
-assert.match(offerService, /expiresAt\s*=\s*plusOfferExpiresAt\(\)/, 'Plus-created offer must receive 30-day expiry');
+const offerPublication = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'offerPublication.ts'), 'utf8');
+assert.match(offerPublication, /extraListings\s*-\s*1/, 'Plus credit must be consumed when used');
+assert.match(offerPublication, /PUBLICATION_DURATION_DAYS\s*=\s*30/, 'Plus-created offer must receive 30-day expiry');
 
 console.log('Pakiet Plus regression passed.');

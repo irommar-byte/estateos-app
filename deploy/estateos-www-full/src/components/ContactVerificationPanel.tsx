@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { CheckCircle, Loader2, Mail, Phone, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getVerificationDictionary } from "@/i18n/verificationDictionary";
+
 
 type ProfileFlags = {
   email?: string;
@@ -19,6 +22,8 @@ type Props = {
 };
 
 export default function ContactVerificationPanel({ initial, compact = false, onUpdated }: Props) {
+  const { locale } = useLocale();
+  const vd = getVerificationDictionary(locale);
   const [profile, setProfile] = useState<ProfileFlags | null>(initial || null);
   const [emailCode, setEmailCode] = useState("");
   const [smsCode, setSmsCode] = useState("");
@@ -56,10 +61,10 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
     try {
       const res = await fetch("/api/user/me/email-verify/send", { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Nie udało się wysłać kodu.");
-      setMessage({ type: "ok", text: "Kod wysłany na Twój e-mail." });
+      if (!res.ok) throw new Error(data.error || vd.sendFail);
+      setMessage({ type: "ok", text: vd.codeSentEmail });
     } catch (e: unknown) {
-      setMessage({ type: "err", text: e instanceof Error ? e.message : "Błąd wysyłki." });
+      setMessage({ type: "err", text: e instanceof Error ? e.message : vd.sendFail });
     } finally {
       setBusy(null);
     }
@@ -75,12 +80,12 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
         body: JSON.stringify({ code: emailCode.trim() }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Nieprawidłowy kod.");
+      if (!res.ok) throw new Error(data.error || vd.invalidCode);
       setEmailCode("");
-      setMessage({ type: "ok", text: "E-mail potwierdzony." });
+      setMessage({ type: "ok", text: vd.emailConfirmed });
       await refresh();
     } catch (e: unknown) {
-      setMessage({ type: "err", text: e instanceof Error ? e.message : "Błąd weryfikacji." });
+      setMessage({ type: "err", text: e instanceof Error ? e.message : vd.verifyFail });
     } finally {
       setBusy(null);
     }
@@ -92,10 +97,10 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
     try {
       const res = await fetch("/api/user/me/sms/send", { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Nie udało się wysłać SMS.");
-      setMessage({ type: "ok", text: "Kod SMS wysłany." });
+      if (!res.ok) throw new Error(data.error || vd.smsSendFail);
+      setMessage({ type: "ok", text: vd.codeSentSms });
     } catch (e: unknown) {
-      setMessage({ type: "err", text: e instanceof Error ? e.message : "Błąd SMS." });
+      setMessage({ type: "err", text: e instanceof Error ? e.message : vd.smsFail });
     } finally {
       setBusy(null);
     }
@@ -111,12 +116,12 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
         body: JSON.stringify({ code: smsCode.trim() }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Nieprawidłowy kod.");
+      if (!res.ok) throw new Error(data.error || vd.invalidCode);
       setSmsCode("");
-      setMessage({ type: "ok", text: "Telefon potwierdzony." });
+      setMessage({ type: "ok", text: vd.phoneConfirmed });
       await refresh();
     } catch (e: unknown) {
-      setMessage({ type: "err", text: e instanceof Error ? e.message : "Błąd weryfikacji." });
+      setMessage({ type: "err", text: e instanceof Error ? e.message : vd.verifyFail });
     } finally {
       setBusy(null);
     }
@@ -126,7 +131,7 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
     return (
       <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-8 text-center text-white/50">
         <Loader2 className="mx-auto mb-3 animate-spin" size={24} />
-        Ładowanie statusu konta…
+        {vd.loading}
       </div>
     );
   }
@@ -141,8 +146,8 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
         <div className="flex items-center gap-3 text-emerald-400">
           <ShieldCheck size={28} />
           <div>
-            <p className="text-sm font-black uppercase tracking-[0.2em]">Konto zweryfikowane</p>
-            <p className="text-xs text-white/60 mt-1">Możesz publikować ogłoszenia i negocjować jak w aplikacji.</p>
+            <p className="text-sm font-black uppercase tracking-[0.2em]">{vd.verifiedTitle}</p>
+            <p className="text-xs text-white/60 mt-1">{vd.verifiedBody}</p>
           </div>
         </div>
       </motion.div>
@@ -152,10 +157,9 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
   return (
     <div className={`space-y-6 ${compact ? "" : "max-w-2xl"}`}>
       <div className="rounded-[2rem] border border-white/10 bg-[#0a0a0a]/80 p-6 md:p-8 backdrop-blur-xl">
-        <h2 className="text-xl font-black text-white mb-2 tracking-tight">Potwierdź dane kontaktowe</h2>
+        <h2 className="text-xl font-black text-white mb-2 tracking-tight">{vd.confirmTitle}</h2>
         <p className="text-sm text-white/50 mb-6 leading-relaxed">
-          Tak jak w aplikacji mobilnej: <strong className="text-white/80">SMS</strong> do negocjacji i wizyt,{" "}
-          <strong className="text-white/80">SMS + e-mail</strong> do publikacji ogłoszeń.
+          {vd.confirmIntroBeforeSms}<strong className="text-white/80">{vd.confirmBodySms}</strong>{vd.confirmIntroAfterSms}<strong className="text-white/80">{vd.confirmBodyEmail}</strong>{vd.confirmIntroAfterEmail}
         </p>
 
         {message ? (
@@ -173,7 +177,7 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2">
               <Mail size={18} className={emailOk ? "text-emerald-400" : "text-white/40"} />
-              <span className="text-xs font-black uppercase tracking-[0.18em] text-white/80">E-mail</span>
+              <span className="text-xs font-black uppercase tracking-[0.18em] text-white/80">{vd.emailLabel}</span>
             </div>
             {emailOk ? <CheckCircle size={18} className="text-emerald-400" /> : null}
           </div>
@@ -186,7 +190,7 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
                 disabled={busy !== null}
                 className="w-full py-3 rounded-xl bg-white/10 border border-white/15 text-[10px] font-black uppercase tracking-[0.2em] text-white hover:bg-white/15 disabled:opacity-40"
               >
-                {busy === "email-send" ? <Loader2 className="mx-auto animate-spin" size={16} /> : "Wyślij kod (6 cyfr)"}
+                {busy === "email-send" ? <Loader2 className="mx-auto animate-spin" size={16} /> : vd.sendEmailCode}
               </button>
               <input
                 value={emailCode}
@@ -200,7 +204,7 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
                 disabled={busy !== null || emailCode.length !== 6}
                 className="w-full py-3 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase tracking-[0.2em] disabled:opacity-40"
               >
-                {busy === "email-confirm" ? <Loader2 className="mx-auto animate-spin" size={16} /> : "Potwierdź e-mail"}
+                {busy === "email-confirm" ? <Loader2 className="mx-auto animate-spin" size={16} /> : vd.confirmEmail}
               </button>
             </div>
           ) : null}
@@ -211,11 +215,11 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2">
               <Phone size={18} className={phoneOk ? "text-emerald-400" : "text-white/40"} />
-              <span className="text-xs font-black uppercase tracking-[0.18em] text-white/80">Telefon</span>
+              <span className="text-xs font-black uppercase tracking-[0.18em] text-white/80">{vd.phoneLabel}</span>
             </div>
             {phoneOk ? <CheckCircle size={18} className="text-emerald-400" /> : null}
           </div>
-          <p className="text-sm text-white/50 mb-4">{profile.phone || "Brak numeru — uzupełnij w CRM (profil)."}</p>
+          <p className="text-sm text-white/50 mb-4">{profile.phone || vd.noPhone}</p>
           {!phoneOk && profile.phone ? (
             <div className="space-y-3">
               <button
@@ -224,7 +228,7 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
                 disabled={busy !== null}
                 className="w-full py-3 rounded-xl bg-white/10 border border-white/15 text-[10px] font-black uppercase tracking-[0.2em] text-white hover:bg-white/15 disabled:opacity-40"
               >
-                {busy === "sms-send" ? <Loader2 className="mx-auto animate-spin" size={16} /> : "Wyślij kod SMS (4 cyfry)"}
+                {busy === "sms-send" ? <Loader2 className="mx-auto animate-spin" size={16} /> : vd.sendSmsCode}
               </button>
               <input
                 value={smsCode}
@@ -238,7 +242,7 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
                 disabled={busy !== null || smsCode.length !== 4}
                 className="w-full py-3 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase tracking-[0.2em] disabled:opacity-40"
               >
-                {busy === "sms-confirm" ? <Loader2 className="mx-auto animate-spin" size={16} /> : "Potwierdź telefon"}
+                {busy === "sms-confirm" ? <Loader2 className="mx-auto animate-spin" size={16} /> : vd.confirmPhone}
               </button>
             </div>
           ) : !phoneOk ? (
@@ -246,7 +250,7 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
               href="/moje-konto/crm"
               className="inline-block text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400 hover:text-emerald-300"
             >
-              → Uzupełnij numer w panelu
+              {vd.fillPhoneLink}
             </Link>
           ) : null}
         </div>

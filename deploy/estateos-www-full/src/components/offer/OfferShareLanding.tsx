@@ -22,8 +22,12 @@ import OfferShareMessageModal from '@/components/offer/OfferShareMessageModal';
 import OfferSharePrintActions from '@/components/offer/OfferSharePrintActions';
 import OfferSharePrintBrochure from '@/components/offer/OfferSharePrintBrochure';
 import { loadOfferShareIntent, resumeOfferShareIntent } from '@/lib/offerShareIntent';
+import { useLocale } from '@/contexts/LocaleContext';
+import { getOfferShareDictionary } from '@/i18n/offerShareDictionary';
 
 export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
+  const { locale } = useLocale();
+  const osd = getOfferShareDictionary(locale);
   const [activeImage, setActiveImage] = useState(0);
   const [copied, setCopied] = useState(false);
   const [appointmentOpen, setAppointmentOpen] = useState(false);
@@ -79,7 +83,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
                   <strong className="text-[11px] tracking-[0.18em] text-[#141416] dark:text-white">
                     EstateOS™
                   </strong>
-                  <span>Wizytówka oferty</span>
+                  <span>{osd.cardLabel}</span>
                 </div>
                 <span className="rounded-full border border-[#b8922e]/35 bg-[#b8922e]/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-[#b8922e]">
                   #{card.id}
@@ -145,7 +149,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {card.area != null ? (
                   <div className="rounded-2xl border border-black/10 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66]">Metraż</p>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66]">{osd.area}</p>
                     <p className="mt-1 flex items-center gap-1 text-sm font-bold">
                       <Ruler size={14} className="text-emerald-500" />
                       {card.area} m²
@@ -154,13 +158,13 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
                 ) : null}
                 {card.rooms != null ? (
                   <div className="rounded-2xl border border-black/10 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66]">Pokoje</p>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66]">{osd.rooms}</p>
                     <p className="mt-1 text-sm font-bold">{card.rooms}</p>
                   </div>
                 ) : null}
                 {card.floor != null ? (
                   <div className="rounded-2xl border border-black/10 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66]">Piętro</p>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66]">{osd.floor}</p>
                     <p className="mt-1 text-sm font-bold">{card.floor}</p>
                   </div>
                 ) : null}
@@ -182,8 +186,8 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
 
               <OfferShareQr
                 url={card.canonicalUrl}
-                label="Kod QR oferty"
-                caption="Zeskanuj telefonem — otworzy wizytówkę lub aplikację EstateOS™ z tą nieruchomością."
+                label={osd.qrLabel}
+                caption={osd.qrCaption}
               />
 
               <OfferShareOpenInAppButton offerId={card.id} canonicalUrl={card.canonicalUrl} />
@@ -219,7 +223,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
                   <Sparkles size={18} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-sm font-black text-[#141416] dark:text-white">Dlaczego EstateOS™?</h2>
+                  <h2 className="text-sm font-black text-[#141416] dark:text-white">{osd.whyTitle}</h2>
                   <p className="mt-1 text-xs leading-relaxed text-[#5c5c66] dark:text-[#9a9aa8]">
                     Radar dopasowań, Deal Room, weryfikacja ofert i aplikacja mobilna — nowoczesny rynek
                     nieruchomości zamiast kolejnego portalu ogłoszeń.

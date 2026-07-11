@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Fingerprint, Loader2 } from "lucide-react";
 import { TvPairingStatusBanner, TvPasskeyHero } from "@/components/TvPairingUi";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getPasskeyLoginDictionary } from "@/i18n/passkeyLoginDictionary";
+
 import {
   isTvosPairingRequest,
   pairTvAfterMobilePasskey,
@@ -12,6 +15,8 @@ import {
 } from "@/lib/tvPairingClient";
 
 function PasskeyLoginPageInner() {
+  const { locale } = useLocale();
+  const pd = getPasskeyLoginDictionary(locale);
   const searchParams = useSearchParams();
   const pairCode = readTvPairCode(searchParams);
   const emailHint = String(searchParams.get("email") || "").trim().toLowerCase();
@@ -24,7 +29,7 @@ function PasskeyLoginPageInner() {
 
   const runPasskeyPairing = useCallback(async () => {
     if (!isTvPairing || !pairCode) {
-      setError("Brak kodu parowania z Apple TV. Zeskanuj kod QR ponownie na telewizorze.");
+      setError(pd.noPairCode);
       return;
     }
 
@@ -36,7 +41,7 @@ function PasskeyLoginPageInner() {
     if (result.success) {
       setSuccess(true);
     } else {
-      setError(result.error || "Nie udało się połączyć z Apple TV.");
+      setError(result.error || pd.pairFail);
     }
     setLoading(false);
   }, [emailHint, isTvPairing, pairCode]);
@@ -55,7 +60,7 @@ function PasskeyLoginPageInner() {
           href="/"
           className="mb-10 inline-block text-sm uppercase tracking-widest font-semibold text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
         >
-          Strona główna
+          {pd.home}
         </Link>
 
         <div className="space-y-8">
@@ -81,7 +86,7 @@ function PasskeyLoginPageInner() {
               ) : (
                 <>
                   <Fingerprint size={20} className="text-emerald-500" />
-                  Użyj Passkey (Face ID / Touch ID)
+                  {pd.usePasskey}
                 </>
               )}
             </button>
@@ -89,17 +94,17 @@ function PasskeyLoginPageInner() {
 
           {!isTvPairing ? (
             <p className="text-sm text-[var(--eos-muted)]">
-              Ten adres służy do logowania Passkey z Apple TV. Otwórz go przez kod QR w aplikacji EstateOS na tvOS.
+              {pd.tvHint}
             </p>
           ) : null}
 
           <p className="text-center text-[11px] text-[var(--eos-muted)]">
-            Wolisz hasło?{" "}
+            {pd.preferPassword}{" "}
             <Link
               href={`/login?source=tvos&pair=${encodeURIComponent(pairCode)}&authIntent=login`}
               className="text-emerald-500 hover:text-emerald-400"
             >
-              Zaloguj się hasłem
+              {pd.loginWithPassword}
             </Link>
           </p>
         </div>

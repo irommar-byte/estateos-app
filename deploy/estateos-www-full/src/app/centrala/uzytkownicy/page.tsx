@@ -162,10 +162,10 @@ export default function AdminUsers() {
   const verifiedCount = users.filter(isVerifiedUser).length;
 
   const tabs: { id: TabType; label: string; hint: string; icon: typeof Users }[] = [
-    { id: "PRIVATE", label: "Prywatni", hint: "Osoby fizyczne", icon: Users },
-    { id: "AGENTS", label: "Agenci", hint: "Agenci i doradcy", icon: Briefcase },
-    { id: "AGENCIES", label: "Agencje", hint: "Biura nieruchomości", icon: Building2 },
-    { id: "PARTNER", label: "Partner PRO", hint: "Status PRO / inwestor", icon: Crown },
+    { id: "PRIVATE", label: ad.tabPrivate, hint: ad.tabPrivateHint, icon: Users },
+    { id: "AGENTS", label: ad.tabAgents, hint: ad.tabAgentsHint, icon: Briefcase },
+    { id: "AGENCIES", label: ad.tabAgencies, hint: ad.tabAgenciesHint, icon: Building2 },
+    { id: "PARTNER", label: ad.tabPartner, hint: ad.tabPartnerHint, icon: Crown },
   ];
 
   const togglePro = async (id: number, isPro: boolean) => {
@@ -178,17 +178,17 @@ export default function AdminUsers() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) {
-        alert(data?.error || "Nie udało się zmienić statusu PRO.");
+        alert(data?.error || ad.proToggleFail);
         return;
       }
       void fetchUsers();
     } catch {
-      alert("Błąd sieci przy zmianie statusu PRO.");
+      alert(ad.proToggleNetwork);
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Czy na pewno usunąć tego użytkownika i powiązane dane? Operacji nie można cofnąć.")) return;
+    if (!confirm(ad.deleteUserConfirm)) return;
 
     setIsDeleting(true);
     try {
@@ -200,7 +200,7 @@ export default function AdminUsers() {
         setSelectedUser(null);
         void fetchUsers();
       } else {
-        alert("Błąd podczas usuwania.");
+        alert(ad.deleteUserFail);
       }
     } catch (error) {
       console.error(error);
@@ -227,13 +227,13 @@ export default function AdminUsers() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.thread?.id) {
-        alert(data?.error || "Nie udało się otworzyć czatu.");
+        alert(data?.error || ad.chatOpenFail);
         return;
       }
       const name = encodeURIComponent(peerName || "");
       router.push(`/moje-konto/wiadomosci?thread=${data.thread.id}&peer=${peerUserId}${name ? `&name=${name}` : ""}`);
     } catch {
-      alert("Błąd sieci przy otwieraniu czatu.");
+      alert(ad.chatOpenNetwork);
     }
   };
 
@@ -269,7 +269,7 @@ export default function AdminUsers() {
               />
               <input
                 type="search"
-                placeholder="Szukaj: ID, e-mail, imię, telefon, firma…"
+                placeholder={ad.searchUsersPlaceholder}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] py-3.5 pl-11 pr-4 text-sm outline-none placeholder:text-[var(--eos-muted)] focus:border-emerald-500/50"
@@ -279,7 +279,7 @@ export default function AdminUsers() {
 
           <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5">
-              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">Konta</p>
+              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">{ad.accountsLabel}</p>
               <p className="text-3xl font-black tabular-nums">{users.length}</p>
             </div>
             <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-5">
@@ -289,11 +289,11 @@ export default function AdminUsers() {
               <p className="text-3xl font-black tabular-nums text-emerald-600 dark:text-emerald-400">{verifiedCount}</p>
             </div>
             <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5">
-              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">Aktywne oferty</p>
+              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">{ad.activeOffersLabel}</p>
               <p className="text-3xl font-black tabular-nums">{totalOffers}</p>
             </div>
             <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5">
-              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[var(--eos-muted)]">Szac. portfele</p>
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[var(--eos-muted)]">{ad.estWalletsLabel}</p>
               <p
                 className="text-xl font-black tabular-nums leading-tight sm:text-2xl lg:text-3xl"
                 title={`${new Intl.NumberFormat("pl-PL").format(totalCapital)} PLN`}
@@ -305,7 +305,7 @@ export default function AdminUsers() {
           </div>
 
           {!loading && (
-            <nav className="mt-8" aria-label="Segmenty użytkowników">
+            <nav className="mt-8" aria-label={ad.userSegmentsAria}>
               <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
                 {tabs.map((tab) => {
                   const Icon = tab.icon;
