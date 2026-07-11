@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getCarsDictionary } from "@/i18n/carsDictionary";
 
 type CarOwnerActionsProps = {
   carId: number;
@@ -11,6 +13,8 @@ type CarOwnerActionsProps = {
 };
 
 export default function CarOwnerActions({ carId, ownerUserId, currentUserId }: CarOwnerActionsProps) {
+  const { locale } = useLocale();
+  const d = getCarsDictionary(locale);
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +22,7 @@ export default function CarOwnerActions({ carId, ownerUserId, currentUserId }: C
   if (!currentUserId || !ownerUserId || currentUserId !== ownerUserId) return null;
 
   const handleDelete = async () => {
-    if (!window.confirm("Usunąć to ogłoszenie samochodu? Tej operacji nie można cofnąć.")) return;
+    if (!window.confirm(d.ownerDeleteConfirm)) return;
     setDeleting(true);
     setError(null);
     try {
@@ -28,14 +32,14 @@ export default function CarOwnerActions({ carId, ownerUserId, currentUserId }: C
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(typeof data?.error === "string" ? data.error : "Nie udało się usunąć ogłoszenia.");
+        setError(typeof data?.error === "string" ? data.error : d.ownerDeleteError);
         setDeleting(false);
         return;
       }
       router.push("/moje-konto/ogloszenia");
       router.refresh();
     } catch {
-      setError("Błąd sieci podczas usuwania ogłoszenia.");
+      setError(d.ownerNetworkError);
       setDeleting(false);
     }
   };
@@ -46,7 +50,7 @@ export default function CarOwnerActions({ carId, ownerUserId, currentUserId }: C
         href={`/cars/${carId}/edytuj`}
         className="rounded-full border border-sky-400/40 bg-sky-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-sky-300"
       >
-        Edytuj ogłoszenie
+        {d.ownerEdit}
       </Link>
       <button
         type="button"
@@ -54,7 +58,7 @@ export default function CarOwnerActions({ carId, ownerUserId, currentUserId }: C
         disabled={deleting}
         className="rounded-full border border-red-400/35 bg-red-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-300 disabled:opacity-60"
       >
-        {deleting ? "Usuwanie..." : "Usuń ogłoszenie"}
+        {deleting ? d.ownerDeleting : d.ownerDelete}
       </button>
       {error ? <p className="w-full text-sm text-red-400">{error}</p> : null}
     </div>

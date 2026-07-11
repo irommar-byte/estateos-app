@@ -6,13 +6,9 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { dispatchContactUnreadRefresh } from "@/lib/contactServiceWeb";
 import { formatCarPrice } from "@/lib/carsPresentation";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getCarsDictionary } from "@/i18n/carsDictionary";
 
-const VIEWING_OPTIONS = [
-  "Jak najszybciej",
-  "W tym tygodniu",
-  "W przyszłym tygodniu",
-  "Tylko pytanie — bez oględzin",
-] as const;
 
 type CarInquiryPanelProps = {
   carId: number;
@@ -37,17 +33,19 @@ export default function CarInquiryPanel({
   sellerUserId,
   currentUserId,
 }: CarInquiryPanelProps) {
+  const { locale } = useLocale();
+  const d = getCarsDictionary(locale);
+  const viewingOptions = [d.inquiryViewingAsap, d.inquiryViewingThisWeek, d.inquiryViewingNextWeek, d.inquiryViewingQuestionOnly];
   const router = useRouter();
-  const [viewingPreference, setViewingPreference] = useState<string>(VIEWING_OPTIONS[0]);
+  const [viewingPreference, setViewingPreference] = useState<string>(viewingOptions[0]);
   const [phone, setPhone] = useState("");
-  const [message, setMessage] = useState(
-    `Dzień dobry, jestem zainteresowany/a ogłoszeniem „${carTitle}”. Proszę o informację o dostępności i możliwości oględzin.`,
-  );
+  const defaultMessage = d.inquiryDefaultMessage(carTitle);
+  const [message, setMessage] = useState(defaultMessage);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const selfId = Number(currentUserId);
+    const selfId = Number(currentUserId);
   const isOwner = Number.isFinite(selfId) && sellerUserId != null && selfId === sellerUserId;
 
   const summary = useMemo(
@@ -60,7 +58,7 @@ export default function CarInquiryPanel({
   if (!sellerUserId) {
     return (
       <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-5 text-sm text-[var(--eos-muted)]">
-        Zapytania będą dostępne po przypisaniu sprzedającego do tego ogłoszenia.
+        {d.inquiryNoSeller}
       </div>
     );
   }
@@ -80,11 +78,11 @@ export default function CarInquiryPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ message, viewingPreference, phone }),
+        body: JSON.stringify({ message, viewingPreference: viewingPreference || viewingOptions[0], phone }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(typeof data?.error === "string" ? data.error : "Nie udało się wysłać zapytania.");
+        throw new Error(typeof data?.error === "string" ? data.error : d.inquiryError);
       }
       dispatchContactUnreadRefresh();
       setSuccess(true);
@@ -98,7 +96,7 @@ export default function CarInquiryPanel({
         }, 900);
       }
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Nie udało się wysłać zapytania.");
+      setError(submitError instanceof Error ? submitError.message : d.inquiryError);
     } finally {
       setSubmitting(false);
     }
@@ -107,9 +105,9 @@ export default function CarInquiryPanel({
   if (success) {
     return (
       <div className="rounded-2xl border border-sky-400/30 bg-sky-500/10 p-5">
-        <p className="text-sm font-semibold text-sky-200">Zapytanie wysłane</p>
+        <p className="text-sm font-semibold text-sky-200">{d.inquirySuccessTitle}</p>
         <p className="mt-2 text-sm text-[var(--eos-muted)]">
-          Sprzedający otrzyma wiadomość w EstateOS Contact. Za chwilę przekierujemy Cię do czatu.
+          {d.inquirySuccessBody}
         </p>
       </div>
     );
@@ -118,21 +116,21 @@ export default function CarInquiryPanel({
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-sky-400/25 bg-[var(--eos-surface)] p-5">
       <div>
-        <p className="text-xs font-black uppercase tracking-[0.16em] text-sky-300">Zapytaj o auto</p>
+        <p className="text-xs font-black uppercase tracking-[0.16em] text-sky-300">{d.inquiryTitle}</p>
         <p className="mt-2 text-sm text-[var(--eos-muted)]">{summary}</p>
       </div>
 
       <label className="grid gap-1.5 text-sm">
         <span className="flex items-center gap-2 text-[var(--eos-muted)]">
           <Calendar className="size-4 text-sky-400" aria-hidden />
-          Termin oględzin
+          {d.inquiryViewingSchedule}
         </span>
         <select
           value={viewingPreference}
           onChange={(e) => setViewingPreference(e.target.value)}
           className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg)] px-3 py-2.5 outline-none focus:border-sky-400/50"
         >
-          {VIEWING_OPTIONS.map((option) => (
+          {viewingOptions.map((option) => (
             <option key={option} value={option}>
               {option}
             </option>
@@ -143,7 +141,7 @@ export default function CarInquiryPanel({
       <label className="grid gap-1.5 text-sm">
         <span className="flex items-center gap-2 text-[var(--eos-muted)]">
           <Phone className="size-4 text-sky-400" aria-hidden />
-          Telefon (opcjonalnie)
+          {d.inquiryPhoneLabel}
         </span>
         <input
           value={phone}
@@ -156,7 +154,7 @@ export default function CarInquiryPanel({
       <label className="grid gap-1.5 text-sm">
         <span className="flex items-center gap-2 text-[var(--eos-muted)]">
           <MessageCircle className="size-4 text-sky-400" aria-hidden />
-          Twoja wiadomość
+          {d.inquiryYourMessage}
         </span>
         <textarea
           value={message}
@@ -176,15 +174,15 @@ export default function CarInquiryPanel({
         className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-sky-400/40 bg-sky-500/15 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-sky-200 transition hover:bg-sky-500/25 disabled:opacity-60"
       >
         {submitting ? <Loader2 className="size-4 animate-spin" /> : <MessageCircle className="size-4" />}
-        {submitting ? "Wysyłanie..." : "Wyślij zapytanie"}
+        {submitting ? d.inquirySubmitting : d.inquirySubmit}
       </button>
 
       <p className="text-[11px] leading-relaxed text-[var(--eos-muted)]">
-        Wysyłając zapytanie, kontaktujesz się ze sprzedającym przez{" "}
+        {d.inquiryFooter.split("EstateOS Contact")[0]}
         <Link href="/moje-konto/wiadomosci" className="text-sky-300 underline">
           EstateOS Contact
         </Link>
-        . Jedno konto — Home i Car.
+        {d.inquiryFooter.includes("Home") ? d.inquiryFooter.split("EstateOS Contact").slice(1).join("EstateOS Contact") : ""}
       </p>
     </form>
   );

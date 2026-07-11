@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { Check, CheckCircle2, Circle, Copy, ExternalLink } from 'lucide-react';
 import AppStoreBadgeLink from '@/components/ui/AppStoreBadgeLink';
 import { CAMPAIGN_LINK_PRESETS } from '@/lib/campaignLinks';
+import { useLocale } from '@/contexts/LocaleContext';
+import { getKampaniaOwnerDictionary } from '@/i18n/kampaniaOwnerDictionary';
 
 const STORAGE_KEY = 'estateos_owner_checklist_v1';
 
@@ -189,6 +191,8 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 export default function KampaniaOwnerPage() {
+  const { locale } = useLocale();
+  const kd = getKampaniaOwnerDictionary(locale);
   const [done, setDone] = useState<Record<string, boolean>>({});
 
   useEffect(() => {

@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getCarsDictionary } from "@/i18n/carsDictionary";
 import { useEffect, useState } from "react";
 import CarCatalogFields from "@/components/cars/CarCatalogFields";
 import CarCityMapPicker from "@/components/cars/CarCityMapPicker";
@@ -126,6 +128,8 @@ function toPayload(form: CarFormState) {
 }
 
 export default function CarListingForm({ mode, initialValues, carId, onSuccess }: CarListingFormProps) {
+  const { locale } = useLocale();
+  const d = getCarsDictionary(locale);
   const [form, setForm] = useState<CarFormState>(initialValues || initialCarForm);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -195,22 +199,22 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
 
     const payload = toPayload(form);
     if (!payload.title || !payload.make || !payload.model || !payload.city || payload.pricePln <= 0) {
-      setError("Uzupełnij tytuł, markę, model, miejscowość i poprawną cenę.");
+      setError(d.formErrorTitle);
       setSubmitting(false);
       return;
     }
     if (form.cityLat == null || form.cityLng == null) {
-      setError("Ustaw miejscowość na mapie — przeciągnij mapę lub wybierz z wyszukiwarki.");
+      setError(d.formErrorCity);
       setSubmitting(false);
       return;
     }
     if (!payload.fuelType) {
-      setError("Wybierz rodzaj paliwa z katalogu.");
+      setError(d.formErrorFuel);
       setSubmitting(false);
       return;
     }
     if (!payload.images.length) {
-      setError("Dodaj co najmniej jedno zdjęcie auta.");
+      setError(d.formErrorPhotos);
       setSubmitting(false);
       return;
     }
@@ -224,7 +228,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(typeof data?.error === "string" ? data.error : "Nie udało się zapisać ogłoszenia.");
+        setError(typeof data?.error === "string" ? data.error : d.formErrorSave);
         setSubmitting(false);
         return;
       }
@@ -244,7 +248,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       if (savedId) onSuccess?.(savedId);
       if (mode === "create") setForm(initialCarForm);
     } catch {
-      setError("Błąd sieci podczas zapisu ogłoszenia.");
+      setError(d.formErrorNetwork);
     } finally {
       setSubmitting(false);
     }
@@ -272,23 +276,23 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
         <CarCatalogFields form={form} setForm={setForm} />
 
         <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Tytuł ogłoszenia</span>
+          <span className="text-[var(--eos-muted)]">{d.formTitleLabel}</span>
           <input
             value={form.title}
             onChange={(e) => setField("title", e.target.value)}
             className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("title"))}`}
-            placeholder="np. BMW X5 xDrive30d M Sport"
+            placeholder={d.formTitlePlaceholder}
             required
           />
         </label>
 
         <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Opis</span>
+          <span className="text-[var(--eos-muted)]">{d.formDescriptionLabel}</span>
           <textarea
             value={form.description}
             onChange={(e) => setField("description", e.target.value)}
             className={`min-h-[120px] rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("description"))}`}
-            placeholder="Opisz stan auta, historię serwisową, wyposażenie..."
+            placeholder={d.formDescriptionPlaceholder}
           />
         </label>
 
@@ -305,7 +309,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Przebieg (km)</span>
+          <span className="text-[var(--eos-muted)]">{d.formMileageLabel}</span>
           <CarFormattedNumberInput
             value={form.mileageKm}
             onChange={(digits) => setField("mileageKm", digits)}

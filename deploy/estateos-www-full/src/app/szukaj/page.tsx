@@ -3,10 +3,9 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Loader2, CheckCircle, BellRing, Phone, Lock, User, Sparkles, Shield, Star, AlertTriangle, Check, XCircle } from "lucide-react";
 import Link from "next/link";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getSzukajDictionary } from "@/i18n/szukajDictionary";
 import RadarActivationEffect from "@/components/RadarActivationEffect";
-
-const PROPERTY_TYPES = ["Mieszkanie", "Segment", "Dom Wolnostojący", "Lokal Użytkowy", "Działka"];
-const AMENITIES = ["Balkon", "Garaż/Miejsce park.", "Piwnica/Pom. gosp.", "Ogródek", "Dwupoziomowe", "Winda"];
 
 type DistrictCatalogResponse = {
   strictCities: string[];
@@ -14,11 +13,15 @@ type DistrictCatalogResponse = {
 };
 
 export default function SzukajNieruchomosci() {
+  const { locale } = useLocale();
+  const d = getSzukajDictionary(locale);
+  const PROPERTY_TYPES = d.propertyTypes;
+  const AMENITIES = d.amenities;
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
   
   const [formData, setFormData] = useState({
-    name: "", email: "", password: "", phone: "", type: "Mieszkanie",
+    name: "", email: "", password: "", phone: "", type: d.defaultPropertyType,
     city: "", districts: [] as string[], maxPrice: "", areaFrom: "", areaTo: "", plotArea: "", buyerType: "private", amenities: [] as string[], rooms: "",
   });
   const [locationCatalog, setLocationCatalog] = useState<DistrictCatalogResponse>({ strictCities: [], strictCityDistricts: {} });
@@ -50,7 +53,7 @@ export default function SzukajNieruchomosci() {
           phone: data.phone || '000000000', 
           password: 'session_active', 
           buyerType: data.buyerType || 'private',
-          type: data.searchType || "Mieszkanie",
+          type: data.searchType || d.defaultPropertyType,
           districts: data.searchDistricts ? data.searchDistricts.split(',') : [],
           maxPrice: data.searchMaxPrice ? String(data.searchMaxPrice) : "",
           areaFrom: data.searchAreaFrom || "",
@@ -154,9 +157,9 @@ export default function SzukajNieruchomosci() {
           setIsSuccess(true); 
           if (typeof window !== 'undefined') localStorage.setItem('radar_active', 'true'); 
       } else { 
-          alert("Nieprawidłowy kod SMS."); 
+          alert(d.otpInvalid); 
       }
-    } catch (error) { alert("Błąd serwera"); } finally { setVerifying(false); }
+    } catch (error) { alert(d.serverError); } finally { setVerifying(false); }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -182,10 +185,10 @@ export default function SzukajNieruchomosci() {
         }
         else {
              const errData = await res.json();
-             alert(errData.error || "Wystąpił błąd podczas rejestracji.");
+             alert(errData.error || d.registerError);
         }
       }
-    } catch (error) { alert("Błąd połączenia z serwerem."); } finally { setIsSubmitting(false); }
+    } catch (error) { alert(d.connectionError); } finally { setIsSubmitting(false); }
   };
 
   if (isLoadingSession) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" size={40} /></div>;
@@ -203,8 +206,8 @@ export default function SzukajNieruchomosci() {
         {isVerification && !isLoggedIn && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[999999] bg-[#050505]/95 backdrop-blur-xl flex flex-col items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-6 text-center">
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-[#0a0a0a] border border-white/10 p-8 md:p-10 rounded-[3rem] max-w-lg w-full shadow-2xl relative overflow-hidden">
-              <h2 className="text-3xl font-black text-white mb-4 tracking-tighter">Weryfikacja <span className="text-emerald-500">SMS</span></h2>
-              <p className="text-sm text-white/50 mb-8">Wysłaliśmy 6-cyfrowy kod na podany numer <br/><b className="text-white tracking-widest text-lg mt-1 block">+48 {formData.phone}</b></p>
+              <h2 className="text-3xl font-black text-white mb-4 tracking-tighter">{d.verifyTitle} <span className="text-emerald-500">{d.verifyTitleAccent}</span></h2>
+              <p className="text-sm text-white/50 mb-8">{d.verifySent} <br/><b className="text-white tracking-widest text-lg mt-1 block">+48 {formData.phone}</b></p>
               
               <form onSubmit={handleVerifyOTP} className="space-y-8">
                 <div className="flex justify-between gap-2 sm:gap-3">
@@ -227,7 +230,7 @@ export default function SzukajNieruchomosci() {
                 
                 <button type="submit" disabled={verifying || otp.length !== 6} style={{ backgroundColor: (verifying || otp.length !== 6) ? "rgba(255,255,255,0.05)" : "#10b981", color: (verifying || otp.length !== 6) ? "rgba(255,255,255,0.3)" : "#000000", boxShadow: (verifying || otp.length !== 6) ? "none" : "0 0 30px rgba(16,185,129,0.5)" }} className="w-full py-6 rounded-[2rem] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all hover:scale-[1.02] disabled:cursor-not-allowed">
                   <span className="relative z-10 flex items-center justify-center gap-3">
-                    {verifying ? <Loader2 className="animate-spin" size={24} /> : "Potwierdź Kod"}
+                    {verifying ? <Loader2 className="animate-spin" size={24} /> : d.verifyConfirm}
                   </span>
                 </button>
               </form>
@@ -237,13 +240,13 @@ export default function SzukajNieruchomosci() {
       </AnimatePresence>
 
       <div className="max-w-3xl mx-auto">
-        <button onClick={() => window.history.back()} className="text-white/40 hover:text-white mb-10 inline-block text-[10px] uppercase tracking-widest font-bold transition-colors">← Wróć</button>
+        <button onClick={() => window.history.back()} className="text-white/40 hover:text-white mb-10 inline-block text-[10px] uppercase tracking-widest font-bold transition-colors">{d.back}</button>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
           <div className="flex items-center gap-4 mb-4">
             <div className="w-16 h-16 bg-white/5 text-white rounded-2xl flex items-center justify-center"><Search size={32} /></div>
-            <h1 className="text-5xl md:text-6xl font-black tracking-tighter leading-tight">Kupujesz? <br/><span className="text-emerald-500">Znajdziemy to.</span></h1>
+            <h1 className="text-5xl md:text-6xl font-black tracking-tighter leading-tight">{d.heroTitle} <br/><span className="text-emerald-500">{d.heroTitleAccent}</span></h1>
           </div>
-          <p className="text-lg text-white/40 mb-10 font-medium">Zdefiniuj parametry. Nasz inteligentny system prześle Ci priorytetowe powiadomienie, gdy tylko pojawi się idealna oferta.</p>
+          <p className="text-lg text-white/40 mb-10 font-medium">{d.heroSubtitle}</p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -251,7 +254,7 @@ export default function SzukajNieruchomosci() {
               {isLoggedIn ? (
                 <div className="bg-[#0a0a0a] border border-emerald-500/30 rounded-[2rem] p-8 md:col-span-2 shadow-[0_0_30px_rgba(16,185,129,0.1)] flex items-center justify-between mb-4">
                   <div>
-                    <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-2">Zalogowano jako</p>
+                    <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-2">{d.loggedInAs}</p>
                     <p className="text-3xl font-black text-white mb-1">{formData.name}</p>
                     <p className="text-white/50 font-medium">{formData.email}</p>
                   </div>
@@ -262,31 +265,31 @@ export default function SzukajNieruchomosci() {
               ) : (
                 <>
                   <div className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6 focus-within:border-white/30 transition-colors md:col-span-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3 flex items-center gap-2"><User size={14}/> Imię i Nazwisko</label>
-                    <input type="text" placeholder="np. Jan Kowalski" required className="w-full text-2xl font-bold placeholder:text-white/10 bg-transparent outline-none text-white" onChange={(e) => setFormData({...formData, name: e.target.value})} value={formData.name} />
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3 flex items-center gap-2"><User size={14}/> {d.nameLabel}</label>
+                    <input type="text" placeholder={d.namePlaceholder} required className="w-full text-2xl font-bold placeholder:text-white/10 bg-transparent outline-none text-white" onChange={(e) => setFormData({...formData, name: e.target.value})} value={formData.name} />
                   </div>
                   
                   {/* LIVE VERIFICATION E-MAIL */}
                   <div className={`bg-[#0a0a0a] border rounded-[2rem] p-6 transition-colors ${emailStatus === 'taken' ? 'border-red-500/50' : 'border-white/10 focus-within:border-emerald-500/50'}`}>
                     <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3 flex items-center justify-between">
-                       <span className="flex items-center gap-2"><BellRing size={14}/> E-mail (do logowania)</span>
+                       <span className="flex items-center gap-2"><BellRing size={14}/> {d.emailLabel}</span>
                        {emailStatus === 'checking' && <Loader2 size={12} className="animate-spin text-white/40" />}
                        {emailStatus === 'available' && <span className="flex items-center gap-1 text-emerald-500 text-[9px]"><Check size={12}/> WOLNY</span>}
                        {emailStatus === 'taken' && <span className="flex items-center gap-1 text-red-500 text-[9px]"><XCircle size={12}/> ZAJĘTY</span>}
                     </label>
-                    <input type="email" placeholder="jan@kowalski.pl" required className={`w-full text-2xl font-bold placeholder:text-white/10 bg-transparent outline-none ${emailStatus === 'taken' ? 'text-red-500' : 'text-white'}`} onChange={(e) => setFormData({...formData, email: e.target.value})} value={formData.email} />
-                    {emailStatus === 'taken' && <p className="text-[9px] text-red-500 font-bold mt-2 uppercase tracking-widest">Konto z tym adresem już istnieje. Zaloguj się.</p>}
+                    <input type="email" placeholder={d.emailPlaceholder} required className={`w-full text-2xl font-bold placeholder:text-white/10 bg-transparent outline-none ${emailStatus === 'taken' ? 'text-red-500' : 'text-white'}`} onChange={(e) => setFormData({...formData, email: e.target.value})} value={formData.email} />
+                    {emailStatus === 'taken' && <p className="text-[9px] text-red-500 font-bold mt-2 uppercase tracking-widest">{d.emailTakenHint}</p>}
                   </div>
                   
                   <div className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6 focus-within:border-white/30 transition-colors">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3 flex items-center gap-2"><Lock size={14}/> Hasło (min. 6 znaków)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3 flex items-center gap-2"><Lock size={14}/> {d.passwordLabel}</label>
                     <input type="password" placeholder="••••••••" required className="w-full text-2xl font-bold placeholder:text-white/10 bg-transparent outline-none text-white" onChange={(e) => setFormData({...formData, password: e.target.value})} value={formData.password} />
                   </div>
                   
                   {/* LIVE VERIFICATION PHONE */}
                   <div className={`bg-[#0a0a0a] border rounded-[2rem] p-6 transition-colors md:col-span-2 ${phoneStatus === 'taken' ? 'border-red-500/50' : 'border-white/10 focus-within:border-emerald-500/50'}`}>
                     <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3 flex items-center justify-between">
-                       <span className="flex items-center gap-2"><Phone size={14}/> Numer telefonu</span>
+                       <span className="flex items-center gap-2"><Phone size={14}/> {d.phoneLabel}</span>
                        {phoneStatus === 'checking' && <Loader2 size={12} className="animate-spin text-white/40" />}
                        {phoneStatus === 'available' && <span className="flex items-center gap-1 text-emerald-500 text-[9px]"><Check size={12}/> WOLNY</span>}
                        {phoneStatus === 'taken' && <span className="flex items-center gap-1 text-red-500 text-[9px]"><XCircle size={12}/> ZAJĘTY</span>}
@@ -295,13 +298,13 @@ export default function SzukajNieruchomosci() {
                       <span className="text-white/20 mr-2">+48</span>
                       <input type="text" placeholder="000 000 000" required className="w-full placeholder:text-white/10 bg-transparent outline-none" onChange={handlePhoneChange} value={formData.phone} />
                     </div>
-                    {phoneStatus === 'taken' && <p className="text-[9px] text-red-500 font-bold mt-2 uppercase tracking-widest">Ten numer jest przypisany do innego konta. Zaloguj się.</p>}
+                    {phoneStatus === 'taken' && <p className="text-[9px] text-red-500 font-bold mt-2 uppercase tracking-widest">{d.phoneTakenHint}</p>}
                   </div>
                 </>
               )}
 
               <div className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6 md:col-span-2 mt-4">
-                <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-4">Miasto</label>
+                <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-4">{d.cityLabel}</label>
                 <select
                   className="w-full bg-[#050505] border border-white/10 rounded-2xl px-4 py-4 text-white font-bold outline-none mb-6"
                   value={formData.city}
@@ -311,7 +314,7 @@ export default function SzukajNieruchomosci() {
                     <option key={city} className="bg-[#050505] text-white" value={city}>{city}</option>
                   ))}
                 </select>
-                <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-5">Zaznacz dzielnice</label>
+                <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-5">{d.districtsLabel}</label>
                 <div className="flex flex-wrap gap-2">
                   {districtOptions.map(d => (
                     <div
@@ -328,30 +331,30 @@ export default function SzukajNieruchomosci() {
               </div>
 
               <div className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6">
-                <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3">Typ Nieruchomości</label>
+                <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3">{d.propertyTypeLabel}</label>
                 <select className="w-full text-xl font-bold bg-transparent text-white outline-none" onChange={(e) => setFormData({...formData, type: e.target.value})} value={formData.type}>
                   {PROPERTY_TYPES.map(d => <option key={d} className="bg-[#050505] text-white">{d}</option>)}
                 </select>
               </div>
               
               <div className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6 focus-within:border-emerald-500/50">
-                <label className="text-[10px] font-bold text-emerald-500 uppercase tracking-[0.2em] block mb-3">Maksymalny Budżet (PLN)</label>
-                <input type="text" placeholder="2 000 000" className="w-full text-2xl font-bold text-emerald-500 placeholder:text-emerald-500/20 bg-transparent outline-none mb-3" onChange={(e) => setFormData({...formData, maxPrice: formatNumber(e.target.value)})} value={formData.maxPrice} />
-                <p className="text-[9px] text-white/30 font-medium uppercase tracking-widest leading-relaxed">Podaj ostateczną, górną granicę inwestycji. Zaniżenie kwoty choćby o 1 PLN wykluczy z systemu potencjalnie idealne oferty.</p>
+                <label className="text-[10px] font-bold text-emerald-500 uppercase tracking-[0.2em] block mb-3">{d.maxBudgetLabel}</label>
+                <input type="text" placeholder={d.maxBudgetPlaceholder} className="w-full text-2xl font-bold text-emerald-500 placeholder:text-emerald-500/20 bg-transparent outline-none mb-3" onChange={(e) => setFormData({...formData, maxPrice: formatNumber(e.target.value)})} value={formData.maxPrice} />
+                <p className="text-[9px] text-white/30 font-medium uppercase tracking-widest leading-relaxed">{d.maxBudgetHint}</p>
               </div>
 
               {['Mieszkanie', 'Segment', 'Dom Wolnostojący', 'Lokal Użytkowy'].includes(formData.type) && (
                 <div className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6 focus-within:border-white/30 transition-colors">
-                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3">Minimalny metraż (m²)</label>
-                  <input type="text" placeholder="np. 45" className="w-full text-2xl font-bold placeholder:text-white/10 bg-transparent outline-none text-white" onChange={(e) => setFormData({...formData, areaFrom: e.target.value.replace(/[^0-9.,]/g, '')})} value={formData.areaFrom || ''} />
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3">{d.minAreaLabel}</label>
+                  <input type="text" placeholder={d.minAreaPlaceholder} className="w-full text-2xl font-bold placeholder:text-white/10 bg-transparent outline-none text-white" onChange={(e) => setFormData({...formData, areaFrom: e.target.value.replace(/[^0-9.,]/g, '')})} value={formData.areaFrom || ''} />
                 </div>
               )}
               {['Mieszkanie', 'Dom Wolnostojący'].includes(formData.type) && (
                 <div className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6 focus-within:border-white/30 transition-colors">
-                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3">Min. Liczba Pokoi</label>
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3">{d.minRoomsLabel}</label>
                   <select className="w-full text-xl font-bold bg-transparent text-white outline-none cursor-pointer" onChange={(e) => setFormData({...formData, rooms: e.target.value})} value={formData.rooms || ""}>
-                    <option value="" className="bg-[#050505] text-white">Dowolna</option>
-                    <option value="1" className="bg-[#050505] text-white">1 (Kawalerka)</option>
+                    <option value="" className="bg-[#050505] text-white">{d.roomsAny}</option>
+                    <option value="1" className="bg-[#050505] text-white">{d.roomsStudio}</option>
                     <option value="2" className="bg-[#050505] text-white">2 pokoje</option>
                     <option value="3" className="bg-[#050505] text-white">3 pokoje</option>
                     <option value="4" className="bg-[#050505] text-white">4 pokoje</option>
@@ -402,18 +405,18 @@ export default function SzukajNieruchomosci() {
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 opacity-60 hover:opacity-100 transition-opacity duration-500">
                   <div className="flex flex-col gap-2">
                      <Shield className="text-emerald-500" size={20} />
-                     <h4 className="text-[10px] font-black uppercase tracking-widest text-white">Pełna Kontrola Danych</h4>
-                     <p className="text-[10px] text-white/50 leading-relaxed font-medium">To Ty decydujesz, komu i kiedy udostępniasz swój numer telefonu lub e-mail. Dane przekazywane są wyłącznie wybranym osobom po umówieniu prezentacji. Nigdy wcześniej.</p>
+                     <h4 className="text-[10px] font-black uppercase tracking-widest text-white">{d.trustDataTitle}</h4>
+                     <p className="text-[10px] text-white/50 leading-relaxed font-medium">{d.trustDataBody}</p>
                   </div>
                   <div className="flex flex-col gap-2">
                      <AlertTriangle className="text-yellow-500" size={20} />
-                     <h4 className="text-[10px] font-black uppercase tracking-widest text-white">Prawdziwe Informacje</h4>
-                     <p className="text-[10px] text-white/50 leading-relaxed font-medium">Podanie prawidłowych i działających danych kontaktowych jest kluczowe. Usprawnia to proces rezerwacji i gwarantuje sprawne zarządzanie terminami.</p>
+                     <h4 className="text-[10px] font-black uppercase tracking-widest text-white">{d.trustInfoTitle}</h4>
+                     <p className="text-[10px] text-white/50 leading-relaxed font-medium">{d.trustInfoBody}</p>
                   </div>
                   <div className="flex flex-col gap-2">
                      <Star className="text-orange-500 fill-orange-500" size={20} />
-                     <h4 className="text-[10px] font-black uppercase tracking-widest text-white">System Jakości</h4>
-                     <p className="text-[10px] text-white/50 leading-relaxed font-medium">Platforma monitoruje rzetelność użytkowników. Po odbytej prezentacji obie strony wystawiają sobie wzajemne opinie, budując zaufanie całej społeczności.</p>
+                     <h4 className="text-[10px] font-black uppercase tracking-widest text-white">{d.trustQualityTitle}</h4>
+                     <p className="text-[10px] text-white/50 leading-relaxed font-medium">{d.trustQualityBody}</p>
                   </div>
                </div>
 
@@ -422,7 +425,7 @@ export default function SzukajNieruchomosci() {
                     <Check size={16} strokeWidth={4} />
                  </button>
                  <label className="text-xs text-white/70 font-medium cursor-pointer leading-relaxed">
-                   Zgadzam się na warunki korzystania z platformy. Oświadczam, że wprowadzone przeze mnie dane są prawdziwe. Rozumiem, że system weryfikuje użytkowników w trosce o najwyższy standard obsługi.
+                   {d.termsLabel}
                  </label>
                </div>
             </div>
@@ -438,8 +441,8 @@ export default function SzukajNieruchomosci() {
               className="w-full mt-4 py-6 rounded-[2rem] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all hover:scale-[1.02] disabled:cursor-not-allowed"
             >
               <span className="relative flex items-center justify-center gap-3 z-10">
-                {isSubmitting ? <><Loader2 className="animate-spin" size={24} /> Aktywacja systemu...</> : 
-                  (!isFormValid ? "Wypełnij i Zaakceptuj Warunki" : <><Sparkles className="animate-pulse" style={{ color: "#000000" }} size={24}/> Uruchom Inteligentny System Dopasowań</>)}
+                {isSubmitting ? <><Loader2 className="animate-spin" size={24} /> {d.submitActivating}</> : 
+                  (!isFormValid ? "{d.submitIncomplete}" : <><Sparkles className="animate-pulse" style={{ color: "#000000" }} size={24}/> {d.submitCta}</>)}
               </span>
             </button>
           </form>

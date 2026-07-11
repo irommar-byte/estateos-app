@@ -4,12 +4,22 @@ import bcrypt from "bcrypt";
 import { encryptSession } from "@/lib/sessionUtils";
 import { Role } from "@prisma/client";
 import { canonicalizeCity, canonicalizeDistrict, getDistrictsForCity, isStrictCity } from "@/lib/location/locationCatalog";
+import { enforceAuthRateLimit } from "@/lib/authRateLimit";
 
  
 
 export async function POST(req: Request) {
   try {
     const { name, email, password, phone, type, city, districts, maxPrice, areaFrom, areaTo, plotArea, buyerType, amenities, rooms } = await req.json();
+
+    const rl = enforceAuthRateLimit(req, {
+      scope: 'szukaj-rejestracja',
+      identifier: String(email ?? ''),
+      ipMax: 12,
+      idMax: 4,
+      windowMs: 60 * 60_000,
+    });
+    if (rl) return rl;
 
     // 1. NORMALIZACJA NUMERU I BLOKADA DUPLIKATÓW
     const cleanPhone = phone.replace(/\D/g, '');

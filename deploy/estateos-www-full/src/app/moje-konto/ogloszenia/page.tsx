@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getAccountListingsDictionary } from "@/i18n/accountListingsDictionary";
 
 type HomeListing = {
   id: number;
@@ -32,12 +34,14 @@ type CarListing = {
 
 type Vertical = "home" | "car";
 
-function formatPrice(price: number | null | undefined) {
-  if (!price || !Number.isFinite(Number(price))) return "Cena na zapytanie";
+function formatPrice(price: number | null | undefined, onRequest: string) {
+  if (!price || !Number.isFinite(Number(price))) return onRequest;
   return `${new Intl.NumberFormat("pl-PL").format(Number(price))} PLN`;
 }
 
 export default function AccountListingsPage() {
+  const { locale } = useLocale();
+  const d = getAccountListingsDictionary(locale);
   const [vertical, setVertical] = useState<Vertical>("home");
   const [homeListings, setHomeListings] = useState<HomeListing[]>([]);
   const [carListings, setCarListings] = useState<CarListing[]>([]);
@@ -125,9 +129,9 @@ export default function AccountListingsPage() {
       <div className="mx-auto max-w-6xl">
         <header className="mb-8 border-b border-[var(--eos-border)] pb-6">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">Moje konto</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight">Moje ogłoszenia</h1>
+          <h1 className="mt-3 text-4xl font-semibold tracking-tight">{d.title} <span className="text-emerald-500">{d.titleAccent}</span></h1>
           <p className="mt-3 text-sm text-[var(--eos-muted)]">
-            Jedno konto EstateOS i dwa brandy operacyjne: EstateOS™Home oraz EstateOS™Car.
+            {d.subtitle}
           </p>
         </header>
 
@@ -153,18 +157,18 @@ export default function AccountListingsPage() {
         </div>
 
         {loading ? (
-          <p className="text-xs uppercase tracking-[0.2em] text-[var(--eos-muted)]">Ładowanie ogłoszeń...</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-[var(--eos-muted)]">{d.loading}</p>
         ) : activeItems.length === 0 ? (
           <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
             <p className="text-sm text-[var(--eos-muted)]">
-              {vertical === "home" ? "Nie masz jeszcze aktywnych ogłoszeń nieruchomości." : "Nie masz jeszcze ogłoszeń samochodowych."}
+              {vertical === "home" ? "{d.emptyHome}" : "{d.emptyCars}"}
             </p>
             <div className="mt-4">
               <Link
                 href={vertical === "home" ? "/dodaj-oferte" : "/cars/dodaj"}
                 className="inline-flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-xs font-black uppercase tracking-[0.12em]"
               >
-                {vertical === "home" ? "Dodaj ofertę Home" : "Dodaj ofertę Car"}
+                {vertical === "home" ? "{d.addHome}" : "{d.addCar}"}
               </Link>
             </div>
           </div>
@@ -182,7 +186,7 @@ export default function AccountListingsPage() {
                       <p className="mt-1 text-sm text-[var(--eos-muted)]">
                         {[offer.city, offer.district].filter(Boolean).join(" · ") || "Lokalizacja"}
                       </p>
-                      <p className="mt-2 text-base font-bold">{formatPrice(offer.pricePln ?? null)}</p>
+                      <p className="mt-2 text-base font-bold">{formatPrice(offer.pricePln ?? null, d.priceOnRequest)}</p>
                       {offer.featured ? (
                         <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-500">
                           Wyróżnione do{" "}
@@ -224,7 +228,7 @@ export default function AccountListingsPage() {
                       <p className="mt-1 text-sm text-[var(--eos-muted)]">
                         {car.make} · {car.model} · {car.year} · {car.city}
                       </p>
-                      <p className="mt-2 text-base font-bold">{formatPrice(car.pricePln)}</p>
+                      <p className="mt-2 text-base font-bold">{formatPrice(car.pricePln, d.priceOnRequest)}</p>
                       {car.featured ? (
                         <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-500">
                           Wyróżnione do{" "}
@@ -250,7 +254,7 @@ export default function AccountListingsPage() {
                         disabled={deletingCarId === car.id}
                         className="rounded-full border border-red-400/35 bg-red-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-300 disabled:opacity-60"
                       >
-                        {deletingCarId === car.id ? "Usuwanie..." : "Usuń"}
+                        {deletingCarId === car.id ? d.deleting : d.deleteCar}
                       </button>
                     </div>
                   </div>

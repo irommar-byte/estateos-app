@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { ExternalLink, MapPin } from "lucide-react";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getMapPreviewDictionary } from "@/i18n/mapPreviewDictionary";
 
 type Props = {
   lat: number;
@@ -86,20 +88,20 @@ export default function NeighborhoodMapPreview({
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const orbitFrameRef = useRef<number | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const { locale } = useLocale();
+  const mapCopy = getMapPreviewDictionary(locale);
 
   const isOffer = variant === "offer";
   const locationLine = [street, district, city].filter(Boolean).join(", ");
   const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}&z=${showPin ? 18 : 15}`;
   const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
-  const defaultLabel = showPin ? "Podgląd lokalizacji (Mapbox)" : "Okolica nieruchomości";
-  const defaultFooter = showPin
-    ? "Widok satelitarny z modelem 3D budynków i pinezką w miejscu wskazanym przez OtoDom."
-    : "Widok okolicy bez dokładnej pinezki — pokazuje charakter rejonu, nie precyzyjny adres.";
+  const defaultLabel = showPin ? mapCopy.sectionExact : mapCopy.sectionArea;
+  const defaultFooter = showPin ? mapCopy.footerPin : mapCopy.footerArea;
 
   useEffect(() => {
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim();
     if (!token) {
-      setMapError("Brak NEXT_PUBLIC_MAPBOX_TOKEN — mapa podglądowa niedostępna.");
+      setMapError(mapCopy.mapTokenMissing);
       return;
     }
 

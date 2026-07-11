@@ -9,6 +9,8 @@ import CarOwnerActions from "@/components/cars/CarOwnerActions";
 import CarVehicleChecksClient from "@/components/cars/CarVehicleChecksClient";
 import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
 import type { CarListingRecord } from "@/lib/carsStorage";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getCarsDictionary } from "@/i18n/carsDictionary";
 
 type CarDetailClientProps = {
   car: CarListingRecord;
@@ -28,13 +30,15 @@ function SpecItem({ icon: Icon, label, value }: { icon: typeof Fuel; label: stri
 }
 
 export default function CarDetailClient({ car, currentUserId }: CarDetailClientProps) {
+  const { locale } = useLocale();
+  const d = getCarsDictionary(locale);
   const imageSrc = carImageSrc(car.imageUrl);
 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-32 text-[var(--eos-text)] sm:px-6">
       <div className="mx-auto max-w-6xl space-y-6">
         <Link href="/cars" className="text-xs font-black uppercase tracking-[0.14em] text-sky-300 hover:text-sky-200">
-          Wróć do EstateOS™Car
+          {d.backToCatalog}
         </Link>
 
         <section className="overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]">
@@ -68,7 +72,7 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
             <div className="space-y-6">
               <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--eos-border)] pb-5">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">Cena</p>
+                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">{d.priceLabel}</p>
                   <p className="mt-1 text-3xl font-bold text-sky-300 sm:text-4xl">{formatCarPrice(car.pricePln)}</p>
                 </div>
                 {car.userId ? (
@@ -76,7 +80,7 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
                     href={`/profil/${car.userId}`}
                     className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-[var(--eos-text)] hover:border-sky-400/40"
                   >
-                    Profil sprzedającego
+                    {d.sellerProfile}
                   </Link>
                 ) : null}
               </div>
@@ -84,34 +88,33 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
               <CarOwnerActions carId={car.id} ownerUserId={car.userId} currentUserId={currentUserId} />
 
               <div>
-                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">Specyfikacja</h2>
+                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">{d.specSection}</h2>
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  <SpecItem icon={Calendar} label="Rocznik" value={String(car.year)} />
-                  <SpecItem icon={Gauge} label="Przebieg" value={formatMileage(car.mileageKm)} />
-                  <SpecItem icon={Fuel} label="Paliwo" value={car.fuelType} />
-                  <SpecItem icon={Settings2} label="Skrzynia" value={car.transmission} />
-                  <SpecItem icon={CarIcon} label="Nadwozie" value={car.bodyType} />
-                  {car.generation ? <SpecItem icon={Calendar} label="Generacja" value={car.generation} /> : null}
-                  {car.enginePower ? <SpecItem icon={Cog} label="Moc" value={car.enginePower} /> : null}
-                  {car.engineCapacity ? <SpecItem icon={Cog} label="Pojemność" value={`${car.engineCapacity} cm³`} /> : null}
-                  {car.trimVersion ? <SpecItem icon={CarIcon} label="Wersja" value={car.trimVersion} /> : null}
-                  {car.doorCount ? <SpecItem icon={CarIcon} label="Drzwi" value={String(car.doorCount)} /> : null}
-                  <SpecItem icon={MapPin} label="Miasto" value={car.city} />
+                  <SpecItem icon={Calendar} label={d.specYear} value={String(car.year)} />
+                  <SpecItem icon={Gauge} label={d.specMileage} value={formatMileage(car.mileageKm)} />
+                  <SpecItem icon={Fuel} label={d.specFuel} value={car.fuelType} />
+                  <SpecItem icon={Settings2} label={d.specTransmission} value={car.transmission} />
+                  <SpecItem icon={CarIcon} label={d.specBody} value={car.bodyType} />
+                  {car.generation ? <SpecItem icon={Calendar} label={d.specGeneration} value={car.generation} /> : null}
+                  {car.enginePower ? <SpecItem icon={Cog} label={d.specPower} value={car.enginePower} /> : null}
+                  {car.engineCapacity ? <SpecItem icon={Cog} label={d.specCapacity} value={`${car.engineCapacity} cm³`} /> : null}
+                  {car.trimVersion ? <SpecItem icon={CarIcon} label={d.specTrim} value={car.trimVersion} /> : null}
+                  {car.doorCount ? <SpecItem icon={CarIcon} label={d.specDoors} value={String(car.doorCount)} /> : null}
+                  <SpecItem icon={MapPin} label={d.specCity} value={car.city} />
                 </div>
               </div>
 
               {car.description?.trim() ? (
               <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-5">
-                <p className="text-sm font-semibold">Opis</p>
+                <p className="text-sm font-semibold">{d.descriptionTitle}</p>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--eos-muted)]">{car.description.trim()}</p>
               </div>
             ) : null}
 
             <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-5">
-                <p className="text-sm font-semibold">O ogłoszeniu</p>
+                <p className="text-sm font-semibold">{d.aboutListingTitle}</p>
                 <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">
-                  Ogłoszenie opublikowane w module EstateOS™Car — jednym ekosystemie z nieruchomościami EstateOS™Home.
-                  Zapytania trafiają bezpośrednio do sprzedającego przez EstateOS Contact.
+                  {d.aboutListingBody}
                 </p>
               </div>
 

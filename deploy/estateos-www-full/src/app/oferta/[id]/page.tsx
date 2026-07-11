@@ -79,10 +79,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const isDiscounted = Boolean((offer as { isDiscounted?: boolean }).isDiscounted);
   const discountPercent = Number((offer as { priceDiscountPercent?: number }).priceDiscountPercent) || 0;
   const listPricePln = Number((offer as { listPricePln?: number }).listPricePln ?? (offer as { previousPrice?: number }).previousPrice ?? 0);
-  const favoriteLabels =
-    locale === 'en'
-      ? { add: 'Save', remove: 'Saved' }
-      : { add: 'Ulubione', remove: 'W ulubionych' };
+  const favoriteLabels = { add: t.favoriteAdd, remove: t.favoriteRemove };
+  const favoriteAria = { add: t.favoriteAriaAdd, remove: t.favoriteAriaRemove };
 
   const tx = String(offer.transactionType || "sale").toLowerCase();
   const isRent = tx.includes("rent") || tx.includes("wynajem");
@@ -598,6 +596,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 size={22}
                 labelAdd={favoriteLabels.add}
                 labelRemove={favoriteLabels.remove}
+                ariaLabelAdd={favoriteAria.add}
+                ariaLabelRemove={favoriteAria.remove}
                 className="shrink-0"
                 onRequireAuth={() => {
                   window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;

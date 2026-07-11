@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getAdminCentralDictionary } from "@/i18n/adminCentralDictionary";
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -48,6 +50,8 @@ function isVerifiedUser(u: AdminUserDetail) {
 }
 
 export default function AdminUsers() {
+  const { locale } = useLocale();
+  const ad = getAdminCentralDictionary(locale);
   const router = useRouter();
   const searchParams = useSearchParams();
   const [users, setUsers] = useState<AdminUserDetail[]>([]);

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { enforceAuthRateLimit } from "@/lib/authRateLimit";
 
 export async function POST(req: Request) {
   try {
@@ -18,6 +19,15 @@ export async function POST(req: Request) {
     } = body;
 
     const cleanEmail = email.toLowerCase().trim();
+    const rl = enforceAuthRateLimit(req, {
+      scope: 'auth-register-agency',
+      identifier: cleanEmail,
+      ipMax: 10,
+      idMax: 3,
+      windowMs: 60 * 60_000,
+    });
+    if (rl) return rl;
+
     const cleanPhone = phone.replace(/\D/g, '');
     const finalPhone = cleanPhone.startsWith('48') ? cleanPhone : '48' + cleanPhone;
 

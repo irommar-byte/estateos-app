@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import nodemailer from 'nodemailer';
 import bcrypt from 'bcrypt';
+import { enforceAuthRateLimit } from '@/lib/authRateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,14 @@ export async function POST(req: Request) {
 
     const clean = identifier?.trim();
     const isEmail = clean?.includes('@');
+
+    const rl = enforceAuthRateLimit(req, {
+      scope: otp || newPassword ? 'auth-reset-password:confirm' : 'auth-reset-password:send',
+      identifier: clean,
+      ipMax: otp || newPassword ? 30 : 12,
+      idMax: otp || newPassword ? 10 : 4,
+    });
+    if (rl) return rl;
 
     let user = null;
 
@@ -24,7 +33,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Nie znaleziono użytkownika" }, { status: 400 });
     }
 
-    // ===== SEND OTP =====
     if (!otp && !newPassword) {
       const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
       const otpExpiry = new Date(Date.now() + 15 * 60 * 1000);
@@ -54,7 +62,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    // ===== RESET PASSWORD =====
     if (!user.otpCode || user.otpCode !== otp || !user.otpExpiry || user.otpExpiry < new Date()) {
       return NextResponse.json({ error: "Nieprawidłowy kod" }, { status: 400 });
     }
@@ -70,11 +77,9 @@ export async function POST(req: Request) {
       }
     });
 
-    console.log("✅ PASSWORD CHANGED:", user.email);
-
     return NextResponse.json({ success: true });
 
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("RESET ERROR:", e);
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
   }

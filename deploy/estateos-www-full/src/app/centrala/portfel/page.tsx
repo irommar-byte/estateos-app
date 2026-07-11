@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getAdminCentralDictionary } from "@/i18n/adminCentralDictionary";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -18,6 +20,8 @@ type WalletRow = {
 };
 
 export default function AdminWalletPage() {
+  const { locale } = useLocale();
+  const ad = getAdminCentralDictionary(locale);
   const [rows, setRows] = useState<WalletRow[]>([]);
   const [totals, setTotals] = useState({ credits: 0, activeCoupons: 0, usedCoupons: 0 });
   const [loading, setLoading] = useState(true);

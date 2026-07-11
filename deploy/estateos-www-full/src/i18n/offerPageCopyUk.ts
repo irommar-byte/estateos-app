@@ -3,6 +3,10 @@ import type { OfferPageCopy } from "@/content/offerPageCopy";
 /** Ukrainian copy for the public offer page — mirrors PL/EN structure. */
 export const UK: OfferPageCopy = {
   backToMap: "← Повернутися до карти",
+  favoriteAdd: "Обране",
+  favoriteRemove: "В обраному",
+  favoriteAriaAdd: "Додати до обраного",
+  favoriteAriaRemove: "Прибрати з обраного",
   offerId: "ID оголошення",
   views: "Перегляди",
   listedSince: "Додано",

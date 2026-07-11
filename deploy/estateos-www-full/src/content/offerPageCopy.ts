@@ -3,6 +3,10 @@ import { UK } from "@/i18n/offerPageCopyUk";
 
 export type OfferPageCopy = {
   backToMap: string;
+  favoriteAdd: string;
+  favoriteRemove: string;
+  favoriteAriaAdd: string;
+  favoriteAriaRemove: string;
   offerId: string;
   views: string;
   listedSince: string;
@@ -160,6 +164,10 @@ export type OfferPageCopy = {
 
 const PL: OfferPageCopy = {
   backToMap: "← Powrót do mapy",
+  favoriteAdd: "Ulubione",
+  favoriteRemove: "W ulubionych",
+  favoriteAriaAdd: "Dodaj do ulubionych",
+  favoriteAriaRemove: "Usuń z ulubionych",
   offerId: "ID Oferty",
   views: "Odsłony",
   listedSince: "Dodano",
@@ -320,6 +328,10 @@ const PL: OfferPageCopy = {
 
 const EN: OfferPageCopy = {
   backToMap: "← Back to map",
+  favoriteAdd: "Save",
+  favoriteRemove: "Saved",
+  favoriteAriaAdd: "Add to favorites",
+  favoriteAriaRemove: "Remove from favorites",
   offerId: "Listing ID",
   views: "Views",
   listedSince: "Listed",

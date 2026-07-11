@@ -307,7 +307,7 @@ export function formatBuyerAgentCommissionLine(
       : "Brak prowizji agenta przy tej ofercie.";
   }
   if (locale === "uk") {
-    return `Ціна оголошення — остаточна брутто-сuma (не підвищується). Після угоди покупець виплачує агенту ${info.amountLabel} (${info.percentLabel} ціни) як брутто-комісію напряму поза платформою.`;
+    return `Ціна оголошення — остаточна брутто-сумою (не підвищується). Після угоди покупець виплачує агенту ${info.amountLabel} (${info.percentLabel} ціни) як брутто-комісію напряму поза платформою.`;
   }
   return locale === "en"
     ? `The listing price is the final gross amount (not increased). After the sale, the buyer pays ${info.amountLabel} (${info.percentLabel} of that price) as gross agent commission directly to the agent.`

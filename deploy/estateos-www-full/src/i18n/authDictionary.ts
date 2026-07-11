@@ -275,7 +275,7 @@ const uk: AuthDictionary = {
   recoverTitle: "Відновити",
   recoverTitleHighlight: "доступ.",
   emailOrPhone: "E-mail або телефон",
-  emailOrPhonePlaceholder: "you@example.com або +48…",
+  emailOrPhonePlaceholder: "vasyl@example.com або +380 50 123 4567",
   password: "Пароль",
   passwordPlaceholder: "••••••••",
   forgotPassword: "Забули пароль",

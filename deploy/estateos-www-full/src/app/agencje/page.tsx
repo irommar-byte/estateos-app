@@ -18,6 +18,8 @@ import {
   MessageSquare,
   ExternalLink,
 } from "lucide-react";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getAgencjeCatalogDictionary } from "@/i18n/agencjeCatalogDictionary";
 import { getBestUserAvatarUrl } from "@/lib/userAvatar";
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 
@@ -203,6 +205,8 @@ async function fetchAgencyDetail(agency: AgencyCard): Promise<AgencyDetail | nul
 }
 
 export default function AgencjePage() {
+  const { locale } = useLocale();
+  const d = getAgencjeCatalogDictionary(locale);
   const [agencies, setAgencies] = useState<AgencyCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -240,7 +244,7 @@ export default function AgencjePage() {
           EstateOS™ · biura partnerskie
         </p>
         <h1 className="mt-3 text-4xl font-black tracking-tighter sm:text-5xl">
-          Katalog <span className="text-emerald-500">agencji</span>
+          {d.title} <span className="text-emerald-500">{d.titleAccent}</span>
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)]">
           Zweryfikowane biura nieruchomości z opiniami, aktywnymi ofertami i pełnym wsparciem w CRM.
@@ -252,7 +256,7 @@ export default function AgencjePage() {
             <Loader2 className="size-8 animate-spin text-emerald-500" />
           </div>
         ) : agencies.length === 0 ? (
-          <p className="mt-16 text-center text-[var(--eos-muted)]">Brak zarejestrowanych agencji.</p>
+          <p className="mt-16 text-center text-[var(--eos-muted)]">{d.empty}</p>
         ) : (
           <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {agencies.map((agency, i) => {
@@ -299,7 +303,7 @@ export default function AgencjePage() {
                         <span className="font-semibold">
                           {hasReviews
                             ? `${agency.averageRating} · ${agency.reviewsCount} opinii`
-                            : "Zobacz opinie"}
+                            : d.reviewsCta}
                         </span>
                       </button>
                     </div>
@@ -310,7 +314,7 @@ export default function AgencjePage() {
                       type="button"
                       onClick={() => void openAgencyDetail(agency, "offers")}
                       className="inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-[var(--eos-input)] px-3 py-1.5 transition hover:bg-emerald-500/15 hover:text-emerald-600"
-                      aria-label={`Zobacz oferty: ${agency.displayName}`}
+                      aria-label={`{d.offersCta}: ${agency.displayName}`}
                     >
                       <Briefcase className="size-3" />
                       {agency.activeListings} ofert
@@ -336,7 +340,7 @@ export default function AgencjePage() {
 
         <div className="mt-16 rounded-[2rem] border border-emerald-500/20 bg-emerald-500/5 p-8 text-center">
           <MapPin className="mx-auto mb-3 size-8 text-emerald-500" />
-          <p className="text-lg font-bold">Masz ogłoszenie i chcesz oddać sprzedaż w ręce ekspertów?</p>
+          <p className="text-lg font-bold">{d.ctaJoinTitle}</p>
           <p className="mx-auto mt-2 max-w-lg text-sm text-[var(--eos-muted)]">
             W panelu „Moje ogłoszenia” wybierz ofertę i kliknij „Oddaj do agencji” — przejrzysz warunki i zachowasz
             podgląd bez obowiązku odbierania telefonów.
@@ -369,14 +373,14 @@ export default function AgencjePage() {
             >
               <div className="flex items-start justify-between gap-4 border-b border-[var(--eos-border)] p-5 sm:p-6">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Szczegóły biura</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">{d.detailEyebrow}</p>
                   <h3 className="truncate text-xl font-black">{detail?.displayName || detailTitle}</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setDetailOpen(false)}
                   className="shrink-0 rounded-full p-2 text-[var(--eos-muted)] hover:bg-[var(--eos-input)]"
-                  aria-label="Zamknij"
+                  aria-label={d.close}
                 >
                   <X className="size-5" />
                 </button>
@@ -387,7 +391,7 @@ export default function AgencjePage() {
                   <Loader2 className="size-8 animate-spin text-emerald-500" />
                 </div>
               ) : !detail ? (
-                <div className="py-16 text-center text-sm text-[var(--eos-muted)]">Nie udało się wczytać danych agencji.</div>
+                <div className="py-16 text-center text-sm text-[var(--eos-muted)]">{d.loadError}</div>
               ) : (
                 <>
                   <div className="grid gap-3 border-b border-[var(--eos-border)] p-5 sm:grid-cols-2 sm:p-6">
@@ -413,7 +417,7 @@ export default function AgencjePage() {
                     </div>
                     <div className="flex flex-col justify-between rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">Ocena</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">{d.ratingLabel}</p>
                         <div className="mt-2 flex items-center gap-1 text-amber-400">
                           {[0, 1, 2, 3, 4].map((idx) => (
                             <Star
@@ -462,7 +466,7 @@ export default function AgencjePage() {
                   <div className="flex-1 overflow-y-auto p-5 sm:p-6">
                     {detailTab === "offers" ? (
                       detail.offers.length === 0 ? (
-                        <p className="py-8 text-center text-sm text-[var(--eos-muted)]">Brak aktywnych ofert.</p>
+                        <p className="py-8 text-center text-sm text-[var(--eos-muted)]">{d.noOffers}</p>
                       ) : (
                         <div className="grid gap-3 sm:grid-cols-2">
                           {detail.offers.map((offer) => {
@@ -496,7 +500,7 @@ export default function AgencjePage() {
                         </div>
                       )
                     ) : detail.reviews.length === 0 ? (
-                      <p className="py-8 text-center text-sm text-[var(--eos-muted)]">Brak opinii od klientów.</p>
+                      <p className="py-8 text-center text-sm text-[var(--eos-muted)]">{d.noReviews}</p>
                     ) : (
                       <div className="space-y-3">
                         {detail.reviews.map((review) => (
@@ -520,7 +524,7 @@ export default function AgencjePage() {
                             {review.comment ? (
                               <p className="text-sm leading-relaxed text-[var(--eos-muted)]">{review.comment}</p>
                             ) : (
-                              <p className="text-xs italic text-[var(--eos-subtle)]">Bez komentarza tekstowego.</p>
+                              <p className="text-xs italic text-[var(--eos-subtle)]">{d.noComment}</p>
                             )}
                           </div>
                         ))}

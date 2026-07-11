@@ -3,10 +3,20 @@ import { cookies } from 'next/headers';
 import { registerAndImportPortalListing } from '@/lib/portalOnboarding';
 import { ImportDraftValidationError, issuesFromCreateErrorMessage } from '@/lib/importDraftValidate';
 import { LocationMismatchError } from '@/lib/offerGeolocationValidate';
+import { enforceAuthRateLimit } from '@/lib/authRateLimit';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
+
+    const rl = enforceAuthRateLimit(req, {
+      scope: 'portal-onboarding-register',
+      identifier: String(body?.email ?? ''),
+      ipMax: 10,
+      idMax: 3,
+      windowMs: 60 * 60_000,
+    });
+    if (rl) return rl;
 
     const result = await registerAndImportPortalListing({
       inviteToken: String(body?.invite ?? ''),

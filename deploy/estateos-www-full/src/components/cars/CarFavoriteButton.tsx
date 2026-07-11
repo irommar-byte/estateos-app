@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Heart } from "lucide-react";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getCarsDictionary } from "@/i18n/carsDictionary";
 import {
   isCarFavoriteId,
   loadCarFavoriteIds,
@@ -15,6 +17,8 @@ type CarFavoriteButtonProps = {
 };
 
 export default function CarFavoriteButton({ carId, className = "", onChange }: CarFavoriteButtonProps) {
+  const { locale } = useLocale();
+  const d = getCarsDictionary(locale);
   const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
 
   useEffect(() => {
@@ -26,7 +30,7 @@ export default function CarFavoriteButton({ carId, className = "", onChange }: C
   return (
     <button
       type="button"
-      aria-label={active ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
+      aria-label={active ? d.favoriteAriaRemove : d.favoriteAriaAdd}
       className={`inline-flex items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/95 p-2 text-sky-300 transition hover:border-sky-400/50 hover:text-sky-200 ${className}`}
       onClick={(event) => {
         event.preventDefault();

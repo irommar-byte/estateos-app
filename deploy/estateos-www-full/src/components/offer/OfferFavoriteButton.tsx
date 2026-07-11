@@ -11,6 +11,8 @@ type Props = {
   variant?: 'icon' | 'pill';
   labelAdd?: string;
   labelRemove?: string;
+  ariaLabelAdd?: string;
+  ariaLabelRemove?: string;
   /** Gdy false — tylko wizualizacja (np. gość bez logowania). */
   interactive?: boolean;
   onRequireAuth?: () => void;
@@ -23,6 +25,8 @@ export default function OfferFavoriteButton({
   variant = 'icon',
   labelAdd = 'Ulubione',
   labelRemove = 'W ulubionych',
+  ariaLabelAdd,
+  ariaLabelRemove,
   interactive = true,
   onRequireAuth,
 }: Props) {
@@ -53,7 +57,7 @@ export default function OfferFavoriteButton({
   return (
     <button
       type="button"
-      aria-label={active ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}
+      aria-label={active ? (ariaLabelRemove ?? labelRemove) : (ariaLabelAdd ?? labelAdd)}
       aria-pressed={active}
       disabled={busy}
       onClick={handleClick}

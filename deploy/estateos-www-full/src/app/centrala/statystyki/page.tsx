@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getAdminCentralDictionary } from "@/i18n/adminCentralDictionary";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -55,6 +57,8 @@ const deviceIcon = (deviceType: string) => {
 };
 
 export default function Statystyki() {
+  const { locale } = useLocale();
+  const ad = getAdminCentralDictionary(locale);
   const [stats, setStats] = useState<any>(null);
   const [activeTabId, setActiveTabId] = useState<TimelineTabId>("pageViews");
   const [activePeriod, setActivePeriod] = useState<TimelinePeriod>("Ostatnie 30 Dni");

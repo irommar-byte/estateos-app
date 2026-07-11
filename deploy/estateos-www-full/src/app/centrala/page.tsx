@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getAdminCentralDictionary } from "@/i18n/adminCentralDictionary";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Wallet } from "lucide-react";
@@ -6,6 +8,8 @@ import KeiAmerWorkspace from "@/components/admin/KeiAmerWorkspace";
 import PortalOnboardingInvitePanel from "@/components/admin/PortalOnboardingInvitePanel";
 
 export default function Centrala() {
+  const { locale } = useLocale();
+  const ad = getAdminCentralDictionary(locale);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [debugMsg, setDebugMsg] = useState("");
@@ -85,7 +89,7 @@ export default function Centrala() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
           {[
             { title: "Baza Ofert", desc: "Zarządzaj nieruchomościami.", icon: <Database size={32} />, path: "/centrala/oferty", color: "from-blue-500/20 to-blue-500/5" },
-            { title: "Użytkownicy", desc: "Zarządzaj kontami.", icon: <Users size={32} />, path: "/centrala/uzytkownicy", color: "from-emerald-500/20 to-emerald-500/5" },
+            { title: "{ad.navUsers}", desc: "Zarządzaj kontami.", icon: <Users size={32} />, path: "/centrala/uzytkownicy", color: "from-emerald-500/20 to-emerald-500/5" },
             { title: "Portfel", desc: "Kredyty, kupony i historia.", icon: <Wallet size={32} />, path: "/centrala/portfel", color: "from-amber-500/20 to-amber-500/5" },
             { title: "Statystyki", desc: "Przeglądaj ruch.", icon: <BarChart3 size={32} />, path: "/centrala/statystyki", color: "from-purple-500/20 to-purple-500/5" }
           ].map((item) => (

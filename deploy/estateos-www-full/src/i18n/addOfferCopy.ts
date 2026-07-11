@@ -1,4 +1,5 @@
 import type { Locale } from "./config";
+import { addOfferCopyUk } from "./addOfferCopyUk";
 
 export type AddOfferCopy = {
   badge: string;
@@ -435,6 +436,10 @@ const en: AddOfferCopy = {
   heatingOther: "Other",
 };
 
+const uk: AddOfferCopy = addOfferCopyUk;
+
 export function getAddOfferCopy(locale: Locale): AddOfferCopy {
-  return locale === "en" ? en : pl;
+  if (locale === "en") return en;
+  if (locale === "uk") return uk;
+  return pl;
 }
