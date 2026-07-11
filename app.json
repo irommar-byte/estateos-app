@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "requireFullScreen": false,
-      "buildNumber": "11",
+      "buildNumber": "12",
       "bundleIdentifier": "pl.estateos.app",
       "associatedDomains": [
         "webcredentials:estateos.pl",
@@ -29,6 +29,7 @@
           "ru"
         ],
         "ITSAppUsesNonExemptEncryption": false,
+        "UIUserInterfaceStyle": "Automatic",
         "NSCalendarsUsageDescription": "EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).",
         "NSCalendarsFullAccessUsageDescription": "EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).",
         "NSRemindersUsageDescription": "Opcjonalnie możemy powiązać termin prezentacji z przypomnieniami systemowymi.",

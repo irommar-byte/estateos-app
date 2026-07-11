@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Appearance, ColorSchemeName, useColorScheme } from 'react-native';
+import { Appearance, AppState, ColorSchemeName, useColorScheme } from 'react-native';
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
@@ -43,13 +43,25 @@ export const useThemeStore = create<ThemeState>()(
 
 let appearanceListenerAttached = false;
 
+function syncSystemSchemeFromOs(): void {
+  useThemeStore.setState({ systemScheme: Appearance.getColorScheme() });
+}
+
 /** Jednorazowy listener — reaguje na zmianę jasny/ciemny w ustawieniach iPhone’a. */
 export function ensureThemeAppearanceListener(): void {
   if (appearanceListenerAttached) return;
   appearanceListenerAttached = true;
 
+  syncSystemSchemeFromOs();
+
   Appearance.addChangeListener(({ colorScheme }) => {
     useThemeStore.setState({ systemScheme: colorScheme });
+  });
+
+  AppState.addEventListener('change', (nextState) => {
+    if (nextState === 'active') {
+      syncSystemSchemeFromOs();
+    }
   });
 }
 
@@ -57,9 +69,11 @@ export function ensureThemeAppearanceListener(): void {
 export function useResolvedTheme(): 'light' | 'dark' {
   ensureThemeAppearanceListener();
   const themeMode = useThemeStore((s) => s.themeMode);
-  const systemScheme = useColorScheme();
+  const storeSystemScheme = useThemeStore((s) => s.systemScheme);
+  const hookSystemScheme = useColorScheme();
   if (themeMode === 'auto') {
-    return normalizeScheme(systemScheme);
+    const scheme = hookSystemScheme ?? storeSystemScheme;
+    return normalizeScheme(scheme);
   }
   return themeMode;
 }
