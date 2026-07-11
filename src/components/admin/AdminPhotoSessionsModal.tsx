@@ -199,15 +199,20 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
     if (!token) return;
     setLoading(true);
     try {
-      const list = await fetchAdminPhotoSessionQueue('PENDING', token);
+      const list = await fetchAdminPhotoSessionQueue('ALL', token);
       const sorted = [...list].sort((a, b) => {
-        const aNeeds = a.waitingOn === 'ADMIN' ? 0 : 1;
-        const bNeeds = b.waitingOn === 'ADMIN' ? 0 : 1;
-        if (aNeeds !== bNeeds) return aNeeds - bNeeds;
+        const rank = (item: PhotoSessionRequestItem) => {
+          if (item.status === 'PENDING') return item.waitingOn === 'ADMIN' ? 0 : 1;
+          if (item.status === 'ACCEPTED') return 2;
+          return 3;
+        };
+        const aRank = rank(a);
+        const bRank = rank(b);
+        if (aRank !== bRank) return aRank - bRank;
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       });
       setItems(sorted);
-      onQueueChange?.(list.filter((x) => x.waitingOn === 'ADMIN').length);
+      onQueueChange?.(list.filter((x) => x.status === 'PENDING' && x.waitingOn === 'ADMIN').length);
     } catch (err) {
       const msg = err instanceof PhotoSessionServiceError ? err.message : 'Nie udało się pobrać kolejki sesji.';
       Alert.alert('Sesje zdjęciowe', msg);
@@ -288,6 +293,197 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
   const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
   const cardBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
 
+  const pendingItems = useMemo(() => items.filter((x) => x.status === 'PENDING'), [items]);
+  const confirmedItems = useMemo(() => items.filter((x) => x.status === 'ACCEPTED'), [items]);
+  const closedItems = useMemo(
+    () => items.filter((x) => x.status === 'REJECTED' || x.status === 'CANCELLED'),
+    [items],
+  );
+  const hasAnyItems = pendingItems.length + confirmedItems.length + closedItems.length > 0;
+
+  const renderSessionCard = (item: PhotoSessionRequestItem, readOnly: 'negotiate' | 'confirmed' | 'closed') => (
+    <View key={item.id} style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+      <View style={styles.cardTop}>
+        <View style={styles.iconWrap}>
+          <Ionicons name="camera" size={18} color="#10b981" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>
+            {item.requesterName || `Użytkownik #${item.userId}`}
+          </Text>
+          <Text style={[styles.cardMeta, { color: theme.subtitle }]}>
+            {item.propertyLabel || 'Nieruchomość w kreatorze'}
+          </Text>
+        </View>
+        {readOnly === 'confirmed' ? (
+          <View style={styles.confirmedPill}>
+            <Text style={styles.confirmedPillText}>Potwierdzono</Text>
+          </View>
+        ) : readOnly === 'closed' ? (
+          <View style={styles.closedPill}>
+            <Text style={styles.closedPillText}>
+              {item.status === 'REJECTED' ? 'Odrzucono' : 'Anulowano'}
+            </Text>
+          </View>
+        ) : item.isProFree ? (
+          <View style={styles.proPill}>
+            <Text style={styles.proPillText}>Investor Pro</Text>
+          </View>
+        ) : (
+          <View style={styles.pricePill}>
+            <Text style={styles.pricePillText}>199 zł</Text>
+          </View>
+        )}
+      </View>
+
+      <View style={[styles.termBox, { backgroundColor: isDark ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.08)' }]}>
+        <Text style={styles.termLabel}>
+          {readOnly === 'confirmed' ? 'Umówiony termin' : 'Aktualna propozycja'}
+        </Text>
+        <Text style={[styles.termValue, { color: theme.text }]}>{formatDateTime(item.proposedAt)}</Text>
+        {readOnly === 'negotiate' ? (
+          <Text style={[styles.waitingHint, { color: theme.subtitle }]}>
+            {item.waitingOn === 'ADMIN'
+              ? 'Twoja kolej — odpowiedz klientowi'
+              : 'Termin wysłany — czekamy na odpowiedź klienta'}
+          </Text>
+        ) : readOnly === 'confirmed' ? (
+          <Text style={[styles.waitingHint, { color: theme.subtitle }]}>
+            Termin zaakceptowany — sesja jest w kalendarzu klienta i admina.
+          </Text>
+        ) : null}
+      </View>
+
+      {onViewUser ? (
+        <Pressable
+          onPress={() =>
+            onViewUser(item.userId, {
+              name: item.requesterName,
+              phone: item.requesterPhone,
+              email: item.requesterEmail,
+            })
+          }
+          style={[styles.profileBtn, { borderColor: cardBorder }]}
+        >
+          <Ionicons name="person-circle-outline" size={16} color="#0ea5e9" />
+          <Text style={styles.profileBtnText}>Profil zleceniodawcy</Text>
+          <Ionicons name="chevron-forward" size={14} color="#8E8E93" />
+        </Pressable>
+      ) : null}
+
+      {item.note ? (
+        <Text style={[styles.note, { color: theme.subtitle }]} numberOfLines={4}>
+          „{item.note}"
+        </Text>
+      ) : null}
+
+      {(item.requesterPhone || item.requesterEmail) && (
+        <Text style={[styles.contact, { color: theme.subtitle }]}>
+          {[item.requesterPhone, item.requesterEmail].filter(Boolean).join(' · ')}
+        </Text>
+      )}
+
+      <NegotiationTimeline
+        events={item.events || []}
+        isDark={isDark}
+        textColor={theme.text}
+        mutedColor={theme.subtitle}
+      />
+
+      {readOnly === 'negotiate' && counterForId === item.id && item.waitingOn === 'ADMIN' ? (
+        <>
+          <CounterPicker
+            isDark={isDark}
+            textColor={theme.text}
+            mutedColor={theme.subtitle}
+            cardBorder={cardBorder}
+            selectedDate={counterDate}
+            selectedHour={counterHour}
+            onSelectDate={setCounterDate}
+            onSelectHour={setCounterHour}
+          />
+          <TextInput
+            value={counterNote}
+            onChangeText={setCounterNote}
+            placeholder="Uwaga do kontroferty (opcjonalnie)"
+            placeholderTextColor={theme.subtitle}
+            style={[
+              styles.noteInput,
+              {
+                color: theme.text,
+                borderColor: cardBorder,
+                backgroundColor: isDark ? '#141418' : '#f9fafb',
+              },
+            ]}
+            multiline
+          />
+          <View style={styles.actionRow}>
+            <Pressable
+              onPress={() => setCounterForId(null)}
+              style={[styles.secondaryBtn, { borderColor: cardBorder }]}
+            >
+              <Text style={[styles.secondaryBtnText, { color: theme.text }]}>Anuluj</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => handleCounterSubmit(item)}
+              disabled={submittingId === item.id}
+              style={[styles.primaryBtn, submittingId === item.id && { opacity: 0.6 }]}
+            >
+              {submittingId === item.id ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <Text style={styles.primaryBtnText}>Wyślij kontrofertę</Text>
+              )}
+            </Pressable>
+          </View>
+        </>
+      ) : readOnly === 'negotiate' && item.waitingOn === 'ADMIN' ? (
+        <View style={styles.actionRow}>
+          <Pressable
+            onPress={() => handleReject(item)}
+            disabled={submittingId === item.id}
+            style={[styles.rejectBtn, { borderColor: 'rgba(239,68,68,0.35)' }]}
+          >
+            <Text style={styles.rejectBtnText}>Odrzuć</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              setCounterForId(item.id);
+              setCounterDate(null);
+              setCounterHour(null);
+              setCounterNote('');
+            }}
+            disabled={submittingId === item.id}
+            style={[styles.counterBtn, { borderColor: 'rgba(14,165,233,0.35)' }]}
+          >
+            <Text style={styles.counterBtnText}>Kontroferta</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => handleAccept(item)}
+            disabled={submittingId === item.id}
+            style={[styles.acceptBtn, submittingId === item.id && { opacity: 0.6 }]}
+          >
+            {submittingId === item.id ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle" size={18} color="#000" />
+                <Text style={styles.acceptBtnText}>Akceptuj</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+      ) : readOnly === 'negotiate' ? (
+        <View style={[styles.awaitingUserBox, { backgroundColor: isDark ? 'rgba(14,165,233,0.1)' : 'rgba(14,165,233,0.08)' }]}>
+          <Ionicons name="hourglass-outline" size={16} color="#0ea5e9" />
+          <Text style={[styles.awaitingUserText, { color: theme.subtitle }]}>
+            Kontroferta wysłana. Rezerwacja pozostaje na liście do czasu odpowiedzi klienta.
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.root, { backgroundColor: theme.background }]}>
@@ -308,180 +504,31 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
           <View style={styles.center}>
             <ActivityIndicator color="#10b981" />
           </View>
-        ) : items.length === 0 ? (
+        ) : !hasAnyItems ? (
           <View style={styles.center}>
             <Ionicons name="camera-outline" size={42} color={theme.subtitle} />
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>Brak oczekujących rezerwacji</Text>
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>Brak rezerwacji sesji</Text>
             <Text style={[styles.emptySub, { color: theme.subtitle }]}>
-              Gdy klient zaproponuje termin sesji, pojawi się tutaj do negocjacji.
+              Gdy klient zaproponuje termin sesji, pojawi się tutaj do negocjacji. Po potwierdzeniu terminu sesja
+              zostanie w sekcji „Potwierdzone”.
             </Text>
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-            {items.map((item) => (
-              <View key={item.id} style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
-                <View style={styles.cardTop}>
-                  <View style={styles.iconWrap}>
-                    <Ionicons name="camera" size={18} color="#10b981" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.cardTitle, { color: theme.text }]}>
-                      {item.requesterName || `Użytkownik #${item.userId}`}
-                    </Text>
-                    <Text style={[styles.cardMeta, { color: theme.subtitle }]}>
-                      {item.propertyLabel || 'Nieruchomość w kreatorze'}
-                    </Text>
-                  </View>
-                  {item.isProFree ? (
-                    <View style={styles.proPill}>
-                      <Text style={styles.proPillText}>Investor Pro</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.pricePill}>
-                      <Text style={styles.pricePillText}>199 zł</Text>
-                    </View>
-                  )}
-                </View>
-
-                <View style={[styles.termBox, { backgroundColor: isDark ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.08)' }]}>
-                  <Text style={styles.termLabel}>Aktualna propozycja</Text>
-                  <Text style={[styles.termValue, { color: theme.text }]}>{formatDateTime(item.proposedAt)}</Text>
-                  <Text style={[styles.waitingHint, { color: theme.subtitle }]}>
-                    {item.waitingOn === 'ADMIN'
-                      ? 'Twoja kolej — odpowiedz klientowi'
-                      : 'Termin wysłany — czekamy na odpowiedź klienta'}
-                  </Text>
-                </View>
-
-                {onViewUser ? (
-                  <Pressable
-                    onPress={() =>
-                      onViewUser(item.userId, {
-                        name: item.requesterName,
-                        phone: item.requesterPhone,
-                        email: item.requesterEmail,
-                      })
-                    }
-                    style={[styles.profileBtn, { borderColor: cardBorder }]}
-                  >
-                    <Ionicons name="person-circle-outline" size={16} color="#0ea5e9" />
-                    <Text style={styles.profileBtnText}>Profil zleceniodawcy</Text>
-                    <Ionicons name="chevron-forward" size={14} color="#8E8E93" />
-                  </Pressable>
-                ) : null}
-
-                {item.note ? (
-                  <Text style={[styles.note, { color: theme.subtitle }]} numberOfLines={4}>
-                    „{item.note}"
-                  </Text>
-                ) : null}
-
-                {(item.requesterPhone || item.requesterEmail) && (
-                  <Text style={[styles.contact, { color: theme.subtitle }]}>
-                    {[item.requesterPhone, item.requesterEmail].filter(Boolean).join(' · ')}
-                  </Text>
-                )}
-
-                <NegotiationTimeline
-                  events={item.events || []}
-                  isDark={isDark}
-                  textColor={theme.text}
-                  mutedColor={theme.subtitle}
-                />
-
-                {counterForId === item.id && item.waitingOn === 'ADMIN' ? (
-                  <>
-                    <CounterPicker
-                      isDark={isDark}
-                      textColor={theme.text}
-                      mutedColor={theme.subtitle}
-                      cardBorder={cardBorder}
-                      selectedDate={counterDate}
-                      selectedHour={counterHour}
-                      onSelectDate={setCounterDate}
-                      onSelectHour={setCounterHour}
-                    />
-                    <TextInput
-                      value={counterNote}
-                      onChangeText={setCounterNote}
-                      placeholder="Uwaga do kontroferty (opcjonalnie)"
-                      placeholderTextColor={theme.subtitle}
-                      style={[
-                        styles.noteInput,
-                        {
-                          color: theme.text,
-                          borderColor: cardBorder,
-                          backgroundColor: isDark ? '#141418' : '#f9fafb',
-                        },
-                      ]}
-                      multiline
-                    />
-                    <View style={styles.actionRow}>
-                      <Pressable
-                        onPress={() => setCounterForId(null)}
-                        style={[styles.secondaryBtn, { borderColor: cardBorder }]}
-                      >
-                        <Text style={[styles.secondaryBtnText, { color: theme.text }]}>Anuluj</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => handleCounterSubmit(item)}
-                        disabled={submittingId === item.id}
-                        style={[styles.primaryBtn, submittingId === item.id && { opacity: 0.6 }]}
-                      >
-                        {submittingId === item.id ? (
-                          <ActivityIndicator color="#000" />
-                        ) : (
-                          <Text style={styles.primaryBtnText}>Wyślij kontrofertę</Text>
-                        )}
-                      </Pressable>
-                    </View>
-                  </>
-                ) : item.waitingOn === 'ADMIN' ? (
-                  <View style={styles.actionRow}>
-                    <Pressable
-                      onPress={() => handleReject(item)}
-                      disabled={submittingId === item.id}
-                      style={[styles.rejectBtn, { borderColor: 'rgba(239,68,68,0.35)' }]}
-                    >
-                      <Text style={styles.rejectBtnText}>Odrzuć</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => {
-                        setCounterForId(item.id);
-                        setCounterDate(null);
-                        setCounterHour(null);
-                        setCounterNote('');
-                      }}
-                      disabled={submittingId === item.id}
-                      style={[styles.counterBtn, { borderColor: 'rgba(14,165,233,0.35)' }]}
-                    >
-                      <Text style={styles.counterBtnText}>Kontroferta</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => handleAccept(item)}
-                      disabled={submittingId === item.id}
-                      style={[styles.acceptBtn, submittingId === item.id && { opacity: 0.6 }]}
-                    >
-                      {submittingId === item.id ? (
-                        <ActivityIndicator color="#000" />
-                      ) : (
-                        <>
-                          <Ionicons name="checkmark-circle" size={18} color="#000" />
-                          <Text style={styles.acceptBtnText}>Akceptuj</Text>
-                        </>
-                      )}
-                    </Pressable>
-                  </View>
-                ) : (
-                  <View style={[styles.awaitingUserBox, { backgroundColor: isDark ? 'rgba(14,165,233,0.1)' : 'rgba(14,165,233,0.08)' }]}>
-                    <Ionicons name="hourglass-outline" size={16} color="#0ea5e9" />
-                    <Text style={[styles.awaitingUserText, { color: theme.subtitle }]}>
-                      Kontroferta wysłana. Rezerwacja pozostaje na liście do czasu odpowiedzi klienta.
-                    </Text>
-                  </View>
-                )}
-              </View>
-            ))}
+            {pendingItems.length > 0 ? (
+              <Text style={[styles.sectionLabel, { color: theme.subtitle }]}>Do negocjacji</Text>
+            ) : null}
+            {pendingItems.map((item) => renderSessionCard(item, 'negotiate'))}
+            {confirmedItems.length > 0 ? (
+              <Text style={[styles.sectionLabel, { color: theme.subtitle, marginTop: pendingItems.length ? 8 : 0 }]}>
+                Potwierdzone
+              </Text>
+            ) : null}
+            {confirmedItems.map((item) => renderSessionCard(item, 'confirmed'))}
+            {closedItems.length > 0 ? (
+              <Text style={[styles.sectionLabel, { color: theme.subtitle, marginTop: 8 }]}>Zamknięte</Text>
+            ) : null}
+            {closedItems.map((item) => renderSessionCard(item, 'closed'))}
           </ScrollView>
         )}
       </View>
@@ -513,6 +560,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 8 },
   emptyTitle: { fontSize: 18, fontWeight: '800', marginTop: 8 },
   emptySub: { fontSize: 13, fontWeight: '500', textAlign: 'center', lineHeight: 18 },
+  sectionLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 4 },
   list: { paddingHorizontal: 20, paddingBottom: 30, gap: 12 },
   card: { borderRadius: 18, borderWidth: 1, padding: 14, gap: 10 },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -533,6 +581,20 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   proPillText: { color: '#a855f7', fontSize: 10, fontWeight: '900' },
+  confirmedPill: {
+    backgroundColor: 'rgba(16,185,129,0.14)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  confirmedPillText: { color: '#10b981', fontSize: 10, fontWeight: '900' },
+  closedPill: {
+    backgroundColor: 'rgba(142,142,147,0.14)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  closedPillText: { color: '#8E8E93', fontSize: 10, fontWeight: '900' },
   pricePill: {
     backgroundColor: 'rgba(16,185,129,0.14)',
     borderRadius: 999,
