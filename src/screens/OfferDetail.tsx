@@ -82,15 +82,19 @@ import { formatAmountWithCurrency, formatOfferSecondaryAmount, resolveOfferDispl
 import { resolveOfferListingPrice } from '../money/offerPrice';
 import { formatListedPriceLabel, resolveOfferPriceDiscount } from '../utils/offerPriceDiscount';
 import OfferDiscountPriceBlock from '../components/OfferDiscountPriceBlock';
+import OfferPriceHistorySection from '../components/offer/OfferPriceHistorySection';
 import { isOfferLegallyVerified } from '../utils/legalVerificationStatus';
 import { localeToDateFormat, useI18n } from '../i18n';
 import { isProPhotoSessionSampleOfferId } from '../data/proPhotoSessionSampleOffers';
 
 const { width, height } = Dimensions.get('window');
-const IMG_HEIGHT = 450;
+/** ~4:3 względem szerokości ekranu — więcej kadru, mniej cropu niż stałe 450px. */
+const IMG_HEIGHT = Math.max(480, Math.round(Math.min(width * (4 / 3), height * 0.58)));
 /** Ile białej karty nachodzi na dół zdjęcia (zaokrąglone rogi). */
-const HERO_SHEET_OVERLAP = 40;
+const HERO_SHEET_OVERLAP = 28;
 const HERO_TAP_HEIGHT = IMG_HEIGHT - HERO_SHEET_OVERLAP;
+const GALLERY_CONTENT_WIDTH = width - 48;
+const GALLERY_HERO_HEIGHT = Math.round(GALLERY_CONTENT_WIDTH * 0.62);
 const EVENT_PREFIX = DEAL_EVENT_PREFIX;
 
 function parseDealEvent(content?: string) {
@@ -437,6 +441,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
   const [galleryCurrentIndex, setGalleryCurrentIndex] = useState(0);
+  const [galleryPreviewIndex, setGalleryPreviewIndex] = useState(0);
   const [isLocationPreviewOpen, setIsLocationPreviewOpen] = useState(false);
   const [dealId, setDealId] = useState<number | null>(null);
   const [isBidModalOpen, setIsBidModalOpen] = useState(false);
@@ -904,6 +909,15 @@ export default function OfferDetail({ route, navigation }: any) {
     setIsGalleryOpen(true);
   };
 
+  useEffect(() => {
+    setGalleryPreviewIndex(0);
+  }, [offer?.id, imagesToShow.length]);
+
+  const selectGalleryPreview = (index: number) => {
+    Haptics.selectionAsync();
+    setGalleryPreviewIndex(index);
+  };
+
   const closeGallery = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsGalleryOpen(false);
@@ -1367,7 +1381,13 @@ export default function OfferDetail({ route, navigation }: any) {
           accessibilityRole="button"
           accessibilityLabel={t('offer.detail.hero.openGallery')}
         >
-          <Image source={{ uri: imagesToShow[0] }} style={styles.mainImage} contentFit="cover" transition={500} />
+          <Image
+            source={{ uri: imagesToShow[0] }}
+            style={styles.mainImage}
+            contentFit="cover"
+            contentPosition="center"
+            transition={500}
+          />
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.52)']}
             locations={[0, 0.55, 1]}
@@ -1796,20 +1816,67 @@ export default function OfferDetail({ route, navigation }: any) {
           <Text style={[styles.description, isDark && { color: '#d1d5db' }]}>{displayOffer.description}</Text>
 
           <Text style={[styles.sectionTitle, { marginTop: 28 }, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.gallery')}</Text>
-          <ScrollView
-            horizontal
-            nestedScrollEnabled={Platform.OS === 'android'}
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={width * 0.8 + 16}
-            decelerationRate="fast"
-            contentContainerStyle={styles.galleryContainer}
-          >
-            {imagesToShow.map((img, idx) => (
-              <Pressable key={idx} onPress={() => openGallery(idx)}>
-                <Image source={{ uri: img }} style={styles.galleryThumbnail} contentFit="cover" transition={200} />
-              </Pressable>
-            ))}
-          </ScrollView>
+          <View style={styles.gallerySection}>
+            <Pressable
+              onPress={() => openGallery(galleryPreviewIndex)}
+              style={[
+                styles.galleryHeroWrap,
+                isDark && { borderColor: 'rgba(255,255,255,0.08)', backgroundColor: '#111111' },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={t('offer.detail.hero.openGallery')}
+            >
+              <Image
+                source={{ uri: imagesToShow[galleryPreviewIndex] }}
+                style={styles.galleryHeroImage}
+                contentFit="cover"
+                contentPosition="center"
+                transition={220}
+              />
+            </Pressable>
+            {imagesToShow.length > 1 ? (
+              <ScrollView
+                horizontal
+                nestedScrollEnabled={Platform.OS === 'android'}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.galleryThumbRow}
+              >
+                {imagesToShow.map((img, idx) => {
+                  const isActive = idx === galleryPreviewIndex;
+                  return (
+                    <Pressable
+                      key={`${img}-${idx}`}
+                      onPress={() => selectGalleryPreview(idx)}
+                      style={[
+                        styles.galleryThumbWrap,
+                        isDark && { backgroundColor: '#1c1c1e' },
+                        isActive && styles.galleryThumbWrapActive,
+                        isActive && isDark && { borderColor: '#0A84FF' },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isActive }}
+                      accessibilityLabel={t('offer.detail.gallery.thumbA11y', {
+                        index: idx + 1,
+                        total: imagesToShow.length,
+                      })}
+                    >
+                      <Image source={{ uri: img }} style={styles.galleryThumbImage} contentFit="cover" transition={150} />
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            ) : null}
+          </View>
+
+          {!isSamplePreview && Number(offer?.id) > 0 ? (
+            <OfferPriceHistorySection
+              offerId={Number(offer.id)}
+              offer={offer}
+              isDark={isDark}
+              token={token}
+              contentWidth={GALLERY_CONTENT_WIDTH}
+            />
+          ) : null}
 
           {isSamplePreview ? (
             <Text style={styles.offerIdText}>{t('addOffer.step5.proSession.examples.previewOfferId')}</Text>
@@ -2831,7 +2898,7 @@ const styles = StyleSheet.create({
   heroPhotoPill: {
     position: 'absolute',
     right: 18,
-    bottom: 92,
+    bottom: HERO_SHEET_OVERLAP + 54,
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
@@ -3143,8 +3210,42 @@ const styles = StyleSheet.create({
   },
   samplePreviewFooterTitle: { fontSize: 13, fontWeight: '700', textAlign: 'center', lineHeight: 18 },
   
-  galleryContainer: { paddingRight: 24 },
-  galleryThumbnail: { width: width * 0.8, height: 220, borderRadius: 24, marginRight: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
+  gallerySection: {
+    gap: 12,
+  },
+  galleryHeroWrap: {
+    width: '100%',
+    height: GALLERY_HERO_HEIGHT,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    backgroundColor: '#f3f4f6',
+  },
+  galleryHeroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  galleryThumbRow: {
+    gap: 10,
+    paddingRight: 4,
+  },
+  galleryThumbWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    backgroundColor: '#f3f4f6',
+  },
+  galleryThumbWrapActive: {
+    borderColor: '#007AFF',
+  },
+  galleryThumbImage: {
+    width: '100%',
+    height: '100%',
+  },
   
   // --- ZMIENIONA SEKCJA BOTTOM BAR ---
   bottomBarContainer: {

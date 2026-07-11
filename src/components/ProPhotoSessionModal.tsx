@@ -42,6 +42,7 @@ type DraftContext = {
   street?: string;
   propertyType?: string;
   transactionType?: string;
+  offerTitle?: string;
 };
 
 type Props = {
@@ -49,6 +50,7 @@ type Props = {
   onClose: () => void;
   theme: Theme;
   draft?: DraftContext;
+  initialNote?: string;
 };
 
 function buildNextDays() {
@@ -69,11 +71,13 @@ function buildHours() {
 }
 
 function buildPropertyLabel(draft?: DraftContext) {
-  const parts = [draft?.city, draft?.district, draft?.street].map((x) => String(x || '').trim()).filter(Boolean);
-  return parts.length ? parts.join(', ') : null;
+  const parts = [draft?.offerTitle, draft?.city, draft?.district, draft?.street]
+    .map((x) => String(x || '').trim())
+    .filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
 }
 
-export default function ProPhotoSessionModal({ visible, onClose, theme, draft }: Props) {
+export default function ProPhotoSessionModal({ visible, onClose, theme, draft, initialNote }: Props) {
   const { t } = useI18n();
   const navigation = useNavigation<any>();
   const { token, user } = useAuthStore() as any;
@@ -103,10 +107,9 @@ export default function ProPhotoSessionModal({ visible, onClose, theme, draft }:
     setStep(1);
     setSelectedDate(null);
     setSelectedHour(null);
-    setNote('');
+    setNote(String(initialNote || '').trim());
     setError(null);
     setSuccess(false);
-    setRespondMode('idle');
     if (!safeToken) {
       setActiveRequest(null);
       return;
@@ -120,7 +123,7 @@ export default function ProPhotoSessionModal({ visible, onClose, theme, draft }:
       })
       .catch(() => setActiveRequest(null))
       .finally(() => setLoadingRequest(false));
-  }, [visible, safeToken]);
+  }, [visible, safeToken, initialNote]);
 
   const hasActivePending = activeRequest?.status === 'PENDING';
   const pendingNeedsUser = hasActivePending && activeRequest?.waitingOn === 'USER';

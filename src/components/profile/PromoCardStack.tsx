@@ -25,18 +25,37 @@ import type { ProfilePromoCouponPurpose } from '../../contracts/profilePromoCont
 import BirthdayCouponBackdrop from './BirthdayCouponBackdrop';
 
 const PURPOSE_STRIP_H = 26;
+const PURPOSE_STRIP_H_COMPACT = 22;
 const SWIPE_OUT = 280;
 const SWIPE_THRESHOLD = 64;
 const DEFAULT_SLOT_H = 118;
+const DEFAULT_SLOT_H_COMPACT = 94;
 /** Odsunięcie dolnej karty — widać „drugi kupon” pod spodem. */
 const DECK_PEEK_Y = 12;
+const DECK_PEEK_Y_COMPACT = 8;
 const DECK_BACK_SCALE_REST = 0.98;
 /** Miejsce na cień karty + dolną warstwę stosu — podpowiedzi są poniżej. */
 const DECK_SHADOW_PAD = 18;
+const DECK_SHADOW_PAD_COMPACT = 10;
 const HINTS_GAP = 10;
+const HINTS_GAP_COMPACT = 4;
 /** Stała wysokość bloku tekstu — karty w talii mają ten sam rozmiar okna. */
 const SUBTITLE_SLOT_H = 38;
+const SUBTITLE_SLOT_H_COMPACT = 28;
 const META_SLOT_H = 34;
+const META_SLOT_H_COMPACT = 22;
+
+function stackMetrics(compact?: boolean) {
+  return {
+    defaultSlotH: compact ? DEFAULT_SLOT_H_COMPACT : DEFAULT_SLOT_H,
+    deckPeekY: compact ? DECK_PEEK_Y_COMPACT : DECK_PEEK_Y,
+    deckShadowPad: compact ? DECK_SHADOW_PAD_COMPACT : DECK_SHADOW_PAD,
+    hintsGap: compact ? HINTS_GAP_COMPACT : HINTS_GAP,
+    subtitleSlotH: compact ? SUBTITLE_SLOT_H_COMPACT : SUBTITLE_SLOT_H,
+    metaSlotH: compact ? META_SLOT_H_COMPACT : META_SLOT_H,
+    purposeStripH: compact ? PURPOSE_STRIP_H_COMPACT : PURPOSE_STRIP_H,
+  };
+}
 
 const SPRING_SNAP = { damping: 24, stiffness: 190, mass: 0.85 };
 /** Domknięcie talii po puszczeniu — szybkie, bez „zatrzymania” na końcu. */
@@ -53,22 +72,28 @@ function CouponPurposeStrip({
   iconName,
   isDark,
   stripUsed,
+  compact,
 }: {
   purpose: ProfilePromoCouponPurpose;
   label: string;
   iconName: string;
   isDark: boolean;
   stripUsed?: boolean;
+  compact?: boolean;
 }) {
+  const metrics = stackMetrics(compact);
   const visual = stripUsed
     ? getCouponUsedPurposeStripVisual(isDark)
     : getCouponPurposeStripVisual(purpose, isDark);
   return (
-    <View style={[stripStyles.strip, { backgroundColor: visual.stripBg }]} pointerEvents="none">
-      <View style={[stripStyles.iconWrap, { backgroundColor: visual.iconBg }]}>
-        <Ionicons name={iconName as any} size={14} color={visual.iconColor} />
+    <View
+      style={[stripStyles.strip, compact && stripStyles.stripCompact, { backgroundColor: visual.stripBg, height: metrics.purposeStripH }]}
+      pointerEvents="none"
+    >
+      <View style={[stripStyles.iconWrap, compact && stripStyles.iconWrapCompact, { backgroundColor: visual.iconBg }]}>
+        <Ionicons name={iconName as any} size={compact ? 12 : 14} color={visual.iconColor} />
       </View>
-      <Text style={[stripStyles.label, { color: visual.textColor }]} numberOfLines={1}>
+      <Text style={[stripStyles.label, compact && stripStyles.labelCompact, { color: visual.textColor }]} numberOfLines={1}>
         {label}
       </Text>
     </View>
@@ -80,13 +105,16 @@ function PromoCardFace({
   isDark,
   elevated,
   softShadow,
+  compact,
 }: {
   card: ProfilePromoCardRecord;
   isDark: boolean;
   elevated?: boolean;
   /** Karta w tle stosu — mniejszy cień, żeby nie nachodził na podpowiedzi. */
   softShadow?: boolean;
+  compact?: boolean;
 }) {
+  const metrics = stackMetrics(compact);
   const theme = card.visualTheme ?? 'default';
   const isUsed = card.couponUsed === true;
   const surface = getCouponSurfaceStyle(theme, isDark);
@@ -101,6 +129,7 @@ function PromoCardFace({
     <View
       style={[
         styles.card,
+        compact && styles.cardCompact,
         {
           backgroundColor: surface.backgroundColor,
           borderColor,
@@ -109,7 +138,7 @@ function PromoCardFace({
           shadowRadius: softShadow ? 8 : 14,
           elevation: softShadow ? 2 : elevated ? 5 : 3,
           overflow: 'hidden',
-          paddingBottom: hasStrip ? PURPOSE_STRIP_H + 10 : 14,
+          paddingBottom: hasStrip ? metrics.purposeStripH + (compact ? 8 : 10) : compact ? 10 : 14,
         },
       ]}
     >
@@ -121,34 +150,51 @@ function PromoCardFace({
         </View>
       ) : null}
       <View style={styles.contentRow}>
-        <View style={[styles.icon, styles.contentRaised, { backgroundColor: card.iconBg }]}>
-          <Ionicons name={card.iconName as any} size={22} color="#FFFFFF" />
+        <View
+          style={[
+            styles.icon,
+            compact && styles.iconCompact,
+            styles.contentRaised,
+            { backgroundColor: card.iconBg },
+          ]}
+        >
+          <Ionicons name={card.iconName as any} size={compact ? 18 : 22} color="#FFFFFF" />
         </View>
         <View style={[styles.body, styles.contentRaised]}>
           <View style={styles.headerRow}>
-            <Text style={[styles.title, { color: isDark ? '#FFFFFF' : '#000000' }]} numberOfLines={1}>
+            <Text
+              style={[styles.title, compact && styles.titleCompact, { color: isDark ? '#FFFFFF' : '#000000' }]}
+              numberOfLines={1}
+            >
               {card.title}
             </Text>
             <View
               style={[
                 styles.pill,
+                compact && styles.pillCompact,
                 { backgroundColor: card.pillBg, borderColor: card.pillBorder },
               ]}
             >
-              <Text style={[styles.pillText, { color: card.pillColor }]}>{card.pillLabel}</Text>
+              <Text style={[styles.pillText, compact && styles.pillTextCompact, { color: card.pillColor }]}>
+                {card.pillLabel}
+              </Text>
             </View>
           </View>
           <Text
             style={[
               styles.subtitle,
-              styles.subtitleSlot,
+              { minHeight: metrics.subtitleSlotH },
               isBirthday && styles.subtitleFestive,
+              compact && styles.subtitleCompact,
             ]}
-            numberOfLines={2}
+            numberOfLines={compact ? 1 : 2}
           >
             {card.subtitle}
           </Text>
-          <Text style={[styles.meta, styles.metaSlot]} numberOfLines={2}>
+          <Text
+            style={[styles.meta, { minHeight: metrics.metaSlotH }, compact && styles.metaCompact]}
+            numberOfLines={compact ? 1 : 2}
+          >
             {card.meta}
           </Text>
         </View>
@@ -160,6 +206,7 @@ function PromoCardFace({
           iconName={purposeIcon}
           isDark={isDark}
           stripUsed={isUsed}
+          compact={compact}
         />
       ) : null}
     </View>
@@ -171,6 +218,7 @@ type Props = {
   isDark: boolean;
   swipeHint?: string;
   dismissHint?: string;
+  compact?: boolean;
   onRequestDismiss?: (card: ProfilePromoCardRecord) => void;
 };
 
@@ -179,8 +227,10 @@ export default function PromoCardStack({
   isDark,
   swipeHint,
   dismissHint,
+  compact = false,
   onRequestDismiss,
 }: Props) {
+  const metrics = stackMetrics(compact);
   const [topIndex, setTopIndex] = useState(0);
   const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>({});
   /** 0 = wierzch w spoczynku, 1 = kolejna karta przejęła miejsce (jak Wallet). */
@@ -189,7 +239,7 @@ export default function PromoCardStack({
   const rotateDeg = useSharedValue(0);
   const peelWiggle = useSharedValue(0);
   const isDragging = useSharedValue(0);
-  const slotHeightSv = useSharedValue(DEFAULT_SLOT_H);
+  const slotHeightSv = useSharedValue(metrics.defaultSlotH);
   const dragHapticFired = useRef(false);
   const advanceAfterLayout = useRef(false);
   /** Karta widoczna w crossfade do momentu resetu progress — bez błysku po zmianie indeksu. */
@@ -206,8 +256,8 @@ export default function PromoCardStack({
 
   const maxMeasuredHeight = useMemo(() => {
     const heights = safeCards.map((c) => measuredHeights[c.id] ?? 0);
-    return Math.max(DEFAULT_SLOT_H, ...heights, 0);
-  }, [safeCards, measuredHeights]);
+    return Math.max(metrics.defaultSlotH, ...heights, 0);
+  }, [safeCards, measuredHeights, metrics.defaultSlotH]);
 
   useEffect(() => {
     slotHeightSv.value = withSpring(maxMeasuredHeight, SPRING_SNAP);
@@ -220,8 +270,8 @@ export default function PromoCardStack({
     dismissX.value = 0;
     rotateDeg.value = 0;
     isDragging.value = 0;
-    slotHeightSv.value = DEFAULT_SLOT_H;
-  }, [cards, deckProgress, dismissX, rotateDeg, isDragging, slotHeightSv]);
+    slotHeightSv.value = metrics.defaultSlotH;
+  }, [cards, deckProgress, dismissX, rotateDeg, isDragging, slotHeightSv, metrics.defaultSlotH]);
 
   useEffect(() => {
     if (topIndex >= count && count > 0) {
@@ -407,7 +457,7 @@ export default function PromoCardStack({
       ),
       transform: [
         {
-          translateY: interpolate(progress, [0, HANDOFF_INCOMING_START], [DECK_PEEK_Y, 0], Extrapolation.CLAMP),
+          translateY: interpolate(progress, [0, HANDOFF_INCOMING_START], [metrics.deckPeekY, 0], Extrapolation.CLAMP),
         },
         {
           scale: interpolate(
@@ -421,7 +471,7 @@ export default function PromoCardStack({
     };
   });
 
-  const peekExtra = count > 1 ? DECK_PEEK_Y : 0;
+  const peekExtra = count > 1 ? metrics.deckPeekY : 0;
 
   const slotStyle = useAnimatedStyle(() => ({
     height: slotHeightSv.value + peekExtra,
@@ -456,19 +506,19 @@ export default function PromoCardStack({
             style={styles.measureCell}
             onLayout={(e) => recordCardHeight(card.id, e.nativeEvent.layout.height)}
           >
-            <PromoCardFace card={card} isDark={isDark} />
+            <PromoCardFace card={card} isDark={isDark} compact={compact} />
           </View>
         ))}
       </View>
 
-      <View style={styles.deckStage}>
+      <View style={[styles.deckStage, { paddingBottom: metrics.deckShadowPad }]}>
         <Animated.View style={[styles.stack, slotStyle]}>
           {backCard ? (
             <Animated.View
               style={[styles.deckLayer, cardSlotStyle, styles.deckBackLayer, backStyle]}
               pointerEvents="none"
             >
-              <PromoCardFace card={backCard} isDark={isDark} softShadow />
+              <PromoCardFace card={backCard} isDark={isDark} softShadow compact={compact} />
             </Animated.View>
           ) : null}
 
@@ -477,11 +527,11 @@ export default function PromoCardStack({
               style={[styles.deckLayer, cardSlotStyle, styles.deckFrontLayer, frontDeckStyle]}
             >
               <Animated.View style={[styles.deckFaceLayer, outgoingFaceStyle]}>
-                <PromoCardFace card={topCard} isDark={isDark} elevated={canSwipeNext} />
+                <PromoCardFace card={topCard} isDark={isDark} elevated={canSwipeNext} compact={compact} />
               </Animated.View>
               {incomingDisplayCard ? (
                 <Animated.View style={[styles.deckFaceLayer, incomingFaceStyle]} pointerEvents="none">
-                  <PromoCardFace card={incomingDisplayCard} isDark={isDark} />
+                  <PromoCardFace card={incomingDisplayCard} isDark={isDark} compact={compact} />
                 </Animated.View>
               ) : null}
             </Animated.View>
@@ -493,8 +543,9 @@ export default function PromoCardStack({
         <View
           style={[
             styles.hintsZone,
+            compact && styles.hintsZoneCompact,
             {
-              marginTop: HINTS_GAP,
+              marginTop: metrics.hintsGap,
               backgroundColor: hintWellBg,
               borderTopColor: hintDivider,
             },
@@ -505,28 +556,37 @@ export default function PromoCardStack({
             <Text
               style={[
                 styles.deckCounterHint,
+                compact && styles.deckCounterHintCompact,
                 { color: isDark ? 'rgba(235,235,245,0.5)' : '#8E8E93' },
               ]}
             >
               {deckPosition}/{count}
             </Text>
           ) : null}
-          {canSwipeNext && swipeHint ? (
-            <Text style={[styles.hint, { color: isDark ? 'rgba(235,235,245,0.62)' : '#636366' }]}>
-              {swipeHint}
+          {compact && canSwipeNext && swipeHint && canDismiss && dismissHint ? (
+            <Text style={[styles.hint, styles.hintCompact, { color: isDark ? 'rgba(235,235,245,0.55)' : '#636366' }]}>
+              {swipeHint} · {dismissHint}
             </Text>
-          ) : null}
-          {canDismiss && dismissHint ? (
-            <Text
-              style={[
-                styles.hint,
-                styles.hintSecondary,
-                { color: isDark ? 'rgba(235,235,245,0.48)' : '#8E8E93' },
-              ]}
-            >
-              {dismissHint}
-            </Text>
-          ) : null}
+          ) : (
+            <>
+              {canSwipeNext && swipeHint ? (
+                <Text style={[styles.hint, compact && styles.hintCompact, { color: isDark ? 'rgba(235,235,245,0.62)' : '#636366' }]}>
+                  {swipeHint}
+                </Text>
+              ) : null}
+              {canDismiss && dismissHint ? (
+                <Text
+                  style={[
+                    styles.hint,
+                    compact ? styles.hintCompactSecondary : styles.hintSecondary,
+                    { color: isDark ? 'rgba(235,235,245,0.48)' : '#8E8E93' },
+                  ]}
+                >
+                  {dismissHint}
+                </Text>
+              ) : null}
+            </>
+          )}
         </View>
       ) : null}
     </View>
@@ -555,7 +615,6 @@ const styles = StyleSheet.create({
   },
   deckStage: {
     width: '100%',
-    paddingBottom: DECK_SHADOW_PAD,
     zIndex: 1,
   },
   stack: {
@@ -571,6 +630,12 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
     zIndex: 10,
+  },
+  hintsZoneCompact: {
+    paddingTop: 6,
+    paddingBottom: 2,
+    paddingHorizontal: 4,
+    borderRadius: 10,
   },
   deckLayer: {
     position: 'absolute',
@@ -594,6 +659,11 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingHorizontal: 14,
     shadowColor: '#000',
+  },
+  cardCompact: {
+    borderRadius: 14,
+    paddingTop: 10,
+    paddingHorizontal: 10,
   },
   contentRow: {
     flexDirection: 'row',
@@ -626,6 +696,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
+  iconCompact: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    marginRight: 8,
+  },
   body: { flex: 1, minWidth: 0 },
   headerRow: {
     flexDirection: 'row',
@@ -641,7 +717,12 @@ const styles = StyleSheet.create({
     marginLeft: 2,
     fontVariant: ['tabular-nums'],
   },
+  deckCounterHintCompact: {
+    fontSize: 10,
+    marginBottom: 3,
+  },
   title: { fontSize: 17, fontWeight: '700', letterSpacing: -0.2, flex: 1 },
+  titleCompact: { fontSize: 15 },
   pill: {
     borderWidth: 1,
     borderRadius: 999,
@@ -649,12 +730,17 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     flexShrink: 0,
   },
+  pillCompact: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
   pillText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  pillTextCompact: { fontSize: 9, letterSpacing: 0.35 },
   subtitle: { color: '#8E8E93', fontSize: 13, fontWeight: '700', marginTop: 3 },
-  subtitleSlot: { minHeight: SUBTITLE_SLOT_H },
+  subtitleCompact: { fontSize: 12, marginTop: 2 },
   subtitleFestive: { color: '#B35C1E' },
   meta: { color: '#8E8E93', fontSize: 12, marginTop: 4 },
-  metaSlot: { minHeight: META_SLOT_H },
+  metaCompact: { fontSize: 11, marginTop: 2 },
   contentRaised: {
     zIndex: 3,
   },
@@ -666,8 +752,15 @@ const styles = StyleSheet.create({
     letterSpacing: -0.1,
     lineHeight: 17,
   },
+  hintCompact: {
+    fontSize: 11,
+    lineHeight: 15,
+  },
   hintSecondary: {
     marginTop: 6,
+  },
+  hintCompactSecondary: {
+    marginTop: 3,
   },
 });
 
@@ -686,6 +779,12 @@ const stripStyles = StyleSheet.create({
     borderBottomRightRadius: 15,
     zIndex: 5,
   },
+  stripCompact: {
+    paddingHorizontal: 8,
+    gap: 5,
+    borderBottomLeftRadius: 13,
+    borderBottomRightRadius: 13,
+  },
   iconWrap: {
     width: 22,
     height: 22,
@@ -693,11 +792,20 @@ const stripStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  iconWrapCompact: {
+    width: 18,
+    height: 18,
+    borderRadius: 6,
+  },
   label: {
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     flexShrink: 1,
+  },
+  labelCompact: {
+    fontSize: 10,
+    letterSpacing: 0.45,
   },
 });

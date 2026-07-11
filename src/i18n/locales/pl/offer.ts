@@ -334,6 +334,17 @@ export const offer = {
     },
     gallery: {
       counter: '{{current}} z {{total}}',
+      thumbA11y: 'Miniatura {{index}} z {{total}}',
+    },
+    priceHistory: {
+      title: 'Historia ceny',
+      subtitle: 'Jak zmieniała się cena oferty od wystawienia',
+      startPrice: 'Cena startowa',
+      currentPrice: 'Aktualnie',
+      changeInitial: 'Wystawienie',
+      changeReduction: 'Obniżka',
+      changeIncrease: 'Podwyżka',
+      changeUpdate: 'Aktualizacja',
     },
     floorPlan: {
       sectionTitle: 'Rzut / Plan nieruchomości',

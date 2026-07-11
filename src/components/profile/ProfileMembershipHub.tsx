@@ -224,11 +224,6 @@ export default function ProfileMembershipHub({
           <Text style={[styles.hubTitle, { color: isDark ? '#FFFFFF' : '#1C1C1E' }]} numberOfLines={1}>
             {hubTitle}
           </Text>
-          {expanded ? (
-            <Text style={[styles.hubSubtitle, { color: isDark ? 'rgba(235,235,245,0.55)' : '#8E8E93' }]}>
-              {hubSubtitle}
-            </Text>
-          ) : null}
 
           {!expanded ? (
             <View style={styles.statRow}>
@@ -273,6 +268,7 @@ export default function ProfileMembershipHub({
 
           <BonusCouponsSection
             embedded
+            compact
             cards={bonusCoupons.cards}
             isDark={isDark}
             title={bonusCoupons.title}
@@ -287,8 +283,10 @@ export default function ProfileMembershipHub({
 
           <PlusPackageShopPanel
             embedded
+            compactEmbedded
             leatherSurface
-            collapsible={false}
+            collapsible
+            defaultExpanded={!plus.hasPlusAvailable}
             isDark={isDark}
             showRestore={false}
             title={plus.title}
@@ -312,8 +310,10 @@ export default function ProfileMembershipHub({
 
           <InvestorProShopPanel
             embedded
+            compactEmbedded
             leatherSurface
-            collapsible={false}
+            collapsible
+            defaultExpanded={!investorPro.isActive}
             isDark={isDark}
             showRestore={false}
             title={investorPro.title}
@@ -368,14 +368,14 @@ const styles = StyleSheet.create({
   hubHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
   },
   hubCrownWell: {
-    width: 52,
-    height: 52,
-    borderRadius: 15,
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -462,7 +462,7 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
   hubBody: {
-    paddingBottom: 4,
+    paddingBottom: 2,
   },
   sectionDivider: {
     height: StyleSheet.hairlineWidth,
@@ -471,27 +471,27 @@ const styles = StyleSheet.create({
   restoreRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    gap: 10,
   },
   restoreIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
   },
   restoreBody: { flex: 1, paddingRight: 4 },
   restoreTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     letterSpacing: -0.2,
   },
   restoreSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#8E8E93',
-    marginTop: 2,
-    lineHeight: 16,
+    marginTop: 1,
+    lineHeight: 14,
   },
 });

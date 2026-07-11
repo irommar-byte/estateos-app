@@ -55,6 +55,7 @@ import ProfileCardShell from '../components/profile/ProfileCardShell';
 import ProfileAgencyOfficeCard from '../components/agency/ProfileAgencyOfficeCard';
 import ProfileConciergeCard from '../components/agency/ProfileConciergeCard';
 import AgencyTransferModal from '../components/agency/AgencyTransferModal';
+import ProPhotoSessionModal from '../components/ProPhotoSessionModal';
 import { getAppVersionLabel } from '../utils/appVersion';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
 import {
@@ -336,10 +337,22 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
   );
 };
 
+function buildOfferPhotoSessionDraft(offer: any) {
+  if (!offer) return undefined;
+  const loc = offer.location && typeof offer.location === 'object' ? offer.location : {};
+  const title = String(offer.title || '').trim();
+  return {
+    offerTitle: title || undefined,
+    city: offer.city || loc.city || loc.locality || undefined,
+    district: offer.district || loc.district || loc.sublocality || undefined,
+    street: offer.street || offer.address || loc.street || undefined,
+    propertyType: offer.propertyType || offer.category || undefined,
+    transactionType: offer.transactionType || offer.dealType || offer.type || undefined,
+  };
+}
+
 const PremiumActionButton = ({ icon, color, title, subtitle, onPress, disabled, theme, isDark, isPrimary }) => {
   const scale = useRef(new Animated.Value(1)).current;
-  const { width } = useWindowDimensions();
-  const buttonWidth = (width - 40 - 12) / 2;
 
   useEffect(() => {
     if (isPrimary && !disabled) {
@@ -364,21 +377,28 @@ const PremiumActionButton = ({ icon, color, title, subtitle, onPress, disabled, 
   };
 
   return (
-    <Pressable onPressIn={onPressIn} onPressOut={onPressOut} onPress={onPress} style={{ width: buttonWidth, marginBottom: 12 }} disabled={disabled}>
+    <Pressable
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      onPress={onPress}
+      style={styles.mgtActionCell}
+      disabled={disabled}
+    >
       <Animated.View style={[
-        styles.livingActionBtn, 
-        { 
-          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', 
+        styles.livingActionBtn,
+        styles.livingActionBtnGrid,
+        {
+          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
           borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
-          opacity: disabled ? 0.4 : 1, 
-          transform: [{ scale }] 
+          opacity: disabled ? 0.4 : 1,
+          transform: [{ scale }]
         }
       ]}>
-        <View style={[styles.livingIconWrap, { backgroundColor: color.bg, shadowColor: color.icon }]}>
-          <Ionicons name={icon} size={24} color={color.icon} />
+        <View style={[styles.livingIconWrap, styles.livingIconWrapGrid, { backgroundColor: color.bg, shadowColor: color.icon }]}>
+          <Ionicons name={icon} size={22} color={color.icon} />
         </View>
-        <Text style={[styles.livingActionText, { color: theme.text }]} numberOfLines={1}>{title}</Text>
-        <Text style={styles.livingActionSub} numberOfLines={2}>{subtitle}</Text>
+        <Text style={[styles.livingActionText, styles.livingActionTextGrid, { color: theme.text }]} numberOfLines={2}>{title}</Text>
+        <Text style={[styles.livingActionSub, styles.livingActionSubGrid]} numberOfLines={2}>{subtitle}</Text>
       </Animated.View>
     </Pressable>
   );
@@ -605,6 +625,8 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   const [reactivationChoicePlusSlots, setReactivationChoicePlusSlots] = useState(0);
   const [reactivationChoiceHasPlus, setReactivationChoiceHasPlus] = useState(false);
   const [transferModalVisible, setTransferModalVisible] = useState(false);
+  const [proPhotoSessionVisible, setProPhotoSessionVisible] = useState(false);
+  const [proPhotoSessionNote, setProPhotoSessionNote] = useState('');
   const pendingReactivationRef = useRef<{ offerId: number; offerTitle: string } | null>(null);
   const recentlyReactivatedUntilRef = useRef<Record<number, number>>({});
   
@@ -953,6 +975,11 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     } else if (actionType === 'AGENCY_TRANSFER') {
       if (!selectedOffer?.id || normalizeOfferTabStatus(selectedOffer.status) !== 'ACTIVE') return;
       setTransferModalVisible(true);
+    } else if (actionType === 'PRO_STUDIO') {
+      if (!selectedOffer?.id) return;
+      const offerTitle = String(selectedOffer.title || t('profile.myOffers.defaultOfferTitle'));
+      setProPhotoSessionNote(t('profile.myOffers.proStudio.defaultNote', { title: offerTitle }));
+      setProPhotoSessionVisible(true);
     } else if (actionType === 'REACTIVATE_30D') {
       if (!selectedOffer?.id || !token || reactivating) return;
       const offerId = Number(selectedOffer.id);
@@ -1050,10 +1077,21 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         </View>
 
         <Text style={[styles.sectionTitle, { marginLeft: 0, marginBottom: 15 }]}>{t('profile.myOffers.actionsTitle')}</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+        <View style={styles.mgtActionGrid}>
           <PremiumActionButton onPress={() => handleAction('PREVIEW')} icon="search" color={{ bg: 'rgba(0,122,255,0.1)', icon: '#007AFF' }} title={t('profile.myOffers.preview')} subtitle={t('profile.myOffers.previewSubtitle')} theme={theme} isDark={isDark} />
           <PremiumActionButton onPress={() => handleAction('EDIT')} icon="pencil" color={{ bg: 'rgba(255,159,10,0.1)', icon: '#FF9F0A' }} title={t('profile.myOffers.edit')} subtitle={t('profile.myOffers.editSubtitle')} theme={theme} isDark={isDark} />
           <PremiumActionButton onPress={() => handleAction('COMMENTS')} icon="chatbubbles" color={{ bg: 'rgba(175,82,222,0.12)', icon: '#AF52DE' }} title={t('profile.myOffers.comments')} subtitle={t('profile.myOffers.commentsSubtitle')} theme={theme} isDark={isDark} />
+          {selSt !== 'ARCHIVED' ? (
+            <PremiumActionButton
+              onPress={() => handleAction('PRO_STUDIO')}
+              icon="sparkles"
+              color={{ bg: 'rgba(52,199,89,0.12)', icon: '#34C759' }}
+              title={t('profile.myOffers.proStudio.title')}
+              subtitle={t('profile.myOffers.proStudio.subtitle')}
+              theme={theme}
+              isDark={isDark}
+            />
+          ) : null}
           {selSt === 'ACTIVE' ? (
             <PremiumActionButton
               onPress={() => handleAction('AGENCY_TRANSFER')}
@@ -1162,6 +1200,13 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           offerId={Number(selectedOffer?.id || 0)}
           offerTitle={String(selectedOffer?.title || '')}
           onClose={() => setTransferModalVisible(false)}
+        />
+        <ProPhotoSessionModal
+          visible={proPhotoSessionVisible}
+          onClose={() => setProPhotoSessionVisible(false)}
+          theme={theme}
+          draft={buildOfferPhotoSessionDraft(selectedOffer)}
+          initialNote={proPhotoSessionNote}
         />
       </View>
     </Modal>
@@ -3161,18 +3206,13 @@ function ProfileScreenLoggedIn({
     ? t('profile.shop.investorProActive')
     : t('profile.shop.investorProInactive');
   const investorProMetaLabel = hasInvestorProActive
-    ? [
-        investorProCountdown
-          ? t('profile.shop.investorProDaysLeft', {
-              days: investorProCountdown.daysLeft,
-              daysLabel:
-                investorProCountdown.daysLeft === 1 ? t('profile.shop.dayOne') : t('profile.shop.dayMany'),
-            })
-          : null,
-        t('profile.shop.investorProSubscriptionMeta'),
-      ]
-        .filter(Boolean)
-        .join('\n')
+    ? investorProCountdown
+      ? t('profile.shop.investorProDaysLeft', {
+          days: investorProCountdown.daysLeft,
+          daysLabel:
+            investorProCountdown.daysLeft === 1 ? t('profile.shop.dayOne') : t('profile.shop.dayMany'),
+        })
+      : ''
     : t('profile.shop.investorProMeta');
   const investorProExpiryLine =
     hasInvestorProActive && investorProExpiryLabel
@@ -3876,9 +3916,7 @@ function ProfileScreenLoggedIn({
           publicationCredits={hasPlusPublicationAvailable ? plusSlots : 0}
           couponCount={bonusCouponCards.length}
           hasInvestorProActive={hasInvestorProActive}
-          defaultHubExpanded={
-            !hasInvestorProActive || !hasPlusPublicationAvailable || bonusCouponCards.length > 0
-          }
+          defaultHubExpanded={false}
           shopExpandRequestId={shopExpandRequestId}
           bonusCoupons={{
             cards: bonusCouponCards,
@@ -3900,7 +3938,7 @@ function ProfileScreenLoggedIn({
             buySubtitle: t('profile.shop.buyPlusSubtitle', { price: PAKIET_PLUS_PRICE_LABEL }),
             buying: isBuyingPakietPlus,
             footer: (
-              <Text style={styles.sectionFooter}>
+              <Text style={[styles.sectionFooter, styles.shopPanelFooter]}>
                 {Platform.OS === 'ios'
                   ? t('profile.shop.footerIos', { price: PAKIET_PLUS_PRICE_LABEL })
                   : t('profile.shop.footerAndroid')}
@@ -3922,7 +3960,7 @@ function ProfileScreenLoggedIn({
             buying: isBuyingInvestorPro,
             isActive: hasInvestorProActive,
             footer: (
-              <Text style={styles.sectionFooter}>
+              <Text style={[styles.sectionFooter, styles.shopPanelFooter]}>
                 {t('profile.shop.investorProFooter')}
                 {!hasInvestorProActive && investorProListing && !investorProListing.hasFreeTrial
                   ? `\n\n${t('profile.shop.investorProTrialAscHint')}`
@@ -4538,6 +4576,7 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 13, color: '#8E8E93', textTransform: 'uppercase', marginLeft: 16, marginBottom: 8, letterSpacing: 0.3 },
   sectionFooter: { fontSize: 13, color: '#8E8E93', marginLeft: 16, marginTop: 8, marginRight: 16, lineHeight: 18 },
+  shopPanelFooter: { marginLeft: 0, marginRight: 0, marginTop: 0, fontSize: 11, lineHeight: 15 },
   plusStatusCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4987,7 +5026,15 @@ const styles = StyleSheet.create({
   mgtStatBox: { flex: 1, padding: 16, borderRadius: 16, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   mgtStatValue: { fontSize: 24, fontWeight: '800', marginTop: 8, marginBottom: 2 },
   mgtStatLabel: { fontSize: 12, color: '#8E8E93', fontWeight: '600', textTransform: 'uppercase' },
-  mgtActionGrid: { flexDirection: 'row', flexWrap: 'wrap', borderRadius: 20, padding: 8 },
+  mgtActionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  mgtActionCell: {
+    width: '48.5%',
+    marginBottom: 12,
+  },
   mgtActionBtn: { width: '50%', padding: 12, alignItems: 'center' },
   mgtIconBox: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   mgtActionText: { fontSize: 13, fontWeight: '600' },
@@ -5003,6 +5050,15 @@ const styles = StyleSheet.create({
     shadowRadius: 18, 
     elevation: 8 
   },
+  livingActionBtnGrid: {
+    width: '100%',
+    minHeight: 132,
+    padding: 12,
+    borderRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    elevation: 4,
+  },
   livingIconWrap: { 
     width: 48, 
     height: 48, 
@@ -5015,8 +5071,16 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5
   },
+  livingIconWrapGrid: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginBottom: 10,
+  },
   livingActionText: { fontSize: 16, fontWeight: '800', marginBottom: 4, letterSpacing: -0.3 },
+  livingActionTextGrid: { fontSize: 14, lineHeight: 18, marginBottom: 3 },
   livingActionSub: { fontSize: 11, color: '#8E8E93', fontWeight: '600', letterSpacing: 0.2 },
+  livingActionSubGrid: { fontSize: 10, lineHeight: 13 },
 
   profileOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', padding: 18 },
   profileCard: { backgroundColor: '#111827', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#1f2937' },

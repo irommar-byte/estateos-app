@@ -56,6 +56,11 @@ export const profile = {
     republishing: 'Wystawianie…',
     republishSubtitle: 'Pakiet Plus — 30 dni publicznie (~{{price}})',
     defaultOfferTitle: 'to ogłoszenie',
+    proStudio: {
+      title: 'EstateOS Studio',
+      subtitle: 'Sesja PRO, opis i publikacja',
+      defaultNote: 'EstateOS Studio — sesja zdjęciowa i kompleksowa oferta: {{title}}',
+    },
     alerts: {
       activationRejected: 'Serwer odrzucił aktywację ogłoszenia (HTTP {{status}}).',
       onMarketTitle: 'Ogłoszenie na rynku',

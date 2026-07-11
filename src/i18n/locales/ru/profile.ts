@@ -56,6 +56,11 @@ export const profile = {
     republishing: 'Издательский…',
     republishSubtitle: 'Пакет «Плюс» — 30 дней публичного доступа (~{{price}})',
     defaultOfferTitle: 'этот список',
+    proStudio: {
+      title: 'EstateOS Studio',
+      subtitle: 'PRO-съёмка, текст и публикация',
+      defaultNote: 'EstateOS Studio — фотосессия и комплексное объявление: {{title}}',
+    },
     alerts: {
       activationRejected: 'Сервер отклонил активацию листинга (HTTP {{status}}).',
       onMarketTitle: 'Листинг в прямом эфире',

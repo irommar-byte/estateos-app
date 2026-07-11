@@ -30,6 +30,7 @@ type Props = {
   collapsible?: boolean;
   embedded?: boolean;
   leatherSurface?: boolean;
+  compactEmbedded?: boolean;
   showRestore?: boolean;
   footer?: React.ReactNode;
   onBuy: () => void;
@@ -59,6 +60,7 @@ export default function InvestorProShopPanel({
   collapsible = true,
   embedded = false,
   leatherSurface = false,
+  compactEmbedded = false,
   showRestore = true,
   footer,
   onBuy,
@@ -87,6 +89,11 @@ export default function InvestorProShopPanel({
       ? 'rgba(255,255,255,0.08)'
       : 'rgba(0,0,0,0.06)';
   const accent = isActive ? '#F59E0B' : '#0A84FF';
+  const statusMetaLine =
+    compactEmbedded && isActive
+      ? [expiryLabel, metaLabel].filter(Boolean).join(' · ')
+      : null;
+  const showStatusMeta = compactEmbedded && isActive ? Boolean(statusMetaLine) : Boolean(metaLabel);
 
   return (
     <View
@@ -119,47 +126,75 @@ export default function InvestorProShopPanel({
       <Pressable
         onPress={collapsible ? () => setExpanded((v) => !v) : undefined}
         disabled={!collapsible}
-        style={({ pressed }) => [styles.statusRow, pressed && collapsible && { opacity: 0.92 }]}
+        style={({ pressed }) => [
+          styles.statusRow,
+          compactEmbedded && styles.statusRowCompact,
+          pressed && collapsible && { opacity: 0.92 },
+        ]}
       >
         <View
           style={[
             styles.slotBadge,
+            compactEmbedded && styles.slotBadgeCompact,
             { backgroundColor: `${accent}18`, borderColor: `${accent}55` },
             isActive && styles.slotBadgeActive,
           ]}
         >
           {isActive ? (
-            <ActiveProVipBadge size={40} />
+            <ActiveProVipBadge size={compactEmbedded ? 32 : 40} />
           ) : (
-            <ProfileGoldCrown size={36} />
+            <ProfileGoldCrown size={compactEmbedded ? 28 : 36} />
           )}
         </View>
         <View style={styles.statusCopy}>
-          <Text style={[styles.packageTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>{title}</Text>
-          <Text style={[styles.counter, { color: accent }]}>{statusLabel}</Text>
-          {expiryLabel ? (
-            <Text style={[styles.meta, { color: isDark ? 'rgba(235,235,245,0.55)' : '#8E8E93' }]}>
-              {expiryLabel}
-            </Text>
-          ) : null}
-          <Text style={[styles.meta, { color: isDark ? 'rgba(235,235,245,0.45)' : '#AEAEB2' }]}>
-            {metaLabel}
+          <Text
+            style={[
+              styles.packageTitle,
+              compactEmbedded && styles.packageTitleCompact,
+              { color: isDark ? '#FFFFFF' : '#000000' },
+            ]}
+          >
+            {title}
           </Text>
+          <Text style={[styles.counter, compactEmbedded && styles.counterCompact, { color: accent }]}>
+            {statusLabel}
+          </Text>
+          {compactEmbedded && isActive ? (
+            showStatusMeta ? (
+              <Text
+                style={[styles.meta, styles.metaCompact, { color: isDark ? 'rgba(235,235,245,0.55)' : '#8E8E93' }]}
+                numberOfLines={1}
+              >
+                {statusMetaLine}
+              </Text>
+            ) : null
+          ) : (
+            <>
+              {expiryLabel ? (
+                <Text style={[styles.meta, compactEmbedded && styles.metaCompact, { color: isDark ? 'rgba(235,235,245,0.55)' : '#8E8E93' }]}>
+                  {expiryLabel}
+                </Text>
+              ) : null}
+              <Text style={[styles.meta, compactEmbedded && styles.metaCompact, { color: isDark ? 'rgba(235,235,245,0.45)' : '#AEAEB2' }]}>
+                {metaLabel}
+              </Text>
+            </>
+          )}
         </View>
         <View style={styles.headerActions}>
           {isActive ? (
-            <View style={[styles.statusIcon, { backgroundColor: accent }]}>
-              <Ionicons name="checkmark-circle" size={22} color="#FFFFFF" />
+            <View style={[styles.statusIcon, compactEmbedded && styles.statusIconCompact, { backgroundColor: accent }]}>
+              <Ionicons name="checkmark-circle" size={compactEmbedded ? 18 : 22} color="#FFFFFF" />
             </View>
           ) : (
-            <View style={[styles.statusIcon, { backgroundColor: accent }]}>
-              <Ionicons name="sparkles" size={22} color="#FFFFFF" />
+            <View style={[styles.statusIcon, compactEmbedded && styles.statusIconCompact, { backgroundColor: accent }]}>
+              <Ionicons name="sparkles" size={compactEmbedded ? 18 : 22} color="#FFFFFF" />
             </View>
           )}
           {collapsible ? (
             <Ionicons
               name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
+              size={compactEmbedded ? 18 : 20}
               color={isDark ? '#8E8E93' : '#C7C7CC'}
             />
           ) : null}
@@ -177,22 +212,25 @@ export default function InvestorProShopPanel({
                 disabled={buying}
                 style={({ pressed }) => [
                   styles.actionRow,
+                  compactEmbedded && styles.actionRowCompact,
                   pressed && { backgroundColor: pressedBg },
                   buying && { opacity: 0.7 },
                 ]}
               >
-                <View style={[styles.actionIcon, { backgroundColor: '#F59E0B' }]}>
+                <View style={[styles.actionIcon, compactEmbedded && styles.actionIconCompact, { backgroundColor: '#F59E0B' }]}>
                   {buying ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <Ionicons name="diamond" size={21} color="#FFFFFF" />
+                    <Ionicons name="diamond" size={compactEmbedded ? 18 : 21} color="#FFFFFF" />
                   )}
                 </View>
                 <View style={styles.actionBody}>
-                  <Text style={[styles.actionTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>{buyLabel}</Text>
-                  <Text style={styles.actionSubtitle}>{buySubtitle}</Text>
+                  <Text style={[styles.actionTitle, compactEmbedded && styles.actionTitleCompact, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+                    {buyLabel}
+                  </Text>
+                  <Text style={[styles.actionSubtitle, compactEmbedded && styles.actionSubtitleCompact]}>{buySubtitle}</Text>
                 </View>
-                {!buying && <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
+                {!buying && <Ionicons name="chevron-forward" size={compactEmbedded ? 18 : 20} color="#C7C7CC" />}
               </Pressable>
 
               <View style={[styles.dividerThin, { backgroundColor: divider }]} />
@@ -227,7 +265,7 @@ export default function InvestorProShopPanel({
           {footer ? (
             <>
               <View style={[styles.divider, { backgroundColor: divider }]} />
-              <View style={styles.footerWrap}>{footer}</View>
+              <View style={[styles.footerWrap, compactEmbedded && styles.footerWrapCompact]}>{footer}</View>
             </>
           ) : null}
         </>
@@ -286,6 +324,11 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 14,
   },
+  statusRowCompact: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 10,
+  },
   slotBadge: {
     width: 64,
     height: 64,
@@ -294,6 +337,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'visible',
+  },
+  slotBadgeCompact: {
+    width: 48,
+    height: 48,
+    borderRadius: 13,
   },
   slotBadgeActive: {
     borderColor: 'rgba(251,191,36,0.85)',
@@ -305,16 +353,28 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: -0.2,
   },
+  packageTitleCompact: {
+    fontSize: 15,
+  },
   counter: {
     fontSize: 14,
     fontWeight: '700',
     marginTop: 4,
+  },
+  counterCompact: {
+    fontSize: 13,
+    marginTop: 2,
   },
   meta: {
     fontSize: 12,
     marginTop: 3,
     lineHeight: 16,
     fontWeight: '500',
+  },
+  metaCompact: {
+    fontSize: 11,
+    marginTop: 2,
+    lineHeight: 14,
   },
   headerActions: {
     alignItems: 'center',
@@ -326,6 +386,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  statusIconCompact: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
@@ -342,6 +407,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 12,
   },
+  actionRowCompact: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 10,
+  },
   actionIcon: {
     width: 36,
     height: 36,
@@ -349,11 +419,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  actionIconCompact: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+  },
   actionBody: { flex: 1, paddingRight: 4 },
   actionTitle: {
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: -0.2,
+  },
+  actionTitleCompact: {
+    fontSize: 15,
   },
   actionSubtitle: {
     fontSize: 12,
@@ -361,9 +439,19 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: 16,
   },
+  actionSubtitleCompact: {
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 1,
+  },
   footerWrap: {
     paddingHorizontal: 16,
     paddingBottom: 14,
     paddingTop: 4,
+  },
+  footerWrapCompact: {
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    paddingTop: 2,
   },
 });

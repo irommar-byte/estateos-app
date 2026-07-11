@@ -324,6 +324,17 @@ export const offer = {
     },
     gallery: {
       counter: '{{current}} из {{total}}',
+      thumbA11y: 'Миниатюра {{index}} из {{total}}',
+    },
+    priceHistory: {
+      title: 'История цены',
+      subtitle: 'Как менялась цена объявления с момента публикации',
+      startPrice: 'Стартовая цена',
+      currentPrice: 'Сейчас',
+      changeInitial: 'Публикация',
+      changeReduction: 'Снижение',
+      changeIncrease: 'Повышение',
+      changeUpdate: 'Обновление',
     },
     floorPlan: {
       sectionTitle: 'План этажа',

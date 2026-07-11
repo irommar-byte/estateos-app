@@ -56,6 +56,11 @@ export const profile = {
     republishing: 'Publishing…',
     republishSubtitle: 'Plus Package — 30 days public (~{{price}})',
     defaultOfferTitle: 'this listing',
+    proStudio: {
+      title: 'EstateOS Studio',
+      subtitle: 'PRO shoot, copy and go-live',
+      defaultNote: 'EstateOS Studio — photo session and full listing: {{title}}',
+    },
     alerts: {
       activationRejected: 'Server rejected listing activation (HTTP {{status}}).',
       onMarketTitle: 'Listing live',

@@ -333,6 +333,17 @@ export const offer = {
     },
     gallery: {
       counter: '{{current}} of {{total}}',
+      thumbA11y: 'Thumbnail {{index}} of {{total}}',
+    },
+    priceHistory: {
+      title: 'Price history',
+      subtitle: 'How the listing price changed over time',
+      startPrice: 'Starting price',
+      currentPrice: 'Current',
+      changeInitial: 'Listed',
+      changeReduction: 'Price cut',
+      changeIncrease: 'Price increase',
+      changeUpdate: 'Update',
     },
     floorPlan: {
       sectionTitle: 'Floor plan',
