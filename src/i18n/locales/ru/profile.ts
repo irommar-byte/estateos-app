@@ -163,6 +163,13 @@ export const profile = {
       pickDateTime: 'Выберите день и время.',
       actionFailed: 'Не удалось выполнить действие.',
       loadFailed: 'Не удалось загрузить бронирования.',
+      loginRequired: 'Войдите снова, чтобы увидеть бронирования сессий.',
+      subtitleConfirmedOne: '1 подтверждённая фотосессия',
+      subtitleConfirmedMany: '{{count}} подтверждённых фотосессий',
+      emptyAdminTitle: 'Нет бронирований на этом аккаунте',
+      emptyAdminBody:
+        'Сессии клиентов (переговоры и подтверждённые слоты) — в разделе Инструменты администратора → Фотосессии.',
+      openAdminPhotoSessions: 'Открыть панель администратора',
       acceptConfirm: 'Принять слот {{label}}?',
       declineConfirm: 'Отклонить предложение администратора?',
       confirmedSection: 'Подтверждено',

@@ -92,7 +92,11 @@ export async function fetchMyPhotoSessionRequests(token: string | null | undefin
   if (!safeToken) throw new PhotoSessionServiceError('Brak sesji — zaloguj się ponownie.', 401);
 
   const res = await fetch(`${API_URL}/api/mobile/v1/photo-sessions`, {
-    headers: { Authorization: `Bearer ${safeToken}` },
+    headers: {
+      Authorization: `Bearer ${safeToken}`,
+      'Cache-Control': 'no-cache',
+    },
+    cache: 'no-store',
   });
   const data = await parseJson(res);
   if (!res.ok) {

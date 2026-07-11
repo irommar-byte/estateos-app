@@ -163,6 +163,13 @@ export const profile = {
       pickDateTime: 'Pick a day and time.',
       actionFailed: 'Action failed.',
       loadFailed: 'Could not load bookings.',
+      loginRequired: 'Sign in again to view your session bookings.',
+      subtitleConfirmedOne: '1 confirmed photo session',
+      subtitleConfirmedMany: '{{count}} confirmed photo sessions',
+      emptyAdminTitle: 'No bookings on this account',
+      emptyAdminBody:
+        'Client sessions (negotiations and confirmed slots) are under Admin tools → Photo sessions.',
+      openAdminPhotoSessions: 'Open admin panel',
       acceptConfirm: 'Accept slot {{label}}?',
       declineConfirm: 'Decline the administrator proposal?',
       confirmedSection: 'Confirmed',

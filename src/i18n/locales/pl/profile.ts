@@ -163,6 +163,13 @@ export const profile = {
       pickDateTime: 'Wybierz dzień i godzinę.',
       actionFailed: 'Operacja nie powiodła się.',
       loadFailed: 'Nie udało się pobrać rezerwacji.',
+      loginRequired: 'Zaloguj się ponownie, aby zobaczyć rezerwacje sesji.',
+      subtitleConfirmedOne: '1 umówiona sesja zdjęciowa',
+      subtitleConfirmedMany: '{{count}} umówione sesje zdjęciowe',
+      emptyAdminTitle: 'Brak Twoich rezerwacji na tym koncie',
+      emptyAdminBody:
+        'Sesje klientów (negocjacje i umówione terminy) są w sekcji Narzędzia Administratora → Sesje zdjęciowe.',
+      openAdminPhotoSessions: 'Otwórz panel administratora',
       acceptConfirm: 'Zaakceptować termin {{label}}?',
       declineConfirm: 'Odrzucić propozycję administratora?',
       confirmedSection: 'Umówione',

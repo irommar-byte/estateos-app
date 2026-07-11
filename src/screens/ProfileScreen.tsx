@@ -2586,6 +2586,7 @@ function ProfileScreenLoggedIn({
   const [isUserPhotoSessionsVisible, setIsUserPhotoSessionsVisible] = useState(false);
   const [userPhotoSessionsActionCount, setUserPhotoSessionsActionCount] = useState(0);
   const [userPhotoSessionsWaitingAdmin, setUserPhotoSessionsWaitingAdmin] = useState(false);
+  const [userConfirmedPhotoSessionsCount, setUserConfirmedPhotoSessionsCount] = useState(0);
   const [userPromoCards, setUserPromoCards] = useState<ProfilePromoCardRecord[]>([]);
   const [dismissedPromoIds, setDismissedPromoIds] = useState<Set<string>>(() => new Set());
   const [adminPendingLegalCount, setAdminPendingLegalCount] = useState(0);
@@ -2769,6 +2770,7 @@ function ProfileScreenLoggedIn({
     if (!token) {
       setUserPhotoSessionsActionCount(0);
       setUserPhotoSessionsWaitingAdmin(false);
+      setUserConfirmedPhotoSessionsCount(0);
       return;
     }
     try {
@@ -2778,6 +2780,9 @@ function ProfileScreenLoggedIn({
       );
       setUserPhotoSessionsWaitingAdmin(
         items.some((x) => x.status === 'PENDING' && x.waitingOn === 'ADMIN'),
+      );
+      setUserConfirmedPhotoSessionsCount(
+        items.filter((x) => x.status === 'ACCEPTED' && new Date(x.proposedAt).getTime() > Date.now()).length,
       );
     } catch {
       // noop
@@ -3206,8 +3211,13 @@ function ProfileScreenLoggedIn({
     if (userPhotoSessionsWaitingAdmin) {
       return t('profile.properties.photoSessions.subtitleWaiting');
     }
+    if (userConfirmedPhotoSessionsCount > 0) {
+      return userConfirmedPhotoSessionsCount === 1
+        ? t('profile.properties.photoSessions.subtitleConfirmedOne')
+        : t('profile.properties.photoSessions.subtitleConfirmedMany', { count: userConfirmedPhotoSessionsCount });
+    }
     return t('profile.properties.photoSessions.subtitleIdle');
-  }, [t, userPhotoSessionsActionCount, userPhotoSessionsWaitingAdmin]);
+  }, [t, userPhotoSessionsActionCount, userPhotoSessionsWaitingAdmin, userConfirmedPhotoSessionsCount]);
 
   const bonusCouponCards = useMemo(
     () => {
@@ -4411,14 +4421,19 @@ function ProfileScreenLoggedIn({
           void refreshUserPhotoSessions();
         }}
         theme={theme}
+        isAdmin={isZarzad}
+        onOpenAdminPhotoSessions={() => setIsAdminPhotoSessionsVisible(true)}
         onActionCountChange={(count) => {
           setUserPhotoSessionsActionCount(count);
-          if (count === 0 && token) {
+          if (token) {
             void fetchMyPhotoSessionRequests(token).then((items) => {
               setUserPhotoSessionsWaitingAdmin(
                 items.some((x) => x.status === 'PENDING' && x.waitingOn === 'ADMIN'),
               );
-            });
+              setUserConfirmedPhotoSessionsCount(
+                items.filter((x) => x.status === 'ACCEPTED' && new Date(x.proposedAt).getTime() > Date.now()).length,
+              );
+            }).catch(() => {});
           }
         }}
       />

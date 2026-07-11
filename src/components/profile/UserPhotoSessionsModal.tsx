@@ -47,6 +47,8 @@ type Props = {
   onClose: () => void;
   theme: Theme;
   onActionCountChange?: (count: number) => void;
+  isAdmin?: boolean;
+  onOpenAdminPhotoSessions?: () => void;
 };
 
 function buildNextDays() {
@@ -485,22 +487,38 @@ function SessionCard({
   );
 }
 
-export default function UserPhotoSessionsModal({ visible, onClose, theme, onActionCountChange }: Props) {
+export default function UserPhotoSessionsModal({
+  visible,
+  onClose,
+  theme,
+  onActionCountChange,
+  isAdmin = false,
+  onOpenAdminPhotoSessions,
+}: Props) {
   const { t } = useI18n();
   const { token } = useAuthStore() as { token?: string | null };
   const isDark = theme.glass === 'dark';
   const [items, setItems] = useState<PhotoSessionRequestItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<'none' | 'auth' | 'failed'>('none');
+
+  const safeToken = useMemo(() => {
+    const trimmed = String(token || '').trim();
+    if (!trimmed) return null;
+    return trimmed.startsWith('Bearer ') ? trimmed.slice('Bearer '.length).trim() : trimmed;
+  }, [token]);
 
   const load = useCallback(async () => {
-    if (!token) {
+    if (!safeToken) {
       setItems([]);
+      setLoadError('auth');
       onActionCountChange?.(0);
       return;
     }
     setLoading(true);
+    setLoadError('none');
     try {
-      const list = await fetchMyPhotoSessionRequests(token);
+      const list = await fetchMyPhotoSessionRequests(safeToken);
       setItems(list);
       const actionCount = list.filter((x) => x.status === 'PENDING' && x.waitingOn === 'USER').length;
       onActionCountChange?.(actionCount);
@@ -510,17 +528,19 @@ export default function UserPhotoSessionsModal({ visible, onClose, theme, onActi
         );
       }
     } catch (err) {
+      setItems([]);
+      setLoadError('failed');
       const msg = err instanceof PhotoSessionServiceError ? err.message : t('profile.properties.photoSessions.loadFailed');
       Alert.alert(t('profile.properties.photoSessions.title'), msg);
       onActionCountChange?.(0);
     } finally {
       setLoading(false);
     }
-  }, [token, onActionCountChange, t]);
+  }, [safeToken, onActionCountChange, t]);
 
   useEffect(() => {
     if (visible) void load();
-  }, [visible, load]);
+  }, [visible, safeToken, load]);
 
   const cardBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
   const pending = items.filter((x) => x.status === 'PENDING');
@@ -548,28 +568,37 @@ export default function UserPhotoSessionsModal({ visible, onClose, theme, onActi
         ) : items.length === 0 ? (
           <View style={styles.center}>
             <Ionicons name="camera-outline" size={42} color={theme.subtitle} />
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>{t('profile.properties.photoSessions.emptyTitle')}</Text>
-            <Text style={[styles.emptySub, { color: theme.subtitle }]}>{t('profile.properties.photoSessions.emptyBody')}</Text>
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>
+              {loadError === 'auth'
+                ? t('profile.properties.photoSessions.loginRequired')
+                : isAdmin
+                  ? t('profile.properties.photoSessions.emptyAdminTitle')
+                  : t('profile.properties.photoSessions.emptyTitle')}
+            </Text>
+            <Text style={[styles.emptySub, { color: theme.subtitle }]}>
+              {loadError === 'auth'
+                ? t('profile.properties.photoSessions.loginRequired')
+                : isAdmin
+                  ? t('profile.properties.photoSessions.emptyAdminBody')
+                  : t('profile.properties.photoSessions.emptyBody')}
+            </Text>
+            {isAdmin && onOpenAdminPhotoSessions && loadError !== 'auth' ? (
+              <Pressable
+                onPress={() => {
+                  onClose();
+                  onOpenAdminPhotoSessions();
+                }}
+                style={[styles.adminLinkBtn, { borderColor: cardBorder }]}
+              >
+                <Ionicons name="shield-checkmark-outline" size={16} color="#10b981" />
+                <Text style={styles.adminLinkBtnText}>{t('profile.properties.photoSessions.openAdminPhotoSessions')}</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-            {pending.length > 0 ? (
-              <Text style={[styles.sectionLabel, { color: theme.subtitle }]}>{t('profile.properties.photoSessions.activeSection')}</Text>
-            ) : null}
-            {pending.map((item) => (
-              <SessionCard
-                key={item.id}
-                item={item}
-                isDark={isDark}
-                theme={theme}
-                token={token!}
-                onUpdated={load}
-                onCloseModal={onClose}
-                t={t}
-              />
-            ))}
             {confirmed.length > 0 ? (
-              <Text style={[styles.sectionLabel, { color: theme.subtitle, marginTop: pending.length ? 8 : 0 }]}>
+              <Text style={[styles.sectionLabel, { color: '#10b981' }]}>
                 {t('profile.properties.photoSessions.confirmedSection')}
               </Text>
             ) : null}
@@ -579,7 +608,24 @@ export default function UserPhotoSessionsModal({ visible, onClose, theme, onActi
                 item={item}
                 isDark={isDark}
                 theme={theme}
-                token={token!}
+                token={safeToken!}
+                onUpdated={load}
+                onCloseModal={onClose}
+                t={t}
+              />
+            ))}
+            {pending.length > 0 ? (
+              <Text style={[styles.sectionLabel, { color: theme.subtitle, marginTop: confirmed.length ? 8 : 0 }]}>
+                {t('profile.properties.photoSessions.activeSection')}
+              </Text>
+            ) : null}
+            {pending.map((item) => (
+              <SessionCard
+                key={item.id}
+                item={item}
+                isDark={isDark}
+                theme={theme}
+                token={safeToken!}
                 onUpdated={load}
                 onCloseModal={onClose}
                 t={t}
@@ -596,7 +642,7 @@ export default function UserPhotoSessionsModal({ visible, onClose, theme, onActi
                 item={item}
                 isDark={isDark}
                 theme={theme}
-                token={token!}
+                token={safeToken!}
                 onUpdated={load}
                 onCloseModal={onClose}
                 t={t}
@@ -633,6 +679,17 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 8 },
   emptyTitle: { fontSize: 18, fontWeight: '800', marginTop: 8 },
   emptySub: { fontSize: 13, fontWeight: '500', textAlign: 'center', lineHeight: 18 },
+  adminLinkBtn: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  adminLinkBtnText: { color: '#10b981', fontSize: 14, fontWeight: '800' },
   list: { paddingHorizontal: 20, paddingBottom: 30, gap: 12 },
   sectionLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
   card: { borderRadius: 18, borderWidth: 1, padding: 14, gap: 10 },
