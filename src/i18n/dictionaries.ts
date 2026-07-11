@@ -626,12 +626,12 @@ const pl: Dictionary = {
     label: "Motyw",
     light: "Jasny",
     dark: "Ciemny",
-    system: "System",
+    system: "Auto",
   },
   prefsDock: {
     introTitle: "Ustawienia wyświetlania",
     introBody:
-      "Tu zmienisz motyw (jasny/ciemny), język (PL / EN / UA) i walutę cen (PLN, EUR lub waluta oferty). Panel chowa się sam — otwórz go ponownie ikoną koła zębatego.",
+      "Tu zmienisz motyw (jasny / ciemny / auto), język (PL / EN / UA) i walutę cen (PLN, EUR lub waluta oferty). Panel chowa się sam — otwórz go ponownie ikoną koła zębatego.",
     showSettings: "Pokaż ustawienia",
     hideSettings: "Schowaj ustawienia",
   },
@@ -1322,12 +1322,12 @@ const en: Dictionary = {
     label: "Theme",
     light: "Light",
     dark: "Dark",
-    system: "System",
+    system: "Auto",
   },
   prefsDock: {
     introTitle: "Display settings",
     introBody:
-      "Adjust theme (light/dark), language (PL / EN / UA), and price currency (PLN, EUR, or listing currency). The panel auto-hides — reopen it with the gear icon.",
+      "Adjust theme (light / dark / auto), language (PL / EN / UA), and price currency (PLN, EUR, or listing currency). The panel auto-hides — reopen it with the gear icon.",
     showSettings: "Show settings",
     hideSettings: "Hide settings",
   },

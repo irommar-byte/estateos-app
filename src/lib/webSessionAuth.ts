@@ -48,16 +48,7 @@ export async function resolveWebUserId(req?: Request): Promise<number | null> {
       if (user?.id) return user.id;
     }
   } catch {
-    // legacy plain email cookie
-  }
-
-  const raw = String(rawSession).trim();
-  if (raw.includes('@')) {
-    const user = await prisma.user.findUnique({
-      where: { email: raw.toLowerCase() },
-      select: { id: true },
-    });
-    if (user?.id) return user.id;
+    /* invalid or tampered session cookie */
   }
 
   return null;

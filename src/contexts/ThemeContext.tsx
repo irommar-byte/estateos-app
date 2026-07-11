@@ -4,7 +4,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useState,
@@ -23,48 +22,74 @@ type ThemeContextValue = {
 const STORAGE_KEY = "estateos_theme";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function resolveSystemTheme(): ResolvedTheme {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+function isThemePreference(value: string | null): value is ThemePreference {
+  return value === "light" || value === "dark" || value === "system";
 }
 
-function applyTheme(preference: ThemePreference) {
+function readStoredTheme(): ThemePreference {
+  if (typeof window === "undefined") return "system";
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (isThemePreference(saved)) return saved;
+  } catch {
+    /* ignore storage errors */
+  }
+  return "system";
+}
+
+function resolveSystemTheme(): ResolvedTheme {
+  if (typeof window === "undefined") return "dark";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function updateThemeColorMeta(resolved: ResolvedTheme) {
+  const color = resolved === "light" ? "#f0f2f6" : "#050505";
+  let meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute("name", "theme-color");
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute("content", color);
+}
+
+function applyTheme(preference: ThemePreference): ResolvedTheme {
   const resolved = preference === "system" ? resolveSystemTheme() : preference;
   const root = document.documentElement;
 
   root.dataset.theme = resolved;
-  root.classList.toggle("light", resolved === "light");
-  root.classList.toggle("dark", resolved === "dark");
+  root.classList.remove("light", "dark");
+  root.classList.add(resolved);
   root.style.colorScheme = resolved;
+  updateThemeColorMeta(resolved);
 
   return resolved;
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<ThemePreference>("dark");
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("dark");
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    const next: ThemePreference =
-      saved === "light" || saved === "dark" || saved === "system" ? saved : "dark";
-    setThemeState(next);
-    setResolvedTheme(applyTheme(next));
-  }, []);
+  const [theme, setThemeState] = useState<ThemePreference>(() => readStoredTheme());
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => {
+    if (typeof window === "undefined") return "dark";
+    return applyTheme(readStoredTheme());
+  });
 
   useLayoutEffect(() => {
     setResolvedTheme(applyTheme(theme));
 
     if (theme !== "system") return;
 
-    const media = window.matchMedia("(prefers-color-scheme: light)");
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
     const sync = () => setResolvedTheme(applyTheme("system"));
     media.addEventListener("change", sync);
     return () => media.removeEventListener("change", sync);
   }, [theme]);
 
   const setTheme = useCallback((next: ThemePreference) => {
-    window.localStorage.setItem(STORAGE_KEY, next);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      /* ignore storage errors */
+    }
     setThemeState(next);
     setResolvedTheme(applyTheme(next));
   }, []);
@@ -81,26 +106,33 @@ export function ThemeInitScript() {
   const code = `
     (function() {
       try {
-        if (!localStorage.getItem("${STORAGE_KEY}")) {
-          localStorage.setItem("${STORAGE_KEY}", "dark");
-        }
         if (!localStorage.getItem("estateos_display_currency")) {
           localStorage.setItem("estateos_display_currency", "LISTING");
           document.cookie = "estateos_display_currency=LISTING;path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax";
         }
-        var saved = localStorage.getItem("${STORAGE_KEY}") || "dark";
-        var resolved = saved === "system"
-          ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
-          : saved;
+        var saved = localStorage.getItem("${STORAGE_KEY}");
+        var preference = (saved === "light" || saved === "dark" || saved === "system") ? saved : "system";
+        var resolved = preference === "system"
+          ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+          : preference;
         var root = document.documentElement;
         root.dataset.theme = resolved;
-        root.classList.toggle("light", resolved === "light");
-        root.classList.toggle("dark", resolved !== "light");
+        root.classList.remove("light", "dark");
+        root.classList.add(resolved);
         root.style.colorScheme = resolved;
+        var color = resolved === "light" ? "#f0f2f6" : "#050505";
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (!meta) {
+          meta = document.createElement("meta");
+          meta.setAttribute("name", "theme-color");
+          document.head.appendChild(meta);
+        }
+        meta.setAttribute("content", color);
       } catch (_) {
-        document.documentElement.classList.add("dark");
-        document.documentElement.dataset.theme = "dark";
-        document.documentElement.style.colorScheme = "dark";
+        var fallback = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.classList.add(fallback);
+        document.documentElement.dataset.theme = fallback;
+        document.documentElement.style.colorScheme = fallback;
       }
     })();
   `;

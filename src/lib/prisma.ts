@@ -92,7 +92,7 @@ async function ensureOfferLegalColumns(prisma: PrismaClient): Promise<void> {
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: ['query'],
+    log: process.env.NODE_ENV === 'development' ? ['query'] : [],
   })
 
 prisma.$use(async (params, next) => {

@@ -8,7 +8,7 @@ import bcryptjs from "bcryptjs"; // <- PRAWIDŁOWY, GLOBALNY IMPORT
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
-  debug: true, // 🚨 TO WŁĄCZY GŁOŚNE RAPORTOWANIE BŁĘDÓW W PM2!
+  debug: process.env.NODE_ENV !== "production",
   providers: [
     CredentialsProvider({
       name: "Credentials",

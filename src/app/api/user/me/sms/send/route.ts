@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: 'Uzupełnij numer telefonu w profilu.' }, { status: 400 });
   }
 
-  const otpCode = Math.floor(1000 + Math.random() * 9000).toString();
+  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
   const expiry = new Date(Date.now() + 10 * 60 * 1000);
 
   await prisma.user.update({

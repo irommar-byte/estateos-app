@@ -28,8 +28,10 @@ export async function requireAdmin(): Promise<AdminSessionUser | null> {
   const email = String(session?.email || '').trim().toLowerCase();
   if (!email) return null;
 
-  return prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { email },
     select: { id: true, role: true },
   });
+  if (user?.role === 'ADMIN') return user;
+  return null;
 }
