@@ -101,6 +101,26 @@ export function parseSseEvents(buffer: string, onEvent: (event: KeiExportProgres
 }
 
 /** XMLHttpRequest — jedyny niezawodny sposób streamingu SSE w React Native (fetch buforuje całość). */
+let activeExportXhr: XMLHttpRequest | null = null;
+let activeExportAbort: AbortController | null = null;
+let exportStreamCancelled = false;
+
+export function cancelKeiAmerExportStream(): void {
+  exportStreamCancelled = true;
+  try {
+    activeExportXhr?.abort();
+  } catch {
+    /* noop */
+  }
+  activeExportXhr = null;
+  try {
+    activeExportAbort?.abort();
+  } catch {
+    /* noop */
+  }
+  activeExportAbort = null;
+}
+
 function keiAmerExportStreamXHR(
   token: string,
   body: KeiExportRequest,
@@ -109,9 +129,17 @@ function keiAmerExportStreamXHR(
   const url = `${API_URL}/api/mobile/v1/admin/kei-amer/export-stream`;
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    activeExportXhr = xhr;
     let buffer = '';
     let lastLen = 0;
     let settled = false;
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (activeExportXhr === xhr) activeExportXhr = null;
+      fn();
+    };
 
     xhr.open('POST', url);
     xhr.setRequestHeader('Authorization', `Bearer ${token}`);
@@ -135,17 +163,29 @@ function keiAmerExportStreamXHR(
       flushNewText();
       if (buffer.trim()) parseSseEvents(`${buffer}\n\n`, onEvent);
       if (xhr.status >= 200 && xhr.status < 300) {
-        settled = true;
-        resolve();
-      } else if (!settled) {
-        reject(new Error(`Eksport nie powiódł się (HTTP ${xhr.status})`));
+        finish(() => resolve());
+      } else if (!exportStreamCancelled) {
+        finish(() => reject(new Error(`Eksport nie powiódł się (HTTP ${xhr.status})`)));
+      } else {
+        finish(() => reject(new Error('Import zatrzymany.')));
       }
     };
     xhr.onerror = () => {
-      if (!settled) reject(new Error('Błąd sieci podczas importu KEI'));
+      if (exportStreamCancelled) {
+        finish(() => reject(new Error('Import zatrzymany.')));
+        return;
+      }
+      finish(() => reject(new Error('Błąd sieci podczas importu KEI')));
+    };
+    xhr.onabort = () => {
+      finish(() => reject(new Error('Import zatrzymany.')));
     };
     xhr.ontimeout = () => {
-      if (!settled) reject(new Error('Przekroczono czas oczekiwania importu KEI'));
+      if (exportStreamCancelled) {
+        finish(() => reject(new Error('Import zatrzymany.')));
+        return;
+      }
+      finish(() => reject(new Error('Przekroczono czas oczekiwania importu KEI')));
     };
     xhr.timeout = 300000;
     xhr.send(JSON.stringify(body));
@@ -157,6 +197,8 @@ async function keiAmerExportStreamFetch(
   body: KeiExportRequest,
   onEvent: (event: KeiExportProgressEvent) => void,
 ): Promise<void> {
+  const abort = new AbortController();
+  activeExportAbort = abort;
   const res = await fetch(`${API_URL}/api/mobile/v1/admin/kei-amer/export-stream`, {
     method: 'POST',
     headers: {
@@ -165,6 +207,9 @@ async function keiAmerExportStreamFetch(
       Accept: 'text/event-stream',
     },
     body: JSON.stringify(body),
+    signal: abort.signal,
+  }).finally(() => {
+    if (activeExportAbort === abort) activeExportAbort = null;
   });
 
   if (!res.ok) {
@@ -259,6 +304,7 @@ export async function keiAmerExportStream(
   body: KeiExportRequest,
   onEvent: (event: KeiExportProgressEvent) => void,
 ): Promise<void> {
+  exportStreamCancelled = false;
   if (Platform.OS === 'ios' || Platform.OS === 'android') {
     try {
       await keiAmerExportStreamXHR(token, body, onEvent);

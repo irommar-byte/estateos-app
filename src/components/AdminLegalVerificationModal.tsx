@@ -7,8 +7,8 @@
  *  kolejkę ofert czekających na weryfikację prawną (zgłoszony numer
  *  księgi wieczystej + numer mieszkania). Admin:
  *    1. czyta numer KW i adres,
- *    2. klika „Sprawdź w EKW" — otwiera się oficjalna przeglądarka KW
- *       z pre-wypełnionym numerem (jeśli backend dostarczy `ekwQuickLink`),
+ *    2. klika „Sprawdź w EKW" — otwiera się podgląd w aplikacji (WebView)
+ *       z automatycznie uzupełnionym numerem KW,
  *    3. ACK-uje akcją „Akceptuj" → na ofercie zapala się zielony znaczek,
  *       albo „Odrzuć" → wybiera powód z listy (i opcjonalnie dopisuje
  *       komentarz dla właściciela), ofertę dostaje status REJECTED.
@@ -24,7 +24,6 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -50,6 +49,7 @@ import {
   LEGAL_VERIFICATION_REJECTION_REASONS,
   getRejectionReasonLabel,
 } from '../contracts/legalVerificationContract';
+import EkwBookViewerModal from './admin/EkwBookViewerModal';
 
 type Theme = {
   background: string;
@@ -86,6 +86,7 @@ export default function AdminLegalVerificationModal({ visible, onClose, theme, o
   const [rejectingItem, setRejectingItem] = useState<AdminLegalVerificationQueueItem | null>(null);
   const [rejectReasonCode, setRejectReasonCode] = useState<LegalVerificationRejectionReason>('KW_NOT_FOUND');
   const [rejectReasonText, setRejectReasonText] = useState('');
+  const [ekwViewerNumber, setEkwViewerNumber] = useState<string | null>(null);
 
   const loadQueue = useCallback(async () => {
     if (!token) return;
@@ -150,9 +151,12 @@ export default function AdminLegalVerificationModal({ visible, onClose, theme, o
     }
   }, [rejectReasonCode, rejectReasonText, rejectingItem, loadQueue, token]);
 
-  const openExternalEKW = useCallback((item: AdminLegalVerificationQueueItem) => {
-    const url = item.ekwQuickLink || 'https://przegladarka-ekw.ms.gov.pl/eukw_prz/KsiegiWieczyste/wyszukiwanieKW';
-    Linking.openURL(url).catch(() => Alert.alert('Błąd', 'Nie udało się otworzyć EKW.'));
+  const openEkwViewer = useCallback((item: AdminLegalVerificationQueueItem) => {
+    if (!item.landRegistryNumber?.trim()) {
+      Alert.alert('EKW', 'Brak numeru księgi wieczystej w zgłoszeniu.');
+      return;
+    }
+    setEkwViewerNumber(item.landRegistryNumber.trim());
   }, []);
 
   const palette = useMemo(
@@ -167,6 +171,7 @@ export default function AdminLegalVerificationModal({ visible, onClose, theme, o
   if (!visible) return null;
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <View style={styles.header}>
@@ -222,7 +227,7 @@ export default function AdminLegalVerificationModal({ visible, onClose, theme, o
                 item={item}
                 theme={theme}
                 isBusy={submittingId === item.offerId}
-                onOpenEKW={() => openExternalEKW(item)}
+                onOpenEKW={() => openEkwViewer(item)}
                 onApprove={() => handleApprove(item)}
                 onReject={() => {
                   setRejectingItem(item);
@@ -341,7 +346,14 @@ export default function AdminLegalVerificationModal({ visible, onClose, theme, o
         </View>
         </KeyboardAvoidingView>
       </Modal>
-    </Modal>
+
+      <EkwBookViewerModal
+        visible={ekwViewerNumber !== null}
+        landRegistryNumber={ekwViewerNumber}
+        onClose={() => setEkwViewerNumber(null)}
+        theme={theme}
+      />
+    </>
   );
 }
 

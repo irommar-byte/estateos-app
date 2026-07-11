@@ -295,6 +295,7 @@ export default function AdminKeiAmerScreen() {
   const exportSkipped = useKeiAmerExportStore((s) => s.skipped);
   const setExportVisible = useKeiAmerExportStore((s) => s.setModalVisible);
   const startKeiExport = useKeiAmerExportStore((s) => s.startExport);
+  const cancelKeiExport = useKeiAmerExportStore((s) => s.cancelExport);
 
   const peekInflight = useRef(new Set<string>());
   const exportScrollRef = useRef<ScrollView>(null);
@@ -534,6 +535,29 @@ export default function AdminKeiAmerScreen() {
   }, [sessionOk, propertyKind, transactionKind, exportRunning, loadPreview]);
 
   const overallPercent = computeKeiOverallPercent(exportItems);
+
+  const handleStopExport = useCallback(() => {
+    Alert.alert(
+      'Zatrzymać import?',
+      'Bieżąca pozycja może nie dokończyć się. Oferty już zaimportowane pozostaną w bazie.',
+      [
+        { text: 'Kontynuuj', style: 'cancel' },
+        {
+          text: 'Zatrzymaj',
+          style: 'destructive',
+          onPress: () => {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            cancelKeiExport();
+          },
+        },
+      ],
+    );
+  }, [cancelKeiExport]);
+
+  const handleOpenExportModal = useCallback(() => {
+    void Haptics.selectionAsync();
+    setExportVisible(true);
+  }, [setExportVisible]);
 
   useEffect(() => {
     if (exportVisible) {
@@ -913,38 +937,42 @@ export default function AdminKeiAmerScreen() {
         ) : (
           <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.card }]} />
         )}
-        <Pressable
-          disabled={selectedList.length === 0 || exportRunning || !sessionOk}
-          onPress={() => {
-            if (exportRunning) {
-              setExportVisible(true);
-              return;
-            }
-            void handleExport();
-          }}
-          style={[
-            styles.exportBtn,
-            {
-              backgroundColor:
-                exportRunning || (selectedList.length > 0 && sessionOk) ? colors.accent : colors.cardSecondary,
-              opacity: selectedList.length === 0 && !exportRunning ? 0.5 : 1,
-            },
-          ]}
-        >
-          {exportRunning ? (
-            <>
+        {exportRunning ? (
+          <View style={styles.exportDockRow}>
+            <Pressable
+              onPress={handleOpenExportModal}
+              style={[styles.exportBtn, styles.exportBtnDock, { backgroundColor: colors.accent, flex: 1 }]}
+            >
               <ActivityIndicator color="#000" />
-              <Text style={styles.exportBtnText}>
+              <Text style={[styles.exportBtnText, { flex: 1 }]} numberOfLines={2}>
                 Import w toku ({overallPercent}%) — dotknij, aby otworzyć
               </Text>
-            </>
-          ) : (
-            <>
-              <Ionicons name="cloud-upload-outline" size={20} color="#000" />
-              <Text style={styles.exportBtnText}>Importuj ({selectedList.length})</Text>
-            </>
-          )}
-        </Pressable>
+            </Pressable>
+            <Pressable
+              onPress={handleStopExport}
+              style={[styles.exportStopBtn, { backgroundColor: colors.cardSecondary }]}
+              accessibilityLabel="Zatrzymaj import"
+              hitSlop={8}
+            >
+              <Ionicons name="stop-circle" size={32} color={colors.danger} />
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            disabled={selectedList.length === 0 || !sessionOk}
+            onPress={() => void handleExport()}
+            style={[
+              styles.exportBtn,
+              {
+                backgroundColor: selectedList.length > 0 && sessionOk ? colors.accent : colors.cardSecondary,
+                opacity: selectedList.length === 0 ? 0.5 : 1,
+              },
+            ]}
+          >
+            <Ionicons name="cloud-upload-outline" size={20} color="#000" />
+            <Text style={styles.exportBtnText}>Importuj ({selectedList.length})</Text>
+          </Pressable>
+        )}
       </View>
 
       <Modal
@@ -956,11 +984,18 @@ export default function AdminKeiAmerScreen() {
         <View style={[styles.modalRoot, { backgroundColor: colors.bg }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.separator, paddingTop: insets.top + 8 }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Import KEI</Text>
-            <Pressable onPress={() => setExportVisible(false)}>
-              <Text style={{ color: colors.accentBlue, fontSize: 17, fontWeight: '600' }}>
-                {exportRunning ? 'Zminimalizuj' : 'Zamknij'}
-              </Text>
-            </Pressable>
+            <View style={styles.modalHeaderActions}>
+              {exportRunning ? (
+                <Pressable onPress={handleStopExport} hitSlop={8}>
+                  <Text style={{ color: colors.danger, fontSize: 17, fontWeight: '700' }}>Zatrzymaj</Text>
+                </Pressable>
+              ) : null}
+              <Pressable onPress={() => setExportVisible(false)}>
+                <Text style={{ color: colors.accentBlue, fontSize: 17, fontWeight: '600' }}>
+                  {exportRunning ? 'Zminimalizuj' : 'Zamknij'}
+                </Text>
+              </Pressable>
+            </View>
           </View>
           <ScrollView ref={exportScrollRef} contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24 }}>
             <Text style={[styles.exportSummary, { color: colors.secondary }]}>{exportMessage}</Text>
@@ -1174,6 +1209,15 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 16,
   },
+  exportDockRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  exportBtnDock: { paddingHorizontal: 14, justifyContent: 'flex-start' },
+  exportStopBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   exportBtnText: { color: '#000', fontSize: 17, fontWeight: '800' },
   modalRoot: { flex: 1 },
   modalHeader: {
@@ -1184,6 +1228,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  modalHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   modalTitle: { fontSize: 20, fontWeight: '800' },
   exportSummary: { fontSize: 14, marginBottom: 12, lineHeight: 20 },
   progressTrack: { height: 8, borderRadius: 99, backgroundColor: 'rgba(120,120,128,0.2)', overflow: 'hidden' },

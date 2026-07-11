@@ -8,7 +8,7 @@ import {
   type KeiExportResultItem,
   type KeiImportStepId,
 } from '../contracts/keiAmerContract';
-import { keiAmerExportStream, reconcileExportItemsFromResult } from '../services/keiAmerService';
+import { keiAmerExportStream, cancelKeiAmerExportStream, reconcileExportItemsFromResult } from '../services/keiAmerService';
 
 export type KeiExportItemProgress = {
   index: number;
@@ -226,6 +226,7 @@ type KeiAmerExportState = {
   skipped: number;
   onComplete?: () => void;
   setModalVisible: (visible: boolean) => void;
+  cancelExport: () => void;
   startExport: (
     token: string,
     body: KeiExportRequest,
@@ -247,6 +248,29 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
   onComplete: undefined,
 
   setModalVisible: (visible) => set({ modalVisible: visible }),
+
+  cancelExport: () => {
+    if (!get().running) return;
+    cancelKeiAmerExportStream();
+    exportInflight = null;
+    set((state) => ({
+      running: false,
+      message: 'Import zatrzymany.',
+      onComplete: undefined,
+      items: state.items.map((item) =>
+        item.status === 'pending' || item.status === 'active'
+          ? {
+              ...item,
+              status: 'skipped' as const,
+              currentStep: null,
+              stepLabel: 'Anulowano',
+              reason: 'Przerwano ręcznie przez administratora',
+            }
+          : item,
+      ),
+    }));
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+  },
 
   clearSession: () => {
     if (get().running) return;
@@ -289,11 +313,19 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
       });
     })
       .catch((error) => {
+        if (!get().running) return;
+        const cancelled = error instanceof Error && error.message.includes('zatrzymany');
         set({
           running: false,
-          message: error instanceof Error ? error.message : 'Eksport nie powiódł się',
+          message: cancelled
+            ? 'Import zatrzymany.'
+            : error instanceof Error
+              ? error.message
+              : 'Eksport nie powiódł się',
         });
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        if (!cancelled) {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        }
       })
       .finally(() => {
         exportInflight = null;
