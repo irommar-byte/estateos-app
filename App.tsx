@@ -48,7 +48,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { I18nProvider, useI18n } from './src/i18n';
-import { useThemeStore, ThemeMode } from './src/store/useThemeStore';
+import { useThemeStore, ThemeMode, useResolvedTheme, ensureThemeAppearanceListener } from './src/store/useThemeStore';
 import { useOfferStore } from './src/store/useOfferStore';
 import { useAuthStore } from './src/store/useAuthStore';
 import { useBlockedUsersStore } from './src/store/useBlockedUsersStore';
@@ -207,7 +207,7 @@ const FloatingNextButton = (props: any) => {
   const themeMode = useThemeStore(s => s.themeMode);
   const setThemeMode = useThemeStore((s) => s.setThemeMode);
   const resolvedDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
-  const isDark = themeMode === 'dark';
+  const isDark = resolvedDark;
   
   const longPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buttonRef = useRef<View | null>(null);
@@ -814,8 +814,8 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
   const token = useAuthStore((state: any) => state.token);
   const userRole = useAuthStore((state: any) => state.user?.role);
   const isAdminUser = String(userRole || '').trim().toUpperCase() === 'ADMIN';
-  const systemColorScheme = useColorScheme();
-  const themeMode = useThemeStore((state) => state.themeMode);
+  const resolvedTheme = useResolvedTheme();
+  const currentColors = Colors[resolvedTheme];
   /**
    * Liczba dealroomów z aktywną czerwoną kropką (z `DealroomListScreen`).
    *
@@ -921,9 +921,6 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
     }
     void Notifications.setBadgeCountAsync(messagesTabBadgeCount).catch(() => undefined);
   }, [messagesTabBadgeCount, token]);
-
-  const resolvedTheme = themeMode === 'auto' ? (systemColorScheme ?? 'light') : themeMode;
-  const currentColors = Colors[resolvedTheme];
 
   return (
     <View style={{ flex: 1 }}>
@@ -1456,14 +1453,17 @@ const parsePushTargetFromResponse = (
 export default function App() {
   const { token } = useAuthStore();
   usePushNotifications(token);
-  const systemColorScheme = useColorScheme();
+  const resolvedTheme = useResolvedTheme();
 
-  /** Kurs EUR/PLN (NBP): odświeżanie codziennie od 08:00 Europe/Warsaw + przy wejściu w aplikację. */
+  useEffect(() => {
+    ensureThemeAppearanceListener();
+  }, []);
+
   useEffect(() => {
     bootstrapFxRateRefresh();
   }, []);
 
-  /** Live Activity: gasimy, gdy w store radar jest wyłączony. Z dysku NIGDY nie wyłączamy radaru w store (tylko użytkownik w kalibracji) — na `active` ewentualnie tylko „podciągamy” włączenie, gdy na dysku jest `1`, a store jeszcze `false` (race po hydratacji). */
+  /** Kurs EUR/PLN (NBP): odświeżanie codziennie od 08:00 Europe/Warsaw + przy wejściu w aplikację. */
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
       if (next !== 'active') return;
@@ -1491,12 +1491,9 @@ export default function App() {
   }, []);
 
   const [isSplashVisible, setSplashVisible] = useState(true);
-  const themeMode = useThemeStore((state) => state.themeMode);
   const pendingPushTargetRef = useRef<PushNavigationTarget | null>(null);
   const handledResponseKeysRef = useRef<Record<string, number>>({});
   const lastNavigationKeyRef = useRef<{ key: string; at: number } | null>(null);
-
-  const resolvedTheme = themeMode === 'auto' ? (systemColorScheme ?? 'light') : themeMode;
 
   const navigateFromPushTarget = useCallback((target: PushNavigationTarget | null) => {
     if (!target || !navigationRef.isReady()) return false;
