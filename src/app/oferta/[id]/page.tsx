@@ -32,7 +32,8 @@ import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
 import { isOfferNewListing } from "@/lib/offerLifecycle";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
-import FloorPlan3dWalkthrough from "@/components/offers/FloorPlan3dWalkthrough";
+import OfferFloorPlanPanel from "@/components/offers/OfferFloorPlanPanel";
+import { parseFloorPlanScanMeta } from "@/lib/roomScan/parseFloorPlanScanMeta";
 import OpenHouseOfferBanner from "@/components/offer/OpenHouseOfferBanner";
 import OpenHouseReserveModal from "@/components/offer/OpenHouseReserveModal";
 import AuctionOfferBanner from "@/components/offer/AuctionOfferBanner";
@@ -394,6 +395,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const heatingLabel = offer.heating ? String(offer.heating) : null;
   const floorPlanSrc = String(offer.floorPlanUrl || offer.floorPlan || "").trim();
   const floorPlan3dSrc = String(offer.floorPlan3dUrl || "").trim();
+  const floorPlanScanMeta = parseFloorPlanScanMeta(offer.floorPlanScanMeta);
   const propertyTypeLabel = formatOfferPropertyType(offer.propertyType, locale);
   const floorDisplay = (() => {
     const floorVal = offer.floor != null && offer.floor !== "" ? String(offer.floor) : null;
@@ -969,48 +971,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </div>
                 ) : null}
 
-                {floorPlanSrc && !isLocked ? (
-                  <section className="eos-offer-panel mb-8 overflow-hidden p-0">
-                    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--eos-border)] px-6 py-5 md:px-8">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <FileImage size={16} className={themeColors.textActive} />
-                          <h3 className="eos-offer-metric-label">{t.floorPlan}</h3>
-                        </div>
-                        <p className="mt-1.5 text-sm text-[var(--eos-muted)]">
-                          {locale === "en" ? "Layout and room arrangement" : "Układ pomieszczeń i metraż"}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsFloorplanModalOpen(true)}
-                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition-colors ${themeColors.borderActive} ${themeColors.bgActiveSoft} hover:bg-[var(--eos-surface-strong)]`}
-                      >
-                        <Maximize2 size={13} />
-                        {t.enlarge}
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsFloorplanModalOpen(true)}
-                      className="group block w-full px-6 py-6 md:px-8"
-                    >
-                      <div className="relative aspect-[16/10] overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[#050505] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_55%)]" />
-                        <img
-                          src={floorPlanSrc}
-                          className="relative z-10 h-full w-full object-contain p-4 transition-transform duration-700 group-hover:scale-[1.02]"
-                          alt={t.floorPlan}
-                        />
-                        <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 to-transparent px-5 py-4 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/80">
-                            {t.enlarge}
-                          </span>
-                        </div>
-                      </div>
-                    </button>
-                    {floorPlan3dSrc ? <FloorPlan3dWalkthrough modelUrl={floorPlan3dSrc} locale={locale} /> : null}
-                  </section>
+                {(floorPlanSrc || floorPlan3dSrc) && !isLocked ? (
+                  <OfferFloorPlanPanel
+                    floorPlanSrc={floorPlanSrc}
+                    floorPlan3dSrc={floorPlan3dSrc || undefined}
+                    scanMeta={floorPlanScanMeta}
+                    locale={locale}
+                    copy={t}
+                    themeColors={themeColors}
+                    variant="full"
+                    onEnlarge={() => setIsFloorplanModalOpen(true)}
+                  />
                 ) : null}
 
                 <div className="eos-offer-panel p-8 md:p-12">
@@ -1079,24 +1050,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   ) : null}
                 </div>
 
-                {floorPlanSrc && !isLocked ? (
-                  <button
-                    type="button"
-                    onClick={() => setIsFloorplanModalOpen(true)}
-                    className="eos-offer-panel group w-full overflow-hidden p-4 text-left transition-colors hover:bg-[var(--eos-surface-strong)]"
-                  >
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <p className={`eos-offer-metric-label ${themeColors.textActive}`}>{t.floorPlan}</p>
-                      <Maximize2 size={14} className="text-[var(--eos-muted)] transition-colors group-hover:text-[var(--eos-text)]" />
-                    </div>
-                    <div className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[#050505]">
-                      <img
-                        src={floorPlanSrc}
-                        alt={t.floorPlan}
-                        className="aspect-[4/3] w-full object-contain p-3 transition-transform duration-500 group-hover:scale-[1.02]"
-                      />
-                    </div>
-                  </button>
+                {(floorPlanSrc || floorPlan3dSrc) && !isLocked ? (
+                  <OfferFloorPlanPanel
+                    floorPlanSrc={floorPlanSrc}
+                    floorPlan3dSrc={floorPlan3dSrc || undefined}
+                    scanMeta={floorPlanScanMeta}
+                    locale={locale}
+                    copy={t}
+                    themeColors={themeColors}
+                    variant="compact"
+                    onEnlarge={() => setIsFloorplanModalOpen(true)}
+                  />
                 ) : null}
 
                 <div className="eos-offer-panel p-6">
