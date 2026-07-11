@@ -18,7 +18,6 @@ import { useAuthStore } from '../../store/useAuthStore';
 import {
   adminPhotoSessionAction,
   fetchAdminPhotoSessionQueue,
-  PhotoSessionEventItem,
   PhotoSessionRequestItem,
   PhotoSessionServiceError,
 } from '../../services/photoSessionService';
@@ -27,8 +26,17 @@ import {
   offerPhotoSessionCalendarAfterAcceptance,
   photoSessionCalendarParamsFromItem,
 } from '../../utils/photoSessionCalendar';
+import CollapsiblePhotoSessionHistory from '../photoSession/CollapsiblePhotoSessionHistory';
 import PresentationCountdown from '../dealroom/PresentationCountdown';
 import { openDirectContactChat } from '../../utils/openDirectContact';
+
+const ADMIN_HISTORY_LABELS = {
+  timelineTitle: 'Historia negocjacji',
+  timelineExpand: 'Pokaż historię negocjacji',
+  timelineCollapse: 'Zwiń historię negocjacji',
+  formatBadgeConfirmed: (date: string) => `Termin umówiony — ${date}`,
+  formatBadgeNegotiating: (date: string) => `Negocjacje terminu — propozycja ${date}`,
+};
 
 type Theme = {
   background: string;
@@ -89,40 +97,6 @@ function eventLabel(action: string) {
     default:
       return action;
   }
-}
-
-function NegotiationTimeline({
-  events,
-  isDark,
-  textColor,
-  mutedColor,
-}: {
-  events: PhotoSessionEventItem[];
-  isDark: boolean;
-  textColor: string;
-  mutedColor: string;
-}) {
-  if (!events.length) return null;
-  return (
-    <View style={styles.timelineWrap}>
-      <Text style={[styles.timelineTitle, { color: mutedColor }]}>Historia negocjacji</Text>
-      {events.map((ev) => (
-        <View
-          key={ev.id}
-          style={[
-            styles.timelineItem,
-            { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
-          ]}
-        >
-          <Text style={[styles.timelineLabel, { color: textColor }]}>{eventLabel(ev.action)}</Text>
-          {ev.proposedAt ? (
-            <Text style={[styles.timelineDate, { color: mutedColor }]}>{formatDateTime(ev.proposedAt)}</Text>
-          ) : null}
-          {ev.note ? <Text style={[styles.timelineNote, { color: mutedColor }]}>{ev.note}</Text> : null}
-        </View>
-      ))}
-    </View>
-  );
 }
 
 function CounterPicker({
@@ -460,11 +434,13 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
         </Text>
       )}
 
-      <NegotiationTimeline
-        events={item.events || []}
+      <CollapsiblePhotoSessionHistory
+        item={item}
         isDark={isDark}
         textColor={theme.text}
         mutedColor={theme.subtitle}
+        labels={ADMIN_HISTORY_LABELS}
+        formatEventLabel={eventLabel}
       />
 
       {readOnly === 'negotiate' && counterForId === item.id && item.waitingOn === 'ADMIN' ? (
@@ -718,12 +694,6 @@ const styles = StyleSheet.create({
   awaitingUserText: { flex: 1, fontSize: 12, fontWeight: '600', lineHeight: 17 },
   note: { fontSize: 12, fontWeight: '500', lineHeight: 17, fontStyle: 'italic' },
   contact: { fontSize: 11, fontWeight: '600' },
-  timelineWrap: { gap: 8, marginTop: 4 },
-  timelineTitle: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
-  timelineItem: { borderWidth: 1, borderRadius: 10, padding: 10, gap: 2 },
-  timelineLabel: { fontSize: 12, fontWeight: '800' },
-  timelineDate: { fontSize: 12, fontWeight: '600' },
-  timelineNote: { fontSize: 11, fontWeight: '500', marginTop: 2 },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   acceptBtn: {
     flex: 1.2,
