@@ -2543,7 +2543,6 @@ function ProfileScreenLoggedIn({
   const [adminSelectedUser, setAdminSelectedUser] = useState(null);
   const [adminPendingOffersCount, setAdminPendingOffersCount] = useState(0);
   const [adminPendingPhotoSessionsCount, setAdminPendingPhotoSessionsCount] = useState(0);
-  const [isSmsEnabled, setIsSmsEnabled] = useState(true);
   const [isOwnPublicProfileOpen, setIsOwnPublicProfileOpen] = useState(false);
   const [ownPublicProfile, setOwnPublicProfile] = useState(null);
   const [ownPublicProfileLoading, setOwnPublicProfileLoading] = useState(false);
@@ -2854,15 +2853,6 @@ function ProfileScreenLoggedIn({
       ]);
     }
   };
-
-  useEffect(() => {
-    if (isZarzad) {
-      fetch(`${API_URL}/api/admin/settings`)
-        .then(res => res.json())
-        .then(data => setIsSmsEnabled(data.smsEnabled))
-        .catch(() => {});
-    }
-  }, [user?.role]);
 
   const fetchOwnPublicProfile = async () => {
     if (!user?.id) return;
@@ -3198,16 +3188,6 @@ function ProfileScreenLoggedIn({
   const investorProBuySubtitle = hasInvestorProActive
     ? t('profile.shop.buyInvestorProSubtitle')
     : t('profile.shop.buyInvestorProTrialSubtitle');
-
-  const toggleSms = async (value) => {
-    setIsSmsEnabled(value);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      await fetch(`${API_URL}/api/admin/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enable: value }) });
-    } catch (e) {
-      Alert.alert("Błąd", "Nie udało się zsynchronizować ustawień.");
-    }
-  };
 
   if (!profileShellReady) {
     return (
@@ -4079,13 +4059,13 @@ function ProfileScreenLoggedIn({
                 subtitle={adminPendingLegalCount > 0 ? `${adminPendingLegalCount} zgłoszeń do weryfikacji` : 'Brak oczekujących KW'}
                 onPress={() => setIsAdminLegalVerifyVisible(true)}
                 isDark={isDark}
+                isLast={true}
                 rightElement={adminPendingLegalCount > 0 ? (
                   <View style={styles.adminPendingBadge}>
                     <Text style={styles.adminPendingBadgeText}>{adminPendingLegalCount}</Text>
                   </View>
                 ) : undefined}
               />
-              <ListItem icon="chatbubble-ellipses" color="#34C759" title="Bramka SMSPlanet" subtitle="Globalny przełącznik wysyłki" isLast={true} isDark={isDark} rightElement={<Switch value={isSmsEnabled} onValueChange={toggleSms} trackColor={{ false: '#767577', true: '#34C759' }} />} />
             </ListGroup>
           </View>
         )}
