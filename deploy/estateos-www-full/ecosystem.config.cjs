@@ -32,6 +32,7 @@ const sharedEnv = {
   OPENAI_LISTING_MODEL: pick("OPENAI_LISTING_MODEL", "gpt-5-mini"),
   OPENAI_OTODOM_MODEL: pick("OPENAI_OTODOM_MODEL", "gpt-5-mini"),
   OTODOM_IMPORT_AI_REWRITE: process.env.OTODOM_IMPORT_AI_REWRITE,
+  COMMIT_SHA: process.env.COMMIT_SHA,
 };
 
 module.exports = {
