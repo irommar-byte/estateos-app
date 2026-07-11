@@ -1,7 +1,8 @@
-import { StackActions } from '@react-navigation/native';
+import { CommonActions, StackActions } from '@react-navigation/native';
 import type { TabBarTickerAction } from '../contracts/tabBarTickerContract';
 import { navigationRef } from '../../navigationRef';
 import { useOpenHouseLiveStore } from '../store/useOpenHouseLiveStore';
+import { requestInvestorProUpsell } from '../services/investorProUpsell';
 
 export function navigateTabBarTickerAction(action: TabBarTickerAction): boolean {
   if (!navigationRef.isReady()) return false;
@@ -35,6 +36,23 @@ export function navigateTabBarTickerAction(action: TabBarTickerAction): boolean 
         return true;
       case 'live_panel':
         useOpenHouseLiveStore.getState().openPanel();
+        return true;
+      case 'radar_calibration':
+        navigationRef.dispatch(
+          CommonActions.navigate({
+            name: 'MainTabs',
+            params: { screen: 'Radar', params: { openCalibration: true } },
+          }),
+        );
+        return true;
+      case 'auction_hub':
+        navigationRef.dispatch(StackActions.push('AuctionHub'));
+        return true;
+      case 'open_house_hub':
+        navigationRef.dispatch(StackActions.push('OpenHouseHub'));
+        return true;
+      case 'pro_upsell':
+        requestInvestorProUpsell(action.reason);
         return true;
       default:
         return false;

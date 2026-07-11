@@ -245,6 +245,7 @@ export const offer = {
       amenities: 'Udogodnienia',
       about: 'O nieruchomości',
       gallery: 'Galeria zdjęć',
+      location: 'Lokalizacja na mapie',
     },
     labels: {
       transactionType: 'Typ transakcji',

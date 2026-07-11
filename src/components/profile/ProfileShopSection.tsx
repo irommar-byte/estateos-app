@@ -17,6 +17,7 @@ type Props = {
   couponCount: number;
   hasInvestorProActive: boolean;
   defaultHubExpanded?: boolean;
+  shopExpandRequestId?: number;
   bonusCoupons: {
     cards: ProfilePromoCardRecord[];
     title: string;
@@ -75,6 +76,7 @@ export default function ProfileShopSection({
   couponCount,
   hasInvestorProActive,
   defaultHubExpanded,
+  shopExpandRequestId,
   bonusCoupons,
   plus,
   investorPro,
@@ -97,6 +99,7 @@ export default function ProfileShopSection({
         couponCount={couponCount}
         hasInvestorProActive={hasInvestorProActive}
         defaultExpanded={defaultHubExpanded}
+        expandRequestId={shopExpandRequestId}
         bonusCoupons={bonusCoupons}
         plus={plus}
         investorPro={investorPro}

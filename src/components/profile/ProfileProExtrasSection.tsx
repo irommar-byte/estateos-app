@@ -286,7 +286,7 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
     },
   ];
 
-  const visibleFeatures = isPro ? features : features.filter((feature) => feature.id === 'openHouse');
+  const visibleFeatures = isPro ? features : features.filter((feature) => feature.id !== 'openHouse');
   if (visibleFeatures.length === 0) return null;
 
   const cardBorder = isDark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(90, 100, 120, 0.18)';

@@ -39,9 +39,9 @@ export default function FloorPlanViewer({
   const animValue = React.useRef(new Animated.Value(0)).current;
 
   const isDark = theme?.glass === 'dark' || theme?.dark;
-  const hasPlan = Boolean(imageUrl?.trim());
-  const has3d = Boolean(model3dUrl?.trim());
   const hasVectorPlan = Boolean(scanMeta?.walls?.length);
+  const hasPlan = Boolean(imageUrl?.trim()) || hasVectorPlan;
+  const has3d = Boolean(model3dUrl?.trim());
   const roomCount = scanMeta?.roomCount;
 
   const openModal = () => {

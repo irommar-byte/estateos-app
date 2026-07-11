@@ -47,6 +47,8 @@ import AdminBuyerSearchSection from '../components/admin/AdminBuyerSearchSection
 import AdminPromoWindowsModal from '../components/admin/AdminPromoWindowsModal';
 import AdminStatisticsModal from '../components/admin/AdminStatisticsModal';
 import AdminUsersModal from '../components/admin/AdminUsersModal';
+import AdminPhotoSessionsModal from '../components/admin/AdminPhotoSessionsModal';
+import UserPhotoSessionsModal from '../components/profile/UserPhotoSessionsModal';
 import ProfileShopSection from '../components/profile/ProfileShopSection';
 import InvestorProTrialIntroHost from '../components/profile/InvestorProTrialIntroHost';
 import ProfileCardShell from '../components/profile/ProfileCardShell';
@@ -74,6 +76,7 @@ import LanguageSelector from '../components/LanguageSelector';
 import { getDeviceAppLocale, useAppLocaleStore } from '../store/useAppLocaleStore';
 import { fetchAdminLegalVerificationQueue } from '../services/legalVerificationService';
 import { fetchAdminContentReports } from '../services/adminReportsService';
+import { fetchAdminPhotoSessionQueue, fetchMyPhotoSessionRequests } from '../services/photoSessionService';
 import { userAfterPakietPlusPurchase } from '../utils/listingQuota';
 import {
   persistMobileOfferUpdate,
@@ -2384,6 +2387,8 @@ export default function ProfileScreen({
   tabRouteParams?: {
     authIntent?: 'login' | 'register';
     openManageListings?: boolean;
+    openShop?: boolean;
+    openPhotoSessions?: boolean;
     prefillEmail?: string;
   };
 }) {
@@ -2398,6 +2403,8 @@ export default function ProfileScreen({
   const openManageListings = Boolean(
     tabRouteParams?.openManageListings ?? route.params?.openManageListings,
   );
+  const openShop = Boolean(tabRouteParams?.openShop ?? route.params?.openShop);
+  const openPhotoSessions = Boolean(tabRouteParams?.openPhotoSessions ?? route.params?.openPhotoSessions);
   const user = useAuthStore((s) => s.user);
 
   if (!user) {
@@ -2411,15 +2418,26 @@ export default function ProfileScreen({
     );
   }
 
-  return <ProfileScreenLoggedIn theme={theme} openManageListingsOnMount={openManageListings} />;
+  return (
+    <ProfileScreenLoggedIn
+      theme={theme}
+      openManageListingsOnMount={openManageListings}
+      openShopOnMount={openShop}
+      openPhotoSessionsOnMount={openPhotoSessions}
+    />
+  );
 }
 
 function ProfileScreenLoggedIn({
   theme,
   openManageListingsOnMount = false,
+  openShopOnMount = false,
+  openPhotoSessionsOnMount = false,
 }: {
   theme: any;
   openManageListingsOnMount?: boolean;
+  openShopOnMount?: boolean;
+  openPhotoSessionsOnMount?: boolean;
 }) {
   const { t, locale } = useI18n();
   const dateLocale = localeToDateFormat(locale);
@@ -2451,10 +2469,21 @@ function ProfileScreenLoggedIn({
   }, [hydrateDisplayCurrency]);
   
   const [isMyOffersVisible, setIsMyOffersVisible] = useState(false);
+  const [shopExpandRequestId, setShopExpandRequestId] = useState(0);
 
   const openManageListingsFromRoute = useCallback(() => {
     setIsMyOffersVisible(true);
     navigation.setParams({ openManageListings: undefined });
+  }, [navigation]);
+
+  const openShopFromRoute = useCallback(() => {
+    setShopExpandRequestId((v) => v + 1);
+    navigation.setParams({ openShop: undefined });
+  }, [navigation]);
+
+  const openPhotoSessionsFromRoute = useCallback(() => {
+    setIsUserPhotoSessionsVisible(true);
+    navigation.setParams({ openPhotoSessions: undefined });
   }, [navigation]);
 
   useEffect(() => {
@@ -2462,11 +2491,35 @@ function ProfileScreenLoggedIn({
     openManageListingsFromRoute();
   }, [openManageListingsOnMount, openManageListingsFromRoute]);
 
+  useEffect(() => {
+    if (!openShopOnMount) return;
+    openShopFromRoute();
+  }, [openShopOnMount, openShopFromRoute]);
+
+  useEffect(() => {
+    if (!openPhotoSessionsOnMount) return;
+    openPhotoSessionsFromRoute();
+  }, [openPhotoSessionsOnMount, openPhotoSessionsFromRoute]);
+
   useFocusEffect(
     useCallback(() => {
       if (!route.params?.openManageListings) return;
       openManageListingsFromRoute();
     }, [openManageListingsFromRoute, route.params?.openManageListings]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!route.params?.openShop) return;
+      openShopFromRoute();
+    }, [openShopFromRoute, route.params?.openShop]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!route.params?.openPhotoSessions) return;
+      openPhotoSessionsFromRoute();
+    }, [openPhotoSessionsFromRoute, route.params?.openPhotoSessions]),
   );
 
   const [isNotificationsVisible, setIsNotificationsVisible] = useState(false);
@@ -2479,12 +2532,17 @@ function ProfileScreenLoggedIn({
   const [isAdminCoreVisible, setIsAdminCoreVisible] = useState(false);
   const [isAdminReportsVisible, setIsAdminReportsVisible] = useState(false);
   const [isAdminPromoWindowsVisible, setIsAdminPromoWindowsVisible] = useState(false);
+  const [isAdminPhotoSessionsVisible, setIsAdminPhotoSessionsVisible] = useState(false);
+  const [isUserPhotoSessionsVisible, setIsUserPhotoSessionsVisible] = useState(false);
+  const [userPhotoSessionsActionCount, setUserPhotoSessionsActionCount] = useState(0);
+  const [userPhotoSessionsWaitingAdmin, setUserPhotoSessionsWaitingAdmin] = useState(false);
   const [userPromoCards, setUserPromoCards] = useState<ProfilePromoCardRecord[]>([]);
   const [dismissedPromoIds, setDismissedPromoIds] = useState<Set<string>>(() => new Set());
   const [adminPendingLegalCount, setAdminPendingLegalCount] = useState(0);
   const [adminPendingReportsCount, setAdminPendingReportsCount] = useState(0);
   const [adminSelectedUser, setAdminSelectedUser] = useState(null);
   const [adminPendingOffersCount, setAdminPendingOffersCount] = useState(0);
+  const [adminPendingPhotoSessionsCount, setAdminPendingPhotoSessionsCount] = useState(0);
   const [isSmsEnabled, setIsSmsEnabled] = useState(true);
   const [isOwnPublicProfileOpen, setIsOwnPublicProfileOpen] = useState(false);
   const [ownPublicProfile, setOwnPublicProfile] = useState(null);
@@ -2642,21 +2700,61 @@ function ProfileScreenLoggedIn({
     }
   };
 
+  const refreshAdminPendingPhotoSessions = async () => {
+    if (!isZarzad || !token) return;
+    try {
+      const items = await fetchAdminPhotoSessionQueue('PENDING', token);
+      setAdminPendingPhotoSessionsCount(items.filter((x) => x.waitingOn === 'ADMIN').length);
+    } catch {
+      // noop
+    }
+  };
+
+  const refreshUserPhotoSessions = async () => {
+    if (!token) {
+      setUserPhotoSessionsActionCount(0);
+      setUserPhotoSessionsWaitingAdmin(false);
+      return;
+    }
+    try {
+      const items = await fetchMyPhotoSessionRequests(token);
+      setUserPhotoSessionsActionCount(
+        items.filter((x) => x.status === 'PENDING' && x.waitingOn === 'USER').length,
+      );
+      setUserPhotoSessionsWaitingAdmin(
+        items.some((x) => x.status === 'PENDING' && x.waitingOn === 'ADMIN'),
+      );
+    } catch {
+      // noop
+    }
+  };
+
   useEffect(() => {
     if (!isZarzad) return;
     refreshAdminPendingLegalVerifications();
     void refreshAdminPendingReports();
+    void refreshAdminPendingPhotoSessions();
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         void refreshAdminPendingLegalVerifications();
         void refreshAdminPendingReports();
+        void refreshAdminPendingPhotoSessions();
       }
     });
     return () => sub.remove();
   }, [isZarzad, token]);
 
+  useEffect(() => {
+    if (!token || !user?.id) return;
+    void refreshUserPhotoSessions();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshUserPhotoSessions();
+    });
+    return () => sub.remove();
+  }, [token, user?.id]);
+
   const adminProfileTabBadgeTotal = isZarzad
-    ? adminPendingOffersCount + adminPendingReportsCount + adminPendingLegalCount
+    ? adminPendingOffersCount + adminPendingReportsCount + adminPendingLegalCount + adminPendingPhotoSessionsCount
     : 0;
 
   useEffect(() => {
@@ -2667,13 +2765,29 @@ function ProfileScreenLoggedIn({
     if (!isZarzad) return;
     const sub = Notifications.addNotificationReceivedListener((notification) => {
       const data = (notification?.request?.content?.data || {}) as Record<string, unknown>;
+      const attentionType = String(data?.attentionType || '').toLowerCase();
+      if (attentionType === 'photo_session') {
+        void refreshAdminPendingPhotoSessions();
+        return;
+      }
       if (String(data?.kind || data?.notificationType || '').toLowerCase() !== 'admin_attention') return;
       void refreshAdminPendingOffers();
       void refreshAdminPendingLegalVerifications();
       void refreshAdminPendingReports();
+      void refreshAdminPendingPhotoSessions();
     });
     return () => sub.remove();
   }, [isZarzad, token]);
+
+  useEffect(() => {
+    if (!token || !user?.id) return;
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = (notification?.request?.content?.data || {}) as Record<string, unknown>;
+      if (String(data?.kind || '').toLowerCase() !== 'photo_session') return;
+      void refreshUserPhotoSessions();
+    });
+    return () => sub.remove();
+  }, [token, user?.id]);
 
   const togglePasskey = async (value) => {
     if (value && Platform.OS === 'android' && !passkeyHardwareSupported) {
@@ -3016,6 +3130,16 @@ function ProfileScreenLoggedIn({
             days: plusDaysLeft,
             daysLabel: plusDaysLeft === 1 ? t('profile.shop.dayOne') : t('profile.shop.dayMany'),
           });
+
+  const photoSessionsSubtitle = useMemo(() => {
+    if (userPhotoSessionsActionCount > 0) {
+      return t('profile.properties.photoSessions.subtitleAction', { count: userPhotoSessionsActionCount });
+    }
+    if (userPhotoSessionsWaitingAdmin) {
+      return t('profile.properties.photoSessions.subtitleWaiting');
+    }
+    return t('profile.properties.photoSessions.subtitleIdle');
+  }, [t, userPhotoSessionsActionCount, userPhotoSessionsWaitingAdmin]);
 
   const bonusCouponCards = useMemo(
     () => {
@@ -3671,7 +3795,24 @@ function ProfileScreenLoggedIn({
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('profile.properties.sectionTitle')}</Text>
           <ListGroup isDark={isDark}>
-            <ListItem icon="home" color="#007AFF" title={t('profile.properties.manageListings')} subtitle={t('profile.properties.manageSubtitle')} onPress={() => setIsMyOffersVisible(true)} isLast={true} isDark={isDark} />
+            <ListItem
+              icon="home"
+              color="#007AFF"
+              title={t('profile.properties.manageListings')}
+              subtitle={t('profile.properties.manageSubtitle')}
+              onPress={() => setIsMyOffersVisible(true)}
+              isDark={isDark}
+            />
+            <ListItem
+              icon="camera"
+              color="#10b981"
+              title={t('profile.properties.photoSessions.title')}
+              subtitle={photoSessionsSubtitle}
+              onPress={() => setIsUserPhotoSessionsVisible(true)}
+              badgeCount={userPhotoSessionsActionCount > 0 ? userPhotoSessionsActionCount : undefined}
+              isLast={true}
+              isDark={isDark}
+            />
           </ListGroup>
         </View>
 
@@ -3758,6 +3899,7 @@ function ProfileScreenLoggedIn({
           defaultHubExpanded={
             !hasInvestorProActive || !hasPlusPublicationAvailable || bonusCouponCards.length > 0
           }
+          shopExpandRequestId={shopExpandRequestId}
           bonusCoupons={{
             cards: bonusCouponCards,
             title: t('profile.shop.bonusCouponsTitle'),
@@ -3840,6 +3982,28 @@ function ProfileScreenLoggedIn({
                 ) : undefined}
               />
               <ListItem
+                icon="camera"
+                color="#10b981"
+                title="Sesje zdjęciowe"
+                subtitle={
+                  adminPendingPhotoSessionsCount > 0
+                    ? `${adminPendingPhotoSessionsCount} do negocjacji terminu`
+                    : 'Rezerwacje i negocjacje sesji EstateOS Studio'
+                }
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setIsAdminPhotoSessionsVisible(true);
+                }}
+                isDark={isDark}
+                rightElement={
+                  adminPendingPhotoSessionsCount > 0 ? (
+                    <View style={styles.adminPendingBadge}>
+                      <Text style={styles.adminPendingBadgeText}>{adminPendingPhotoSessionsCount}</Text>
+                    </View>
+                  ) : undefined
+                }
+              />
+              <ListItem
                 icon="cloud-download-outline"
                 color="#FF9500"
                 title="Amer KEI"
@@ -3908,12 +4072,6 @@ function ProfileScreenLoggedIn({
                 isDark={isDark}
               />
               <ListItem icon="albums" color="#30B0C7" title="Dealroom Check" subtitle="Lista dealroomów i uczestników" onPress={() => setIsAdminDealroomCheckVisible(true)} isDark={isDark} />
-              {/*
-                Weryfikacja prawna: KW + nr lokalu przychodzą od właściciela
-                i czekają tutaj na ręczne ACK administratora. Po zatwierdzeniu
-                na karcie oferty zapala się zielony znaczek „Zweryfikowano
-                prawnie" (`isLegalSafeVerified = true`).
-              */}
               <ListItem
                 icon="shield-checkmark"
                 color="#34C759"
@@ -4160,6 +4318,42 @@ function ProfileScreenLoggedIn({
         onSent={() => {
           if (token && user?.id) {
             void fetchUserProfilePromoCards(token, user.id).then(setUserPromoCards);
+          }
+        }}
+      />
+      <AdminPhotoSessionsModal
+        visible={isAdminPhotoSessionsVisible}
+        onClose={() => {
+          setIsAdminPhotoSessionsVisible(false);
+          void refreshAdminPendingPhotoSessions();
+        }}
+        theme={theme}
+        onQueueChange={setAdminPendingPhotoSessionsCount}
+        onViewUser={(userId, seed) => {
+          adminUsersReturnRef.current = false;
+          setAdminSelectedUser({
+            id: userId,
+            name: seed?.name || `Użytkownik #${userId}`,
+            phone: seed?.phone,
+            email: seed?.email,
+          });
+        }}
+      />
+      <UserPhotoSessionsModal
+        visible={isUserPhotoSessionsVisible}
+        onClose={() => {
+          setIsUserPhotoSessionsVisible(false);
+          void refreshUserPhotoSessions();
+        }}
+        theme={theme}
+        onActionCountChange={(count) => {
+          setUserPhotoSessionsActionCount(count);
+          if (count === 0 && token) {
+            void fetchMyPhotoSessionRequests(token).then((items) => {
+              setUserPhotoSessionsWaitingAdmin(
+                items.some((x) => x.status === 'PENDING' && x.waitingOn === 'ADMIN'),
+              );
+            });
           }
         }}
       />

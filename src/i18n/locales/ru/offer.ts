@@ -238,6 +238,7 @@ export const offer = {
       amenities: 'Удобства',
       about: 'О объекте недвижимости',
       gallery: 'Фотогалерея',
+      location: 'Расположение на карте',
     },
     labels: {
       transactionType: 'Тип транзакции',

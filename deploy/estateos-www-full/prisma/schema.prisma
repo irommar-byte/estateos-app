@@ -65,6 +65,8 @@ model User {
   sentContactMessages  ContactMessage[]         @relation("SentContactMessages")
   offers               Offer[]
   legalVerificationRequests LegalVerificationRequest[]
+  photoSessionRequests      PhotoSessionRequest[] @relation("PhotoSessionRequester")
+  photoSessionsAccepted     PhotoSessionRequest[] @relation("PhotoSessionAcceptedBy")
   reviewsReceived      Review[]                 @relation("ReviewsReceived")
   reviewsGiven         Review[]                 @relation("ReviewsGiven")
   sessions             Session[]
@@ -1112,5 +1114,45 @@ model AgencyClientActivity {
   client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId, createdAt])
+}
+
+
+model PhotoSessionRequest {
+  id              Int      @id @default(autoincrement())
+  userId          Int
+  status          String   @default("PENDING") @db.VarChar(24)
+  waitingOn       String?  @db.VarChar(16)
+  proposedAt      DateTime
+  note            String?  @db.Text
+  propertyLabel   String?  @db.VarChar(255)
+  propertyType    String?  @db.VarChar(64)
+  transactionType String?  @db.VarChar(32)
+  isProFree       Boolean  @default(false)
+  acceptedAt      DateTime?
+  acceptedById    Int?
+  adminNote       String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user       User  @relation("PhotoSessionRequester", fields: [userId], references: [id], onDelete: Cascade)
+  acceptedBy User? @relation("PhotoSessionAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+  events     PhotoSessionEvent[]
+
+  @@index([status, createdAt], map: "PhotoSessionRequest_status_createdAt_idx")
+  @@index([userId], map: "PhotoSessionRequest_userId_idx")
+}
+
+model PhotoSessionEvent {
+  id          Int      @id @default(autoincrement())
+  requestId   Int
+  actorUserId Int
+  action      String   @db.VarChar(24)
+  proposedAt  DateTime?
+  note        String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  request PhotoSessionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt], map: "PhotoSessionEvent_requestId_createdAt_idx")
 }
 

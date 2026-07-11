@@ -29,6 +29,7 @@ import {
 import { REST_OF_COUNTRY_CITY } from '../../constants/locationEcosystem';
 import { getAppLocale, t, useI18n } from '../../i18n';
 import RoomScanModal, { isRoomScanSupportedOnDevice } from '../../components/roomScan/RoomScanModal';
+import ProPhotoSessionModal from '../../components/ProPhotoSessionModal';
 import type { RoomScanDraftAssets } from '../../types/roomScan';
 import { pl } from '../../i18n/locales/pl';
 import { en } from '../../i18n/locales/en';
@@ -347,6 +348,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
   const [dragSnapshot, setDragSnapshot] = useState<string[] | null>(null);
   const dragSnapshotRef = useRef<string[] | null>(null);
   const [roomScanOpen, setRoomScanOpen] = useState(false);
+  const [proPhotoSessionOpen, setProPhotoSessionOpen] = useState(false);
   const roomScanAvailable = isRoomScanSupportedOnDevice();
 
   const draftImages = Array.isArray(draft.images) ? draft.images : [];
@@ -808,9 +810,10 @@ export default function Step5_Media({ theme }: { theme: any }) {
             )}
           </View>
 
-          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 5 }}>{translate('addOffer.step5.sections.photoGrid')}</Text>
-          
-          {/* NOWY, ABSOLUTNIE POZYCJONOWANY GRID (APPLE-STYLE) */}
+          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 5 }}>
+            {translate('addOffer.step5.sections.addPhotos')}
+          </Text>
+
           {displayImages.length > 0 && (
             <View style={[styles.gridContainer, { height: gridHeight }]}>
               {displayImages.map((uri: string, index: number) => (
@@ -831,52 +834,55 @@ export default function Step5_Media({ theme }: { theme: any }) {
             </View>
           )}
 
-          <AppleHover onPress={pickGallery} scaleTo={0.98}>
-             <View style={[styles.addMediaBtn, { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)', opacity: sizingGallery ? 0.65 : 1 }]}>
-                {sizingGallery ? (
-                  <ActivityIndicator color={theme.text} style={{ marginRight: 12 }} />
-                ) : (
-                  <Ionicons name="camera" size={24} color={theme.text} style={{ marginRight: 10 }} />
-                )}
-                <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>
-                  {sizingGallery
-                    ? translate('addOffer.step5.gallery.sizing')
-                    : displayImages.length > 0
-                      ? translate('addOffer.step5.gallery.addMore')
-                      : translate('addOffer.step5.gallery.open')}
-                </Text>
-             </View>
-          </AppleHover>
-        <View style={styles.titleSection}>
-          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 8 }}>
-            {translate('addOffer.step5.sections.title')}
-          </Text>
-          <View
-            style={[
-              styles.titleInputBox,
-              {
-                backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF',
-                borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)',
-              },
-            ]}
-          >
-            <TextInput
-              style={[styles.titleInput, { color: theme.text }]}
-              placeholder={translate('addOffer.step5.titlePlaceholder')}
-              placeholderTextColor={theme.subtitle}
-              value={draft.title}
-              onChangeText={handleTitleChange}
-              maxLength={MAX_TITLE_LENGTH}
-            />
+          <View style={styles.mediaActionsRow}>
+            <View style={styles.mediaActionFlex}>
+              <AppleHover onPress={pickGallery} scaleTo={0.98}>
+                <View
+                  style={[
+                    styles.addMediaBtn,
+                    styles.mediaActionBtn,
+                    { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)', opacity: sizingGallery ? 0.65 : 1 },
+                  ]}
+                >
+                  {sizingGallery ? (
+                    <ActivityIndicator color={theme.text} style={{ marginRight: 8 }} />
+                  ) : (
+                    <Ionicons name="camera" size={22} color={theme.text} style={{ marginRight: 8 }} />
+                  )}
+                  <Text style={[styles.mediaActionText, { color: theme.text }]} numberOfLines={2}>
+                    {sizingGallery
+                      ? translate('addOffer.step5.gallery.sizing')
+                      : displayImages.length > 0
+                        ? translate('addOffer.step5.gallery.addMore')
+                        : translate('addOffer.step5.gallery.open')}
+                  </Text>
+                </View>
+              </AppleHover>
+            </View>
+            <View style={styles.mediaActionFlex}>
+              <AppleHover onPress={() => setProPhotoSessionOpen(true)} scaleTo={0.98}>
+                <View
+                  style={[
+                    styles.proSessionBtn,
+                    styles.mediaActionBtn,
+                    {
+                      borderColor: isDark ? 'rgba(168,85,247,0.35)' : 'rgba(168,85,247,0.25)',
+                      backgroundColor: isDark ? 'rgba(168,85,247,0.1)' : 'rgba(168,85,247,0.06)',
+                    },
+                  ]}
+                >
+                  <Ionicons name="sparkles" size={20} color="#a855f7" style={{ marginRight: 8 }} />
+                  <Text style={[styles.mediaActionText, { color: theme.text }]} numberOfLines={3}>
+                    {translate('addOffer.step5.proSession.cta')}
+                  </Text>
+                </View>
+              </AppleHover>
+            </View>
           </View>
-          <AddOfferFieldHint
-            current={titleLength}
-            min={ADD_OFFER_TITLE_MIN}
-            max={ADD_OFFER_TITLE_MAX}
-          />
-        </View>
 
-          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 15 }}>{translate('addOffer.step5.sections.floorPlan')}</Text>
+          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 15 }}>
+            {translate('addOffer.step5.sections.floorPlan')}
+          </Text>
 
           {roomScanAvailable ? (
             <AppleHover onPress={() => setRoomScanOpen(true)} scaleTo={0.98}>
@@ -938,6 +944,48 @@ export default function Step5_Media({ theme }: { theme: any }) {
             visible={roomScanOpen}
             onClose={() => setRoomScanOpen(false)}
             onComplete={handleRoomScanComplete}
+          />
+
+          <View style={styles.titleSection}>
+            <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 8 }}>
+              {translate('addOffer.step5.sections.title')}
+            </Text>
+            <View
+              style={[
+                styles.titleInputBox,
+                {
+                  backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF',
+                  borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)',
+                },
+              ]}
+            >
+              <TextInput
+                style={[styles.titleInput, { color: theme.text }]}
+                placeholder={translate('addOffer.step5.titlePlaceholder')}
+                placeholderTextColor={theme.subtitle}
+                value={draft.title}
+                onChangeText={handleTitleChange}
+                maxLength={MAX_TITLE_LENGTH}
+              />
+            </View>
+            <AddOfferFieldHint
+              current={titleLength}
+              min={ADD_OFFER_TITLE_MIN}
+              max={ADD_OFFER_TITLE_MAX}
+            />
+          </View>
+
+          <ProPhotoSessionModal
+            visible={proPhotoSessionOpen}
+            onClose={() => setProPhotoSessionOpen(false)}
+            theme={theme}
+            draft={{
+              city: draft.city,
+              district: draft.district,
+              street: draft.street,
+              propertyType: draft.propertyType,
+              transactionType: draft.transactionType,
+            }}
           />
 
           <View style={{ marginTop: 20, marginBottom: 8 }}>
@@ -1042,7 +1090,12 @@ const styles = StyleSheet.create({
   miniProgressTrack: { width: '70%', height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' },
   miniProgressFill: { height: '100%', backgroundColor: Colors.primary },
 
-  addMediaBtn: { width: '100%', height: 65, borderRadius: 18, borderStyle: 'dashed', borderWidth: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  mediaActionsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  mediaActionFlex: { flex: 1, minWidth: 0 },
+  mediaActionBtn: { width: '100%', minHeight: 78, paddingHorizontal: 12, paddingVertical: 14 },
+  mediaActionText: { flex: 1, fontSize: 13, fontWeight: '700', lineHeight: 17 },
+  addMediaBtn: { borderRadius: 18, borderStyle: 'dashed', borderWidth: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  proSessionBtn: { borderRadius: 18, borderWidth: 1.5, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   floorPlanContainer: { width: '100%', borderRadius: 18, borderStyle: 'dashed', borderWidth: 2 },
   roomScanCta: {
     width: '100%',

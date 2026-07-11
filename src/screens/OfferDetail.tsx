@@ -84,6 +84,7 @@ import { formatListedPriceLabel, resolveOfferPriceDiscount } from '../utils/offe
 import OfferDiscountPriceBlock from '../components/OfferDiscountPriceBlock';
 import { isOfferLegallyVerified } from '../utils/legalVerificationStatus';
 import { localeToDateFormat, useI18n } from '../i18n';
+import { isProPhotoSessionSampleOfferId } from '../data/proPhotoSessionSampleOffers';
 
 const { width, height } = Dimensions.get('window');
 const IMG_HEIGHT = 450;
@@ -129,6 +130,9 @@ const firstDefined = (...values: unknown[]) => values.find((v) => v !== undefine
 export default function OfferDetail({ route, navigation }: any) {
   const offerFromParams = route?.params?.offer;
   const idFromParams = firstDefined(route?.params?.id, route?.params?.offerId, route?.params?.offer?.id);
+  const isSamplePreview = Boolean(
+    route?.params?.isSamplePreview || isProPhotoSessionSampleOfferId(idFromParams) || isProPhotoSessionSampleOfferId(offerFromParams?.id),
+  );
   const [hydratedOffer, setHydratedOffer] = useState<any>(null);
   /**
    * Status hydratacji — potrzebny, żeby rozróżnić „jeszcze nie próbowano"
@@ -273,6 +277,7 @@ export default function OfferDetail({ route, navigation }: any) {
   })();
 
   useEffect(() => {
+    if (isSamplePreview) return;
     const id = Number(idFromParams);
     if (!id) return;
     let mounted = true;
@@ -346,7 +351,7 @@ export default function OfferDetail({ route, navigation }: any) {
     return () => {
       mounted = false;
     };
-  }, [idFromParams, token]);
+  }, [idFromParams, token, isSamplePreview]);
 
   const handleBecomePro = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -399,6 +404,7 @@ export default function OfferDetail({ route, navigation }: any) {
   useEffect(() => {
     const offerIdNum = Number(offer?.id || 0);
     if (!offerIdNum || offerIdNum <= 0) return;
+    if (isSamplePreview) return;
     if (viewTrackedRef.current === offerIdNum) return;
     if (isOwner) return;
     // Zamknięta oferta to widok „read-only memento" — nie pompujemy
@@ -425,7 +431,7 @@ export default function OfferDetail({ route, navigation }: any) {
           console.warn('[offer-view-track] failed', err);
         }
       });
-  }, [offer?.id, isOwner, token]);
+  }, [offer?.id, isOwner, token, isSamplePreview]);
 
   // --- STAN GALERII PEŁNOEKRANOWEJ ---
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
@@ -472,6 +478,10 @@ export default function OfferDetail({ route, navigation }: any) {
   const apptBtnScale = useSharedValue(1);
 
   useEffect(() => {
+    if (isSamplePreview) {
+      setOpenHouseEvent(null);
+      return;
+    }
     const offerIdNum = Number(offer?.id || 0);
     if (!Number.isFinite(offerIdNum) || offerIdNum <= 0) {
       setOpenHouseEvent(null);
@@ -484,9 +494,13 @@ export default function OfferDetail({ route, navigation }: any) {
     return () => {
       cancelled = true;
     };
-  }, [offer?.id, token]);
+  }, [offer?.id, token, isSamplePreview]);
 
   useEffect(() => {
+    if (isSamplePreview) {
+      setAuctionEvent(null);
+      return;
+    }
     const offerIdNum = Number(offer?.id || 0);
     if (!Number.isFinite(offerIdNum) || offerIdNum <= 0) {
       setAuctionEvent(null);
@@ -505,7 +519,7 @@ export default function OfferDetail({ route, navigation }: any) {
     return () => {
       cancelled = true;
     };
-  }, [offer?.id, token]);
+  }, [offer?.id, token, isSamplePreview]);
 
   useEffect(() => {
     setOwnerLegalVerifiedOverride(null);
@@ -523,7 +537,7 @@ export default function OfferDetail({ route, navigation }: any) {
   }, [offer?.id, token]);
 
   const handleFavorite = async () => {
-    if (!offer?.id) return;
+    if (isSamplePreview || !offer?.id) return;
     heartScale.value = withSpring(1.5, { damping: 2, stiffness: 80 }, () => { heartScale.value = withSpring(1); });
     const ids = await loadFavoriteIds(favoriteSync);
     const { ids: nextIds, added } = await toggleFavoriteId(offer.id, ids, favoriteSync);
@@ -613,6 +627,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const mapCoordinate = { latitude: mapPresentation.latitude, longitude: mapPresentation.longitude };
 
   const handleShare = async () => {
+    if (isSamplePreview) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!offer?.id) return;
     const { message, url } = buildOfferShareMessage({
@@ -1211,6 +1226,7 @@ export default function OfferDetail({ route, navigation }: any) {
   };
 
   const openOwnerProfileModal = () => {
+    if (isSamplePreview) return;
     Haptics.selectionAsync();
     setProfileHistory([]);
     if (ownerProfile?.user?.id) {
@@ -1385,6 +1401,8 @@ export default function OfferDetail({ route, navigation }: any) {
         </TouchableOpacity>
 
         <View style={styles.topBarRight}>
+          {!isSamplePreview ? (
+            <>
           <TouchableOpacity style={[styles.glassButton, { marginRight: 12 }]} onPress={handleShare} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
             <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
             <ShareIcon color="white" size={20} />
@@ -1409,6 +1427,8 @@ export default function OfferDetail({ route, navigation }: any) {
               <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
               <MoreHorizontal color="white" size={20} />
             </TouchableOpacity>
+          ) : null}
+            </>
           ) : null}
         </View>
       </View>
@@ -1534,6 +1554,25 @@ export default function OfferDetail({ route, navigation }: any) {
             )}
           </View>
           
+          {isSamplePreview ? (
+            <View
+              style={[
+                styles.samplePreviewBanner,
+                {
+                  backgroundColor: isDark ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.08)',
+                  borderColor: isDark ? 'rgba(16,185,129,0.35)' : 'rgba(16,185,129,0.25)',
+                },
+              ]}
+            >
+              <Text style={[styles.samplePreviewBannerTitle, { color: isDark ? '#6ee7b7' : '#047857' }]}>
+                {t('addOffer.step5.proSession.examples.previewBanner')}
+              </Text>
+              <Text style={[styles.samplePreviewBannerSub, { color: isDark ? '#9ca3af' : '#6b7280' }]}>
+                {t('addOffer.step5.proSession.examples.previewBannerSub')}
+              </Text>
+            </View>
+          ) : null}
+
           <Text style={[styles.title, isDark && { color: '#ffffff' }]}>{displayOffer.title}</Text>
 
           {auctionEvent ? (
@@ -1670,6 +1709,79 @@ export default function OfferDetail({ route, navigation }: any) {
             theme={theme}
           />
 
+          {hasValidMapCoords ? (
+            <>
+              <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+              <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>
+                {t('offer.detail.sections.location')}
+              </Text>
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setIsLocationPreviewOpen(true);
+                }}
+                style={({ pressed }) => [
+                  styles.inlineMapCard,
+                  {
+                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+                    backgroundColor: isDark ? '#1c1c1e' : '#f5f6f8',
+                  },
+                  pressed && { opacity: 0.86 },
+                ]}
+              >
+                <View style={styles.inlineMapWrap}>
+                  <MapView
+                    style={styles.inlineMap}
+                    scrollEnabled={false}
+                    zoomEnabled={false}
+                    zoomTapEnabled={false}
+                    rotateEnabled={false}
+                    pitchEnabled={false}
+                    pointerEvents="none"
+                    initialRegion={{
+                      latitude: mapCoordinate.latitude,
+                      longitude: mapCoordinate.longitude,
+                      latitudeDelta: mapPresentation.latitudeDelta,
+                      longitudeDelta: mapPresentation.longitudeDelta,
+                    }}
+                    region={{
+                      latitude: mapCoordinate.latitude,
+                      longitude: mapCoordinate.longitude,
+                      latitudeDelta: mapPresentation.latitudeDelta,
+                      longitudeDelta: mapPresentation.longitudeDelta,
+                    }}
+                  >
+                    {mapPresentation.mode === 'pin' ? (
+                      <Marker coordinate={mapCoordinate} />
+                    ) : (
+                      <Circle
+                        center={mapCoordinate}
+                        radius={mapPresentation.circleRadiusM}
+                        strokeColor="rgba(220,38,38,0.9)"
+                        strokeWidth={2}
+                        fillColor="rgba(220,38,38,0.18)"
+                      />
+                    )}
+                  </MapView>
+                  <View style={styles.inlineMapExpandBadge}>
+                    <Maximize size={14} color="#ffffff" strokeWidth={2.2} />
+                  </View>
+                </View>
+                <View style={styles.inlineMapFooter}>
+                  <MapPin color={isDark ? '#9ca3af' : '#86868b'} size={15} />
+                  <Text style={[styles.inlineMapAddress, isDark && { color: '#d1d5db' }]} numberOfLines={2}>
+                    {locationLine}
+                  </Text>
+                </View>
+                <Text style={[styles.inlineMapHint, isDark && { color: '#9ca3af' }]}>
+                  {mapPresentation.mode === 'pin'
+                    ? t('offer.edit.location.mapHintExact')
+                    : t('offer.edit.location.mapHintCircle')}
+                </Text>
+              </Pressable>
+            </>
+          ) : null}
+
           {activeAmenities.length > 0 && (
             <>
               <Text style={[styles.sectionTitle, { marginTop: 15 }, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.amenities')}</Text>
@@ -1699,7 +1811,11 @@ export default function OfferDetail({ route, navigation }: any) {
             ))}
           </ScrollView>
 
-          <Text style={styles.offerIdText}>{t('offer.detail.offerId', { id: offer?.id })}</Text>
+          {isSamplePreview ? (
+            <Text style={styles.offerIdText}>{t('addOffer.step5.proSession.examples.previewOfferId')}</Text>
+          ) : (
+            <Text style={styles.offerIdText}>{t('offer.detail.offerId', { id: offer?.id })}</Text>
+          )}
           {!isOwner && !dealSyncLoading && dealNegotiationState?.latestAppointment && (
             <View
               style={[
@@ -2109,7 +2225,21 @@ export default function OfferDetail({ route, navigation }: any) {
 
           {/* BOTTOM ROW: Akcje */}
           <View style={styles.bottomActionsRow}>
-            {isOwner ? (
+            {isSamplePreview ? (
+              <View
+                style={[
+                  styles.samplePreviewFooter,
+                  {
+                    backgroundColor: isDark ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.08)',
+                    borderColor: isDark ? 'rgba(16,185,129,0.28)' : 'rgba(16,185,129,0.2)',
+                  },
+                ]}
+              >
+                <Text style={[styles.samplePreviewFooterTitle, { color: isDark ? '#6ee7b7' : '#047857' }]}>
+                  {t('addOffer.step5.proSession.examples.previewFooter')}
+                </Text>
+              </View>
+            ) : isOwner ? (
               <TouchableOpacity style={[styles.primaryAppleButton, { backgroundColor: isDark ? '#ffffff' : '#1d1d1f', flex: 1 }]} onPress={handleEdit}>
                 <Pencil size={18} color={isDark ? '#000000' : '#fff'} />
                 <Text style={[styles.primaryAppleButtonText, { color: isDark ? '#000000' : '#ffffff' }]}>{t('offer.detail.ctas.editOffer')}</Text>
@@ -2872,6 +3002,50 @@ const styles = StyleSheet.create({
   locationMiniMapWrap: { borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' },
   locationMiniMap: { width: '100%', height: 190 },
   locationModalHint: { marginTop: 8, fontSize: 12, color: '#9ca3af' },
+  inlineMapCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  inlineMapWrap: { height: 200, position: 'relative' },
+  inlineMap: { width: '100%', height: '100%' },
+  inlineMapExpandBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  inlineMapFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+  },
+  inlineMapAddress: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    lineHeight: 18,
+  },
+  inlineMapHint: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#9ca3af',
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    paddingTop: 4,
+    lineHeight: 16,
+  },
   /** Karta KW / zgłoszenie — tylko gdy właściciel i brak pieczęci prawnej. */
   legalVerificationBlock: {
     gap: 14,
@@ -2949,6 +3123,25 @@ const styles = StyleSheet.create({
   amenityPill: { backgroundColor: '#ffffff', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(17,24,39,0.08)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 4, elevation: 1 },
   amenityText: { color: '#1d1d1f', fontSize: 14, fontWeight: '600' },
   offerIdText: { textAlign: 'center', color: '#86868b', fontSize: 12, marginTop: 24, marginBottom: 0, letterSpacing: 0.5 },
+  samplePreviewBanner: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 14,
+  },
+  samplePreviewBannerTitle: { fontSize: 12, fontWeight: '900', letterSpacing: 0.4, textTransform: 'uppercase' },
+  samplePreviewBannerSub: { fontSize: 12, fontWeight: '500', lineHeight: 17, marginTop: 4 },
+  samplePreviewFooter: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  samplePreviewFooterTitle: { fontSize: 13, fontWeight: '700', textAlign: 'center', lineHeight: 18 },
   
   galleryContainer: { paddingRight: 24 },
   galleryThumbnail: { width: width * 0.8, height: 220, borderRadius: 24, marginRight: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },

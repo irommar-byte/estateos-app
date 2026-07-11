@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   LayoutAnimation,
@@ -100,6 +100,7 @@ type Props = {
   couponCount: number;
   hasInvestorProActive: boolean;
   defaultExpanded?: boolean;
+  expandRequestId?: number;
   bonusCoupons: {
     cards: ProfilePromoCardRecord[];
     title: string;
@@ -157,6 +158,7 @@ export default function ProfileMembershipHub({
   couponCount,
   hasInvestorProActive,
   defaultExpanded = false,
+  expandRequestId = 0,
   bonusCoupons,
   plus,
   investorPro,
@@ -166,6 +168,12 @@ export default function ProfileMembershipHub({
   const pressedBg = profileShopLeatherPressedBg(isDark);
   const divider = isDark ? 'rgba(210,180,140,0.16)' : 'rgba(139,115,85,0.12)';
   const proAccent = hasInvestorProActive ? (isDark ? '#FBBF24' : '#B45309') : isDark ? '#64748B' : '#78716C';
+
+  useEffect(() => {
+    if (!expandRequestId) return;
+    configureHubLayoutAnimation(true);
+    setExpanded(true);
+  }, [expandRequestId]);
 
   const toggleExpanded = () => {
     configureHubLayoutAnimation(!expanded);

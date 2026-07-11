@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useOpenHouseLiveStore } from '../../store/useOpenHouseLiveStore';
 import { useTabBarTickerStore } from '../../store/useTabBarTickerStore';
@@ -6,6 +6,8 @@ import { fetchLiveAuctionEvents, fetchAuctionTicker } from '../../services/aucti
 import { fetchOpenHouseTicker } from '../../services/openHouseService';
 import { fetchWebOffersArray } from '../../utils/webOffersFallback';
 import { useI18n } from '../../i18n';
+import { hasActiveInvestorProMembership } from '../../utils/investorProMembership';
+import { fetchInvestorProStoreListing } from '../../services/iapInvestorProListing';
 import {
   buildAuctionBidFromEvent,
   buildAuctionBidMessage,
@@ -16,6 +18,7 @@ import {
   buildOpenHouseNewMessage,
   buildOpenHouseUrgentMessage,
   buildPriceDropMessage,
+  countUserListings,
   detectPriceDrop,
   hoursUntil,
   NEW_OFFER_WINDOW_MS,
@@ -31,9 +34,12 @@ const POLL_MS = 30_000;
 export default function TabBarTickerEngine() {
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  const isRadarActive = useAuthStore((s) => s.isRadarActive);
   const reservedIds = useOpenHouseLiveStore((s) => s.reservedEventIds);
   const enqueue = useTabBarTickerStore((s) => s.enqueue);
   const setInfoPool = useTabBarTickerStore((s) => s.setInfoPool);
+  const [investorProHasTrial, setInvestorProHasTrial] = useState(false);
 
   const knownOfferIds = useRef<Set<number>>(new Set());
   const offerPrices = useRef<Map<number, OfferPriceSnapshot>>(new Map());
@@ -42,6 +48,27 @@ export default function TabBarTickerEngine() {
   const aucBidState = useRef<Map<number, { bidCount: number; currentPrice: number }>>(new Map());
   const urgentOhShown = useRef<Set<number>>(new Set());
   const seeded = useRef(false);
+
+  const userId = Number(user?.id || 0);
+  const isPro = hasActiveInvestorProMembership(user);
+
+  useEffect(() => {
+    if (isPro) {
+      setInvestorProHasTrial(false);
+      return;
+    }
+    let cancelled = false;
+    void fetchInvestorProStoreListing()
+      .then((listing) => {
+        if (!cancelled) setInvestorProHasTrial(Boolean(listing?.hasFreeTrial));
+      })
+      .catch(() => {
+        if (!cancelled) setInvestorProHasTrial(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isPro, userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +84,19 @@ export default function TabBarTickerEngine() {
 
       const reservedSet = new Set(reservedIds);
       const now = Date.now();
+      const userListingsCount = countUserListings(offers, userId);
+      const auctionCount = Math.max(aucTicker.length, aucLive.length);
+
+      const infoPool = buildInfoPool(t, {
+        openHouseItems: ohItems,
+        auctionItems: aucTicker,
+        openHouseCount: ohItems.length,
+        auctionCount,
+        isRadarActive: Boolean(isRadarActive),
+        isPro,
+        investorProHasTrial,
+        userListingsCount,
+      });
 
       const seedAuction = (eventId: number, bidCount: number, currentPrice: number) => {
         aucBidState.current.set(eventId, { bidCount, currentPrice });
@@ -80,21 +120,11 @@ export default function TabBarTickerEngine() {
           seedAuction(ev.id, ev.bidCount, ev.currentPrice || ev.startPrice);
         }
         seeded.current = true;
-        setInfoPool(
-          buildInfoPool(t, {
-            openHouseCount: ohItems.length,
-            auctionCount: Math.max(aucTicker.length, aucLive.length),
-          }),
-        );
+        setInfoPool(infoPool);
         return;
       }
 
-      setInfoPool(
-        buildInfoPool(t, {
-          openHouseCount: ohItems.length,
-          auctionCount: Math.max(aucTicker.length, aucLive.length),
-        }),
-      );
+      setInfoPool(infoPool);
 
       for (const raw of offers) {
         const id = Number(raw?.id || 0);
@@ -180,7 +210,7 @@ export default function TabBarTickerEngine() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [token, reservedIds, enqueue, setInfoPool, t]);
+  }, [token, reservedIds, enqueue, setInfoPool, t, userId, isRadarActive, isPro, investorProHasTrial]);
 
   return null;
 }

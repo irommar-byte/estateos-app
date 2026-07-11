@@ -55,6 +55,21 @@ export type OfferPageCopy = {
   amenities: string;
   floorPlan: string;
   enlarge: string;
+  floorPlanScan: {
+    layoutSubtitle: string;
+    subtitle: string;
+    lidarBadge: string;
+    viewImage: string;
+    viewInteractive: string;
+  };
+  floorPlanWalkthrough: {
+    title: string;
+    subtitle: string;
+    openAr: string;
+    loading: string;
+    iosHint: string;
+    desktopHint: string;
+  };
   locationSection: string;
   neighborhoodPreview: string;
   mainParamsSection: string;
@@ -198,6 +213,21 @@ const PL: OfferPageCopy = {
   amenities: "Udogodnienia",
   floorPlan: "Rzut lokalu",
   enlarge: "Powiększ",
+  floorPlanScan: {
+    layoutSubtitle: "Układ pomieszczeń i metraż",
+    subtitle: "Plan wygenerowany ze skanu LiDAR",
+    lidarBadge: "LiDAR",
+    viewImage: "Rzut",
+    viewInteractive: "Skan interaktywny",
+  },
+  floorPlanWalkthrough: {
+    title: "Wirtualny spacer 3D",
+    subtitle: "Przeglądaj model pomieszczeń ze skanu LiDAR",
+    openAr: "AR Quick Look",
+    loading: "Ładowanie modelu 3D…",
+    iosHint: "Na iPhone/iPad dotknij AR Quick Look, aby zobaczyć model w rozszerzonej rzeczywistości.",
+    desktopHint: "Obróć model myszą. Pełny spacer AR dostępny w Safari na iPhone/iPad.",
+  },
   locationSection: "Lokalizacja",
   neighborhoodPreview: "Okolica nieruchomości",
   mainParamsSection: "Główne parametry",
@@ -343,6 +373,21 @@ const EN: OfferPageCopy = {
   amenities: "Amenities",
   floorPlan: "Floor plan",
   enlarge: "Enlarge",
+  floorPlanScan: {
+    layoutSubtitle: "Layout and room arrangement",
+    subtitle: "Floor plan generated from a LiDAR scan",
+    lidarBadge: "LiDAR",
+    viewImage: "Image",
+    viewInteractive: "Interactive scan",
+  },
+  floorPlanWalkthrough: {
+    title: "3D virtual walkthrough",
+    subtitle: "Explore the LiDAR room model",
+    openAr: "AR Quick Look",
+    loading: "Loading 3D model…",
+    iosHint: "On iPhone/iPad, tap AR Quick Look to view the model in augmented reality.",
+    desktopHint: "Rotate the model with your mouse. Full AR walkthrough is available in Safari on iPhone/iPad.",
+  },
   locationSection: "Location",
   neighborhoodPreview: "Neighborhood",
   mainParamsSection: "Main parameters",

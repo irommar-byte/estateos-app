@@ -2,7 +2,11 @@ export type TabBarTickerAction =
   | { type: 'offer'; offerId: number }
   | { type: 'open_house'; eventId: number; offerId: number }
   | { type: 'auction'; eventId: number; offerId: number }
-  | { type: 'live_panel' };
+  | { type: 'live_panel' }
+  | { type: 'radar_calibration' }
+  | { type: 'auction_hub' }
+  | { type: 'open_house_hub' }
+  | { type: 'pro_upsell'; reason: 'premium_tools' | 'auction' | 'open_house' };
 
 export type TabBarTickerPriority = 'immediate' | 'info';
 

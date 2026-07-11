@@ -8,8 +8,10 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
+  useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/useAuthStore';
@@ -21,11 +23,25 @@ import * as Haptics from 'expo-haptics';
 import { useCarScreenTheme, type CarScreenColors } from '../theme/carScreenTheme';
 
 type Tab = 'catalog' | 'mine' | 'favorites';
+type ViewMode = 'list' | 'grid';
 
 export default function CarsCatalogScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { colors, elevation } = useCarScreenTheme();
+  const { width: screenWidth } = useWindowDimensions();
+  const isTabletLike = screenWidth >= 600;
+  const [viewMode, setViewMode] = useState<ViewMode>(isTabletLike ? 'grid' : 'list');
+  const isGridView = viewMode === 'grid';
+  const cardLayout = useMemo(() => {
+    const horizontalPad = 40;
+    const gap = 14;
+    if (isGridView) {
+      const cardWidth = (screenWidth - horizontalPad - gap) / 2;
+      return { cardWidth, imageAspectRatio: 4 / 3, compact: true };
+    }
+    return { cardWidth: undefined as number | undefined, imageAspectRatio: 16 / 10, compact: false };
+  }, [isGridView, screenWidth]);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
@@ -100,6 +116,12 @@ export default function CarsCatalogScreen() {
     navigation.navigate('MainTabs', { screen: 'Profil', params: { authIntent: intent } });
   };
 
+  const toggleViewMode = (mode: ViewMode) => {
+    if (viewMode === mode) return;
+    void Haptics.selectionAsync();
+    setViewMode(mode);
+  };
+
   return (
     <ScrollView
       contentContainerStyle={[styles.container, { paddingTop: Math.max(insets.top + 70, 110) }]}
@@ -160,6 +182,44 @@ export default function CarsCatalogScreen() {
         </View>
       ) : null}
 
+      {!loading && !error && filtered.length > 0 ? (
+        <View style={styles.viewToggleRow}>
+          <Text style={styles.viewToggleLabel}>Widok</Text>
+          <View style={styles.viewToggleGroup}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: viewMode === 'list' }}
+              onPress={() => toggleViewMode('list')}
+              style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnActive]}
+            >
+              <Ionicons
+                name={viewMode === 'list' ? 'list' : 'list-outline'}
+                size={16}
+                color={viewMode === 'list' ? colors.chipActiveText : colors.muted}
+              />
+              <Text style={[styles.viewToggleBtnLabel, viewMode === 'list' && styles.viewToggleBtnLabelActive]}>
+                Lista
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: viewMode === 'grid' }}
+              onPress={() => toggleViewMode('grid')}
+              style={[styles.viewToggleBtn, viewMode === 'grid' && styles.viewToggleBtnActive]}
+            >
+              <Ionicons
+                name={viewMode === 'grid' ? 'grid' : 'grid-outline'}
+                size={16}
+                color={viewMode === 'grid' ? colors.chipActiveText : colors.muted}
+              />
+              <Text style={[styles.viewToggleBtnLabel, viewMode === 'grid' && styles.viewToggleBtnLabelActive]}>
+                Siatka
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
       {loading ? (
         <View style={styles.centerBox}>
           <ActivityIndicator color={colors.accentSoft} />
@@ -185,16 +245,25 @@ export default function CarsCatalogScreen() {
               : 'Brak ogłoszeń samochodowych.'}
         </Text>
       ) : (
-        <View style={styles.list}>
+        <View style={[styles.list, isGridView && styles.listGrid]}>
           {filtered.map((car) => (
             <Pressable
               key={car.id}
               onPress={() => navigation.navigate('CarDetail', { carId: car.id, car })}
-              style={({ pressed }) => [styles.card, elevation.card, pressed && styles.cardPressed]}
+              style={({ pressed }) => [
+                styles.card,
+                cardLayout.cardWidth ? { width: cardLayout.cardWidth } : null,
+                elevation.card,
+                pressed && styles.cardPressed,
+              ]}
             >
               <View style={styles.cardImageWrap}>
-                <Image source={{ uri: car.imageUrl }} style={styles.cardImage} contentFit="cover" />
-                <View style={styles.cardFavWrap}>
+                <Image
+                  source={{ uri: car.imageUrl }}
+                  style={[styles.cardImage, { aspectRatio: cardLayout.imageAspectRatio }]}
+                  contentFit="cover"
+                />
+                <View style={[styles.cardFavWrap, cardLayout.compact && styles.cardFavWrapCompact]}>
                   <CarFavoriteButton
                     carId={car.id}
                     isLoggedIn={Boolean(token)}
@@ -208,17 +277,22 @@ export default function CarsCatalogScreen() {
                   />
                 </View>
               </View>
-              <View style={styles.cardBody}>
-                <Text style={styles.cardMeta}>
+              <View style={[styles.cardBody, cardLayout.compact && styles.cardBodyCompact]}>
+                <Text style={[styles.cardMeta, cardLayout.compact && styles.cardMetaCompact]} numberOfLines={1}>
                   {car.make} · {car.model} · {car.year}
                 </Text>
-                <Text style={styles.cardTitle} numberOfLines={2}>
+                <Text
+                  style={[styles.cardTitle, cardLayout.compact && styles.cardTitleCompact]}
+                  numberOfLines={cardLayout.compact ? 2 : 2}
+                >
                   {car.title}
                 </Text>
-                <Text style={styles.cardSub}>
+                <Text style={[styles.cardSub, cardLayout.compact && styles.cardSubCompact]} numberOfLines={1}>
                   {car.city} · {new Intl.NumberFormat('pl-PL').format(car.mileageKm)} km · {car.fuelType}
                 </Text>
-                <Text style={styles.cardPrice}>{formatCarPrice(car.pricePln)}</Text>
+                <Text style={[styles.cardPrice, cardLayout.compact && styles.cardPriceCompact]}>
+                  {formatCarPrice(car.pricePln)}
+                </Text>
               </View>
             </Pressable>
           ))}
@@ -329,6 +403,45 @@ function createStyles(colors: CarScreenColors) {
     },
     chipLabel: { color: colors.chipText, fontSize: 12, fontWeight: '600' },
     chipLabelActive: { color: colors.chipActiveText },
+    viewToggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    viewToggleLabel: {
+      color: colors.muted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+    },
+    viewToggleGroup: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    viewToggleBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.inputBorder,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+    },
+    viewToggleBtnActive: {
+      borderColor: colors.chipActiveBorder,
+      backgroundColor: colors.chipActiveBg,
+    },
+    viewToggleBtnLabel: {
+      color: colors.muted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 1.1,
+      textTransform: 'uppercase',
+    },
+    viewToggleBtnLabelActive: { color: colors.chipActiveText },
     centerBox: {
       marginTop: 24,
       alignItems: 'center',
@@ -361,6 +474,11 @@ function createStyles(colors: CarScreenColors) {
       marginTop: 8,
       gap: 14,
     },
+    listGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+    },
     card: {
       borderRadius: 18,
       overflow: 'hidden',
@@ -376,7 +494,6 @@ function createStyles(colors: CarScreenColors) {
     },
     cardImage: {
       width: '100%',
-      height: 190,
       backgroundColor: colors.inputBg,
     },
     cardFavWrap: {
@@ -384,9 +501,18 @@ function createStyles(colors: CarScreenColors) {
       top: 10,
       right: 10,
     },
+    cardFavWrapCompact: {
+      top: 6,
+      right: 6,
+      transform: [{ scale: 0.9 }],
+    },
     cardBody: {
       padding: 14,
       gap: 4,
+    },
+    cardBodyCompact: {
+      padding: 10,
+      gap: 2,
     },
     cardMeta: {
       color: colors.accentSoft,
@@ -395,22 +521,38 @@ function createStyles(colors: CarScreenColors) {
       letterSpacing: 1.4,
       textTransform: 'uppercase',
     },
+    cardMetaCompact: {
+      fontSize: 8,
+      letterSpacing: 1.1,
+    },
     cardTitle: {
       color: colors.text,
       fontSize: 18,
       fontWeight: '700',
       lineHeight: 24,
     },
+    cardTitleCompact: {
+      fontSize: 14,
+      lineHeight: 18,
+    },
     cardSub: {
       color: colors.muted,
       fontSize: 13,
       lineHeight: 19,
+    },
+    cardSubCompact: {
+      fontSize: 11,
+      lineHeight: 15,
     },
     cardPrice: {
       marginTop: 4,
       color: colors.accent,
       fontSize: 17,
       fontWeight: '800',
+    },
+    cardPriceCompact: {
+      marginTop: 2,
+      fontSize: 14,
     },
   });
 }

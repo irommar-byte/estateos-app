@@ -1586,7 +1586,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (route?.params?.radarFocus === 'matches') {
         setShowRadarMatchesOnly(true);
       }
-    }, [route?.params?.favoritesOnly, route?.params?.favoritesScope, route?.params?.radarFocus])
+      if (route?.params?.openCalibration) {
+        if (user) {
+          setRadarFilters((prev) => ({ ...prev, pushNotifications: !!isRadarActive }));
+          setCalibrationSessionId((prev) => prev + 1);
+          setShowCalibration(true);
+        }
+        navigation.setParams?.({ openCalibration: undefined });
+      }
+    }, [route?.params?.favoritesOnly, route?.params?.favoritesScope, route?.params?.radarFocus, route?.params?.openCalibration, user, isRadarActive, navigation])
   );
 
   useEffect(() => {

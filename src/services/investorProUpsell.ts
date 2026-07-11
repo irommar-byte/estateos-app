@@ -1,4 +1,4 @@
-export type InvestorProUpsellReason = 'off_market' | 'import' | 'premium_tools';
+export type InvestorProUpsellReason = 'off_market' | 'import' | 'premium_tools' | 'auction' | 'open_house';
 
 export type InvestorProUpsellRequest = {
   reason: InvestorProUpsellReason;

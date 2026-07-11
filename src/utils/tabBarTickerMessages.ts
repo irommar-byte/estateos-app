@@ -210,58 +210,185 @@ export function buildAuctionBidFromEvent(
   });
 }
 
-export function buildInfoPool(
-  t: TFn,
-  stats: { openHouseCount: number; auctionCount: number },
-): TabBarTickerMessage[] {
-  const pool: TabBarTickerMessage[] = [
-    msg({
-      id: 'info-live-panel',
-      priority: 'info',
-      ...withCta(t('tabs.ticker.infoLiveHint'), t('tabs.ticker.ctaOpenLive')),
-      action: { type: 'live_panel' },
-    }),
-    msg({
-      id: 'info-radar',
-      priority: 'info',
-      ...withCta(t('tabs.ticker.infoRadar'), t('tabs.ticker.ctaCheck')),
-      action: { type: 'live_panel' },
-    }),
-  ];
-  if (stats.openHouseCount > 0) {
+export function countUserListings(offers: Record<string, unknown>[], userId: number): number {
+  if (!userId) return 0;
+  return offers.filter((raw) => {
+    const ids = [
+      raw?.userId,
+      raw?.ownerId,
+      raw?.sellerId,
+      raw?.authorId,
+      raw?.createdById,
+      (raw?.user as { id?: unknown } | undefined)?.id,
+    ]
+      .map((v) => Number(v || 0))
+      .filter((n) => n > 0);
+    return ids.includes(userId);
+  }).length;
+}
+
+export type InfoPoolContext = {
+  openHouseItems: OpenHouseTickerItem[];
+  auctionItems: AuctionTickerItem[];
+  openHouseCount: number;
+  auctionCount: number;
+  isRadarActive: boolean;
+  isPro: boolean;
+  investorProHasTrial: boolean;
+  userListingsCount: number;
+};
+
+function proCtaLabel(t: TFn, hasTrial: boolean) {
+  return hasTrial ? t('tabs.ticker.ctaTryPro3Days') : t('tabs.ticker.ctaBecomePro');
+}
+
+export function buildInfoPool(t: TFn, ctx: InfoPoolContext): TabBarTickerMessage[] {
+  const pool: TabBarTickerMessage[] = [];
+  const firstAuc = ctx.auctionItems[0] ?? null;
+  const firstOh = ctx.openHouseItems[0] ?? null;
+
+  if (firstAuc) {
+    const place = loc(firstAuc.city, firstAuc.district);
+    const price = formatAmountWithCurrency(
+      Math.round(firstAuc.currentPrice),
+      normalizeListingCurrency(firstAuc.currency),
+    );
+    pool.push(
+      msg({
+        id: `info-active-auc-${firstAuc.eventId}`,
+        priority: 'info',
+        ...withCta(
+          line(t('tabs.ticker.infoActiveAuction'), firstAuc.title || place, place, t('tabs.ticker.auctionPriceNow', { price })),
+          t('tabs.ticker.ctaGoToAuction'),
+        ),
+        action: { type: 'auction', eventId: firstAuc.eventId, offerId: firstAuc.offerId },
+      }),
+    );
+  }
+
+  if (firstOh) {
+    const place = loc(firstOh.city, firstOh.district);
+    pool.push(
+      msg({
+        id: `info-active-oh-${firstOh.eventId}`,
+        priority: 'info',
+        ...withCta(
+          line(
+            t('tabs.ticker.infoActiveOpenHouse'),
+            firstOh.title,
+            place,
+            t('tabs.ticker.spotsLeftShort', { n: firstOh.spotsLeft }),
+          ),
+          t('tabs.ticker.ctaGoToOpenHouse'),
+        ),
+        action: { type: 'open_house', eventId: firstOh.eventId, offerId: firstOh.offerId },
+      }),
+    );
+  }
+
+  if (ctx.openHouseCount > 1) {
     pool.push(
       msg({
         id: 'info-open-house-count',
         priority: 'info',
         ...withCta(
-          t('tabs.ticker.infoOpenHouseCount', { n: stats.openHouseCount }),
-          t('tabs.ticker.ctaReserve'),
+          t('tabs.ticker.infoOpenHouseCount', { n: ctx.openHouseCount }),
+          t('tabs.ticker.ctaOpenLive'),
         ),
         action: { type: 'live_panel' },
       }),
     );
   }
-  if (stats.auctionCount > 0) {
+
+  if (ctx.auctionCount > 1) {
     pool.push(
       msg({
         id: 'info-auction-count',
         priority: 'info',
         ...withCta(
-          t('tabs.ticker.infoAuctionCount', { n: stats.auctionCount }),
-          t('tabs.ticker.ctaOutbid'),
+          t('tabs.ticker.infoAuctionCount', { n: ctx.auctionCount }),
+          t('tabs.ticker.ctaOpenLive'),
         ),
         action: { type: 'live_panel' },
       }),
     );
   }
-  pool.push(
-    msg({
-      id: 'info-test',
-      priority: 'info',
-      ...withCta(t('tabs.liveTickerTest'), t('tabs.ticker.ctaOpenLive')),
-      action: { type: 'live_panel' },
-    }),
-  );
+
+  if (ctx.openHouseCount > 0 && ctx.auctionCount > 0) {
+    pool.push(
+      msg({
+        id: 'info-live-panel',
+        priority: 'info',
+        ...withCta(t('tabs.ticker.infoLiveHint'), t('tabs.ticker.ctaOpenLive')),
+        action: { type: 'live_panel' },
+      }),
+    );
+  }
+
+  if (ctx.userListingsCount > 0 && ctx.auctionCount === 0) {
+    if (ctx.isPro) {
+      pool.push(
+        msg({
+          id: 'info-suggest-auction',
+          priority: 'info',
+          ...withCta(t('tabs.ticker.infoSuggestAuction'), t('tabs.ticker.ctaStartAuction')),
+          action: { type: 'auction_hub' },
+        }),
+      );
+    } else {
+      pool.push(
+        msg({
+          id: 'info-suggest-auction-pro',
+          priority: 'info',
+          ...withCta(t('tabs.ticker.infoSuggestAuctionPro'), proCtaLabel(t, ctx.investorProHasTrial)),
+          action: { type: 'pro_upsell', reason: 'auction' },
+        }),
+      );
+    }
+  }
+
+  if (ctx.userListingsCount > 0 && ctx.openHouseCount === 0) {
+    if (ctx.isPro) {
+      pool.push(
+        msg({
+          id: 'info-suggest-open-house',
+          priority: 'info',
+          ...withCta(t('tabs.ticker.infoSuggestOpenHouse'), t('tabs.ticker.ctaPlanOpenHouse')),
+          action: { type: 'open_house_hub' },
+        }),
+      );
+    } else {
+      pool.push(
+        msg({
+          id: 'info-suggest-open-house-pro',
+          priority: 'info',
+          ...withCta(t('tabs.ticker.infoSuggestOpenHousePro'), proCtaLabel(t, ctx.investorProHasTrial)),
+          action: { type: 'pro_upsell', reason: 'open_house' },
+        }),
+      );
+    }
+  }
+
+  if (!ctx.isRadarActive) {
+    pool.push(
+      msg({
+        id: 'info-radar-enable',
+        priority: 'info',
+        ...withCta(t('tabs.ticker.infoRadarScan247'), t('tabs.ticker.ctaEnableRadar')),
+        action: { type: 'radar_calibration' },
+      }),
+    );
+  } else {
+    pool.push(
+      msg({
+        id: 'info-radar-active',
+        priority: 'info',
+        ...withCta(t('tabs.ticker.infoRadarActive247'), t('tabs.ticker.ctaAdjustRadar')),
+        action: { type: 'radar_calibration' },
+      }),
+    );
+  }
+
   return pool;
 }
 

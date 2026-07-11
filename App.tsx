@@ -1085,6 +1085,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
                 | {
                     authIntent?: 'login' | 'register';
                     openManageListings?: boolean;
+                    openShop?: boolean;
                     prefillEmail?: string;
                   }
                 | undefined

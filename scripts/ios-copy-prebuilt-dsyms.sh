@@ -12,12 +12,29 @@ if [[ -z "${DWARF_DSYM_FOLDER_PATH:-}" ]]; then
 fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+IOS_DIR="${ROOT}/ios"
+
+# Xcode run script phases don't inherit nvm/fnm PATH — use .xcode.env like RN scripts.
+if [[ -f "${IOS_DIR}/.xcode.env" ]]; then
+  # shellcheck source=/dev/null
+  source "${IOS_DIR}/.xcode.env"
+fi
+if [[ -f "${IOS_DIR}/.xcode.env.local" ]]; then
+  # shellcheck source=/dev/null
+  source "${IOS_DIR}/.xcode.env.local"
+fi
+NODE="${NODE_BINARY:-$(command -v node || true)}"
+if [[ -z "${NODE}" || ! -x "${NODE}" ]]; then
+  echo "error: [rn-dsyms] node not found. Set NODE_BINARY in ios/.xcode.env.local" >&2
+  exit 1
+fi
+
 CACHE_ROOT="${ROOT}/ios/.rn-dsyms-cache"
 MAVEN_BASE="${ENTERPRISE_REPOSITORY:-https://repo1.maven.org/maven2}/com/facebook/react/react-native-artifacts"
 
 RN_VERSION="$(
-  node -p "require('${ROOT}/node_modules/react-native/package.json').version" 2>/dev/null \
-    || node -p "require('${ROOT}/package.json').dependencies['react-native'].replace(/^[^0-9]*/, '')"
+  "${NODE}" -p "require('${ROOT}/node_modules/react-native/package.json').version" 2>/dev/null \
+    || "${NODE}" -p "require('${ROOT}/package.json').dependencies['react-native'].replace(/^[^0-9]*/, '')"
 )"
 
 BUILD_TYPE="release"

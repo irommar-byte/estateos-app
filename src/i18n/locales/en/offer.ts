@@ -244,6 +244,7 @@ export const offer = {
       amenities: 'Amenities',
       about: 'About the property',
       gallery: 'Photo gallery',
+      location: 'Location on map',
     },
     labels: {
       transactionType: 'Transaction type',
