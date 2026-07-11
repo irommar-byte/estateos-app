@@ -27,6 +27,7 @@ import {
   photoSessionCalendarParamsFromItem,
 } from '../../utils/photoSessionCalendar';
 import { photoSessionPaymentLabel } from '../../utils/photoSessionBilling';
+import PresentationCountdown from '../dealroom/PresentationCountdown';
 
 type Theme = {
   background: string;
@@ -249,7 +250,11 @@ function SessionCard({
       </View>
 
       <View style={[styles.termBox, { backgroundColor: isDark ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.08)' }]}>
-        <Text style={styles.termLabel}>{t('profile.properties.photoSessions.currentTerm')}</Text>
+        <Text style={styles.termLabel}>
+          {item.status === 'ACCEPTED'
+            ? t('profile.properties.photoSessions.confirmedTerm')
+            : t('profile.properties.photoSessions.currentTerm')}
+        </Text>
         <Text style={[styles.termValue, { color: theme.text }]}>{formatDateTime(item.proposedAt)}</Text>
         {item.status === 'ACCEPTED' ? (
           <Text style={[styles.billingInline, { color: theme.subtitle }]}>
@@ -257,6 +262,14 @@ function SessionCard({
           </Text>
         ) : null}
       </View>
+
+      {item.status === 'ACCEPTED' ? (
+        <PresentationCountdown
+          presentationIso={item.proposedAt}
+          label={t('profile.properties.photoSessions.countdownLabel')}
+          variant="panel"
+        />
+      ) : null}
 
       {waitingAdmin ? (
         <Text style={[styles.waitHint, { color: theme.subtitle }]}>{t('profile.properties.photoSessions.waitingAdminBody')}</Text>
@@ -407,7 +420,8 @@ export default function UserPhotoSessionsModal({ visible, onClose, theme, onActi
 
   const cardBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
   const pending = items.filter((x) => x.status === 'PENDING');
-  const history = items.filter((x) => x.status !== 'PENDING');
+  const confirmed = items.filter((x) => x.status === 'ACCEPTED');
+  const closed = items.filter((x) => x.status === 'REJECTED' || x.status === 'CANCELLED');
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -441,12 +455,20 @@ export default function UserPhotoSessionsModal({ visible, onClose, theme, onActi
             {pending.map((item) => (
               <SessionCard key={item.id} item={item} isDark={isDark} theme={theme} token={token!} onUpdated={load} t={t} />
             ))}
-            {history.length > 0 ? (
+            {confirmed.length > 0 ? (
+              <Text style={[styles.sectionLabel, { color: theme.subtitle, marginTop: pending.length ? 8 : 0 }]}>
+                {t('profile.properties.photoSessions.confirmedSection')}
+              </Text>
+            ) : null}
+            {confirmed.map((item) => (
+              <SessionCard key={item.id} item={item} isDark={isDark} theme={theme} token={token!} onUpdated={load} t={t} />
+            ))}
+            {closed.length > 0 ? (
               <Text style={[styles.sectionLabel, { color: theme.subtitle, marginTop: 8 }]}>
                 {t('profile.properties.photoSessions.historySection')}
               </Text>
             ) : null}
-            {history.map((item) => (
+            {closed.map((item) => (
               <SessionCard key={item.id} item={item} isDark={isDark} theme={theme} token={token!} onUpdated={load} t={t} />
             ))}
           </ScrollView>

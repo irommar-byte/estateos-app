@@ -25,6 +25,7 @@ import {
   offerPhotoSessionCalendarAfterAcceptance,
   photoSessionCalendarParamsFromItem,
 } from '../../utils/photoSessionCalendar';
+import PresentationCountdown from '../dealroom/PresentationCountdown';
 
 type Theme = {
   background: string;
@@ -361,10 +362,18 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
           </Text>
         ) : readOnly === 'confirmed' ? (
           <Text style={[styles.waitingHint, { color: theme.subtitle }]}>
-            Termin zaakceptowany — sesja jest w kalendarzu klienta i admina.
+            Termin zaakceptowany — sesja w kalendarzu klienta i admina.
           </Text>
         ) : null}
       </View>
+
+      {readOnly === 'confirmed' ? (
+        <PresentationCountdown
+          presentationIso={item.proposedAt}
+          label="DO SESJI ZDJĘCIOWEJ POZOSTAŁO"
+          variant="panel"
+        />
+      ) : null}
 
       <View
         style={[

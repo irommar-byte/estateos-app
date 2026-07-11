@@ -455,6 +455,9 @@ export const addOffer = {
       successTitle: 'Propozycja wysłana!',
       successBody:
         'Administrator otrzymał Twoją propozycję terminu {{label}}. Po akceptacji dostaniesz powiadomienie z potwierdzeniem.',
+      confirmedTitle: 'Sesja zdjęciowa potwierdzona',
+      confirmedBody: 'Termin {{label}} jest umówiony. Poniżej odliczanie do wizyty fotografa.',
+      countdownLabel: 'DO SESJI ZDJĘCIOWEJ POZOSTAŁO',
       manageInProfile: 'Negocjację terminu prowadzisz w Profil → Twoje nieruchomości → Sesje zdjęciowe.',
       openPhotoSessions: 'Otwórz sesje zdjęciowe',
       activePendingTitle: 'Masz aktywną rezerwację sesji',

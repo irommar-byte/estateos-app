@@ -28,6 +28,8 @@ import type { ProPhotoSessionExampleId } from './ProPhotoSessionExampleCard';
 import { getProPhotoSessionSampleOffer } from '../data/proPhotoSessionSampleOffers';
 import { navigationRef } from '../../navigationRef';
 import { StackActions } from '@react-navigation/native';
+import PresentationCountdown from './dealroom/PresentationCountdown';
+import { photoSessionPaymentLabel } from '../utils/photoSessionBilling';
 
 type Theme = {
   background: string;
@@ -99,8 +101,9 @@ export default function ProPhotoSessionModal({
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [activeRequest, setActiveRequest] = useState<PhotoSessionRequestItem | null>(null);
+  const [justSubmitted, setJustSubmitted] = useState(false);
+  const [pendingSession, setPendingSession] = useState<PhotoSessionRequestItem | null>(null);
+  const [acceptedSession, setAcceptedSession] = useState<PhotoSessionRequestItem | null>(null);
   const [loadingRequest, setLoadingRequest] = useState(false);
 
   const dates = useMemo(() => buildNextDays(), []);
@@ -118,24 +121,35 @@ export default function ProPhotoSessionModal({
     setSelectedHour(null);
     setNote(String(initialNote || '').trim());
     setError(null);
-    setSuccess(false);
+    setJustSubmitted(false);
     if (!safeToken) {
-      setActiveRequest(null);
+      setPendingSession(null);
+      setAcceptedSession(null);
       return;
     }
     setLoadingRequest(true);
     fetchMyPhotoSessionRequests(safeToken)
       .then((items) => {
         const pending = items.find((x) => x.status === 'PENDING') || null;
-        setActiveRequest(pending);
-        if (pending?.status === 'ACCEPTED') setSuccess(true);
+        const accepted =
+          items.find(
+            (x) => x.status === 'ACCEPTED' && new Date(x.proposedAt).getTime() > Date.now(),
+          ) ||
+          items.find((x) => x.status === 'ACCEPTED') ||
+          null;
+        setPendingSession(pending);
+        setAcceptedSession(accepted);
       })
-      .catch(() => setActiveRequest(null))
+      .catch(() => {
+        setPendingSession(null);
+        setAcceptedSession(null);
+      })
       .finally(() => setLoadingRequest(false));
   }, [visible, safeToken, initialNote]);
 
-  const hasActivePending = activeRequest?.status === 'PENDING';
-  const pendingNeedsUser = hasActivePending && activeRequest?.waitingOn === 'USER';
+  const hasActivePending = pendingSession?.status === 'PENDING';
+  const pendingNeedsUser = hasActivePending && pendingSession?.waitingOn === 'USER';
+  const hasAcceptedSession = acceptedSession?.status === 'ACCEPTED';
 
   const canAdvance =
     step === 1
@@ -153,7 +167,7 @@ export default function ProPhotoSessionModal({
   }, [selectedDate, selectedHour, t]);
 
   const handleSubmit = async () => {
-    if (!selectedDate || !selectedHour || loading || success) return;
+    if (!selectedDate || !selectedHour || loading || justSubmitted || hasAcceptedSession) return;
     if (!safeToken) {
       setError(t('addOffer.step5.proSession.errors.loginRequired'));
       return;
@@ -178,7 +192,16 @@ export default function ProPhotoSessionModal({
       );
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setSuccess(true);
+      setJustSubmitted(true);
+      const refreshed = await fetchMyPhotoSessionRequests(safeToken);
+      setPendingSession(refreshed.find((x) => x.status === 'PENDING') || null);
+      setAcceptedSession(
+        refreshed.find(
+          (x) => x.status === 'ACCEPTED' && new Date(x.proposedAt).getTime() > Date.now(),
+        ) ||
+          refreshed.find((x) => x.status === 'ACCEPTED') ||
+          null,
+      );
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const status = Number(err?.status || 0);
@@ -197,7 +220,7 @@ export default function ProPhotoSessionModal({
   };
 
   const handleSubmitPress = () => {
-    if (loading || success) return;
+    if (loading || justSubmitted || hasAcceptedSession) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     if (step === 1) {
@@ -289,7 +312,7 @@ export default function ProPhotoSessionModal({
         >
           <View style={[styles.card, { backgroundColor: isDark ? '#0b0b0b' : '#fafafa', borderColor: cardBorder }]}>
             <View style={styles.headerRow}>
-              {step > 1 && !success ? (
+              {step > 1 && !justSubmitted && !hasAcceptedSession ? (
                 <TouchableOpacity
                   style={[styles.backBtn, { borderColor: cardBorder }]}
                   onPress={() => setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3) : s))}
@@ -308,7 +331,7 @@ export default function ProPhotoSessionModal({
             <Text style={[styles.title, { color: theme.text }]}>{t('addOffer.step5.proSession.title')}</Text>
             <Text style={[styles.subtitle, { color: theme.subtitle }]}>{t('addOffer.step5.proSession.subtitle')}</Text>
 
-            {!safeToken && !success ? (
+            {!safeToken && !justSubmitted && !hasAcceptedSession ? (
               <View
                 style={[
                   styles.loginBanner,
@@ -334,14 +357,41 @@ export default function ProPhotoSessionModal({
                 <View style={styles.loadingBox}>
                   <ActivityIndicator color="#10b981" />
                 </View>
-              ) : success ? (
+              ) : hasAcceptedSession && acceptedSession ? (
+                <View style={[styles.successBox, { backgroundColor: isDark ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.35)' }]}>
+                  <Ionicons name="checkmark-circle" size={42} color="#10b981" />
+                  <Text style={[styles.successTitle, { color: theme.text }]}>{t('addOffer.step5.proSession.confirmedTitle')}</Text>
+                  <Text style={[styles.successBody, { color: theme.subtitle }]}>
+                    {t('addOffer.step5.proSession.confirmedBody', {
+                      label: new Date(acceptedSession.proposedAt).toLocaleString('pl-PL'),
+                    })}
+                  </Text>
+                  <View style={[styles.selectedTermCard, { backgroundColor: isDark ? '#141418' : '#f3f4f6', borderColor: cardBorder, alignSelf: 'stretch' }]}>
+                    <Text style={[styles.selectedTermLabel, { color: muted }]}>{t('profile.properties.photoSessions.confirmedTerm')}</Text>
+                    <Text style={[styles.selectedTermValue, { color: theme.text }]}>
+                      {new Date(acceptedSession.proposedAt).toLocaleString('pl-PL')}
+                    </Text>
+                    <Text style={[styles.billingInline, { color: theme.subtitle }]}>
+                      {acceptedSession.paymentLabel || photoSessionPaymentLabel(acceptedSession.isProFree)}
+                    </Text>
+                  </View>
+                  <PresentationCountdown
+                    presentationIso={acceptedSession.proposedAt}
+                    label={t('addOffer.step5.proSession.countdownLabel')}
+                    variant="panel"
+                  />
+                  <TouchableOpacity onPress={handleOpenPhotoSessions} style={styles.manageSessionsBtn}>
+                    <Text style={styles.manageSessionsBtnText}>{t('addOffer.step5.proSession.openPhotoSessions')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : justSubmitted ? (
                 <View style={[styles.successBox, { backgroundColor: isDark ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.35)' }]}>
                   <Ionicons name="checkmark-circle" size={42} color="#10b981" />
                   <Text style={[styles.successTitle, { color: theme.text }]}>{t('addOffer.step5.proSession.successTitle')}</Text>
                   <Text style={[styles.successBody, { color: theme.subtitle }]}>
-                    {activeRequest?.proposedAt
+                    {pendingSession?.proposedAt
                       ? t('addOffer.step5.proSession.successBody', {
-                          label: new Date(activeRequest.proposedAt).toLocaleString('pl-PL'),
+                          label: new Date(pendingSession.proposedAt).toLocaleString('pl-PL'),
                         })
                       : t('addOffer.step5.proSession.successBody', { label: selectedLabel })}
                   </Text>
@@ -352,7 +402,7 @@ export default function ProPhotoSessionModal({
                     <Text style={styles.manageSessionsBtnText}>{t('addOffer.step5.proSession.openPhotoSessions')}</Text>
                   </TouchableOpacity>
                 </View>
-              ) : hasActivePending && activeRequest ? (
+              ) : hasActivePending && pendingSession ? (
                 <View style={[styles.negotiationBox, { backgroundColor: isDark ? 'rgba(14,165,233,0.12)' : 'rgba(14,165,233,0.08)', borderColor: 'rgba(14,165,233,0.35)' }]}>
                   <Ionicons name="calendar-outline" size={32} color="#0ea5e9" />
                   <Text style={[styles.negotiationTitle, { color: theme.text }]}>
@@ -361,7 +411,7 @@ export default function ProPhotoSessionModal({
                       : t('addOffer.step5.proSession.activePendingTitle')}
                   </Text>
                   <Text style={[styles.negotiationBody, { color: theme.subtitle }]}>
-                    {new Date(activeRequest.proposedAt).toLocaleString('pl-PL')}
+                    {new Date(pendingSession.proposedAt).toLocaleString('pl-PL')}
                   </Text>
                   <Text style={[styles.negotiationHint, { color: theme.subtitle }]}>
                     {pendingNeedsUser
@@ -515,10 +565,10 @@ export default function ProPhotoSessionModal({
             <View style={styles.footerRow}>
               <TouchableOpacity style={[styles.secondaryBtn, { borderColor: cardBorder }]} onPress={onClose}>
                 <Text style={[styles.secondaryTxt, { color: theme.text }]}>
-                  {success || hasActivePending ? t('addOffer.common.close') : t('common.cancel')}
+                  {justSubmitted || hasAcceptedSession || hasActivePending ? t('addOffer.common.close') : t('common.cancel')}
                 </Text>
               </TouchableOpacity>
-              {!success && !hasActivePending ? (
+              {!justSubmitted && !hasAcceptedSession && !hasActivePending ? (
                 <TouchableOpacity
                   style={[styles.primaryBtn, !canAdvance && styles.disabled]}
                   onPress={handleSubmitPress}
@@ -676,6 +726,7 @@ const styles = StyleSheet.create({
   selectedTermCard: { borderRadius: 12, borderWidth: 1, padding: 12 },
   selectedTermLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
   selectedTermValue: { fontSize: 15, fontWeight: '800', marginTop: 4 },
+  billingInline: { fontSize: 12, fontWeight: '600', marginTop: 6 },
   noteInput: {
     borderRadius: 12,
     borderWidth: 1,

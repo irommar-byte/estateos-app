@@ -165,6 +165,9 @@ export const profile = {
       loadFailed: 'Could not load bookings.',
       acceptConfirm: 'Accept slot {{label}}?',
       declineConfirm: 'Decline the administrator proposal?',
+      confirmedSection: 'Confirmed',
+      countdownLabel: 'TIME UNTIL PHOTO SESSION',
+      confirmedTerm: 'Confirmed slot',
     },
   },
   security: {

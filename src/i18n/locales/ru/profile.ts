@@ -165,6 +165,9 @@ export const profile = {
       loadFailed: 'Не удалось загрузить бронирования.',
       acceptConfirm: 'Принять слот {{label}}?',
       declineConfirm: 'Отклонить предложение администратора?',
+      confirmedSection: 'Подтверждено',
+      countdownLabel: 'ДО ФОТОСЕССИИ ОСТАЛОСЬ',
+      confirmedTerm: 'Подтверждённое время',
     },
   },
   security: {

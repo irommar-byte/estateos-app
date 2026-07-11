@@ -165,6 +165,9 @@ export const profile = {
       loadFailed: 'Nie udało się pobrać rezerwacji.',
       acceptConfirm: 'Zaakceptować termin {{label}}?',
       declineConfirm: 'Odrzucić propozycję administratora?',
+      confirmedSection: 'Umówione',
+      countdownLabel: 'DO SESJI ZDJĘCIOWEJ POZOSTAŁO',
+      confirmedTerm: 'Potwierdzony termin',
     },
   },
   security: {

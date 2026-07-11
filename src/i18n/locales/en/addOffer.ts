@@ -447,6 +447,9 @@ export const addOffer = {
       successTitle: 'Proposal sent!',
       successBody:
         'The administrator received your proposed slot {{label}}. You will get a notification once it is confirmed.',
+      confirmedTitle: 'Photo session confirmed',
+      confirmedBody: 'Your slot {{label}} is booked. Countdown to the photographer visit below.',
+      countdownLabel: 'TIME UNTIL PHOTO SESSION',
       manageInProfile: 'Manage the session schedule in Profile → Your properties → Photo sessions.',
       openPhotoSessions: 'Open photo sessions',
       activePendingTitle: 'You have an active session booking',
