@@ -168,6 +168,11 @@ export const profile = {
       confirmedSection: 'Umówione',
       countdownLabel: 'DO SESJI ZDJĘCIOWEJ POZOSTAŁO',
       confirmedTerm: 'Potwierdzony termin',
+      badgeNegotiating: 'Negocjacje terminu — propozycja {{date}}',
+      badgeConfirmed: 'Termin umówiony — {{date}}',
+      contactContractor: 'Kontakt z wykonawcą',
+      timelineExpand: 'Pokaż historię negocjacji',
+      timelineCollapse: 'Zwiń historię negocjacji',
     },
   },
   security: {

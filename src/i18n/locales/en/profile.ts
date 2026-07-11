@@ -168,6 +168,11 @@ export const profile = {
       confirmedSection: 'Confirmed',
       countdownLabel: 'TIME UNTIL PHOTO SESSION',
       confirmedTerm: 'Confirmed slot',
+      badgeNegotiating: 'Schedule negotiation — proposal {{date}}',
+      badgeConfirmed: 'Slot confirmed — {{date}}',
+      contactContractor: 'Contact contractor',
+      timelineExpand: 'Show negotiation history',
+      timelineCollapse: 'Hide negotiation history',
     },
   },
   security: {

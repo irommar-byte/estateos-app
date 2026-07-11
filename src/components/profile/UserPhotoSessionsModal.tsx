@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useI18n } from '../../i18n';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useNavigation } from '@react-navigation/native';
 import {
   fetchMyPhotoSessionRequests,
   PhotoSessionEventItem,
@@ -28,6 +29,11 @@ import {
 } from '../../utils/photoSessionCalendar';
 import { photoSessionPaymentLabel } from '../../utils/photoSessionBilling';
 import PresentationCountdown from '../dealroom/PresentationCountdown';
+import { openDirectContactChat } from '../../utils/openDirectContact';
+import {
+  PHOTO_SESSION_CONTRACTOR_NAME,
+  PHOTO_SESSION_CONTRACTOR_USER_ID,
+} from '../../constants/photoSession';
 
 type Theme = {
   background: string;
@@ -74,6 +80,20 @@ function formatDateTime(iso: string) {
   }
 }
 
+function formatBadgeDateTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleString('pl-PL', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return iso;
+  }
+}
+
 function eventLabel(action: string, t: (key: string) => string) {
   switch (String(action).toUpperCase()) {
     case 'PROPOSED':
@@ -98,38 +118,93 @@ function statusLabel(item: PhotoSessionRequestItem, t: (key: string, opts?: Reco
   return t('profile.properties.photoSessions.statusPending');
 }
 
-function NegotiationTimeline({
-  events,
+function CollapsibleNegotiationHistory({
+  item,
   isDark,
   textColor,
   mutedColor,
   t,
 }: {
-  events: PhotoSessionEventItem[];
+  item: PhotoSessionRequestItem;
   isDark: boolean;
   textColor: string;
   mutedColor: string;
-  t: (key: string) => string;
+  t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
-  if (!events.length) return null;
+  const events = item.events || [];
+  const [expanded, setExpanded] = useState(item.status !== 'ACCEPTED');
+  const badgeDate = formatBadgeDateTime(item.proposedAt);
+  const isConfirmed = item.status === 'ACCEPTED';
+  const isNegotiating = item.status === 'PENDING';
+  const cardBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+
+  if (!events.length && !isNegotiating && !isConfirmed) return null;
+
+  const toggle = () => {
+    Haptics.selectionAsync();
+    setExpanded((v) => !v);
+  };
+
   return (
     <View style={styles.timelineWrap}>
-      <Text style={[styles.timelineTitle, { color: mutedColor }]}>{t('profile.properties.photoSessions.timelineTitle')}</Text>
-      {events.map((ev) => (
-        <View
-          key={ev.id}
-          style={[
-            styles.timelineItem,
-            { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
-          ]}
-        >
-          <Text style={[styles.timelineLabel, { color: textColor }]}>{eventLabel(ev.action, t)}</Text>
-          {ev.proposedAt ? (
-            <Text style={[styles.timelineDate, { color: mutedColor }]}>{formatDateTime(ev.proposedAt)}</Text>
+      <Pressable
+        onPress={toggle}
+        style={[styles.timelineToggleRow, { borderColor: cardBorder }]}
+        accessibilityRole="button"
+        accessibilityLabel={
+          expanded
+            ? t('profile.properties.photoSessions.timelineCollapse')
+            : t('profile.properties.photoSessions.timelineExpand')
+        }
+      >
+        {isConfirmed ? (
+          <View style={styles.badgeConfirmed}>
+            <Text style={styles.badgeConfirmedText}>
+              {t('profile.properties.photoSessions.badgeConfirmed', { date: badgeDate })}
+            </Text>
+          </View>
+        ) : isNegotiating ? (
+          <View style={styles.badgeNegotiating}>
+            <Text style={styles.badgeNegotiatingText}>
+              {t('profile.properties.photoSessions.badgeNegotiating', { date: badgeDate })}
+            </Text>
+          </View>
+        ) : (
+          <Text style={[styles.timelineTitle, { color: mutedColor, flex: 1 }]}>
+            {t('profile.properties.photoSessions.timelineTitle')}
+          </Text>
+        )}
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={16}
+          color={mutedColor}
+        />
+      </Pressable>
+
+      {expanded ? (
+        <>
+          {events.length > 0 ? (
+            <Text style={[styles.timelineTitle, { color: mutedColor, marginTop: 4 }]}>
+              {t('profile.properties.photoSessions.timelineTitle')}
+            </Text>
           ) : null}
-          {ev.note ? <Text style={[styles.timelineNote, { color: mutedColor }]}>{ev.note}</Text> : null}
-        </View>
-      ))}
+          {events.map((ev) => (
+            <View
+              key={ev.id}
+              style={[
+                styles.timelineItem,
+                { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
+              ]}
+            >
+              <Text style={[styles.timelineLabel, { color: textColor }]}>{eventLabel(ev.action, t)}</Text>
+              {ev.proposedAt ? (
+                <Text style={[styles.timelineDate, { color: mutedColor }]}>{formatDateTime(ev.proposedAt)}</Text>
+              ) : null}
+              {ev.note ? <Text style={[styles.timelineNote, { color: mutedColor }]}>{ev.note}</Text> : null}
+            </View>
+          ))}
+        </>
+      ) : null}
     </View>
   );
 }
@@ -140,6 +215,7 @@ function SessionCard({
   theme,
   token,
   onUpdated,
+  onCloseModal,
   t,
 }: {
   item: PhotoSessionRequestItem;
@@ -147,8 +223,10 @@ function SessionCard({
   theme: Theme;
   token: string;
   onUpdated: () => void;
+  onCloseModal?: () => void;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(false);
   const [respondMode, setRespondMode] = useState<'idle' | 'counter'>('idle');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -162,6 +240,18 @@ function SessionCard({
   const cardBg = isDark ? '#141418' : '#f9fafb';
   const needsUser = item.status === 'PENDING' && item.waitingOn === 'USER';
   const waitingAdmin = item.status === 'PENDING' && item.waitingOn === 'ADMIN';
+  const canContactContractor = item.status === 'PENDING' || item.status === 'ACCEPTED';
+
+  const handleContactContractor = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onCloseModal?.();
+    void openDirectContactChat(
+      navigation,
+      token,
+      PHOTO_SESSION_CONTRACTOR_USER_ID,
+      PHOTO_SESSION_CONTRACTOR_NAME,
+    );
+  };
 
   const handleRespond = async (action: 'accept' | 'counter' | 'decline') => {
     if (loading) return;
@@ -279,13 +369,27 @@ function SessionCard({
         <Text style={[styles.waitHint, { color: theme.subtitle }]}>{t('profile.properties.photoSessions.needsReplyBody')}</Text>
       ) : null}
 
-      <NegotiationTimeline
-        events={item.events || []}
+      <CollapsibleNegotiationHistory
+        item={item}
         isDark={isDark}
         textColor={theme.text}
         mutedColor={theme.subtitle}
         t={t}
       />
+
+      {canContactContractor ? (
+        <TouchableOpacity
+          onPress={handleContactContractor}
+          style={[styles.contactBtn, { borderColor: cardBorder, backgroundColor: isDark ? '#141418' : '#f9fafb' }]}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={18} color="#0ea5e9" />
+          <Text style={[styles.contactBtnText, { color: theme.text }]}>
+            {t('profile.properties.photoSessions.contactContractor')}
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.subtitle} />
+        </TouchableOpacity>
+      ) : null}
 
       {needsUser && respondMode === 'counter' ? (
         <View style={[styles.counterBox, { backgroundColor: cardBg, borderColor: cardBorder }]}>
@@ -453,7 +557,16 @@ export default function UserPhotoSessionsModal({ visible, onClose, theme, onActi
               <Text style={[styles.sectionLabel, { color: theme.subtitle }]}>{t('profile.properties.photoSessions.activeSection')}</Text>
             ) : null}
             {pending.map((item) => (
-              <SessionCard key={item.id} item={item} isDark={isDark} theme={theme} token={token!} onUpdated={load} t={t} />
+              <SessionCard
+                key={item.id}
+                item={item}
+                isDark={isDark}
+                theme={theme}
+                token={token!}
+                onUpdated={load}
+                onCloseModal={onClose}
+                t={t}
+              />
             ))}
             {confirmed.length > 0 ? (
               <Text style={[styles.sectionLabel, { color: theme.subtitle, marginTop: pending.length ? 8 : 0 }]}>
@@ -461,7 +574,16 @@ export default function UserPhotoSessionsModal({ visible, onClose, theme, onActi
               </Text>
             ) : null}
             {confirmed.map((item) => (
-              <SessionCard key={item.id} item={item} isDark={isDark} theme={theme} token={token!} onUpdated={load} t={t} />
+              <SessionCard
+                key={item.id}
+                item={item}
+                isDark={isDark}
+                theme={theme}
+                token={token!}
+                onUpdated={load}
+                onCloseModal={onClose}
+                t={t}
+              />
             ))}
             {closed.length > 0 ? (
               <Text style={[styles.sectionLabel, { color: theme.subtitle, marginTop: 8 }]}>
@@ -469,7 +591,16 @@ export default function UserPhotoSessionsModal({ visible, onClose, theme, onActi
               </Text>
             ) : null}
             {closed.map((item) => (
-              <SessionCard key={item.id} item={item} isDark={isDark} theme={theme} token={token!} onUpdated={load} t={t} />
+              <SessionCard
+                key={item.id}
+                item={item}
+                isDark={isDark}
+                theme={theme}
+                token={token!}
+                onUpdated={load}
+                onCloseModal={onClose}
+                t={t}
+              />
             ))}
           </ScrollView>
         )}
@@ -543,6 +674,46 @@ const styles = StyleSheet.create({
   billingInline: { fontSize: 12, fontWeight: '600', marginTop: 6 },
   waitHint: { fontSize: 12, fontWeight: '500', lineHeight: 17 },
   timelineWrap: { gap: 8 },
+  timelineToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  badgeNegotiating: {
+    flex: 1,
+    backgroundColor: 'rgba(255,159,10,0.16)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,159,10,0.35)',
+  },
+  badgeNegotiatingText: { color: '#B45309', fontSize: 11, fontWeight: '800' },
+  badgeConfirmed: {
+    flex: 1,
+    backgroundColor: 'rgba(16,185,129,0.14)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.35)',
+  },
+  badgeConfirmedText: { color: '#047857', fontSize: 11, fontWeight: '800' },
+  contactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  contactBtnText: { flex: 1, fontSize: 14, fontWeight: '800' },
   timelineTitle: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
   timelineItem: { borderWidth: 1, borderRadius: 10, padding: 10, gap: 2 },
   timelineLabel: { fontSize: 12, fontWeight: '800' },

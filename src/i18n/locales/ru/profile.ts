@@ -168,6 +168,11 @@ export const profile = {
       confirmedSection: 'Подтверждено',
       countdownLabel: 'ДО ФОТОСЕССИИ ОСТАЛОСЬ',
       confirmedTerm: 'Подтверждённое время',
+      badgeNegotiating: 'Переговоры о времени — предложение {{date}}',
+      badgeConfirmed: 'Время согласовано — {{date}}',
+      contactContractor: 'Связаться с исполнителем',
+      timelineExpand: 'Показать историю переговоров',
+      timelineCollapse: 'Свернуть историю переговоров',
     },
   },
   security: {
