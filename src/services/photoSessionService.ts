@@ -25,6 +25,9 @@ export type PhotoSessionRequestItem = {
   propertyType?: string | null;
   transactionType?: string | null;
   isProFree: boolean;
+  paymentLabel?: string | null;
+  paymentAmountPln?: number;
+  adminNote?: string | null;
   acceptedAt?: string | null;
   createdAt: string;
   requesterName?: string | null;

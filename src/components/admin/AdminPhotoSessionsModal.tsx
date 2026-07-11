@@ -20,6 +20,11 @@ import {
   PhotoSessionRequestItem,
   PhotoSessionServiceError,
 } from '../../services/photoSessionService';
+import { photoSessionPaymentAdminHint, photoSessionPaymentLabel } from '../../utils/photoSessionBilling';
+import {
+  offerPhotoSessionCalendarAfterAcceptance,
+  photoSessionCalendarParamsFromItem,
+} from '../../utils/photoSessionCalendar';
 
 type Theme = {
   background: string;
@@ -240,12 +245,19 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
     if (submittingId) return;
     setSubmittingId(item.id);
     try {
-      await adminPhotoSessionAction(item.id, { action, ...extra }, token);
+      const result = await adminPhotoSessionAction(item.id, { action, ...extra }, token);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setCounterForId(null);
       setCounterDate(null);
       setCounterHour(null);
       setCounterNote('');
+      if (action === 'accept' && result?.request) {
+        void offerPhotoSessionCalendarAfterAcceptance(
+          photoSessionCalendarParamsFromItem(result.request, 'admin', {
+            adminNote: extra?.adminNote ?? result.request.adminNote,
+          }),
+        );
+      }
       await loadQueue();
     } catch (err) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -352,6 +364,30 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
             Termin zaakceptowany — sesja jest w kalendarzu klienta i admina.
           </Text>
         ) : null}
+      </View>
+
+      <View
+        style={[
+          styles.billingBox,
+          {
+            backgroundColor: item.isProFree
+              ? isDark
+                ? 'rgba(168,85,247,0.12)'
+                : 'rgba(168,85,247,0.08)'
+              : isDark
+                ? 'rgba(255,159,10,0.12)'
+                : 'rgba(255,159,10,0.08)',
+            borderColor: item.isProFree ? 'rgba(168,85,247,0.35)' : 'rgba(255,159,10,0.35)',
+          },
+        ]}
+      >
+        <Text style={[styles.billingLabel, { color: theme.subtitle }]}>Rozliczenie</Text>
+        <Text style={[styles.billingValue, { color: theme.text }]}>
+          {item.paymentLabel || photoSessionPaymentLabel(item.isProFree)}
+        </Text>
+        <Text style={[styles.billingHint, { color: theme.subtitle }]}>
+          {photoSessionPaymentAdminHint(item.isProFree)}
+        </Text>
       </View>
 
       {onViewUser ? (
@@ -603,6 +639,10 @@ const styles = StyleSheet.create({
   },
   pricePillText: { color: '#10b981', fontSize: 10, fontWeight: '900' },
   termBox: { borderRadius: 12, padding: 10 },
+  billingBox: { borderRadius: 12, borderWidth: 1, padding: 10, marginTop: 10, gap: 4 },
+  billingLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
+  billingValue: { fontSize: 14, fontWeight: '800' },
+  billingHint: { fontSize: 12, fontWeight: '500', lineHeight: 17 },
   termLabel: { color: '#10b981', fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
   termValue: { fontSize: 15, fontWeight: '800', marginTop: 4 },
   waitingHint: { fontSize: 11, fontWeight: '600', marginTop: 6 },

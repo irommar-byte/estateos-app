@@ -22,6 +22,11 @@ import {
   PhotoSessionServiceError,
   respondMyPhotoSessionRequest,
 } from '../../services/photoSessionService';
+import {
+  offerPhotoSessionCalendarAfterAcceptance,
+  photoSessionCalendarParamsFromItem,
+} from '../../utils/photoSessionCalendar';
+import { photoSessionPaymentLabel } from '../../utils/photoSessionBilling';
 
 type Theme = {
   background: string;
@@ -200,8 +205,13 @@ function SessionCard({
           setLoading(true);
           setError(null);
           void respondMyPhotoSessionRequest(item.id, { action }, token)
-            .then(() => {
+            .then((result) => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              if (action === 'accept' && result?.request) {
+                void offerPhotoSessionCalendarAfterAcceptance(
+                  photoSessionCalendarParamsFromItem(result.request, 'user'),
+                );
+              }
               onUpdated();
             })
             .catch((err: any) => {
@@ -241,6 +251,11 @@ function SessionCard({
       <View style={[styles.termBox, { backgroundColor: isDark ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.08)' }]}>
         <Text style={styles.termLabel}>{t('profile.properties.photoSessions.currentTerm')}</Text>
         <Text style={[styles.termValue, { color: theme.text }]}>{formatDateTime(item.proposedAt)}</Text>
+        {item.status === 'ACCEPTED' ? (
+          <Text style={[styles.billingInline, { color: theme.subtitle }]}>
+            {item.paymentLabel || photoSessionPaymentLabel(item.isProFree)}
+          </Text>
+        ) : null}
       </View>
 
       {waitingAdmin ? (
@@ -372,6 +387,11 @@ export default function UserPhotoSessionsModal({ visible, onClose, theme, onActi
       setItems(list);
       const actionCount = list.filter((x) => x.status === 'PENDING' && x.waitingOn === 'USER').length;
       onActionCountChange?.(actionCount);
+      for (const accepted of list.filter((x) => x.status === 'ACCEPTED')) {
+        void offerPhotoSessionCalendarAfterAcceptance(
+          photoSessionCalendarParamsFromItem(accepted, 'user'),
+        );
+      }
     } catch (err) {
       const msg = err instanceof PhotoSessionServiceError ? err.message : t('profile.properties.photoSessions.loadFailed');
       Alert.alert(t('profile.properties.photoSessions.title'), msg);
@@ -498,6 +518,7 @@ const styles = StyleSheet.create({
   termBox: { borderRadius: 12, padding: 10 },
   termLabel: { color: '#10b981', fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
   termValue: { fontSize: 15, fontWeight: '800', marginTop: 4 },
+  billingInline: { fontSize: 12, fontWeight: '600', marginTop: 6 },
   waitHint: { fontSize: 12, fontWeight: '500', lineHeight: 17 },
   timelineWrap: { gap: 8 },
   timelineTitle: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },

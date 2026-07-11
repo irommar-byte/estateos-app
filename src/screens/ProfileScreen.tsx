@@ -78,6 +78,7 @@ import { getDeviceAppLocale, useAppLocaleStore } from '../store/useAppLocaleStor
 import { fetchAdminLegalVerificationQueue } from '../services/legalVerificationService';
 import { fetchAdminContentReports } from '../services/adminReportsService';
 import { fetchAdminPhotoSessionQueue, fetchMyPhotoSessionRequests } from '../services/photoSessionService';
+import { offerPhotoSessionCalendarAfterAcceptance } from '../utils/photoSessionCalendar';
 import { userAfterPakietPlusPurchase } from '../utils/listingQuota';
 import {
   persistMobileOfferUpdate,
@@ -2835,9 +2836,29 @@ function ProfileScreenLoggedIn({
       const data = (notification?.request?.content?.data || {}) as Record<string, unknown>;
       if (String(data?.kind || '').toLowerCase() !== 'photo_session') return;
       void refreshUserPhotoSessions();
+      if (String(data?.action || '').toLowerCase() === 'accepted') {
+        const requestId = Number(data?.requestId || 0);
+        const proposedAt = String(data?.proposedAt || '').trim();
+        if (requestId > 0 && proposedAt) {
+          void offerPhotoSessionCalendarAfterAcceptance({
+            requestId,
+            proposedAtIso: proposedAt,
+            propertyLabel: String(data?.propertyLabel || '').trim() || null,
+            propertyType: String(data?.propertyType || '').trim() || null,
+            transactionType: String(data?.transactionType || '').trim() || null,
+            isProFree: String(data?.isProFree || '') === '1',
+            note: String(data?.note || '').trim() || null,
+            adminNote: String(data?.adminNote || '').trim() || null,
+            requesterName: user?.name || null,
+            requesterPhone: user?.phone || null,
+            requesterEmail: user?.email || null,
+            viewerRole: 'user',
+          });
+        }
+      }
     });
     return () => sub.remove();
-  }, [token, user?.id]);
+  }, [token, user?.id, user?.name, user?.phone, user?.email]);
 
   const togglePasskey = async (value) => {
     if (value && Platform.OS === 'android' && !passkeyHardwareSupported) {
