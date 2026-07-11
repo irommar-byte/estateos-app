@@ -192,7 +192,8 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
-function buildTechnicalSections(vehicleData: Record<string, unknown>): VehicleHistorySection[] {
+function buildTechnicalSections(vehicleData: Record<string, unknown> | null | undefined): VehicleHistorySection[] {
+  if (!vehicleData) return [];
   const sections: VehicleHistorySection[] = [];
   const technical = asRecord(vehicleData.technicalData) || vehicleData;
   const basic = asRecord(technical.basicData) || technical;
@@ -233,7 +234,8 @@ function buildTechnicalSections(vehicleData: Record<string, unknown>): VehicleHi
   return sections;
 }
 
-function buildTimelineSection(timelineData: Record<string, unknown>): VehicleHistorySection | null {
+function buildTimelineSection(timelineData: Record<string, unknown> | null | undefined): VehicleHistorySection | null {
+  if (!timelineData) return null;
   const timeline = asRecord(timelineData.timelineData) || timelineData;
   const headerRows = objectToRows(timeline, ['events']);
   const events = Array.isArray(timeline.events) ? timeline.events : [];
@@ -356,7 +358,11 @@ export async function buildVehicleHistoryReport(input: VehicleHistoryRequest): P
     const timelineSection = buildTimelineSection(timelineData);
     if (timelineSection) sections.push(timelineSection);
 
-    const basic = asRecord(asRecord(vehicleData.technicalData)?.basicData) || {};
+    if (!vehicleData && !timelineData) {
+      throw new Error('CEPIK nie zwrócił danych historii pojazdu. Spróbuj ponownie za chwilę.');
+    }
+
+    const basic = asRecord(asRecord(vehicleData?.technicalData)?.basicData) || {};
     const make = formatValue(basic.make);
     const model = formatValue(basic.model);
     const summaryParts = [

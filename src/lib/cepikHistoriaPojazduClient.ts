@@ -185,10 +185,14 @@ export async function fetchCepikInsuranceData(
 
 export async function queryCepikVehicle(query: CepikVehicleQuery) {
   return withCepikSession(async (session) => {
-    const [vehicleData, timelineData] = await Promise.all([
-      fetchCepikVehicleData(session, query),
-      fetchCepikTimelineData(session, query),
-    ]);
+    const vehicleResult = await fetchCepikVehicleData(session, query).catch((error) => {
+      if (error instanceof CepikHistoriaPojazduError) throw error;
+      throw error;
+    });
+
+    const timelineData = await fetchCepikTimelineData(session, query).catch(() => null);
+    const vehicleData = vehicleResult && typeof vehicleResult === 'object' ? vehicleResult : null;
+
     return { vehicleData, timelineData };
   });
 }
