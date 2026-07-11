@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 
 /**
- * Suma czerwonych badge'y w sekcji administratora na ekranie Profil
- * (baza ofert + zgłoszenia UGC + weryfikacja prawna).
+ * Suma czerwonych badge'y na ekranie Profil (sesje zdjęciowe, zadania admina itd.).
  *
- * `ProfileScreen` jest źródłem prawdy — po każdym odświeżeniu liczników
- * zapisuje sumę tutaj. `App.tsx` czyta ją wyłącznie pod `tabBarBadge` zakładki Profil.
+ * `ProfileScreen` aktualizuje store po lokalnym przeliczeniu sekcji.
+ * `App.tsx` woła `refreshProfileTabBadgeCounts` przy starcie / push / powrocie z tła,
+ * żeby badge był widoczny na zakładce Profil nawet zanim użytkownik wejdzie w ekran.
  */
 interface ProfileTabBadgeState {
   profilePendingCount: number;

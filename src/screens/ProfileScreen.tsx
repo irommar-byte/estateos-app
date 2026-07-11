@@ -2805,9 +2805,11 @@ function ProfileScreenLoggedIn({
     ? adminPendingOffersCount + adminPendingReportsCount + adminPendingLegalCount + adminPendingPhotoSessionsCount
     : 0;
 
+  const profileTabBadgeTotal = adminProfileTabBadgeTotal + userPhotoSessionsActionCount;
+
   useEffect(() => {
-    useProfileTabBadgeStore.getState().setProfilePendingCount(adminProfileTabBadgeTotal);
-  }, [adminProfileTabBadgeTotal]);
+    useProfileTabBadgeStore.getState().setProfilePendingCount(profileTabBadgeTotal);
+  }, [profileTabBadgeTotal]);
 
   useEffect(() => {
     if (!isZarzad) return;

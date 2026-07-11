@@ -55,7 +55,7 @@ import { useBlockedUsersStore } from './src/store/useBlockedUsersStore';
 import { useUnreadBadgeStore } from './src/store/useUnreadBadgeStore';
 import { useProfileTabBadgeStore } from './src/store/useProfileTabBadgeStore';
 import { useEcosystemStore } from './src/store/useEcosystemStore';
-import { refreshAdminAttentionBadgeCounts } from './src/services/adminAttentionRefresh';
+import { refreshProfileTabBadgeCounts } from './src/services/profileTabBadgeRefresh';
 import { bootstrapFxRateRefresh } from './src/store/useFxRateStore';
 import { RELEASE_BUILD_FINGERPRINT } from './src/releaseBuildMarker';
 import AppleHover from './src/components/AppleHover';
@@ -837,19 +837,19 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
   useEffect(() => {
     if (!token) {
       useProfileTabBadgeStore.getState().setProfilePendingCount(0);
+      return;
     }
-  }, [token]);
 
-  useEffect(() => {
-    if (!isAdminUser || !token) return;
-
-    const refresh = () => void refreshAdminAttentionBadgeCounts(token);
+    const refresh = () => void refreshProfileTabBadgeCounts(token, { isAdmin: isAdminUser });
 
     refresh();
     const pushSub = Notifications.addNotificationReceivedListener((notification) => {
       const data = (notification?.request?.content?.data || {}) as Record<string, unknown>;
-      if (String(data?.kind || data?.notificationType || '').toLowerCase() !== 'admin_attention') return;
-      refresh();
+      const kind = String(data?.kind || data?.notificationType || '').toLowerCase();
+      const attentionType = String(data?.attentionType || '').toLowerCase();
+      if (kind === 'admin_attention' || attentionType === 'photo_session') {
+        refresh();
+      }
     });
     const appSub = AppState.addEventListener('change', (state) => {
       if (state === 'active') refresh();
@@ -919,8 +919,8 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       void Notifications.setBadgeCountAsync(0).catch(() => undefined);
       return;
     }
-    void Notifications.setBadgeCountAsync(messagesTabBadgeCount).catch(() => undefined);
-  }, [messagesTabBadgeCount, token]);
+    void Notifications.setBadgeCountAsync(messagesTabBadgeCount + profilePendingCount).catch(() => undefined);
+  }, [messagesTabBadgeCount, profilePendingCount, token]);
 
   return (
     <View style={{ flex: 1 }}>
