@@ -28,7 +28,7 @@ type ViewMode = 'list' | 'grid';
 export default function CarsCatalogScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const { colors, elevation } = useCarScreenTheme();
+  const { colors, elevation, isDark } = useCarScreenTheme();
   const { width: screenWidth } = useWindowDimensions();
   const isTabletLike = screenWidth >= 600;
   const [viewMode, setViewMode] = useState<ViewMode>(isTabletLike ? 'grid' : 'list');
@@ -42,7 +42,7 @@ export default function CarsCatalogScreen() {
     }
     return { cardWidth: undefined as number | undefined, imageAspectRatio: 16 / 10, compact: false };
   }, [isGridView, screenWidth]);
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const [tab, setTab] = useState<Tab>('catalog');
@@ -133,11 +133,24 @@ export default function CarsCatalogScreen() {
         Jedno konto EstateOS — przełączaj się między nieruchomościami i autami bez ponownego logowania.
       </Text>
 
-      <View style={styles.actionsRow}>
-        <Pressable onPress={openAdd} style={styles.addBtn}>
-          <Text style={styles.addBtnLabel}>+ Dodaj auto</Text>
-        </Pressable>
-      </View>
+      <Pressable
+        onPress={() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          openAdd();
+        }}
+        style={({ pressed }) => [styles.addBtn, elevation.cardSm, pressed && styles.addBtnPressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Dodaj auto — opublikuj ogłoszenie"
+      >
+        <View style={styles.addBtnIconWrap}>
+          <Ionicons name="car-sport" size={22} color={colors.primaryButtonText} />
+        </View>
+        <View style={styles.addBtnCopy}>
+          <Text style={styles.addBtnLabel}>Dodaj auto</Text>
+          <Text style={styles.addBtnHint}>Opublikuj ogłoszenie w katalogu EstateOS Car</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={colors.primaryButtonText} style={styles.addBtnChevron} />
+      </Pressable>
 
       <View style={styles.tabs}>
         <Pressable onPress={() => setTab('catalog')} style={[styles.tab, tab === 'catalog' && styles.tabActive]}>
@@ -309,7 +322,7 @@ export default function CarsCatalogScreen() {
   );
 }
 
-function createStyles(colors: CarScreenColors) {
+function createStyles(colors: CarScreenColors, isDark: boolean) {
   return StyleSheet.create({
     container: {
       minHeight: '100%',
@@ -337,21 +350,49 @@ function createStyles(colors: CarScreenColors) {
       fontSize: 15,
       lineHeight: 23,
     },
-    actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
     addBtn: {
-      borderRadius: 999,
+      width: '100%',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      borderRadius: 18,
       borderWidth: 1,
       borderColor: colors.primaryButtonBorder,
       backgroundColor: colors.primaryButtonBg,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
+      paddingHorizontal: 18,
+      paddingVertical: 16,
+    },
+    addBtnPressed: {
+      opacity: 0.94,
+      transform: [{ scale: 0.99 }],
+    },
+    addBtnIconWrap: {
+      width: 48,
+      height: 48,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.22)',
+    },
+    addBtnCopy: {
+      flex: 1,
+      gap: 2,
     },
     addBtnLabel: {
       color: colors.primaryButtonText,
-      fontSize: 11,
-      fontWeight: '900',
-      letterSpacing: 1.4,
-      textTransform: 'uppercase',
+      fontSize: 17,
+      fontWeight: '800',
+      letterSpacing: -0.2,
+    },
+    addBtnHint: {
+      color: colors.primaryButtonText,
+      opacity: 0.82,
+      fontSize: 12,
+      fontWeight: '600',
+      lineHeight: 16,
+    },
+    addBtnChevron: {
+      opacity: 0.88,
     },
     tabs: {
       flexDirection: 'row',
