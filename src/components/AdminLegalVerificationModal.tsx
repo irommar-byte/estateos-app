@@ -346,6 +346,7 @@ export default function AdminLegalVerificationModal({ visible, onClose, theme, o
         </View>
         </KeyboardAvoidingView>
       </Modal>
+    </Modal>
 
       <EkwBookViewerModal
         visible={ekwViewerNumber !== null}
