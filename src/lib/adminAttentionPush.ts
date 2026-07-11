@@ -1,7 +1,7 @@
 import { sendNotification } from '@/lib/core/notification.core';
 import { prisma } from '@/lib/prisma';
 
-export type AdminAttentionKind = 'offer_pending' | 'legal_verification' | 'content_report';
+export type AdminAttentionKind = 'offer_pending' | 'legal_verification' | 'content_report' | 'photo_session';
 
 export type AdminAttentionPayload = {
   kind: AdminAttentionKind;
@@ -97,4 +97,43 @@ export function notifyAdminsContentReportPending(reportId: number, category?: st
     title: 'Nowe zgłoszenie treści',
     body: `Kategoria: ${cat}. Wymaga reakcji w Narzędziach.`,
   });
+}
+
+const PHOTO_SESSION_ADMIN_USER_ID = 3;
+
+/** Powiadomienie o rezerwacji sesji zdjęciowej — dedykowany admin (ID 3). */
+export function notifyAdminPhotoSessionPending(
+  requestId: number,
+  requesterName?: string | null,
+  proposedAt?: Date | null,
+  propertyLabel?: string | null,
+) {
+  const who = requesterName?.trim() ? requesterName.trim() : 'Klient';
+  const when = proposedAt
+    ? proposedAt.toLocaleString('pl-PL', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '—';
+  const where = propertyLabel?.trim() ? propertyLabel.trim().slice(0, 72) : 'Nieruchomość w kreatorze';
+
+  void sendNotification({
+    userId: PHOTO_SESSION_ADMIN_USER_ID,
+    type: 'ADMIN_ATTENTION',
+    title: 'Sesja zdjęciowa — nowa rezerwacja',
+    body: `${who} proponuje termin ${when} (${where}).`,
+    data: {
+      kind: 'admin_attention',
+      attentionType: 'photo_session',
+      entityId: String(requestId),
+      notificationType: 'admin_attention',
+      screen: 'Profile',
+      route: 'Profile',
+      deeplink: 'estateos://profil',
+    },
+    idempotencyKey: `admin_attention:photo_session:${requestId}:admin:${PHOTO_SESSION_ADMIN_USER_ID}`,
+  }).catch((err) => console.error('[ADMIN_ATTENTION] photo session push failed', err));
 }
