@@ -8,10 +8,12 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../../store/useAuthStore';
 import {
   adminPhotoSessionAction,
@@ -26,6 +28,7 @@ import {
   photoSessionCalendarParamsFromItem,
 } from '../../utils/photoSessionCalendar';
 import PresentationCountdown from '../dealroom/PresentationCountdown';
+import { openDirectContactChat } from '../../utils/openDirectContact';
 
 type Theme = {
   background: string;
@@ -191,7 +194,13 @@ function CounterPicker({
 }
 
 export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQueueChange, onViewUser }: Props) {
-  const { token } = useAuthStore() as any;
+  const navigation = useNavigation<any>();
+  const { token } = useAuthStore() as { token?: string | null };
+  const safeToken = useMemo(() => {
+    const trimmed = String(token || '').trim();
+    if (!trimmed) return null;
+    return trimmed.startsWith('Bearer ') ? trimmed.slice('Bearer '.length).trim() : trimmed;
+  }, [token]);
   const isDark = theme.glass === 'dark';
   const [items, setItems] = useState<PhotoSessionRequestItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -202,10 +211,10 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
   const [counterNote, setCounterNote] = useState('');
 
   const loadQueue = useCallback(async () => {
-    if (!token) return;
+    if (!safeToken) return;
     setLoading(true);
     try {
-      const list = await fetchAdminPhotoSessionQueue('ALL', token);
+      const list = await fetchAdminPhotoSessionQueue('ALL', safeToken);
       const sorted = [...list].sort((a, b) => {
         const rank = (item: PhotoSessionRequestItem) => {
           if (item.status === 'PENDING') return item.waitingOn === 'ADMIN' ? 0 : 1;
@@ -226,7 +235,7 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
     } finally {
       setLoading(false);
     }
-  }, [token, onQueueChange]);
+  }, [safeToken, onQueueChange]);
 
   useEffect(() => {
     if (visible) {
@@ -246,7 +255,7 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
     if (submittingId) return;
     setSubmittingId(item.id);
     try {
-      const result = await adminPhotoSessionAction(item.id, { action, ...extra }, token);
+      const result = await adminPhotoSessionAction(item.id, { action, ...extra }, safeToken);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setCounterForId(null);
       setCounterDate(null);
@@ -301,6 +310,17 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
       proposedAt: dt.toISOString(),
       adminNote: counterNote.trim() || undefined,
     });
+  };
+
+  const handleContactClient = (item: PhotoSessionRequestItem) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onClose();
+    void openDirectContactChat(
+      navigation,
+      safeToken,
+      item.userId,
+      item.requesterName || `Użytkownik #${item.userId}`,
+    );
   };
 
   const cardBg = isDark ? '#1C1C1E' : '#FFFFFF';
@@ -414,6 +434,18 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
           <Text style={styles.profileBtnText}>Profil zleceniodawcy</Text>
           <Ionicons name="chevron-forward" size={14} color="#8E8E93" />
         </Pressable>
+      ) : null}
+
+      {readOnly !== 'closed' ? (
+        <TouchableOpacity
+          onPress={() => handleContactClient(item)}
+          style={[styles.contactBtn, { borderColor: cardBorder, backgroundColor: isDark ? '#141418' : '#f9fafb' }]}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={18} color="#0ea5e9" />
+          <Text style={[styles.contactBtnText, { color: theme.text }]}>Kontakt z klientem</Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.subtitle} />
+        </TouchableOpacity>
       ) : null}
 
       {item.note ? (
@@ -665,6 +697,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   profileBtnText: { flex: 1, color: '#0ea5e9', fontSize: 13, fontWeight: '800' },
+  contactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  contactBtnText: { flex: 1, fontSize: 14, fontWeight: '800' },
   awaitingUserBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',

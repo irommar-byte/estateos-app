@@ -2636,6 +2636,7 @@ function ProfileScreenLoggedIn({
   const adminPendingRef = useRef<number | null>(null);
   /** Zapobiega nakładaniu się dwóch Modal z listą użytkowników i kartą profilu (iOS psuje dotyk). */
   const adminUsersReturnRef = useRef(false);
+  const adminPhotoSessionsReturnRef = useRef(false);
 
   useEffect(() => {
     const checkServerPasskeyStatus = async () => {
@@ -4352,8 +4353,12 @@ function ProfileScreenLoggedIn({
           if (resumeUsersList && adminUsersReturnRef.current) {
             adminUsersReturnRef.current = false;
             setTimeout(() => setIsAdminUsersVisible(true), 280);
+          } else if (resumeUsersList && adminPhotoSessionsReturnRef.current) {
+            adminPhotoSessionsReturnRef.current = false;
+            setTimeout(() => setIsAdminPhotoSessionsVisible(true), 280);
           } else {
             adminUsersReturnRef.current = false;
+            adminPhotoSessionsReturnRef.current = false;
           }
         }}
         theme={theme}
@@ -4406,12 +4411,16 @@ function ProfileScreenLoggedIn({
         onQueueChange={setAdminPendingPhotoSessionsCount}
         onViewUser={(userId, seed) => {
           adminUsersReturnRef.current = false;
-          setAdminSelectedUser({
-            id: userId,
-            name: seed?.name || `Użytkownik #${userId}`,
-            phone: seed?.phone,
-            email: seed?.email,
-          });
+          adminPhotoSessionsReturnRef.current = true;
+          setIsAdminPhotoSessionsVisible(false);
+          setTimeout(() => {
+            setAdminSelectedUser({
+              id: userId,
+              name: seed?.name || `Użytkownik #${userId}`,
+              phone: seed?.phone,
+              email: seed?.email,
+            });
+          }, 320);
         }}
       />
       <UserPhotoSessionsModal
