@@ -560,16 +560,16 @@ export default function AdminPhotoSessionsModal({ visible, onClose, theme, onQue
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-            {pendingItems.length > 0 ? (
-              <Text style={[styles.sectionLabel, { color: theme.subtitle }]}>Do negocjacji</Text>
-            ) : null}
-            {pendingItems.map((item) => renderSessionCard(item, 'negotiate'))}
             {confirmedItems.length > 0 ? (
-              <Text style={[styles.sectionLabel, { color: theme.subtitle, marginTop: pendingItems.length ? 8 : 0 }]}>
-                Potwierdzone
-              </Text>
+              <Text style={[styles.sectionLabel, { color: '#10b981' }]}>Umówione</Text>
             ) : null}
             {confirmedItems.map((item) => renderSessionCard(item, 'confirmed'))}
+            {pendingItems.length > 0 ? (
+              <Text style={[styles.sectionLabel, { color: theme.subtitle, marginTop: confirmedItems.length ? 8 : 0 }]}>
+                Do negocjacji
+              </Text>
+            ) : null}
+            {pendingItems.map((item) => renderSessionCard(item, 'negotiate'))}
             {closedItems.length > 0 ? (
               <Text style={[styles.sectionLabel, { color: theme.subtitle, marginTop: 8 }]}>Zamknięte</Text>
             ) : null}

@@ -2593,6 +2593,7 @@ function ProfileScreenLoggedIn({
   const [adminSelectedUser, setAdminSelectedUser] = useState(null);
   const [adminPendingOffersCount, setAdminPendingOffersCount] = useState(0);
   const [adminPendingPhotoSessionsCount, setAdminPendingPhotoSessionsCount] = useState(0);
+  const [adminConfirmedPhotoSessionsCount, setAdminConfirmedPhotoSessionsCount] = useState(0);
   const [isOwnPublicProfileOpen, setIsOwnPublicProfileOpen] = useState(false);
   const [ownPublicProfile, setOwnPublicProfile] = useState(null);
   const [ownPublicProfileLoading, setOwnPublicProfileLoading] = useState(false);
@@ -2752,8 +2753,13 @@ function ProfileScreenLoggedIn({
   const refreshAdminPendingPhotoSessions = async () => {
     if (!isZarzad || !token) return;
     try {
-      const items = await fetchAdminPhotoSessionQueue('PENDING', token);
-      setAdminPendingPhotoSessionsCount(items.filter((x) => x.waitingOn === 'ADMIN').length);
+      const items = await fetchAdminPhotoSessionQueue('ALL', token);
+      setAdminPendingPhotoSessionsCount(
+        items.filter((x) => x.status === 'PENDING' && x.waitingOn === 'ADMIN').length,
+      );
+      setAdminConfirmedPhotoSessionsCount(
+        items.filter((x) => x.status === 'ACCEPTED' && new Date(x.proposedAt).getTime() > Date.now()).length,
+      );
     } catch {
       // noop
     }
@@ -4031,9 +4037,15 @@ function ProfileScreenLoggedIn({
                 color="#10b981"
                 title="Sesje zdjęciowe"
                 subtitle={
-                  adminPendingPhotoSessionsCount > 0
-                    ? `${adminPendingPhotoSessionsCount} do negocjacji terminu`
-                    : 'Rezerwacje i negocjacje sesji EstateOS Studio'
+                  adminConfirmedPhotoSessionsCount > 0 && adminPendingPhotoSessionsCount > 0
+                    ? `${adminConfirmedPhotoSessionsCount} umówiona · ${adminPendingPhotoSessionsCount} do negocjacji`
+                    : adminConfirmedPhotoSessionsCount > 0
+                      ? adminConfirmedPhotoSessionsCount === 1
+                        ? '1 umówiona sesja zdjęciowa'
+                        : `${adminConfirmedPhotoSessionsCount} umówione sesje zdjęciowe`
+                      : adminPendingPhotoSessionsCount > 0
+                        ? `${adminPendingPhotoSessionsCount} do negocjacji terminu`
+                        : 'Rezerwacje i negocjacje sesji EstateOS Studio'
                 }
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

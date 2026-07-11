@@ -135,7 +135,7 @@ export async function fetchAdminPhotoSessionQueue(
   const safeToken = normalizeToken(token);
   if (!safeToken) throw new PhotoSessionServiceError('Brak autoryzacji.', 401);
 
-  const qs = status === 'ALL' ? '' : `?status=${encodeURIComponent(status)}`;
+  const qs = `?status=${encodeURIComponent(status)}`;
   const res = await fetch(`${API_URL}/api/mobile/v1/admin/photo-sessions${qs}`, {
     headers: { Authorization: `Bearer ${safeToken}` },
   });
