@@ -607,7 +607,7 @@ const getBestUserAvatarUrl = (userLike: any): string | null => {
   );
 };
 
-const MyOffersModal = ({ visible, onClose, theme }) => {
+const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
   const { t, locale } = useI18n();
   const publicationCopy = useMemo(() => getPublicationCopy(), [locale]);
   const navigation = useNavigation();
@@ -1207,6 +1207,10 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           theme={theme}
           draft={buildOfferPhotoSessionDraft(selectedOffer)}
           initialNote={proPhotoSessionNote}
+          onOpenPhotoSessions={() => {
+            onClose();
+            onOpenPhotoSessions?.();
+          }}
         />
       </View>
     </Modal>
@@ -4260,7 +4264,15 @@ function ProfileScreenLoggedIn({
         />
       </View>
 
-      <MyOffersModal visible={isMyOffersVisible} onClose={() => setIsMyOffersVisible(false)} theme={theme} />
+      <MyOffersModal
+        visible={isMyOffersVisible}
+        onClose={() => setIsMyOffersVisible(false)}
+        theme={theme}
+        onOpenPhotoSessions={() => {
+          setIsMyOffersVisible(false);
+          setTimeout(() => setIsUserPhotoSessionsVisible(true), 320);
+        }}
+      />
       <NotificationsSettingsModal visible={isNotificationsVisible} onClose={() => setIsNotificationsVisible(false)} theme={theme} />
 
       <AdminOffersModal

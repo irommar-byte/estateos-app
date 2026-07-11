@@ -1083,6 +1083,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
                     authIntent?: 'login' | 'register';
                     openManageListings?: boolean;
                     openShop?: boolean;
+                    openPhotoSessions?: boolean;
                     prefillEmail?: string;
                   }
                 | undefined

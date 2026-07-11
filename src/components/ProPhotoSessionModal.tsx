@@ -51,6 +51,8 @@ type Props = {
   theme: Theme;
   draft?: DraftContext;
   initialNote?: string;
+  /** Gdy modal jest już w Profilu — omija navigate i otwiera listę sesji bez zablokowanej warstwy. */
+  onOpenPhotoSessions?: () => void;
 };
 
 function buildNextDays() {
@@ -77,7 +79,14 @@ function buildPropertyLabel(draft?: DraftContext) {
   return parts.length ? parts.join(' · ') : null;
 }
 
-export default function ProPhotoSessionModal({ visible, onClose, theme, draft, initialNote }: Props) {
+export default function ProPhotoSessionModal({
+  visible,
+  onClose,
+  theme,
+  draft,
+  initialNote,
+  onOpenPhotoSessions,
+}: Props) {
   const { t } = useI18n();
   const navigation = useNavigation<any>();
   const { token, user } = useAuthStore() as any;
@@ -226,7 +235,20 @@ export default function ProPhotoSessionModal({ visible, onClose, theme, draft, i
   const handleOpenPhotoSessions = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onClose();
-    navigation.navigate('Profil', { openPhotoSessions: true });
+    setTimeout(() => {
+      if (onOpenPhotoSessions) {
+        onOpenPhotoSessions();
+        return;
+      }
+      if (navigationRef.isReady()) {
+        navigationRef.navigate('MainTabs', {
+          screen: 'Profil',
+          params: { openPhotoSessions: true },
+        });
+        return;
+      }
+      navigation.navigate('Profil', { openPhotoSessions: true });
+    }, 280);
   };
 
   const handleBecomePro = () => {
