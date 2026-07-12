@@ -57,6 +57,8 @@ function parsePublicationBody(body: Record<string, unknown>): OtodomPublicationI
   return { kind, bonusCouponId, iapTransactionId, consumePlusPublication };
 }
 
+export const maxDuration = 300;
+
 export async function POST(req: Request) {
   try {
     const user = await requireOtodomImporter();
@@ -117,6 +119,7 @@ export async function POST(req: Request) {
     const result = await createOfferFromOtodomDraft(draft, user.id, publication, {
       floorPlanImageIndex: filtered.floorPlanImageIndex,
       lastImageFloorPlan: filtered.floorPlanImageIndex == null ? false : undefined,
+      skipAutoFloorPlanProbe: true,
     });
 
     if (!result.ok) {

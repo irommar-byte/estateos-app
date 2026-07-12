@@ -1,4 +1,5 @@
 import type { OtodomImportDraft } from '@/lib/otodomImport';
+import { normalizeImportDraftHeating } from '@/lib/otodomImport';
 import {
   canonicalizeCity,
   canonicalizeDistrict,
@@ -120,11 +121,11 @@ export async function enrichOtodomImportDraft(draft: OtodomImportDraft): Promise
     district = inferDistrictForCity(city, draft);
   }
 
-  return {
+  return normalizeImportDraftHeating({
     ...draft,
     city: canonicalizeCity(city),
     district: canonicalizeDistrict(city, district || draft.district),
-  };
+  });
 }
 
 export type PortalImportPatch = {

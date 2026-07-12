@@ -4,6 +4,8 @@ import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImpor
 import { createOfferFromOtodomDraft } from '@/lib/otodomImportCreate';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
 
+export const maxDuration = 300;
+
 function isImportDraft(value: unknown): value is OtodomImportDraft {
   if (!value || typeof value !== 'object') return false;
   const row = value as Record<string, unknown>;
@@ -49,7 +51,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await createOfferFromOtodomDraft(draft, gate.adminId);
+    const result = await createOfferFromOtodomDraft(draft, gate.adminId, undefined, {
+      skipAutoFloorPlanProbe: true,
+    });
     if (!result.ok) {
       return NextResponse.json(
         {

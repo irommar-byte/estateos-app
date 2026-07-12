@@ -82,6 +82,81 @@ function decodeImportHtmlText(html: string): string {
     .replace(/\s+/g, ' ');
 }
 
+/** Czytelny tekst z fragmentu HTML listy portali (bez tagów i śmieci z anchorów). */
+function plainImportListText(html: string): string {
+  return stripHtml(decodeImportHtmlText(html)).replace(/\s+/g, ' ').trim();
+}
+
+const IMPORT_HEATING_CANONICAL = [
+  'Miejskie',
+  'Gazowe',
+  'Elektryczne',
+  'Pompa Ciepła',
+  'Węglowe/Pellet',
+  'Inne',
+] as const;
+
+type ImportHeatingCanonical = (typeof IMPORT_HEATING_CANONICAL)[number];
+
+/** Normalizuje ogrzewanie ze wszystkich portali do kanonicznych etykiet aplikacji. */
+export function sanitizeImportHeating(
+  raw: string | null | undefined,
+  code?: string | null,
+): ImportHeatingCanonical | null {
+  const plain = plainImportListText(String(raw || ''));
+  const codeToken = String(code || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+
+  const fromCode: Record<string, ImportHeatingCanonical> = {
+    city: 'Miejskie',
+    district: 'Miejskie',
+    municipal: 'Miejskie',
+    central: 'Miejskie',
+    central_heating: 'Miejskie',
+    gas: 'Gazowe',
+    electric: 'Elektryczne',
+    electrical: 'Elektryczne',
+    heat_pump: 'Pompa Ciepła',
+    heatpump: 'Pompa Ciepła',
+    coal: 'Węglowe/Pellet',
+    pellet: 'Węglowe/Pellet',
+    coal_pellet: 'Węglowe/Pellet',
+    other: 'Inne',
+    none: 'Inne',
+  };
+  if (codeToken && fromCode[codeToken]) return fromCode[codeToken];
+
+  const probe = plain.toLowerCase();
+  if (!probe) return null;
+  if (/miejsk|ciepłoci|mco|co\s+miejsk|centraln/i.test(probe)) return 'Miejskie';
+  if (/gaz|gazow/i.test(probe)) return 'Gazowe';
+  if (/elektryczn/i.test(probe)) return 'Elektryczne';
+  if (/pomp/i.test(probe)) return 'Pompa Ciepła';
+  if (/węg|weg|pellet|ekogroszek|kotł/i.test(probe)) return 'Węglowe/Pellet';
+  if (/komink|piecek|piece/i.test(probe)) return 'Inne';
+  if (/<a\s|href\s*=|https?:\/\//i.test(plain)) return null;
+  if (plain.length > 48) return null;
+
+  const exact = IMPORT_HEATING_CANONICAL.find(
+    (label) => label.toLowerCase() === probe || label.toLowerCase().replace(/\s+/g, '_') === codeToken,
+  );
+  if (exact) return exact;
+
+  if (/[a-ząćęłńóśźż]/i.test(plain) && plain.length >= 3) return 'Inne';
+  return null;
+}
+
+export function normalizeImportDraftHeating(draft: OtodomImportDraft): OtodomImportDraft {
+  const heating = sanitizeImportHeating(draft.heating, draft.heatingCode);
+  return {
+    ...draft,
+    heating,
+    heatingCode: heating ? heating.toLowerCase().replace(/\s+/g, '_') : null,
+  };
+}
+
 function parseNumber(raw: unknown): number | null {
   if (raw == null || raw === '') return null;
   const value = String(raw).replace(/\s/g, '').replace(',', '.');
@@ -242,8 +317,7 @@ function enrichImportFieldsFromText(input: {
     plain.match(/(?:typ|rodzaj)\s+ogrzewania[:\s]+([^.\n;]+)/i);
   let heating = heatingMatch ? heatingMatch[1].trim() : null;
   if (heating) {
-    heating = heating.replace(/\s{2,}/g, ' ').slice(0, 80);
-    if (heating.length < 3) heating = null;
+    heating = sanitizeImportHeating(heating);
   }
 
   const adminFee =
@@ -619,8 +693,14 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     yearBuilt,
     condition: chars.get('construction_status')?.label ?? null,
     conditionCode: chars.get('construction_status')?.value ?? null,
-    heating: chars.get('heating')?.label ?? null,
-    heatingCode: chars.get('heating')?.value ?? null,
+    heating: sanitizeImportHeating(chars.get('heating')?.label ?? null, chars.get('heating')?.value ?? null),
+    heatingCode: (() => {
+      const normalized = sanitizeImportHeating(
+        chars.get('heating')?.label ?? null,
+        chars.get('heating')?.value ?? null,
+      );
+      return normalized ? normalized.toLowerCase().replace(/\s+/g, '_') : null;
+    })(),
     buildingType: chars.get('building_type')?.label ?? null,
     city,
     district,
@@ -726,8 +806,9 @@ export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     parseOlxParamNumber(params, ['buildyear', 'build_year', 'construction_year', 'year_built'], ['rok budowy']) ??
     textHints.yearBuilt;
   const sanitizedYearBuilt = sanitizeImportYearBuilt(yearBuilt);
-  const heating =
+  const heatingRaw =
     parseOlxParamText(params, ['heating', 'heating_type'], ['ogrzewanie']) ?? textHints.heating;
+  const heating = sanitizeImportHeating(heatingRaw, map('heating')?.value ?? map('heating_type')?.value ?? null);
   const adminFee =
     parseOlxParamNumber(params, ['rent', 'czynsz', 'admin_fee', 'monthly_rent', 'fee'], ['czynsz', 'opłat administr']) ??
     textHints.adminFee;
@@ -759,7 +840,7 @@ export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     condition: map('market')?.label ?? null,
     conditionCode: map('market')?.value ?? null,
     heating,
-    heatingCode: map('heating')?.value ?? (heating ? heating.toLowerCase().replace(/\s+/g, '_') : null),
+    heatingCode: heating ? heating.toLowerCase().replace(/\s+/g, '_') : null,
     buildingType: map('builttype')?.label ?? map('building_type')?.label ?? null,
     city,
     district,
@@ -809,7 +890,7 @@ function extractNierOnlineListValue(html: string, label: string): string {
   );
   const match = html.match(re);
   if (!match?.[1]) return '';
-  return decodeImportHtmlText(match[1]).replace(/\s+/g, ' ').trim();
+  return plainImportListText(match[1]);
 }
 
 function parseNierOnlineAdminFee(html: string): number | null {
@@ -911,15 +992,15 @@ function parseNierOnlineHeating(html: string): string | null {
   const media = extractNierOnlineListValue(html, 'Media');
   if (!media) {
     const block = html.match(/<strong>\s*Media:\s*<\/strong>[\s\S]*?ogrzewanie\s*:\s*([^<,;]+)/i);
-    return block?.[1] ? decodeImportHtmlText(block[1]).trim() : null;
+    return sanitizeImportHeating(block?.[1] ? plainImportListText(block[1]) : null);
   }
   const labeled = media.match(/ogrzewanie\s*:\s*([^,;]+)/i);
-  if (labeled?.[1]) return labeled[1].trim();
-  if (/miejsk/i.test(media)) return 'miejskie';
-  if (/gaz/i.test(media)) return 'gazowe';
-  if (/elektryczn/i.test(media)) return 'elektryczne';
-  if (/komink/i.test(media)) return 'kominkowe';
-  return media.length <= 80 ? media : null;
+  if (labeled?.[1]) return sanitizeImportHeating(labeled[1]);
+  if (/miejsk/i.test(media)) return 'Miejskie';
+  if (/gaz/i.test(media)) return 'Gazowe';
+  if (/elektryczn/i.test(media)) return 'Elektryczne';
+  if (/komink/i.test(media)) return 'Inne';
+  return sanitizeImportHeating(media.length <= 80 ? media : null);
 }
 
 function parseNierOnlineLocation(html: string): { locationText: string; street: string | null; districtHint: string } {
