@@ -88,16 +88,6 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
 
   const showMobileChat = activeThreadId != null;
 
-  const navigateToThread = useCallback(
-    (threadId: number, peerUserId: number, opts?: { replace?: boolean }) => {
-      const url = `/moje-konto/wiadomosci?thread=${threadId}&peer=${peerUserId}`;
-      if (opts?.replace) router.replace(url);
-      else router.push(url);
-      void openThread(threadId);
-    },
-    [openThread, router]
-  );
-
   const handlePageBack = useCallback(() => {
     if (typeof window !== "undefined" && window.history.length > 1) {
       router.back();
@@ -185,6 +175,16 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       }
     },
     [loadAttachmentsInfo, loadThreads]
+  );
+
+  const navigateToThread = useCallback(
+    (threadId: number, peerUserId: number, opts?: { replace?: boolean }) => {
+      const url = `/moje-konto/wiadomosci?thread=${threadId}&peer=${peerUserId}`;
+      if (opts?.replace) router.replace(url);
+      else router.push(url);
+      void openThread(threadId);
+    },
+    [openThread, router]
   );
 
   useEffect(() => {
