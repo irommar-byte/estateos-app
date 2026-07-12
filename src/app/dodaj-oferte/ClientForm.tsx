@@ -15,7 +15,7 @@ import { Home,
   Navigation, Bold, Italic, Underline, Heading, AlignLeft, ShieldCheck, LocateFixed
 } from "lucide-react";
 
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import ProPhotoSessionDialog from '@/components/photoSession/ProPhotoSessionDialog';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -309,6 +309,7 @@ export default function ClientForm({
   const [emailStatus, setEmailStatus] = useState('idle');
   const [phoneStatus, setPhoneStatus] = useState('idle');
   const [currentStep, setCurrentStep] = useState(1);
+  const [photoSessionOpen, setPhotoSessionOpen] = useState(false);
   const [locationCatalog, setLocationCatalog] = useState<DistrictCatalogResponse>({ strictCities: [], strictCityDistricts: {} });
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -2186,6 +2187,25 @@ export default function ClientForm({
                 ) : null}
               </div>
 
+              <div className="mb-10 rounded-[2rem] border border-[#10b981]/40 bg-gradient-to-br from-[#10b981]/15 to-emerald-950/20 p-6 shadow-[0_0_40px_rgba(16,185,129,0.12)]">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">EstateOS Studio</p>
+                    <h3 className="mt-2 text-xl font-black uppercase tracking-wide text-white">Profesjonalna sesja zdjęciowa</h3>
+                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-400">
+                      Zamów sesję ze zdjęciami i kompleksową ofertą — negocjuj termin online, tak jak w aplikacji mobilnej.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoSessionOpen(true)}
+                    className="shrink-0 rounded-full bg-[#10b981] px-6 py-4 text-[11px] font-black uppercase tracking-widest text-black shadow-[0_0_24px_rgba(16,185,129,0.35)] transition hover:scale-[1.02]"
+                  >
+                    Zamów sesję
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                 <div className="lg:col-span-2">
                   <div className="flex items-center justify-between mb-4">
@@ -2834,6 +2854,19 @@ export default function ClientForm({
           </AnimatePresence>
         </div>
       )}
+
+      <ProPhotoSessionDialog
+        open={photoSessionOpen}
+        onClose={() => setPhotoSessionOpen(false)}
+        draft={{
+          propertyLabel: [data.title, data.city, data.district, data.address]
+            .map((x) => String(x || '').trim())
+            .filter(Boolean)
+            .join(' · ') || undefined,
+          propertyType: data.propertyType || undefined,
+          transactionType: data.transactionType || undefined,
+        }}
+      />
 
     </main>
   );

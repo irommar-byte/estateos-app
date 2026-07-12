@@ -87,7 +87,8 @@ export default function Centrala() {
             { title: "Baza Ofert", desc: "Zarządzaj nieruchomościami.", icon: <Database size={32} />, path: "/centrala/oferty", color: "from-blue-500/20 to-blue-500/5" },
             { title: "Użytkownicy", desc: "Zarządzaj kontami.", icon: <Users size={32} />, path: "/centrala/uzytkownicy", color: "from-emerald-500/20 to-emerald-500/5" },
             { title: "Portfel", desc: "Kredyty, kupony i historia.", icon: <Wallet size={32} />, path: "/centrala/portfel", color: "from-amber-500/20 to-amber-500/5" },
-            { title: "Statystyki", desc: "Przeglądaj ruch.", icon: <BarChart3 size={32} />, path: "/centrala/statystyki", color: "from-purple-500/20 to-purple-500/5" }
+            { title: "Statystyki", desc: "Przeglądaj ruch.", icon: <BarChart3 size={32} />, path: "/centrala/statystyki", color: "from-purple-500/20 to-purple-500/5" },
+            { title: "Sesje zdjęciowe", desc: "Negocjacje EstateOS Studio.", icon: <Database size={32} />, path: "/centrala/sesje-zdjeciowe", color: "from-emerald-500/20 to-emerald-500/5" }
           ].map((item) => (
             <motion.div
               key={item.title}

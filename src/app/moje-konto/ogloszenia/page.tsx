@@ -129,6 +129,20 @@ export default function AccountListingsPage() {
           <p className="mt-3 text-sm text-[var(--eos-muted)]">
             Jedno konto EstateOS i dwa brandy operacyjne: EstateOS™Home oraz EstateOS™Car.
           </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/moje-konto/sesje-zdjeciowe"
+              className="inline-flex rounded-full border border-emerald-400/35 bg-emerald-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-300"
+            >
+              Sesje zdjęciowe EstateOS Studio
+            </Link>
+            <Link
+              href="/moje-konto/wiadomosci"
+              className="inline-flex rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em]"
+            >
+              Wiadomości
+            </Link>
+          </div>
         </header>
 
         <div className="mb-6 inline-flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1">

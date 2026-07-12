@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken } from '@/lib/jwtMobile';
+import { resolveWebUserId } from '@/lib/webSessionAuth';
 import jwt from 'jsonwebtoken';
 
 /** Authorization: Bearer <token> (mobile JWT). */
@@ -28,19 +29,11 @@ export function parseUserIdFromMobileJwt(token: string): number | null {
  * (Mobile = SoT: ekrany admin mają wysyłać Bearer; backend musi odrzucać brak tokena.)
  */
 export async function requireMobileAdmin(req: Request) {
-  const token = extractBearerToken(req);
-  if (!token) {
-    return {
-      ok: false as const,
-      response: NextResponse.json({ success: false, message: 'Brak autoryzacji' }, { status: 401 }),
-    };
-  }
-
-  const userId = parseUserIdFromMobileJwt(token);
+  const userId = await resolveWebUserId(req);
   if (!userId) {
     return {
       ok: false as const,
-      response: NextResponse.json({ success: false, message: 'Nieprawidłowy token' }, { status: 401 }),
+      response: NextResponse.json({ success: false, message: 'Brak autoryzacji' }, { status: 401 }),
     };
   }
 

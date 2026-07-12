@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { sendNotification } from '@/lib/core/notification.core';
 import { notifyAdminPhotoSessionPending } from '@/lib/adminAttentionPush';
 import { prisma } from '@/lib/prisma';
+import { resolveWebUserId } from '@/lib/webSessionAuth';
 import {
   extractBearerToken,
   parseUserIdFromMobileJwt,
@@ -22,6 +23,8 @@ function normalizeStatus(raw: unknown): SessionStatus | 'ALL' {
 }
 
 async function currentUserId(req: Request) {
+  const fromSession = await resolveWebUserId(req);
+  if (fromSession) return fromSession;
   const token = extractBearerToken(req);
   if (!token) return null;
   return parseUserIdFromMobileJwt(token);
