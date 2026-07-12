@@ -345,6 +345,74 @@ export default function AdminNativeImportScreen() {
     }
   };
 
+  const applyCreatedOffer = async (
+    data: Record<string, unknown>,
+    redemption: CreatePublicationRedemption,
+  ) => {
+    setMessage(String(data?.message || 'Oferta utworzona.'));
+    setCreatedOfferId(Number(data?.offerId || 0) || null);
+    setEditUrl(String(data?.editUrl || ''));
+    setPublicUrl(String(data?.publicUrl || ''));
+    setPendingRedemption(redemption);
+    if (redemption.source === 'bonus_coupon' && user?.id) {
+      setPublicationChoiceCoupons((prev) =>
+        prev.filter((coupon) => coupon.id !== redemption.couponId),
+      );
+      const { markProfilePromoCouponUsed } = await import('../services/profilePromoService');
+      await markProfilePromoCouponUsed(user.id, redemption.couponId, token!);
+    }
+    const wallet = data?.wallet as { extraListings?: number; plusExpiresAt?: string | null } | undefined;
+    if (wallet && user) {
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser) {
+        useAuthStore.setState({
+          user: {
+            ...currentUser,
+            extraListings: Number(wallet.extraListings ?? currentUser.extraListings ?? 0),
+            ...(wallet.plusExpiresAt ? { plusExpiresAt: wallet.plusExpiresAt } : {}),
+          },
+        });
+      }
+    }
+    await clearImportDraftCache();
+    setRestoredDraftBadge(false);
+    await refreshUser();
+    setSuccessFxVisible(true);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const tryRecoverImportedOffer = async (
+    redemption: CreatePublicationRedemption,
+  ): Promise<Record<string, unknown> | null> => {
+    if (!token || !draft) return null;
+    try {
+      const res = await fetch(`${API_URL}/api/mobile/v1/pro/otodom-import/existing`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ draft }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.found || !data?.offerId) return null;
+      return {
+        success: true,
+        offerId: data.offerId,
+        message:
+          data.publicationReserved === true
+            ? `Oferta #${data.offerId} została utworzona (import zakończony po stronie serwera).`
+            : String(data.message || `Oferta #${data.offerId} już istnieje.`),
+        editUrl: data.editUrl,
+        publicUrl: data.publicUrl,
+        publicationReserved: data.publicationReserved === true,
+        redemption,
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const runCreate = async (redemption: CreatePublicationRedemption) => {
     if (!token || !draft) return;
     Alert.alert('Utworzyć ofertę?', 'Utworzę ofertę PENDING na podstawie zaimportowanych danych.', [
@@ -367,6 +435,31 @@ export default function AdminNativeImportScreen() {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data?.success) {
+              if (data?.code === 'ALREADY_IMPORTED' && data?.existingOfferId) {
+                await applyCreatedOffer(
+                  {
+                    success: true,
+                    offerId: data.existingOfferId,
+                    message: String(data?.message || `Oferta #${data.existingOfferId} już istnieje.`),
+                    editUrl: data.editUrl,
+                    publicUrl: data.publicUrl,
+                    publicationReserved: true,
+                    redemption,
+                  },
+                  redemption,
+                );
+                return;
+              }
+
+              const shouldRecover = res.status === 504 || res.status === 502 || res.status === 408;
+              if (shouldRecover) {
+                const recovered = await tryRecoverImportedOffer(redemption);
+                if (recovered?.publicationReserved === true) {
+                  await applyCreatedOffer(recovered, redemption);
+                  return;
+                }
+              }
+
               const errMessage = String(data?.message || data?.error || `Błąd tworzenia oferty (${res.status})`);
               setError(errMessage);
               if (data?.code === 'NEEDS_USER_INPUT' && Array.isArray(data?.issues)) {
@@ -381,43 +474,24 @@ export default function AdminNativeImportScreen() {
               return;
             }
             if (!data?.redemption || data?.publicationReserved !== true) {
+              const recovered = await tryRecoverImportedOffer(redemption);
+              if (recovered?.publicationReserved === true) {
+                await applyCreatedOffer(recovered, redemption);
+                return;
+              }
               const errMessage =
                 'Serwer nie potwierdził opłacenia publikacji. Kredyt nie został pobrany — spróbuj ponownie po aktualizacji aplikacji.';
               setError(errMessage);
               Alert.alert('Publikacja nieopłacona', errMessage);
               return;
             }
-            setMessage(String(data?.message || 'Oferta utworzona.'));
-            setCreatedOfferId(Number(data?.offerId || 0) || null);
-            setEditUrl(String(data?.editUrl || ''));
-            setPublicUrl(String(data?.publicUrl || ''));
-            setPendingRedemption(redemption);
-            if (redemption.source === 'bonus_coupon' && user?.id) {
-              setPublicationChoiceCoupons((prev) =>
-                prev.filter((coupon) => coupon.id !== redemption.couponId),
-              );
-              const { markProfilePromoCouponUsed } = await import('../services/profilePromoService');
-              await markProfilePromoCouponUsed(user.id, redemption.couponId, token);
-            }
-            const wallet = data?.wallet as { extraListings?: number; plusExpiresAt?: string | null } | undefined;
-            if (wallet && user) {
-              const currentUser = useAuthStore.getState().user;
-              if (currentUser) {
-                useAuthStore.setState({
-                  user: {
-                    ...currentUser,
-                    extraListings: Number(wallet.extraListings ?? currentUser.extraListings ?? 0),
-                    ...(wallet.plusExpiresAt ? { plusExpiresAt: wallet.plusExpiresAt } : {}),
-                  },
-                });
-              }
-            }
-            await clearImportDraftCache();
-            setRestoredDraftBadge(false);
-            await refreshUser();
-            setSuccessFxVisible(true);
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            await applyCreatedOffer(data as Record<string, unknown>, redemption);
           } catch {
+            const recovered = await tryRecoverImportedOffer(redemption);
+            if (recovered?.publicationReserved === true) {
+              await applyCreatedOffer(recovered, redemption);
+              return;
+            }
             setError('Błąd połączenia podczas tworzenia oferty.');
             Alert.alert('Błąd połączenia', 'Nie udało się utworzyć oferty. Sprawdź internet i spróbuj ponownie.');
           } finally {

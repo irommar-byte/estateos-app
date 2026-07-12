@@ -242,6 +242,8 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
   const isPro = hasActiveInvestorProMembership(user);
   const [toolsExpanded, setToolsExpanded] = useState(true);
 
+  if (!isPro) return null;
+
   const onFeature = (id: FeatureId) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (onFeaturePress) {
@@ -286,9 +288,6 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
     },
   ];
 
-  const visibleFeatures = isPro ? features : features.filter((feature) => feature.id !== 'openHouse');
-  if (visibleFeatures.length === 0) return null;
-
   const cardBorder = isDark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(90, 100, 120, 0.18)';
 
   return (
@@ -325,18 +324,16 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
         />
       </Pressable>
 
-      {isPro ? <ProMembershipCountdownBar proExpiresAt={user?.proExpiresAt} isDark={isDark} /> : null}
+      <ProMembershipCountdownBar proExpiresAt={user?.proExpiresAt} isDark={isDark} />
 
       {toolsExpanded ? (
         <>
-        {isPro ? (
-          <Text style={[styles.sectionLead, isDark && styles.sectionLeadDark]}>
-            {t('profile.proExtras.lead')}
-          </Text>
-        ) : null}
+        <Text style={[styles.sectionLead, isDark && styles.sectionLeadDark]}>
+          {t('profile.proExtras.lead')}
+        </Text>
 
         <View style={styles.featureList}>
-          {visibleFeatures.map((f) => (
+          {features.map((f) => (
             <FeatureRow
               key={f.id}
               featureId={f.id}
@@ -349,11 +346,9 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
           ))}
         </View>
 
-        {isPro ? (
-          <Text style={[styles.footer, isDark && styles.footerDark]}>
-            {t('profile.proExtras.footer')}
-          </Text>
-        ) : null}
+        <Text style={[styles.footer, isDark && styles.footerDark]}>
+          {t('profile.proExtras.footer')}
+        </Text>
         </>
       ) : null}
       </View>
