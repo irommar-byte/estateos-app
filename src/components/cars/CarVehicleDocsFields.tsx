@@ -10,6 +10,7 @@ export type CarVehicleDocsFormState = {
   registrationNumber: string;
   firstRegistrationDate: string;
   insuranceValidUntil: string;
+  restrictVehicleDocs: boolean;
 };
 
 type CarVehicleDocsFieldsProps = {
@@ -189,6 +190,21 @@ export default function CarVehicleDocsFields({ value, onChange, loggedIn = false
             />
           </label>
         </div>
+
+        <label className="flex items-start gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg)]/40 px-4 py-3 text-sm">
+          <input
+            type="checkbox"
+            checked={value.restrictVehicleDocs}
+            onChange={(e) => onChange({ restrictVehicleDocs: e.target.checked })}
+            className="mt-0.5 size-4 rounded border-[var(--eos-border)]"
+          />
+          <span>
+            <span className="font-semibold text-[var(--eos-text)]">Zastrzeż dane pojazdu (VIN, rejestracja, pierwsza rejestracja)</span>
+            <span className="mt-1 block text-xs leading-relaxed text-[var(--eos-muted)]">
+              Na stronie ogłoszenia i w raporcie historii CEPIK widoczne będą tylko pierwsze 2 znaki każdego z tych pól.
+            </span>
+          </span>
+        </label>
 
         <div className="flex flex-col gap-3 sm:flex-row">
           <button

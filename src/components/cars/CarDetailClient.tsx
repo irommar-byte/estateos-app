@@ -116,10 +116,12 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
               </div>
 
               <CarVehicleChecksClient
+                carId={car.id}
                 vin={car.vin}
                 registrationNumber={car.registrationNumber}
                 firstRegistrationDate={car.firstRegistrationDate}
                 insuranceValidUntil={car.insuranceValidUntil}
+                restrictVehicleDocs={car.restrictVehicleDocs}
                 loggedIn={currentUserId !== null}
               />
             </div>

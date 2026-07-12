@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { findCarById, updateCarListing, deleteCarListing } from "@/lib/carsStorage";
 import type { CarListingUpdateInput } from "@/lib/carsStorage";
+import { sanitizeCarListingForViewer } from "@/lib/carVehicleDocPrivacy";
 import { resolveUploaderUserId } from "@/lib/upload/resolveUploader";
 
 function toSafeNumber(v: unknown, fallback: number): number {
@@ -56,16 +57,18 @@ function validateBody(raw: Record<string, unknown>): CarListingUpdateInput {
     registrationNumber: String(raw?.registrationNumber || "").trim().toUpperCase(),
     firstRegistrationDate: String(raw?.firstRegistrationDate || "").trim(),
     insuranceValidUntil: String(raw?.insuranceValidUntil || "").trim(),
+    restrictVehicleDocs: Boolean(raw?.restrictVehicleDocs),
   };
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const listing = await findCarById(Number(id));
   if (!listing) {
     return NextResponse.json({ error: "Car listing not found" }, { status: 404 });
   }
-  return NextResponse.json(listing, { status: 200 });
+  const viewerUserId = await resolveUploaderUserId(req);
+  return NextResponse.json(sanitizeCarListingForViewer(listing, viewerUserId), { status: 200 });
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {

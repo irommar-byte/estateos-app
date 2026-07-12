@@ -58,6 +58,7 @@ export default async function EditCarPage({ params }: { params: Promise<{ id: st
         registrationNumber: car.registrationNumber || "",
         firstRegistrationDate: car.firstRegistrationDate || "",
         insuranceValidUntil: car.insuranceValidUntil || "",
+        restrictVehicleDocs: car.restrictVehicleDocs,
       }}
     />
   );

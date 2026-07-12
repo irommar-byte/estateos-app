@@ -15,18 +15,22 @@ type VehicleHistoryReport = {
 };
 
 type CarVehicleChecksClientProps = {
+  carId?: number;
   vin?: string;
   registrationNumber?: string;
   firstRegistrationDate?: string;
   insuranceValidUntil?: string;
+  restrictVehicleDocs?: boolean;
   loggedIn?: boolean;
 };
 
 export default function CarVehicleChecksClient({
+  carId,
   vin = "",
   registrationNumber = "",
   firstRegistrationDate = "",
   insuranceValidUntil = "",
+  restrictVehicleDocs = false,
   loggedIn = false,
 }: CarVehicleChecksClientProps) {
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -36,9 +40,17 @@ export default function CarVehicleChecksClient({
   const [insuranceOk, setInsuranceOk] = useState<boolean | null>(null);
 
   const hasHistoryData = Boolean(
-    vin.trim().length === 17 && registrationNumber.trim() && firstRegistrationDate.trim(),
+    vin.trim().length >= 2 && registrationNumber.trim() && firstRegistrationDate.trim(),
   );
-  const hasInsuranceData = hasHistoryData;
+  const hasInsuranceData = Boolean(registrationNumber.trim());
+
+  const historyPayload = carId
+    ? { carId }
+    : { vin, registrationNumber, firstRegistrationDate };
+
+  const insurancePayload = carId
+    ? { carId, insuranceValidUntil }
+    : { registrationNumber, insuranceValidUntil, vin, firstRegistrationDate };
 
   const handleHistory = async () => {
     if (!loggedIn) return;
@@ -49,7 +61,7 @@ export default function CarVehicleChecksClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ vin, registrationNumber, firstRegistrationDate }),
+        body: JSON.stringify(historyPayload),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -72,7 +84,7 @@ export default function CarVehicleChecksClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ vin, registrationNumber, firstRegistrationDate, insuranceValidUntil }),
+        body: JSON.stringify(insurancePayload),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -92,6 +104,7 @@ export default function CarVehicleChecksClient({
       <h2 className="text-sm font-black uppercase tracking-[0.14em] text-sky-300">Weryfikacja pojazdu</h2>
       <p className="mt-2 text-sm text-[var(--eos-muted)]">
         Sprawdź historię w CEPIK i ważność OC (UFG) na podstawie danych z ogłoszenia.
+        {restrictVehicleDocs ? " Sprzedający zastrzegł pełne dane VIN, rejestracji i pierwszej rejestracji." : ""}
       </p>
 
       {!loggedIn ? (

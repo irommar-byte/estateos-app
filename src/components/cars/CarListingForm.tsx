@@ -83,6 +83,7 @@ export const initialCarForm: CarFormState = {
   registrationNumber: "",
   firstRegistrationDate: "",
   insuranceValidUntil: "",
+  restrictVehicleDocs: false,
 };
 
 type CarListingFormProps = {
@@ -122,6 +123,7 @@ function toPayload(form: CarFormState) {
     registrationNumber: form.registrationNumber.trim().toUpperCase(),
     firstRegistrationDate: form.firstRegistrationDate.trim(),
     insuranceValidUntil: form.insuranceValidUntil.trim(),
+    restrictVehicleDocs: Boolean(form.restrictVehicleDocs),
   };
 }
 
@@ -298,6 +300,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
           registrationNumber: form.registrationNumber,
           firstRegistrationDate: form.firstRegistrationDate,
           insuranceValidUntil: form.insuranceValidUntil,
+          restrictVehicleDocs: form.restrictVehicleDocs,
         }}
         onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
         loggedIn={loggedIn}
