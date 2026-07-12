@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import OpenContactThreadButton from '@/components/contact/OpenContactThreadButton';
 import PhotoSessionCountdown from '@/components/photoSession/PhotoSessionCountdown';
 import {
   adminPhotoSessionAction,
@@ -100,12 +101,13 @@ function AdminSessionCard({ item, onUpdated }: { item: PhotoSessionRequestItem; 
         >
           Profil zleceniodawcy
         </Link>
-        <Link
-          href="/moje-konto/wiadomosci"
-          className="rounded-full border border-emerald-400/35 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-300"
-        >
-          Kontakt z klientem
-        </Link>
+        <OpenContactThreadButton
+          peerUserId={item.userId}
+          peerName={item.requesterName || undefined}
+          label="Kontakt z klientem"
+          returnTo="/centrala/sesje-zdjeciowe"
+          className="rounded-full border border-emerald-400/35 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-300 disabled:opacity-60"
+        />
       </div>
 
       {canAct ? (

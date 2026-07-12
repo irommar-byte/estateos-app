@@ -86,6 +86,39 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
     [threads, activeThreadId]
   );
 
+  const showMobileChat = activeThreadId != null;
+
+  const navigateToThread = useCallback(
+    (threadId: number, peerUserId: number, opts?: { replace?: boolean }) => {
+      const url = `/moje-konto/wiadomosci?thread=${threadId}&peer=${peerUserId}`;
+      if (opts?.replace) router.replace(url);
+      else router.push(url);
+      void openThread(threadId);
+    },
+    [openThread, router]
+  );
+
+  const handlePageBack = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/moje-konto");
+  }, [router]);
+
+  const handleMobileChatBack = useCallback(() => {
+    const from = searchParams.get("from");
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    if (from) {
+      router.push(from);
+      return;
+    }
+    router.replace("/moje-konto/wiadomosci");
+  }, [router, searchParams]);
+
   const usageBytes = attachmentsInfo?.usageBytes ?? 0;
   const limitBytes = attachmentsInfo?.limitBytes ?? MAX_CONTACT_THREAD_BYTES;
   const usagePct = Math.min(100, (usageBytes / limitBytes) * 100);
@@ -193,7 +226,11 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
         } catch {
           /* handled on write button path */
         }
+        return;
       }
+      setActiveThreadId(null);
+      setMessages([]);
+      setAttachmentsInfo(null);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -311,8 +348,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
     try {
       const thread = await initContactThreadWeb(peerId);
       await loadThreads();
-      router.replace(`/moje-konto/wiadomosci?thread=${thread.id}&peer=${peerId}`);
-      await openThread(thread.id);
+      navigateToThread(thread.id, peerId);
       setFindUserId("");
     } catch (err: unknown) {
       setFindError(err instanceof Error ? err.message : "Nie udało się znaleźć użytkownika.");
@@ -355,7 +391,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       <div className="flex shrink-0 items-center gap-3">
         <button
           type="button"
-          onClick={() => router.push("/moje-konto/crm")}
+          onClick={handlePageBack}
           className="rounded-full border border-[var(--eos-border)] p-2 text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
           aria-label="Wróć"
         >
@@ -368,7 +404,11 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-strong)] md:grid-cols-[minmax(0,320px)_1fr]">
-        <aside className="flex min-h-0 flex-col border-b border-[var(--eos-border)] md:border-b-0 md:border-r">
+        <aside
+          className={`min-h-0 flex-col border-b border-[var(--eos-border)] md:border-b-0 md:border-r ${
+            showMobileChat ? "hidden md:flex" : "flex"
+          }`}
+        >
           <form onSubmit={handleFindUser} className="shrink-0 border-b border-[var(--eos-border)] p-3">
             <label className="mb-1.5 block text-[9px] font-black uppercase tracking-[0.18em] text-[var(--eos-muted)]">
               Napisz po ID użytkownika
@@ -412,8 +452,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     key={thread.id}
                     type="button"
                     onClick={() => {
-                      router.replace(`/moje-konto/wiadomosci?thread=${thread.id}&peer=${thread.peerUserId}`);
-                      void openThread(thread.id);
+                      navigateToThread(thread.id, thread.peerUserId);
                     }}
                     className={`flex w-full items-center gap-3 border-b border-[var(--eos-border)] px-4 py-3 text-left transition-colors ${
                       selected ? "bg-emerald-500/10" : "hover:bg-[var(--eos-input)]"
@@ -454,7 +493,17 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
           </div>
         </aside>
 
-        <section className="eos-contact-panel relative flex min-h-0 min-w-0 flex-col">
+        <motion.section
+          key={activeThreadId ?? "inbox-empty"}
+          initial={{ x: "100%", opacity: 0.98 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ type: "tween", duration: 0.28, ease: "easeOut" }}
+          className={`eos-contact-panel relative flex min-h-0 min-w-0 flex-col md:!transform-none md:!opacity-100 ${
+            showMobileChat
+              ? "fixed inset-0 z-30 flex bg-[var(--eos-card)] md:relative md:inset-auto md:z-auto"
+              : "hidden md:flex"
+          }`}
+        >
           {!activeThread ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-white/50">
               <MessageCircle className="size-10 text-emerald-500/50" />
@@ -464,9 +513,19 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
             <>
               <div className="shrink-0 border-b border-white/10 px-4 py-3 md:px-5">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-black text-white">{activeThread.peerUserName}</p>
-                    <p className="text-[10px] uppercase tracking-widest text-white/40">ID {activeThread.peerUserId}</p>
+                  <div className="flex min-w-0 flex-1 items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={handleMobileChatBack}
+                      className="mt-0.5 shrink-0 rounded-full p-1.5 text-white/70 hover:bg-white/10 md:hidden"
+                      aria-label="Wróć do listy rozmów"
+                    >
+                      <ArrowLeft className="size-5" />
+                    </button>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-white">{activeThread.peerUserName}</p>
+                      <p className="text-[10px] uppercase tracking-widest text-white/40">ID {activeThread.peerUserId}</p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="hidden items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400 sm:flex">
@@ -734,7 +793,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
               </form>
             </>
           )}
-        </section>
+        </motion.section>
       </div>
     </div>
   );

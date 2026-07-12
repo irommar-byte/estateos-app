@@ -1,7 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import OpenContactThreadButton from '@/components/contact/OpenContactThreadButton';
+import {
+  PHOTO_SESSION_CONTRACTOR_NAME,
+  PHOTO_SESSION_CONTRACTOR_USER_ID,
+} from '@/constants/photoSession';
 import PhotoSessionCountdown from '@/components/photoSession/PhotoSessionCountdown';
 import ProPhotoSessionDialog from '@/components/photoSession/ProPhotoSessionDialog';
 import {
@@ -46,6 +50,7 @@ function SessionCard({
   const [note, setNote] = useState('');
   const [showCounter, setShowCounter] = useState(false);
   const needsUser = item.status === 'PENDING' && item.waitingOn === 'USER';
+  const canContactContractor = item.status === 'PENDING' || item.status === 'ACCEPTED';
 
   const run = async (action: 'accept' | 'decline' | 'counter') => {
     if (busy) return;
@@ -182,14 +187,17 @@ function SessionCard({
         </div>
       ) : null}
 
-      <div className="mt-4">
-        <Link
-          href="/moje-konto/wiadomosci"
-          className="inline-flex rounded-full border border-[var(--eos-border)] px-4 py-2 text-xs font-black uppercase tracking-wider text-sky-300"
-        >
-          Kontakt z wykonawcą (Wiadomości)
-        </Link>
-      </div>
+      {canContactContractor ? (
+        <div className="mt-4">
+          <OpenContactThreadButton
+            peerUserId={PHOTO_SESSION_CONTRACTOR_USER_ID}
+            peerName={PHOTO_SESSION_CONTRACTOR_NAME}
+            label="Kontakt z wykonawcą (Wiadomości)"
+            returnTo="/moje-konto/sesje-zdjeciowe"
+            className="inline-flex rounded-full border border-[var(--eos-border)] px-4 py-2 text-xs font-black uppercase tracking-wider text-sky-300 disabled:opacity-60"
+          />
+        </div>
+      ) : null}
     </article>
   );
 }
