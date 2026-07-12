@@ -251,8 +251,12 @@ export default function ContactChatScreen() {
     reactions: m.reactions,
   }));
 
-  const goBackToContactList = useCallback(() => {
+  const handleBack = useCallback(() => {
     Haptics.selectionAsync();
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
     navigation.navigate('MainTabs', {
       screen: 'Wiadomości',
       params: { messagesSegment: 'contact' },
@@ -260,12 +264,22 @@ export default function ContactChatScreen() {
   }, [navigation]);
 
   useEffect(() => {
+    setMessages([]);
+    setDraft('');
+    setPendingFile(null);
+    setPeerTyping(false);
+    setAttachmentsOpen(false);
+    setAttachmentsInfo(null);
+    setLoading(true);
+  }, [threadId]);
+
+  useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      goBackToContactList();
+      handleBack();
       return true;
     });
     return () => sub.remove();
-  }, [goBackToContactList]);
+  }, [handleBack]);
 
   return (
     <KeyboardAvoidingView
@@ -275,7 +289,7 @@ export default function ContactChatScreen() {
     >
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable
-          onPress={goBackToContactList}
+          onPress={handleBack}
           style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
           hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
         >

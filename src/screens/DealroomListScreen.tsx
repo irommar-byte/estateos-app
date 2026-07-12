@@ -51,6 +51,7 @@ import {
 } from '../services/contactService';
 import { useContactThreadPrefsStore } from '../store/useContactThreadPrefsStore';
 import { openDirectContactChat } from '../utils/openDirectContact';
+import { navigateToContactChat } from '../utils/navigateToContactChat';
 
 /** Kolejność ID na liście — pierwsze na górze sekcji (jak pinezka w Mail). */
 const DEALROOM_PINS_STORAGE_KEY = '@EstateOS_dealroom_pins';
@@ -2466,7 +2467,7 @@ export default function DealroomListScreen() {
             isDark={isDark}
             token={token}
             onOpenThread={(thread) => {
-              navigation.navigate('ContactChat', {
+              navigateToContactChat(navigation, {
                 threadId: thread.id,
                 peerUserId: thread.peerUserId,
                 peerName: getContactDisplayName(thread.id, thread.peerUserName),

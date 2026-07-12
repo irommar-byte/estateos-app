@@ -2,9 +2,14 @@ import { Alert } from 'react-native';
 import { initContactThread } from '../services/contactService';
 import { useFloatingChatsStore } from '../store/useFloatingChatsStore';
 import { t } from '../i18n';
+import { navigateToContactChat } from './navigateToContactChat';
 
 export async function openDirectContactChat(
-  navigation: { navigate: (screen: string, params?: Record<string, unknown>) => void },
+  navigation: {
+    navigate: (screen: string, params?: Record<string, unknown>) => void;
+    dispatch?: (action: unknown) => void;
+    getState?: () => unknown;
+  },
   token: string | null | undefined,
   peerUserId: number,
   peerName?: string
@@ -25,7 +30,7 @@ export async function openDirectContactChat(
       peerName: name,
       peerImage: thread.peer?.image ?? null,
     });
-    navigation.navigate('ContactChat', {
+    navigateToContactChat(navigation as Parameters<typeof navigateToContactChat>[0], {
       threadId: thread.id,
       peerUserId: peerId,
       peerName: name,

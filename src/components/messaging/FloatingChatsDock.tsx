@@ -9,7 +9,8 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { navigate } from '../../../navigationRef';
+import { navigationRef } from '../../../navigationRef';
+import { navigateToContactChat } from '../../utils/navigateToContactChat';
 import { useFloatingChatsStore } from '../../store/useFloatingChatsStore';
 import { useFloatingChatsLayoutStore } from '../../store/useFloatingChatsLayoutStore';
 import { useThemeStore } from '../../store/useThemeStore';
@@ -157,7 +158,7 @@ export default function FloatingChatsDock() {
   const openEntry = (entry: (typeof entries)[number]) => {
     Haptics.selectionAsync();
     setMinimized(true);
-    navigate('ContactChat', {
+    navigateToContactChat(navigationRef, {
       threadId: entry.threadId,
       peerUserId: entry.peerUserId,
       peerName: entry.peerName,
