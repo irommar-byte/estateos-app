@@ -86,6 +86,7 @@ const EMPTY_FORM: FormState = {
   registrationNumber: '',
   firstRegistrationDate: '',
   insuranceValidUntil: '',
+  restrictVehicleDocs: false,
   images: [],
   imageByteSizes: {},
 };
@@ -121,6 +122,7 @@ function carToForm(car: CarListing): FormState {
     registrationNumber: car.registrationNumber || '',
     firstRegistrationDate: formatDateForForm(car.firstRegistrationDate || ''),
     insuranceValidUntil: formatDateForForm(car.insuranceValidUntil || ''),
+    restrictVehicleDocs: Boolean(car.restrictVehicleDocs),
     images,
     imageByteSizes: Object.fromEntries(images.map((uri) => [uri, 900_000])),
   };
@@ -152,6 +154,7 @@ function toPayload(form: FormState, uploadedImages: string[]): CarFormPayload {
     registrationNumber: form.registrationNumber.trim().toUpperCase(),
     firstRegistrationDate: formatDateForForm(form.firstRegistrationDate),
     insuranceValidUntil: formatDateForForm(form.insuranceValidUntil),
+    restrictVehicleDocs: Boolean(form.restrictVehicleDocs),
     imageUrl: uploadedImages[0] || '',
     images: uploadedImages,
   };
@@ -193,7 +196,7 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
     (async () => {
       setLoadingEdit(true);
       try {
-        const fresh = await fetchCarById(carId);
+        const fresh = await fetchCarById(carId, token);
         if (!cancelled && fresh) {
           setForm((prev) => {
             const next = carToForm(fresh);
@@ -215,7 +218,7 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
     return () => {
       cancelled = true;
     };
-  }, [mode, carId]);
+  }, [mode, carId, token]);
 
   useEffect(() => {
     if (!user || !token) {
@@ -380,6 +383,7 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
               registrationNumber: form.registrationNumber,
               firstRegistrationDate: form.firstRegistrationDate,
               insuranceValidUntil: form.insuranceValidUntil,
+              restrictVehicleDocs: form.restrictVehicleDocs,
             }}
             onChange={(patch) => patchForm(patch)}
           />

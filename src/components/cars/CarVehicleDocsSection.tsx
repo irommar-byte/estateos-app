@@ -25,6 +25,7 @@ export type CarVehicleDocsState = {
   registrationNumber: string;
   firstRegistrationDate: string;
   insuranceValidUntil: string;
+  restrictVehicleDocs: boolean;
 };
 
 type CarVehicleDocsSectionProps = {
@@ -165,6 +166,21 @@ export default function CarVehicleDocsSection({ value, onChange }: CarVehicleDoc
         styles={styles}
         colors={colors}
       />
+
+      <Pressable
+        onPress={() => onChange({ restrictVehicleDocs: !value.restrictVehicleDocs })}
+        style={styles.privacyRow}
+      >
+        <View style={[styles.checkbox, value.restrictVehicleDocs && styles.checkboxChecked]}>
+          {value.restrictVehicleDocs ? <Text style={styles.checkboxMark}>✓</Text> : null}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.privacyTitle}>Zastrzeż dane pojazdu (VIN, rejestracja, pierwsza rejestracja)</Text>
+          <Text style={styles.privacyHint}>
+            Na stronie ogłoszenia i w raporcie historii CEPIK widoczne będą tylko pierwsze 2 znaki każdego z tych pól.
+          </Text>
+        </View>
+      </Pressable>
 
       <Pressable onPress={() => void handleHistory()} disabled={historyLoading || !canCheckHistory || !token} style={styles.actionBtn}>
         {historyLoading ? (
@@ -314,6 +330,33 @@ function createStyles(colors: CarScreenColors) {
       marginTop: 4,
     },
     actionLabel: { color: colors.buttonText, fontSize: 13, fontWeight: '800' },
+    privacyRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.surface,
+      padding: 12,
+    },
+    checkbox: {
+      width: 22,
+      height: 22,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: colors.inputBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 2,
+    },
+    checkboxChecked: {
+      borderColor: colors.accent,
+      backgroundColor: colors.accent,
+    },
+    checkboxMark: { color: colors.buttonText, fontSize: 14, fontWeight: '800' },
+    privacyTitle: { color: colors.text, fontSize: 13, fontWeight: '700' },
+    privacyHint: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 4 },
     actionBtnSecondary: {
       flexDirection: 'row',
       alignItems: 'center',

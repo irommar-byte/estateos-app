@@ -16,21 +16,26 @@ import {
   type VehicleHistoryReport,
 } from '../../services/carVehicleChecks';
 import { useAuthStore } from '../../store/useAuthStore';
+import { maskVehicleHistoryReport } from '../../utils/carVehicleDocPrivacy';
 import { useCarScreenTheme, type CarScreenColors } from '../../theme/carScreenTheme';
 
 type CarVehicleChecksPanelProps = {
+  carId?: number;
   vin?: string;
   registrationNumber?: string;
   firstRegistrationDate?: string;
   insuranceValidUntil?: string;
+  restrictVehicleDocs?: boolean;
   title?: string;
 };
 
 export default function CarVehicleChecksPanel({
+  carId,
   vin = '',
   registrationNumber = '',
   firstRegistrationDate = '',
   insuranceValidUntil = '',
+  restrictVehicleDocs = false,
   title = 'Weryfikacja pojazdu',
 }: CarVehicleChecksPanelProps) {
   const { colors, elevation } = useCarScreenTheme();
@@ -43,9 +48,17 @@ export default function CarVehicleChecksPanel({
   const [insuranceOk, setInsuranceOk] = useState<boolean | null>(null);
 
   const hasHistoryData = Boolean(
-    vin.trim().length === 17 && registrationNumber.trim() && firstRegistrationDate.trim(),
+    vin.trim().length >= 2 && registrationNumber.trim() && firstRegistrationDate.trim(),
   );
   const hasInsuranceData = Boolean(registrationNumber.trim());
+
+  const historyPayload = carId
+    ? { carId }
+    : { vin, registrationNumber, firstRegistrationDate };
+
+  const insurancePayload = carId
+    ? { carId, insuranceValidUntil }
+    : { registrationNumber, insuranceValidUntil, vin, firstRegistrationDate };
 
   const handleHistory = async () => {
     if (!token) {
@@ -58,11 +71,12 @@ export default function CarVehicleChecksPanel({
     }
     setHistoryLoading(true);
     try {
-      const report = await fetchVehicleHistoryReport(
-        { vin, registrationNumber, firstRegistrationDate },
-        token,
+      const report = await fetchVehicleHistoryReport(historyPayload, token);
+      setHistoryReport(
+        restrictVehicleDocs
+          ? maskVehicleHistoryReport(report, { vin, registrationNumber, firstRegistrationDate })
+          : report,
       );
-      setHistoryReport(report);
     } catch (error) {
       Alert.alert('Historia pojazdu', error instanceof Error ? error.message : 'Błąd sprawdzania.');
     } finally {
@@ -81,10 +95,7 @@ export default function CarVehicleChecksPanel({
     }
     setInsuranceLoading(true);
     try {
-      const result = await checkCarInsurance(
-        { registrationNumber, insuranceValidUntil, vin, firstRegistrationDate },
-        token,
-      );
+      const result = await checkCarInsurance(insurancePayload, token);
       setInsuranceOk(result.hasInsurance);
       setInsuranceMessage(result.message);
     } catch (error) {
@@ -104,7 +115,10 @@ export default function CarVehicleChecksPanel({
   return (
     <View style={[styles.root, elevation.cardSm]}>
       <Text style={styles.heading}>{title}</Text>
-      <Text style={styles.lead}>Sprawdź historię w CEPIK i ważność OC (UFG) — dane z ogłoszenia.</Text>
+      <Text style={styles.lead}>
+        Sprawdź historię w CEPIK i ważność OC (UFG) — dane z ogłoszenia.
+        {restrictVehicleDocs ? ' Sprzedający zastrzegł pełne dane VIN, rejestracji i pierwszej rejestracji.' : ''}
+      </Text>
 
       {vin.trim() ? <InfoRow label="VIN" value={vin} /> : null}
       {registrationNumber.trim() ? <InfoRow label="Rejestracja" value={registrationNumber} /> : null}

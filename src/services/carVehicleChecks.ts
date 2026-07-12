@@ -29,9 +29,10 @@ function authHeaders(token?: string | null): HeadersInit {
 
 export async function fetchVehicleHistoryReport(
   input: {
-    vin: string;
-    registrationNumber: string;
-    firstRegistrationDate: string;
+    vin?: string;
+    registrationNumber?: string;
+    firstRegistrationDate?: string;
+    carId?: number;
   },
   token?: string | null,
 ): Promise<VehicleHistoryReport> {
@@ -49,10 +50,11 @@ export async function fetchVehicleHistoryReport(
 
 export async function checkCarInsurance(
   input: {
-    registrationNumber: string;
+    registrationNumber?: string;
     insuranceValidUntil?: string;
     vin?: string;
     firstRegistrationDate?: string;
+    carId?: number;
   },
   token?: string | null,
 ): Promise<InsuranceCheckResult> {

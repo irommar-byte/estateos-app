@@ -25,6 +25,7 @@ export type CarFormPayload = {
   registrationNumber?: string;
   firstRegistrationDate?: string;
   insuranceValidUntil?: string;
+  restrictVehicleDocs?: boolean;
   imageUrl: string;
   images?: string[];
 };

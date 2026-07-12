@@ -251,10 +251,12 @@ export default function CarDetailScreen({ navigation, route }: CarDetailScreenPr
             </View>
 
             <CarVehicleChecksPanel
+              carId={car.id}
               vin={car.vin}
               registrationNumber={car.registrationNumber}
               firstRegistrationDate={car.firstRegistrationDate}
               insuranceValidUntil={car.insuranceValidUntil}
+              restrictVehicleDocs={Boolean(car.restrictVehicleDocs)}
             />
 
             <Pressable onPress={handleContact} style={styles.contactBtn}>

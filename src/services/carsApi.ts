@@ -26,6 +26,7 @@ export type CarListing = {
   registrationNumber?: string;
   firstRegistrationDate?: string;
   insuranceValidUntil?: string;
+  restrictVehicleDocs?: boolean;
   imageUrl: string;
   images?: string[] | string;
   createdAt?: string;
@@ -85,8 +86,10 @@ export async function fetchCarsCatalog(): Promise<CarListing[]> {
   return rows.map((row) => withCarImage(row as CarListing));
 }
 
-export async function fetchCarById(id: number): Promise<CarListing | null> {
-  const response = await fetch(`${API_URL}/api/cars/${id}`, { headers: { 'Cache-Control': 'no-cache' } });
+export async function fetchCarById(id: number, token?: string | null): Promise<CarListing | null> {
+  const response = await fetch(`${API_URL}/api/cars/${id}`, {
+    headers: { ...authHeaders(token), 'Cache-Control': 'no-cache' },
+  });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error('Nie udało się pobrać ogłoszenia auta.');
   const payload = await response.json();
