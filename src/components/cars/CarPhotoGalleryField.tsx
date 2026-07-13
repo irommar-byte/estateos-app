@@ -12,6 +12,7 @@ import {
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Trash2, Upload } from "lucide-react";
+import { CarFormSection } from "@/components/cars/carFormStyles";
 
 export type CarPhotoGalleryFieldHandle = {
   uploadPending: () => Promise<string[]>;
@@ -305,13 +306,12 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
     const hasLocalPending = !loggedIn && images.some((url) => url.startsWith("blob:"));
 
     return (
-      <div
-        className={`grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 ${
-          highlighted ? "ring-2 ring-amber-400/70 border-amber-400/60" : ""
-        }`}
+      <CarFormSection
+        eyebrow="Prezentacja"
+        title="Galeria zdjęć"
+        description="Pierwsze zdjęcie jest główne na liście ogłoszeń. Przeciągnij miniatury, aby zmienić kolejność."
       >
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold">Galeria zdjęć</p>
+        <div className="flex items-center justify-end">
           <span className="rounded-full bg-[var(--eos-bg)] px-3 py-1 text-[10px] font-bold text-[var(--eos-muted)]">
             {totalSizeLabel}
           </span>
@@ -324,7 +324,11 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
           </p>
         ) : null}
 
-        <div className="flex min-h-[148px] flex-wrap gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg)]/40 p-4">
+        <div
+          className={`flex min-h-[148px] flex-wrap gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg)]/40 p-4 ${
+            highlighted ? "ring-2 ring-amber-400/70 border-amber-400/60" : ""
+          }`}
+        >
           <label className="group flex h-32 w-32 flex-shrink-0 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--eos-border)] bg-[var(--eos-surface)] text-[var(--eos-muted)] transition hover:border-sky-400/50 hover:text-sky-300">
             <input
               ref={fileInputRef}
@@ -362,14 +366,11 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
           </DndContext>
         </div>
 
-        <p className="text-center text-[10px] text-[var(--eos-muted)]">
-          Przeciągnij miniatury, aby zmienić kolejność. Pierwsze zdjęcie jest główne na liście ogłoszeń.
-        </p>
         {images.length === 0 ? (
           <p className="text-center text-[11px] font-semibold text-amber-400">Dodaj co najmniej jedno zdjęcie auta.</p>
         ) : null}
         {error ? <p className="text-sm text-red-400">{error}</p> : null}
-      </div>
+      </CarFormSection>
     );
   },
 );

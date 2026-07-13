@@ -12,6 +12,11 @@ import CarRegistrationScanGate, {
   missingFieldsBanner,
 } from "@/components/cars/CarRegistrationScanGate";
 import CarVehicleDocsFields, { type CarVehicleDocsFormState } from "@/components/cars/CarVehicleDocsFields";
+import {
+  CarFormField,
+  CarFormSection,
+  carFieldInputClass,
+} from "@/components/cars/carFormStyles";
 import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
 import { listMissingListingFields } from "@/lib/polishRegistrationDocument.shared";
 import { formatDateForForm } from "@/utils/polishDateInput";
@@ -310,7 +315,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
         onAuthenticated={publishListing}
       />
 
-      <form onSubmit={handleSubmit} className="mt-8 grid gap-4">
+      <form onSubmit={handleSubmit} className="grid gap-6">
         {!loggedIn && mode === "create" ? (
           <p className="rounded-2xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
             Możesz wypełnić formularz bez logowania. Po kliknięciu „Opublikuj” założysz konto — ogłoszenie trafi od
@@ -326,26 +331,30 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
 
         <CarCatalogFields form={form} setForm={setForm} />
 
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Tytuł ogłoszenia</span>
-          <input
-            value={form.title}
-            onChange={(e) => setField("title", e.target.value)}
-            className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("title"))}`}
-            placeholder="np. BMW X5 xDrive30d M Sport"
-            required
-          />
-        </label>
+        <CarFormSection
+          eyebrow="Treść ogłoszenia"
+          title="Tytuł i opis"
+          description="Krótki, konkretny tytuł i opis stanu auta zwiększają zaufanie kupujących."
+        >
+          <CarFormField label="Tytuł ogłoszenia">
+            <input
+              value={form.title}
+              onChange={(e) => setField("title", e.target.value)}
+              className={`${carFieldInputClass} ${highlightClass(isHighlighted("title"))}`}
+              placeholder="np. BMW X5 xDrive30d M Sport"
+              required
+            />
+          </CarFormField>
 
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Opis</span>
-          <textarea
-            value={form.description}
-            onChange={(e) => setField("description", e.target.value)}
-            className={`min-h-[120px] rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("description"))}`}
-            placeholder="Opisz stan auta, historię serwisową, wyposażenie..."
-          />
-        </label>
+          <CarFormField label="Opis">
+            <textarea
+              value={form.description}
+              onChange={(e) => setField("description", e.target.value)}
+              className={`min-h-[140px] resize-y ${carFieldInputClass} ${highlightClass(isHighlighted("description"))}`}
+              placeholder="Opisz stan auta, historię serwisową, wyposażenie..."
+            />
+          </CarFormField>
+        </CarFormSection>
 
         <CarVehicleDocsFields
           value={{
@@ -359,27 +368,31 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
           loggedIn={loggedIn}
         />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-1.5 text-sm">
-            <span className="text-[var(--eos-muted)]">Przebieg (km)</span>
-            <CarFormattedNumberInput
-              value={form.mileageKm}
-              onChange={(digits) => setField("mileageKm", digits)}
-              className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("mileageKm"))}`}
-              placeholder="58 000"
-            />
-          </label>
-          <label className="grid gap-1.5 text-sm">
-            <span className="text-[var(--eos-muted)]">Cena (PLN)</span>
-            <CarFormattedNumberInput
-              value={form.pricePln}
-              onChange={(digits) => setField("pricePln", digits)}
-              className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("pricePln"))}`}
-              placeholder="319 000"
-              required
-            />
-          </label>
-        </div>
+        <CarFormSection
+          eyebrow="Oferta"
+          title="Cena i przebieg"
+          description="Podaj aktualny przebieg i cenę sprzedaży w PLN."
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <CarFormField label="Przebieg (km)">
+              <CarFormattedNumberInput
+                value={form.mileageKm}
+                onChange={(digits) => setField("mileageKm", digits)}
+                className={`${carFieldInputClass} ${highlightClass(isHighlighted("mileageKm"))}`}
+                placeholder="58 000"
+              />
+            </CarFormField>
+            <CarFormField label="Cena (PLN)">
+              <CarFormattedNumberInput
+                value={form.pricePln}
+                onChange={(digits) => setField("pricePln", digits)}
+                className={`${carFieldInputClass} ${highlightClass(isHighlighted("pricePln"))}`}
+                placeholder="319 000"
+                required
+              />
+            </CarFormField>
+          </div>
+        </CarFormSection>
 
         <CarCityMapPicker
           city={form.city}
@@ -421,7 +434,9 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
           }}
         />
 
-        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        {error ? (
+          <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</p>
+        ) : null}
         {successId ? (
           <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
             <p className="font-semibold">Ogłoszenie opublikowane i widoczne w katalogu Cars.</p>
@@ -438,20 +453,25 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
           </div>
         ) : null}
 
-        <div className="mt-2 flex flex-wrap gap-3">
-          <button
-            type="submit"
-            disabled={submitting || uploading}
-            className="rounded-full border border-sky-400/40 bg-sky-500/10 px-5 py-2 text-xs font-black uppercase tracking-[0.14em] text-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {submitting ? "Publikowanie..." : mode === "create" ? "Opublikuj ogłoszenie Cars" : "Zapisz zmiany"}
-          </button>
-          <Link
-            href={mode === "edit" && carId ? `/cars/${carId}` : "/cars"}
-            className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-2 text-xs font-black uppercase tracking-[0.14em]"
-          >
-            Anuluj
-          </Link>
+        <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-[1.75rem] border border-sky-400/25 bg-[var(--eos-card)]/95 px-5 py-4 shadow-[0_18px_50px_rgba(14,165,233,0.12)] backdrop-blur-md">
+          <p className="text-xs text-[var(--eos-muted)]">
+            {mode === "create" ? "Gotowe? Opublikuj ogłoszenie w katalogu Cars." : "Zapisz zmiany w ogłoszeniu."}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="submit"
+              disabled={submitting || uploading}
+              className="rounded-full border border-sky-400/45 bg-sky-500/15 px-6 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-sky-200 transition hover:bg-sky-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? "Publikowanie..." : mode === "create" ? "Opublikuj ogłoszenie Cars" : "Zapisz zmiany"}
+            </button>
+            <Link
+              href={mode === "edit" && carId ? `/cars/${carId}` : "/cars"}
+              className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-6 py-2.5 text-xs font-black uppercase tracking-[0.14em]"
+            >
+              Anuluj
+            </Link>
+          </div>
         </div>
       </form>
     </>

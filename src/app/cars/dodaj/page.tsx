@@ -27,9 +27,7 @@ export default function AddCarPage() {
           </Link>
         </CatalogBrandHero>
 
-        <div className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 sm:p-8">
-          <CarListingForm mode="create" />
-        </div>
+        <CarListingForm mode="create" />
       </div>
     </main>
   );

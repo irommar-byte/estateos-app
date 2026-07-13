@@ -6,6 +6,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { LocateFixed, MapPin } from "lucide-react";
 import { mapboxForwardGeocodeUrl } from "@/lib/mapboxGeocodeClient";
 import { isPlaceholderDistrict } from "@/lib/location/locationCatalog";
+import { CarFormField, CarFormSection, carFieldInputClass } from "@/components/cars/carFormStyles";
 
 if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -254,14 +255,16 @@ export default function CarCityMapPicker({
     );
   };
 
-  const inputClass = `rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${
-    highlighted ? "ring-2 ring-amber-400/60" : ""
-  }`;
+  const inputClass = `${carFieldInputClass} ${highlighted ? "ring-2 ring-amber-400/60 border-amber-400/60" : ""}`;
 
   return (
-    <div className={`grid gap-2 text-sm ${highlighted ? "rounded-2xl ring-2 ring-amber-400/40 p-1" : ""}`}>
-      <span className="text-[var(--eos-muted)]">Miejscowość</span>
-      <div className="relative">
+    <CarFormSection
+      eyebrow="Lokalizacja"
+      title="Miejscowość na mapie"
+      description="Wyszukaj miasto lub przeciągnij mapę — pinezka wskazuje miejsce ogłoszenia."
+    >
+      <CarFormField label="Miejscowość">
+        <div className="relative">
         <input
           value={query}
           onFocus={() => setSearchFocused(true)}
@@ -303,7 +306,8 @@ export default function CarCityMapPicker({
             ))}
           </ul>
         ) : null}
-      </div>
+        </div>
+      </CarFormField>
 
       <div
         className="relative overflow-hidden rounded-xl border border-[var(--eos-border)]"
@@ -332,6 +336,6 @@ export default function CarCityMapPicker({
             : "Przeciągnij mapę lub wyszukaj miasto — pinezka wskazuje lokalizację ogłoszenia."}
       </p>
       {mapError ? <p className="text-xs text-red-400">{mapError}</p> : null}
-    </div>
+    </CarFormSection>
   );
 }
