@@ -308,8 +308,7 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill }: Car
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
-            capture="environment"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*"
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];

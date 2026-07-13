@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Car, Home } from "lucide-react";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 
 type HomeListing = {
@@ -120,16 +121,31 @@ export default function AccountListingsPage() {
     }
   };
 
+  const verticalTabClass = (active: boolean, brand: "home" | "car") => {
+    if (brand === "home") {
+      return `inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-xs font-black uppercase tracking-[0.14em] transition ${
+        active
+          ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-300 shadow-[0_8px_24px_rgba(16,185,129,0.15)]"
+          : "border-[var(--eos-border)] bg-[var(--eos-surface)] text-[var(--eos-muted)] hover:border-emerald-400/30 hover:text-[var(--eos-text)]"
+      }`;
+    }
+    return `inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-xs font-black uppercase tracking-[0.14em] transition ${
+      active
+        ? "border-sky-400/50 bg-sky-500/15 text-sky-300 shadow-[0_8px_24px_rgba(14,165,233,0.18)]"
+        : "border-[var(--eos-border)] bg-[var(--eos-surface)] text-[var(--eos-muted)] hover:border-sky-400/30 hover:text-[var(--eos-text)]"
+    }`;
+  };
+
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-36 text-[var(--eos-text)] sm:px-6">
       <div className="mx-auto max-w-6xl">
-        <header className="mb-8 border-b border-[var(--eos-border)] pb-6">
+        <header className="mb-8 border-b border-[var(--eos-border)] pb-6 text-center sm:text-left">
           <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">Moje konto</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight">Moje ogłoszenia</h1>
-          <p className="mt-3 text-sm text-[var(--eos-muted)]">
+          <p className="mx-auto mt-3 max-w-2xl text-sm text-[var(--eos-muted)] sm:mx-0">
             Jedno konto EstateOS i dwa brandy operacyjne: EstateOS™Home oraz EstateOS™Car.
           </p>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
             <Link
               href="/moje-konto/sesje-zdjeciowe"
               className="inline-flex rounded-full border border-emerald-400/35 bg-emerald-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-300"
@@ -145,42 +161,98 @@ export default function AccountListingsPage() {
           </div>
         </header>
 
-        <div className="mb-6 inline-flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1">
-          <button
-            type="button"
-            onClick={() => setVertical("home")}
-            className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${
-              vertical === "home" ? "bg-emerald-500/20 text-emerald-300" : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+        <section
+          className={`relative mb-8 overflow-hidden rounded-3xl border p-6 text-center sm:p-10 ${
+            vertical === "car"
+              ? "border-sky-400/25 bg-[var(--eos-card)] shadow-[0_22px_70px_rgba(14,165,233,0.1)]"
+              : "border-emerald-400/20 bg-[var(--eos-card)] shadow-[0_22px_70px_rgba(16,185,129,0.08)]"
+          }`}
+        >
+          <div
+            className={`pointer-events-none absolute -right-20 -top-20 size-64 rounded-full blur-3xl ${
+              vertical === "car" ? "bg-sky-500/12" : "bg-emerald-500/10"
+            }`}
+          />
+          <div
+            className={`pointer-events-none absolute -bottom-16 -left-16 size-48 rounded-full blur-3xl ${
+              vertical === "car" ? "bg-cyan-500/8" : "bg-emerald-500/6"
+            }`}
+          />
+
+          <p
+            className={`text-xs font-black uppercase tracking-[0.22em] ${
+              vertical === "car" ? "text-sky-400" : "text-emerald-400"
             }`}
           >
-            EstateOS™Home ({homeListings.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setVertical("car")}
-            className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${
-              vertical === "car" ? "bg-sky-500/20 text-sky-300" : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
-            }`}
-          >
-            EstateOS™Car ({carListings.length})
-          </button>
-        </div>
+            {vertical === "car" ? "EstateOS™Car" : "EstateOS™Home"}
+          </p>
+          <h2 className="mx-auto mt-3 max-w-2xl text-3xl font-semibold tracking-tight sm:text-4xl">
+            {vertical === "car" ? "Twoje ogłoszenia samochodowe" : "Twoje ogłoszenia nieruchomości"}
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl text-sm text-[var(--eos-muted)]">
+            {vertical === "car"
+              ? "Zarządzaj autami, edytuj zdjęcia i odpowiadaj na zapytania kupujących z jednego konta."
+              : "Zarządzaj ofertami Home, promuj ogłoszenia i odpowiadaj na zapytania z jednego konta."}
+          </p>
+
+          <div className="relative mx-auto mt-8 flex max-w-xl flex-wrap items-center justify-center gap-3">
+            <button type="button" onClick={() => setVertical("home")} className={verticalTabClass(vertical === "home", "home")}>
+              <Home size={14} />
+              EstateOS™Home ({homeListings.length})
+            </button>
+            <button type="button" onClick={() => setVertical("car")} className={verticalTabClass(vertical === "car", "car")}>
+              <Car size={14} />
+              EstateOS™Car ({carListings.length})
+            </button>
+          </div>
+
+          {!loading ? (
+            <p
+              className={`mt-5 text-xs font-black uppercase tracking-[0.14em] ${
+                vertical === "car" ? "text-sky-600 dark:text-sky-300" : "text-emerald-600 dark:text-emerald-300"
+              }`}
+            >
+              {activeItems.length}{" "}
+              {activeItems.length === 1 ? "aktywne ogłoszenie" : activeItems.length < 5 ? "aktywne ogłoszenia" : "aktywnych ogłoszeń"}
+            </p>
+          ) : null}
+        </section>
 
         {loading ? (
-          <p className="text-xs uppercase tracking-[0.2em] text-[var(--eos-muted)]">Ładowanie ogłoszeń...</p>
+          <p className="text-center text-xs uppercase tracking-[0.2em] text-[var(--eos-muted)]">Ładowanie ogłoszeń...</p>
         ) : activeItems.length === 0 ? (
-          <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
+          <div
+            className={`mx-auto max-w-2xl rounded-3xl border p-8 text-center ${
+              vertical === "car"
+                ? "border-sky-400/20 bg-gradient-to-b from-sky-500/[0.06] to-transparent"
+                : "border-emerald-400/20 bg-gradient-to-b from-emerald-500/[0.05] to-transparent"
+            }`}
+          >
             <p className="text-sm text-[var(--eos-muted)]">
-              {vertical === "home" ? "Nie masz jeszcze aktywnych ogłoszeń nieruchomości." : "Nie masz jeszcze ogłoszeń samochodowych."}
+              {vertical === "home"
+                ? "Nie masz jeszcze aktywnych ogłoszeń nieruchomości."
+                : "Nie masz jeszcze ogłoszeń samochodowych."}
             </p>
-            <div className="mt-4">
+            <div className="mt-6">
               <Link
                 href={vertical === "home" ? "/dodaj-oferte" : "/cars/dodaj"}
-                className="inline-flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-xs font-black uppercase tracking-[0.12em]"
+                className={`inline-flex rounded-full border px-6 py-3 text-xs font-black uppercase tracking-[0.14em] transition ${
+                  vertical === "car"
+                    ? "border-sky-400/40 bg-sky-500/15 text-sky-300 hover:bg-sky-500/25"
+                    : "border-emerald-400/35 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                }`}
               >
                 {vertical === "home" ? "Dodaj ofertę Home" : "Dodaj ofertę Car"}
               </Link>
             </div>
+            {vertical === "car" ? (
+              <Link
+                href="/cars"
+                className="mt-4 inline-block text-xs font-semibold text-sky-400 underline underline-offset-2 hover:text-sky-300"
+              >
+                Przejdź do katalogu Cars
+              </Link>
+            ) : null}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">

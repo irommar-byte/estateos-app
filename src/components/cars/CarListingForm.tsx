@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import CarCatalogFields from "@/components/cars/CarCatalogFields";
 import CarCityMapPicker from "@/components/cars/CarCityMapPicker";
 import CarFormattedNumberInput from "@/components/cars/CarFormattedNumberInput";
-import CarPhotoGalleryField from "@/components/cars/CarPhotoGalleryField";
+import CarPhotoGalleryField, { type CarPhotoGalleryFieldHandle } from "@/components/cars/CarPhotoGalleryField";
+import CarPublishAuthGate from "@/components/cars/CarPublishAuthGate";
 import CarRegistrationScanGate, {
   highlightClass,
   missingFieldsBanner,
@@ -93,10 +94,10 @@ type CarListingFormProps = {
   onSuccess?: (id: number) => void;
 };
 
-function toPayload(form: CarFormState) {
+function toPayload(form: CarFormState, images: string[]) {
   const doorCount = Number(form.doorCountSlug || form.doorCount);
-  const images = form.images.map((item) => item.trim()).filter(Boolean);
-  const coverImage = images[0] || form.imageUrl.trim();
+  const normalizedImages = images.map((item) => item.trim()).filter(Boolean);
+  const coverImage = normalizedImages[0] || form.imageUrl.trim();
   return {
     title: form.title.trim(),
     description: form.description.trim(),
@@ -118,13 +119,30 @@ function toPayload(form: CarFormState) {
     cityLng: form.cityLng,
     localityCountry: form.localityCountry.trim() || "Polska",
     imageUrl: coverImage,
-    images,
+    images: normalizedImages,
     vin: form.vin.trim().toUpperCase(),
     registrationNumber: form.registrationNumber.trim().toUpperCase(),
     firstRegistrationDate: form.firstRegistrationDate.trim(),
     insuranceValidUntil: form.insuranceValidUntil.trim(),
     restrictVehicleDocs: Boolean(form.restrictVehicleDocs),
   };
+}
+
+function validateForm(form: CarFormState, imageCount: number): string | null {
+  const payload = toPayload(form, form.images);
+  if (!payload.title || !payload.make || !payload.model || !payload.city || payload.pricePln <= 0) {
+    return "Uzupełnij tytuł, markę, model, miejscowość i poprawną cenę.";
+  }
+  if (form.cityLat == null || form.cityLng == null) {
+    return "Ustaw miejscowość na mapie — przeciągnij mapę lub wybierz z wyszukiwarki.";
+  }
+  if (!payload.fuelType) {
+    return "Wybierz rodzaj paliwa z katalogu.";
+  }
+  if (imageCount <= 0) {
+    return "Dodaj co najmniej jedno zdjęcie auta.";
+  }
+  return null;
 }
 
 export default function CarListingForm({ mode, initialValues, carId, onSuccess }: CarListingFormProps) {
@@ -134,9 +152,11 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
   const [error, setError] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<number | null>(null);
   const [scanGateOpen, setScanGateOpen] = useState(mode === "create");
+  const [authGateOpen, setAuthGateOpen] = useState(false);
   const [highlightKeys, setHighlightKeys] = useState<CarListingMissingFieldKey[]>([]);
   const [scanNotice, setScanNotice] = useState<string | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
+  const photoGalleryRef = useRef<CarPhotoGalleryFieldHandle>(null);
 
   useEffect(() => {
     fetch("/api/auth/check", { cache: "no-store", credentials: "include" })
@@ -189,35 +209,29 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
     });
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const publishListing = async () => {
     setError(null);
     setSuccessId(null);
     setSubmitting(true);
 
-    const payload = toPayload(form);
-    if (!payload.title || !payload.make || !payload.model || !payload.city || payload.pricePln <= 0) {
-      setError("Uzupełnij tytuł, markę, model, miejscowość i poprawną cenę.");
-      setSubmitting(false);
-      return;
-    }
-    if (form.cityLat == null || form.cityLng == null) {
-      setError("Ustaw miejscowość na mapie — przeciągnij mapę lub wybierz z wyszukiwarki.");
-      setSubmitting(false);
-      return;
-    }
-    if (!payload.fuelType) {
-      setError("Wybierz rodzaj paliwa z katalogu.");
-      setSubmitting(false);
-      return;
-    }
-    if (!payload.images.length) {
-      setError("Dodaj co najmniej jedno zdjęcie auta.");
-      setSubmitting(false);
-      return;
+    const imageCount = photoGalleryRef.current?.totalCount() ?? form.images.length;
+    const validationError = validateForm(form, imageCount);
+    if (validationError) {
+      throw new Error(validationError);
     }
 
     try {
+      let uploadedImages = form.images;
+      if (photoGalleryRef.current?.hasPending()) {
+        uploadedImages = await photoGalleryRef.current.uploadPending();
+        setForm((prev) => ({
+          ...prev,
+          images: uploadedImages,
+          imageUrl: uploadedImages[0] || "",
+        }));
+      }
+
+      const payload = toPayload(form, uploadedImages);
       const response = await fetch(mode === "create" ? "/api/cars" : `/api/cars/${carId}`, {
         method: mode === "create" ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -226,9 +240,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(typeof data?.error === "string" ? data.error : "Nie udało się zapisać ogłoszenia.");
-        setSubmitting(false);
-        return;
+        throw new Error(typeof data?.error === "string" ? data.error : "Nie udało się zapisać ogłoszenia.");
       }
 
       const savedId = Number(data?.listing?.id || carId || 0) || null;
@@ -242,11 +254,39 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
           insuranceValidUntil: formatDateForForm(listing.insuranceValidUntil || prev.insuranceValidUntil),
         }));
       }
+      setAuthGateOpen(false);
+      setLoggedIn(true);
       setSuccessId(savedId);
       if (savedId) onSuccess?.(savedId);
       if (mode === "create") setForm(initialCarForm);
-    } catch {
-      setError("Błąd sieci podczas zapisu ogłoszenia.");
+    } catch (publishError) {
+      throw publishError instanceof Error ? publishError : new Error("Błąd sieci podczas zapisu ogłoszenia.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+
+    const imageCount = photoGalleryRef.current?.totalCount() ?? form.images.length;
+    const validationError = validateForm(form, imageCount);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    if (!loggedIn && mode === "create") {
+      setAuthGateOpen(true);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await publishListing();
+    } catch (publishError) {
+      setError(publishError instanceof Error ? publishError.message : "Błąd sieci podczas zapisu ogłoszenia.");
     } finally {
       setSubmitting(false);
     }
@@ -264,7 +304,20 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
         />
       ) : null}
 
+      <CarPublishAuthGate
+        open={authGateOpen}
+        onClose={() => setAuthGateOpen(false)}
+        onAuthenticated={publishListing}
+      />
+
       <form onSubmit={handleSubmit} className="mt-8 grid gap-4">
+        {!loggedIn && mode === "create" ? (
+          <p className="rounded-2xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+            Możesz wypełnić formularz bez logowania. Po kliknięciu „Opublikuj” założysz konto — ogłoszenie trafi od
+            razu do katalogu, a Ty dostaniesz powiadomienia o zapytaniach.
+          </p>
+        ) : null}
+
         {scanNotice ? (
           <p className="rounded-2xl border border-amber-500/30 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-50">
             {scanNotice}
@@ -294,103 +347,112 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
           />
         </label>
 
-      <CarVehicleDocsFields
-        value={{
-          vin: form.vin,
-          registrationNumber: form.registrationNumber,
-          firstRegistrationDate: form.firstRegistrationDate,
-          insuranceValidUntil: form.insuranceValidUntil,
-          restrictVehicleDocs: form.restrictVehicleDocs,
-        }}
-        onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-        loggedIn={loggedIn}
-      />
+        <CarVehicleDocsFields
+          value={{
+            vin: form.vin,
+            registrationNumber: form.registrationNumber,
+            firstRegistrationDate: form.firstRegistrationDate,
+            insuranceValidUntil: form.insuranceValidUntil,
+            restrictVehicleDocs: form.restrictVehicleDocs,
+          }}
+          onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+          loggedIn={loggedIn}
+        />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Przebieg (km)</span>
-          <CarFormattedNumberInput
-            value={form.mileageKm}
-            onChange={(digits) => setField("mileageKm", digits)}
-            className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("mileageKm"))}`}
-            placeholder="58 000"
-          />
-        </label>
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Cena (PLN)</span>
-          <CarFormattedNumberInput
-            value={form.pricePln}
-            onChange={(digits) => setField("pricePln", digits)}
-            className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("pricePln"))}`}
-            placeholder="319 000"
-            required
-          />
-        </label>
-      </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-1.5 text-sm">
+            <span className="text-[var(--eos-muted)]">Przebieg (km)</span>
+            <CarFormattedNumberInput
+              value={form.mileageKm}
+              onChange={(digits) => setField("mileageKm", digits)}
+              className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("mileageKm"))}`}
+              placeholder="58 000"
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm">
+            <span className="text-[var(--eos-muted)]">Cena (PLN)</span>
+            <CarFormattedNumberInput
+              value={form.pricePln}
+              onChange={(digits) => setField("pricePln", digits)}
+              className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("pricePln"))}`}
+              placeholder="319 000"
+              required
+            />
+          </label>
+        </div>
 
-      <CarCityMapPicker
-        city={form.city}
-        cityLat={form.cityLat}
-        cityLng={form.cityLng}
-        localityCountry={form.localityCountry}
-        highlighted={isHighlighted("city")}
-        onChange={(selection) => {
-          setForm((prev) => {
-            const next = {
-              ...prev,
-              city: selection.city,
-              cityLat: selection.cityLat,
-              cityLng: selection.cityLng,
-              localityCountry: selection.localityCountry || prev.localityCountry,
-            };
-            refreshHighlights(next);
-            return next;
-          });
-        }}
-      />
+        <CarCityMapPicker
+          city={form.city}
+          cityLat={form.cityLat}
+          cityLng={form.cityLng}
+          localityCountry={form.localityCountry}
+          highlighted={isHighlighted("city")}
+          onChange={(selection) => {
+            setForm((prev) => {
+              const next = {
+                ...prev,
+                city: selection.city,
+                cityLat: selection.cityLat,
+                cityLng: selection.cityLng,
+                localityCountry: selection.localityCountry || prev.localityCountry,
+              };
+              refreshHighlights(next);
+              return next;
+            });
+          }}
+        />
 
-      <CarPhotoGalleryField
-        images={form.images}
-        highlighted={isHighlighted("images")}
-        onUploadingChange={setUploading}
-        onChange={(images) => {
-          setForm((prev) => {
-            const next = {
-              ...prev,
-              images,
-              imageUrl: images[0] || "",
-            };
-            refreshHighlights(next, images.length > 0);
-            return next;
-          });
-        }}
-      />
+        <CarPhotoGalleryField
+          ref={photoGalleryRef}
+          images={form.images}
+          loggedIn={loggedIn}
+          highlighted={isHighlighted("images")}
+          onUploadingChange={setUploading}
+          onChange={(images) => {
+            setForm((prev) => {
+              const next = {
+                ...prev,
+                images,
+                imageUrl: images[0] || "",
+              };
+              refreshHighlights(next, images.length > 0);
+              return next;
+            });
+          }}
+        />
 
-      {error ? <p className="text-sm text-red-400">{error}</p> : null}
-      {successId ? (
-        <p className="text-sm text-emerald-300">
-          Ogłoszenie zapisane.{" "}
-          <Link className="underline" href={`/cars/${successId}`}>
-            Przejdź do szczegółów
+        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        {successId ? (
+          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+            <p className="font-semibold">Ogłoszenie opublikowane i widoczne w katalogu Cars.</p>
+            <p className="mt-1 text-emerald-100/80">
+              Możesz edytować zdjęcia i dane w każdej chwili — powiadomienia o zapytaniach trafią na Twoje konto.
+            </p>
+            <Link className="mt-2 inline-block font-bold underline" href={`/cars/${successId}`}>
+              Zobacz ogłoszenie
+            </Link>
+            {" · "}
+            <Link className="font-bold underline" href={`/cars/${successId}/edytuj`}>
+              Edytuj
+            </Link>
+          </div>
+        ) : null}
+
+        <div className="mt-2 flex flex-wrap gap-3">
+          <button
+            type="submit"
+            disabled={submitting || uploading}
+            className="rounded-full border border-sky-400/40 bg-sky-500/10 px-5 py-2 text-xs font-black uppercase tracking-[0.14em] text-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {submitting ? "Publikowanie..." : mode === "create" ? "Opublikuj ogłoszenie Cars" : "Zapisz zmiany"}
+          </button>
+          <Link
+            href={mode === "edit" && carId ? `/cars/${carId}` : "/cars"}
+            className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-2 text-xs font-black uppercase tracking-[0.14em]"
+          >
+            Anuluj
           </Link>
-        </p>
-      ) : null}
-
-      <div className="mt-2 flex flex-wrap gap-3">
-        <button
-          type="submit"
-          disabled={submitting || uploading}
-          className="rounded-full border border-sky-400/40 bg-sky-500/10 px-5 py-2 text-xs font-black uppercase tracking-[0.14em] text-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submitting ? "Zapisywanie..." : mode === "create" ? "Opublikuj ogłoszenie Cars" : "Zapisz zmiany"}
-        </button>
-        <Link
-          href={mode === "edit" && carId ? `/cars/${carId}` : "/cars"}
-          className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-2 text-xs font-black uppercase tracking-[0.14em]"
-        >
-          Anuluj
-        </Link>
-      </div>
+        </div>
       </form>
     </>
   );
