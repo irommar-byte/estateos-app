@@ -903,6 +903,138 @@ function parseNierOnlineAdminFee(html: string): number | null {
   return amount;
 }
 
+const NIER_ONLINE_STOCK_PHOTO_FILENAMES = new Set([
+  'mieszkanie-lublin-sprzedaz.jpg',
+  'mieszkanie-przy-lesie.jpg',
+  'mieszkanie-blok-mieszkalny-sprzedaz.jpg',
+  'mieszkanie-blok-mieszkalny-przy-lesie.jpg',
+  'mieszkanie-blok-mieszkalny-lublin.jpg',
+]);
+
+type NierOnlinePhotosPayload = {
+  x?: string[];
+  l?: string[];
+  m?: string[];
+  c?: { url?: string; alt?: string; p?: number }[];
+};
+
+function isNierOnlineStockPhoto(url: string, alt = ''): boolean {
+  const file = String(url).split('/').pop()?.toLowerCase() || '';
+  if (NIER_ONLINE_STOCK_PHOTO_FILENAMES.has(file)) return true;
+  if (/mieszkanie\s+(lublin\s+sprzedaż|przy\s+lesie|blok\s+mieszkalny)/i.test(String(alt || ''))) return true;
+  return false;
+}
+
+function extractNierOnlinePhotosJson(html: string): NierOnlinePhotosPayload | null {
+  const marker = html.match(/photos\s*:\s*\{/i);
+  if (!marker || marker.index == null) return null;
+  const start = html.indexOf('{', marker.index);
+  if (start < 0) return null;
+
+  let depth = 0;
+  for (let i = start; i < html.length; i += 1) {
+    const ch = html[i];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          return JSON.parse(html.slice(start, i + 1)) as NierOnlinePhotosPayload;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function nierOnlinePhotoHashBase(hash: string): string {
+  return String(hash || '').replace(/[xlcms]$/i, '');
+}
+
+function dedupeNierOnlineCdnUrls(urls: string[]): string[] {
+  const sizeRank: Record<string, number> = { x: 3, l: 2, m: 1, c: 0 };
+  const byBase = new Map<string, { url: string; rank: number }>();
+
+  for (const rawUrl of urls) {
+    const url = String(rawUrl || '').trim().replace(/\\\//g, '/');
+    if (!url) continue;
+    const match = url.match(/\/([a-z0-9]+)\/([^/?#]+)$/i);
+    if (!match) continue;
+    const hash = match[1];
+    const file = match[2].toLowerCase();
+    if (isNierOnlineStockPhoto(url)) continue;
+
+    const base = nierOnlinePhotoHashBase(hash);
+    const suffix = hash.slice(-1).toLowerCase();
+    const rank = sizeRank[suffix] ?? 1;
+    const prev = byBase.get(base);
+    if (!prev || rank > prev.rank) {
+      byBase.set(base, { url, rank });
+    }
+  }
+
+  return [...byBase.values()].map((entry) => entry.url);
+}
+
+function pickNierOnlineImageUrls(html: string, photos: NierOnlinePhotosPayload | null): string[] {
+  if (photos) {
+    const cMeta = Array.isArray(photos.c) ? photos.c : [];
+    for (const size of ['x', 'l', 'm'] as const) {
+      const list = photos[size];
+      if (!Array.isArray(list) || !list.length) continue;
+      const filtered = list
+        .map((url, idx) => String(url || '').trim().replace(/\\\//g, '/'))
+        .filter((url, idx) => url && !isNierOnlineStockPhoto(url, String(cMeta[idx]?.alt || '')));
+      if (filtered.length) return Array.from(new Set(filtered));
+    }
+
+    const fromC = cMeta
+      .map((item) => String(item?.url || '').trim().replace(/\\\//g, '/'))
+      .filter((url, idx) => url && !isNierOnlineStockPhoto(url, String(cMeta[idx]?.alt || '')));
+    if (fromC.length) return Array.from(new Set(fromC));
+  }
+
+  const htmlWithUnescapedSlashes = html.replace(/\\\//g, '/');
+  const scraped = Array.from(
+    new Set(
+      (htmlWithUnescapedSlashes.match(/https?:\/\/i\.st-nieruchomosci-online\.pl\/[^\s"'<>)]*\.(?:jpe?g|png|webp)/gi) || [])
+        .map((url) => String(url).trim())
+        .filter(Boolean),
+    ),
+  );
+  const deduped = dedupeNierOnlineCdnUrls(scraped);
+  if (deduped.length) return deduped;
+
+  const imageFromOg =
+    html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] || '';
+  return imageFromOg && !isNierOnlineStockPhoto(imageFromOg) ? [imageFromOg] : [];
+}
+
+function parseNierOnlineAreaFromJsonLd(html: string): number | null {
+  const scripts = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+  for (const script of scripts) {
+    try {
+      const data = JSON.parse(script[1] || '');
+      const nodes = Array.isArray(data) ? data : [data];
+      for (const node of nodes) {
+        if (String(node?.['@type'] || '').toLowerCase() !== 'apartment') continue;
+        const props = Array.isArray(node.additionalProperty) ? node.additionalProperty : [];
+        for (const prop of props) {
+          const name = String(prop?.name || '').toLowerCase();
+          if (!/floor size|powierzchnia|living area|area/i.test(name)) continue;
+          const value = parseNumber(String(prop?.value || '').match(/([\d\s.,]+)\s*m/i)?.[1]);
+          if (value != null && value >= 10) return value;
+        }
+      }
+    } catch {
+      // ignore malformed JSON-LD
+    }
+  }
+  return null;
+}
+
 function parseNierOnlineArea(
   html: string,
   normalizedHtml: string,
@@ -924,8 +1056,14 @@ function parseNierOnlineArea(
     fromList('Powierzchnia całkowita') ??
     fromList('Powierzchnia mieszkania');
 
+  const areaFromJsonLd = parseNierOnlineAreaFromJsonLd(html);
+  const areaFromTitle = parseNumber(
+    decodeImportHtmlText(title).match(/([\d]{1,3}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
+  );
   const areaFromLabel = parseNumber(
-    normalizedHtml.match(/powierzchni[aey]?\s*(?:użytkowa|mieszkania|całkowita)?[:\s]*([\d\s.,]+)\s*m(?:2|²|kw)/i)?.[1],
+    normalizedHtml.match(
+      /powierzchnia\s+(?:użytkowa|mieszkania|całkowita|całkowitej)\b[:\s]*([\d\s.,]+)\s*m(?:2|²|kw)/i,
+    )?.[1],
   );
   const areaFromTable = parseNumber(
     normalizedHtml.match(/\|\s*([\d\s.,]{1,12})\s*m(?:2|²|kw)\s*\|/i)?.[1],
@@ -933,23 +1071,17 @@ function parseNierOnlineArea(
   const areaFromRange = parseNumber(
     normalizedHtml.match(/metra(?:że|ze)\s*(?:od)?\s*([\d\s.,]+)\s*(?:do\s*[\d\s.,]+)?\s*m(?:2|²|kw)/i)?.[1],
   );
-  const areaFromAny = parseNumber(
-    normalizedHtml.match(/([\d]{1,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
-  );
-  const areaFromTitle = parseNumber(
-    decodeImportHtmlText(title).match(/([\d]{1,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
-  );
   const areaFromDescription = parseNumber(
-    decodeImportHtmlText(descriptionText).match(/([\d]{1,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
+    decodeImportHtmlText(descriptionText).match(/([\d]{1,3}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
   );
 
   return (
     areaFromStructured ??
+    areaFromJsonLd ??
+    areaFromTitle ??
     areaFromLabel ??
     areaFromTable ??
     areaFromRange ??
-    areaFromAny ??
-    areaFromTitle ??
     areaFromDescription
   );
 }
@@ -1133,35 +1265,8 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
     ? pickDistrictFromPlaceName(city, [locationText, districtHint, title, descriptionText].filter(Boolean).join(' ')) ||
       canonicalizeDistrict(city, districtHint)
     : '';
-  const htmlWithUnescapedSlashes = html.replace(/\\\//g, '/');
-  const photosJsonMatch = html.match(/photos:\s*(\{[\s\S]*?\})\s*,\s*adType\s*:/i);
-  let photosPreferred: string[] = [];
-  if (photosJsonMatch?.[1]) {
-    try {
-      const parsed = JSON.parse(photosJsonMatch[1]) as { l?: string[]; x?: string[]; m?: string[] };
-      photosPreferred = Array.isArray(parsed.l) && parsed.l.length
-        ? parsed.l
-        : Array.isArray(parsed.x) && parsed.x.length
-          ? parsed.x
-          : Array.isArray(parsed.m)
-            ? parsed.m
-            : [];
-    } catch {
-      photosPreferred = [];
-    }
-  }
-  const imageFromOg = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] || '';
-  const imageFromCdn = Array.from(
-    new Set(
-      (htmlWithUnescapedSlashes.match(/https?:\/\/i\.st-nieruchomosci-online\.pl\/[^\s"'<>)]*\.(?:jpe?g|png|webp)/gi) || [])
-        .map((url) => String(url).trim())
-        .filter(Boolean)
-    )
-  );
-  const imageUrls =
-    photosPreferred.length > 0
-      ? Array.from(new Set(photosPreferred.filter(Boolean)))
-      : Array.from(new Set([imageFromOg, ...imageFromCdn].filter(Boolean)));
+  const photosPayload = extractNierOnlinePhotosJson(html);
+  const imageUrls = pickNierOnlineImageUrls(html, photosPayload);
 
   const adTypeToken =
     html.match(/adTypeName:\s*"([^"]+)"/i)?.[1] ||
