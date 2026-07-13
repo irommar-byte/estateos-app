@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Car, Heart, UserRound } from "lucide-react";
 import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
+import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
@@ -227,52 +228,41 @@ export default function CarsCatalogClient() {
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-36 text-[var(--eos-text)] sm:px-6">
       <div className="mx-auto max-w-7xl">
-        <header className="relative mb-8 overflow-hidden rounded-3xl border border-sky-400/20 bg-[var(--eos-card)] p-6 sm:p-8">
-          <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-sky-500/10 blur-3xl" />
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-sky-400">EstateOS™Car</p>
-          <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-tight sm:text-5xl">
-            Profesjonalny katalog samochodów
-          </h1>
-          <p className="mt-4 max-w-3xl text-sm text-[var(--eos-muted)] sm:text-base">
-            Jedno konto EstateOS, przełączanie Home/Car i zapytania trafiające prosto do sprzedającego przez EstateOS
-            Contact.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              href="/cars/dodaj"
-              className="rounded-full border border-sky-400/40 bg-sky-500/10 px-5 py-2 text-xs font-black uppercase tracking-[0.14em] text-sky-300 transition hover:bg-sky-500/20"
-            >
-              Dodaj ogłoszenie auta
-            </Link>
-            <button type="button" onClick={() => setTab("favorites")} className={tabButtonClass(tab === "favorites")}>
-              <Heart size={14} className={tab === "favorites" ? "fill-current" : ""} />
-              Ulubione
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("mine")}
-              className={tabButtonClass(tab === "mine")}
-            >
-              <UserRound size={14} />
-              Moje samochody
-            </button>
-            {tab !== "all" ? (
-              <button type="button" onClick={() => setTab("all")} className={tabButtonClass(false)}>
-                <Car size={14} />
-                Cały katalog
-              </button>
-            ) : null}
-          </div>
-          {!loading ? (
-            <p className="mt-5 text-xs font-black uppercase tracking-[0.14em] text-sky-700 dark:text-sky-300">
-              {tab === "favorites"
+        <CatalogBrandHero
+          brand="car"
+          title="Profesjonalny katalog samochodów"
+          description="Jedno konto EstateOS, przełączanie Home/Car i zapytania trafiające prosto do sprzedającego przez EstateOS Contact."
+          stats={
+            !loading
+              ? tab === "favorites"
                 ? `${filtered.length} ulubionych z ${favoriteIds.length} zapisanych`
                 : tab === "mine"
                   ? `${filtered.length} Twoich ogłoszeń`
-                  : `${cars.length} aktywnych ogłoszeń w katalogu`}
-            </p>
+                  : `${cars.length} aktywnych ogłoszeń w katalogu`
+              : null
+          }
+        >
+          <Link
+            href="/cars/dodaj"
+            className="rounded-full border border-sky-400/40 bg-sky-500/10 px-5 py-2 text-xs font-black uppercase tracking-[0.14em] text-sky-300 transition hover:bg-sky-500/20"
+          >
+            Dodaj ogłoszenie auta
+          </Link>
+          <button type="button" onClick={() => setTab("favorites")} className={tabButtonClass(tab === "favorites")}>
+            <Heart size={14} className={tab === "favorites" ? "fill-current" : ""} />
+            Ulubione
+          </button>
+          <button type="button" onClick={() => setTab("mine")} className={tabButtonClass(tab === "mine")}>
+            <UserRound size={14} />
+            Moje samochody
+          </button>
+          {tab !== "all" ? (
+            <button type="button" onClick={() => setTab("all")} className={tabButtonClass(false)}>
+              <Car size={14} />
+              Cały katalog
+            </button>
           ) : null}
-        </header>
+        </CatalogBrandHero>
 
         {tab === "mine" && !loggedIn && !loading ? (
           <div className="mb-6 rounded-2xl border border-amber-500/35 bg-amber-50 px-5 py-4 text-sm text-amber-950 shadow-[0_12px_30px_rgba(245,158,11,0.12)] dark:border-amber-400/30 dark:bg-amber-500/15 dark:text-amber-50">

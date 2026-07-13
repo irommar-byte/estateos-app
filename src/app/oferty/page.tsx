@@ -38,6 +38,7 @@ import CatalogLocationFilter, {
 import CatalogPropertyTypeToggle, {
   type CatalogPropertyTypeFilter,
 } from "@/components/catalog/CatalogPropertyTypeToggle";
+import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
@@ -543,25 +544,73 @@ export default function CatalogPage() {
       }`}
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <header className="mb-8 md:mb-10 border-b border-[var(--eos-border)] pb-6 md:pb-8">
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="text-3xl font-bold leading-[1.08] tracking-tight text-[var(--eos-text)] md:text-5xl lg:text-6xl">
-              {labels.title}
-              <span className="block mt-1 md:mt-2 text-2xl md:text-3xl font-black uppercase tracking-[0.08em] text-emerald-600 dark:text-emerald-400">
-                {labels.subtitle}
-              </span>
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm md:text-base font-light leading-relaxed text-[var(--eos-muted)]">
-              {labels.lead}
-            </p>
-            {denied ? (
-              <p className="mt-4 text-xs text-[var(--eos-muted)]">{nearestCopy.denied}</p>
-            ) : null}
-          </motion.div>
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+          <CatalogBrandHero
+            brand="home"
+            accent={transactionMode}
+            title={`${labels.title} ${labels.subtitle}`}
+            description={labels.lead}
+            stats={
+              !loading && !error
+                ? `${propertyFilteredOffers.length} aktywnych ogłoszeń w katalogu`
+                : null
+            }
+          >
+            <Link
+              href="/dodaj-oferte"
+              className={`rounded-full border px-5 py-2 text-xs font-black uppercase tracking-[0.14em] transition ${
+                transactionMode === "rent"
+                  ? "border-sky-400/40 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20"
+                  : "border-emerald-400/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+              }`}
+            >
+              Dodaj ogłoszenie
+            </Link>
+            <button
+              type="button"
+              onClick={() => handleSectionChange("mine")}
+              className={`rounded-full border px-5 py-2 text-xs font-black uppercase tracking-[0.14em] transition ${
+                transactionMode === "rent"
+                  ? "border-[var(--eos-border)] bg-[var(--eos-surface)] hover:border-sky-400/30"
+                  : "border-[var(--eos-border)] bg-[var(--eos-surface)] hover:border-emerald-400/30"
+              }`}
+            >
+              Moje ogłoszenia
+            </button>
+            <Link
+              href="/odkryj-mape"
+              className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-2 text-xs font-black uppercase tracking-[0.14em] transition hover:border-[var(--eos-border-strong)]"
+            >
+              Mapa
+            </Link>
+          </CatalogBrandHero>
+          {denied ? (
+            <p className="-mt-4 mb-6 text-xs text-[var(--eos-muted)]">{nearestCopy.denied}</p>
+          ) : null}
+        </motion.div>
 
-          {!loading && !error ? (
-            <>
-              <div className="mt-6 md:mt-8">
+        {!loading && !error ? (
+          <section className="mb-8 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_22px_70px_rgba(16,185,129,0.06)]">
+            <div
+              className={`flex flex-wrap items-center justify-between gap-3 border-b border-[var(--eos-border)] px-5 py-4 sm:px-6 ${
+                transactionMode === "rent"
+                  ? "bg-gradient-to-r from-sky-500/[0.07] via-transparent to-cyan-500/[0.04]"
+                  : "bg-gradient-to-r from-emerald-500/[0.07] via-transparent to-emerald-500/[0.03]"
+              }`}
+            >
+              <div>
+                <p
+                  className={`text-[10px] font-black uppercase tracking-[0.2em] ${
+                    transactionMode === "rent" ? "text-sky-500" : "text-emerald-500"
+                  }`}
+                >
+                  Parametry wyszukiwania
+                </p>
+                <h2 className="mt-1 text-lg font-semibold tracking-tight">Znajdź nieruchomość</h2>
+              </div>
+            </div>
+            <div className="space-y-5 p-5 sm:p-6">
+              <div>
                 <CatalogTransactionToggle
                   value={transactionMode}
                   onChange={setTransactionMode}
@@ -584,28 +633,29 @@ export default function CatalogPage() {
                 strictCityDistricts={strictCityDistricts}
                 accent={transactionMode}
               />
-            </>
-          ) : null}
-
-          {!loading && !error && activeSection !== "mine" && spotlightItems.length > 0 ? (
-            <div className="mt-6 md:mt-8">
-              <FeaturedSpotlightCarousel
-                items={spotlightItems}
-                accent="home"
-                title="Oferty wyróżnione"
-                lead="Premiumowa ekspozycja — rotacja co 30 sekund."
-              />
             </div>
-          ) : null}
+          </section>
+        ) : null}
 
-          {!loading && !error && (
-            <motion.nav
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.08 }}
-              className="mt-8 md:mt-10"
-              aria-label={labels.title}
-            >
+        {!loading && !error && activeSection !== "mine" && spotlightItems.length > 0 ? (
+          <div className="mt-6 md:mt-8">
+            <FeaturedSpotlightCarousel
+              items={spotlightItems}
+              accent="home"
+              title="Oferty wyróżnione"
+              lead="Premiumowa ekspozycja — rotacja co 30 sekund."
+            />
+          </div>
+        ) : null}
+
+        {!loading && !error && (
+          <motion.nav
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08 }}
+            className="mt-8 md:mt-10"
+            aria-label={labels.title}
+          >
               <div className="flex flex-wrap gap-2 pb-1">
                 {SECTION_ORDER.map((section) => {
                   const Icon = sectionIcons[section];
@@ -670,8 +720,7 @@ export default function CatalogPage() {
                 <p className="mt-3 max-w-3xl text-sm leading-relaxed text-[var(--eos-muted)]">{sectionLead}</p>
               ) : null}
             </motion.nav>
-          )}
-        </header>
+        )}
 
         <AnimatePresence mode="wait">
           {loading ? (
