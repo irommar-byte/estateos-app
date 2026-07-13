@@ -1,7 +1,6 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import {
   DndContext,
   PointerSensor,
@@ -20,16 +19,53 @@ export type CarPhotoGalleryFieldHandle = {
   totalCount: () => number;
 };
 
+type UploadStat = {
+  progress: number;
+  error: boolean;
+};
+
 type SortablePhotoProps = {
   id: string;
   url: string;
   idx: number;
   onRemove: (idx: number) => void;
-  uploading?: boolean;
-  isLocal?: boolean;
+  progressObj?: UploadStat;
 };
 
-function SortablePhoto({ id, url, idx, onRemove, uploading, isLocal }: SortablePhotoProps) {
+function uploadFileWithProgress(file: File, onProgress: (pct: number) => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append("file", file);
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+      }
+    };
+
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText || "{}") as { url?: string; error?: string };
+        if (xhr.status >= 200 && xhr.status < 300 && typeof data.url === "string" && data.url) {
+          onProgress(100);
+          resolve(data.url);
+          return;
+        }
+        reject(new Error(typeof data.error === "string" ? data.error : "Upload zdjęcia nie powiódł się."));
+      } catch {
+        reject(new Error("Upload zdjęcia nie powiódł się."));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("Błąd sieci podczas wgrywania zdjęcia."));
+    xhr.open("POST", "/api/upload/cars");
+    xhr.withCredentials = true;
+    xhr.send(formData);
+  });
+}
+
+function SortablePhoto({ id, url, idx, onRemove, progressObj }: SortablePhotoProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -38,13 +74,23 @@ function SortablePhoto({ id, url, idx, onRemove, uploading, isLocal }: SortableP
     opacity: isDragging ? 0.92 : 1,
   };
 
+  const isUploading = Boolean(progressObj && progressObj.progress < 100 && !progressObj.error);
+  const isError = Boolean(progressObj?.error);
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="relative h-32 w-32 flex-shrink-0 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] shadow-md group"
+      className="group relative h-32 w-32 flex-shrink-0 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] shadow-md"
     >
-      <Image src={url} alt="" fill className="object-cover pointer-events-none" unoptimized />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt=""
+        className={`h-full w-full object-cover pointer-events-none transition-all ${
+          isUploading ? "opacity-40 blur-[2px]" : ""
+        }`}
+      />
       <div
         {...attributes}
         {...listeners}
@@ -64,19 +110,22 @@ function SortablePhoto({ id, url, idx, onRemove, uploading, isLocal }: SortableP
       >
         <Trash2 size={14} />
       </button>
-      {idx === 0 && !uploading ? (
-        <span className="pointer-events-none absolute bottom-0 left-0 w-full bg-sky-500 py-1 text-center text-[9px] font-black uppercase tracking-widest text-white">
+      {idx === 0 && !isUploading && !isError ? (
+        <span className="pointer-events-none absolute bottom-0 left-0 w-full bg-sky-500 py-1 text-center text-[9px] font-black uppercase tracking-widest text-white shadow-[0_-5px_15px_rgba(14,165,233,0.35)]">
           Główne
         </span>
       ) : null}
-      {isLocal ? (
-        <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-amber-500/90 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-white">
-          Lokalnie
-        </span>
+      {isUploading ? (
+        <div className="absolute bottom-0 left-0 z-30 h-1.5 w-full overflow-hidden bg-black/50">
+          <div
+            className="h-full bg-gradient-to-r from-sky-500 to-cyan-400 transition-all duration-200 ease-out"
+            style={{ width: `${progressObj?.progress ?? 0}%` }}
+          />
+        </div>
       ) : null}
-      {uploading ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-[10px] font-bold text-white">
-          Wgrywanie…
+      {isError ? (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-red-500/20 backdrop-blur-sm pointer-events-none">
+          <span className="rounded-md bg-red-500 px-2 py-1 text-[9px] font-black uppercase text-white">Błąd</span>
         </div>
       ) : null}
     </div>
@@ -98,11 +147,19 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
   ) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const pendingFilesRef = useRef<Map<string, File>>(new Map());
-    const [uploadingCount, setUploadingCount] = useState(0);
+    const imagesRef = useRef(images);
+    const [uploadStats, setUploadStats] = useState<Record<string, UploadStat>>({});
     const [error, setError] = useState<string | null>(null);
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-    const uploading = uploadingCount > 0;
+    const uploading = useMemo(
+      () => Object.values(uploadStats).some((stat) => stat.progress < 100 && !stat.error),
+      [uploadStats],
+    );
+
+    useEffect(() => {
+      imagesRef.current = images;
+    }, [images]);
 
     useEffect(() => {
       onUploadingChange?.(uploading);
@@ -117,21 +174,38 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
       };
     }, []);
 
-    const isLocalUrl = (url: string) => url.startsWith("blob:") || pendingFilesRef.current.has(url);
+    const setStat = (url: string, patch: Partial<UploadStat>) => {
+      setUploadStats((prev) => ({
+        ...prev,
+        [url]: { progress: prev[url]?.progress ?? 0, error: prev[url]?.error ?? false, ...patch },
+      }));
+    };
 
-    const uploadSingleFile = async (file: File): Promise<string> => {
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch("/api/upload/cars", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
+    const replaceImageUrl = (fromUrl: string, toUrl: string) => {
+      onChange(imagesRef.current.map((item) => (item === fromUrl ? toUrl : item)));
+      setUploadStats((prev) => {
+        const next = { ...prev };
+        if (next[fromUrl]) {
+          next[toUrl] = next[fromUrl];
+          delete next[fromUrl];
+        }
+        return next;
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || typeof data?.url !== "string" || !data.url) {
-        throw new Error(typeof data?.error === "string" ? data.error : "Upload zdjęcia nie powiódł się.");
+    };
+
+    const uploadSingleFile = async (blobUrl: string, file: File) => {
+      setStat(blobUrl, { progress: 8, error: false });
+      try {
+        const serverUrl = await uploadFileWithProgress(file, (progress) => {
+          setStat(blobUrl, { progress, error: false });
+        });
+        pendingFilesRef.current.delete(blobUrl);
+        if (blobUrl.startsWith("blob:")) URL.revokeObjectURL(blobUrl);
+        replaceImageUrl(blobUrl, serverUrl);
+      } catch (uploadError) {
+        setStat(blobUrl, { progress: 0, error: true });
+        throw uploadError;
       }
-      return data.url;
     };
 
     useImperativeHandle(ref, () => ({
@@ -145,23 +219,24 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
         if (!pendingEntries.length) return images.filter((url) => !url.startsWith("blob:"));
 
         setError(null);
-        setUploadingCount((count) => count + pendingEntries.length);
         const resolved = [...images];
         try {
-          for (const { url, file } of pendingEntries) {
-            const idx = resolved.indexOf(url);
-            if (idx < 0) continue;
-            const serverUrl = await uploadSingleFile(file);
-            resolved[idx] = serverUrl;
-            pendingFilesRef.current.delete(url);
-            if (url.startsWith("blob:")) URL.revokeObjectURL(url);
-          }
+          await Promise.all(
+            pendingEntries.map(async ({ url, file }) => {
+              const serverUrl = await uploadFileWithProgress(file, (progress) => {
+                setStat(url, { progress, error: false });
+              });
+              const idx = resolved.indexOf(url);
+              if (idx >= 0) resolved[idx] = serverUrl;
+              pendingFilesRef.current.delete(url);
+              if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+              setStat(url, { progress: 100, error: false });
+            }),
+          );
           onChange(resolved);
           return resolved;
         } catch (uploadError) {
           throw uploadError instanceof Error ? uploadError : new Error("Upload zdjęcia nie powiódł się.");
-        } finally {
-          setUploadingCount((count) => Math.max(0, count - pendingEntries.length));
         }
       },
     }));
@@ -181,46 +256,53 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
         pendingFilesRef.current.delete(url);
         if (url.startsWith("blob:")) URL.revokeObjectURL(url);
       }
+      setUploadStats((prev) => {
+        const next = { ...prev };
+        if (url) delete next[url];
+        return next;
+      });
       onChange(images.filter((_, index) => index !== idx));
     };
 
-    const addLocalFiles = (files: File[]) => {
-      const localUrls: string[] = [];
+    const queueFiles = (files: File[]) => {
+      const blobUrls: string[] = [];
       for (const file of files) {
         const blobUrl = URL.createObjectURL(file);
         pendingFilesRef.current.set(blobUrl, file);
-        localUrls.push(blobUrl);
+        blobUrls.push(blobUrl);
+        setStat(blobUrl, { progress: loggedIn ? 8 : 100, error: false });
       }
-      onChange([...images, ...localUrls]);
+      onChange([...images, ...blobUrls]);
+      return blobUrls;
     };
 
     const uploadFiles = async (files: File[]) => {
       if (!files.length) return;
       setError(null);
+      const blobUrls = queueFiles(files);
 
       if (!loggedIn) {
-        addLocalFiles(files);
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
 
-      setUploadingCount((count) => count + files.length);
-      const uploaded: string[] = [];
       try {
-        for (const file of files) {
-          uploaded.push(await uploadSingleFile(file));
-        }
-        onChange([...images, ...uploaded]);
+        await Promise.all(
+          blobUrls.map((blobUrl) => {
+            const file = pendingFilesRef.current.get(blobUrl);
+            if (!file) return Promise.resolve();
+            return uploadSingleFile(blobUrl, file);
+          }),
+        );
       } catch (uploadError) {
         setError(uploadError instanceof Error ? uploadError.message : "Upload zdjęcia nie powiódł się.");
       } finally {
-        setUploadingCount((count) => Math.max(0, count - files.length));
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     };
 
     const totalSizeLabel = useMemo(() => `${images.length} zdjęć`, [images.length]);
-    const hasLocalPending = images.some((url) => isLocalUrl(url));
+    const hasLocalPending = !loggedIn && images.some((url) => url.startsWith("blob:"));
 
     return (
       <div
@@ -273,8 +355,7 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
                   url={url}
                   idx={idx}
                   onRemove={handleRemove}
-                  uploading={uploading}
-                  isLocal={isLocalUrl(url)}
+                  progressObj={uploadStats[url]}
                 />
               ))}
             </SortableContext>

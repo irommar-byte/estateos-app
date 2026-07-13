@@ -134,6 +134,29 @@ ${CAMPAIGN_LINK_PRESETS.linkedinAgency}`,
     ],
   },
   {
+    id: 'cars-campaign',
+    day: 'Dzień 3',
+    title: 'Kampania EstateOS™Car — sprzedaż aut',
+    minutes: 15,
+    why: 'Nowy moduł samochodów — pierwszy post z linkiem do dodania ogłoszenia buduje ruch sprzedawców.',
+    actions: [
+      {
+        label: 'Skopiuj post LinkedIn (Cars)',
+        copy: `🚗 EstateOS™Car — wystaw auto na sprzedaż w kilka minut
+
+Skan dowodu, galeria zdjęć, mapa i powiadomienia o zapytaniach.
+
+👉 ${CAMPAIGN_LINK_PRESETS.carsAddListing}
+📋 Katalog: ${CAMPAIGN_LINK_PRESETS.carsCatalog}
+
+#samochody #EstateOS`,
+      },
+      { label: 'Materiały promocyjne Cars', href: '/dla-prasy/samochody' },
+      { label: 'Strona kampanii Cars', href: '/cars/start' },
+      { label: 'Dodaj ogłoszenie (bez UTM)', href: '/cars/dodaj' },
+    ],
+  },
+  {
     id: 'video',
     day: 'Dzień 6',
     title: 'Krótki film ekranu (60–90 s)',
@@ -155,6 +178,7 @@ ${CAMPAIGN_LINK_PRESETS.linkedinAgency}`,
 
 const DONE_BY_SYSTEM = [
   'Strona kampanii /start i press kit /dla-prasy',
+  'Kampania Cars: /cars/start i /dla-prasy/samochody',
   'llms.txt dla crawlerów AI',
   'sitemap.xml i robots.txt (w tym boty AI)',
   'JSON-LD Organization + aplikacje w Google',

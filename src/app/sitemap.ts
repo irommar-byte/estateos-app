@@ -11,6 +11,8 @@ const STATIC_PATHS = [
   '/oferty',
   '/cars',
   '/cars/dodaj',
+  '/cars/start',
+  '/dla-prasy/samochody',
   '/odkryj-mape',
   '/cennik',
   '/agencje',

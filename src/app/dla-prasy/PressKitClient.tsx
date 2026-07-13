@@ -85,6 +85,18 @@ export default function PressKitClient() {
                 </a>
               </li>
             ))}
+            <li>
+              <a href={ESTATEOS_PUBLIC_URLS.carsStart} className="inline-flex items-center gap-1 text-sky-600 hover:underline dark:text-sky-400">
+                {ESTATEOS_PUBLIC_URLS.carsStart}
+                <ExternalLink size={12} />
+              </a>
+            </li>
+            <li>
+              <a href={ESTATEOS_PUBLIC_URLS.carsPress} className="inline-flex items-center gap-1 text-sky-600 hover:underline dark:text-sky-400">
+                {ESTATEOS_PUBLIC_URLS.carsPress}
+                <ExternalLink size={12} />
+              </a>
+            </li>
           </ul>
           <div className="pt-2">
             <AppStoreBadgeLink />
@@ -137,6 +149,12 @@ export default function PressKitClient() {
         </section>
 
         <div className="mt-10 text-center">
+          <Link
+            href="/dla-prasy/samochody"
+            className="mr-3 inline-flex rounded-full border border-sky-400/40 px-6 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-sky-600 dark:text-sky-300"
+          >
+            Kampania Cars
+          </Link>
           <Link
             href="/kampania"
             className="mr-3 inline-flex rounded-full border border-emerald-500/40 px-6 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400"
