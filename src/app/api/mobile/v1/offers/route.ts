@@ -13,6 +13,7 @@ import {
 } from '@/lib/contactVerification';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
+import { isPromotionActive } from '@/lib/listingPromotion';
 import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { MOBILE_OFFER_CATALOG_SELECT } from '@/lib/mobileOfferCatalogSelect';
 import {
@@ -156,7 +157,19 @@ export async function GET(req: Request) {
     const normalizedOffers = publicationGatedOffers.map((offer: any) => {
       const viewsCount = viewsMap.get(Number(offer.id)) || 0;
       const legalOffer = applyLegalStatusOverride(offer, legalOverrides);
-      return enrichOfferWithLegalAliases({ ...legalOffer, views: viewsCount, viewsCount });
+      const promotedUntil =
+        offer.promotedUntil instanceof Date
+          ? offer.promotedUntil.toISOString()
+          : offer.promotedUntil
+            ? String(offer.promotedUntil)
+            : null;
+      return enrichOfferWithLegalAliases({
+        ...legalOffer,
+        views: viewsCount,
+        viewsCount,
+        promotedUntil,
+        featured: isPromotionActive(promotedUntil),
+      });
     });
 
     return NextResponse.json({ success: true, offers: normalizedOffers }, {
