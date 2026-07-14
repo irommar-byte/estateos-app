@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Building2, CheckCircle2, Home } from "lucide-react";
+import { Building2, Car, CheckCircle2, Home } from "lucide-react";
 import {
   HOME_CTA_CONTRACT,
   HomeCtaAnalyticsEvent,
@@ -11,54 +11,67 @@ import {
 } from "@/contracts/homeCtaContract";
 import { useLocale } from "@/contexts/LocaleContext";
 import AppStoreBadgeLink from "@/components/ui/AppStoreBadgeLink";
-const HERO_IMAGE =
+
+const HERO_HOME_IMAGE =
   "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop";
+const HERO_CAR_IMAGE =
+  "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?q=80&w=2070&auto=format&fit=crop";
 
-type HeroCardVariant = "private" | "agency";
+type HeroVertical = "home" | "car";
 
-function HeroAudienceCard({
-  variant,
+function HeroVerticalCard({
+  vertical,
+  brand,
   title,
   subtitle,
   bullets,
-  cta,
-  footnote,
-  onCta,
+  primaryCta,
+  secondaryCta,
+  onPrimary,
+  onSecondary,
 }: {
-  variant: HeroCardVariant;
+  vertical: HeroVertical;
+  brand: string;
   title: string;
   subtitle: string;
   bullets: string[];
-  cta: string;
-  footnote?: string;
-  onCta: () => void;
+  primaryCta: string;
+  secondaryCta: string;
+  onPrimary: () => void;
+  onSecondary: () => void;
 }) {
-  const isPrivate = variant === "private";
+  const isHome = vertical === "home";
 
   return (
     <article
       className={[
         "hero-audience-card eos-hero-glass flex h-full flex-col rounded-[1.75rem] p-5 text-left sm:p-6",
-        isPrivate ? "ring-1 ring-[#d9b58b]/40" : "ring-1 ring-emerald-400/30",
+        isHome ? "ring-1 ring-emerald-400/35" : "ring-1 ring-sky-400/35",
       ].join(" ")}
     >
       <div className="mb-3 flex items-start gap-3 sm:mb-4">
         <div
           className={[
             "flex size-11 shrink-0 items-center justify-center rounded-2xl",
-            isPrivate
-              ? "bg-gradient-to-br from-[#d9b58b]/35 to-[#70451f]/25"
-              : "bg-emerald-500/15",
+            isHome ? "bg-emerald-500/15" : "bg-sky-500/15",
           ].join(" ")}
         >
-          {isPrivate ? (
-            <Home className="size-5 text-[#f0d4a8]" aria-hidden />
+          {isHome ? (
+            <Home className="size-5 text-emerald-400" aria-hidden />
           ) : (
-            <Building2 className="size-5 text-emerald-400" aria-hidden />
+            <Car className="size-5 text-sky-400" aria-hidden />
           )}
         </div>
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-white sm:text-lg lg:text-xl">{title}</h2>
+        <div className="min-w-0">
+          <p
+            className={[
+              "text-[10px] font-black uppercase tracking-[0.18em]",
+              isHome ? "text-emerald-400" : "text-sky-400",
+            ].join(" ")}
+          >
+            {brand}
+          </p>
+          <h2 className="mt-1 text-base font-semibold tracking-tight text-white sm:text-lg lg:text-xl">{title}</h2>
           <p className="hero-audience-subtitle eos-luxury-media-text mt-1.5 text-xs font-light leading-relaxed text-white/75 sm:mt-2 sm:text-sm">
             {subtitle}
           </p>
@@ -69,10 +82,7 @@ function HeroAudienceCard({
         {bullets.map((item) => (
           <li key={item} className="flex items-start gap-2 text-xs text-white/88 sm:text-sm">
             <CheckCircle2
-              className={[
-                "mt-0.5 size-4 shrink-0",
-                isPrivate ? "text-[#d9b58b]" : "text-emerald-400",
-              ].join(" ")}
+              className={["mt-0.5 size-4 shrink-0", isHome ? "text-emerald-400" : "text-sky-400"].join(" ")}
               aria-hidden
             />
             <span className="leading-snug">{item}</span>
@@ -80,28 +90,61 @@ function HeroAudienceCard({
         ))}
       </ul>
 
+      <div className="grid gap-2.5">
+        <button
+          type="button"
+          onClick={onPrimary}
+          className={
+            isHome
+              ? "premium-hero-cta-primary group relative w-full overflow-hidden rounded-full bg-gradient-to-b from-emerald-300 via-emerald-500 to-emerald-700 px-6 py-3.5 text-[10px] font-black uppercase tracking-[0.14em] shadow-[0_14px_32px_rgba(0,0,0,0.42),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.02] active:scale-[0.98] sm:text-[11px]"
+              : "premium-hero-cta-car group relative w-full overflow-hidden rounded-full bg-gradient-to-b from-sky-300 via-sky-500 to-sky-700 px-6 py-3.5 text-[10px] font-black uppercase tracking-[0.14em] shadow-[0_14px_32px_rgba(0,0,0,0.42),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.02] active:scale-[0.98] sm:text-[11px]"
+          }
+        >
+          <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
+          <span className="relative">{primaryCta}</span>
+        </button>
+        <button
+          type="button"
+          onClick={onSecondary}
+          className="premium-hero-cta-secondary w-full rounded-full px-6 py-3 text-[10px] font-black uppercase tracking-[0.14em] backdrop-blur-xl transition-all hover:scale-[1.02] active:scale-[0.98] sm:text-[11px]"
+        >
+          {secondaryCta}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function HeroAgencyStrip({
+  title,
+  subtitle,
+  cta,
+  onCta,
+}: {
+  title: string;
+  subtitle: string;
+  cta: string;
+  onCta: () => void;
+}) {
+  return (
+    <div className="hero-agency-strip eos-hero-glass flex flex-col items-start gap-4 rounded-[1.5rem] border border-white/10 px-5 py-4 text-left sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <div className="flex items-start gap-3">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/8 ring-1 ring-white/12">
+          <Building2 className="size-4 text-amber-300/90" aria-hidden />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-white sm:text-base">{title}</p>
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-white/65 sm:text-sm">{subtitle}</p>
+        </div>
+      </div>
       <button
         type="button"
         onClick={onCta}
-        className={
-          isPrivate
-            ? "premium-hero-cta-primary group relative w-full overflow-hidden rounded-full bg-gradient-to-b from-[#d9b58b] via-[#b98c58] to-[#70451f] px-6 py-3.5 text-[10px] font-black uppercase tracking-[0.14em] shadow-[0_14px_32px_rgba(0,0,0,0.42),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.02] active:scale-[0.98] sm:text-[11px]"
-            : "premium-hero-cta-secondary w-full rounded-full px-6 py-3.5 text-[10px] font-black uppercase tracking-[0.14em] backdrop-blur-xl transition-all hover:scale-[1.02] active:scale-[0.98] sm:text-[11px]"
-        }
+        className="premium-hero-cta-secondary shrink-0 rounded-full px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] sm:text-[11px]"
       >
-        {isPrivate ? (
-          <>
-            <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
-            <span className="relative">{cta}</span>
-          </>
-        ) : (
-          cta
-        )}
+        {cta}
       </button>
-      {footnote ? (
-        <p className="mt-3 text-center text-[10px] leading-relaxed text-white/55 sm:text-[11px]">{footnote}</p>
-      ) : null}
-    </article>
+    </div>
   );
 }
 
@@ -111,6 +154,7 @@ export default function HeroDepthEffect() {
   const ref = useRef<HTMLElement | null>(null);
   const noiseFilterId = useId().replace(/:/g, "");
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -119,6 +163,13 @@ export default function HeroDepthEffect() {
     sync();
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/auth/check", { cache: "no-store", credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => setLoggedIn(Boolean(data?.loggedIn && data?.user?.id)))
+      .catch(() => setLoggedIn(false));
   }, []);
 
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
@@ -139,21 +190,18 @@ export default function HeroDepthEffect() {
     }).catch(() => {});
   };
 
-  const openHomeCta = (ctaId: HomeCtaId) => {
+  const openCta = (ctaId: HomeCtaId, overrideRoute?: string) => {
     const entry = HOME_CTA_CONTRACT[ctaId];
+    const route = overrideRoute || entry.webRoute;
     trackHomeCta("home_cta_click", ctaId);
     trackHomeCta("home_cta_route_resolved", ctaId);
-
-    router.push(entry.webRoute);
-
+    router.push(route);
     trackHomeCta("home_cta_flow_opened", ctaId);
   };
 
-  const openPartnerPricing = () => {
-    trackHomeCta("home_cta_click", "AGENCY");
-    router.push("/cennik?tab=partner");
-    trackHomeCta("home_cta_flow_opened", "AGENCY");
-  };
+  const homeListRoute = loggedIn ? "/dodaj-oferte" : "/rejestracja?next=/dodaj-oferte";
+  const homeSecondaryRoute = loggedIn ? "/moje-konto/ogloszenia" : "/oferty";
+  const carSecondaryRoute = loggedIn ? "/moje-konto/ogloszenia?vertical=car" : "/cars";
 
   return (
     <section
@@ -161,15 +209,18 @@ export default function HeroDepthEffect() {
       className="premium-hero-stage relative min-h-[100svh] w-full overflow-hidden bg-[#050505]"
     >
       <div className="absolute inset-0 h-full w-full overflow-hidden">
-        <motion.div
-          style={{ y: bgY, scale: bgScale, backgroundImage: `url('${HERO_IMAGE}')` }}
-          className="absolute -inset-[10%] z-0 origin-center bg-cover bg-center opacity-[0.43] grayscale-[0.22] will-change-transform"
-        />
+        <motion.div style={{ y: bgY, scale: bgScale }} className="absolute -inset-[10%] z-0 flex origin-center will-change-transform">
+          <div
+            style={{ backgroundImage: `url('${HERO_HOME_IMAGE}')` }}
+            className="h-full w-1/2 bg-cover bg-center opacity-[0.4] grayscale-[0.18]"
+          />
+          <div
+            style={{ backgroundImage: `url('${HERO_CAR_IMAGE}')` }}
+            className="h-full w-1/2 bg-cover bg-center opacity-[0.38] grayscale-[0.12]"
+          />
+        </motion.div>
 
-        <div
-          className="pointer-events-none absolute inset-0 z-[6] opacity-[0.04] mix-blend-overlay"
-          aria-hidden
-        >
+        <div className="pointer-events-none absolute inset-0 z-[6] opacity-[0.04] mix-blend-overlay" aria-hidden>
           <svg className="h-full w-full" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <filter id={`hero-noise-${noiseFilterId}`} x="0" y="0">
@@ -183,7 +234,7 @@ export default function HeroDepthEffect() {
         {!reduceMotion && (
           <motion.div
             aria-hidden
-            className="pointer-events-none absolute -left-[18%] top-[4%] z-[5] h-[86%] w-[76%] rounded-[50%] bg-[radial-gradient(closest-side,rgba(16,185,129,0.18),transparent_72%)] blur-3xl"
+            className="pointer-events-none absolute -left-[18%] top-[4%] z-[5] h-[86%] w-[76%] rounded-[50%] bg-[radial-gradient(closest-side,rgba(16,185,129,0.2),transparent_72%)] blur-3xl"
             animate={{ x: ["-4%", "6%", "-2%"], y: ["0%", "5%", "-1%"], opacity: [0.22, 0.42, 0.28] }}
             transition={{ duration: 24, repeat: Infinity, ease: "easeInOut" }}
           />
@@ -192,13 +243,14 @@ export default function HeroDepthEffect() {
         {!reduceMotion && (
           <motion.div
             aria-hidden
-            className="pointer-events-none absolute -right-[12%] bottom-[0%] z-[5] h-[70%] w-[60%] rounded-[50%] bg-[radial-gradient(closest-side,rgba(212,175,126,0.09),transparent_70%)] blur-3xl"
-            animate={{ x: ["2%", "-5%", "1%"], y: ["0%", "-4%", "1%"], opacity: [0.12, 0.22, 0.14] }}
+            className="pointer-events-none absolute -right-[12%] bottom-[0%] z-[5] h-[70%] w-[60%] rounded-[50%] bg-[radial-gradient(closest-side,rgba(56,189,248,0.16),transparent_70%)] blur-3xl"
+            animate={{ x: ["2%", "-5%", "1%"], y: ["0%", "-4%", "1%"], opacity: [0.14, 0.28, 0.18] }}
             transition={{ duration: 26, repeat: Infinity, ease: "easeInOut", delay: 1.2 }}
           />
         )}
 
-        <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/70 via-black/28 to-[#050505]" />
+        <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/72 via-black/34 to-[#050505]" />
+        <div className="absolute inset-y-0 left-1/2 z-[9] w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
         <div className="absolute inset-0 z-10 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(5,5,5,0.25)_48%,#050505_118%)]" />
         <div
           className="pointer-events-none absolute inset-x-0 top-0 z-[11] h-[min(12vh,7rem)] bg-gradient-to-b from-black/90 to-transparent"
@@ -235,9 +287,13 @@ export default function HeroDepthEffect() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, ease: customEase, delay: 0.18 }}
-              className="hero-eyebrow mb-3 shrink-0 text-[10px] font-black uppercase tracking-[0.32em] text-emerald-400/95 sm:mb-4 sm:text-xs"
+              className="hero-eyebrow mb-3 shrink-0 text-[10px] font-black uppercase tracking-[0.28em] text-white/80 sm:mb-4 sm:text-xs"
             >
-              {dict.hero.eyebrow}
+              <span className="text-emerald-400/95">{dict.hero.eyebrowHome}</span>
+              <span className="mx-2 text-white/35">·</span>
+              <span className="text-sky-400/95">{dict.hero.eyebrowCar}</span>
+              <span className="mx-2 text-white/35">·</span>
+              <span>{dict.hero.eyebrowSuffix}</span>
             </motion.p>
 
             <motion.h1
@@ -247,9 +303,19 @@ export default function HeroDepthEffect() {
               className="hero-wordmark shrink-0 text-[clamp(5.5rem,28vw,16rem)] font-light leading-[0.8] tracking-[-0.075em] text-white drop-shadow-[0_18px_60px_rgba(0,0,0,0.9)] md:text-[clamp(6.5rem,24vw,18rem)]"
             >
               <span className="font-semibold text-emerald-400">E</span>state
-              <span className="font-semibold text-emerald-400">OS</span>
+              <span className="font-semibold text-emerald-400">O</span>
+              <span className="font-semibold text-sky-400">S</span>
               <sup className="ml-1 align-super text-[0.18em] font-black tracking-normal text-white/80">TM</sup>
             </motion.h1>
+
+            <motion.p
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.85, ease: customEase, delay: 0.24 }}
+              className="mt-3 max-w-2xl px-2 text-sm font-light leading-relaxed text-white/78 sm:mt-4 sm:text-base"
+            >
+              {dict.hero.tagline}
+            </motion.p>
 
             <motion.div
               initial={{ opacity: 0, y: 12 }}
@@ -257,22 +323,45 @@ export default function HeroDepthEffect() {
               transition={{ duration: 0.9, ease: customEase, delay: 0.32 }}
               className="hero-audience-grid mt-5 grid w-full max-w-5xl gap-3 sm:mt-6 md:mt-8 md:grid-cols-2 md:gap-5"
             >
-              <HeroAudienceCard
-                variant="private"
-                title={dict.hero.privateCard.title}
-                subtitle={dict.hero.privateCard.subtitle}
-                bullets={dict.hero.privateCard.bullets}
-                cta={dict.hero.privateCard.cta}
-                onCta={() => openHomeCta("PRIVATE")}
+              <HeroVerticalCard
+                vertical="home"
+                brand={dict.hero.homeCard.brand}
+                title={dict.hero.homeCard.title}
+                subtitle={dict.hero.homeCard.subtitle}
+                bullets={dict.hero.homeCard.bullets}
+                primaryCta={dict.hero.homeCard.ctaList}
+                secondaryCta={loggedIn ? dict.hero.homeCard.ctaMine : dict.hero.homeCard.ctaBrowse}
+                onPrimary={() => openCta("LIST", homeListRoute)}
+                onSecondary={() => openCta("HOME_CATALOG", homeSecondaryRoute)}
               />
-              <HeroAudienceCard
-                variant="agency"
-                title={dict.hero.agencyCard.title}
-                subtitle={dict.hero.agencyCard.subtitle}
-                bullets={dict.hero.agencyCard.bullets}
-                cta={dict.hero.agencyCard.cta}
-                footnote={dict.hero.agencyCard.footnote}
-                onCta={openPartnerPricing}
+              <HeroVerticalCard
+                vertical="car"
+                brand={dict.hero.carCard.brand}
+                title={dict.hero.carCard.title}
+                subtitle={dict.hero.carCard.subtitle}
+                bullets={dict.hero.carCard.bullets}
+                primaryCta={dict.hero.carCard.ctaList}
+                secondaryCta={loggedIn ? dict.hero.carCard.ctaMine : dict.hero.carCard.ctaBrowse}
+                onPrimary={() => openCta("CAR_LIST")}
+                onSecondary={() => openCta("CAR_CATALOG", carSecondaryRoute)}
+              />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.85, ease: customEase, delay: 0.46 }}
+              className="mt-4 w-full max-w-5xl md:mt-5"
+            >
+              <HeroAgencyStrip
+                title={dict.hero.agencyStrip.title}
+                subtitle={dict.hero.agencyStrip.subtitle}
+                cta={dict.hero.agencyStrip.cta}
+                onCta={() => {
+                  trackHomeCta("home_cta_click", "AGENCY");
+                  router.push("/cennik?tab=partner");
+                  trackHomeCta("home_cta_flow_opened", "AGENCY");
+                }}
               />
             </motion.div>
 

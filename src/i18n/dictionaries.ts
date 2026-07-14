@@ -93,6 +93,9 @@ export type Dictionary = {
   };
   hero: {
     eyebrow: string;
+    eyebrowHome: string;
+    eyebrowCar: string;
+    eyebrowSuffix: string;
     lead: string;
     leadBold: string;
     leadExtra: string;
@@ -102,6 +105,30 @@ export type Dictionary = {
     ctaAgency: string;
     exploreMap: string;
     scroll: string;
+    tagline: string;
+    homeCard: {
+      brand: string;
+      title: string;
+      subtitle: string;
+      bullets: string[];
+      ctaList: string;
+      ctaBrowse: string;
+      ctaMine: string;
+    };
+    carCard: {
+      brand: string;
+      title: string;
+      subtitle: string;
+      bullets: string[];
+      ctaList: string;
+      ctaBrowse: string;
+      ctaMine: string;
+    };
+    agencyStrip: {
+      title: string;
+      subtitle: string;
+      cta: string;
+    };
     privateCard: {
       title: string;
       subtitle: string;
@@ -682,17 +709,53 @@ const pl: Dictionary = {
     close: "Zamknij",
   },
   hero: {
-    eyebrow: "Rynek nieruchomości · jedna platforma",
-    lead: "Wystaw nieruchomość ",
-    leadBold: "bez opłat za publikację",
-    leadExtra:
-      ". Przeglądaj oferty na mapie, dodaj ogłoszenie lub włącz Radar Inwestycji — dopasowania trafią do Twojego konta.",
+    eyebrow: "EstateOS™Home i EstateOS™Car · jedna platforma",
+    eyebrowHome: "Home",
+    eyebrowCar: "Car",
+    eyebrowSuffix: "jedna platforma",
+    lead: "Wystaw ",
+    leadBold: "nieruchomość lub samochód",
+    leadExtra: " — jedno konto, dwa katalogi, pełna kontrola nad ogłoszeniami.",
     ctaMap: "Szukaj na mapie",
     ctaList: "Dodaj swoją ofertę",
     ctaPrivate: "Dla osób prywatnych",
     ctaAgency: "Dla agencji i pośredników",
     exploreMap: "Mapa ofert",
     scroll: "Przewiń",
+    tagline: "Sprzedajesz mieszkanie, dom lub auto? Opublikuj od razu — bez prowizji portalowej.",
+    homeCard: {
+      brand: "EstateOS™Home",
+      title: "Nieruchomości",
+      subtitle:
+        "Mieszkania, domy i działki na mapie ofert. Publikacja bez prowizji platformy — z biurem lub samodzielnie.",
+      bullets: [
+        "Wystaw ogłoszenie bez opłat za publikację",
+        "Mapa ofert i Radar Inwestycji na koncie",
+        "Deal Room i bezpieczny kontakt z kupującymi",
+      ],
+      ctaList: "Wystaw nieruchomość",
+      ctaBrowse: "Przeglądaj oferty",
+      ctaMine: "Moje ogłoszenia",
+    },
+    carCard: {
+      brand: "EstateOS™Car",
+      title: "Samochody",
+      subtitle:
+        "Profesjonalny katalog aut — skan dowodu, galeria zdjęć i mapa lokalizacji. Formularz możesz wypełnić bez logowania.",
+      bullets: [
+        "Dodaj auto ze zdjęciami i skanem dowodu",
+        "Publikacja bez prowizji portalowej",
+        "Powiadomienia o zapytaniach na Twoim koncie",
+      ],
+      ctaList: "Wystaw samochód",
+      ctaBrowse: "Katalog Cars",
+      ctaMine: "Moje samochody",
+    },
+    agencyStrip: {
+      title: "Dla biur i agencji nieruchomości",
+      subtitle: "CRM, zespół w jednym panelu, Concierge i pakiety Partner — ten sam ekosystem co dla właścicieli.",
+      cta: "Zobacz pakiety Partner",
+    },
     privateCard: {
       title: "Dla osób prywatnych",
       subtitle:
@@ -1378,17 +1441,53 @@ const en: Dictionary = {
     close: "Close",
   },
   hero: {
-    eyebrow: "Real estate market · one platform",
-    lead: "List a property ",
-    leadBold: "with no listing fee",
-    leadExtra:
-      ". Browse live listings on the map, publish your own, or enable Investment Radar — matches land in your account.",
+    eyebrow: "EstateOS™Home and EstateOS™Car · one platform",
+    eyebrowHome: "Home",
+    eyebrowCar: "Car",
+    eyebrowSuffix: "one platform",
+    lead: "List a ",
+    leadBold: "property or a car",
+    leadExtra: " — one account, two catalogs, full control over your listings.",
     ctaMap: "Search on the map",
     ctaList: "Add your listing",
     ctaPrivate: "For private owners",
     ctaAgency: "For agencies & brokers",
     exploreMap: "Listing map",
     scroll: "Scroll",
+    tagline: "Selling a home or a car? Publish right away — no portal commission.",
+    homeCard: {
+      brand: "EstateOS™Home",
+      title: "Real estate",
+      subtitle:
+        "Flats, houses and land on the live map. No platform listing fee — with an agency or on your own.",
+      bullets: [
+        "Publish with no listing fee",
+        "Live map and Investment Radar on your account",
+        "Deal Room and secure buyer contact",
+      ],
+      ctaList: "List a property",
+      ctaBrowse: "Browse listings",
+      ctaMine: "My listings",
+    },
+    carCard: {
+      brand: "EstateOS™Car",
+      title: "Cars",
+      subtitle:
+        "Professional car catalog — registration scan, photo gallery and location map. You can fill the form without logging in.",
+      bullets: [
+        "Add a car with photos and registration scan",
+        "No portal commission",
+        "Inquiry notifications on your account",
+      ],
+      ctaList: "List a car",
+      ctaBrowse: "Cars catalog",
+      ctaMine: "My cars",
+    },
+    agencyStrip: {
+      title: "For real estate agencies & offices",
+      subtitle: "CRM, team panel, Concierge and Partner plans — the same ecosystem as for private owners.",
+      cta: "See Partner plans",
+    },
     privateCard: {
       title: "For private owners",
       subtitle:

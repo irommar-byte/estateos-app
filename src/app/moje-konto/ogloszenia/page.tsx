@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Car, Home } from "lucide-react";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
@@ -39,6 +40,7 @@ function formatPrice(price: number | null | undefined) {
 }
 
 export default function AccountListingsPage() {
+  const searchParams = useSearchParams();
   const [vertical, setVertical] = useState<Vertical>("home");
   const [homeListings, setHomeListings] = useState<HomeListing[]>([]);
   const [carListings, setCarListings] = useState<CarListing[]>([]);
@@ -76,6 +78,12 @@ export default function AccountListingsPage() {
       setLoadingCars(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get("vertical") === "car") {
+      setVertical("car");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     void loadHomeListings();
