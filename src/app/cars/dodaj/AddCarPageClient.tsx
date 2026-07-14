@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
+import { useLocale } from "@/contexts/LocaleContext";
 import CarAddEntryScreen, { type CarAddEntryMethod } from "@/components/cars/CarAddEntryScreen";
 import CarListingForm from "@/components/cars/CarListingForm";
 
 export default function AddCarPageClient() {
+  const { dict } = useLocale();
+  const c = dict.cars;
   const [phase, setPhase] = useState<"entry" | "form">("entry");
   const [entryMethod, setEntryMethod] = useState<CarAddEntryMethod>("manual");
 
@@ -20,13 +23,16 @@ export default function AddCarPageClient() {
         <div className="mx-auto max-w-4xl">
           <CarAddEntryScreen onChoose={handleChoose} />
           <p className="mt-6 text-center text-xs text-[var(--eos-muted)]">
-            Masz już konto?{" "}
-            <Link href="/login?next=/cars/dodaj" className="font-semibold text-sky-500 underline-offset-2 hover:underline">
-              Zaloguj się
+            {c.entry.hasAccount}{" "}
+            <Link
+              href="/login?next=/cars/dodaj"
+              className="font-semibold text-sky-600 underline-offset-2 hover:underline dark:text-sky-400"
+            >
+              {c.entry.signIn}
             </Link>
             {" · "}
-            <Link href="/cars" className="font-semibold text-sky-500 underline-offset-2 hover:underline">
-              Katalog Cars
+            <Link href="/cars" className="font-semibold text-sky-600 underline-offset-2 hover:underline dark:text-sky-400">
+              {c.common.carsCatalog}
             </Link>
           </p>
         </div>
@@ -41,22 +47,22 @@ export default function AddCarPageClient() {
           <button
             type="button"
             onClick={() => setPhase("entry")}
-            className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)] transition hover:border-sky-400/30 hover:text-sky-300"
+            className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)] transition hover:border-sky-400/30 hover:text-sky-600 dark:hover:text-sky-300"
           >
-            ← Zmień sposób dodawania
+            {c.entry.changeEntryMethod}
           </button>
           <div className="flex flex-wrap gap-2">
             <Link
               href="/cars"
-              className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)] transition hover:border-sky-400/30 hover:text-sky-300"
+              className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)] transition hover:border-sky-400/30 hover:text-sky-600 dark:hover:text-sky-300"
             >
-              Katalog Cars
+              {c.common.carsCatalog}
             </Link>
             <Link
               href="/moje-konto/ogloszenia?vertical=car"
-              className="rounded-full border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-sky-300"
+              className="rounded-full border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-sky-700 dark:text-sky-300"
             >
-              Moje ogłoszenia
+              {c.common.myListings}
             </Link>
           </div>
         </div>

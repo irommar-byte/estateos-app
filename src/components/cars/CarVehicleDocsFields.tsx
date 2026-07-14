@@ -7,8 +7,12 @@ import AppleStyleSwitch from "@/components/ui/AppleStyleSwitch";
 import {
   CarFormField,
   CarFormSection,
+  carAlertErrorClass,
+  carAlertSuccessClass,
+  carAlertWarningClass,
   carFieldInputClass,
 } from "@/components/cars/carFormStyles";
+import { useLocale } from "@/contexts/LocaleContext";
 import { formatPolishDateInput, isCompletePolishDate } from "@/utils/polishDateInput";
 
 export type CarVehicleDocsFormState = {
@@ -31,6 +35,8 @@ function isValidVinQuick(vin: string) {
 }
 
 export default function CarVehicleDocsFields({ value, onChange, loggedIn = false }: CarVehicleDocsFieldsProps) {
+  const { dict } = useLocale();
+  const d = dict.cars.docs;
   const [historyLoading, setHistoryLoading] = useState(false);
   const [insuranceLoading, setInsuranceLoading] = useState(false);
   const [autoChecking, setAutoChecking] = useState(false);
@@ -61,7 +67,7 @@ export default function CarVehicleDocsFields({ value, onChange, loggedIn = false
       })
         .then(async (response) => {
           const data = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "Błąd sprawdzania OC.");
+          if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : d.errOc);
           return data;
         })
         .then((data) => {
@@ -92,11 +98,11 @@ export default function CarVehicleDocsFields({ value, onChange, loggedIn = false
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(typeof data?.error === "string" ? data.error : "Nie udało się pobrać historii.");
+        throw new Error(typeof data?.error === "string" ? data.error : d.errHistory);
       }
       setHistoryReport(data.report);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Błąd sprawdzania historii.");
+      alert(error instanceof Error ? error.message : d.errHistory);
     } finally {
       setHistoryLoading(false);
     }
@@ -113,70 +119,66 @@ export default function CarVehicleDocsFields({ value, onChange, loggedIn = false
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(typeof data?.error === "string" ? data.error : "Nie udało się sprawdzić ubezpieczenia.");
+        throw new Error(typeof data?.error === "string" ? data.error : d.errInsurance);
       }
       setInsuranceOk(Boolean(data.hasInsurance));
       setInsuranceMessage(String(data.message || ""));
       if (data.validUntil) onChange({ insuranceValidUntil: String(data.validUntil) });
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Błąd sprawdzania ubezpieczenia.");
+      alert(error instanceof Error ? error.message : d.errInsurance);
     } finally {
       setInsuranceLoading(false);
     }
   };
 
   return (
-    <CarFormSection
-      eyebrow="Dokumenty pojazdu"
-      title="VIN i rejestracja"
-      description="Dane z dowodu rejestracyjnego oraz weryfikacja CEPIK/UFG."
-    >
+    <CarFormSection eyebrow={d.eyebrow} title={d.title} description={d.description}>
       {!loggedIn ? (
-        <p className="rounded-xl border border-amber-500/30 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-50">
-          Sprawdzenie historii pojazdu i OC wymaga zalogowania.{" "}
+        <p className={carAlertWarningClass}>
+          {d.loginBanner}{" "}
           <Link href="/login" className="font-bold underline underline-offset-2">
-            Zaloguj się
+            {dict.cars.common.login}
           </Link>
         </p>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <CarFormField label="Numer VIN">
+        <CarFormField label={d.vinLabel}>
           <input
             value={value.vin}
             onChange={(e) => onChange({ vin: e.target.value.toUpperCase() })}
             className={carFieldInputClass}
-            placeholder="17 znaków"
+            placeholder={d.vinPlaceholder}
           />
         </CarFormField>
 
-        <CarFormField label="Numer rejestracyjny">
+        <CarFormField label={d.registrationLabel}>
           <input
             value={value.registrationNumber}
             onChange={(e) => onChange({ registrationNumber: e.target.value.toUpperCase() })}
             className={carFieldInputClass}
-            placeholder="np. WH 9737A"
+            placeholder={d.registrationPlaceholder}
           />
         </CarFormField>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <CarFormField label="Data pierwszej rejestracji">
+        <CarFormField label={d.firstRegLabel}>
           <input
             value={value.firstRegistrationDate}
             onChange={(e) => onChange({ firstRegistrationDate: formatPolishDateInput(e.target.value) })}
             className={carFieldInputClass}
-            placeholder="DD.MM.RRRR"
+            placeholder={d.firstRegPlaceholder}
             inputMode="numeric"
           />
         </CarFormField>
 
-        <CarFormField label="Ważność polisy OC">
+        <CarFormField label={d.insuranceLabel}>
           <input
             value={value.insuranceValidUntil}
             onChange={(e) => onChange({ insuranceValidUntil: formatPolishDateInput(e.target.value) })}
             className={carFieldInputClass}
-            placeholder="DD.MM.RRRR"
+            placeholder={d.insurancePlaceholder}
             inputMode="numeric"
           />
         </CarFormField>
@@ -186,8 +188,8 @@ export default function CarVehicleDocsFields({ value, onChange, loggedIn = false
         id="restrict-vehicle-docs"
         checked={value.restrictVehicleDocs}
         onChange={(restrictVehicleDocs) => onChange({ restrictVehicleDocs })}
-        label="Zastrzeż dane pojazdu (VIN, rejestracja, pierwsza rejestracja)"
-        description="Na stronie ogłoszenia i w raporcie historii CEPIK widoczne będą tylko pierwsze 2 znaki każdego z tych pól."
+        label={d.restrictLabel}
+        description={d.restrictDescription}
       />
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -198,7 +200,7 @@ export default function CarVehicleDocsFields({ value, onChange, loggedIn = false
           className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-400/35 bg-sky-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-sky-700 transition hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-45 dark:text-sky-200"
         >
           <FileSearch className="size-4" />
-          {historyLoading ? "Sprawdzanie..." : "Sprawdź historię pojazdu"}
+          {historyLoading ? d.checkingHistory : d.checkHistory}
         </button>
 
         <button
@@ -208,22 +210,14 @@ export default function CarVehicleDocsFields({ value, onChange, loggedIn = false
           className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-400/35 bg-emerald-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-emerald-800 transition hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-45 dark:text-emerald-200"
         >
           <ShieldCheck className="size-4" />
-          {insuranceLoading ? "Sprawdzanie..." : "Sprawdź ubezpieczenie"}
+          {insuranceLoading ? d.checkingInsurance : d.checkInsurance}
         </button>
       </div>
 
-      {loggedIn && autoChecking ? <p className="text-xs text-[var(--eos-muted)]">Sprawdzam OC w CEPIK/UFG...</p> : null}
+      {loggedIn && autoChecking ? <p className="text-xs text-[var(--eos-muted)]">{d.autoChecking}</p> : null}
 
       {insuranceMessage ? (
-        <p
-          className={`rounded-xl border px-4 py-3 text-sm ${
-            insuranceOk
-              ? "border-emerald-400/30 bg-emerald-50 text-emerald-900 dark:bg-emerald-900/15 dark:text-emerald-100"
-              : "border-amber-500/30 bg-amber-50 text-amber-950 dark:border-amber-400/30 dark:bg-amber-950/20 dark:text-amber-100"
-          }`}
-        >
-          {insuranceMessage}
-        </p>
+        <p className={insuranceOk ? carAlertSuccessClass : carAlertWarningClass}>{insuranceMessage}</p>
       ) : null}
 
       {historyReport ? (

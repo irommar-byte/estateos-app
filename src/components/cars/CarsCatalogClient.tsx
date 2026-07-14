@@ -9,15 +9,18 @@ import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
+import { useLocale } from "@/contexts/LocaleContext";
 import type { EstateOsCarListing } from "@/lib/carsCatalog";
 import { isCarFavoriteId, loadCarFavoriteIds } from "@/lib/carFavoritesStorage";
 import {
-  CAR_SORT_OPTIONS,
   carImageSrc,
   formatCarPrice,
+  formatMileage,
   sortCarListings,
   type CarSortKey,
 } from "@/lib/carsPresentation";
+import { fmtCars, getCarSortOptions } from "@/i18n/carsDictionary";
+import { carAlertWarningClass } from "@/components/cars/carFormStyles";
 
 type CatalogTab = "all" | "favorites" | "mine";
 
@@ -73,6 +76,9 @@ function normalizeLabel(value: string) {
 }
 
 export default function CarsCatalogClient() {
+  const { dict, locale } = useLocale();
+  const cat = dict.cars.catalog;
+  const sortOptions = useMemo(() => getCarSortOptions(locale), [locale]);
   const [cars, setCars] = useState<EstateOsCarListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<CatalogTab>("all");
@@ -134,8 +140,8 @@ export default function CarsCatalogClient() {
   }, [tab, loadCars]);
 
   const fuelTypes = useMemo(
-    () => Array.from(new Set(cars.map((c) => c.fuelType).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pl")),
-    [cars],
+    () => Array.from(new Set(cars.map((c) => c.fuelType).filter(Boolean))).sort((a, b) => a.localeCompare(b, locale)),
+    [cars, locale],
   );
 
   const filtered = useMemo(() => {
@@ -218,96 +224,96 @@ export default function CarsCatalogClient() {
           href: `/cars/${car.id}`,
           title: car.title,
           subtitle: `${car.make} · ${car.model} · ${car.year} · ${car.city}`,
-          priceLabel: formatCarPrice(car.pricePln),
+          priceLabel: formatCarPrice(car.pricePln, locale),
           imageUrl: carImageSrc(car.imageUrl),
-          badge: "Wyróżnione",
+          badge: cat.featuredBadge,
         })),
-    [cars],
+    [cars, cat.featuredBadge, locale],
   );
+
+  const statsLabel = !loading
+    ? tab === "favorites"
+      ? fmtCars(cat.statsFavorites, { n: filtered.length, total: favoriteIds.length })
+      : tab === "mine"
+        ? fmtCars(cat.statsMine, { n: filtered.length })
+        : fmtCars(cat.statsAll, { n: cars.length })
+    : null;
 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-36 text-[var(--eos-text)] sm:px-6">
       <div className="mx-auto max-w-7xl">
         <CatalogBrandHero
           brand="car"
-          title="Profesjonalny katalog samochodów"
-          description="Jedno konto EstateOS, przełączanie Home/Car i zapytania trafiające prosto do sprzedającego przez EstateOS Contact."
-          stats={
-            !loading
-              ? tab === "favorites"
-                ? `${filtered.length} ulubionych z ${favoriteIds.length} zapisanych`
-                : tab === "mine"
-                  ? `${filtered.length} Twoich ogłoszeń`
-                  : `${cars.length} aktywnych ogłoszeń w katalogu`
-              : null
-          }
+          title={cat.heroTitle}
+          description={cat.heroDescription}
+          stats={statsLabel}
         >
           <Link
             href="/cars/dodaj"
             className="rounded-full border border-sky-400/40 bg-sky-500/10 px-5 py-2 text-xs font-black uppercase tracking-[0.14em] text-sky-300 transition hover:bg-sky-500/20"
           >
-            Dodaj ogłoszenie auta
+            {cat.addListing}
           </Link>
           <button type="button" onClick={() => setTab("favorites")} className={tabButtonClass(tab === "favorites")}>
             <Heart size={14} className={tab === "favorites" ? "fill-current" : ""} />
-            Ulubione
+            {cat.tabFavorites}
           </button>
           <button type="button" onClick={() => setTab("mine")} className={tabButtonClass(tab === "mine")}>
             <UserRound size={14} />
-            Moje samochody
+            {cat.tabMine}
           </button>
           {tab !== "all" ? (
             <button type="button" onClick={() => setTab("all")} className={tabButtonClass(false)}>
               <Car size={14} />
-              Cały katalog
+              {cat.tabAll}
             </button>
           ) : null}
         </CatalogBrandHero>
 
         {tab === "mine" && !loggedIn && !loading ? (
-          <div className="mb-6 rounded-2xl border border-amber-500/35 bg-amber-50 px-5 py-4 text-sm text-amber-950 shadow-[0_12px_30px_rgba(245,158,11,0.12)] dark:border-amber-400/30 dark:bg-amber-500/15 dark:text-amber-50">
-            Zaloguj się, aby zobaczyć swoje ogłoszenia samochodowe.{" "}
-            <Link href="/login" className="font-bold text-amber-800 underline underline-offset-2 dark:text-amber-200">
-              Przejdź do logowania
+          <div className={`mb-6 ${carAlertWarningClass}`}>
+            {cat.loginMineBanner}{" "}
+            <Link href="/login" className="font-bold underline underline-offset-2">
+              {cat.goLogin}
             </Link>
           </div>
         ) : null}
 
         {tab === "favorites" && !loading && favoriteIds.length === 0 ? (
           <div className="mb-6 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm text-[var(--eos-muted)]">
-            Nie masz jeszcze ulubionych aut. Kliknij serduszko na karcie ogłoszenia, aby dodać je tutaj.
+            {cat.favoritesEmpty}
           </div>
         ) : null}
 
         <section className="mb-8 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_22px_70px_rgba(14,165,233,0.08)]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--eos-border)] bg-gradient-to-r from-sky-500/[0.07] via-transparent to-cyan-500/[0.04] px-5 py-4 sm:px-6">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">Parametry wyszukiwania</p>
-              <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">Znajdź samochód</h2>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">{cat.filtersEyebrow}</p>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">{cat.filtersTitle}</h2>
             </div>
             <button
               type="button"
               onClick={() => setFilters(EMPTY_FILTERS)}
               className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)] transition hover:border-sky-400/35 hover:text-sky-500"
             >
-              Wyczyść filtry
+              {cat.clearFilters}
             </button>
           </div>
 
           <div className="grid gap-5 p-5 sm:p-6">
-            <FilterField label="Szukaj">
+            <FilterField label={cat.searchLabel}>
               <input
                 value={filters.query}
                 onChange={(e) => setFilter("query", e.target.value)}
-                placeholder="BMW, Warszawa, diesel..."
+                placeholder={cat.searchPlaceholder}
                 className={filterInputClass}
               />
             </FilterField>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <FilterField label={`Marka${makesLoading ? "…" : ""}`}>
+              <FilterField label={`${cat.makeLabel}${makesLoading ? "…" : ""}`}>
                 <select value={filters.makeSlug} onChange={(e) => selectMake(e.target.value)} className={filterInputClass}>
-                  <option value="">Wszystkie marki</option>
+                  <option value="">{cat.allMakes}</option>
                   {makeOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -316,14 +322,14 @@ export default function CarsCatalogClient() {
                 </select>
               </FilterField>
 
-              <FilterField label={`Seria / model${modelsLoading ? "…" : ""}`}>
+              <FilterField label={`${cat.modelLabel}${modelsLoading ? "…" : ""}`}>
                 <select
                   value={filters.modelSlug}
                   onChange={(e) => selectModel(e.target.value)}
                   disabled={!filters.makeSlug}
                   className={filterInputClass}
                 >
-                  <option value="">{filters.makeSlug ? "Wszystkie serie" : "Najpierw wybierz markę"}</option>
+                  <option value="">{filters.makeSlug ? cat.allModels : cat.pickMakeFirst}</option>
                   {modelOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -332,14 +338,14 @@ export default function CarsCatalogClient() {
                 </select>
               </FilterField>
 
-              <FilterField label={`Generacja${generationsLoading ? "…" : ""}`}>
+              <FilterField label={`${cat.generationLabel}${generationsLoading ? "…" : ""}`}>
                 <select
                   value={filters.generationSlug}
                   onChange={(e) => selectGeneration(e.target.value)}
                   disabled={!filters.modelSlug}
                   className={filterInputClass}
                 >
-                  <option value="">{filters.modelSlug ? "Wszystkie generacje" : "Najpierw wybierz serię"}</option>
+                  <option value="">{filters.modelSlug ? cat.allGenerations : cat.pickModelFirst}</option>
                   {generationOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -350,13 +356,13 @@ export default function CarsCatalogClient() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <FilterField label="Paliwo">
+              <FilterField label={cat.fuelLabel}>
                 <select
                   value={filters.fuelType}
                   onChange={(e) => setFilter("fuelType", e.target.value)}
                   className={filterInputClass}
                 >
-                  <option value="">Wszystkie</option>
+                  <option value="">{cat.allFuels}</option>
                   {fuelTypes.map((fuel) => (
                     <option key={fuel} value={fuel}>
                       {fuel}
@@ -365,13 +371,13 @@ export default function CarsCatalogClient() {
                 </select>
               </FilterField>
 
-              <FilterField label="Sortowanie">
+              <FilterField label={cat.sortLabel}>
                 <select
                   value={filters.sort}
                   onChange={(e) => setFilter("sort", e.target.value as CarSortKey)}
                   className={filterInputClass}
                 >
-                  {CAR_SORT_OPTIONS.map((option) => (
+                  {sortOptions.map((option) => (
                     <option key={option.key} value={option.key}>
                       {option.label}
                     </option>
@@ -379,7 +385,7 @@ export default function CarsCatalogClient() {
                 </select>
               </FilterField>
 
-              <FilterField label="Maks. cena (PLN)">
+              <FilterField label={cat.maxPriceLabel}>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -387,7 +393,7 @@ export default function CarsCatalogClient() {
                   onChange={(e) =>
                     setFilter("maxPrice", e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " "))
                   }
-                  placeholder="np. 300 000"
+                  placeholder={cat.maxPricePlaceholder}
                   className={filterInputClass}
                 />
               </FilterField>
@@ -396,20 +402,22 @@ export default function CarsCatalogClient() {
         </section>
 
         <p className="mb-4 text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">
-          {loading ? "Ładowanie..." : `${filtered.length} z ${cars.length} ogłoszeń`}
+          {loading
+            ? dict.cars.common.loading
+            : fmtCars(cat.resultsCount, { filtered: filtered.length, total: cars.length })}
         </p>
 
         {loading ? (
-          <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">Ładowanie ofert samochodów...</p>
+          <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">{cat.loadingOffers}</p>
         ) : filtered.length === 0 ? (
           <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
-            <p className="text-sm text-[var(--eos-muted)]">Brak ogłoszeń pasujących do filtrów.</p>
+            <p className="text-sm text-[var(--eos-muted)]">{cat.noResults}</p>
             <button
               type="button"
               onClick={() => setFilters(EMPTY_FILTERS)}
               className="mt-4 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-xs font-black uppercase tracking-[0.12em]"
             >
-              Wyczyść filtry
+              {cat.clearFilters}
             </button>
           </div>
         ) : (
@@ -447,9 +455,9 @@ export default function CarsCatalogClient() {
                   </p>
                   <h2 className="line-clamp-2 text-lg font-semibold">{car.title}</h2>
                   <p className="text-sm text-[var(--eos-muted)]">
-                    {car.city} · {new Intl.NumberFormat("pl-PL").format(car.mileageKm)} km · {car.fuelType}
+                    {car.city} · {formatMileage(car.mileageKm, locale)} · {car.fuelType}
                   </p>
-                  <p className="text-lg font-bold text-sky-300">{formatCarPrice(car.pricePln)}</p>
+                  <p className="text-lg font-bold text-sky-300">{formatCarPrice(car.pricePln, locale)}</p>
                 </div>
               </Link>
             ))}

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Loader2, ScanLine, Upload } from "lucide-react";
+import { useLocale } from "@/contexts/LocaleContext";
+import type { CarsDictionary } from "@/i18n/carsDictionary";
 import type { CarFormState } from "@/components/cars/CarListingForm";
 import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
 import {
@@ -17,25 +19,31 @@ type CarRegistrationScanGateProps = {
   preferUpload?: boolean;
 };
 
-const MISSING_LABELS: Record<CarListingMissingFieldKey, string> = {
-  title: "tytuł",
-  description: "opis",
-  mileageKm: "przebieg",
-  pricePln: "cenę",
-  city: "miejscowość",
-  images: "zdjęcia",
+const MISSING_LABEL_KEYS: Record<CarListingMissingFieldKey, keyof CarsDictionary["scan"]> = {
+  title: "missingTitle",
+  description: "missingDescription",
+  mileageKm: "missingMileage",
+  pricePln: "missingPrice",
+  city: "missingCity",
+  images: "missingImages",
 };
 
-const PHASE_COPY: Record<AztecScanPhase, string> = {
-  starting: "Uruchamiam aparat…",
-  position: "Ustaw tył dowodu — kod Aztec po prawej w ramce",
-  searching: "Szukam kodu Aztec…",
-  hold: "Kod wykryty — trzymaj nieruchomo…",
-  decoding: "Odczytuję dane z dowodu…",
-  success: "Gotowe!",
-};
-
+export function missingFieldsBanner(missing: CarListingMissingFieldKey[], scan: CarsDictionary["scan"]) {
+  if (!missing.length) return null;
+  const labels = missing.map((key) => scan[MISSING_LABEL_KEYS[key]]).join(", ");
+  return `${scan.missingBannerPrefix} ${labels}.`;
+}
 export default function CarRegistrationScanGate({ open, onSkip, onPrefill, preferUpload = false }: CarRegistrationScanGateProps) {
+  const { dict } = useLocale();
+  const s = dict.cars.scan;
+  const phaseCopy: Record<AztecScanPhase, string> = {
+    starting: s.phaseStarting,
+    position: s.phasePosition,
+    searching: s.phaseSearching,
+    hold: s.phaseHold,
+    decoding: s.phaseDecoding,
+    success: s.phaseSuccess,
+  };
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
@@ -69,7 +77,7 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
   const applyResponse = async (response: Response) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(typeof data?.error === "string" ? data.error : "Nie udało się odczytać dowodu.");
+      throw new Error(typeof data?.error === "string" ? data.error : s.errReadDoc);
     }
     const prefill = (data?.prefill || {}) as Partial<CarFormState>;
     const missingFields = Array.isArray(data?.missingFields)
@@ -109,7 +117,7 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
         setError(
           decodeError instanceof Error
             ? decodeError.message
-            : "Nie udało się odczytać kodu Aztec — ustaw dowód w kadrze i spróbuj ponownie.",
+            : s.errAztec,
         );
         if (videoRef.current && streamRef.current) beginScanning(videoRef.current);
       } finally {
@@ -140,7 +148,7 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
       setError(
         decodeError instanceof Error
           ? decodeError.message
-          : "Nie udało się odczytać kodu Aztec — ustaw dowód w kadrze i spróbuj ponownie.",
+          : s.errAztec,
       );
     } finally {
       setLoading(false);
@@ -193,7 +201,7 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
       await attachStreamToVideo(media, session);
     } catch (cameraError) {
       if (session !== sessionRef.current) return;
-      setError(cameraError instanceof Error ? cameraError.message : "Nie udało się uruchomić aparatu.");
+      setError(cameraError instanceof Error ? cameraError.message : s.errCamera);
       setPhase("position");
     }
   }, [attachStreamToVideo]);
@@ -224,17 +232,18 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
   if (!open) return null;
 
   const scanning = cameraReady && phase !== "success";
-  const phaseLabel = PHASE_COPY[phase];
+  const phaseLabel = phaseCopy[phase];
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/80 p-0 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[var(--eos-bg)]/85 p-0 backdrop-blur-md sm:items-center sm:p-4">
       <div className="flex max-h-[100dvh] w-full max-w-xl flex-col overflow-hidden rounded-t-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-2xl sm:max-h-[92dvh] sm:rounded-3xl">
         <div className="shrink-0 border-b border-[var(--eos-border)] px-5 py-3 sm:px-6 sm:py-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-sky-500">Skaner dowodu</p>
-          <h2 className="mt-1 text-lg font-semibold tracking-tight sm:text-xl">Kod Aztec — skan automatyczny</h2>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-sky-500">EstateOS™Car</p>
+          <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)] sm:text-xl">{s.title}</h2>
+          <p className="mt-1 text-xs text-[var(--eos-muted)]">{s.subtitle}</p>
         </div>
 
-        <div className="relative min-h-[min(58dvh,520px)] flex-1 bg-black">
+        <div className="relative min-h-[min(58dvh,520px)] flex-1 bg-[var(--eos-bg-elevated)]">
           <video
             ref={videoRef}
             className="absolute inset-0 h-full w-full object-contain"
@@ -253,14 +262,14 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
                     onClick={() => void startCamera()}
                     className="rounded-full border border-sky-400/40 bg-sky-500/15 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-sky-200"
                   >
-                    Spróbuj ponownie
+                    {s.retry}
                   </button>
                 </>
               ) : (
                 <>
                   <Loader2 className="size-8 animate-spin text-sky-300" />
-                  <p className="text-sm text-white/85">Uruchamiam aparat…</p>
-                  <p className="text-xs text-white/55">Na komputerze wybierz kamerę w pasku adresu Safari/Chrome.</p>
+                  <p className="text-sm text-white/85">{s.phaseStarting}</p>
+                  <p className="text-xs text-white/55">{s.cameraDesktopHint}</p>
                 </>
               )}
             </div>
@@ -297,9 +306,7 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
                   )}
                   <span>{phaseLabel}</span>
                 </div>
-                <p className="text-center text-[11px] text-white/70">
-                  Przyłóż tył dowodu — przechwycimy kod sam, bez przycisku.
-                </p>
+                <p className="text-center text-[11px] text-white/70">{s.autoScanHint}</p>
               </div>
             </>
           )}
@@ -313,7 +320,7 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
             className="flex w-full items-center justify-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] disabled:opacity-60"
           >
             <Upload className="size-3.5" />
-            {loading ? "Odczytywanie…" : "Wgraj zdjęcie zamiast aparatu"}
+            {loading ? s.decoding : s.uploadInstead}
           </button>
           <input
             ref={fileInputRef}
@@ -334,19 +341,13 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
             }}
             className="w-full rounded-full px-4 py-2 text-xs font-semibold text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
           >
-            Nie mam dowodu — wypełnię ręcznie
+            {s.skip}
           </button>
-          {error && cameraReady ? <p className="text-center text-sm text-red-400">{error}</p> : null}
+          {error && cameraReady ? <p className="text-center text-sm text-red-600 dark:text-red-400">{error}</p> : null}
         </div>
       </div>
     </div>
   );
-}
-
-export function missingFieldsBanner(missing: CarListingMissingFieldKey[]) {
-  if (!missing.length) return null;
-  const labels = missing.map((key) => MISSING_LABELS[key]).join(", ");
-  return `Uzupełnij jeszcze: ${labels}.`;
 }
 
 export function highlightClass(active: boolean) {

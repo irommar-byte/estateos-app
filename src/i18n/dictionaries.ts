@@ -1,6 +1,8 @@
 import type { Locale } from "./config";
 import type { AddOfferDictionary } from "./addOfferDictionary";
 import { getAddOfferDictionary } from "./addOfferDictionary";
+import type { CarsDictionary } from "./carsDictionary";
+import { getCarsDictionary } from "./carsDictionary";
 import type { AuthDictionary } from "./authDictionary";
 import { getAuthDictionary } from "./authDictionary";
 import type { CrmExtendedDictionary } from "./crmExtendedDictionary";
@@ -10,6 +12,7 @@ import { buildUkDictionary } from "./dictionaryUk";
 export type Dictionary = {
   auth: AuthDictionary;
   addOffer: AddOfferDictionary;
+  cars: CarsDictionary;
   meta: {
     title: string;
     description: string;
@@ -624,6 +627,7 @@ export type Dictionary = {
 const pl: Dictionary = {
   auth: getAuthDictionary("pl"),
   addOffer: getAddOfferDictionary("pl"),
+  cars: getCarsDictionary("pl"),
   meta: {
     title: "EstateOS™ | Premium nieruchomości na świecie",
     description:
@@ -1356,6 +1360,7 @@ const pl: Dictionary = {
 const en: Dictionary = {
   auth: getAuthDictionary("en"),
   addOffer: getAddOfferDictionary("en"),
+  cars: getCarsDictionary("en"),
   meta: {
     title: "EstateOS™ | Global Premium Real Estate",
     description:

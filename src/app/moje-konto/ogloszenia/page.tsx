@@ -155,6 +155,12 @@ export default function AccountListingsPage() {
           </p>
           <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
             <Link
+              href="/moje-konto/crm?tab=my_offers"
+              className="inline-flex rounded-full border border-emerald-400/45 bg-emerald-500/15 px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600 dark:text-emerald-300"
+            >
+              Panel zarządzania
+            </Link>
+            <Link
               href="/moje-konto/sesje-zdjeciowe"
               className="inline-flex rounded-full border border-emerald-400/35 bg-emerald-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-300"
             >

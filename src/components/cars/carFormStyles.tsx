@@ -32,6 +32,25 @@ export function CarFormSection({ eyebrow, title, description, children }: CarFor
   );
 }
 
+export const carAlertInfoClass =
+  "rounded-2xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-800 dark:text-sky-100";
+
+export const carAlertWarningClass =
+  "rounded-2xl border border-amber-400/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-50";
+
+export const carAlertErrorClass =
+  "rounded-xl border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300";
+
+export const carAlertSuccessClass =
+  "rounded-2xl border border-emerald-400/35 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-200";
+
+export const carOverlayBackdropClass = "fixed inset-0 z-[80] bg-[var(--eos-bg)]/85 backdrop-blur-md";
+
+export const carModalPanelClass =
+  "relative overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_28px_90px_rgba(0,0,0,0.35)]";
+
+export const carSelectClass = `${carFieldInputClass} appearance-none`;
+
 export function CarFormField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="grid gap-2">

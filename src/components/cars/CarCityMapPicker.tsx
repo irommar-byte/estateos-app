@@ -6,7 +6,9 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { LocateFixed, MapPin } from "lucide-react";
 import { mapboxForwardGeocodeUrl } from "@/lib/mapboxGeocodeClient";
 import { isPlaceholderDistrict } from "@/lib/location/locationCatalog";
-import { CarFormField, CarFormSection, carFieldInputClass } from "@/components/cars/carFormStyles";
+import { CarFormField, CarFormSection, carAlertErrorClass, carFieldInputClass } from "@/components/cars/carFormStyles";
+import { useLocale } from "@/contexts/LocaleContext";
+import { fmtCars } from "@/i18n/carsDictionary";
 
 if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -82,6 +84,8 @@ export default function CarCityMapPicker({
   onChange,
   highlighted = false,
 }: CarCityMapPickerProps) {
+  const { dict } = useLocale();
+  const m = dict.cars.map;
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const reverseSeqRef = useRef(0);
@@ -144,7 +148,7 @@ export default function CarCityMapPicker({
   useEffect(() => {
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     if (!token) {
-      setMapError("Brak tokenu mapy — ustaw NEXT_PUBLIC_MAPBOX_TOKEN.");
+      setMapError(m.mapTokenMissing);
       return;
     }
     if (!mapContainerRef.current || mapRef.current) return;
@@ -236,7 +240,7 @@ export default function CarCityMapPicker({
 
   const applyGpsLocation = () => {
     if (!navigator.geolocation) {
-      setMapError("Przeglądarka nie obsługuje lokalizacji GPS.");
+      setMapError(m.gpsUnsupported);
       return;
     }
     setLocating(true);
@@ -248,7 +252,7 @@ export default function CarCityMapPicker({
         setLocating(false);
       },
       () => {
-        setMapError("Nie udało się pobrać lokalizacji GPS.");
+        setMapError(m.gpsFailed);
         setLocating(false);
       },
       { enableHighAccuracy: true, timeout: 12000 },
@@ -258,12 +262,8 @@ export default function CarCityMapPicker({
   const inputClass = `${carFieldInputClass} ${highlighted ? "ring-2 ring-amber-400/60 border-amber-400/60" : ""}`;
 
   return (
-    <CarFormSection
-      eyebrow="Lokalizacja"
-      title="Miejscowość na mapie"
-      description="Wyszukaj miasto lub przeciągnij mapę — pinezka wskazuje miejsce ogłoszenia."
-    >
-      <CarFormField label="Miejscowość">
+    <CarFormSection eyebrow={m.eyebrow} title={m.title} description={m.description}>
+      <CarFormField label={m.cityLabel}>
         <div className="relative">
         <input
           value={query}
@@ -283,12 +283,12 @@ export default function CarCityMapPicker({
             });
           }}
           className={inputClass}
-          placeholder="np. Warszawa Mokotów"
+          placeholder={m.searchPlaceholder}
           autoComplete="off"
         />
         {searching ? (
           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[var(--eos-muted)]">
-            Szukam…
+            {m.searching}
           </span>
         ) : null}
         {searchFocused && suggestions.length > 0 ? (
@@ -324,18 +324,22 @@ export default function CarCityMapPicker({
           className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/95 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-sky-300 disabled:opacity-60"
         >
           <LocateFixed className="h-3.5 w-3.5" />
-          {locating ? "GPS…" : "Moja lokalizacja"}
+          {locating ? m.gpsLocating : m.gpsButton}
         </button>
       </div>
 
       <p className="text-xs text-[var(--eos-muted)]">
         {resolving
-          ? "Ustalam miejscowość z pinezki…"
+          ? m.resolvingCity
           : cityLat != null && cityLng != null
-            ? `Pinezka: ${cityLat.toFixed(4)}, ${cityLng.toFixed(4)}${localityCountry ? ` · ${localityCountry}` : ""}`
-            : "Przeciągnij mapę lub wyszukaj miasto — pinezka wskazuje lokalizację ogłoszenia."}
+            ? fmtCars(m.pinCoords, {
+                lat: cityLat.toFixed(4),
+                lng: cityLng.toFixed(4),
+                country: localityCountry ? ` · ${localityCountry}` : "",
+              })
+            : m.mapHint}
       </p>
-      {mapError ? <p className="text-xs text-red-400">{mapError}</p> : null}
+      {mapError ? <p className={carAlertErrorClass}>{mapError}</p> : null}
     </CarFormSection>
   );
 }

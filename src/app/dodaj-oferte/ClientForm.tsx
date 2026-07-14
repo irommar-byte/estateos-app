@@ -17,6 +17,7 @@ import { Home,
 
 import ProPhotoSessionDialog from '@/components/photoSession/ProPhotoSessionDialog';
 import PublishAuthGate from '@/components/auth/PublishAuthGate';
+import ContactVerificationPanel from '@/components/ContactVerificationPanel';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -86,6 +87,14 @@ import {
 import { isAgentOrAgencySeller } from "@/lib/sellerDisplay";
 import AddOfferDocVerificationPanel from "@/components/offer/AddOfferDocVerificationPanel";
 import { normalizeLandRegistryInput, isValidLandRegistryNumber } from "@/lib/landRegistryInput";
+import {
+  ADD_OFFER_DRAFT_KEY,
+  ADD_OFFER_DRAFT_VERSION,
+  clearAddOfferDraft,
+  patchAddOfferDraft,
+  readAddOfferDraft,
+  resolvePendingOfferForPublish,
+} from "@/lib/addOfferDraft";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -99,8 +108,10 @@ const labelPremium =
   "eos-label mb-2.5 ml-0.5 flex min-w-0 w-full flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12px] font-semibold uppercase tracking-[0.055em] leading-snug md:text-[13px]";
 const glassPanel =
   "rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/95 p-8 shadow-2xl backdrop-blur-xl transition-all duration-500 md:p-10 relative overflow-x-clip overflow-y-visible";
-const ADD_OFFER_DRAFT_VERSION = 1;
-const ADD_OFFER_DRAFT_KEY = "estateos_add_offer_draft";
+
+function isPolishLocality(countryCode: unknown) {
+  return String(countryCode || "PL").trim().toUpperCase() === "PL";
+}
 
 type FormFieldTarget = "landRegistryNumber" | "agentCommissionPercent" | null;
 
@@ -328,6 +339,8 @@ export default function ClientForm({
   const landRegistryInputRef = useRef<HTMLInputElement>(null);
   const draftHydratedRef = useRef(false);
   const draftSaveTimerRef = useRef<number | null>(null);
+  const plusResumeStartedRef = useRef(false);
+  const submitOfferRef = useRef<(redemption: PublicationRedemption) => Promise<void>>(async () => {});
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
   const strictCities = locationCatalog.strictCities || [];
@@ -352,7 +365,7 @@ export default function ClientForm({
         images?: string[];
         floorPlan?: string | null;
       };
-      if (!parsed || parsed.version !== ADD_OFFER_DRAFT_VERSION) {
+      if (!parsed || (parsed.version !== 1 && parsed.version !== ADD_OFFER_DRAFT_VERSION)) {
         draftHydratedRef.current = true;
         return;
       }
@@ -419,16 +432,14 @@ export default function ClientForm({
       try {
         const persistableImages = imagesList.filter((img) => typeof img === "string" && !img.startsWith("blob:"));
         const persistableFloorPlan = floorPlan && !floorPlan.startsWith("blob:") ? floorPlan : null;
-        window.localStorage.setItem(
-          ADD_OFFER_DRAFT_KEY,
-          JSON.stringify({
-            version: ADD_OFFER_DRAFT_VERSION,
-            data,
-            currentStep,
-            images: persistableImages,
-            floorPlan: persistableFloorPlan,
-          }),
-        );
+        const existingDraft = readAddOfferDraft();
+        patchAddOfferDraft({
+          data,
+          currentStep,
+          images: persistableImages,
+          floorPlan: persistableFloorPlan,
+          pendingOfferId: existingDraft?.pendingOfferId ?? null,
+        });
       } catch {
         // ignore storage errors
       }
@@ -1164,28 +1175,63 @@ export default function ClientForm({
     setIsSubmitting(true);
     setUploadProgress(ao.progressCreatingOffer);
     try {
+      const draft = readAddOfferDraft();
+      const resume = await resolvePendingOfferForPublish(draft?.pendingOfferId);
+      if (resume.mode === "already_submitted") {
+        clearAddOfferDraft();
+        setActionModal("success");
+        return;
+      }
+
       const { payload } = buildOfferPayload();
+      if (!isPolishLocality(data.localityCountryCode)) {
+        payload.apartmentNumber = "";
+        payload.landRegistryNumber = "";
+      }
       if (!applyAgentCommissionToPayload(payload)) return;
-      const createRes = await fetch('/api/offers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      const createData = await createRes.json().catch(() => ({}));
-      if (!createRes.ok) {
-        const serverMessage = createData.error || createData.message || ao.createOfferFailed;
-        setServerErrorMessage(serverMessage);
-        setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
-        setActionModal("error");
-        return;
+
+      let offerId = resume.mode === "reuse" ? resume.offerId : null;
+
+      if (offerId) {
+        const updateRes = await fetch(`/api/offers/${offerId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+        const updateData = await updateRes.json().catch(() => ({}));
+        if (!updateRes.ok) {
+          const serverMessage = updateData.error || updateData.message || ao.createOfferFailed;
+          setServerErrorMessage(serverMessage);
+          setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
+          setActionModal("error");
+          return;
+        }
+      } else {
+        const createRes = await fetch('/api/offers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+        const createData = await createRes.json().catch(() => ({}));
+        if (!createRes.ok) {
+          const serverMessage = createData.error || createData.message || ao.createOfferFailed;
+          setServerErrorMessage(serverMessage);
+          setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
+          setActionModal("error");
+          return;
+        }
+        offerId = Number(createData?.offer?.id || createData?.id);
+        if (!Number.isFinite(offerId) || offerId <= 0) {
+          setServerErrorMessage(ao.createOfferNoId);
+          setActionModal('error');
+          return;
+        }
+        patchAddOfferDraft({ pendingOfferId: offerId });
       }
-      const createdOfferId = Number(createData?.offer?.id || createData?.id);
-      if (!Number.isFinite(createdOfferId) || createdOfferId <= 0) {
-        setServerErrorMessage(ao.createOfferNoId);
-        setActionModal('error');
-        return;
-      }
+
+      const createdOfferId = offerId as number;
       const uploadableImages = finalImages.filter((img) => filesMap[img]);
       for (let i = 0; i < uploadableImages.length; i++) {
         const blobKey = uploadableImages[i];
@@ -1227,17 +1273,17 @@ export default function ClientForm({
       });
       const activationData = await activationRes.json().catch(() => ({}));
       if (!activationRes.ok) {
+        patchAddOfferDraft({ pendingOfferId: createdOfferId });
         if (activationData?.errorCode === 'PUBLICATION_REQUIRES_PLUS') {
           setServerErrorMessage(activationData?.message || ao.plusPackageRequired);
+          setActionModal('limit');
         } else {
           setServerErrorMessage(activationData?.error || activationData?.message || ao.activationFailed);
+          setActionModal('error');
         }
-        setActionModal('error');
         return;
       }
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem(ADD_OFFER_DRAFT_KEY);
-      }
+      clearAddOfferDraft();
       setActionModal('success');
     } catch {
       setServerErrorMessage(ao.apiConnectionError);
@@ -1247,6 +1293,7 @@ export default function ClientForm({
       setUploadProgress('');
     }
   };
+  submitOfferRef.current = submitOfferWithRedemption;
 
   // --- Żelazna Walidacja Kroków ---
   const isTypeSelected = !!data.propertyType;
@@ -1271,10 +1318,14 @@ export default function ClientForm({
   const localityCountryLabel = data.localityCountryCode
     ? countryLabelForLocale(String(data.localityCountryCode), countryDisplayLocale)
     : String(data.localityCountry || countryLabelForLocale("PL", countryDisplayLocale)).trim();
+  const isPolishOfferLocation = isPolishLocality(data.localityCountryCode);
   const districtRequirementMet = isStrictCityForm ? !!data.district : true;
   const normalizedLandRegistryNumber = normalizeLandRegistryInput(String(data.landRegistryNumber || ""));
   const hasLandRegistryInput = normalizedLandRegistryNumber.length > 0;
-  const landRegistryValid = !hasLandRegistryInput || isValidLandRegistryNumber(normalizedLandRegistryNumber);
+  const landRegistryValid =
+    !isPolishOfferLocation ||
+    !hasLandRegistryInput ||
+    isValidLandRegistryNumber(normalizedLandRegistryNumber);
   const isLocationDone =
     !!data.lat &&
     !!data.lng &&
@@ -1543,6 +1594,53 @@ export default function ClientForm({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn, currentStep, totalSteps]);
+
+  useEffect(() => {
+    if (isPolishOfferLocation) return;
+    if (!data.apartmentNumber && !data.landRegistryNumber) return;
+    setData((prev: any) => ({
+      ...prev,
+      apartmentNumber: "",
+      landRegistryNumber: "",
+    }));
+  }, [isPolishOfferLocation, data.apartmentNumber, data.landRegistryNumber]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isLoggedIn || !draftHydratedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("plus") !== "success" || plusResumeStartedRef.current) return;
+    plusResumeStartedRef.current = true;
+    params.delete("plus");
+    const nextUrl = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
+    window.history.replaceState({}, "", nextUrl);
+
+    void (async () => {
+      try {
+        const walletRes = await fetch(`/api/user/publication-wallet?locale=${locale}`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const walletData = await walletRes.json().catch(() => ({}));
+        if (!walletRes.ok || !walletData?.success) return;
+        const coupons = Array.isArray(walletData.publicationCoupons)
+          ? walletData.publicationCoupons
+          : Array.isArray(walletData.coupons)
+            ? walletData.coupons
+            : [];
+        const selection = defaultPublicationSelection({
+          couponIds: coupons.map((c: PublicationCouponOption) => c.id),
+          hasPlusCredit: Boolean(walletData.hasPlusCredit),
+        });
+        if (selection === "buy_plus") return;
+        const resolved = publicationSelectionToRedemption(selection);
+        if ("action" in resolved) return;
+        setPublicationSelection(selection);
+        await submitOfferRef.current(resolved as PublicationRedemption);
+      } catch {
+        // użytkownik może opublikować ręcznie
+      }
+    })();
+  }, [isLoggedIn, locale]);
 
   const publishButtonLabel = useMemo(() => {
     if (!isLoggedIn) return ao.publishFinishGuest;
@@ -1905,21 +2003,23 @@ export default function ClientForm({
                 </div>
               </div>
 
-              <AddOfferDocVerificationPanel
-                ao={ao}
-                inputPremium={inputPremium}
-                labelPremium={labelPremium}
-                propertyType={data.propertyType}
-                apartmentNumber={String(data.apartmentNumber || "")}
-                landRegistryNumber={String(data.landRegistryNumber || "")}
-                landRegistryValid={landRegistryValid}
-                hasLandRegistryInput={hasLandRegistryInput}
-                onApartmentChange={(value) => updateData({ apartmentNumber: value })}
-                onLandRegistryChange={(value) =>
-                  updateData({ landRegistryNumber: normalizeLandRegistryInput(value) })
-                }
-                landRegistryInputRef={landRegistryInputRef}
-              />
+              {isPolishOfferLocation ? (
+                <AddOfferDocVerificationPanel
+                  ao={ao}
+                  inputPremium={inputPremium}
+                  labelPremium={labelPremium}
+                  propertyType={data.propertyType}
+                  apartmentNumber={String(data.apartmentNumber || "")}
+                  landRegistryNumber={String(data.landRegistryNumber || "")}
+                  landRegistryValid={landRegistryValid}
+                  hasLandRegistryInput={hasLandRegistryInput}
+                  onApartmentChange={(value) => updateData({ apartmentNumber: value })}
+                  onLandRegistryChange={(value) =>
+                    updateData({ landRegistryNumber: normalizeLandRegistryInput(value) })
+                  }
+                  landRegistryInputRef={landRegistryInputRef}
+                />
+              ) : null}
             </section>
 
             {/* KROK 3: PARAMETRY I FINANSE */}
@@ -2575,14 +2675,55 @@ export default function ClientForm({
       {/* 1. STANDARDOWE OKNA (BŁĄD, LIMIT, SUKCES ZWYKŁY) */}
       <AnimatePresence>
         {actionModal === "verify" && (
-          <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-10 max-w-lg w-full text-center shadow-2xl relative">
-              <button onClick={() => setActionModal("none")} className="absolute top-6 right-6 text-zinc-500 hover:text-white"><X size={24} /></button>
-              <ShieldCheck className="mx-auto mb-6 text-emerald-400" size={48} />
-              <h2 className="text-2xl font-black text-white mb-3">{ao.modalVerifyTitle}</h2>
-              <p className="text-zinc-400 mb-8 leading-relaxed">{serverErrorMessage || ao.modalVerifyDefault}</p>
-              <a href="/moje-konto/weryfikacja" className="block w-full py-4 bg-emerald-500 text-black font-black uppercase tracking-widest rounded-2xl mb-3 hover:bg-emerald-400 transition-colors">{ao.modalVerifyBtn}</a>
-              <button onClick={() => setActionModal("none")} className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold hover:text-white">{ao.modalClose}</button>
+          <div className="fixed inset-0 z-[999999] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="relative flex max-h-[min(100dvh,820px)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_28px_90px_rgba(0,0,0,0.35)] sm:max-h-[min(92dvh,820px)] sm:rounded-3xl"
+            >
+              <button
+                onClick={() => setActionModal("none")}
+                className="absolute right-4 top-4 z-10 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2 text-[var(--eos-muted)] transition hover:text-[var(--eos-text)]"
+                aria-label={ao.modalClose}
+              >
+                <X size={18} />
+              </button>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pt-12 sm:p-6 sm:pt-14">
+                {serverErrorMessage ? (
+                  <p className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+                    {serverErrorMessage}
+                  </p>
+                ) : null}
+                <ContactVerificationPanel
+                  compact
+                  initial={{
+                    email: activeUser?.email,
+                    phone: activeUser?.phone,
+                    isEmailVerified: activeUser?.isEmailVerified,
+                    isVerifiedPhone: activeUser?.isVerifiedPhone,
+                  }}
+                  onUpdated={async () => {
+                    const checkRes = await fetch("/api/auth/check", { cache: "no-store", credentials: "include" });
+                    const check = await checkRes.json().catch(() => ({}));
+                    if (check?.loggedIn && check?.user) {
+                      setActiveUser({
+                        isLoggedIn: true,
+                        id: check.user.id,
+                        name: check.user.name,
+                        email: check.user.email,
+                        phone: check.user.phone,
+                        role: check.user.role,
+                        isEmailVerified: check.user.isEmailVerified,
+                        isVerifiedPhone: check.user.isVerifiedPhone,
+                      });
+                      if (check.user.isEmailVerified && check.user.isVerifiedPhone) {
+                        setActionModal("none");
+                        setServerErrorMessage("");
+                      }
+                    }
+                  }}
+                />
+              </div>
             </motion.div>
           </div>
         )}
@@ -2598,7 +2739,15 @@ export default function ClientForm({
                   <p className="text-zinc-400 mb-8 leading-relaxed">
                     {ao.modalSuccessBody}
                   </p>
-                  <button onClick={() => { window.location.href = '/moje-konto/crm'; }} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-[#10b981] hover:text-black font-black uppercase tracking-widest rounded-2xl transition-all duration-300">{ao.modalSuccessPanel}</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.href = "/moje-konto/crm?tab=my_offers";
+                    }}
+                    className="w-full rounded-2xl border border-emerald-400/45 bg-gradient-to-b from-emerald-400 to-emerald-600 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-[0_12px_32px_rgba(16,185,129,0.22)] transition hover:brightness-105"
+                  >
+                    {ao.modalSuccessPanel}
+                  </button>
                 </>
               )}
 

@@ -7,6 +7,7 @@ import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
 import CarInquiryPanel from "@/components/cars/CarInquiryPanel";
 import CarOwnerActions from "@/components/cars/CarOwnerActions";
 import CarVehicleChecksClient from "@/components/cars/CarVehicleChecksClient";
+import { useLocale } from "@/contexts/LocaleContext";
 import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
 import type { CarListingRecord } from "@/lib/carsStorage";
 
@@ -18,7 +19,7 @@ type CarDetailClientProps = {
 function SpecItem({ icon: Icon, label, value }: { icon: typeof Fuel; label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg)]/40 p-3">
-      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-sky-300/90">
+      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-sky-600 dark:text-sky-300/90">
         <Icon className="size-3.5" aria-hidden />
         {label}
       </div>
@@ -28,13 +29,15 @@ function SpecItem({ icon: Icon, label, value }: { icon: typeof Fuel; label: stri
 }
 
 export default function CarDetailClient({ car, currentUserId }: CarDetailClientProps) {
+  const { dict, locale } = useLocale();
+  const d = dict.cars.detail;
   const imageSrc = carImageSrc(car.imageUrl);
 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-32 text-[var(--eos-text)] sm:px-6">
       <div className="mx-auto max-w-6xl space-y-6">
-        <Link href="/cars" className="text-xs font-black uppercase tracking-[0.14em] text-sky-300 hover:text-sky-200">
-          Wróć do EstateOS™Car
+        <Link href="/cars" className="text-xs font-black uppercase tracking-[0.14em] text-sky-600 hover:text-sky-500 dark:text-sky-300 dark:hover:text-sky-200">
+          {d.backToCatalog}
         </Link>
 
         <section className="overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]">
@@ -58,7 +61,7 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <Gauge className="size-4" aria-hidden />
-                  {formatMileage(car.mileageKm)}
+                  {formatMileage(car.mileageKm, locale)}
                 </span>
               </p>
             </div>
@@ -68,15 +71,15 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
             <div className="space-y-6">
               <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--eos-border)] pb-5">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">Cena</p>
-                  <p className="mt-1 text-3xl font-bold text-sky-300 sm:text-4xl">{formatCarPrice(car.pricePln)}</p>
+                  <p className="text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">{d.price}</p>
+                  <p className="mt-1 text-3xl font-bold text-sky-600 dark:text-sky-300 sm:text-4xl">{formatCarPrice(car.pricePln, locale)}</p>
                 </div>
                 {car.userId ? (
                   <Link
                     href={`/profil/${car.userId}`}
                     className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-[var(--eos-text)] hover:border-sky-400/40"
                   >
-                    Profil sprzedającego
+                    {d.sellerProfile}
                   </Link>
                 ) : null}
               </div>
@@ -84,35 +87,32 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
               <CarOwnerActions carId={car.id} ownerUserId={car.userId} currentUserId={currentUserId} />
 
               <div>
-                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">Specyfikacja</h2>
+                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">{d.specs}</h2>
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  <SpecItem icon={Calendar} label="Rocznik" value={String(car.year)} />
-                  <SpecItem icon={Gauge} label="Przebieg" value={formatMileage(car.mileageKm)} />
-                  <SpecItem icon={Fuel} label="Paliwo" value={car.fuelType} />
-                  <SpecItem icon={Settings2} label="Skrzynia" value={car.transmission} />
-                  <SpecItem icon={CarIcon} label="Nadwozie" value={car.bodyType} />
-                  {car.generation ? <SpecItem icon={Calendar} label="Generacja" value={car.generation} /> : null}
-                  {car.enginePower ? <SpecItem icon={Cog} label="Moc" value={car.enginePower} /> : null}
-                  {car.engineCapacity ? <SpecItem icon={Cog} label="Pojemność" value={`${car.engineCapacity} cm³`} /> : null}
-                  {car.trimVersion ? <SpecItem icon={CarIcon} label="Wersja" value={car.trimVersion} /> : null}
-                  {car.doorCount ? <SpecItem icon={CarIcon} label="Drzwi" value={String(car.doorCount)} /> : null}
-                  <SpecItem icon={MapPin} label="Miasto" value={car.city} />
+                  <SpecItem icon={Calendar} label={d.year} value={String(car.year)} />
+                  <SpecItem icon={Gauge} label={d.mileage} value={formatMileage(car.mileageKm, locale)} />
+                  <SpecItem icon={Fuel} label={d.fuel} value={car.fuelType} />
+                  <SpecItem icon={Settings2} label={d.transmission} value={car.transmission} />
+                  <SpecItem icon={CarIcon} label={d.body} value={car.bodyType} />
+                  {car.generation ? <SpecItem icon={Calendar} label={d.generation} value={car.generation} /> : null}
+                  {car.enginePower ? <SpecItem icon={Cog} label={d.power} value={car.enginePower} /> : null}
+                  {car.engineCapacity ? <SpecItem icon={Cog} label={d.capacity} value={`${car.engineCapacity} cm³`} /> : null}
+                  {car.trimVersion ? <SpecItem icon={CarIcon} label={d.trim} value={car.trimVersion} /> : null}
+                  {car.doorCount ? <SpecItem icon={CarIcon} label={d.doors} value={String(car.doorCount)} /> : null}
+                  <SpecItem icon={MapPin} label={d.city} value={car.city} />
                 </div>
               </div>
 
               {car.description?.trim() ? (
               <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-5">
-                <p className="text-sm font-semibold">Opis</p>
+                <p className="text-sm font-semibold text-[var(--eos-text)]">{d.description}</p>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--eos-muted)]">{car.description.trim()}</p>
               </div>
             ) : null}
 
             <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-5">
-                <p className="text-sm font-semibold">O ogłoszeniu</p>
-                <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">
-                  Ogłoszenie opublikowane w module EstateOS™Car — jednym ekosystemie z nieruchomościami EstateOS™Home.
-                  Zapytania trafiają bezpośrednio do sprzedającego przez EstateOS Contact.
-                </p>
+                <p className="text-sm font-semibold text-[var(--eos-text)]">{d.aboutListing}</p>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{d.aboutBody}</p>
               </div>
 
               <CarVehicleChecksClient

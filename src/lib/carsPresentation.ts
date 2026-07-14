@@ -1,21 +1,26 @@
+import type { Locale } from "@/i18n/config";
+import {
+  formatCarMileageLocalized,
+  formatCarPriceLocalized,
+  getCarSortOptions,
+  type CarsDictionary,
+} from "@/i18n/carsDictionary";
+
 export type CarSortKey = "newest" | "price-asc" | "price-desc" | "year-desc" | "mileage-asc";
 
-export const CAR_SORT_OPTIONS: Array<{ key: CarSortKey; label: string }> = [
-  { key: "newest", label: "Najnowsze" },
-  { key: "price-asc", label: "Cena rosnąco" },
-  { key: "price-desc", label: "Cena malejąco" },
-  { key: "year-desc", label: "Najnowszy rocznik" },
-  { key: "mileage-asc", label: "Najmniejszy przebieg" },
-];
+/** @deprecated Use getCarSortOptions(locale) */
+export const CAR_SORT_OPTIONS = getCarSortOptions("pl");
 
-export function formatCarPrice(price: number): string {
-  if (!Number.isFinite(price) || price <= 0) return "Cena na zapytanie";
-  return `${new Intl.NumberFormat("pl-PL").format(price)} PLN`;
+export function getCarSortOptionsForLocale(locale: Locale) {
+  return getCarSortOptions(locale);
 }
 
-export function formatMileage(km: number): string {
-  if (!Number.isFinite(km) || km < 0) return "—";
-  return `${new Intl.NumberFormat("pl-PL").format(km)} km`;
+export function formatCarPrice(price: number, locale: Locale = "pl"): string {
+  return formatCarPriceLocalized(price, locale);
+}
+
+export function formatMileage(km: number, locale: Locale = "pl"): string {
+  return formatCarMileageLocalized(km, locale);
 }
 
 export function carImageSrc(imageUrl?: string | null): string {
@@ -50,32 +55,47 @@ export function sortCarListings<T extends { pricePln: number; year: number; mile
   }
 }
 
-export function buildCarInquiryMessage(input: {
-  carTitle: string;
-  make: string;
-  model: string;
-  year: number;
-  pricePln: number;
-  city: string;
-  viewingPreference: string;
-  userMessage: string;
-  phone?: string;
-  carUrl: string;
-}): string {
+export function buildCarInquiryMessage(
+  input: {
+    carTitle: string;
+    make: string;
+    model: string;
+    year: number;
+    pricePln: number;
+    city: string;
+    viewingPreference: string;
+    userMessage: string;
+    phone?: string;
+    carUrl: string;
+  },
+  locale: Locale = "pl",
+): string {
   const lines = [
-    "Zapytanie o ogłoszenie EstateOS™Car",
+    locale === "uk"
+      ? "Запит про оголошення EstateOS™Car"
+      : locale === "en"
+        ? "EstateOS™Car listing inquiry"
+        : "Zapytanie o ogłoszenie EstateOS™Car",
     "",
-    `Pojazd: ${input.carTitle}`,
+    locale === "uk"
+      ? `Авто: ${input.carTitle}`
+      : locale === "en"
+        ? `Vehicle: ${input.carTitle}`
+        : `Pojazd: ${input.carTitle}`,
     `${input.make} ${input.model} · ${input.year}`,
-    `Cena: ${formatCarPrice(input.pricePln)}`,
-    `Lokalizacja: ${input.city}`,
+    `${locale === "uk" ? "Ціна" : locale === "en" ? "Price" : "Cena"}: ${formatCarPrice(input.pricePln, locale)}`,
+    `${locale === "uk" ? "Локація" : locale === "en" ? "Location" : "Lokalizacja"}: ${input.city}`,
     `Link: ${input.carUrl}`,
     "",
-    `Preferowany termin oględzin: ${input.viewingPreference}`,
+    `${locale === "uk" ? "Бажаний час огляду" : locale === "en" ? "Preferred viewing" : "Preferowany termin oględzin"}: ${input.viewingPreference}`,
   ];
   if (input.phone?.trim()) {
-    lines.push(`Telefon kontaktowy: ${input.phone.trim()}`);
+    lines.push(
+      `${locale === "uk" ? "Телефон" : locale === "en" ? "Phone" : "Telefon kontaktowy"}: ${input.phone.trim()}`,
+    );
   }
-  lines.push("", "Wiadomość:", input.userMessage.trim());
+  lines.push("", locale === "uk" ? "Повідомлення:" : locale === "en" ? "Message:" : "Wiadomość:", input.userMessage.trim());
   return lines.join("\n");
 }
+
+export type { CarsDictionary };

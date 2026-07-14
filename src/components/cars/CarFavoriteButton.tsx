@@ -7,6 +7,7 @@ import {
   loadCarFavoriteIds,
   toggleCarFavoriteId,
 } from "@/lib/carFavoritesStorage";
+import { useLocale } from "@/contexts/LocaleContext";
 
 type CarFavoriteButtonProps = {
   carId: number;
@@ -15,6 +16,8 @@ type CarFavoriteButtonProps = {
 };
 
 export default function CarFavoriteButton({ carId, className = "", onChange }: CarFavoriteButtonProps) {
+  const { dict } = useLocale();
+  const f = dict.cars.favorites;
   const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
 
   useEffect(() => {
@@ -26,8 +29,8 @@ export default function CarFavoriteButton({ carId, className = "", onChange }: C
   return (
     <button
       type="button"
-      aria-label={active ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
-      className={`inline-flex items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/95 p-2 text-sky-300 transition hover:border-sky-400/50 hover:text-sky-200 ${className}`}
+      aria-label={active ? f.remove : f.add}
+      className={`inline-flex items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/95 p-2 text-sky-600 transition hover:border-sky-400/50 hover:text-sky-500 dark:text-sky-300 dark:hover:text-sky-200 ${className}`}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();

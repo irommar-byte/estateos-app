@@ -12,7 +12,9 @@ import {
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Trash2, Upload } from "lucide-react";
-import { CarFormSection } from "@/components/cars/carFormStyles";
+import { CarFormSection, carAlertErrorClass, carAlertInfoClass } from "@/components/cars/carFormStyles";
+import { useLocale } from "@/contexts/LocaleContext";
+import { fmtCars } from "@/i18n/carsDictionary";
 
 export type CarPhotoGalleryFieldHandle = {
   uploadPending: () => Promise<string[]>;
@@ -31,6 +33,8 @@ type SortablePhotoProps = {
   idx: number;
   onRemove: (idx: number) => void;
   progressObj?: UploadStat;
+  mainBadge: string;
+  errorBadge: string;
 };
 
 function uploadFileWithProgress(file: File, onProgress: (pct: number) => void): Promise<string> {
@@ -66,7 +70,7 @@ function uploadFileWithProgress(file: File, onProgress: (pct: number) => void): 
   });
 }
 
-function SortablePhoto({ id, url, idx, onRemove, progressObj }: SortablePhotoProps) {
+function SortablePhoto({ id, url, idx, onRemove, progressObj, mainBadge, errorBadge }: SortablePhotoProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -113,7 +117,7 @@ function SortablePhoto({ id, url, idx, onRemove, progressObj }: SortablePhotoPro
       </button>
       {idx === 0 && !isUploading && !isError ? (
         <span className="pointer-events-none absolute bottom-0 left-0 w-full bg-sky-500 py-1 text-center text-[9px] font-black uppercase tracking-widest text-white shadow-[0_-5px_15px_rgba(14,165,233,0.35)]">
-          Główne
+          {mainBadge}
         </span>
       ) : null}
       {isUploading ? (
@@ -126,7 +130,7 @@ function SortablePhoto({ id, url, idx, onRemove, progressObj }: SortablePhotoPro
       ) : null}
       {isError ? (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-red-500/20 backdrop-blur-sm pointer-events-none">
-          <span className="rounded-md bg-red-500 px-2 py-1 text-[9px] font-black uppercase text-white">Błąd</span>
+          <span className="rounded-md bg-red-500 px-2 py-1 text-[9px] font-black uppercase text-white">{errorBadge}</span>
         </div>
       ) : null}
     </div>
@@ -146,6 +150,8 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
     { images, onChange, highlighted = false, onUploadingChange, loggedIn = true },
     ref,
   ) {
+    const { dict } = useLocale();
+    const p = dict.cars.photos;
     const fileInputRef = useRef<HTMLInputElement>(null);
     const pendingFilesRef = useRef<Map<string, File>>(new Map());
     const imagesRef = useRef(images);
@@ -237,7 +243,7 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
           onChange(resolved);
           return resolved;
         } catch (uploadError) {
-          throw uploadError instanceof Error ? uploadError : new Error("Upload zdjęcia nie powiódł się.");
+          throw uploadError instanceof Error ? uploadError : new Error(p.uploadError);
         }
       },
     }));
@@ -296,21 +302,17 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
           }),
         );
       } catch (uploadError) {
-        setError(uploadError instanceof Error ? uploadError.message : "Upload zdjęcia nie powiódł się.");
+        setError(uploadError instanceof Error ? uploadError.message : p.uploadError);
       } finally {
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     };
 
-    const totalSizeLabel = useMemo(() => `${images.length} zdjęć`, [images.length]);
+    const totalSizeLabel = useMemo(() => fmtCars(p.photosCount, { n: images.length }), [images.length, p.photosCount]);
     const hasLocalPending = !loggedIn && images.some((url) => url.startsWith("blob:"));
 
     return (
-      <CarFormSection
-        eyebrow="Prezentacja"
-        title="Galeria zdjęć"
-        description="Pierwsze zdjęcie jest główne na liście ogłoszeń. Przeciągnij miniatury, aby zmienić kolejność."
-      >
+      <CarFormSection eyebrow={p.eyebrow} title={p.title} description={p.description}>
         <div className="flex items-center justify-end">
           <span className="rounded-full bg-[var(--eos-bg)] px-3 py-1 text-[10px] font-bold text-[var(--eos-muted)]">
             {totalSizeLabel}
@@ -318,10 +320,7 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
         </div>
 
         {!loggedIn && hasLocalPending ? (
-          <p className="rounded-xl border border-sky-400/25 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-200">
-            Zdjęcia zapisane lokalnie. Po kliknięciu „Opublikuj” założysz konto — wtedy wgramy je automatycznie na
-            serwer.
-          </p>
+          <p className={carAlertInfoClass}>{p.guestHint}</p>
         ) : null}
 
         <div
@@ -343,11 +342,7 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
               }}
             />
             <Upload size={26} className="mb-2 transition-transform group-hover:-translate-y-0.5" />
-            <span className="px-2 text-center text-[10px] font-black uppercase tracking-widest">
-              Dodaj
-              <br />
-              zdjęcia
-            </span>
+            <span className="px-2 text-center text-[10px] font-black uppercase tracking-widest">{p.addPhotos}</span>
           </label>
 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -360,6 +355,8 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
                   idx={idx}
                   onRemove={handleRemove}
                   progressObj={uploadStats[url]}
+                  mainBadge={p.mainBadge}
+                  errorBadge={p.errorBadge}
                 />
               ))}
             </SortableContext>
@@ -367,9 +364,9 @@ const CarPhotoGalleryField = forwardRef<CarPhotoGalleryFieldHandle, CarPhotoGall
         </div>
 
         {images.length === 0 ? (
-          <p className="text-center text-[11px] font-semibold text-amber-400">Dodaj co najmniej jedno zdjęcie auta.</p>
+          <p className="text-center text-[11px] font-semibold text-amber-600 dark:text-amber-400">{p.requiredHint}</p>
         ) : null}
-        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        {error ? <p className={carAlertErrorClass}>{error}</p> : null}
       </CarFormSection>
     );
   },

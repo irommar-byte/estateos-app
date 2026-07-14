@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useLocale } from "@/contexts/LocaleContext";
+import type { CarsDictionary } from "@/i18n/carsDictionary";
 import CarCatalogFields from "@/components/cars/CarCatalogFields";
 import CarCityMapPicker from "@/components/cars/CarCityMapPicker";
 import CarFormattedNumberInput from "@/components/cars/CarFormattedNumberInput";
@@ -15,6 +17,10 @@ import CarVehicleDocsFields, { type CarVehicleDocsFormState } from "@/components
 import {
   CarFormField,
   CarFormSection,
+  carAlertErrorClass,
+  carAlertInfoClass,
+  carAlertSuccessClass,
+  carAlertWarningClass,
   carFieldInputClass,
 } from "@/components/cars/carFormStyles";
 import type { CarAddEntryMethod } from "@/components/cars/CarAddEntryScreen";
@@ -142,19 +148,19 @@ function toPayload(form: CarFormState, images: string[]) {
   };
 }
 
-function validateForm(form: CarFormState, imageCount: number): string | null {
+function validateForm(form: CarFormState, imageCount: number, f: CarsDictionary["form"]): string | null {
   const payload = toPayload(form, form.images);
   if (!payload.title || !payload.make || !payload.model || !payload.city || payload.pricePln <= 0) {
-    return "Uzupełnij tytuł, markę, model, miejscowość i poprawną cenę.";
+    return f.errTitlePrice;
   }
   if (form.cityLat == null || form.cityLng == null) {
-    return "Ustaw miejscowość na mapie — przeciągnij mapę lub wybierz z wyszukiwarki.";
+    return f.errMapCity;
   }
   if (!payload.fuelType) {
-    return "Wybierz rodzaj paliwa z katalogu.";
+    return f.errFuel;
   }
   if (imageCount <= 0) {
-    return "Dodaj co najmniej jedno zdjęcie auta.";
+    return f.errPhotos;
   }
   return null;
 }
@@ -166,6 +172,9 @@ export default function CarListingForm({
   onSuccess,
   entryMethod,
 }: CarListingFormProps) {
+  const { dict } = useLocale();
+  const c = dict.cars;
+  const f = c.form;
   const [form, setForm] = useState<CarFormState>(initialValues || initialCarForm);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -261,7 +270,7 @@ export default function CarListingForm({
       const keys = missingFields.length ? missingFields : listMissingListingFields(next, next.images.length > 0);
       setHighlightKeys(keys);
       setScanNotice(
-        `Dane z dowodu wczytane. ${missingFieldsBanner(keys) || "Sprawdź katalog i uzupełnij ogłoszenie."}`,
+        `${f.scanLoaded} ${missingFieldsBanner(keys, c.scan) || f.scanCheckCatalog}`,
       );
       return next;
     });
@@ -281,7 +290,7 @@ export default function CarListingForm({
     setSubmitting(true);
 
     const imageCount = photoGalleryRef.current?.totalCount() ?? form.images.length;
-    const validationError = validateForm(form, imageCount);
+    const validationError = validateForm(form, imageCount, f);
     if (validationError) {
       throw new Error(validationError);
     }
@@ -306,7 +315,7 @@ export default function CarListingForm({
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(typeof data?.error === "string" ? data.error : "Nie udało się zapisać ogłoszenia.");
+        throw new Error(typeof data?.error === "string" ? data.error : c.common.saveFailed);
       }
 
       const savedId = Number(data?.listing?.id || carId || 0) || null;
@@ -329,7 +338,7 @@ export default function CarListingForm({
         setForm(initialCarForm);
       }
     } catch (publishError) {
-      throw publishError instanceof Error ? publishError : new Error("Błąd sieci podczas zapisu ogłoszenia.");
+      throw publishError instanceof Error ? publishError : new Error(c.common.networkError);
     } finally {
       setSubmitting(false);
     }
@@ -340,7 +349,7 @@ export default function CarListingForm({
     setError(null);
 
     const imageCount = photoGalleryRef.current?.totalCount() ?? form.images.length;
-    const validationError = validateForm(form, imageCount);
+    const validationError = validateForm(form, imageCount, f);
     if (validationError) {
       setError(validationError);
       return;
@@ -355,7 +364,7 @@ export default function CarListingForm({
     try {
       await publishListing();
     } catch (publishError) {
-      setError(publishError instanceof Error ? publishError.message : "Błąd sieci podczas zapisu ogłoszenia.");
+      setError(publishError instanceof Error ? publishError.message : c.common.networkError);
     } finally {
       setSubmitting(false);
     }
@@ -382,41 +391,32 @@ export default function CarListingForm({
 
       <form onSubmit={handleSubmit} className="grid gap-6">
         {!loggedIn && mode === "create" ? (
-          <p className="rounded-2xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
-            Możesz wypełnić formularz bez logowania. Po kliknięciu „Opublikuj” założysz konto — ogłoszenie trafi od
-            razu do katalogu, a Ty dostaniesz powiadomienia o zapytaniach.
-          </p>
+          <p className={carAlertInfoClass}>{f.guestBanner}</p>
         ) : null}
 
         {scanNotice ? (
-          <p className="rounded-2xl border border-amber-500/30 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-50">
-            {scanNotice}
-          </p>
+          <p className={carAlertWarningClass}>{scanNotice}</p>
         ) : null}
 
         <CarCatalogFields form={form} setForm={setForm} />
 
-        <CarFormSection
-          eyebrow="Treść ogłoszenia"
-          title="Tytuł i opis"
-          description="Krótki, konkretny tytuł i opis stanu auta zwiększają zaufanie kupujących."
-        >
-          <CarFormField label="Tytuł ogłoszenia">
+        <CarFormSection eyebrow={f.contentEyebrow} title={f.contentTitle} description={f.contentDescription}>
+          <CarFormField label={f.titleLabel}>
             <input
               value={form.title}
               onChange={(e) => setField("title", e.target.value)}
               className={`${carFieldInputClass} ${highlightClass(isHighlighted("title"))}`}
-              placeholder="np. BMW X5 xDrive30d M Sport"
+              placeholder={f.titlePlaceholder}
               required
             />
           </CarFormField>
 
-          <CarFormField label="Opis">
+          <CarFormField label={f.descriptionLabel}>
             <textarea
               value={form.description}
               onChange={(e) => setField("description", e.target.value)}
               className={`min-h-[140px] resize-y ${carFieldInputClass} ${highlightClass(isHighlighted("description"))}`}
-              placeholder="Opisz stan auta, historię serwisową, wyposażenie..."
+              placeholder={f.descriptionPlaceholder}
             />
           </CarFormField>
         </CarFormSection>
@@ -433,13 +433,9 @@ export default function CarListingForm({
           loggedIn={loggedIn}
         />
 
-        <CarFormSection
-          eyebrow="Oferta"
-          title="Cena i przebieg"
-          description="Podaj aktualny przebieg i cenę sprzedaży w PLN."
-        >
+        <CarFormSection eyebrow={f.offerEyebrow} title={f.offerTitle} description={f.offerDescription}>
           <div className="grid gap-4 sm:grid-cols-2">
-            <CarFormField label="Przebieg (km)">
+            <CarFormField label={f.mileageLabel}>
               <CarFormattedNumberInput
                 value={form.mileageKm}
                 onChange={(digits) => setField("mileageKm", digits)}
@@ -447,7 +443,7 @@ export default function CarListingForm({
                 placeholder="58 000"
               />
             </CarFormField>
-            <CarFormField label="Cena (PLN)">
+            <CarFormField label={f.priceLabel}>
               <CarFormattedNumberInput
                 value={form.pricePln}
                 onChange={(digits) => setField("pricePln", digits)}
@@ -499,42 +495,38 @@ export default function CarListingForm({
           }}
         />
 
-        {error ? (
-          <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</p>
-        ) : null}
+        {error ? <p className={carAlertErrorClass}>{error}</p> : null}
         {successId ? (
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-            <p className="font-semibold">Ogłoszenie opublikowane i widoczne w katalogu Cars.</p>
-            <p className="mt-1 text-emerald-100/80">
-              Możesz edytować zdjęcia i dane w każdej chwili — powiadomienia o zapytaniach trafią na Twoje konto.
-            </p>
+          <div className={carAlertSuccessClass}>
+            <p className="font-semibold">{f.successTitle}</p>
+            <p className="mt-1 opacity-90">{f.successBody}</p>
             <Link className="mt-2 inline-block font-bold underline" href={`/cars/${successId}`}>
-              Zobacz ogłoszenie
+              {c.common.viewListing}
             </Link>
             {" · "}
             <Link className="font-bold underline" href={`/cars/${successId}/edytuj`}>
-              Edytuj
+              {c.common.edit}
             </Link>
           </div>
         ) : null}
 
         <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-[1.75rem] border border-sky-400/25 bg-[var(--eos-card)]/95 px-5 py-4 shadow-[0_18px_50px_rgba(14,165,233,0.12)] backdrop-blur-md">
           <p className="text-xs text-[var(--eos-muted)]">
-            {mode === "create" ? "Gotowe? Opublikuj ogłoszenie w katalogu Cars." : "Zapisz zmiany w ogłoszeniu."}
+            {mode === "create" ? f.footerCreate : f.footerEdit}
           </p>
           <div className="flex flex-wrap gap-3">
             <button
               type="submit"
               disabled={submitting || uploading}
-              className="rounded-full border border-sky-400/45 bg-sky-500/15 px-6 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-sky-200 transition hover:bg-sky-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-full border border-sky-400/45 bg-sky-500/15 px-6 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-sky-800 transition hover:bg-sky-500/25 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-200"
             >
-              {submitting ? "Publikowanie..." : mode === "create" ? "Opublikuj ogłoszenie Cars" : "Zapisz zmiany"}
+              {submitting ? f.publishing : mode === "create" ? f.publish : f.saveChanges}
             </button>
             <Link
               href={mode === "edit" && carId ? `/cars/${carId}` : "/cars"}
-              className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-6 py-2.5 text-xs font-black uppercase tracking-[0.14em]"
+              className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-6 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-[var(--eos-text)]"
             >
-              Anuluj
+              {c.common.cancel}
             </Link>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import type { Dictionary } from "./dictionaries";
 import { getAuthDictionary } from "./authDictionary";
 import { getAddOfferDictionary } from "./addOfferDictionary";
+import { getCarsDictionary } from "./carsDictionary";
 
 /** Ukrainian UI — extends English base; CRM extended strings come from getCrmExtended("uk"). */
 export function buildUkDictionary(enBase: Dictionary): Dictionary {
@@ -8,6 +9,7 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
     ...enBase,
     auth: getAuthDictionary("uk"),
     addOffer: getAddOfferDictionary("uk"),
+    cars: getCarsDictionary("uk"),
     meta: {
       title: "EstateOS™ | Преміум нерухомість у світі",
       description:
