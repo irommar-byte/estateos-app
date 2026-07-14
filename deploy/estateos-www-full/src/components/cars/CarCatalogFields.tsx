@@ -2,20 +2,23 @@
 
 import { useEffect, type ReactNode } from "react";
 import { BODY_TYPE_OPTIONS } from "@/lib/otomotoCatalog";
+import { CAR_EXTERIOR_COLORS } from "@/lib/carColors";
 import { pickDoorCountOption, pickGenerationForYear } from "@/lib/carCatalogInference";
 import { findEngineCapacityOption, findEnginePowerOption, findOptionByLabel, useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
 import type { CarFormState } from "@/components/cars/CarListingForm";
-
-const fieldLabelClass =
-  "text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]";
-
-const fieldInputClass =
-  "w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3.5 py-2.5 text-sm text-[var(--eos-text)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.05)] outline-none transition focus:border-sky-400/55 focus:ring-2 focus:ring-sky-400/20 disabled:cursor-not-allowed disabled:opacity-50";
+import {
+  CarFormSection,
+  carAlertWarningClass,
+  carFieldInputClass,
+  carFieldLabelClass,
+} from "@/components/cars/carFormStyles";
+import { useLocale } from "@/contexts/LocaleContext";
+import { fmtCars } from "@/i18n/carsDictionary";
 
 function CatalogField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="grid gap-2">
-      <span className={fieldLabelClass}>{label}</span>
+      <span className={carFieldLabelClass}>{label}</span>
       {children}
     </label>
   );
@@ -35,6 +38,7 @@ function CatalogSelect({
   disabled,
   required,
   placeholder,
+  chooseFieldTemplate,
 }: {
   label: string;
   value: string;
@@ -44,10 +48,12 @@ function CatalogSelect({
   disabled?: boolean;
   required?: boolean;
   placeholder?: string;
+  chooseFieldTemplate?: string;
 }) {
+  const defaultPlaceholder = placeholder || (chooseFieldTemplate ? fmtCars(chooseFieldTemplate, { field: label }) : label);
   return (
     <label className="grid gap-2">
-      <span className={fieldLabelClass}>
+      <span className={carFieldLabelClass}>
         {label}
         {loading ? "…" : ""}
       </span>
@@ -58,11 +64,11 @@ function CatalogSelect({
           const option = options.find((item) => item.value === slug);
           onChange(slug, option?.label || "");
         }}
-        className={fieldInputClass}
+        className={carFieldInputClass}
         disabled={disabled || loading}
         required={required}
       >
-        <option value="">{placeholder || `Wybierz ${label.toLowerCase()}`}</option>
+        <option value="">{defaultPlaceholder}</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -74,6 +80,10 @@ function CatalogSelect({
 }
 
 export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProps) {
+  const { dict } = useLocale();
+  const cf = dict.cars.catalogFields;
+  const autoTx = dict.cars.common.automaticTransmission;
+  const chooseFieldTemplate = dict.cars.common.chooseField;
   const hasMake = Boolean(form.makeSlug);
   const hasModel = Boolean(form.modelSlug);
   const hasYear = Boolean(form.year);
@@ -230,18 +240,9 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
   const patch = (partial: Partial<CarFormState>) => setForm((prev) => ({ ...prev, ...partial }));
 
   return (
-    <section className="overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_22px_70px_rgba(14,165,233,0.08)]">
-      <div className="border-b border-[var(--eos-border)] bg-gradient-to-r from-sky-500/[0.07] via-transparent to-cyan-500/[0.04] px-5 py-4 sm:px-6">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">Katalog pojazdu</p>
-        <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">Specyfikacja auta</h2>
-        <p className="mt-1 text-xs text-[var(--eos-muted)]">
-          Wybierz markę, model, paliwo, silnik i wersję po kolei — jak w profesjonalnym katalogu.
-        </p>
-      </div>
-
-      <div className="grid gap-5 p-5 sm:p-6">
+    <CarFormSection eyebrow={cf.eyebrow} title={cf.title} description={cf.description}>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <CatalogField label="Rocznik produkcji">
+          <CatalogField label={cf.yearLabel}>
             <select
               value={form.year}
               onChange={(event) =>
@@ -256,15 +257,15 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
                   doorCountSlug: "",
                   doorCount: "",
                   gearboxSlug: "",
-                  transmission: "Automatyczna",
+                  transmission: autoTx,
                   trimVersionSlug: "",
                   trimVersion: "",
                 })
               }
-              className={fieldInputClass}
+              className={carFieldInputClass}
               required
             >
-              <option value="">Wybierz rocznik</option>
+              <option value="">{cf.yearPlaceholder}</option>
               {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, index) => {
                 const year = String(new Date().getFullYear() - index);
                 return (
@@ -277,11 +278,12 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
           </CatalogField>
 
           <CatalogSelect
-            label="Marka"
+            label={cf.makeLabel}
             value={form.makeSlug}
             options={makes}
             loading={makesLoading}
             required
+            chooseFieldTemplate={chooseFieldTemplate}
             onChange={(slug, label) =>
               patch({
                 makeSlug: slug,
@@ -299,7 +301,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
                 doorCountSlug: "",
                 doorCount: "",
                 gearboxSlug: "",
-                transmission: "Automatyczna",
+                transmission: autoTx,
                 trimVersionSlug: "",
                 trimVersion: "",
               })
@@ -307,12 +309,13 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
           />
 
           <CatalogSelect
-            label="Model"
+            label={cf.modelLabel}
             value={form.modelSlug}
             options={models}
             loading={modelsLoading}
             disabled={!hasMake}
             required
+            chooseFieldTemplate={chooseFieldTemplate}
             onChange={(slug, label) =>
               patch({
                 modelSlug: slug,
@@ -328,7 +331,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
                 doorCountSlug: "",
                 doorCount: "",
                 gearboxSlug: "",
-                transmission: "Automatyczna",
+                transmission: autoTx,
                 trimVersionSlug: "",
                 trimVersion: "",
               })
@@ -338,12 +341,13 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <CatalogSelect
-            label="Generacja"
+            label={cf.generationLabel}
             value={form.generationSlug}
             options={generations}
             loading={generationsLoading}
             disabled={!hasMake || !hasModel}
-            placeholder="Opcjonalnie"
+            placeholder={dict.cars.common.optional}
+            chooseFieldTemplate={chooseFieldTemplate}
             onChange={(slug, label) =>
               patch({
                 generationSlug: slug,
@@ -357,7 +361,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
                 doorCountSlug: "",
                 doorCount: "",
                 gearboxSlug: "",
-                transmission: "Automatyczna",
+                transmission: autoTx,
                 trimVersionSlug: "",
                 trimVersion: "",
               })
@@ -365,12 +369,13 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
           />
 
           <CatalogSelect
-            label="Rodzaj paliwa"
+            label={cf.fuelLabel}
             value={form.fuelSlug}
             options={fuelTypes}
             loading={fuelLoading}
             disabled={!hasMake || !hasModel}
             required
+            chooseFieldTemplate={chooseFieldTemplate}
             onChange={(slug, label) =>
               patch({
                 fuelSlug: slug,
@@ -382,7 +387,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
                 doorCountSlug: "",
                 doorCount: "",
                 gearboxSlug: "",
-                transmission: "Automatyczna",
+                transmission: autoTx,
                 trimVersionSlug: "",
                 trimVersion: "",
               })
@@ -394,11 +399,12 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <CatalogSelect
-            label="Moc silnika"
+            label={cf.powerLabel}
             value={form.enginePowerSlug}
             options={enginePowers}
             loading={powerLoading}
             disabled={!form.fuelSlug}
+            chooseFieldTemplate={chooseFieldTemplate}
             onChange={(slug, label) =>
               patch({
                 enginePowerSlug: slug,
@@ -408,7 +414,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
                 doorCountSlug: "",
                 doorCount: "",
                 gearboxSlug: "",
-                transmission: "Automatyczna",
+                transmission: autoTx,
                 trimVersionSlug: "",
                 trimVersion: "",
               })
@@ -416,11 +422,12 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
           />
 
           <CatalogSelect
-            label="Pojemność silnika (cm³)"
+            label={cf.capacityLabel}
             value={form.engineCapacitySlug}
             options={engineCapacities}
             loading={capacityLoading}
             disabled={!form.enginePowerSlug}
+            chooseFieldTemplate={chooseFieldTemplate}
             onChange={(slug, label) =>
               patch({
                 engineCapacitySlug: slug,
@@ -428,7 +435,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
                 doorCountSlug: "",
                 doorCount: "",
                 gearboxSlug: "",
-                transmission: "Automatyczna",
+                transmission: autoTx,
                 trimVersionSlug: "",
                 trimVersion: "",
               })
@@ -440,17 +447,18 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <CatalogSelect
-            label="Liczba drzwi"
+            label={cf.doorsLabel}
             value={form.doorCountSlug}
             options={doorCounts}
             loading={doorsLoading}
             disabled={!form.engineCapacitySlug}
+            chooseFieldTemplate={chooseFieldTemplate}
             onChange={(slug, label) =>
               patch({
                 doorCountSlug: slug,
                 doorCount: label,
                 gearboxSlug: "",
-                transmission: "Automatyczna",
+                transmission: autoTx,
                 trimVersionSlug: "",
                 trimVersion: "",
               })
@@ -458,26 +466,27 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
           />
 
           <CatalogSelect
-            label="Skrzynia biegów"
+            label={cf.gearboxLabel}
             value={form.gearboxSlug}
             options={gearboxes}
             loading={gearboxLoading}
             disabled={!form.engineCapacitySlug}
+            chooseFieldTemplate={chooseFieldTemplate}
             onChange={(slug, label) =>
               patch({
                 gearboxSlug: slug,
-                transmission: label || "Automatyczna",
+                transmission: label || autoTx,
                 trimVersionSlug: "",
                 trimVersion: "",
               })
             }
           />
 
-          <CatalogField label="Nadwozie">
+          <CatalogField label={cf.bodyLabel}>
             <select
               value={form.bodyType}
               onChange={(event) => patch({ bodyType: event.target.value })}
-              className={fieldInputClass}
+              className={carFieldInputClass}
             >
               {BODY_TYPE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.label}>
@@ -486,15 +495,31 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
               ))}
             </select>
           </CatalogField>
+
+          <CatalogField label={cf.colorLabel}>
+            <select
+              value={form.exteriorColor}
+              onChange={(event) => patch({ exteriorColor: event.target.value })}
+              className={carFieldInputClass}
+            >
+              <option value="">{cf.colorPlaceholder}</option>
+              {CAR_EXTERIOR_COLORS.map((color) => (
+                <option key={color} value={color}>
+                  {color}
+                </option>
+              ))}
+            </select>
+          </CatalogField>
         </div>
 
         <CatalogSelect
-          label="Wersja / wyposażenie"
+          label={cf.trimLabel}
           value={form.trimVersionSlug}
           options={versions}
           loading={versionsLoading}
           disabled={!form.gearboxSlug}
-          placeholder="Opcjonalnie — wybierz po skrzyni biegów"
+          placeholder={cf.trimPlaceholder}
+          chooseFieldTemplate={chooseFieldTemplate}
           onChange={(slug, label) => {
             const nextTitle =
               !form.title.trim() && form.make && form.model && label
@@ -509,11 +534,8 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
         />
 
         {!hasYear ? (
-          <p className="rounded-xl border border-amber-500/30 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
-            Uzupełnij rocznik, aby zawęzić dostępne silniki i wersje.
-          </p>
+          <p className={carAlertWarningClass}>{cf.yearRequiredHint}</p>
         ) : null}
-      </div>
-    </section>
+    </CarFormSection>
   );
 }

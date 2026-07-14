@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createCarListing, listCars, listCarsByUser } from "@/lib/carsStorage";
 import type { CarListingUpdateInput } from "@/lib/carsStorage";
+import { normalizeCarExteriorColor } from "@/lib/carColors";
+import { sanitizeCarListingForViewer } from "@/lib/carVehicleDocPrivacy";
 import { isPromotionActive } from "@/lib/listingPromotion";
 import { resolveUploaderUserId } from "@/lib/upload/resolveUploader";
 
@@ -40,6 +42,7 @@ function validateBody(raw: Record<string, unknown>): CarListingUpdateInput & { u
     fuelType: String(raw?.fuelType || "").trim() || "Benzyna",
     transmission: String(raw?.transmission || "").trim() || "Automatyczna",
     bodyType: String(raw?.bodyType || "").trim() || "Sedan",
+    exteriorColor: normalizeCarExteriorColor(raw?.exteriorColor),
     generation: String(raw?.generation || "").trim(),
     enginePower: String(raw?.enginePower || "").trim(),
     engineCapacity: String(raw?.engineCapacity || "").trim(),
@@ -65,25 +68,32 @@ function validateBody(raw: Record<string, unknown>): CarListingUpdateInput & { u
     registrationNumber: String(raw?.registrationNumber || "").trim().toUpperCase(),
     firstRegistrationDate: String(raw?.firstRegistrationDate || "").trim(),
     insuranceValidUntil: String(raw?.insuranceValidUntil || "").trim(),
+    restrictVehicleDocs: Boolean(raw?.restrictVehicleDocs),
   };
 }
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const scope = searchParams.get("scope");
+  const viewerUserId = await resolveUploaderUserId(req);
   if (scope === "mine") {
-    const userId = await resolveUploaderUserId(req);
-    if (!userId) return NextResponse.json([], { status: 200 });
-    const mine = await listCarsByUser(userId, 100);
-    return NextResponse.json(mine, { status: 200 });
+    if (!viewerUserId) return NextResponse.json([], { status: 200 });
+    const mine = await listCarsByUser(viewerUserId, 100);
+    return NextResponse.json(mine.map((listing) => withFeaturedFlag(listing)), { status: 200 });
   }
   const sellerId = Number(searchParams.get("userId") || "");
   if (Number.isFinite(sellerId) && sellerId > 0) {
     const sellerCars = await listCarsByUser(sellerId, 50);
-    return NextResponse.json(sellerCars, { status: 200 });
+    return NextResponse.json(
+      sellerCars.map((listing) => withFeaturedFlag(sanitizeCarListingForViewer(listing))),
+      { status: 200 },
+    );
   }
   const all = await listCars(100);
-  return NextResponse.json(all, { status: 200 });
+  return NextResponse.json(
+    all.map((listing) => withFeaturedFlag(sanitizeCarListingForViewer(listing))),
+    { status: 200 },
+  );
 }
 
 export async function POST(req: Request) {

@@ -1,435 +1,1310 @@
 import type { Locale } from "./config";
+import { numberFormatLocale } from "./config";
 
 export type CarsDictionary = {
-  metaTitle: string;
-  metaDescription: string;
-  brand: string;
-  catalogTitle: string;
-  catalogSubtitle: string;
-  addListing: string;
-  tabFavorites: string;
-  tabMine: string;
-  tabAll: string;
-  countFavorites: (filtered: number, saved: number) => string;
-  countMine: (n: number) => string;
-  countAll: (n: number) => string;
-  loginPrompt: string;
-  loginLink: string;
-  favoritesEmpty: string;
-  searchSectionBadge: string;
-  searchTitle: string;
-  clearFilters: string;
-  filterSearch: string;
-  searchPlaceholder: string;
-  filterMake: (loading: boolean) => string;
-  filterModel: (loading: boolean) => string;
-  filterGeneration: (loading: boolean) => string;
-  allMakes: string;
-  allSeries: string;
-  allGenerations: string;
-  pickMakeFirst: string;
-  pickSeriesFirst: string;
-  filterFuel: string;
-  allFuels: string;
-  filterSort: string;
-  filterMaxPrice: string;
-  maxPricePlaceholder: string;
-  resultsCount: (filtered: number, total: number) => string;
-  loading: string;
-  loadingOffers: string;
-  noResults: string;
-  featuredBadge: string;
-  backToCatalog: string;
-  priceLabel: string;
-  sellerProfile: string;
-  specSection: string;
-  specYear: string;
-  specMileage: string;
-  specFuel: string;
-  specTransmission: string;
-  specBody: string;
-  specGeneration: string;
-  specPower: string;
-  specCapacity: string;
-  specTrim: string;
-  specDoors: string;
-  specCity: string;
-  descriptionTitle: string;
-  aboutListingTitle: string;
-  aboutListingBody: string;
-  favoriteAriaAdd: string;
-  favoriteAriaRemove: string;
-  formTitleLabel: string;
-  formDescriptionLabel: string;
-  formTitlePlaceholder: string;
-  formDescriptionPlaceholder: string;
-  formMileageLabel: string;
-  formSave: string;
-  formSaving: string;
-  formCreateTitle: string;
-  formEditTitle: string;
-  formErrorTitle: string;
-  formErrorCity: string;
-  formErrorFuel: string;
-  formErrorPhotos: string;
-  formErrorSave: string;
-  formErrorNetwork: string;
-  formScanBanner: string;
-
-  inquiryTitle: string;
-  inquirySubtitle: string;
-  inquiryNoSeller: string;
-  inquiryViewingLabel: string;
-  inquiryViewingSchedule: string;
-  inquiryYourMessage: string;
-  inquiryFooter: string;
-  inquiryViewingAsap: string;
-  inquiryViewingThisWeek: string;
-  inquiryViewingNextWeek: string;
-  inquiryViewingQuestionOnly: string;
-  inquiryPhoneLabel: string;
-  inquiryMessageLabel: string;
-  inquiryDefaultMessage: (title: string) => string;
-  inquirySubmit: string;
-  inquirySubmitting: string;
-  inquiryError: string;
-  inquirySuccessTitle: string;
-  inquirySuccessBody: string;
-  inquiryLoginHint: string;
-  ownerEdit: string;
-  ownerDelete: string;
-  ownerDeleting: string;
-  ownerDeleteConfirm: string;
-  ownerDeleteError: string;
-  ownerNetworkError: string;
-
+  common: {
+    cancel: string;
+    loading: string;
+    choose: string;
+    optional: string;
+    poland: string;
+    automaticTransmission: string;
+    suvBody: string;
+    priceOnRequest: string;
+    login: string;
+    networkError: string;
+    saveFailed: string;
+    managementPanel: string;
+    myListings: string;
+    carsCatalog: string;
+    edit: string;
+    viewListing: string;
+    chooseField: string;
+    retry: string;
+  };
+  sort: {
+    newest: string;
+    priceAsc: string;
+    priceDesc: string;
+    yearDesc: string;
+    mileageAsc: string;
+  };
+  entry: {
+    heroTitle: string;
+    heroDescription: string;
+    privacyEyebrow: string;
+    privacyTitle: string;
+    privacyBody: string;
+    privacyBodyRestrict: string;
+    privacyBodyHistory: string;
+    restrictSwitchLabel: string;
+    restrictSwitchDescription: string;
+    restrictHint: string;
+    methodScanTitle: string;
+    methodScanDescription: string;
+    methodScanBadge: string;
+    methodUploadTitle: string;
+    methodUploadDescription: string;
+    methodCaptureTitle: string;
+    methodCaptureDescription: string;
+    methodManualTitle: string;
+    methodManualDescription: string;
+    hasAccount: string;
+    signIn: string;
+    changeEntryMethod: string;
+  };
+  form: {
+    guestBanner: string;
+    scanLoaded: string;
+    scanCheckCatalog: string;
+    contentEyebrow: string;
+    contentTitle: string;
+    contentDescription: string;
+    titleLabel: string;
+    titlePlaceholder: string;
+    descriptionLabel: string;
+    descriptionPlaceholder: string;
+    offerEyebrow: string;
+    offerTitle: string;
+    offerDescription: string;
+    mileageLabel: string;
+    priceLabel: string;
+    footerCreate: string;
+    footerEdit: string;
+    publish: string;
+    publishing: string;
+    saveChanges: string;
+    successTitle: string;
+    successBody: string;
+    errTitlePrice: string;
+    errMapCity: string;
+    errFuel: string;
+    errPhotos: string;
+  };
+  catalogFields: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    yearLabel: string;
+    yearPlaceholder: string;
+    makeLabel: string;
+    modelLabel: string;
+    generationLabel: string;
+    fuelLabel: string;
+    powerLabel: string;
+    capacityLabel: string;
+    doorsLabel: string;
+    gearboxLabel: string;
+    bodyLabel: string;
+    colorLabel: string;
+    colorPlaceholder: string;
+    trimLabel: string;
+    trimPlaceholder: string;
+    catalogHint: string;
+    yearRequiredHint: string;
+  };
+  docs: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    vinLabel: string;
+    vinPlaceholder: string;
+    registrationLabel: string;
+    registrationPlaceholder: string;
+    firstRegLabel: string;
+    firstRegPlaceholder: string;
+    insuranceLabel: string;
+    insurancePlaceholder: string;
+    restrictLabel: string;
+    restrictDescription: string;
+    loginBanner: string;
+    checkHistory: string;
+    checkingHistory: string;
+    checkInsurance: string;
+    checkingInsurance: string;
+    autoChecking: string;
+    historyReady: string;
+    errHistory: string;
+    errInsurance: string;
+    errOc: string;
+  };
+  scan: {
+    title: string;
+    subtitle: string;
+    skip: string;
+    uploadInstead: string;
+    decoding: string;
+    errDecode: string;
+    errAztec: string;
+    errCamera: string;
+    errReadDoc: string;
+    phaseStarting: string;
+    phasePosition: string;
+    phaseSearching: string;
+    phaseHold: string;
+    phaseDecoding: string;
+    phaseSuccess: string;
+    missingTitle: string;
+    missingDescription: string;
+    missingMileage: string;
+    missingPrice: string;
+    missingCity: string;
+    missingImages: string;
+    missingBannerPrefix: string;
+    retry: string;
+    autoScanHint: string;
+    cameraDesktopHint: string;
+  };
+  photos: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    mainBadge: string;
+    addPhotos: string;
+    dragHint: string;
+    guestHint: string;
+    uploadError: string;
+    networkUploadError: string;
+    errorBadge: string;
+    photosCount: string;
+    requiredHint: string;
+  };
+  map: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    cityLabel: string;
+    searchPlaceholder: string;
+    gpsButton: string;
+    gpsDenied: string;
+    gpsUnsupported: string;
+    mapHint: string;
+    countryLabel: string;
+    mapTokenMissing: string;
+    resolvingCity: string;
+    pinCoords: string;
+    searching: string;
+    gpsFailed: string;
+    gpsLocating: string;
+  };
+  catalog: {
+    heroTitle: string;
+    heroDescription: string;
+    statsFavorites: string;
+    statsMine: string;
+    statsAll: string;
+    addListing: string;
+    tabFavorites: string;
+    tabMine: string;
+    tabAll: string;
+    loginMineBanner: string;
+    goLogin: string;
+    favoritesEmpty: string;
+    filtersEyebrow: string;
+    filtersTitle: string;
+    clearFilters: string;
+    searchLabel: string;
+    searchPlaceholder: string;
+    makeLabel: string;
+    allMakes: string;
+    modelLabel: string;
+    allModels: string;
+    pickMakeFirst: string;
+    generationLabel: string;
+    allGenerations: string;
+    pickModelFirst: string;
+    fuelLabel: string;
+    allFuels: string;
+    sortLabel: string;
+    maxPriceLabel: string;
+    maxPricePlaceholder: string;
+    resultsLoading: string;
+    resultsCount: string;
+    loadingOffers: string;
+    noResults: string;
+    featuredBadge: string;
+  };
+  detail: {
+    description: string;
+    aboutListing: string;
+    specs: string;
+    year: string;
+    mileage: string;
+    fuel: string;
+    transmission: string;
+    body: string;
+    color: string;
+    power: string;
+    capacity: string;
+    doors: string;
+    city: string;
+    sellerProfile: string;
+    backToCatalog: string;
+    price: string;
+    aboutBody: string;
+    generation: string;
+    trim: string;
+    version: string;
+  };
+  inquiry: {
+    title: string;
+    description: string;
+    nameLabel: string;
+    phoneLabel: string;
+    phoneOptional: string;
+    viewingLabel: string;
+    viewingAsap: string;
+    viewingWeek: string;
+    viewingNextWeek: string;
+    viewingWeekend: string;
+    viewingQuestionOnly: string;
+    messageLabel: string;
+    messagePlaceholder: string;
+    defaultMessage: string;
+    submit: string;
+    submitting: string;
+    success: string;
+    successTitle: string;
+    successBody: string;
+    loginRequired: string;
+    noSeller: string;
+    footerNote: string;
+    submitFailed: string;
+  };
+  checks: {
+    title: string;
+    description: string;
+    restrictedNote: string;
+    loginBanner: string;
+    vin: string;
+    registration: string;
+    firstRegistration: string;
+    historyNeedsData: string;
+    checkHistory: string;
+    checkingHistory: string;
+    checkInsurance: string;
+    checkingInsurance: string;
+    closeModal: string;
+    historyModalTitle: string;
+    errHistory: string;
+    errInsurance: string;
+  };
+  owner: {
+    edit: string;
+    delete: string;
+    deleting: string;
+    confirmDelete: string;
+    deleteFailed: string;
+    deleteNetworkError: string;
+  };
+  edit: {
+    pageTitle: string;
+    pageDescription: string;
+    backToDetails: string;
+  };
+  seller: {
+    eyebrow: string;
+    title: string;
+  };
+  favorites: {
+    add: string;
+    remove: string;
+  };
 };
 
 const pl: CarsDictionary = {
-  metaTitle: "Katalog samochodów | EstateOS™Car",
-  metaDescription:
-    "Przeglądaj ogłoszenia samochodowe w ekosystemie EstateOS. Jedno konto, przełączanie Home/Car i profesjonalny kontakt ze sprzedającymi.",
-  brand: "EstateOS™Car",
-  catalogTitle: "Profesjonalny katalog samochodów",
-  catalogSubtitle:
-    "Jedno konto EstateOS, przełączanie Home/Car i zapytania trafiające prosto do sprzedającego przez EstateOS Contact.",
-  addListing: "Dodaj ogłoszenie auta",
-  tabFavorites: "Ulubione",
-  tabMine: "Moje samochody",
-  tabAll: "Cały katalog",
-  countFavorites: (filtered, saved) => `${filtered} ulubionych z ${saved} zapisanych`,
-  countMine: (n) => `${n} Twoich ogłoszeń`,
-  countAll: (n) => `${n} aktywnych ogłoszeń w katalogu`,
-  loginPrompt: "Zaloguj się, aby zobaczyć swoje ogłoszenia samochodowe.",
-  loginLink: "Przejdź do logowania",
-  favoritesEmpty:
-    "Nie masz jeszcze ulubionych aut. Kliknij serduszko na karcie ogłoszenia, aby dodać je tutaj.",
-  searchSectionBadge: "Parametry wyszukiwania",
-  searchTitle: "Znajdź samochód",
-  clearFilters: "Wyczyść filtry",
-  filterSearch: "Szukaj",
-  searchPlaceholder: "BMW, Warszawa, diesel...",
-  filterMake: (loading) => `Marka${loading ? "…" : ""}`,
-  filterModel: (loading) => `Seria / model${loading ? "…" : ""}`,
-  filterGeneration: (loading) => `Generacja${loading ? "…" : ""}`,
-  allMakes: "Wszystkie marki",
-  allSeries: "Wszystkie serie",
-  allGenerations: "Wszystkie generacje",
-  pickMakeFirst: "Najpierw wybierz markę",
-  pickSeriesFirst: "Najpierw wybierz serię",
-  filterFuel: "Paliwo",
-  allFuels: "Wszystkie",
-  filterSort: "Sortowanie",
-  filterMaxPrice: "Maks. cena (PLN)",
-  maxPricePlaceholder: "np. 300 000",
-  resultsCount: (filtered, total) => `${filtered} z ${total} ogłoszeń`,
-  loading: "Ładowanie...",
-  loadingOffers: "Ładowanie ofert samochodów...",
-  noResults: "Brak ogłoszeń pasujących do filtrów.",
-  featuredBadge: "Wyróżnione",
-  backToCatalog: "Wróć do EstateOS™Car",
-  priceLabel: "Cena",
-  sellerProfile: "Profil sprzedającego",
-  specSection: "Specyfikacja",
-  specYear: "Rocznik",
-  specMileage: "Przebieg",
-  specFuel: "Paliwo",
-  specTransmission: "Skrzynia",
-  specBody: "Nadwozie",
-  specGeneration: "Generacja",
-  specPower: "Moc",
-  specCapacity: "Pojemność",
-  specTrim: "Wersja",
-  specDoors: "Drzwi",
-  specCity: "Miasto",
-  descriptionTitle: "Opis",
-  aboutListingTitle: "O ogłoszeniu",
-  aboutListingBody:
-    "Ogłoszenie opublikowane w module EstateOS™Car — jednym ekosystemie z nieruchomościami EstateOS™Home. Zapytania trafiają bezpośrednio do sprzedającego przez EstateOS Contact.",
-  favoriteAriaAdd: "Dodaj do ulubionych",
-  favoriteAriaRemove: "Usuń z ulubionych",
-  formTitleLabel: "Tytuł ogłoszenia",
-  formDescriptionLabel: "Opis",
-  formTitlePlaceholder: "np. BMW X5 xDrive30d M Sport",
-  formDescriptionPlaceholder: "Opisz stan auta, historię serwisową, wyposażenie...",
-  formMileageLabel: "Przebieg (km)",
-  formSave: "Zapisz ogłoszenie",
-  formSaving: "Zapisuję...",
-  formCreateTitle: "Dodaj ogłoszenie samochodu",
-  formEditTitle: "Edytuj ogłoszenie",
-  formErrorTitle: "Uzupełnij tytuł, markę, model, miejscowość i poprawną cenę.",
-  formErrorCity: "Ustaw miejscowość na mapie — przeciągnij mapę lub wybierz z wyszukiwarki.",
-  formErrorFuel: "Wybierz rodzaj paliwa z katalogu.",
-  formErrorPhotos: "Dodaj co najmniej jedno zdjęcie auta.",
-  formErrorSave: "Nie udało się zapisać ogłoszenia.",
-  formErrorNetwork: "Błąd sieci podczas zapisu ogłoszenia.",
-  formScanBanner: "Dane z dowodu wczytane. Sprawdź katalog i uzupełnij ogłoszenie.",
-  inquiryTitle: "Zapytaj o auto",
-  inquirySubtitle: "Wiadomość trafi do sprzedającego przez EstateOS Contact.",
-  inquiryNoSeller: "Zapytania będą dostępne po przypisaniu sprzedającego do tego ogłoszenia.",
-  inquiryViewingLabel: "Preferowany termin oględzin",
-  inquiryViewingSchedule: "Termin oględzin",
-  inquiryYourMessage: "Twoja wiadomość",
-  inquiryFooter: "Wysyłając zapytanie, kontaktujesz się ze sprzedającym przez EstateOS Contact. Jedno konto — Home i Car.",
-  inquiryViewingAsap: "Jak najszybciej",
-  inquiryViewingThisWeek: "W tym tygodniu",
-  inquiryViewingNextWeek: "W przyszłym tygodniu",
-  inquiryViewingQuestionOnly: "Tylko pytanie — bez oględzin",
-  inquiryPhoneLabel: "Telefon (opcjonalnie)",
-  inquiryMessageLabel: "Wiadomość",
-  inquiryDefaultMessage: (title) =>
-    `Dzień dobry, jestem zainteresowany/a ogłoszeniem „${title}”. Proszę o informację o dostępności i możliwości oględzin.`,
-  inquirySubmit: "Wyślij zapytanie",
-  inquirySubmitting: "Wysyłanie...",
-  inquiryError: "Nie udało się wysłać zapytania.",
-  inquirySuccessTitle: "Zapytanie wysłane",
-  inquirySuccessBody:
-    "Sprzedający otrzyma wiadomość w EstateOS Contact. Za chwilę przekierujemy Cię do czatu.",
-  inquiryLoginHint: "Zaloguj się, aby wysłać zapytanie.",
-  ownerEdit: "Edytuj ogłoszenie",
-  ownerDelete: "Usuń ogłoszenie",
-  ownerDeleting: "Usuwanie...",
-  ownerDeleteConfirm: "Usunąć to ogłoszenie samochodu? Tej operacji nie można cofnąć.",
-  ownerDeleteError: "Nie udało się usunąć ogłoszenia.",
-  ownerNetworkError: "Błąd sieci podczas usuwania ogłoszenia.",
-
+  common: {
+    cancel: "Anuluj",
+    loading: "Ładowanie...",
+    choose: "Wybierz →",
+    optional: "Opcjonalnie",
+    poland: "Polska",
+    automaticTransmission: "Automatyczna",
+    suvBody: "SUV",
+    priceOnRequest: "Cena na zapytanie",
+    login: "Zaloguj się",
+    networkError: "Błąd sieci podczas zapisu ogłoszenia.",
+    saveFailed: "Nie udało się zapisać ogłoszenia.",
+    managementPanel: "Panel zarządzania",
+    myListings: "Moje ogłoszenia",
+    carsCatalog: "Katalog Cars",
+    edit: "Edytuj",
+    viewListing: "Zobacz ogłoszenie",
+    chooseField: "Wybierz {field}",
+    retry: "Spróbuj ponownie",
+  },
+  sort: {
+    newest: "Najnowsze",
+    priceAsc: "Cena rosnąco",
+    priceDesc: "Cena malejąco",
+    yearDesc: "Najnowszy rocznik",
+    mileageAsc: "Najmniejszy przebieg",
+  },
+  entry: {
+    heroTitle: "Jak chcesz dodać auto?",
+    heroDescription:
+      "Wybierz sposób wprowadzenia danych z dowodu rejestracyjnego. Formularz możesz wypełnić bez logowania — konto założysz dopiero przy publikacji.",
+    privacyEyebrow: "Nasza przewaga",
+    privacyTitle: "Prywatność VIN i pełna historia dla kupującego",
+    privacyBody:
+      "Po wpisaniu VIN, numeru rejestracyjnego i daty pierwszej rejestracji możesz",
+    privacyBodyRestrict: "zastrzec te dane",
+    privacyBodyHistory:
+      "— na publicznym ogłoszeniu widoczne będą tylko pierwsze znaki. Kupujący jednym przyciskiem sprawdzi realną historię CEPIK — stan auta, ubezpieczenie i przebieg — bez ujawniania Twoich wrażliwych danych.",
+    restrictSwitchLabel: "Zastrzeż dane pojazdu (VIN, rejestracja, pierwsza rejestracja)",
+    restrictSwitchDescription:
+      "Przykład: na ogłoszeniu WBA*** zamiast pełnego VIN — historia w sklepie nadal kompletna dla kupującego.",
+    restrictHint: "W formularzu włączysz lub wyłączysz zastrzeżenie w dowolnym momencie przed publikacją.",
+    methodScanTitle: "Skanuj kod aparatem",
+    methodScanDescription:
+      "Ustaw tył dowodu w kadrze — kod Aztec odczytamy automatycznie i uzupełnimy markę, model oraz VIN.",
+    methodScanBadge: "Najszybsze",
+    methodUploadTitle: "Wgraj zdjęcie dowodu",
+    methodUploadDescription:
+      "Masz już zdjęcie w galerii? Wgraj plik JPG, PNG lub HEIC — system odczyta kod Aztec z obrazu.",
+    methodCaptureTitle: "Zrób zdjęcie i przetwórz",
+    methodCaptureDescription:
+      "Zrób nowe zdjęcie tyłu dowodu aparatem telefonu lub komputera — kod zostanie odczytany od razu.",
+    methodManualTitle: "Wypełnię ręcznie",
+    methodManualDescription:
+      "Nie masz dowodu pod ręką? Przejdź do formularza i wpisz dane samodzielnie w swoim tempie.",
+    hasAccount: "Masz już konto?",
+    signIn: "Zaloguj się",
+    changeEntryMethod: "← Zmień sposób dodawania",
+  },
+  form: {
+    guestBanner:
+      "Możesz wypełnić formularz bez logowania. Po kliknięciu „Opublikuj” założysz konto — ogłoszenie trafi od razu do katalogu, a Ty dostaniesz powiadomienia o zapytaniach.",
+    scanLoaded: "Dane z dowodu wczytane.",
+    scanCheckCatalog: "Sprawdź katalog i uzupełnij ogłoszenie.",
+    contentEyebrow: "Treść ogłoszenia",
+    contentTitle: "Tytuł i opis",
+    contentDescription: "Krótki, konkretny tytuł i opis stanu auta zwiększają zaufanie kupujących.",
+    titleLabel: "Tytuł ogłoszenia",
+    titlePlaceholder: "np. BMW X5 xDrive30d M Sport",
+    descriptionLabel: "Opis",
+    descriptionPlaceholder: "Opisz stan auta, historię serwisową, wyposażenie...",
+    offerEyebrow: "Oferta",
+    offerTitle: "Cena i przebieg",
+    offerDescription: "Podaj aktualny przebieg i cenę sprzedaży w PLN.",
+    mileageLabel: "Przebieg (km)",
+    priceLabel: "Cena (PLN)",
+    footerCreate: "Gotowe? Opublikuj ogłoszenie w katalogu Cars.",
+    footerEdit: "Zapisz zmiany w ogłoszeniu.",
+    publish: "Opublikuj ogłoszenie Cars",
+    publishing: "Publikowanie...",
+    saveChanges: "Zapisz zmiany",
+    successTitle: "Ogłoszenie opublikowane i widoczne w katalogu Cars.",
+    successBody:
+      "Możesz edytować zdjęcia i dane w każdej chwili — powiadomienia o zapytaniach trafią na Twoje konto.",
+    errTitlePrice: "Uzupełnij tytuł, markę, model, miejscowość i poprawną cenę.",
+    errMapCity: "Ustaw miejscowość na mapie — przeciągnij mapę lub wybierz z wyszukiwarki.",
+    errFuel: "Wybierz rodzaj paliwa z katalogu.",
+    errPhotos: "Dodaj co najmniej jedno zdjęcie auta.",
+  },
+  catalogFields: {
+    eyebrow: "Katalog pojazdu",
+    title: "Marka, model i parametry",
+    description: "Wybierz dane z katalogu EstateOS™Car — ułatwia to filtrowanie i wiarygodność ogłoszenia.",
+    yearLabel: "Rocznik produkcji",
+    yearPlaceholder: "Wybierz rocznik",
+    makeLabel: "Marka",
+    modelLabel: "Model",
+    generationLabel: "Generacja",
+    fuelLabel: "Rodzaj paliwa",
+    powerLabel: "Moc silnika",
+    capacityLabel: "Pojemność silnika (cm³)",
+    doorsLabel: "Liczba drzwi",
+    gearboxLabel: "Skrzynia biegów",
+    bodyLabel: "Nadwozie",
+    colorLabel: "Kolor nadwozia",
+    colorPlaceholder: "Wybierz kolor",
+    trimLabel: "Wersja / wyposażenie",
+    trimPlaceholder: "Opcjonalnie — wybierz po skrzyni biegów",
+    catalogHint: "Po wyborze marki i modelu uzupełnimy paliwo, moc i skrzynię, jeśli są w katalogu.",
+    yearRequiredHint: "Uzupełnij rocznik, aby zawęzić dostępne silniki i wersje.",
+  },
+  docs: {
+    eyebrow: "Dokumenty pojazdu",
+    title: "VIN, rejestracja i weryfikacja",
+    description:
+      "Dane z dowodu rejestracyjnego oraz weryfikacja CEPIK/UFG. Kupujący zobaczy historię bez ujawniania pełnych danych, jeśli włączysz zastrzeżenie.",
+    vinLabel: "Numer VIN",
+    vinPlaceholder: "17 znaków",
+    registrationLabel: "Numer rejestracyjny",
+    registrationPlaceholder: "np. WW 12345",
+    firstRegLabel: "Data pierwszej rejestracji",
+    firstRegPlaceholder: "DD.MM.RRRR",
+    insuranceLabel: "OC ważne do",
+    insurancePlaceholder: "DD.MM.RRRR",
+    restrictLabel: "Zastrzeż dane na ogłoszeniu publicznym",
+    restrictDescription: "Na liście i karcie ogłoszenia widoczne będą tylko fragmenty VIN i tablicy.",
+    loginBanner: "Zaloguj się, aby sprawdzić historię CEPIK i OC przed publikacją.",
+    checkHistory: "Sprawdź historię CEPIK",
+    checkingHistory: "Pobieranie historii...",
+    checkInsurance: "Sprawdź ważność OC",
+    checkingInsurance: "Sprawdzanie OC...",
+    autoChecking: "Automatyczna weryfikacja OC...",
+    historyReady: "Raport historii gotowy poniżej.",
+    errHistory: "Nie udało się pobrać historii.",
+    errInsurance: "Nie udało się sprawdzić ubezpieczenia.",
+    errOc: "Błąd sprawdzania OC.",
+  },
+  scan: {
+    title: "Skan dowodu rejestracyjnego",
+    subtitle: "Ustaw kod Aztec w ramce po prawej stronie tyłu dowodu.",
+    skip: "Wypełnię ręcznie",
+    uploadInstead: "Wgraj zdjęcie zamiast aparatu",
+    decoding: "Odczytywanie…",
+    errDecode: "Nie udało się odczytać dowodu.",
+    errAztec: "Nie udało się odczytać kodu Aztec — ustaw dowód w kadrze i spróbuj ponownie.",
+    errCamera: "Nie udało się uruchomić aparatu.",
+    errReadDoc: "Nie udało się odczytać dowodu.",
+    phaseStarting: "Uruchamiam aparat…",
+    phasePosition: "Ustaw tył dowodu — kod Aztec po prawej w ramce",
+    phaseSearching: "Szukam kodu Aztec…",
+    phaseHold: "Kod wykryty — trzymaj nieruchomo…",
+    phaseDecoding: "Odczytuję dane z dowodu…",
+    phaseSuccess: "Gotowe!",
+    missingTitle: "tytuł",
+    missingDescription: "opis",
+    missingMileage: "przebieg",
+    missingPrice: "cenę",
+    missingCity: "miejscowość",
+    missingImages: "zdjęcia",
+    missingBannerPrefix: "Uzupełnij jeszcze:",
+    retry: "Spróbuj ponownie",
+    autoScanHint: "Przyłóż tył dowodu — przechwycimy kod sam, bez przycisku.",
+    cameraDesktopHint: "Na komputerze wybierz kamerę w pasku adresu Safari/Chrome.",
+  },
+  photos: {
+    eyebrow: "Galeria",
+    title: "Zdjęcia auta",
+    description: "Pierwsze zdjęcie będzie okładką ogłoszenia. Możesz dodać zdjęcia przed logowaniem.",
+    mainBadge: "Główne",
+    addPhotos: "Dodaj zdjęcia",
+    dragHint: "Przeciągnij, aby zmienić kolejność",
+    guestHint: "Zdjęcia zapisujemy lokalnie do momentu publikacji.",
+    uploadError: "Upload zdjęcia nie powiódł się.",
+    networkUploadError: "Błąd sieci podczas wgrywania zdjęcia.",
+    errorBadge: "Błąd",
+    photosCount: "{n} zdjęć",
+    requiredHint: "Dodaj co najmniej jedno zdjęcie auta.",
+  },
+  map: {
+    eyebrow: "Lokalizacja",
+    title: "Miejscowość na mapie",
+    description: "Przeciągnij mapę lub wyszukaj miejscowość — kupujący zobaczą przybliżoną lokalizację.",
+    cityLabel: "Miejscowość",
+    searchPlaceholder: "Wpisz miasto...",
+    gpsButton: "Moja lokalizacja",
+    gpsDenied: "Brak dostępu do lokalizacji.",
+    gpsUnsupported: "Przeglądarka nie obsługuje geolokalizacji.",
+    mapHint: "Przeciągnij mapę, aby ustawić pin w miejscowości sprzedaży.",
+    countryLabel: "Państwo",
+    mapTokenMissing: "Brak tokenu mapy — ustaw NEXT_PUBLIC_MAPBOX_TOKEN.",
+    resolvingCity: "Ustalam miejscowość z pinezki…",
+    pinCoords: "Pinezka: {lat}, {lng}{country}",
+    searching: "Szukam…",
+    gpsFailed: "Nie udało się pobrać lokalizacji GPS.",
+    gpsLocating: "GPS…",
+  },
+  catalog: {
+    heroTitle: "Profesjonalny katalog samochodów",
+    heroDescription:
+      "Jedno konto EstateOS, przełączanie Home/Car i zapytania trafiające prosto do sprzedającego przez EstateOS Contact.",
+    statsFavorites: "{n} ulubionych z {total} zapisanych",
+    statsMine: "{n} Twoich ogłoszeń",
+    statsAll: "{n} aktywnych ogłoszeń w katalogu",
+    addListing: "Dodaj ogłoszenie auta",
+    tabFavorites: "Ulubione",
+    tabMine: "Moje samochody",
+    tabAll: "Cały katalog",
+    loginMineBanner: "Zaloguj się, aby zobaczyć swoje ogłoszenia samochodowe.",
+    goLogin: "Przejdź do logowania",
+    favoritesEmpty: "Nie masz jeszcze ulubionych aut. Kliknij serduszko na karcie ogłoszenia, aby dodać je tutaj.",
+    filtersEyebrow: "Parametry wyszukiwania",
+    filtersTitle: "Znajdź samochód",
+    clearFilters: "Wyczyść filtry",
+    searchLabel: "Szukaj",
+    searchPlaceholder: "BMW, Warszawa, diesel...",
+    makeLabel: "Marka",
+    allMakes: "Wszystkie marki",
+    modelLabel: "Seria / model",
+    allModels: "Wszystkie serie",
+    pickMakeFirst: "Najpierw wybierz markę",
+    generationLabel: "Generacja",
+    allGenerations: "Wszystkie generacje",
+    pickModelFirst: "Najpierw wybierz serię",
+    fuelLabel: "Paliwo",
+    allFuels: "Wszystkie",
+    sortLabel: "Sortowanie",
+    maxPriceLabel: "Maks. cena (PLN)",
+    maxPricePlaceholder: "np. 300 000",
+    resultsLoading: "Ładowanie...",
+    resultsCount: "{filtered} z {total} ogłoszeń",
+    loadingOffers: "Ładowanie ofert samochodów...",
+    noResults: "Brak ogłoszeń pasujących do filtrów.",
+    featuredBadge: "Wyróżnione",
+  },
+  detail: {
+    description: "Opis",
+    aboutListing: "O ogłoszeniu",
+    specs: "Parametry",
+    year: "Rocznik",
+    mileage: "Przebieg",
+    fuel: "Paliwo",
+    transmission: "Skrzynia",
+    body: "Nadwozie",
+    color: "Kolor",
+    power: "Moc",
+    capacity: "Pojemność",
+    doors: "Drzwi",
+    city: "Lokalizacja",
+    sellerProfile: "Profil sprzedającego",
+    backToCatalog: "Wróć do katalogu",
+    price: "Cena",
+    aboutBody:
+      "Ogłoszenie opublikowane w module EstateOS™Car — jednym ekosystemie z nieruchomościami EstateOS™Home. Zapytania trafiają bezpośrednio do sprzedającego przez EstateOS Contact.",
+    generation: "Generacja",
+    trim: "Wersja",
+    version: "Wersja",
+  },
+  inquiry: {
+    title: "Zapytaj o auto",
+    description: "Wiadomość trafi bezpośrednio do sprzedającego przez EstateOS Contact.",
+    nameLabel: "Imię i nazwisko",
+    phoneLabel: "Telefon",
+    phoneOptional: "opcjonalnie",
+    viewingLabel: "Preferowany termin oględzin",
+    viewingAsap: "Jak najszybciej",
+    viewingWeek: "W tym tygodniu",
+    viewingNextWeek: "W przyszłym tygodniu",
+    viewingWeekend: "W weekend",
+    viewingQuestionOnly: "Tylko pytanie — bez oględzin",
+    messageLabel: "Twoja wiadomość",
+    messagePlaceholder: "Napisz, co chcesz wiedzieć o aucie...",
+    defaultMessage:
+      "Dzień dobry, jestem zainteresowany/a ogłoszeniem „{title}”. Proszę o informację o dostępności i możliwości oględzin.",
+    submit: "Wyślij zapytanie",
+    submitting: "Wysyłanie...",
+    success: "Zapytanie wysłane. Sprzedający odpowie przez EstateOS Contact.",
+    successTitle: "Zapytanie wysłane",
+    successBody: "Sprzedający otrzyma wiadomość w EstateOS Contact. Za chwilę przekierujemy Cię do czatu.",
+    loginRequired: "Aby wysłać zapytanie, zaloguj się.",
+    noSeller: "Zapytania będą dostępne po przypisaniu sprzedającego do tego ogłoszenia.",
+    footerNote: "Wysyłając zapytanie, kontaktujesz się ze sprzedającym przez EstateOS Contact. Jedno konto — Home i Car.",
+    submitFailed: "Nie udało się wysłać zapytania.",
+  },
+  checks: {
+    title: "Weryfikacja pojazdu",
+    description: "Sprawdź historię w CEPIK i ważność OC (UFG) na podstawie danych z ogłoszenia.",
+    restrictedNote: " Sprzedający zastrzegł pełne dane VIN, rejestracji i pierwszej rejestracji.",
+    loginBanner: "Sprawdzenie historii pojazdu i OC wymaga zalogowania.",
+    vin: "VIN",
+    registration: "Rejestracja",
+    firstRegistration: "Pierwsza rejestracja",
+    historyNeedsData: "Pełna historia CEPIK wymaga VIN, tablicy i daty pierwszej rejestracji od sprzedającego.",
+    checkHistory: "Sprawdź historię CEPIK",
+    checkingHistory: "Pobieranie historii...",
+    checkInsurance: "Sprawdź ważność OC",
+    checkingInsurance: "Sprawdzanie OC...",
+    closeModal: "Zamknij",
+    historyModalTitle: "Historia pojazdu",
+    errHistory: "Błąd sprawdzania historii.",
+    errInsurance: "Błąd sprawdzania ubezpieczenia.",
+  },
+  owner: {
+    edit: "Edytuj ogłoszenie",
+    delete: "Usuń ogłoszenie",
+    deleting: "Usuwanie...",
+    confirmDelete: "Usunąć to ogłoszenie samochodu? Tej operacji nie można cofnąć.",
+    deleteFailed: "Nie udało się usunąć ogłoszenia.",
+    deleteNetworkError: "Błąd sieci podczas usuwania ogłoszenia.",
+  },
+  edit: {
+    pageTitle: "Edytuj ogłoszenie",
+    pageDescription: "Zaktualizuj dane, zdjęcia i cenę auta w katalogu Cars.",
+    backToDetails: "Wróć do szczegółów",
+  },
+  seller: {
+    eyebrow: "EstateOS™Car",
+    title: "Ogłoszenia samochodowe",
+  },
+  favorites: {
+    add: "Dodaj do ulubionych",
+    remove: "Usuń z ulubionych",
+  },
 };
 
 const en: CarsDictionary = {
-  ...pl,
-  metaTitle: "Car catalog | EstateOS™Car",
-  metaDescription:
-    "Browse car listings in the EstateOS ecosystem. One account, Home/Car switching, and direct seller contact.",
-  catalogTitle: "Professional car catalog",
-  catalogSubtitle:
-    "One EstateOS account, Home/Car switching, and inquiries delivered directly to the seller via EstateOS Contact.",
-  addListing: "Add car listing",
-  tabFavorites: "Favorites",
-  tabMine: "My cars",
-  tabAll: "Full catalog",
-  countFavorites: (filtered, saved) => `${filtered} favorites of ${saved} saved`,
-  countMine: (n) => `${n} of your listings`,
-  countAll: (n) => `${n} active listings in catalog`,
-  loginPrompt: "Sign in to see your car listings.",
-  loginLink: "Go to login",
-  favoritesEmpty: "No favorite cars yet. Tap the heart on a listing card to add it here.",
-  searchSectionBadge: "Search parameters",
-  searchTitle: "Find a car",
-  clearFilters: "Clear filters",
-  filterSearch: "Search",
-  searchPlaceholder: "BMW, Warsaw, diesel...",
-  filterMake: (loading) => `Make${loading ? "…" : ""}`,
-  filterModel: (loading) => `Series / model${loading ? "…" : ""}`,
-  filterGeneration: (loading) => `Generation${loading ? "…" : ""}`,
-  allMakes: "All makes",
-  allSeries: "All series",
-  allGenerations: "All generations",
-  pickMakeFirst: "Select make first",
-  pickSeriesFirst: "Select series first",
-  filterFuel: "Fuel",
-  allFuels: "All",
-  filterSort: "Sort",
-  filterMaxPrice: "Max price (PLN)",
-  maxPricePlaceholder: "e.g. 300,000",
-  resultsCount: (filtered, total) => `${filtered} of ${total} listings`,
-  loading: "Loading...",
-  loadingOffers: "Loading car listings...",
-  noResults: "No listings match your filters.",
-  featuredBadge: "Featured",
-  backToCatalog: "Back to EstateOS™Car",
-  priceLabel: "Price",
-  sellerProfile: "Seller profile",
-  specSection: "Specification",
-  specYear: "Year",
-  specMileage: "Mileage",
-  specFuel: "Fuel",
-  specTransmission: "Transmission",
-  specBody: "Body",
-  specGeneration: "Generation",
-  specPower: "Power",
-  specCapacity: "Engine size",
-  specTrim: "Trim",
-  specDoors: "Doors",
-  specCity: "City",
-  descriptionTitle: "Description",
-  aboutListingTitle: "About this listing",
-  aboutListingBody:
-    "Listed in EstateOS™Car — one ecosystem with EstateOS™Home property listings. Inquiries go directly to the seller via EstateOS Contact.",
-  favoriteAriaAdd: "Add to favorites",
-  favoriteAriaRemove: "Remove from favorites",
-  formTitleLabel: "Listing title",
-  formDescriptionLabel: "Description",
-  formTitlePlaceholder: "e.g. BMW X5 xDrive30d M Sport",
-  formDescriptionPlaceholder: "Describe condition, service history, equipment...",
-  formMileageLabel: "Mileage (km)",
-  formSave: "Save listing",
-  formSaving: "Saving...",
-  formCreateTitle: "Add car listing",
-  formEditTitle: "Edit listing",
-  formErrorTitle: "Complete title, make, model, city, and valid price.",
-  formErrorCity: "Set city on the map — drag the map or search.",
-  formErrorFuel: "Select fuel type from catalog.",
-  formErrorPhotos: "Add at least one photo.",
-  formErrorSave: "Could not save listing.",
-  formErrorNetwork: "Network error while saving.",
-  formScanBanner: "Registration data loaded. Check catalog and complete listing.",
-  inquiryTitle: "Ask about this car",
-  inquirySubtitle: "Your message goes to the seller via EstateOS Contact.",
-  inquiryNoSeller: "Inquiries will be available once a seller is assigned to this listing.",
-  inquiryViewingLabel: "Preferred viewing time",
-  inquiryViewingSchedule: "Viewing time",
-  inquiryYourMessage: "Your message",
-  inquiryFooter: "By sending an inquiry you contact the seller via EstateOS Contact. One account — Home and Car.",
-  inquiryViewingAsap: "As soon as possible",
-  inquiryViewingThisWeek: "This week",
-  inquiryViewingNextWeek: "Next week",
-  inquiryViewingQuestionOnly: "Question only — no viewing",
-  inquiryPhoneLabel: "Phone (optional)",
-  inquiryMessageLabel: "Message",
-  inquiryDefaultMessage: (title) => `Hello, I am interested in "${title}". Please let me know about availability and a viewing.`,
-  inquirySubmit: "Send inquiry",
-  inquirySubmitting: "Sending...",
-  inquiryError: "Could not send inquiry.",
-  inquirySuccessTitle: "Inquiry sent",
-  inquirySuccessBody: "The seller will receive your message in EstateOS Contact. Redirecting to chat shortly.",
-  inquiryLoginHint: "Sign in to send an inquiry.",
-  ownerEdit: "Edit listing",
-  ownerDelete: "Delete listing",
-  ownerDeleting: "Deleting...",
-  ownerDeleteConfirm: "Delete this car listing? This cannot be undone.",
-  ownerDeleteError: "Could not delete listing.",
-  ownerNetworkError: "Network error while deleting listing.",
+  common: {
+    cancel: "Cancel",
+    loading: "Loading...",
+    choose: "Choose →",
+    optional: "Optional",
+    poland: "Poland",
+    automaticTransmission: "Automatic",
+    suvBody: "SUV",
+    priceOnRequest: "Price on request",
+    login: "Sign in",
+    networkError: "Network error while saving the listing.",
+    saveFailed: "Could not save the listing.",
+    managementPanel: "Management panel",
+    myListings: "My listings",
+    carsCatalog: "Cars catalog",
+    edit: "Edit",
+    viewListing: "View listing",
+    chooseField: "Choose {field}",
+    retry: "Try again",
+  },
+  sort: {
+    newest: "Newest",
+    priceAsc: "Price: low to high",
+    priceDesc: "Price: high to low",
+    yearDesc: "Newest model year",
+    mileageAsc: "Lowest mileage",
+  },
+  entry: {
+    heroTitle: "How do you want to add your car?",
+    heroDescription:
+      "Choose how to enter registration document data. You can fill the form without signing in — you'll create an account when you publish.",
+    privacyEyebrow: "Our edge",
+    privacyTitle: "VIN privacy and full history for buyers",
+    privacyBody: "After entering VIN, plate number and first registration date you can",
+    privacyBodyRestrict: "restrict these details",
+    privacyBodyHistory:
+      "— only the first characters appear publicly. Buyers can still run a full CEPIK history check without exposing your sensitive data.",
+    restrictSwitchLabel: "Restrict vehicle data (VIN, plate, first registration)",
+    restrictSwitchDescription:
+      "Example: WBA*** instead of full VIN on the listing — shop history stays complete for buyers.",
+    restrictHint: "You can toggle restriction anytime in the form before publishing.",
+    methodScanTitle: "Scan with camera",
+    methodScanDescription:
+      "Frame the back of the registration card — we'll read the Aztec code and fill make, model and VIN.",
+    methodScanBadge: "Fastest",
+    methodUploadTitle: "Upload document photo",
+    methodUploadDescription: "Already have a photo? Upload JPG, PNG or HEIC — we'll read the Aztec code.",
+    methodCaptureTitle: "Take a photo and process",
+    methodCaptureDescription: "Capture the back of the card with your phone or webcam — instant decode.",
+    methodManualTitle: "Fill in manually",
+    methodManualDescription: "No document handy? Go to the form and enter details at your own pace.",
+    hasAccount: "Already have an account?",
+    signIn: "Sign in",
+    changeEntryMethod: "← Change entry method",
+  },
+  form: {
+    guestBanner:
+      "You can complete the form without signing in. When you tap Publish you'll create an account — the listing goes live and you'll get inquiry notifications.",
+    scanLoaded: "Registration data loaded.",
+    scanCheckCatalog: "Check the catalog and complete your listing.",
+    contentEyebrow: "Listing content",
+    contentTitle: "Title and description",
+    contentDescription: "A clear title and honest description build buyer trust.",
+    titleLabel: "Listing title",
+    titlePlaceholder: "e.g. BMW X5 xDrive30d M Sport",
+    descriptionLabel: "Description",
+    descriptionPlaceholder: "Describe condition, service history, equipment...",
+    offerEyebrow: "Offer",
+    offerTitle: "Price and mileage",
+    offerDescription: "Enter current mileage and sale price in PLN.",
+    mileageLabel: "Mileage (km)",
+    priceLabel: "Price (PLN)",
+    footerCreate: "Ready? Publish to the Cars catalog.",
+    footerEdit: "Save changes to your listing.",
+    publish: "Publish Cars listing",
+    publishing: "Publishing...",
+    saveChanges: "Save changes",
+    successTitle: "Listing published and visible in the Cars catalog.",
+    successBody: "You can edit photos and details anytime — inquiry notifications go to your account.",
+    errTitlePrice: "Fill in title, make, model, city and a valid price.",
+    errMapCity: "Set the city on the map — drag the map or pick from search.",
+    errFuel: "Select fuel type from the catalog.",
+    errPhotos: "Add at least one photo of the car.",
+  },
+  catalogFields: {
+    eyebrow: "Vehicle catalog",
+    title: "Make, model and specs",
+    description: "Pick data from the EstateOS™Car catalog — better filters and credibility.",
+    yearLabel: "Model year",
+    yearPlaceholder: "Select year",
+    makeLabel: "Make",
+    modelLabel: "Model",
+    generationLabel: "Generation",
+    fuelLabel: "Fuel type",
+    powerLabel: "Engine power",
+    capacityLabel: "Engine capacity (cc)",
+    doorsLabel: "Number of doors",
+    gearboxLabel: "Transmission",
+    bodyLabel: "Body type",
+    colorLabel: "Exterior color",
+    colorPlaceholder: "Select color",
+    trimLabel: "Trim / equipment",
+    trimPlaceholder: "Optional — select after gearbox",
+    catalogHint: "After make and model we pre-fill fuel, power and gearbox when available.",
+    yearRequiredHint: "Select model year to narrow engine and trim options.",
+  },
+  docs: {
+    eyebrow: "Vehicle documents",
+    title: "VIN, registration and verification",
+    description: "Registration data plus CEPIK/UFG checks. Buyers see history without full data if you enable restriction.",
+    vinLabel: "VIN number",
+    vinPlaceholder: "17 characters",
+    registrationLabel: "Registration number",
+    registrationPlaceholder: "e.g. WW 12345",
+    firstRegLabel: "First registration date",
+    firstRegPlaceholder: "DD.MM.YYYY",
+    insuranceLabel: "Insurance valid until",
+    insurancePlaceholder: "DD.MM.YYYY",
+    restrictLabel: "Restrict data on public listing",
+    restrictDescription: "Only partial VIN and plate shown on cards and detail page.",
+    loginBanner: "Sign in to run CEPIK history and insurance checks before publishing.",
+    checkHistory: "Check CEPIK history",
+    checkingHistory: "Loading history...",
+    checkInsurance: "Check insurance validity",
+    checkingInsurance: "Checking insurance...",
+    autoChecking: "Auto-checking insurance...",
+    historyReady: "History report ready below.",
+    errHistory: "Could not load history.",
+    errInsurance: "Could not check insurance.",
+    errOc: "Insurance check error.",
+  },
+  scan: {
+    title: "Scan registration document",
+    subtitle: "Place the Aztec code in the frame on the right side of the card back.",
+    skip: "Fill manually",
+    uploadInstead: "Upload photo instead of camera",
+    decoding: "Decoding…",
+    errDecode: "Could not read the document.",
+    errAztec: "Could not read Aztec code — align the card and try again.",
+    errCamera: "Could not start the camera.",
+    errReadDoc: "Could not read the document.",
+    phaseStarting: "Starting camera…",
+    phasePosition: "Frame the card back — Aztec code on the right",
+    phaseSearching: "Looking for Aztec code…",
+    phaseHold: "Code detected — hold steady…",
+    phaseDecoding: "Reading document data…",
+    phaseSuccess: "Done!",
+    missingTitle: "title",
+    missingDescription: "description",
+    missingMileage: "mileage",
+    missingPrice: "price",
+    missingCity: "city",
+    missingImages: "photos",
+    missingBannerPrefix: "Still needed:",
+    retry: "Try again",
+    autoScanHint: "Hold the card back in frame — we capture the code automatically.",
+    cameraDesktopHint: "On desktop, allow camera access in the browser address bar.",
+  },
+  photos: {
+    eyebrow: "Gallery",
+    title: "Car photos",
+    description: "The first photo is the cover. You can add photos before signing in.",
+    mainBadge: "Main",
+    addPhotos: "Add photos",
+    dragHint: "Drag to reorder",
+    guestHint: "Photos are stored locally until you publish.",
+    uploadError: "Photo upload failed.",
+    networkUploadError: "Network error while uploading photo.",
+    errorBadge: "Error",
+    photosCount: "{n} photos",
+    requiredHint: "Add at least one car photo.",
+  },
+  map: {
+    eyebrow: "Location",
+    title: "City on map",
+    description: "Drag the map or search — buyers see approximate location.",
+    cityLabel: "City",
+    searchPlaceholder: "Enter city...",
+    gpsButton: "My location",
+    gpsDenied: "Location access denied.",
+    gpsUnsupported: "Geolocation is not supported.",
+    mapHint: "Drag the map to set the pin in the sale city.",
+    countryLabel: "Country",
+    mapTokenMissing: "Map token missing — set NEXT_PUBLIC_MAPBOX_TOKEN.",
+    resolvingCity: "Resolving city from pin…",
+    pinCoords: "Pin: {lat}, {lng}{country}",
+    searching: "Searching…",
+    gpsFailed: "Could not get GPS location.",
+    gpsLocating: "GPS…",
+  },
+  catalog: {
+    heroTitle: "Professional car catalog",
+    heroDescription: "One EstateOS account, Home/Car switch and inquiries via EstateOS Contact.",
+    statsFavorites: "{n} favorites of {total} saved",
+    statsMine: "{n} of your listings",
+    statsAll: "{n} active listings in catalog",
+    addListing: "Add car listing",
+    tabFavorites: "Favorites",
+    tabMine: "My cars",
+    tabAll: "Full catalog",
+    loginMineBanner: "Sign in to see your car listings.",
+    goLogin: "Go to sign in",
+    favoritesEmpty: "No favorite cars yet. Tap the heart on a listing to save it here.",
+    filtersEyebrow: "Search parameters",
+    filtersTitle: "Find a car",
+    clearFilters: "Clear filters",
+    searchLabel: "Search",
+    searchPlaceholder: "BMW, Warsaw, diesel...",
+    makeLabel: "Make",
+    allMakes: "All makes",
+    modelLabel: "Series / model",
+    allModels: "All series",
+    pickMakeFirst: "Select make first",
+    generationLabel: "Generation",
+    allGenerations: "All generations",
+    pickModelFirst: "Select series first",
+    fuelLabel: "Fuel",
+    allFuels: "All",
+    sortLabel: "Sort",
+    maxPriceLabel: "Max price (PLN)",
+    maxPricePlaceholder: "e.g. 300 000",
+    resultsLoading: "Loading...",
+    resultsCount: "{filtered} of {total} listings",
+    loadingOffers: "Loading car listings...",
+    noResults: "No listings match your filters.",
+    featuredBadge: "Featured",
+  },
+  detail: {
+    description: "Description",
+    aboutListing: "About this listing",
+    specs: "Specifications",
+    year: "Year",
+    mileage: "Mileage",
+    fuel: "Fuel",
+    transmission: "Transmission",
+    body: "Body",
+    color: "Color",
+    power: "Power",
+    capacity: "Capacity",
+    doors: "Doors",
+    city: "Location",
+    sellerProfile: "Seller profile",
+    backToCatalog: "Back to catalog",
+    price: "Price",
+    aboutBody:
+      "Listing published in EstateOS™Car — one ecosystem with EstateOS™Home. Inquiries go directly to the seller via EstateOS Contact.",
+    generation: "Generation",
+    trim: "Trim",
+    version: "Version",
+  },
+  inquiry: {
+    title: "Inquire about this car",
+    description: "Your message goes directly to the seller via EstateOS Contact.",
+    nameLabel: "Full name",
+    phoneLabel: "Phone",
+    phoneOptional: "optional",
+    viewingLabel: "Preferred viewing time",
+    viewingAsap: "As soon as possible",
+    viewingWeek: "This week",
+    viewingNextWeek: "Next week",
+    viewingWeekend: "On the weekend",
+    viewingQuestionOnly: "Question only — no viewing",
+    messageLabel: "Your message",
+    messagePlaceholder: "What would you like to know about the car?",
+    defaultMessage:
+      "Hello, I am interested in the listing \"{title}\". Please let me know about availability and viewing options.",
+    submit: "Send inquiry",
+    submitting: "Sending...",
+    success: "Inquiry sent. The seller will reply via EstateOS Contact.",
+    successTitle: "Inquiry sent",
+    successBody: "The seller will receive your message in EstateOS Contact. Redirecting you to chat shortly.",
+    loginRequired: "Sign in to send an inquiry.",
+    noSeller: "Inquiries will be available once a seller is assigned to this listing.",
+    footerNote: "By sending an inquiry you contact the seller via EstateOS Contact. One account — Home and Car.",
+    submitFailed: "Could not send inquiry.",
+  },
+  checks: {
+    title: "Vehicle verification",
+    description: "Check CEPIK history and OC (UFG) insurance based on listing data.",
+    restrictedNote: " The seller restricted full VIN, plate and first registration data.",
+    loginBanner: "History and insurance checks require sign-in.",
+    vin: "VIN",
+    registration: "Registration",
+    firstRegistration: "First registration",
+    historyNeedsData: "Full CEPIK history needs VIN, plate and first registration from the seller.",
+    checkHistory: "Check CEPIK history",
+    checkingHistory: "Loading history...",
+    checkInsurance: "Check insurance validity",
+    checkingInsurance: "Checking insurance...",
+    closeModal: "Close",
+    historyModalTitle: "Vehicle history",
+    errHistory: "History check error.",
+    errInsurance: "Insurance check error.",
+  },
+  owner: {
+    edit: "Edit listing",
+    delete: "Delete listing",
+    deleting: "Deleting...",
+    confirmDelete: "Delete this car listing? This cannot be undone.",
+    deleteFailed: "Could not delete the listing.",
+    deleteNetworkError: "Network error while deleting.",
+  },
+  edit: {
+    pageTitle: "Edit listing",
+    pageDescription: "Update details, photos and price in the Cars catalog.",
+    backToDetails: "Back to details",
+  },
+  seller: {
+    eyebrow: "EstateOS™Car",
+    title: "Car listings",
+  },
+  favorites: {
+    add: "Add to favorites",
+    remove: "Remove from favorites",
+  },
 };
 
 const uk: CarsDictionary = {
-  ...en,
-  metaTitle: "Каталог авто | EstateOS™Car",
-  metaDescription:
-    "Переглядайте оголошення про авто в екосистемі EstateOS. Один акаунт, перемикання Home/Car і прямий контакт із продавцем.",
-  catalogTitle: "Професійний каталог автомобілів",
-  catalogSubtitle:
-    "Один акаунт EstateOS, перемикання Home/Car і запити безпосередньо до продавця через EstateOS Contact.",
-  addListing: "Додати оголошення авто",
-  tabFavorites: "Обране",
-  tabMine: "Мої авто",
-  tabAll: "Увесь каталог",
-  countFavorites: (filtered, saved) => `${filtered} обраних із ${saved} збережених`,
-  countMine: (n) => `${n} ваших оголошень`,
-  countAll: (n) => `${n} активних оголошень у каталозі`,
-  loginPrompt: "Увійдіть, щоб побачити свої оголошення про авто.",
-  loginLink: "Перейти до входу",
-  favoritesEmpty:
-    "У вас ще немає обраних авто. Натисніть сердечко на картці оголошення, щоб додати його сюди.",
-  searchSectionBadge: "Параметри пошуку",
-  searchTitle: "Знайти автомобіль",
-  clearFilters: "Очистити фільтри",
-  filterSearch: "Пошук",
-  searchPlaceholder: "BMW, Варшава, дизель...",
-  filterMake: (loading) => `Марка${loading ? "…" : ""}`,
-  filterModel: (loading) => `Серія / модель${loading ? "…" : ""}`,
-  filterGeneration: (loading) => `Покоління${loading ? "…" : ""}`,
-  allMakes: "Усі марки",
-  allSeries: "Усі серії",
-  allGenerations: "Усі покоління",
-  pickMakeFirst: "Спочатку оберіть марку",
-  pickSeriesFirst: "Спочатку оберіть серію",
-  filterFuel: "Паливо",
-  allFuels: "Усі",
-  filterSort: "Сортування",
-  filterMaxPrice: "Макс. ціна (PLN)",
-  maxPricePlaceholder: "напр. 300 000",
-  resultsCount: (filtered, total) => `${filtered} з ${total} оголошень`,
-  loading: "Завантаження...",
-  loadingOffers: "Завантаження оголошень про авто...",
-  noResults: "Немає оголошень за вашими фільтрами.",
-  featuredBadge: "Виділене",
-  backToCatalog: "Назад до EstateOS™Car",
-  priceLabel: "Ціна",
-  sellerProfile: "Профіль продавця",
-  specSection: "Специфікація",
-  specYear: "Рік",
-  specMileage: "Пробіг",
-  specFuel: "Паливо",
-  specTransmission: "Коробка",
-  specBody: "Кузов",
-  specGeneration: "Покоління",
-  specPower: "Потужність",
-  specCapacity: "Об'єм",
-  specTrim: "Версія",
-  specDoors: "Двері",
-  specCity: "Місто",
-  descriptionTitle: "Опис",
-  aboutListingTitle: "Про оголошення",
-  aboutListingBody:
-    "Оголошення опубліковане в модулі EstateOS™Car — єдиній екосистемі з нерухомістю EstateOS™Home. Запити надходять безпосередньо продавцю через EstateOS Contact.",
-  favoriteAriaAdd: "Додати до обраного",
-  favoriteAriaRemove: "Прибрати з обраного",
-  formTitleLabel: "Заголовок оголошення",
-  formDescriptionLabel: "Опис",
-  formTitlePlaceholder: "напр. BMW X5 xDrive30d M Sport",
-  formDescriptionPlaceholder: "Опишіть стан, історію сервісу, комплектацію...",
-  formMileageLabel: "Пробіг (км)",
-  formSave: "Зберегти оголошення",
-  formSaving: "Зберігаю...",
-  formCreateTitle: "Додати оголошення авто",
-  formEditTitle: "Редагувати оголошення",
-  formErrorTitle: "Заповніть заголовок, марку, модель, місто та коректну ціну.",
-  formErrorCity: "Вкажіть місто на карті — перетягніть карту або знайдіть у пошуку.",
-  formErrorFuel: "Оберіть тип палива з каталогу.",
-  formErrorPhotos: "Додайте щонайменше одне фото.",
-  formErrorSave: "Не вдалося зберегти оголошення.",
-  formErrorNetwork: "Помилка мережі під час збереження.",
-  formScanBanner: "Дані з посвідчення завантажено. Перевірте каталог і доповніть оголошення.",
-  inquiryTitle: "Запитати про авто",
-  inquirySubtitle: "Повідомлення надійде продавцю через EstateOS Contact.",
-  inquiryNoSeller: "Запити будуть доступні після призначення продавця до цього оголошення.",
-  inquiryViewingLabel: "Бажаний час огляду",
-  inquiryViewingSchedule: "Час огляду",
-  inquiryYourMessage: "Ваше повідомлення",
-  inquiryFooter: "Надсилаючи запит, ви зв'язуєтеся з продавцем через EstateOS Contact. Один акаунт — Home і Car.",
-  inquiryViewingAsap: "Якнайшвидше",
-  inquiryViewingThisWeek: "Цього тижня",
-  inquiryViewingNextWeek: "Наступного тижня",
-  inquiryViewingQuestionOnly: "Лише питання — без огляду",
-  inquiryPhoneLabel: "Телефон (необов'язково)",
-  inquiryMessageLabel: "Повідомлення",
-  inquiryDefaultMessage: (title) => `Доброго дня, мене цікавить оголошення «${title}». Будь ласка, повідомте про доступність і можливість огляду.`,
-  inquirySubmit: "Надіслати запит",
-  inquirySubmitting: "Надсилання...",
-  inquiryError: "Не вдалося надіслати запит.",
-  inquirySuccessTitle: "Запит надіслано",
-  inquirySuccessBody: "Продавець отримає повідомлення в EstateOS Contact. Незабаром перенаправимо вас до чату.",
-  inquiryLoginHint: "Увійдіть, щоб надіслати запит.",
-  ownerEdit: "Редагувати оголошення",
-  ownerDelete: "Видалити оголошення",
-  ownerDeleting: "Видалення...",
-  ownerDeleteConfirm: "Видалити це оголошення про авто? Цю дію не можна скасувати.",
-  ownerDeleteError: "Не вдалося видалити оголошення.",
-  ownerNetworkError: "Помилка мережі під час видалення оголошення.",
+  common: {
+    cancel: "Скасувати",
+    loading: "Завантаження...",
+    choose: "Обрати →",
+    optional: "Необов'язково",
+    poland: "Польща",
+    automaticTransmission: "Автоматична",
+    suvBody: "SUV",
+    priceOnRequest: "Ціна за запитом",
+    login: "Увійти",
+    networkError: "Помилка мережі під час збереження оголошення.",
+    saveFailed: "Не вдалося зберегти оголошення.",
+    managementPanel: "Панель керування",
+    myListings: "Мої оголошення",
+    carsCatalog: "Каталог Cars",
+    edit: "Редагувати",
+    viewListing: "Переглянути оголошення",
+    chooseField: "Оберіть {field}",
+    retry: "Спробувати знову",
+  },
+  sort: {
+    newest: "Найновіші",
+    priceAsc: "Ціна за зростанням",
+    priceDesc: "Ціна за спаданням",
+    yearDesc: "Найновіший рік",
+    mileageAsc: "Найменший пробіг",
+  },
+  entry: {
+    heroTitle: "Як додати авто?",
+    heroDescription:
+      "Оберіть спосіб введення даних зі свідоцтва реєстрації. Форму можна заповнити без входу — акаунт створите при публікації.",
+    privacyEyebrow: "Наша перевага",
+    privacyTitle: "Приватність VIN і повна історія для покупця",
+    privacyBody: "Після введення VIN, номера реєстрації та дати першої реєстрації ви можете",
+    privacyBodyRestrict: "обмежити ці дані",
+    privacyBodyHistory:
+      "— у публічному оголошенні видно лише перші символи. Покупець одним кліком перевірить історію CEPIK без розкриття ваших даних.",
+    restrictSwitchLabel: "Обмежити дані авто (VIN, реєстрація, перша реєстрація)",
+    restrictSwitchDescription:
+      "Приклад: WBA*** замість повного VIN — історія в магазині залишається повною для покупця.",
+    restrictHint: "У формі можна ввімкнути або вимкнути обмеження перед публікацією.",
+    methodScanTitle: "Сканувати камерою",
+    methodScanDescription:
+      "Наведіть задню сторону свідоцтва — код Aztec зчитаємо автоматично та заповнимо марку, модель і VIN.",
+    methodScanBadge: "Найшвидше",
+    methodUploadTitle: "Завантажити фото свідоцтва",
+    methodUploadDescription: "Є фото в галереї? Завантажте JPG, PNG або HEIC — зчитаємо код Aztec.",
+    methodCaptureTitle: "Зробити фото й обробити",
+    methodCaptureDescription: "Зробіть фото задньої сторони свідоцтва — код зчитається одразу.",
+    methodManualTitle: "Заповню вручну",
+    methodManualDescription: "Немає свідоцтва? Перейдіть до форми та введіть дані у своєму темпі.",
+    hasAccount: "Вже маєте акаунт?",
+    signIn: "Увійти",
+    changeEntryMethod: "← Змінити спосіб додавання",
+  },
+  form: {
+    guestBanner:
+      "Форму можна заповнити без входу. Після «Опублікувати» створите акаунт — оголошення з'явиться в каталозі, а запити надійдуть на ваш акаунт.",
+    scanLoaded: "Дані зі свідоцтва завантажено.",
+    scanCheckCatalog: "Перевірте каталог і доповніть оголошення.",
+    contentEyebrow: "Зміст оголошення",
+    contentTitle: "Заголовок і опис",
+    contentDescription: "Короткий заголовок і чесний опис підвищують довіру покупців.",
+    titleLabel: "Заголовок оголошення",
+    titlePlaceholder: "напр. BMW X5 xDrive30d M Sport",
+    descriptionLabel: "Опис",
+    descriptionPlaceholder: "Опишіть стан, сервісну історію, комплектацію...",
+    offerEyebrow: "Пропозиція",
+    offerTitle: "Ціна і пробіг",
+    offerDescription: "Вкажіть актуальний пробіг і ціну продажу в PLN.",
+    mileageLabel: "Пробіг (км)",
+    priceLabel: "Ціна (PLN)",
+    footerCreate: "Готово? Опублікуйте в каталозі Cars.",
+    footerEdit: "Збережіть зміни в оголошенні.",
+    publish: "Опублікувати оголошення Cars",
+    publishing: "Публікація...",
+    saveChanges: "Зберегти зміни",
+    successTitle: "Оголошення опубліковано та видиме в каталозі Cars.",
+    successBody: "Редагуйте фото й дані будь-коли — сповіщення про запити надійдуть на акаунт.",
+    errTitlePrice: "Заповніть заголовок, марку, модель, місто та коректну ціну.",
+    errMapCity: "Встановіть місто на карті — перетягніть карту або оберіть з пошуку.",
+    errFuel: "Оберіть тип палива з каталогу.",
+    errPhotos: "Додайте щонайменше одне фото авто.",
+  },
+  catalogFields: {
+    eyebrow: "Каталог авто",
+    title: "Марка, модель і параметри",
+    description: "Оберіть дані з каталогу EstateOS™Car — кращі фільтри та довіра.",
+    yearLabel: "Рік випуску",
+    yearPlaceholder: "Оберіть рік",
+    makeLabel: "Марка",
+    modelLabel: "Модель",
+    generationLabel: "Покоління",
+    fuelLabel: "Тип палива",
+    powerLabel: "Потужність двигуна",
+    capacityLabel: "Об'єм двигуна (см³)",
+    doorsLabel: "Кількість дверей",
+    gearboxLabel: "Коробка передач",
+    bodyLabel: "Кузов",
+    colorLabel: "Колір кузова",
+    colorPlaceholder: "Оберіть колір",
+    trimLabel: "Версія / комплектація",
+    trimPlaceholder: "Необов'язково — після коробки",
+    catalogHint: "Після марки та моделі заповнимо паливо, потужність і КПП, якщо є в каталозі.",
+    yearRequiredHint: "Вкажіть рік, щоб звузити доступні двигуни та комплектації.",
+  },
+  docs: {
+    eyebrow: "Документи авто",
+    title: "VIN, реєстрація та перевірка",
+    description: "Дані зі свідоцтва та перевірка CEPIK/UFG. Покупець бачить історію без повних даних, якщо увімкнено обмеження.",
+    vinLabel: "Номер VIN",
+    vinPlaceholder: "17 символів",
+    registrationLabel: "Номер реєстрації",
+    registrationPlaceholder: "напр. WW 12345",
+    firstRegLabel: "Дата першої реєстрації",
+    firstRegPlaceholder: "ДД.ММ.РРРР",
+    insuranceLabel: "Страховка дійсна до",
+    insurancePlaceholder: "ДД.ММ.РРРР",
+    restrictLabel: "Обмежити дані в публічному оголошенні",
+    restrictDescription: "У списку та картці видно лише фрагменти VIN і номера.",
+    loginBanner: "Увійдіть, щоб перевірити історію CEPIK і OC перед публікацією.",
+    checkHistory: "Перевірити історію CEPIK",
+    checkingHistory: "Завантаження історії...",
+    checkInsurance: "Перевірити дійсність OC",
+    checkingInsurance: "Перевірка OC...",
+    autoChecking: "Автоматична перевірка OC...",
+    historyReady: "Звіт історії готовий нижче.",
+    errHistory: "Не вдалося завантажити історію.",
+    errInsurance: "Не вдалося перевірити страховку.",
+    errOc: "Помилка перевірки OC.",
+  },
+  scan: {
+    title: "Скан свідоцтва реєстрації",
+    subtitle: "Розмістіть код Aztec у рамці праворуч на звороті свідоцтва.",
+    skip: "Заповню вручну",
+    uploadInstead: "Завантажити фото замість камери",
+    decoding: "Зчитування…",
+    errDecode: "Не вдалося зчитати свідоцтво.",
+    errAztec: "Не вдалося зчитати код Aztec — вирівняйте свідоцтво та спробуйте знову.",
+    errCamera: "Не вдалося запустити камеру.",
+    errReadDoc: "Не вдалося зчитати свідоцтво.",
+    phaseStarting: "Запуск камери…",
+    phasePosition: "Наведіть зад свідоцтва — код Aztec праворуч у рамці",
+    phaseSearching: "Шукаю код Aztec…",
+    phaseHold: "Код виявлено — тримайте нерухомо…",
+    phaseDecoding: "Зчитую дані зі свідоцтва…",
+    phaseSuccess: "Готово!",
+    missingTitle: "заголовок",
+    missingDescription: "опис",
+    missingMileage: "пробіг",
+    missingPrice: "ціну",
+    missingCity: "місто",
+    missingImages: "фото",
+    missingBannerPrefix: "Ще потрібно:",
+    retry: "Спробувати знову",
+    autoScanHint: "Прикладіть зад свідоцтва — код зчитаємо автоматично.",
+    cameraDesktopHint: "На комп'ютері дозвольте камеру в адресному рядку браузера.",
+  },
+  photos: {
+    eyebrow: "Галерея",
+    title: "Фото авто",
+    description: "Перше фото — обкладинка. Можна додати фото до входу в акаунт.",
+    mainBadge: "Головне",
+    addPhotos: "Додати фото",
+    dragHint: "Перетягніть, щоб змінити порядок",
+    guestHint: "Фото зберігаються локально до публікації.",
+    uploadError: "Не вдалося завантажити фото.",
+    networkUploadError: "Помилка мережі під час завантаження фото.",
+    errorBadge: "Помилка",
+    photosCount: "{n} фото",
+    requiredHint: "Додайте принаймні одне фото авто.",
+  },
+  map: {
+    eyebrow: "Локація",
+    title: "Місто на карті",
+    description: "Перетягніть карту або шукайте — покупець бачить приблизне місце.",
+    cityLabel: "Місто",
+    searchPlaceholder: "Введіть місто...",
+    gpsButton: "Моє місцезнаходження",
+    gpsDenied: "Немає доступу до геолокації.",
+    gpsUnsupported: "Геолокація не підтримується.",
+    mapHint: "Перетягніть карту, щоб встановити маркер у місті продажу.",
+    countryLabel: "Країна",
+    mapTokenMissing: "Немає токена карти — встановіть NEXT_PUBLIC_MAPBOX_TOKEN.",
+    resolvingCity: "Визначаю місто за маркером…",
+    pinCoords: "Маркер: {lat}, {lng}{country}",
+    searching: "Шукаю…",
+    gpsFailed: "Не вдалося отримати GPS.",
+    gpsLocating: "GPS…",
+  },
+  catalog: {
+    heroTitle: "Професійний каталог автомобілів",
+    heroDescription: "Один акаунт EstateOS, перемикання Home/Car і запити через EstateOS Contact.",
+    statsFavorites: "{n} обраних з {total} збережених",
+    statsMine: "{n} ваших оголошень",
+    statsAll: "{n} активних оголошень у каталозі",
+    addListing: "Додати оголошення авто",
+    tabFavorites: "Обране",
+    tabMine: "Мої авто",
+    tabAll: "Весь каталог",
+    loginMineBanner: "Увійдіть, щоб побачити свої оголошення авто.",
+    goLogin: "Перейти до входу",
+    favoritesEmpty: "Ще немає обраних авто. Натисніть серце на картці оголошення.",
+    filtersEyebrow: "Параметри пошуку",
+    filtersTitle: "Знайти автомобіль",
+    clearFilters: "Очистити фільтри",
+    searchLabel: "Пошук",
+    searchPlaceholder: "BMW, Варшава, дизель...",
+    makeLabel: "Марка",
+    allMakes: "Усі марки",
+    modelLabel: "Серія / модель",
+    allModels: "Усі серії",
+    pickMakeFirst: "Спочатку оберіть марку",
+    generationLabel: "Покоління",
+    allGenerations: "Усі покоління",
+    pickModelFirst: "Спочатку оберіть серію",
+    fuelLabel: "Паливо",
+    allFuels: "Усі",
+    sortLabel: "Сортування",
+    maxPriceLabel: "Макс. ціна (PLN)",
+    maxPricePlaceholder: "напр. 300 000",
+    resultsLoading: "Завантаження...",
+    resultsCount: "{filtered} з {total} оголошень",
+    loadingOffers: "Завантаження оголошень авто...",
+    noResults: "Немає оголошень за вашими фільтрами.",
+    featuredBadge: "Виділене",
+  },
+  detail: {
+    description: "Опис",
+    aboutListing: "Про оголошення",
+    specs: "Параметри",
+    year: "Рік",
+    mileage: "Пробіг",
+    fuel: "Паливо",
+    transmission: "Коробка",
+    body: "Кузов",
+    color: "Колір",
+    power: "Потужність",
+    capacity: "Об'єм",
+    doors: "Двері",
+    city: "Локація",
+    sellerProfile: "Профіль продавця",
+    backToCatalog: "Назад до каталогу",
+    price: "Ціна",
+    aboutBody:
+      "Оголошення в модулі EstateOS™Car — одна екосистема з EstateOS™Home. Запити надходять продавцю через EstateOS Contact.",
+    generation: "Покоління",
+    trim: "Комплектація",
+    version: "Версія",
+  },
+  inquiry: {
+    title: "Запит про авто",
+    description: "Повідомлення надійде продавцю через EstateOS Contact.",
+    nameLabel: "Ім'я та прізвище",
+    phoneLabel: "Телефон",
+    phoneOptional: "необов'язково",
+    viewingLabel: "Бажаний час огляду",
+    viewingAsap: "Якомога швидше",
+    viewingWeek: "Цього тижня",
+    viewingNextWeek: "Наступного тижня",
+    viewingWeekend: "У вихідні",
+    viewingQuestionOnly: "Лише питання — без огляду",
+    messageLabel: "Ваше повідомлення",
+    messagePlaceholder: "Що хочете дізнатися про авто?",
+    defaultMessage:
+      "Добрий день, мене цікавить оголошення «{title}». Будь ласка, повідомте про доступність і можливість огляду.",
+    submit: "Надіслати запит",
+    submitting: "Надсилання...",
+    success: "Запит надіслано. Продавець відповість через EstateOS Contact.",
+    successTitle: "Запит надіслано",
+    successBody: "Продавець отримає повідомлення в EstateOS Contact. Незабаром перенаправимо вас до чату.",
+    loginRequired: "Увійдіть, щоб надіслати запит.",
+    noSeller: "Запити будуть доступні після призначення продавця до цього оголошення.",
+    footerNote: "Надсилаючи запит, ви зв'язуєтесь із продавцем через EstateOS Contact. Один акаунт — Home і Car.",
+    submitFailed: "Не вдалося надіслати запит.",
+  },
+  checks: {
+    title: "Верифікація авто",
+    description: "Перевірте історію CEPIK і дійсність OC (UFG) за даними оголошення.",
+    restrictedNote: " Продавець обмежив повні дані VIN, реєстрації та першої реєстрації.",
+    loginBanner: "Перевірка історії та OC потребує входу.",
+    vin: "VIN",
+    registration: "Реєстрація",
+    firstRegistration: "Перша реєстрація",
+    historyNeedsData: "Повна історія CEPIK потребує VIN, номера та дати першої реєстрації від продавця.",
+    checkHistory: "Перевірити історію CEPIK",
+    checkingHistory: "Завантаження історії...",
+    checkInsurance: "Перевірити дійсність OC",
+    checkingInsurance: "Перевірка OC...",
+    closeModal: "Закрити",
+    historyModalTitle: "Історія авто",
+    errHistory: "Помилка перевірки історії.",
+    errInsurance: "Помилка перевірки страховки.",
+  },
+  owner: {
+    edit: "Редагувати оголошення",
+    delete: "Видалити оголошення",
+    deleting: "Видалення...",
+    confirmDelete: "Видалити це оголошення авто? Цю дію не скасувати.",
+    deleteFailed: "Не вдалося видалити оголошення.",
+    deleteNetworkError: "Помилка мережі під час видалення.",
+  },
+  edit: {
+    pageTitle: "Редагувати оголошення",
+    pageDescription: "Оновіть дані, фото та ціну в каталозі Cars.",
+    backToDetails: "Назад до деталей",
+  },
+  seller: {
+    eyebrow: "EstateOS™Car",
+    title: "Оголошення авто",
+  },
+  favorites: {
+    add: "Додати до обраного",
+    remove: "Прибрати з обраного",
+  },
 };
 
+const records: Record<Locale, CarsDictionary> = { pl, en, uk };
+
 export function getCarsDictionary(locale: Locale): CarsDictionary {
-  if (locale === "en") return en;
-  if (locale === "uk") return uk;
-  return pl;
+  return records[locale] ?? records.pl;
+}
+
+export function getCarSortOptions(locale: Locale) {
+  const c = getCarsDictionary(locale);
+  return [
+    { key: "newest" as const, label: c.sort.newest },
+    { key: "price-asc" as const, label: c.sort.priceAsc },
+    { key: "price-desc" as const, label: c.sort.priceDesc },
+    { key: "year-desc" as const, label: c.sort.yearDesc },
+    { key: "mileage-asc" as const, label: c.sort.mileageAsc },
+  ];
+}
+
+export function formatCarPriceLocalized(price: number, locale: Locale): string {
+  if (!Number.isFinite(price) || price <= 0) {
+    return getCarsDictionary(locale).common.priceOnRequest;
+  }
+  return `${new Intl.NumberFormat(numberFormatLocale(locale)).format(price)} PLN`;
+}
+
+export function formatCarMileageLocalized(km: number, locale: Locale): string {
+  if (!Number.isFinite(km) || km < 0) return "—";
+  return `${new Intl.NumberFormat(numberFormatLocale(locale)).format(km)} km`;
+}
+
+export function fmtCars(template: string, vars: Record<string, string | number>) {
+  return Object.entries(vars).reduce(
+    (acc, [key, value]) => acc.replace(new RegExp(`\\{${key}\\}`, "g"), String(value)),
+    template,
+  );
 }

@@ -1,21 +1,39 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/contexts/LocaleContext";
-import { getCarsDictionary } from "@/i18n/carsDictionary";
-import { useEffect, useState } from "react";
+import type { CarsDictionary } from "@/i18n/carsDictionary";
 import CarCatalogFields from "@/components/cars/CarCatalogFields";
 import CarCityMapPicker from "@/components/cars/CarCityMapPicker";
 import CarFormattedNumberInput from "@/components/cars/CarFormattedNumberInput";
-import CarPhotoGalleryField from "@/components/cars/CarPhotoGalleryField";
+import CarPhotoGalleryField, { type CarPhotoGalleryFieldHandle } from "@/components/cars/CarPhotoGalleryField";
+import CarPublishAuthGate from "@/components/cars/CarPublishAuthGate";
 import CarRegistrationScanGate, {
   highlightClass,
   missingFieldsBanner,
 } from "@/components/cars/CarRegistrationScanGate";
 import CarVehicleDocsFields, { type CarVehicleDocsFormState } from "@/components/cars/CarVehicleDocsFields";
+import {
+  CarFormField,
+  CarFormSection,
+  carAlertErrorClass,
+  carAlertInfoClass,
+  carAlertSuccessClass,
+  carAlertWarningClass,
+  carFieldInputClass,
+} from "@/components/cars/carFormStyles";
+import type { CarAddEntryMethod } from "@/components/cars/CarAddEntryScreen";
 import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
 import { listMissingListingFields } from "@/lib/polishRegistrationDocument.shared";
 import { formatDateForForm } from "@/utils/polishDateInput";
+
+const CAR_DRAFT_VERSION = 1;
+const CAR_DRAFT_KEY = "estateos_car_listing_draft_v1";
+
+function scanGateForEntryMethod(method?: CarAddEntryMethod) {
+  return method === "scan" || method === "capture" || method === "upload";
+}
 
 export type CarFormState = CarVehicleDocsFormState & {
   title: string;
@@ -31,6 +49,7 @@ export type CarFormState = CarVehicleDocsFormState & {
   transmission: string;
   gearboxSlug: string;
   bodyType: string;
+  exteriorColor: string;
   generation: string;
   generationSlug: string;
   enginePower: string;
@@ -64,6 +83,7 @@ export const initialCarForm: CarFormState = {
   transmission: "Automatyczna",
   gearboxSlug: "",
   bodyType: "SUV",
+  exteriorColor: "",
   generation: "",
   generationSlug: "",
   enginePower: "",
@@ -85,6 +105,7 @@ export const initialCarForm: CarFormState = {
   registrationNumber: "",
   firstRegistrationDate: "",
   insuranceValidUntil: "",
+  restrictVehicleDocs: false,
 };
 
 type CarListingFormProps = {
@@ -92,12 +113,13 @@ type CarListingFormProps = {
   initialValues?: CarFormState;
   carId?: number;
   onSuccess?: (id: number) => void;
+  entryMethod?: CarAddEntryMethod;
 };
 
-function toPayload(form: CarFormState) {
+function toPayload(form: CarFormState, images: string[]) {
   const doorCount = Number(form.doorCountSlug || form.doorCount);
-  const images = form.images.map((item) => item.trim()).filter(Boolean);
-  const coverImage = images[0] || form.imageUrl.trim();
+  const normalizedImages = images.map((item) => item.trim()).filter(Boolean);
+  const coverImage = normalizedImages[0] || form.imageUrl.trim();
   return {
     title: form.title.trim(),
     description: form.description.trim(),
@@ -108,6 +130,7 @@ function toPayload(form: CarFormState) {
     fuelType: form.fuelType.trim(),
     transmission: form.transmission.trim(),
     bodyType: form.bodyType.trim(),
+    exteriorColor: form.exteriorColor.trim(),
     generation: form.generation.trim(),
     enginePower: form.enginePower.trim(),
     engineCapacity: form.engineCapacity.trim(),
@@ -119,26 +142,55 @@ function toPayload(form: CarFormState) {
     cityLng: form.cityLng,
     localityCountry: form.localityCountry.trim() || "Polska",
     imageUrl: coverImage,
-    images,
+    images: normalizedImages,
     vin: form.vin.trim().toUpperCase(),
     registrationNumber: form.registrationNumber.trim().toUpperCase(),
     firstRegistrationDate: form.firstRegistrationDate.trim(),
     insuranceValidUntil: form.insuranceValidUntil.trim(),
+    restrictVehicleDocs: Boolean(form.restrictVehicleDocs),
   };
 }
 
-export default function CarListingForm({ mode, initialValues, carId, onSuccess }: CarListingFormProps) {
-  const { locale } = useLocale();
-  const d = getCarsDictionary(locale);
+function validateForm(form: CarFormState, imageCount: number, f: CarsDictionary["form"]): string | null {
+  const payload = toPayload(form, form.images);
+  if (!payload.title || !payload.make || !payload.model || !payload.city || payload.pricePln <= 0) {
+    return f.errTitlePrice;
+  }
+  if (form.cityLat == null || form.cityLng == null) {
+    return f.errMapCity;
+  }
+  if (!payload.fuelType) {
+    return f.errFuel;
+  }
+  if (imageCount <= 0) {
+    return f.errPhotos;
+  }
+  return null;
+}
+
+export default function CarListingForm({
+  mode,
+  initialValues,
+  carId,
+  onSuccess,
+  entryMethod,
+}: CarListingFormProps) {
+  const { dict } = useLocale();
+  const c = dict.cars;
+  const f = c.form;
   const [form, setForm] = useState<CarFormState>(initialValues || initialCarForm);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<number | null>(null);
-  const [scanGateOpen, setScanGateOpen] = useState(mode === "create");
+  const [scanGateOpen, setScanGateOpen] = useState(mode === "create" && scanGateForEntryMethod(entryMethod));
+  const [authGateOpen, setAuthGateOpen] = useState(false);
   const [highlightKeys, setHighlightKeys] = useState<CarListingMissingFieldKey[]>([]);
   const [scanNotice, setScanNotice] = useState<string | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [draftReady, setDraftReady] = useState(mode !== "create");
+  const photoGalleryRef = useRef<CarPhotoGalleryFieldHandle>(null);
+  const draftTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/check", { cache: "no-store", credentials: "include" })
@@ -146,6 +198,50 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       .then((data) => setLoggedIn(Boolean(data?.loggedIn && data?.user?.id)))
       .catch(() => setLoggedIn(false));
   }, []);
+
+  useEffect(() => {
+    if (mode !== "create" || typeof window === "undefined") {
+      setDraftReady(true);
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(CAR_DRAFT_KEY);
+      if (!raw) {
+        setDraftReady(true);
+        return;
+      }
+      const parsed = JSON.parse(raw) as { version?: number; form?: CarFormState };
+      if (parsed?.version === CAR_DRAFT_VERSION && parsed.form) {
+        setForm((prev) => ({ ...prev, ...parsed.form }));
+      }
+    } catch {
+      // ignore corrupt draft
+    } finally {
+      setDraftReady(true);
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "create" || !draftReady || typeof window === "undefined") return;
+    if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = window.setTimeout(() => {
+      try {
+        const serializable = {
+          ...form,
+          images: form.images.filter((url) => !url.startsWith("blob:")),
+        };
+        window.localStorage.setItem(
+          CAR_DRAFT_KEY,
+          JSON.stringify({ version: CAR_DRAFT_VERSION, savedAt: Date.now(), form: serializable }),
+        );
+      } catch {
+        // ignore quota errors
+      }
+    }, 450);
+    return () => {
+      if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
+    };
+  }, [form, mode, draftReady]);
 
   const refreshHighlights = (nextForm: CarFormState, hasImages = nextForm.images.length > 0) => {
     setHighlightKeys(listMissingListingFields(nextForm, hasImages));
@@ -177,7 +273,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       const keys = missingFields.length ? missingFields : listMissingListingFields(next, next.images.length > 0);
       setHighlightKeys(keys);
       setScanNotice(
-        `Dane z dowodu wczytane. ${missingFieldsBanner(keys) || "Sprawdź katalog i uzupełnij ogłoszenie."}`,
+        `${f.scanLoaded} ${missingFieldsBanner(keys, c.scan) || f.scanCheckCatalog}`,
       );
       return next;
     });
@@ -191,35 +287,29 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
     });
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const publishListing = async () => {
     setError(null);
     setSuccessId(null);
     setSubmitting(true);
 
-    const payload = toPayload(form);
-    if (!payload.title || !payload.make || !payload.model || !payload.city || payload.pricePln <= 0) {
-      setError(d.formErrorTitle);
-      setSubmitting(false);
-      return;
-    }
-    if (form.cityLat == null || form.cityLng == null) {
-      setError(d.formErrorCity);
-      setSubmitting(false);
-      return;
-    }
-    if (!payload.fuelType) {
-      setError(d.formErrorFuel);
-      setSubmitting(false);
-      return;
-    }
-    if (!payload.images.length) {
-      setError(d.formErrorPhotos);
-      setSubmitting(false);
-      return;
+    const imageCount = photoGalleryRef.current?.totalCount() ?? form.images.length;
+    const validationError = validateForm(form, imageCount, f);
+    if (validationError) {
+      throw new Error(validationError);
     }
 
     try {
+      let uploadedImages = form.images;
+      if (photoGalleryRef.current?.hasPending()) {
+        uploadedImages = await photoGalleryRef.current.uploadPending();
+        setForm((prev) => ({
+          ...prev,
+          images: uploadedImages,
+          imageUrl: uploadedImages[0] || "",
+        }));
+      }
+
+      const payload = toPayload(form, uploadedImages);
       const response = await fetch(mode === "create" ? "/api/cars" : `/api/cars/${carId}`, {
         method: mode === "create" ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -228,9 +318,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(typeof data?.error === "string" ? data.error : d.formErrorSave);
-        setSubmitting(false);
-        return;
+        throw new Error(typeof data?.error === "string" ? data.error : c.common.saveFailed);
       }
 
       const savedId = Number(data?.listing?.id || carId || 0) || null;
@@ -244,11 +332,42 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
           insuranceValidUntil: formatDateForForm(listing.insuranceValidUntil || prev.insuranceValidUntil),
         }));
       }
+      setAuthGateOpen(false);
+      setLoggedIn(true);
       setSuccessId(savedId);
       if (savedId) onSuccess?.(savedId);
-      if (mode === "create") setForm(initialCarForm);
-    } catch {
-      setError(d.formErrorNetwork);
+      if (mode === "create") {
+        if (typeof window !== "undefined") window.localStorage.removeItem(CAR_DRAFT_KEY);
+        setForm(initialCarForm);
+      }
+    } catch (publishError) {
+      throw publishError instanceof Error ? publishError : new Error(c.common.networkError);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+
+    const imageCount = photoGalleryRef.current?.totalCount() ?? form.images.length;
+    const validationError = validateForm(form, imageCount, f);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    if (!loggedIn && mode === "create") {
+      setAuthGateOpen(true);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await publishListing();
+    } catch (publishError) {
+      setError(publishError instanceof Error ? publishError.message : c.common.networkError);
     } finally {
       setSubmitting(false);
     }
@@ -261,137 +380,159 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       {mode === "create" ? (
         <CarRegistrationScanGate
           open={scanGateOpen}
+          preferUpload={entryMethod === "upload"}
           onSkip={() => setScanGateOpen(false)}
           onPrefill={applyRegistrationPrefill}
         />
       ) : null}
 
-      <form onSubmit={handleSubmit} className="mt-8 grid gap-4">
+      <CarPublishAuthGate
+        open={authGateOpen}
+        onClose={() => setAuthGateOpen(false)}
+        onAuthenticated={publishListing}
+      />
+
+      <form onSubmit={handleSubmit} className="grid gap-6">
+        {!loggedIn && mode === "create" ? (
+          <p className={carAlertInfoClass}>{f.guestBanner}</p>
+        ) : null}
+
         {scanNotice ? (
-          <p className="rounded-2xl border border-amber-500/30 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-50">
-            {scanNotice}
-          </p>
+          <p className={carAlertWarningClass}>{scanNotice}</p>
         ) : null}
 
         <CarCatalogFields form={form} setForm={setForm} />
 
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">{d.formTitleLabel}</span>
-          <input
-            value={form.title}
-            onChange={(e) => setField("title", e.target.value)}
-            className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("title"))}`}
-            placeholder={d.formTitlePlaceholder}
-            required
-          />
-        </label>
+        <CarFormSection eyebrow={f.contentEyebrow} title={f.contentTitle} description={f.contentDescription}>
+          <CarFormField label={f.titleLabel}>
+            <input
+              value={form.title}
+              onChange={(e) => setField("title", e.target.value)}
+              className={`${carFieldInputClass} ${highlightClass(isHighlighted("title"))}`}
+              placeholder={f.titlePlaceholder}
+              required
+            />
+          </CarFormField>
 
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">{d.formDescriptionLabel}</span>
-          <textarea
-            value={form.description}
-            onChange={(e) => setField("description", e.target.value)}
-            className={`min-h-[120px] rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("description"))}`}
-            placeholder={d.formDescriptionPlaceholder}
-          />
-        </label>
+          <CarFormField label={f.descriptionLabel}>
+            <textarea
+              value={form.description}
+              onChange={(e) => setField("description", e.target.value)}
+              className={`min-h-[140px] resize-y ${carFieldInputClass} ${highlightClass(isHighlighted("description"))}`}
+              placeholder={f.descriptionPlaceholder}
+            />
+          </CarFormField>
+        </CarFormSection>
 
-      <CarVehicleDocsFields
-        value={{
-          vin: form.vin,
-          registrationNumber: form.registrationNumber,
-          firstRegistrationDate: form.firstRegistrationDate,
-          insuranceValidUntil: form.insuranceValidUntil,
-        }}
-        onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-        loggedIn={loggedIn}
-      />
+        <CarVehicleDocsFields
+          value={{
+            vin: form.vin,
+            registrationNumber: form.registrationNumber,
+            firstRegistrationDate: form.firstRegistrationDate,
+            insuranceValidUntil: form.insuranceValidUntil,
+            restrictVehicleDocs: form.restrictVehicleDocs,
+          }}
+          onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+          loggedIn={loggedIn}
+        />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">{d.formMileageLabel}</span>
-          <CarFormattedNumberInput
-            value={form.mileageKm}
-            onChange={(digits) => setField("mileageKm", digits)}
-            className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("mileageKm"))}`}
-            placeholder="58 000"
-          />
-        </label>
-        <label className="grid gap-1.5 text-sm">
-          <span className="text-[var(--eos-muted)]">Cena (PLN)</span>
-          <CarFormattedNumberInput
-            value={form.pricePln}
-            onChange={(digits) => setField("pricePln", digits)}
-            className={`rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 outline-none focus:border-sky-400/50 ${highlightClass(isHighlighted("pricePln"))}`}
-            placeholder="319 000"
-            required
-          />
-        </label>
-      </div>
+        <CarFormSection eyebrow={f.offerEyebrow} title={f.offerTitle} description={f.offerDescription}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <CarFormField label={f.mileageLabel}>
+              <CarFormattedNumberInput
+                value={form.mileageKm}
+                onChange={(digits) => setField("mileageKm", digits)}
+                className={`${carFieldInputClass} ${highlightClass(isHighlighted("mileageKm"))}`}
+                placeholder="58 000"
+              />
+            </CarFormField>
+            <CarFormField label={f.priceLabel}>
+              <CarFormattedNumberInput
+                value={form.pricePln}
+                onChange={(digits) => setField("pricePln", digits)}
+                className={`${carFieldInputClass} ${highlightClass(isHighlighted("pricePln"))}`}
+                placeholder="319 000"
+                required
+              />
+            </CarFormField>
+          </div>
+        </CarFormSection>
 
-      <CarCityMapPicker
-        city={form.city}
-        cityLat={form.cityLat}
-        cityLng={form.cityLng}
-        localityCountry={form.localityCountry}
-        highlighted={isHighlighted("city")}
-        onChange={(selection) => {
-          setForm((prev) => {
-            const next = {
-              ...prev,
-              city: selection.city,
-              cityLat: selection.cityLat,
-              cityLng: selection.cityLng,
-              localityCountry: selection.localityCountry || prev.localityCountry,
-            };
-            refreshHighlights(next);
-            return next;
-          });
-        }}
-      />
+        <CarCityMapPicker
+          city={form.city}
+          cityLat={form.cityLat}
+          cityLng={form.cityLng}
+          localityCountry={form.localityCountry}
+          highlighted={isHighlighted("city")}
+          onChange={(selection) => {
+            setForm((prev) => {
+              const next = {
+                ...prev,
+                city: selection.city,
+                cityLat: selection.cityLat,
+                cityLng: selection.cityLng,
+                localityCountry: selection.localityCountry || prev.localityCountry,
+              };
+              refreshHighlights(next);
+              return next;
+            });
+          }}
+        />
 
-      <CarPhotoGalleryField
-        images={form.images}
-        highlighted={isHighlighted("images")}
-        onUploadingChange={setUploading}
-        onChange={(images) => {
-          setForm((prev) => {
-            const next = {
-              ...prev,
-              images,
-              imageUrl: images[0] || "",
-            };
-            refreshHighlights(next, images.length > 0);
-            return next;
-          });
-        }}
-      />
+        <CarPhotoGalleryField
+          ref={photoGalleryRef}
+          images={form.images}
+          loggedIn={loggedIn}
+          highlighted={isHighlighted("images")}
+          onUploadingChange={setUploading}
+          onChange={(images) => {
+            setForm((prev) => {
+              const next = {
+                ...prev,
+                images,
+                imageUrl: images[0] || "",
+              };
+              refreshHighlights(next, images.length > 0);
+              return next;
+            });
+          }}
+        />
 
-      {error ? <p className="text-sm text-red-400">{error}</p> : null}
-      {successId ? (
-        <p className="text-sm text-emerald-300">
-          Ogłoszenie zapisane.{" "}
-          <Link className="underline" href={`/cars/${successId}`}>
-            Przejdź do szczegółów
-          </Link>
-        </p>
-      ) : null}
+        {error ? <p className={carAlertErrorClass}>{error}</p> : null}
+        {successId ? (
+          <div className={carAlertSuccessClass}>
+            <p className="font-semibold">{f.successTitle}</p>
+            <p className="mt-1 opacity-90">{f.successBody}</p>
+            <Link className="mt-2 inline-block font-bold underline" href={`/cars/${successId}`}>
+              {c.common.viewListing}
+            </Link>
+            {" · "}
+            <Link className="font-bold underline" href={`/cars/${successId}/edytuj`}>
+              {c.common.edit}
+            </Link>
+          </div>
+        ) : null}
 
-      <div className="mt-2 flex flex-wrap gap-3">
-        <button
-          type="submit"
-          disabled={submitting || uploading}
-          className="rounded-full border border-sky-400/40 bg-sky-500/10 px-5 py-2 text-xs font-black uppercase tracking-[0.14em] text-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submitting ? "Zapisywanie..." : mode === "create" ? "Opublikuj ogłoszenie Cars" : "Zapisz zmiany"}
-        </button>
-        <Link
-          href={mode === "edit" && carId ? `/cars/${carId}` : "/cars"}
-          className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-2 text-xs font-black uppercase tracking-[0.14em]"
-        >
-          Anuluj
-        </Link>
-      </div>
+        <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-[1.75rem] border border-sky-400/25 bg-[var(--eos-card)]/95 px-5 py-4 shadow-[0_18px_50px_rgba(14,165,233,0.12)] backdrop-blur-md">
+          <p className="text-xs text-[var(--eos-muted)]">
+            {mode === "create" ? f.footerCreate : f.footerEdit}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="submit"
+              disabled={submitting || uploading}
+              className="rounded-full border border-sky-400/45 bg-sky-500/15 px-6 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-sky-800 transition hover:bg-sky-500/25 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-200"
+            >
+              {submitting ? f.publishing : mode === "create" ? f.publish : f.saveChanges}
+            </button>
+            <Link
+              href={mode === "edit" && carId ? `/cars/${carId}` : "/cars"}
+              className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-6 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-[var(--eos-text)]"
+            >
+              {c.common.cancel}
+            </Link>
+          </div>
+        </div>
       </form>
     </>
   );
