@@ -86,6 +86,10 @@ import {
   isExplicitMobileOfferSaveFailure,
   extractMobileOfferJson,
 } from '../utils/mobileOfferUpdate';
+import { promoteMobileOfferListing } from '../utils/mobileOfferPromote';
+import { promoteMobileCarListing } from '../utils/mobileCarPromote';
+import { fetchMyCars, formatCarPrice } from '../services/carsApi';
+import { isOfferPromotionActive } from '../utils/listingPromotion';
 import { formatOfferLocationLine } from '../constants/locationEcosystem';
 import { useMoneyContext } from '../money/useMoneyContext';
 import {
@@ -608,17 +612,142 @@ const getBestUserAvatarUrl = (userLike: any): string | null => {
   );
 };
 
+function MyOffersVerticalSwitcher({ value, onChange, homeCount, carCount, isDark, theme }) {
+  const { t } = useI18n();
+  const [containerWidth, setContainerWidth] = useState(0);
+  const segmentWidth = containerWidth > 0 ? (containerWidth - 8) / 2 : 0;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const homeScale = useRef(new Animated.Value(1)).current;
+  const carScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (segmentWidth === 0) return;
+    const index = value === 'car' ? 1 : 0;
+    Animated.spring(translateX, {
+      toValue: index * segmentWidth,
+      useNativeDriver: false,
+      bounciness: 9,
+      speed: 18,
+    }).start();
+  }, [value, segmentWidth, translateX]);
+
+  const pulseSegment = (scaleRef) => {
+    Animated.sequence([
+      Animated.timing(scaleRef, { toValue: 0.94, duration: 70, useNativeDriver: true }),
+      Animated.spring(scaleRef, { toValue: 1, useNativeDriver: true, bounciness: 10, speed: 20 }),
+    ]).start();
+  };
+
+  const select = (next) => {
+    if (next === value) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    pulseSegment(next === 'home' ? homeScale : carScale);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    onChange(next);
+  };
+
+  const renderOption = (vertical, scaleRef, iconActive, iconInactive, accent, count) => {
+    const active = value === vertical;
+    return (
+      <Animated.View style={[styles.verticalSwitcherBtn, { transform: [{ scale: scaleRef }] }]}>
+        <Pressable
+          onPress={() => select(vertical)}
+          style={({ pressed }) => [
+            styles.verticalSwitcherPressable,
+            pressed && !active ? { opacity: 0.82 } : null,
+          ]}
+          accessibilityRole="button"
+          accessibilityState={{ selected: active }}
+        >
+          <View
+            style={[
+              styles.verticalSwitcherIconWrap,
+              active
+                ? { backgroundColor: isDark ? `${accent}33` : `${accent}22`, borderColor: `${accent}55` }
+                : { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderColor: 'transparent' },
+            ]}
+          >
+            <Ionicons name={active ? iconActive : iconInactive} size={22} color={active ? accent : theme.subtitle} />
+          </View>
+          <View style={styles.verticalSwitcherLabelRow}>
+            <Text style={[styles.verticalSwitcherLabel, { color: active ? theme.text : theme.subtitle }]}>
+              {t(`profile.myOffers.vertical.${vertical}`)}
+            </Text>
+            {count > 0 ? (
+              <View
+                style={[
+                  styles.verticalSwitcherCount,
+                  active
+                    ? { backgroundColor: accent }
+                    : { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
+                ]}
+              >
+                <Text style={[styles.verticalSwitcherCountText, { color: active ? '#fff' : theme.subtitle }]}>
+                  {count}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </Pressable>
+      </Animated.View>
+    );
+  };
+
+  const activeAccent = value === 'home' ? '#34C759' : '#0EA5E9';
+  const activePillBg = value === 'home'
+    ? (isDark ? 'rgba(52,199,89,0.18)' : 'rgba(52,199,89,0.12)')
+    : (isDark ? 'rgba(14,165,233,0.18)' : 'rgba(14,165,233,0.12)');
+
+  return (
+    <View style={styles.verticalSwitcherWrap}>
+      <View
+        style={[
+          styles.verticalSwitcher,
+          {
+            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.035)',
+            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)',
+            shadowColor: activeAccent,
+            shadowOpacity: isDark ? 0.14 : 0.08,
+          },
+        ]}
+        onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+      >
+        {segmentWidth > 0 ? (
+          <Animated.View
+            style={[
+              styles.verticalSwitcherPill,
+              {
+                width: segmentWidth,
+                transform: [{ translateX }],
+                backgroundColor: activePillBg,
+                borderColor: `${activeAccent}44`,
+              },
+            ]}
+          />
+        ) : null}
+        {renderOption('home', homeScale, 'home', 'home-outline', '#34C759', homeCount)}
+        {renderOption('car', carScale, 'car-sport', 'car-sport-outline', '#0EA5E9', carCount)}
+      </View>
+    </View>
+  );
+}
+
 const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
   const { t, locale } = useI18n();
   const publicationCopy = useMemo(() => getPublicationCopy(), [locale]);
   const navigation = useNavigation();
   const { formatOffer } = useMoneyContext();
   const [offers, setOffers] = useState([]);
+  const [myCars, setMyCars] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [carsLoading, setCarsLoading] = useState(false);
+  const [listingVertical, setListingVertical] = useState('home');
   const [activeTab, setActiveTab] = useState('ACTIVE');
   const [selectedOffer, setSelectedOffer] = useState(null);
+  const [selectedCar, setSelectedCar] = useState(null);
   const [reactivating, setReactivating] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [promoting, setPromoting] = useState(false);
   const [syncTick, setSyncTick] = useState(0);
   const [reactivationChoiceVisible, setReactivationChoiceVisible] = useState(false);
   const [reactivationChoiceLoading, setReactivationChoiceLoading] = useState(false);
@@ -655,6 +784,7 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
   const handleMyOffersClose = () => {
     dismissReactivationChoice();
     setSelectedOffer(null);
+    setSelectedCar(null);
     onClose();
   };
 
@@ -678,6 +808,19 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
     const id = setInterval(pulse, 1000);
     return () => clearInterval(id);
   }, [visible]);
+
+  const fetchMyCarsList = async () => {
+    if (!token) return;
+    setCarsLoading(true);
+    try {
+      const rows = await fetchMyCars(token);
+      setMyCars(rows);
+    } catch {
+      setMyCars([]);
+    } finally {
+      setCarsLoading(false);
+    }
+  };
 
   const fetchMyOffers = async () => {
     if (!user || !token) return;
@@ -709,21 +852,32 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
 
   useEffect(() => { 
     if (visible) {
-      fetchMyOffers(); 
+      fetchMyOffers();
+      fetchMyCarsList();
       setSelectedOffer(null);
+      setSelectedCar(null);
     }
   }, [visible]);
 
   const handleOpenManagement = (offer) => {
     Haptics.selectionAsync();
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSelectedCar(null);
     setSelectedOffer(offer);
+  };
+
+  const handleOpenCarManagement = (car) => {
+    Haptics.selectionAsync();
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSelectedOffer(null);
+    setSelectedCar(car);
   };
 
   const handleGoBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setSelectedOffer(null);
+    setSelectedCar(null);
   };
 
   const reactivateEndedOfferWithPakietPlus = async (
@@ -909,6 +1063,59 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
         t('profile.myOffers.alerts.plusPackageBump'),
         [{ text: t('common.ok') }]
       );
+    } else if (actionType === 'PROMOTE') {
+      if (!selectedOffer?.id || !token || promoting) return;
+      const offerId = Number(selectedOffer.id);
+      if (isOfferPromotionActive(selectedOffer.promotedUntil)) {
+        Alert.alert(
+          t('profile.myOffers.promote.alreadyTitle'),
+          t('profile.myOffers.promote.alreadyBody'),
+          [{ text: t('common.ok') }],
+        );
+        return;
+      }
+      Alert.alert(
+        t('profile.myOffers.promote.confirmTitle'),
+        t('profile.myOffers.promote.confirmBody'),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('profile.myOffers.promote.confirmAction'),
+            onPress: async () => {
+              setPromoting(true);
+              try {
+                const result = await promoteMobileOfferListing(token, offerId);
+                if (!result.ok) throw new Error(result.message);
+                await refreshUser();
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                setOffers((prev) =>
+                  prev.map((o) =>
+                    Number(o?.id) === offerId ? { ...o, promotedUntil: result.promotedUntil } : o,
+                  ),
+                );
+                setSelectedOffer((prev) =>
+                  prev && Number(prev.id) === offerId
+                    ? { ...prev, promotedUntil: result.promotedUntil }
+                    : prev,
+                );
+                Alert.alert(
+                  t('profile.myOffers.promote.successTitle'),
+                  t('profile.myOffers.promote.successBody'),
+                  [{ text: t('common.ok') }],
+                );
+              } catch (err) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                Alert.alert(
+                  t('profile.myOffers.promote.failedTitle'),
+                  String(err?.message || t('profile.myOffers.promote.failedBody')),
+                );
+              } finally {
+                setPromoting(false);
+              }
+            },
+          },
+        ],
+      );
     } else if (actionType === 'ARCHIVE') {
       if (!selectedOffer?.id || !token || archiving) return;
       const offerId = Number(selectedOffer.id);
@@ -989,6 +1196,79 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
     }
   };
 
+  const handleCarAction = async (actionType) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (actionType === 'PREVIEW') {
+      if (!selectedCar?.id) return;
+      const carId = Number(selectedCar.id);
+      handleMyOffersClose();
+      setTimeout(() => navigation.navigate('CarDetail', { carId, car: selectedCar }), 200);
+    } else if (actionType === 'EDIT') {
+      if (!selectedCar?.id) {
+        Alert.alert(t('profile.myOffers.alerts.editTitle'), t('profile.myOffers.alerts.editFailed'));
+        return;
+      }
+      const carId = Number(selectedCar.id);
+      handleMyOffersClose();
+      setTimeout(() => navigation.navigate('AddCarListing', { mode: 'edit', carId }), 200);
+    } else if (actionType === 'PROMOTE') {
+      if (!selectedCar?.id || !token || promoting) return;
+      const carId = Number(selectedCar.id);
+      if (isOfferPromotionActive(selectedCar.promotedUntil)) {
+        Alert.alert(
+          t('profile.myOffers.promote.alreadyTitle'),
+          t('profile.myOffers.promote.alreadyBody'),
+          [{ text: t('common.ok') }],
+        );
+        return;
+      }
+      Alert.alert(
+        t('profile.myOffers.promote.confirmTitle'),
+        t('profile.myOffers.promote.confirmBody'),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('profile.myOffers.promote.confirmAction'),
+            onPress: async () => {
+              setPromoting(true);
+              try {
+                const result = await promoteMobileCarListing(token, carId);
+                if (!result.ok) throw new Error(result.message);
+                await refreshUser();
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                setMyCars((prev) =>
+                  prev.map((c) =>
+                    Number(c?.id) === carId
+                      ? { ...c, promotedUntil: result.promotedUntil, featured: true }
+                      : c,
+                  ),
+                );
+                setSelectedCar((prev) =>
+                  prev && Number(prev.id) === carId
+                    ? { ...prev, promotedUntil: result.promotedUntil, featured: true }
+                    : prev,
+                );
+                Alert.alert(
+                  t('profile.myOffers.promote.successTitle'),
+                  t('profile.myOffers.promote.successBody'),
+                  [{ text: t('common.ok') }],
+                );
+              } catch (err) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                Alert.alert(
+                  t('profile.myOffers.promote.failedTitle'),
+                  String(err?.message || t('profile.myOffers.promote.failedBody')),
+                );
+              } finally {
+                setPromoting(false);
+              }
+            },
+          },
+        ],
+      );
+    }
+  };
+
   const filteredOffers = offers.filter((o) => {
     const st = normalizeOfferTabStatus(o.status);
     if (activeTab === 'ACTIVE') return st === 'ACTIVE';
@@ -1036,6 +1316,90 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
           </Pressable>
         </View>
       </View>
+    );
+  };
+
+  const renderMyCar = ({ item }) => {
+    const imageUri = String(item?.imageUrl || '').trim();
+    const carFeatured = isOfferPromotionActive(item?.promotedUntil) || Boolean(item?.featured);
+
+    return (
+      <View style={[styles.offerCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+          {imageUri ? (
+            <Image source={{ uri: imageUri }} style={{ width: 65, height: 65, borderRadius: 14, marginRight: 15 }} />
+          ) : (
+            <View style={{ width: 65, height: 65, borderRadius: 14, marginRight: 15, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="car-sport" size={24} color="#0EA5E9" />
+            </View>
+          )}
+          <View style={{ flex: 1, justifyContent: 'center' }}>
+            <Text style={[styles.offerTitle, { color: theme.text, marginBottom: 4 }]} numberOfLines={2}>{item.title}</Text>
+            <Text style={styles.offerSubtitle} numberOfLines={2}>
+              {formatCarPrice(Number(item.pricePln || 0))} • {item.city || '—'} • {item.make} {item.model}
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', paddingTop: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: carFeatured ? '#FFD60A' : '#34C759' }} />
+            <Text style={{ fontSize: 12, fontWeight: '700', marginLeft: 8, color: carFeatured ? '#FFD60A' : '#34C759' }}>
+              {carFeatured ? t('profile.myOffers.promote.active') : t('profile.myOffers.status.active')}
+            </Text>
+          </View>
+          <Pressable onPress={() => handleOpenCarManagement(item)} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', borderRadius: 12 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text }}>{t('profile.myOffers.manage')}</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  };
+
+  const renderCarManagementView = () => {
+    if (!selectedCar) return null;
+    const imageUri = String(selectedCar.imageUrl || '').trim();
+
+    return (
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
+        <View style={{ flexDirection: 'row', marginBottom: 25 }}>
+          {imageUri ? (
+            <Image source={{ uri: imageUri }} style={styles.mgtImage} />
+          ) : (
+            <View style={[styles.mgtImage, { backgroundColor: isDark ? '#333' : '#E5E5EA', justifyContent: 'center', alignItems: 'center' }]}>
+              <Ionicons name="car-sport" size={30} color="#0EA5E9" />
+            </View>
+          )}
+          <View style={{ flex: 1, justifyContent: 'center' }}>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 4 }} numberOfLines={2}>{selectedCar.title}</Text>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: theme.subtitle }}>
+              {formatCarPrice(Number(selectedCar.pricePln || 0))} • {selectedCar.make} {selectedCar.model}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={[styles.sectionTitle, { marginLeft: 0, marginBottom: 15 }]}>{t('profile.myOffers.actionsTitle')}</Text>
+        <View style={styles.mgtActionGrid}>
+          <PremiumActionButton onPress={() => handleCarAction('PREVIEW')} icon="search" color={{ bg: 'rgba(0,122,255,0.1)', icon: '#007AFF' }} title={t('profile.myOffers.preview')} subtitle={t('profile.myOffers.previewSubtitle')} theme={theme} isDark={isDark} />
+          <PremiumActionButton onPress={() => handleCarAction('EDIT')} icon="pencil" color={{ bg: 'rgba(255,159,10,0.1)', icon: '#FF9F0A' }} title={t('profile.myOffers.edit')} subtitle={t('profile.myOffers.editSubtitle')} theme={theme} isDark={isDark} />
+          <PremiumActionButton
+            disabled={promoting || isOfferPromotionActive(selectedCar.promotedUntil)}
+            onPress={() => handleCarAction('PROMOTE')}
+            icon="star"
+            color={{ bg: 'rgba(255,214,10,0.14)', icon: '#FFD60A' }}
+            title={
+              promoting
+                ? t('profile.myOffers.promote.working')
+                : isOfferPromotionActive(selectedCar.promotedUntil)
+                  ? t('profile.myOffers.promote.active')
+                  : t('profile.myOffers.promote.title')
+            }
+            subtitle={t('profile.myOffers.promote.subtitle')}
+            theme={theme}
+            isDark={isDark}
+          />
+        </View>
+      </ScrollView>
     );
   };
 
@@ -1095,6 +1459,24 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
           ) : null}
           {selSt === 'ACTIVE' ? (
             <PremiumActionButton
+              disabled={promoting || isOfferPromotionActive(selectedOffer.promotedUntil)}
+              onPress={() => handleAction('PROMOTE')}
+              icon="star"
+              color={{ bg: 'rgba(255,214,10,0.14)', icon: '#FFD60A' }}
+              title={
+                promoting
+                  ? t('profile.myOffers.promote.working')
+                  : isOfferPromotionActive(selectedOffer.promotedUntil)
+                    ? t('profile.myOffers.promote.active')
+                    : t('profile.myOffers.promote.title')
+              }
+              subtitle={t('profile.myOffers.promote.subtitle')}
+              theme={theme}
+              isDark={isDark}
+            />
+          ) : null}
+          {selSt === 'ACTIVE' ? (
+            <PremiumActionButton
               onPress={() => handleAction('AGENCY_TRANSFER')}
               icon="business"
               color={{ bg: 'rgba(255,149,0,0.12)', icon: '#FF9500' }}
@@ -1131,13 +1513,18 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
 
   if (!visible) return null;
 
+  const inManagement = Boolean(selectedOffer || selectedCar);
+  const listLoading = listingVertical === 'car' ? carsLoading : loading;
+  const homeListingsCount = offers.length;
+  const carListingsCount = myCars.length;
+
   return (
     <>
     <Modal visible animationType="slide" presentationStyle="pageSheet">
       <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
         
         <View style={[styles.modalHeader, { paddingVertical: 15, paddingHorizontal: 15 }]}>
-          {selectedOffer ? (
+          {inManagement ? (
             <Pressable onPress={handleGoBack} style={{ width: 80, flexDirection: 'row', alignItems: 'center' }}>
               <Ionicons name="chevron-back" size={24} color="#007AFF" />
               <Text style={{ fontSize: 17, color: '#007AFF', fontWeight: '500', marginLeft: -4 }}>{t('profile.myOffers.back')}</Text>
@@ -1147,7 +1534,7 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
           )}
 
           <Text style={[styles.modalTitle, { color: theme.text, flex: 1, textAlign: 'center', fontSize: 18 }]}>
-            {selectedOffer ? t('profile.myOffers.management') : t('profile.myOffers.title')}
+            {inManagement ? t('profile.myOffers.management') : t('profile.myOffers.title')}
           </Text>
 
           <Pressable onPress={handleMyOffersClose} style={{ width: 80, alignItems: 'flex-end' }}>
@@ -1157,18 +1544,45 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
           </Pressable>
         </View>
 
-        {!selectedOffer && (
-          <View style={styles.tabsContainer}>
+        {!inManagement ? (
+          <MyOffersVerticalSwitcher
+            value={listingVertical}
+            onChange={setListingVertical}
+            homeCount={homeListingsCount}
+            carCount={carListingsCount}
+            isDark={isDark}
+            theme={theme}
+          />
+        ) : null}
+
+        {!inManagement && listingVertical === 'home' ? (
+          <View style={[styles.tabsContainer, { marginTop: -2 }]}>
             <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('ACTIVE'); }} style={[styles.tab, activeTab === 'ACTIVE' && { backgroundColor: '#34C759' }]}><Text style={[styles.tabText, { color: activeTab === 'ACTIVE' ? '#fff' : theme.subtitle }]}>{t('profile.myOffers.tabs.active')}</Text></Pressable>
             <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('PENDING'); }} style={[styles.tab, activeTab === 'PENDING' && { backgroundColor: '#FF9F0A' }]}><Text style={[styles.tabText, { color: activeTab === 'PENDING' ? '#fff' : theme.subtitle }]}>{t('profile.myOffers.tabs.pending')}</Text></Pressable>
             <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('ARCHIVED'); }} style={[styles.tab, activeTab === 'ARCHIVED' && { backgroundColor: '#FF3B30' }]}><Text style={[styles.tabText, { color: activeTab === 'ARCHIVED' ? '#fff' : theme.subtitle }]}>{t('profile.myOffers.tabs.archived')}</Text></Pressable>
           </View>
-        )}
+        ) : null}
 
-        {loading ? (
+        {listLoading ? (
            <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 50 }} />
+        ) : selectedOffer ? (
+           renderManagementView()
+        ) : selectedCar ? (
+           renderCarManagementView()
+        ) : listingVertical === 'car' ? (
+           <FlatList
+             data={myCars}
+             keyExtractor={(item) => String(item.id)}
+             renderItem={renderMyCar}
+             contentContainerStyle={{ padding: 16 }}
+             ListEmptyComponent={
+               <Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>
+                 {t('profile.myOffers.emptyCars')}
+               </Text>
+             }
+           />
         ) : (
-           selectedOffer ? renderManagementView() : <FlatList data={filteredOffers} extraData={`${activeTab}-${syncTick}`} keyExtractor={item => String(item.id)} renderItem={renderMyOffer} contentContainerStyle={{ padding: 16 }} ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>{t('profile.myOffers.emptySection')}</Text>} />
+           <FlatList data={filteredOffers} extraData={`${activeTab}-${syncTick}`} keyExtractor={item => String(item.id)} renderItem={renderMyOffer} contentContainerStyle={{ padding: 16 }} ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>{t('profile.myOffers.emptySection')}</Text>} />
         )}
         <PublicationChoiceModal
           variant="overlay"
@@ -4700,6 +5114,53 @@ const styles = StyleSheet.create({
   tabsContainer: { flexDirection: 'row', paddingHorizontal: 15, marginBottom: 15 },
   tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10, marginHorizontal: 4 },
   tabText: { fontSize: 13, fontWeight: '700' },
+  verticalSwitcherWrap: { paddingHorizontal: 16, marginBottom: 14 },
+  verticalSwitcher: {
+    flexDirection: 'row',
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 4,
+    position: 'relative',
+    minHeight: 78,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  verticalSwitcherPill: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    bottom: 4,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  verticalSwitcherBtn: { flex: 1, zIndex: 1 },
+  verticalSwitcherPressable: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    gap: 6,
+  },
+  verticalSwitcherIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  verticalSwitcherLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  verticalSwitcherLabel: { fontSize: 13, fontWeight: '800', letterSpacing: -0.25 },
+  verticalSwitcherCount: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  verticalSwitcherCountText: { fontSize: 11, fontWeight: '800' },
   offerCard: { padding: 16, borderRadius: 20, marginBottom: 15, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
   syncPillRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   syncPill: {

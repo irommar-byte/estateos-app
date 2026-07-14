@@ -1,4 +1,5 @@
 export const tabs = {
+  home: 'Homes',
   radar: 'Radar',
   favorites: 'Mine',
   add: 'Add',

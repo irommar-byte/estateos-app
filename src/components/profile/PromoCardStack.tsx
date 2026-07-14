@@ -23,6 +23,7 @@ import {
 } from '../../utils/profilePromoCouponUi';
 import type { ProfilePromoCouponPurpose } from '../../contracts/profilePromoContract';
 import BirthdayCouponBackdrop from './BirthdayCouponBackdrop';
+import { safeIoniconName } from '../../utils/safeIoniconName';
 
 const PURPOSE_STRIP_H = 26;
 const PURPOSE_STRIP_H_COMPACT = 22;
@@ -91,7 +92,7 @@ function CouponPurposeStrip({
       pointerEvents="none"
     >
       <View style={[stripStyles.iconWrap, compact && stripStyles.iconWrapCompact, { backgroundColor: visual.iconBg }]}>
-        <Ionicons name={iconName as any} size={compact ? 12 : 14} color={visual.iconColor} />
+        <Ionicons name={safeIoniconName(iconName, 'pricetag')} size={compact ? 12 : 14} color={visual.iconColor} />
       </View>
       <Text style={[stripStyles.label, compact && stripStyles.labelCompact, { color: visual.textColor }]} numberOfLines={1}>
         {label}
@@ -158,7 +159,7 @@ function PromoCardFace({
             { backgroundColor: card.iconBg },
           ]}
         >
-          <Ionicons name={card.iconName as any} size={compact ? 18 : 22} color="#FFFFFF" />
+          <Ionicons name={safeIoniconName(card.iconName, 'sparkles')} size={compact ? 18 : 22} color="#FFFFFF" />
         </View>
         <View style={[styles.body, styles.contentRaised]}>
           <View style={styles.headerRow}>

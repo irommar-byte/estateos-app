@@ -31,9 +31,31 @@ type CarPhotoGridProps = {
   images: string[];
   imageByteSizes: Record<string, number>;
   onChange: (images: string[], imageByteSizes: Record<string, number>) => void;
+  labels?: {
+    title?: string;
+    lead?: string;
+    photosLabel?: string;
+    photosSuffix?: string;
+    sizeLabel?: string;
+    sizeSuffix?: string;
+    coverBadge?: string;
+    addLabel?: string;
+    limitTitle?: string;
+    limitBody?: string;
+    permissionTitle?: string;
+    permissionBody?: string;
+    permissionCancel?: string;
+    permissionSettings?: string;
+    storageTitle?: string;
+  };
 };
 
-async function ensureMediaLibraryPermission(): Promise<boolean> {
+async function ensureMediaLibraryPermission(copy: {
+  permissionTitle: string;
+  permissionBody: string;
+  permissionCancel: string;
+  permissionSettings: string;
+}): Promise<boolean> {
   const read = await ImagePicker.getMediaLibraryPermissionsAsync();
   const hasAccess =
     read.granted || read.accessPrivileges === 'all' || read.accessPrivileges === 'limited';
@@ -44,9 +66,9 @@ async function ensureMediaLibraryPermission(): Promise<boolean> {
     requested.accessPrivileges === 'all' ||
     requested.accessPrivileges === 'limited';
   if (!ok) {
-    Alert.alert('Brak dostępu', 'Zezwól na dostęp do galerii, aby dodać zdjęcia auta.', [
-      { text: 'Anuluj', style: 'cancel' },
-      { text: 'Ustawienia', onPress: () => Linking.openSettings() },
+    Alert.alert(copy.permissionTitle, copy.permissionBody, [
+      { text: copy.permissionCancel, style: 'cancel' },
+      { text: copy.permissionSettings, onPress: () => Linking.openSettings() },
     ]);
   }
   return ok;
@@ -82,9 +104,26 @@ function CapacityBar({
   );
 }
 
-export default function CarPhotoGrid({ images, imageByteSizes, onChange }: CarPhotoGridProps) {
+export default function CarPhotoGrid({ images, imageByteSizes, onChange, labels }: CarPhotoGridProps) {
   const colors = useCarScreenColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const copy = {
+    title: labels?.title ?? 'Zdjęcia auta',
+    lead: labels?.lead ?? 'Pierwsze zdjęcie to miniatura ogłoszenia. Przeciągnij strzałkami, aby zmienić kolejność.',
+    photosLabel: labels?.photosLabel ?? 'Liczba zdjęć',
+    photosSuffix: labels?.photosSuffix ?? 'szt.',
+    sizeLabel: labels?.sizeLabel ?? 'Rozmiar wysyłki',
+    sizeSuffix: labels?.sizeSuffix ?? 'MB',
+    coverBadge: labels?.coverBadge ?? 'Okładka',
+    addLabel: labels?.addLabel ?? 'Dodaj',
+    limitTitle: labels?.limitTitle ?? 'Limit zdjęć',
+    limitBody: labels?.limitBody ?? `Możesz dodać maksymalnie ${OFFER_MEDIA_MAX_IMAGES} zdjęć.`,
+    permissionTitle: labels?.permissionTitle ?? 'Brak dostępu',
+    permissionBody: labels?.permissionBody ?? 'Zezwól na dostęp do galerii, aby dodać zdjęcia auta.',
+    permissionCancel: labels?.permissionCancel ?? 'Anuluj',
+    permissionSettings: labels?.permissionSettings ?? 'Ustawienia',
+    storageTitle: labels?.storageTitle ?? 'Limit miejsca',
+  };
   const { width } = useWindowDimensions();
   const [sizing, setSizing] = useState(false);
   const squareSize = (width - 40 - GRID_GAP * (COLUMNS - 1)) / COLUMNS;
@@ -94,10 +133,10 @@ export default function CarPhotoGrid({ images, imageByteSizes, onChange }: CarPh
 
   const pickImages = async () => {
     if (slotsLeft <= 0) {
-      Alert.alert('Limit zdjęć', `Możesz dodać maksymalnie ${OFFER_MEDIA_MAX_IMAGES} zdjęć.`);
+      Alert.alert(copy.limitTitle, copy.limitBody);
       return;
     }
-    const permitted = await ensureMediaLibraryPermission();
+    const permitted = await ensureMediaLibraryPermission(copy);
     if (!permitted) return;
 
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -124,7 +163,7 @@ export default function CarPhotoGrid({ images, imageByteSizes, onChange }: CarPh
           newUri: asset.uri,
         });
         if (!accept.ok) {
-          Alert.alert('Limit miejsca', formatMediaCapacityAlert(accept.reason));
+          Alert.alert(copy.storageTitle, formatMediaCapacityAlert(accept.reason));
           break;
         }
         if (!nextImages.includes(asset.uri)) {
@@ -155,11 +194,11 @@ export default function CarPhotoGrid({ images, imageByteSizes, onChange }: CarPh
 
   return (
     <View style={styles.root}>
-      <Text style={styles.title}>Zdjęcia auta</Text>
-      <Text style={styles.lead}>Pierwsze zdjęcie to miniatura ogłoszenia. Przeciągnij strzałkami, aby zmienić kolejność.</Text>
+      <Text style={styles.title}>{copy.title}</Text>
+      <Text style={styles.lead}>{copy.lead}</Text>
 
-      <CapacityBar label="Liczba zdjęć" current={images.length} max={OFFER_MEDIA_MAX_IMAGES} suffix="szt." styles={styles} />
-      <CapacityBar label="Rozmiar wysyłki" current={totalMb} max={OFFER_MEDIA_UPLOAD_CAP_MB} suffix="MB" styles={styles} />
+      <CapacityBar label={copy.photosLabel} current={images.length} max={OFFER_MEDIA_MAX_IMAGES} suffix={copy.photosSuffix} styles={styles} />
+      <CapacityBar label={copy.sizeLabel} current={totalMb} max={OFFER_MEDIA_UPLOAD_CAP_MB} suffix={copy.sizeSuffix} styles={styles} />
 
       <View style={[styles.grid, { minHeight: Math.ceil(Math.max(images.length + 1, 1) / COLUMNS) * (squareSize + GRID_GAP) }]}>
         {images.map((uri, index) => (
@@ -167,7 +206,7 @@ export default function CarPhotoGrid({ images, imageByteSizes, onChange }: CarPh
             <Image source={{ uri }} style={styles.tileImage} />
             {index === 0 ? (
               <View style={styles.coverBadge}>
-                <Text style={styles.coverBadgeText}>Okładka</Text>
+                <Text style={styles.coverBadgeText}>{copy.coverBadge}</Text>
               </View>
             ) : null}
             <Pressable onPress={() => removeImage(index)} style={styles.removeBtn} hitSlop={8}>
@@ -194,7 +233,7 @@ export default function CarPhotoGrid({ images, imageByteSizes, onChange }: CarPh
             ) : (
               <>
                 <Text style={styles.addPlus}>+</Text>
-                <Text style={styles.addLabel}>Dodaj</Text>
+                <Text style={styles.addLabel}>{copy.addLabel}</Text>
               </>
             )}
           </Pressable>

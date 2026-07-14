@@ -269,10 +269,12 @@ const FloatingNextButton = (props: any) => {
         return;
       }
       const store = useOfferStore.getState();
-      const shouldStartFresh =
-        store.needsFreshAddOfferEntry && !hasAddOfferDraftProgress(store.draft);
-      if (shouldStartFresh) {
-        store.clearFreshAddOfferEntry();
+      if (store.needsFreshAddOfferEntry) {
+        if (hasAddOfferDraftProgress(store.draft)) {
+          store.resetDraft();
+        } else {
+          store.clearFreshAddOfferEntry();
+        }
         store.setNavigationGate(null);
         navigation.navigate('Dodaj', { screen: 'Step1' });
         return;
@@ -979,7 +981,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
         listeners={{
           tabPress: () => setActiveVertical('home'),
         }}
-        options={{ tabBarLabel: t('tabs.radar'), tabBarIcon: ({color}) => <Ionicons name="map" size={26} color={color} /> }}
+        options={{ tabBarLabel: t('tabs.home'), tabBarIcon: ({ color }) => <Ionicons name="home" size={26} color={color} /> }}
       >
         {props => <RadarHomeScreen {...props} splashDone={splashDone} />}
       </Tab.Screen>

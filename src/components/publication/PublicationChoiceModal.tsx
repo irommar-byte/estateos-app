@@ -13,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import type { CreatePublicationRedemption } from '../../contracts/offerPublicationContract';
 import type { PublicationBonusCouponOption } from '../../services/publicationBonusCoupons';
 import { getCouponPurposeStripVisual } from '../../utils/profilePromoCouponUi';
+import { safeIoniconName } from '../../utils/safeIoniconName';
 
 export type PublicationChoiceConfirm =
   | { action: 'publish'; redemption: CreatePublicationRedemption }
@@ -82,7 +83,7 @@ function CouponRow({
       ]}
     >
       <View style={[styles.couponIcon, { backgroundColor: coupon.iconBg }]}>
-        <Ionicons name={coupon.iconName as any} size={20} color="#FFFFFF" />
+        <Ionicons name={safeIoniconName(coupon.iconName, 'sparkles')} size={20} color="#FFFFFF" />
       </View>
       <View style={styles.couponBody}>
         <Text style={[styles.couponTitle, { color: isDark ? '#FFF' : '#000' }]} numberOfLines={1}>
@@ -92,7 +93,7 @@ function CouponRow({
           {coupon.subtitle}
         </Text>
         <View style={[styles.purposeMini, { backgroundColor: strip.stripBg }]}>
-          <Ionicons name={(coupon.purposeIcon || strip.iconName) as any} size={10} color="#FFF" />
+          <Ionicons name={safeIoniconName(coupon.purposeIcon || strip.iconName, 'pricetag')} size={10} color="#FFF" />
           <Text style={styles.purposeMiniText}>{coupon.purposeLabel || '—'}</Text>
         </View>
       </View>

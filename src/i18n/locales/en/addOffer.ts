@@ -362,6 +362,8 @@ export const addOffer = {
     },
     coverBadge: 'COVER',
     gallery: {
+      lead: 'The first photo is the listing cover. Use arrows to reorder.',
+      addLabel: 'Add',
       open: 'Open gallery',
       addMore: 'Add more photos',
       sizing: 'Calculating space (preview conversion)...',

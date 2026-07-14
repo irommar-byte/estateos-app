@@ -245,6 +245,7 @@ export default function CarDetailScreen({ navigation, route }: CarDetailScreenPr
               <SpecRow icon={Fuel} label="Paliwo" value={car.fuelType} />
               <SpecRow icon={Settings2} label="Skrzynia" value={car.transmission} />
               <SpecRow icon={Settings2} label="Nadwozie" value={car.bodyType} />
+              {car.exteriorColor ? <SpecRow icon={Settings2} label="Kolor" value={car.exteriorColor} /> : null}
               {car.generation ? <SpecRow icon={Settings2} label="Generacja" value={car.generation} /> : null}
               {car.enginePower ? <SpecRow icon={Settings2} label="Moc" value={car.enginePower} /> : null}
               {car.trimVersion ? <SpecRow icon={Settings2} label="Wersja" value={car.trimVersion} /> : null}

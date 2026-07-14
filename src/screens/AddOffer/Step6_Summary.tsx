@@ -262,6 +262,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const [loading, setLoading] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState('');
   const pendingPlusCreditRef = useRef<PlusPublishContext | null>(null);
+  const publishedOfferIdRef = useRef<number | null>(null);
   const [publicationChoiceVisible, setPublicationChoiceVisible] = useState(false);
   const [publicationChoiceCoupons, setPublicationChoiceCoupons] = useState<
     Awaited<ReturnType<typeof gatherPublicationBonusCoupons>>['coupons']
@@ -299,8 +300,12 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   useFocusEffect(
     useCallback(() => {
       const store = useOfferStore.getState();
-      if (store.needsFreshAddOfferEntry && !hasAddOfferDraftProgress(store.draft)) {
-        store.clearFreshAddOfferEntry();
+      if (store.needsFreshAddOfferEntry) {
+        if (hasAddOfferDraftProgress(store.draft)) {
+          store.resetDraft();
+        } else {
+          store.clearFreshAddOfferEntry();
+        }
         // @ts-ignore — popToTop istnieje dla native-stack-navigator
         if (typeof (navigation as any).popToTop === 'function') {
           (navigation as any).popToTop();
@@ -372,6 +377,14 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     redemption?: CreatePublicationRedemption | null,
   ) => {
     if (loading) return;
+    if (publishedOfferIdRef.current != null) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert(
+        t('addOffer.step6.alerts.congratulations.title'),
+        t('addOffer.step6.alerts.congratulations.messageDefault'),
+      );
+      return;
+    }
 
     if (!isFinalDraftValid) {
       const firstInvalidStep = [1, 2, 3, 4, 5].find((step) => !isStepValid(step, draft)) || 1;
@@ -865,6 +878,25 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       }
       await refreshUser();
 
+      publishedOfferIdRef.current = createdOfferId;
+
+      const resetAfterPublish = () => {
+        resetDraft();
+        try {
+          if (typeof (navigation as any).popToTop === 'function') {
+            (navigation as any).popToTop();
+          } else {
+            navigation.dispatch(
+              CommonActions.reset({ index: 0, routes: [{ name: 'Step1' }] }),
+            );
+          }
+        } catch {
+          /* noop */
+        }
+      };
+
+      resetAfterPublish();
+
       // 4. SUKCES
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       void recordPositiveAppMoment('offer_published');
@@ -879,16 +911,6 @@ export default function Step6_Summary({ theme }: { theme: any }) {
             ? t('addOffer.step6.alerts.congratulations.messageWithLegal')
             : t('addOffer.step6.alerts.congratulations.messageDefault'),
           [{ text: t('addOffer.common.super'), onPress: () => {
-              resetDraft();
-              try {
-                if (typeof (navigation as any).popToTop === 'function') {
-                  (navigation as any).popToTop();
-                } else {
-                  navigation.dispatch(
-                    CommonActions.reset({ index: 0, routes: [{ name: 'Step1' }] }),
-                  );
-                }
-              } catch {}
               const rootNav = navigation.getParent?.();
               if (rootNav) {
                 rootNav.navigate('Radar');

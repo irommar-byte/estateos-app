@@ -90,10 +90,12 @@ import PolandScopeNote from '../components/PolandScopeNote';
 import JellyReveal from '../components/JellyReveal';
 import RadarOfferGallery, {
   type GalleryCountryFilter,
+  type GalleryOffer,
   type GalleryPropertyFilter,
   type GallerySortFilter,
   type GalleryTransactionFilter,
 } from '../components/radar/RadarOfferGallery';
+import { isOfferFeatured } from '../utils/listingPromotion';
 import RadarBrowseModeRail from '../components/radar/RadarBrowseModeRail';
 import RadarStatusBulb from '../components/radar/RadarStatusBulb';
 import { OfferMapMarkerPin } from '../components/radar/OfferMapMarkerPin';
@@ -1012,7 +1014,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [activeIndex, setActiveIndex] = useState(0);
   const [favorites, setFavorites] = useState<number[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(!!route?.params?.favoritesOnly);
-  const [radarBrowseMode, setRadarBrowseMode] = useState<'RADAR' | 'GALLERY'>('RADAR');
+  const [radarBrowseMode, setRadarBrowseMode] = useState<'RADAR' | 'GALLERY'>('GALLERY');
   const [galleryTransactionFilter, setGalleryTransactionFilter] = useState<GalleryTransactionFilter>('ALL');
   const [galleryCountryFilter, setGalleryCountryFilter] = useState<GalleryCountryFilter>('ALL');
   const [galleryPropertyFilter, setGalleryPropertyFilter] = useState<GalleryPropertyFilter>('ALL');
@@ -1244,7 +1246,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   );
   /** Bezpośrednio pod paskiem wyszukiwania — bez luki na mapę. */
   const browseChromeTop = useMemo(() => topBarTop + 52, [topBarTop]);
-  const isGalleryBrowse = !showOnlyFavorites && radarBrowseMode === 'GALLERY';
+  const isGalleryBrowse = !showOnlyFavorites && radarBrowseMode === 'GALLERY' && !showAreaPicker;
   const isGalleryLightChrome = isGalleryBrowse && !isDark;
   /** iOS: po wyjściu z Galerii MapView potrafi „zamrozić” gesty — odświeżamy je jednym cyklem. */
   const [mapInteract, setMapInteract] = useState(true);
@@ -2444,6 +2446,60 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     userLocation,
   ]);
 
+  /** Jak WWW: wyróżnione z katalogu po filtrach transakcji/kraju/typu — bez radaru, wyszukiwania i ukrywania własnych. */
+  const galleryFeaturedOffers = useMemo((): GalleryOffer[] => {
+    if (showOnlyFavorites || radarBrowseMode !== 'GALLERY') return [];
+
+    let base =
+      blockedIds.size > 0
+        ? catalogRawOffers.filter((o) => !isBlockedRawOffer(o, blockedIds))
+        : catalogRawOffers;
+    base = base.filter((o) => !isOfferClosed(o));
+
+    if (galleryTransactionFilter !== 'ALL') {
+      base = base.filter(
+        (o) => String(o.transactionType || '').toUpperCase() === galleryTransactionFilter,
+      );
+    }
+    if (galleryCountryFilter === 'PL') {
+      base = base.filter((o) => offerListingCountryIso(o) === 'PL');
+    } else if (galleryCountryFilter === 'ABROAD') {
+      base = base.filter((o) => {
+        const code = offerListingCountryIso(o);
+        return !!code && code !== 'PL';
+      });
+    }
+    if (galleryPropertyFilter !== 'ALL') {
+      const filterType =
+        galleryPropertyFilter === 'PREMISES' ? 'COMMERCIAL' : galleryPropertyFilter;
+      base = base.filter((o) =>
+        propertyTypeMatchesFilter(
+          String(o.propertyType || o.type || ''),
+          filterType as AdvancedFilters['propertyType'],
+        ),
+      );
+    }
+
+    return base
+      .filter((o) => isOfferFeatured(o))
+      .map((o) => mapRawOffer(o))
+      .filter((m): m is MapOffer => m !== null)
+      .sort(
+        (a, b) =>
+          Date.parse(String(b.raw?.promotedUntil || b.raw?.createdAt || 0)) -
+          Date.parse(String(a.raw?.promotedUntil || a.raw?.createdAt || 0)),
+      );
+  }, [
+    showOnlyFavorites,
+    radarBrowseMode,
+    catalogRawOffers,
+    blockedIds,
+    galleryTransactionFilter,
+    galleryCountryFilter,
+    galleryPropertyFilter,
+    mapRawOffer,
+  ]);
+
   const searchFooterMatchCount = useMemo(() => {
     if (normalizedSearchTokens.length === 0) return searchOnlyMatchCount;
     return activeOffers.length;
@@ -3413,6 +3469,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const openAdvancedMapAreaPicker = useCallback(() => {
     setAreaPickerReturnTo('ADVANCED');
     setShowAdvancedSearch(false);
+    setRadarBrowseMode('RADAR');
+    setShowRadarMatchesOnly(false);
     const baseCenter = userLocation || areaPickerDraft.center;
     setAreaPickerDraft((prev) => ({
       ...prev,
@@ -3789,6 +3847,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     setAreaPickerReturnTo('RADAR');
     pendingRadarCalibrationFiltersRef.current = currentFilters;
     setRadarFilters(currentFilters);
+    setRadarBrowseMode('RADAR');
+    setShowRadarMatchesOnly(false);
     const baseCenter = userLocation || areaPickerDraft.center;
     setAreaPickerDraft((prev) => ({
       ...prev,
@@ -4795,7 +4855,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         </Pressable>
       </View>
 
-      {!showOnlyFavorites && radarBrowseMode === 'GALLERY' && (
+      {!showOnlyFavorites && radarBrowseMode === 'GALLERY' && !showAreaPicker && (
         <Animated.View
           pointerEvents="auto"
           style={[
@@ -4810,6 +4870,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           <View style={[styles.galleryOverlayInner, { paddingTop: browseChromeTop }]}>
           <RadarOfferGallery
             offers={galleryOffers}
+            featuredOffers={galleryFeaturedOffers}
             isDark={isDark}
             bottomInset={bottomCardsInset + 64}
             favorites={favorites}

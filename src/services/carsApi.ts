@@ -12,6 +12,7 @@ export type CarListing = {
   fuelType: string;
   transmission: string;
   bodyType: string;
+  exteriorColor?: string;
   generation?: string;
   enginePower?: string;
   engineCapacity?: string;
@@ -29,6 +30,8 @@ export type CarListing = {
   restrictVehicleDocs?: boolean;
   imageUrl: string;
   images?: string[] | string;
+  promotedUntil?: string | null;
+  featured?: boolean;
   createdAt?: string;
   updatedAt?: string;
 };

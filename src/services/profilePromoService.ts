@@ -7,6 +7,7 @@ import {
   isWelcomeCouponRecord,
   welcomeCouponIdForUser,
 } from './welcomeCouponService';
+import { safeIoniconName } from '../utils/safeIoniconName';
 
 const localKey = (userId: string | number) => `@estateos_profile_promos_${userId}`;
 
@@ -89,7 +90,7 @@ function normalizePromoRow(raw: any): ProfilePromoCardRecord | null {
     pillColor: accent,
     pillBg: `${accent}24`,
     pillBorder: `${accent}55`,
-    iconName: String(raw?.iconName || 'sparkles'),
+    iconName: safeIoniconName(raw?.iconName, 'sparkles'),
     iconBg: accent,
     borderColor: `${accent}44`,
     peelHint: false,
@@ -235,7 +236,7 @@ export async function sendAdminProfilePromoCard(
     subtitle: payload.subtitle,
     meta: payload.meta || '',
     accentColor: payload.accentColor || '#AF52DE',
-    iconName: payload.iconName || 'sparkles',
+    iconName: safeIoniconName(payload.iconName, 'sparkles'),
     expiresAt: payload.expiresAt ?? null,
     templateId: payload.templateId ?? null,
     grantsFreeListing: payload.grantsFreeListing === true,

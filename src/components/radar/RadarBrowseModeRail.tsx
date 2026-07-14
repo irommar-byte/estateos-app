@@ -40,36 +40,6 @@ export default function RadarBrowseModeRail({
         <View style={styles.row}>
           <Pressable
             accessibilityRole="tab"
-            accessibilityState={{ selected: mode === 'RADAR' }}
-            onPress={() => {
-              if (mode === 'RADAR') return;
-              Haptics.selectionAsync();
-              onSelectRadar();
-            }}
-            style={({ pressed }) => [
-              styles.half,
-              mode === 'RADAR' && styles.halfActiveRadar,
-              pressed && { opacity: 0.88 },
-            ]}
-          >
-            <Ionicons
-              name={mode === 'RADAR' ? 'map' : 'map-outline'}
-              size={16}
-              color={mode === 'RADAR' ? '#10b981' : '#8E8E93'}
-            />
-            <Text
-              style={[
-                styles.label,
-                { color: mode === 'RADAR' ? (isDark ? '#C9F9E7' : '#0B5B43') : '#8E8E93' },
-              ]}
-              numberOfLines={1}
-            >
-              {radarLabel}
-            </Text>
-          </Pressable>
-          <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]} />
-          <Pressable
-            accessibilityRole="tab"
             accessibilityState={{ selected: mode === 'GALLERY' }}
             onPress={() => {
               if (mode === 'GALLERY') return;
@@ -95,6 +65,36 @@ export default function RadarBrowseModeRail({
               numberOfLines={1}
             >
               {galleryLabel}
+            </Text>
+          </Pressable>
+          <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]} />
+          <Pressable
+            accessibilityRole="tab"
+            accessibilityState={{ selected: mode === 'RADAR' }}
+            onPress={() => {
+              if (mode === 'RADAR') return;
+              Haptics.selectionAsync();
+              onSelectRadar();
+            }}
+            style={({ pressed }) => [
+              styles.half,
+              mode === 'RADAR' && styles.halfActiveRadar,
+              pressed && { opacity: 0.88 },
+            ]}
+          >
+            <Ionicons
+              name={mode === 'RADAR' ? 'map' : 'map-outline'}
+              size={16}
+              color={mode === 'RADAR' ? '#10b981' : '#8E8E93'}
+            />
+            <Text
+              style={[
+                styles.label,
+                { color: mode === 'RADAR' ? (isDark ? '#C9F9E7' : '#0B5B43') : '#8E8E93' },
+              ]}
+              numberOfLines={1}
+            >
+              {radarLabel}
             </Text>
           </Pressable>
         </View>

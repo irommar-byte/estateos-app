@@ -11,6 +11,7 @@ export type CarFormPayload = {
   fuelType: string;
   transmission: string;
   bodyType: string;
+  exteriorColor?: string;
   generation?: string;
   enginePower?: string;
   engineCapacity?: string;

@@ -35,6 +35,7 @@ import { pl } from '../../i18n/locales/pl';
 import { en } from '../../i18n/locales/en';
 import { useAuthStore } from '../../store/useAuthStore';
 import { generateListingDescriptionWithGpt } from '../../services/offerDescriptionAiService';
+import CarPhotoGrid from '../../components/cars/CarPhotoGrid';
 
 const Colors = { primary: '#10b981', aiGlow: '#8b5cf6', danger: '#ef4444', premiumDark: '#1C1C1E', premiumBorder: 'rgba(255,255,255,0.08)' };
 
@@ -793,74 +794,33 @@ export default function Step5_Media({ theme }: { theme: any }) {
         <View style={{ marginTop: 50 }} />
         <AddOfferStepper currentStep={5} draft={draft} theme={theme} navigation={navigation} />
         <Text style={{ fontSize: 34, fontWeight: '800', marginBottom: 30, color: theme.text }}>{translate('addOffer.step5.header')}</Text>
-        
-        <View style={[styles.limitsDashboard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.05)' }]}>
-            <CapacityBar label={translate('addOffer.step5.capacity.photos')} current={displayImages.length} max={MAX_IMAGES} suffix={translate('addOffer.step5.capacity.suffixPhotos')} theme={theme} />
-            <CapacityBar label={translate('addOffer.step5.capacity.diskSpace')} current={usedMB} max={MAX_MB} suffix={translate('addOffer.step5.capacity.suffixMb')} theme={theme} />
-            {estimatedCount > 0 && (
-              <Text style={[styles.capacityHint, { color: theme.subtitle }]}>
-                {translate('addOffer.step5.capacity.estimatedSizeHint', {
-                  count: estimatedCount,
-                  filesLabel:
-                    estimatedCount === 1
-                      ? translate('addOffer.step5.capacity.estimatedSizeFileOne')
-                      : translate('addOffer.step5.capacity.estimatedSizeFileMany'),
-                })}
-              </Text>
-            )}
-          </View>
 
-          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 5 }}>
-            {translate('addOffer.step5.sections.addPhotos')}
-          </Text>
+        <CarPhotoGrid
+          images={draftImages}
+          imageByteSizes={imageSizes}
+          onChange={(nextImages, nextSizes) => updateDraft({ images: nextImages, imageByteSizes: nextSizes })}
+          labels={{
+            title: translate('addOffer.step5.sections.addPhotos'),
+            lead: translate('addOffer.step5.gallery.lead'),
+            photosLabel: translate('addOffer.step5.capacity.photos'),
+            photosSuffix: translate('addOffer.step5.capacity.suffixPhotos'),
+            sizeLabel: translate('addOffer.step5.capacity.diskSpace'),
+            sizeSuffix: translate('addOffer.step5.capacity.suffixMb'),
+            coverBadge: translate('addOffer.step5.coverBadge'),
+            addLabel: translate('addOffer.step5.gallery.addLabel'),
+            limitTitle: translate('addOffer.step5.alerts.photoLimit.title'),
+            limitBody: translate('addOffer.step5.alerts.photoLimit.message'),
+            permissionTitle: translate('addOffer.step5.alerts.photoAccess.title'),
+            permissionBody: translate('addOffer.step5.alerts.photoAccess.message'),
+            permissionCancel: translate('addOffer.common.cancel'),
+            permissionSettings: translate('addOffer.common.settings'),
+            storageTitle: translate('addOffer.step5.alerts.storageLimit.title'),
+          }}
+        />
 
-          {displayImages.length > 0 && (
-            <View style={[styles.gridContainer, { height: gridHeight }]}>
-              {displayImages.map((uri: string, index: number) => (
-                <DraggableSquare
-                  key={uri}
-                  uri={uri}
-                  index={index}
-                  total={displayImages.length}
-                  onDragStart={handleDragStart}
-                  onDragEnd={handleDragEnd}
-                  onHoverSwap={handleHoverSwap}
-                  onRemove={removeImage}
-                  theme={theme}
-                  progress={uploadProgress[uri] ?? 100}
-                  squareSize={squareSize}
-                />
-              ))}
-            </View>
-          )}
-
-          <View style={styles.mediaActionsRow}>
-            <View style={styles.mediaActionFlex}>
-              <AppleHover onPress={pickGallery} scaleTo={0.98}>
-                <View
-                  style={[
-                    styles.addMediaBtn,
-                    styles.mediaActionBtn,
-                    { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)', opacity: sizingGallery ? 0.65 : 1 },
-                  ]}
-                >
-                  {sizingGallery ? (
-                    <ActivityIndicator color={theme.text} style={{ marginRight: 8 }} />
-                  ) : (
-                    <Ionicons name="camera" size={22} color={theme.text} style={{ marginRight: 8 }} />
-                  )}
-                  <Text style={[styles.mediaActionText, { color: theme.text }]} numberOfLines={2}>
-                    {sizingGallery
-                      ? translate('addOffer.step5.gallery.sizing')
-                      : displayImages.length > 0
-                        ? translate('addOffer.step5.gallery.addMore')
-                        : translate('addOffer.step5.gallery.open')}
-                  </Text>
-                </View>
-              </AppleHover>
-            </View>
-            <View style={styles.mediaActionFlex}>
-              <AppleHover onPress={() => setProPhotoSessionOpen(true)} scaleTo={0.98}>
+        <View style={[styles.mediaActionsRow, { marginTop: 14 }]}>
+          <View style={styles.mediaActionFlex}>
+            <AppleHover onPress={() => setProPhotoSessionOpen(true)} scaleTo={0.98}>
                 <View
                   style={[
                     styles.proSessionBtn,
@@ -878,7 +838,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
                 </View>
               </AppleHover>
             </View>
-          </View>
+        </View>
 
           <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 15 }}>
             {translate('addOffer.step5.sections.floorPlan')}

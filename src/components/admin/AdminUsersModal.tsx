@@ -489,7 +489,7 @@ export default function AdminUsersModal({ visible, onClose, onOpenUser, theme }:
                 <Text style={[styles.rolePillText, { color: role.color }]}>{role.label}</Text>
               </View>
               {verified ? (
-                <Ionicons name="checkmark-seal" size={14} color="#34C759" />
+                <Ionicons name="shield-checkmark" size={14} color="#34C759" />
               ) : null}
             </View>
             <Text style={[styles.userSub, { color: colors.secondary }]} numberOfLines={1}>

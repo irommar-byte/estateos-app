@@ -13,15 +13,18 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import type { useI18n } from '../../i18n';
 import type { AppLocale } from '../../i18n';
 import { isFavoriteId } from '../../utils/favoritesStorage';
 import AdvancedFilterSegment from '../AdvancedFilterSegment';
 import { resolveOfferPriceDiscount } from '../../utils/offerPriceDiscount';
+import { isOfferFeatured } from '../../utils/listingPromotion';
+import FeaturedOfferSpotlight from './FeaturedOfferSpotlight';
+import { carCardElevation, useCarScreenTheme, type CarScreenColors } from '../../theme/carScreenTheme';
+
+export type GalleryViewMode = 'list' | 'grid';
 
 export type GalleryTransactionFilter = 'ALL' | 'RENT' | 'SELL';
 export type GalleryCountryFilter = 'ALL' | 'PL' | 'ABROAD';
@@ -46,6 +49,8 @@ const GALLERY_PAGE_SIZE = 20;
 
 type Props = {
   offers: GalleryOffer[];
+  /** Wyróżnione z pełnego katalogu (filtry galerii, bez wyszukiwania/radaru/wykluczenia własnych). */
+  featuredOffers?: GalleryOffer[];
   isDark: boolean;
   bottomInset: number;
   favorites: number[];
@@ -175,6 +180,7 @@ function MiniChip({
 
 export default function RadarOfferGallery({
   offers,
+  featuredOffers: featuredOffersProp,
   isDark,
   bottomInset,
   favorites,
@@ -201,12 +207,20 @@ export default function RadarOfferGallery({
   t,
 }: Props) {
   const { width } = useWindowDimensions();
+  const { colors, elevation, isDark: _carIsDark } = useCarScreenTheme();
   const listRef = useRef<FlatList<GalleryOffer>>(null);
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+  const [featuredSpotlightBottom, setFeaturedSpotlightBottom] = useState(420);
+  const featuredSpotlightVisible = scrollY < Math.max(featuredSpotlightBottom - 72, 0);
+  const isTabletLike = width >= 600;
+  const [viewMode, setViewMode] = useState<GalleryViewMode>(isTabletLike ? 'grid' : 'list');
   const [page, setPage] = useState(1);
-  const gap = 10;
-  const horizontalPad = 16;
-  const cardWidth = (width - horizontalPad * 2 - gap) / 2;
+  const gap = 14;
+  const horizontalPad = 20;
+  const isGridView = viewMode === 'grid';
+  const cardWidth = isGridView ? (width - horizontalPad * 2 - gap) / 2 : width - horizontalPad * 2;
+  const imageAspectRatio = isGridView ? 4 / 3 : 16 / 10;
+  const catalogStyles = useMemo(() => createCatalogStyles(colors, isDark), [colors, isDark]);
 
   const wrapFilterChange = useCallback(<T,>(fn: (v: T) => void, value: T) => {
     animateFilterChange();
@@ -235,22 +249,22 @@ export default function RadarOfferGallery({
     [t],
   );
 
-  const propertyOptions = useMemo(
-    () =>
-      [
-        ['ALL', 'apps-outline', t('radar.home.propertyAll')],
-        ['FLAT', 'business-outline', t('radar.home.propertyFlat')],
-        ['HOUSE', 'home-outline', t('radar.home.propertyHouse')],
-        ['PLOT', 'map-outline', t('radar.home.propertyPlot')],
-        ['PREMISES', 'storefront-outline', t('radar.home.propertyPremises')],
-      ] as const,
-    [t],
-  );
 
-  const filterKey = `${transactionFilter}-${countryFilter}-${propertyFilter}-${sortFilter}`;
+  const filterKey = `${transactionFilter}-${countryFilter}-${propertyFilter}-${sortFilter}-${viewMode}`;
   const totalCount = offers.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / GALLERY_PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
+
+  const featuredOffers = useMemo(() => {
+    const pool = featuredOffersProp ?? offers;
+    return pool
+      .filter((item) => isOfferFeatured(item.raw))
+      .sort(
+        (a, b) =>
+          Date.parse(String(b.raw?.promotedUntil || b.raw?.createdAt || 0)) -
+          Date.parse(String(a.raw?.promotedUntil || a.raw?.createdAt || 0)),
+      );
+  }, [featuredOffersProp, offers]);
 
   useEffect(() => {
     setPage(1);
@@ -277,47 +291,108 @@ export default function RadarOfferGallery({
   const listHeader = useMemo(
     () => (
       <View style={styles.headerBlock}>
-        <View style={styles.countRow}>
-          <Text style={[styles.countText, { color: isDark ? 'rgba(255,255,255,0.72)' : '#64748B' }]}>
+        <View style={[catalogStyles.sectionHead, { paddingHorizontal: horizontalPad }]}>
+          <Text style={catalogStyles.eyebrow}>{t('radar.home.galleryEyebrow')}</Text>
+          <Text style={catalogStyles.sectionTitle}>{t('radar.home.galleryCatalogTitle')}</Text>
+          <Text style={catalogStyles.countLine}>
             {t('radar.home.galleryResults', { count: String(offers.length) })}
           </Text>
-          <View style={styles.countActions}>
-            {hasActiveFilters ? (
-              <Pressable
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  animateFilterChange();
-                  onClearFilters();
-                }}
-                hitSlop={8}
-                style={({ pressed }) => [styles.clearLink, pressed && { opacity: 0.7 }]}
-              >
-                <Ionicons name="close-circle-outline" size={14} color="#FF3B30" />
-                <Text style={styles.clearLinkText}>{t('radar.home.galleryClearFilters')}</Text>
-              </Pressable>
-            ) : null}
+        </View>
+
+        {featuredOffers.length > 0 ? (
+          <View
+            onLayout={(event) => {
+              const { y, height } = event.nativeEvent.layout;
+              setFeaturedSpotlightBottom(y + height);
+            }}
+          >
+            <FeaturedOfferSpotlight
+              offers={featuredOffers}
+              isDark={isDark}
+              title={t('radar.home.galleryFeaturedSectionTitle')}
+              lead={t('radar.home.galleryFeaturedLead')}
+              badgeLabel={t('radar.home.galleryFeaturedBadge')}
+              formatPrice={formatPrice}
+              onPressOffer={onPressOffer}
+              autoRotateEnabled={featuredSpotlightVisible}
+            />
+          </View>
+        ) : null}
+
+        <View style={[catalogStyles.viewToggleRow, { paddingHorizontal: horizontalPad, marginBottom: 4 }]}>
+          <Text style={catalogStyles.viewToggleLabel}>{t('radar.home.galleryViewLabel')}</Text>
+          <View style={catalogStyles.viewToggleGroup}>
             <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: viewMode === 'list' }}
               onPress={() => {
+                if (viewMode === 'list') return;
                 Haptics.selectionAsync();
                 animateFilterChange();
-                setFiltersExpanded((v) => !v);
+                setViewMode('list');
               }}
-              hitSlop={8}
-              style={({ pressed }) => [styles.expandBtn, pressed && { opacity: 0.7 }]}
+              style={[catalogStyles.viewToggleBtn, viewMode === 'list' && catalogStyles.viewToggleBtnActive]}
             >
-              <Text style={[styles.expandBtnText, { color: GALLERY_ACCENT }]}>
-                {filtersExpanded ? t('radar.home.galleryCollapseFilters') : t('radar.home.galleryExpandFilters')}
-              </Text>
               <Ionicons
-                name={filtersExpanded ? 'chevron-up' : 'chevron-down'}
-                size={14}
-                color={GALLERY_ACCENT}
+                name={viewMode === 'list' ? 'list' : 'list-outline'}
+                size={16}
+                color={viewMode === 'list' ? colors.chipActiveText : colors.muted}
               />
+              <Text
+                style={[
+                  catalogStyles.viewToggleBtnLabel,
+                  viewMode === 'list' && catalogStyles.viewToggleBtnLabelActive,
+                ]}
+              >
+                {t('radar.home.galleryViewList')}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: viewMode === 'grid' }}
+              onPress={() => {
+                if (viewMode === 'grid') return;
+                Haptics.selectionAsync();
+                animateFilterChange();
+                setViewMode('grid');
+              }}
+              style={[catalogStyles.viewToggleBtn, viewMode === 'grid' && catalogStyles.viewToggleBtnActive]}
+            >
+              <Ionicons
+                name={viewMode === 'grid' ? 'grid' : 'grid-outline'}
+                size={16}
+                color={viewMode === 'grid' ? colors.chipActiveText : colors.muted}
+              />
+              <Text
+                style={[
+                  catalogStyles.viewToggleBtnLabel,
+                  viewMode === 'grid' && catalogStyles.viewToggleBtnLabelActive,
+                ]}
+              >
+                {t('radar.home.galleryViewGrid')}
+              </Text>
             </Pressable>
           </View>
         </View>
 
-        <View style={styles.segmentWrap}>
+        {hasActiveFilters ? (
+          <View style={[styles.countRow, { paddingHorizontal: horizontalPad, justifyContent: 'flex-end' }]}>
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                animateFilterChange();
+                onClearFilters();
+              }}
+              hitSlop={8}
+              style={({ pressed }) => [styles.clearLink, pressed && { opacity: 0.7 }]}
+            >
+              <Ionicons name="close-circle-outline" size={14} color="#FF3B30" />
+              <Text style={styles.clearLinkText}>{t('radar.home.galleryClearFilters')}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={{ paddingHorizontal: horizontalPad }}>
           <AdvancedFilterSegment
             options={transactionOptions}
             value={transactionFilter}
@@ -328,51 +403,6 @@ export default function RadarOfferGallery({
             isDark={isDark}
           />
         </View>
-
-        {filtersExpanded ? (
-          <View style={styles.expandedFilters}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              <MiniChip
-                label={t('radar.home.galleryFilterAll')}
-                icon="earth-outline"
-                active={countryFilter === 'ALL'}
-                accent={GALLERY_ACCENT}
-                isDark={isDark}
-                onPress={() => wrapFilterChange(onCountryFilterChange, 'ALL')}
-              />
-              <MiniChip
-                label={t('radar.home.galleryFilterPoland')}
-                icon="flag-outline"
-                active={countryFilter === 'PL'}
-                accent={SELL_COLOR}
-                isDark={isDark}
-                onPress={() => wrapFilterChange(onCountryFilterChange, 'PL')}
-              />
-              <MiniChip
-                label={t('radar.home.galleryFilterAbroad')}
-                icon="airplane-outline"
-                active={countryFilter === 'ABROAD'}
-                accent={ABROAD_COLOR}
-                isDark={isDark}
-                onPress={() => wrapFilterChange(onCountryFilterChange, 'ABROAD')}
-              />
-            </ScrollView>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {propertyOptions.map(([key, icon, label]) => (
-                <MiniChip
-                  key={key}
-                  label={label}
-                  icon={icon}
-                  active={propertyFilter === key}
-                  accent={GALLERY_ACCENT}
-                  isDark={isDark}
-                  onPress={() => wrapFilterChange(onPropertyFilterChange, key)}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
           {sortOptions.map((opt) => (
@@ -398,35 +428,34 @@ export default function RadarOfferGallery({
       </View>
     ),
     [
-      countryFilter,
-      filtersExpanded,
+      featuredOffers,
+      featuredSpotlightVisible,
       hasActiveFilters,
       isDark,
       offers.length,
       onClearFilters,
-      onCountryFilterChange,
-      onPropertyFilterChange,
+      onPressOffer,
       onSortFilterChange,
       onTransactionFilterChange,
-      propertyFilter,
-      propertyOptions,
       sortFilter,
       sortOptions,
       t,
       transactionFilter,
       transactionOptions,
       userLocation,
+      viewMode,
+      formatPrice,
+      catalogStyles,
+      colors,
+      horizontalPad,
       wrapFilterChange,
     ],
   );
 
   const renderItem = ({ item, index }: { item: GalleryOffer; index: number }) => {
     const tx = String(item.raw?.transactionType || '').toUpperCase();
-    const txColor = tx === 'RENT' ? RENT_COLOR : SELL_COLOR;
     const txLabel =
       tx === 'RENT' ? t('radar.home.transactionRentShort') : t('radar.home.transactionSellShort');
-    const countryCode = offerCountryCode(item.raw);
-    const countryLabel = offerCountryLabel(item.raw);
     const cityLine = [item.type, String(item.raw?.district || item.raw?.city || '').trim()]
       .filter(Boolean)
       .join(' · ');
@@ -435,75 +464,57 @@ export default function RadarOfferGallery({
     const priceDiscount = resolveOfferPriceDiscount(item.raw);
     const verified = isOfferVerified(item.id, item.raw);
     const publishLabel = formatPublishDate(item.raw);
-    const isLeftColumn = index % 2 === 0;
+    const featured = isOfferFeatured(item.raw);
+    const isLeftColumn = isGridView ? index % 2 === 0 : true;
     const distanceKmValue =
       userLocation && Number.isFinite(item.lat) && Number.isFinite(item.lng)
         ? haversineKm(userLocation.latitude, userLocation.longitude, item.lat, item.lng)
         : null;
-    const distanceBadgeLabel =
-      distanceKmValue != null
-        ? t('radar.home.galleryDistanceBadge', { distance: formatApproxKm(distanceKmValue, locale) })
-        : null;
 
     return (
-      <View
-        style={[
-          styles.cardShell,
-          isDark ? styles.cardShellDark : styles.cardShellLight,
+      <Pressable
+        onPress={() => {
+          Haptics.selectionAsync();
+          onPressOffer(item);
+        }}
+        style={({ pressed }) => [
+          catalogStyles.card,
+          elevation.card,
           {
             width: cardWidth,
-            marginRight: isLeftColumn ? gap : 0,
+            marginRight: isGridView && isLeftColumn ? gap : 0,
+            marginBottom: gap,
+            alignSelf: isGridView ? undefined : 'center',
+            opacity: pressed ? 0.94 : 1,
+            transform: [{ scale: pressed ? 0.99 : 1 }],
           },
         ]}
       >
-        <Pressable
-          onPress={() => {
-            Haptics.selectionAsync();
-            onPressOffer(item);
-          }}
-          style={({ pressed }) => [
-            styles.cardSurface,
-            isDark ? styles.cardSurfaceDark : styles.cardSurfaceLight,
-            pressed && (isDark ? styles.cardPressedDark : styles.cardPressedLight),
-          ]}
-        >
-        <View style={styles.imageWrap}>
+        <View style={catalogStyles.cardImageWrap}>
           {item.image ? (
-            <Image source={{ uri: item.image }} style={styles.image} contentFit="cover" transition={240} />
-          ) : (
-            <LinearGradient
-              colors={isDark ? ['#3A3A3C', '#2C2C2E'] : ['#E8EDF4', '#D5DCE8']}
-              style={[styles.image, styles.imageFallback]}
-            >
-              <Ionicons name="home-outline" size={26} color="#94A3B8" />
-            </LinearGradient>
-          )}
-          <LinearGradient
-            colors={['rgba(0,0,0,0.02)', 'transparent', 'rgba(0,0,0,0.82)']}
-            locations={[0, 0.35, 1]}
-            style={styles.imageGradient}
-            pointerEvents="none"
-          />
-          {!isDark ? (
-            <LinearGradient
-              colors={['rgba(255,255,255,0.28)', 'transparent']}
-              style={styles.imageSheen}
-              pointerEvents="none"
+            <Image
+              source={{ uri: item.image }}
+              style={[catalogStyles.cardImage, { aspectRatio: imageAspectRatio }]}
+              contentFit="cover"
+              transition={200}
             />
-          ) : null}
-          <View style={[styles.txBadge, { backgroundColor: txColor }, !isDark && styles.txBadgeLight]}>
-            <Text style={styles.txBadgeText}>{txLabel.toUpperCase()}</Text>
+          ) : (
+            <View style={[catalogStyles.cardImage, catalogStyles.cardImageFallback, { aspectRatio: imageAspectRatio }]}>
+              <Ionicons name="home-outline" size={28} color={colors.muted} />
+            </View>
+          )}
+          <View style={[catalogStyles.txChip, tx === 'RENT' ? catalogStyles.txChipRent : catalogStyles.txChipSell]}>
+            <Text style={catalogStyles.txChipText}>{txLabel.toUpperCase()}</Text>
           </View>
-          {countryCode !== 'PL' ? (
-            <View style={[styles.countryBadge, !isDark && styles.countryBadgeLight]}>
-              <Text style={styles.countryBadgeText} numberOfLines={1}>
-                {countryLabel}
-              </Text>
+          {featured ? (
+            <View style={catalogStyles.featuredChip}>
+              <Ionicons name="sparkles" size={9} color="#000" />
+              <Text style={catalogStyles.featuredChipText}>{t('radar.home.galleryFeaturedBadge')}</Text>
             </View>
           ) : null}
           {verified ? (
-            <View style={[styles.legalBadge, isDark ? styles.legalBadgeDark : styles.legalBadgeLight]}>
-              <Ionicons name="shield-checkmark" size={11} color={isDark ? '#34d399' : '#047857'} />
+            <View style={catalogStyles.verifiedChip}>
+              <Ionicons name="shield-checkmark" size={11} color="#34D399" />
             </View>
           ) : null}
           <Pressable
@@ -513,57 +524,37 @@ export default function RadarOfferGallery({
               onToggleFavorite(Number(item.id));
             }}
             hitSlop={10}
-            style={styles.favBtnOuter}
+            style={catalogStyles.favBtn}
           >
-            <BlurView intensity={isDark ? 50 : 62} tint="dark" style={[styles.favBtn, !isDark && styles.favBtnLight]}>
-              <Ionicons name={fav ? 'heart' : 'heart-outline'} size={17} color={fav ? '#FF3B30' : '#FFFFFF'} />
-            </BlurView>
+            <Ionicons name={fav ? 'heart' : 'heart-outline'} size={18} color={fav ? '#FF3B30' : '#FFF'} />
           </Pressable>
-          <View style={styles.imageFooter}>
-            <View style={styles.priceRow}>
-              <Text style={styles.cardPrice} numberOfLines={1}>
-                {priceLabel}
-              </Text>
-              {priceDiscount.isDiscounted ? (
-                <View style={styles.discountBadge}>
-                  <Text style={styles.discountBadgeText}>−{priceDiscount.discountPercent}%</Text>
-                </View>
-              ) : null}
-            </View>
-            {distanceBadgeLabel ? (
-              <BlurView intensity={isDark ? 48 : 72} tint="dark" style={styles.distancePillLux}>
-                <Ionicons name="navigate" size={10} color="#A7F3D0" />
-                <Text style={styles.distancePillLuxText} numberOfLines={1}>
-                  {distanceBadgeLabel}
-                </Text>
-              </BlurView>
-            ) : null}
-          </View>
         </View>
-        <View style={[styles.cardBody, isDark ? styles.cardBodyDark : styles.cardBodyLight]}>
-          <Text style={[styles.cardTitle, isDark ? styles.cardTitleDark : styles.cardTitleLight]} numberOfLines={2}>
-            {String(item.raw?.title || cityLine || t('radar.home.locationFallback'))}
-          </Text>
-          <Text style={[styles.cardMeta, isDark ? styles.cardMetaDark : styles.cardMetaLight]} numberOfLines={1}>
+        <View style={[catalogStyles.cardBody, isGridView && catalogStyles.cardBodyCompact]}>
+          <Text style={catalogStyles.cardMeta} numberOfLines={1}>
             {cityLine}
           </Text>
-          <View style={styles.specRow}>
-            <View style={[styles.specPill, isDark ? styles.specPillDark : styles.specPillLight]}>
-              <Text style={[styles.specText, isDark ? styles.specTextDark : styles.specTextLight]}>{item.area}</Text>
-            </View>
-            {item.rooms ? (
-              <View style={[styles.specPill, isDark ? styles.specPillDark : styles.specPillLight]}>
-                <Text style={[styles.specText, isDark ? styles.specTextDark : styles.specTextLight]}>{item.rooms}</Text>
+          <Text style={catalogStyles.cardTitle} numberOfLines={isGridView ? 2 : 2}>
+            {String(item.raw?.title || t('radar.home.locationFallback'))}
+          </Text>
+          <Text style={catalogStyles.cardSub} numberOfLines={1}>
+            {[item.area, item.rooms].filter(Boolean).join(' · ')}
+            {distanceKmValue != null
+              ? ` · ~${formatApproxKm(distanceKmValue, locale)} km`
+              : ''}
+          </Text>
+          <View style={catalogStyles.priceRow}>
+            <Text style={catalogStyles.cardPrice}>{priceLabel}</Text>
+            {priceDiscount.isDiscounted ? (
+              <View style={catalogStyles.discountChip}>
+                <Text style={catalogStyles.discountChipText}>−{priceDiscount.discountPercent}%</Text>
               </View>
             ) : null}
           </View>
-          <View style={[styles.cardFooterDivider, isDark && styles.cardFooterDividerDark]} />
-          <Text style={[styles.cardFooterMeta, isDark ? styles.cardFooterMetaDark : styles.cardFooterMetaLight]} numberOfLines={1}>
+          <Text style={catalogStyles.cardFooter} numberOfLines={1}>
             ID {item.id} · {publishLabel.replace(/^[^:]+:\s*/, '')}
           </Text>
         </View>
-        </Pressable>
-      </View>
+      </Pressable>
     );
   };
 
@@ -662,17 +653,22 @@ export default function RadarOfferGallery({
       style={styles.root}
       data={paginatedOffers}
       keyExtractor={(item) => String(item.id)}
-      numColumns={2}
-      key={`gallery-grid-${filterKey}-p${safePage}`}
-      columnWrapperStyle={[styles.columnWrap, { paddingHorizontal: horizontalPad }]}
+      numColumns={isGridView ? 2 : 1}
+      key={`gallery-${viewMode}-${filterKey}-p${safePage}`}
+      columnWrapperStyle={
+        isGridView ? [catalogStyles.columnWrap, { paddingHorizontal: horizontalPad }] : undefined
+      }
       contentContainerStyle={{
-        paddingBottom: bottomInset + 20,
+        paddingBottom: bottomInset + 88,
+        paddingTop: 4,
         flexGrow: paginatedOffers.length === 0 ? 1 : undefined,
       }}
       ListHeaderComponent={listHeader}
       ListFooterComponent={listFooter}
       renderItem={renderItem}
       showsVerticalScrollIndicator={false}
+      onScroll={(event) => setScrollY(event.nativeEvent.contentOffset.y)}
+      scrollEventThrottle={16}
       refreshControl={
         onRefresh ? (
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GALLERY_ACCENT} />
@@ -730,6 +726,221 @@ export default function RadarOfferGallery({
       }
     />
   );
+}
+
+function createCatalogStyles(colors: CarScreenColors, isDark: boolean) {
+  return StyleSheet.create({
+    sectionHead: {
+      gap: 4,
+      marginBottom: 8,
+    },
+    eyebrow: {
+      color: colors.accentSoft,
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 2,
+      textTransform: 'uppercase',
+    },
+    sectionTitle: {
+      color: colors.text,
+      fontSize: 28,
+      fontWeight: '700',
+      letterSpacing: -0.5,
+      lineHeight: 34,
+    },
+    countLine: {
+      color: colors.muted,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    viewToggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    viewToggleLabel: {
+      color: colors.muted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+    },
+    viewToggleGroup: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    viewToggleBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.inputBorder,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+    },
+    viewToggleBtnActive: {
+      borderColor: colors.chipActiveBorder,
+      backgroundColor: colors.chipActiveBg,
+    },
+    viewToggleBtnLabel: {
+      color: colors.muted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 1.1,
+      textTransform: 'uppercase',
+    },
+    viewToggleBtnLabelActive: {
+      color: colors.chipActiveText,
+    },
+    columnWrap: {
+      gap: 0,
+    },
+    card: {
+      borderRadius: 16,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.cardBorder,
+      backgroundColor: isDark ? 'rgba(15,23,42,0.55)' : '#FFFFFF',
+      overflow: 'hidden',
+    },
+    cardImageWrap: {
+      position: 'relative',
+      backgroundColor: isDark ? '#1E293B' : '#E2E8F0',
+    },
+    cardImage: {
+      width: '100%',
+    },
+    cardImageFallback: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    txChip: {
+      position: 'absolute',
+      top: 10,
+      left: 10,
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    txChipRent: {
+      backgroundColor: 'rgba(10,132,255,0.92)',
+    },
+    txChipSell: {
+      backgroundColor: 'rgba(16,185,129,0.92)',
+    },
+    txChipText: {
+      color: '#FFF',
+      fontSize: 9,
+      fontWeight: '900',
+      letterSpacing: 0.6,
+    },
+    featuredChip: {
+      position: 'absolute',
+      top: 10,
+      right: 48,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      borderRadius: 999,
+      backgroundColor: '#FBBF24',
+    },
+    featuredChipText: {
+      color: '#000',
+      fontSize: 8,
+      fontWeight: '900',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    verifiedChip: {
+      position: 'absolute',
+      bottom: 10,
+      left: 10,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(0,0,0,0.45)',
+    },
+    favBtn: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(0,0,0,0.42)',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255,255,255,0.18)',
+    },
+    cardBody: {
+      paddingHorizontal: 12,
+      paddingTop: 11,
+      paddingBottom: 12,
+      gap: 4,
+    },
+    cardBodyCompact: {
+      paddingHorizontal: 10,
+      paddingTop: 9,
+      paddingBottom: 10,
+    },
+    cardMeta: {
+      color: colors.muted,
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 0.2,
+      textTransform: 'uppercase',
+    },
+    cardTitle: {
+      color: colors.text,
+      fontSize: 16,
+      fontWeight: '700',
+      lineHeight: 21,
+      letterSpacing: -0.3,
+    },
+    cardSub: {
+      color: colors.muted,
+      fontSize: 12,
+      fontWeight: '600',
+      lineHeight: 16,
+    },
+    priceRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 2,
+    },
+    cardPrice: {
+      color: colors.text,
+      fontSize: 18,
+      fontWeight: '800',
+      letterSpacing: -0.4,
+    },
+    discountChip: {
+      borderRadius: 999,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      backgroundColor: 'rgba(248,113,113,0.18)',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(248,113,113,0.45)',
+    },
+    discountChipText: {
+      color: '#FCA5A5',
+      fontSize: 10,
+      fontWeight: '900',
+    },
+    cardFooter: {
+      marginTop: 4,
+      color: colors.muted,
+      fontSize: 10,
+      fontWeight: '600',
+    },
+  });
 }
 
 const styles = StyleSheet.create({
@@ -1204,5 +1415,135 @@ const styles = StyleSheet.create({
   emptyResetText: {
     fontSize: 13,
     fontWeight: '700',
+  },
+  viewToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginRight: 8,
+  },
+  viewToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  viewToggleBtnLight: {
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+  },
+  viewToggleBtnDark: {
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  viewToggleBtnActive: {
+    borderColor: 'rgba(99,102,241,0.45)',
+  },
+  viewToggleLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  featuredBlock: {
+    marginBottom: 14,
+    gap: 8,
+  },
+  featuredTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+  },
+  featuredRow: {
+    gap: 10,
+    paddingRight: 4,
+  },
+  featuredCard: {
+    width: 168,
+    height: 196,
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  featuredCardLight: {
+    borderColor: 'rgba(245,158,11,0.35)',
+    backgroundColor: '#FFF7ED',
+  },
+  featuredCardDark: {
+    borderColor: 'rgba(251,191,36,0.35)',
+    backgroundColor: '#1C1917',
+  },
+  featuredImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  featuredImageFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(148,163,184,0.25)',
+  },
+  featuredGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 92,
+  },
+  featuredBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#FBBF24',
+  },
+  featuredBadgeText: {
+    color: '#000',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  featuredPrice: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 28,
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  featuredMeta: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 10,
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  featuredPill: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: '#FBBF24',
+  },
+  featuredPillText: {
+    color: '#000',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
 });

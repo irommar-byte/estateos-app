@@ -370,6 +370,8 @@ export const addOffer = {
     },
     coverBadge: 'OKŁADKA',
     gallery: {
+      lead: 'Pierwsze zdjęcie to okładka ogłoszenia. Strzałkami zmienisz kolejność.',
+      addLabel: 'Dodaj',
       open: 'Otwórz galerię',
       addMore: 'Dodaj kolejne zdjęcia',
       sizing: 'Liczenie miejsca (konwersja podglądowa)...',

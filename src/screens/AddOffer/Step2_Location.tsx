@@ -735,10 +735,6 @@ export default function Step2_Location({ theme }: { theme: any }) {
         }),
       );
 
-      if (!resolveIsExactLocation(currentDraft.isExactLocation)) {
-        store.updateDraft({ isExactLocation: true });
-      }
-
       const street = String(useOfferStore.getState().draft.street || '').trim();
       setStreetInput(street);
 
@@ -748,7 +744,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
         Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0;
       if (!hasCoords) geoInitStartedRef.current = false;
 
-      const expectedExact = true;
+      const expectedExact = resolveIsExactLocation(useOfferStore.getState().draft.isExactLocation ?? true);
       const syncKey = `${lat.toFixed(5)}:${lng.toFixed(5)}:${expectedExact ? 1 : 0}:${String(currentDraft.propertyType || '')}`;
       if (hasCoords && syncKey !== lastMapSyncKeyRef.current) {
         lastMapSyncKeyRef.current = syncKey;
@@ -807,6 +803,10 @@ export default function Step2_Location({ theme }: { theme: any }) {
       };
     }, [applyLocationFieldsPatch, setCurrentStep, setNavigationGate]),
   );
+
+  useEffect(() => {
+    lastMapSyncKeyRef.current = '';
+  }, [draft.isExactLocation]);
 
   useEffect(() => {
     // ZAWSZE przy próbie opuszczenia Step 2 (czy to "Dalej" → Step 3, "Wstecz" → Step 1,
@@ -1129,7 +1129,8 @@ export default function Step2_Location({ theme }: { theme: any }) {
         const place = reverse[0];
         
         const rawStreet = streetLineFromGeocodedPlace(place, streetInput);
-        let newStreet = currentIsExact ? rawStreet : stripHouseNumber(rawStreet) || rawStreet;
+        const mapExact = resolveIsExactLocation(useOfferStore.getState().draft.isExactLocation ?? true);
+        let newStreet = mapExact ? rawStreet : stripHouseNumber(rawStreet) || rawStreet;
         newStreet = preserveVillageStreetHint(streetInput || draft.street || '', newStreet);
 
         const streetHint = String(streetInput || draft.street || newStreet).trim();
@@ -1167,6 +1168,41 @@ export default function Step2_Location({ theme }: { theme: any }) {
       if (__DEV__) console.warn('Błąd Reverse Geocoding:', e);
     }
   };
+
+  const syncPinAddressFromCoords = useCallback(
+    async (latitude: number, longitude: number) => {
+      const seq = ++reverseGeocodeSeq.current;
+      try {
+        const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (seq !== reverseGeocodeSeq.current || !reverse.length) return;
+        const place = reverse[0];
+        const mapExact = resolveIsExactLocation(useOfferStore.getState().draft.isExactLocation ?? true);
+        const rawStreet = streetLineFromGeocodedPlace(place, streetInput);
+        let newStreet = mapExact ? rawStreet : stripHouseNumber(rawStreet) || rawStreet;
+        newStreet = preserveVillageStreetHint(streetInput || draft.street || '', newStreet);
+        const normalized = resolvePlaceToNormalizedLocation(
+          place,
+          latitude,
+          longitude,
+          String(streetInput || draft.street || newStreet).trim(),
+          draft.city,
+        );
+        setStreetInput(newStreet);
+        updateDraft({
+          lat: latitude,
+          lng: longitude,
+          city: normalized.city,
+          district: normalized.district,
+          localityCountry: normalized.localityCountry,
+          localityCountryCode: normalized.localityCountryCode,
+          street: newStreet,
+        });
+      } catch {
+        /* noop */
+      }
+    },
+    [draft.city, draft.street, streetInput, updateDraft],
+  );
 
   const handleCityChange = async (city: string) => { 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
@@ -1459,6 +1495,9 @@ export default function Step2_Location({ theme }: { theme: any }) {
                   if (nextStreet !== streetInput) setStreetInput(nextStreet);
                   updateDraft({ isExactLocation: val, ...(nextStreet ? { street: nextStreet } : {}) });
                   flyTo(draft.lat, draft.lng, val);
+                  if (val && hasCoords) {
+                    void syncPinAddressFromCoords(latN, lngN);
+                  }
                 }}
                 trackColor={{ false: '#D1D1D6', true: '#10b981' }}
               />

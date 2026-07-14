@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, FlatList, ActivityIndicator, TextInput } from 'react-native';
 import { ChevronDown } from 'lucide-react-native';
 import { BODY_TYPE_OPTIONS, fetchCarCatalogOptions, type CatalogOption } from '../../services/carCatalogApi';
+import { CAR_EXTERIOR_COLORS } from '../../constants/carColors';
 import { useCarScreenTheme, type CarScreenColors } from '../../theme/carScreenTheme';
 import { pickDoorCountOption, pickGenerationForYear } from '../../utils/carCatalogInference';
 
@@ -16,6 +17,7 @@ export type CarCatalogFormState = {
   transmission: string;
   gearboxSlug: string;
   bodyType: string;
+  exteriorColor: string;
   generation: string;
   generationSlug: string;
   enginePower: string;
@@ -485,6 +487,15 @@ export default function CarCatalogPicker({ value, onChange }: CarCatalogPickerPr
         options={BODY_TYPE_OPTIONS.map((label) => ({ value: label, label }))}
         colors={colors}
         onSelect={(option) => onChange({ bodyType: option.label })}
+      />
+
+      <SelectField
+        label="Kolor nadwozia"
+        value={value.exteriorColor}
+        display={value.exteriorColor || 'Wybierz kolor'}
+        options={CAR_EXTERIOR_COLORS.map((label) => ({ value: label, label }))}
+        colors={colors}
+        onSelect={(option) => onChange({ exteriorColor: option.label })}
       />
     </View>
   );
