@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Calendar, Fuel, Gauge, MapPin, Settings2, Car as CarIcon, Cog } from "lucide-react";
+import { Calendar, Fuel, Gauge, MapPin, Settings2, Car as CarIcon, Cog, Palette } from "lucide-react";
 import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
 import CarInquiryPanel from "@/components/cars/CarInquiryPanel";
 import CarOwnerActions from "@/components/cars/CarOwnerActions";
@@ -94,6 +94,7 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
                   <SpecItem icon={Fuel} label={d.fuel} value={car.fuelType} />
                   <SpecItem icon={Settings2} label={d.transmission} value={car.transmission} />
                   <SpecItem icon={CarIcon} label={d.body} value={car.bodyType} />
+                  {car.exteriorColor ? <SpecItem icon={Palette} label={d.color} value={car.exteriorColor} /> : null}
                   {car.generation ? <SpecItem icon={Calendar} label={d.generation} value={car.generation} /> : null}
                   {car.enginePower ? <SpecItem icon={Cog} label={d.power} value={car.enginePower} /> : null}
                   {car.engineCapacity ? <SpecItem icon={Cog} label={d.capacity} value={`${car.engineCapacity} cm³`} /> : null}

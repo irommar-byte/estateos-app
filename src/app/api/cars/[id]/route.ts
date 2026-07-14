@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { findCarById, updateCarListing, deleteCarListing } from "@/lib/carsStorage";
 import type { CarListingUpdateInput } from "@/lib/carsStorage";
+import { normalizeCarExteriorColor } from "@/lib/carColors";
 import { sanitizeCarListingForViewer } from "@/lib/carVehicleDocPrivacy";
 import { resolveUploaderUserId } from "@/lib/upload/resolveUploader";
 
@@ -32,6 +33,7 @@ function validateBody(raw: Record<string, unknown>): CarListingUpdateInput {
     fuelType: String(raw?.fuelType || "").trim() || "Benzyna",
     transmission: String(raw?.transmission || "").trim() || "Automatyczna",
     bodyType: String(raw?.bodyType || "").trim() || "Sedan",
+    exteriorColor: normalizeCarExteriorColor(raw?.exteriorColor),
     generation: String(raw?.generation || "").trim(),
     enginePower: String(raw?.enginePower || "").trim(),
     engineCapacity: String(raw?.engineCapacity || "").trim(),

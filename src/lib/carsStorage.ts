@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { normalizeCarExteriorColor } from "@/lib/carColors";
 
 export type CarListingRecord = {
   id: number;
@@ -11,6 +12,7 @@ export type CarListingRecord = {
   fuelType: string;
   transmission: string;
   bodyType: string;
+  exteriorColor: string;
   generation: string;
   enginePower: string;
   engineCapacity: string;
@@ -127,6 +129,7 @@ function mapRow(row: any): CarListingRecord {
     fuelType: toStringValue(row.fuelType),
     transmission: toStringValue(row.transmission),
     bodyType: toStringValue(row.bodyType),
+    exteriorColor: toStringValue(row.exteriorColor),
     generation: toStringValue(row.generation),
     enginePower: toStringValue(row.enginePower),
     engineCapacity: toStringValue(row.engineCapacity),
@@ -168,6 +171,7 @@ const ALLOWED_CAR_LISTING_COLUMNS = new Set([
   "insuranceValidUntil",
   "restrictVehicleDocs",
   "promotedUntil",
+  "exteriorColor",
 ]);
 
 async function ensureCarListingColumn(column: string, definition: string) {
@@ -206,6 +210,7 @@ export async function ensureCarsStorage() {
   await ensureCarListingColumn("insuranceValidUntil", "VARCHAR(20) NULL");
   await ensureCarListingColumn("restrictVehicleDocs", "TINYINT(1) NOT NULL DEFAULT 0");
   await ensureCarListingColumn("promotedUntil", "DATETIME(3) NULL");
+  await ensureCarListingColumn("exteriorColor", "VARCHAR(80) NULL");
   await prisma.$executeRawUnsafe(SEED_SQL);
 }
 
@@ -247,6 +252,7 @@ export async function createCarListing(input: {
   fuelType: string;
   transmission: string;
   bodyType: string;
+  exteriorColor?: string;
   generation?: string;
   enginePower?: string;
   engineCapacity?: string;
@@ -275,11 +281,11 @@ export async function createCarListing(input: {
   await prisma.$executeRawUnsafe(
     `
       INSERT INTO CarListing
-      (userId, title, make, model, year, mileageKm, fuelType, transmission, bodyType,
+      (userId, title, make, model, year, mileageKm, fuelType, transmission, bodyType, exteriorColor,
        generation, enginePower, engineCapacity, trimVersion, doorCount, pricePln, city,
        imageUrl, images, description, cityLat, cityLng, localityCountry, vin, registrationNumber,
        firstRegistrationDate, insuranceValidUntil, restrictVehicleDocs)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     input.userId,
     input.title,
@@ -290,6 +296,7 @@ export async function createCarListing(input: {
     input.fuelType,
     input.transmission,
     input.bodyType,
+    normalizeCarExteriorColor(input.exteriorColor),
     input.generation ?? "",
     input.enginePower ?? "",
     input.engineCapacity ?? "",
@@ -325,6 +332,7 @@ export type CarListingUpdateInput = {
   fuelType: string;
   transmission: string;
   bodyType: string;
+  exteriorColor?: string;
   generation?: string;
   enginePower?: string;
   engineCapacity?: string;
@@ -364,7 +372,7 @@ export async function updateCarListing(
     `
       UPDATE CarListing
       SET title = ?, make = ?, model = ?, year = ?, mileageKm = ?, fuelType = ?,
-          transmission = ?, bodyType = ?, generation = ?, enginePower = ?, engineCapacity = ?,
+          transmission = ?, bodyType = ?, exteriorColor = ?, generation = ?, enginePower = ?, engineCapacity = ?,
           trimVersion = ?, doorCount = ?, pricePln = ?, city = ?, imageUrl = ?, images = ?,
           description = ?, cityLat = ?, cityLng = ?, localityCountry = ?, vin = ?,
           registrationNumber = ?, firstRegistrationDate = ?, insuranceValidUntil = ?,
@@ -380,6 +388,7 @@ export async function updateCarListing(
     input.fuelType,
     input.transmission,
     input.bodyType,
+    normalizeCarExteriorColor(input.exteriorColor ?? existing.exteriorColor),
     input.generation ?? "",
     input.enginePower ?? "",
     input.engineCapacity ?? "",

@@ -96,6 +96,8 @@ export type CarsDictionary = {
     doorsLabel: string;
     gearboxLabel: string;
     bodyLabel: string;
+    colorLabel: string;
+    colorPlaceholder: string;
     trimLabel: string;
     trimPlaceholder: string;
     catalogHint: string;
@@ -231,6 +233,7 @@ export type CarsDictionary = {
     fuel: string;
     transmission: string;
     body: string;
+    color: string;
     power: string;
     capacity: string;
     doors: string;
@@ -414,6 +417,8 @@ const pl: CarsDictionary = {
     doorsLabel: "Liczba drzwi",
     gearboxLabel: "Skrzynia biegów",
     bodyLabel: "Nadwozie",
+    colorLabel: "Kolor nadwozia",
+    colorPlaceholder: "Wybierz kolor",
     trimLabel: "Wersja / wyposażenie",
     trimPlaceholder: "Opcjonalnie — wybierz po skrzyni biegów",
     catalogHint: "Po wyborze marki i modelu uzupełnimy paliwo, moc i skrzynię, jeśli są w katalogu.",
@@ -551,6 +556,7 @@ const pl: CarsDictionary = {
     fuel: "Paliwo",
     transmission: "Skrzynia",
     body: "Nadwozie",
+    color: "Kolor",
     power: "Moc",
     capacity: "Pojemność",
     doors: "Drzwi",
@@ -731,6 +737,8 @@ const en: CarsDictionary = {
     doorsLabel: "Number of doors",
     gearboxLabel: "Transmission",
     bodyLabel: "Body type",
+    colorLabel: "Exterior color",
+    colorPlaceholder: "Select color",
     trimLabel: "Trim / equipment",
     trimPlaceholder: "Optional — select after gearbox",
     catalogHint: "After make and model we pre-fill fuel, power and gearbox when available.",
@@ -866,6 +874,7 @@ const en: CarsDictionary = {
     fuel: "Fuel",
     transmission: "Transmission",
     body: "Body",
+    color: "Color",
     power: "Power",
     capacity: "Capacity",
     doors: "Doors",
@@ -1046,6 +1055,8 @@ const uk: CarsDictionary = {
     doorsLabel: "Кількість дверей",
     gearboxLabel: "Коробка передач",
     bodyLabel: "Кузов",
+    colorLabel: "Колір кузова",
+    colorPlaceholder: "Оберіть колір",
     trimLabel: "Версія / комплектація",
     trimPlaceholder: "Необов'язково — після коробки",
     catalogHint: "Після марки та моделі заповнимо паливо, потужність і КПП, якщо є в каталозі.",
@@ -1181,6 +1192,7 @@ const uk: CarsDictionary = {
     fuel: "Паливо",
     transmission: "Коробка",
     body: "Кузов",
+    color: "Колір",
     power: "Потужність",
     capacity: "Об'єм",
     doors: "Двері",

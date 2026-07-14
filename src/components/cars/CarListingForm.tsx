@@ -49,6 +49,7 @@ export type CarFormState = CarVehicleDocsFormState & {
   transmission: string;
   gearboxSlug: string;
   bodyType: string;
+  exteriorColor: string;
   generation: string;
   generationSlug: string;
   enginePower: string;
@@ -82,6 +83,7 @@ export const initialCarForm: CarFormState = {
   transmission: "Automatyczna",
   gearboxSlug: "",
   bodyType: "SUV",
+  exteriorColor: "",
   generation: "",
   generationSlug: "",
   enginePower: "",
@@ -128,6 +130,7 @@ function toPayload(form: CarFormState, images: string[]) {
     fuelType: form.fuelType.trim(),
     transmission: form.transmission.trim(),
     bodyType: form.bodyType.trim(),
+    exteriorColor: form.exteriorColor.trim(),
     generation: form.generation.trim(),
     enginePower: form.enginePower.trim(),
     engineCapacity: form.engineCapacity.trim(),

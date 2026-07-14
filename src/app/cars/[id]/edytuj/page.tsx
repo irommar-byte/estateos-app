@@ -37,6 +37,7 @@ export default async function EditCarPage({ params }: { params: Promise<{ id: st
         transmission: car.transmission,
         gearboxSlug: "",
         bodyType: car.bodyType,
+        exteriorColor: car.exteriorColor || "",
         generation: car.generation || "",
         generationSlug: "",
         enginePower: car.enginePower || "",

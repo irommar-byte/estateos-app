@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { BODY_TYPE_OPTIONS } from "@/lib/otomotoCatalog";
+import { CAR_EXTERIOR_COLORS } from "@/lib/carColors";
 import { pickDoorCountOption, pickGenerationForYear } from "@/lib/carCatalogInference";
 import { findEngineCapacityOption, findEnginePowerOption, findOptionByLabel, useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
 import type { CarFormState } from "@/components/cars/CarListingForm";
@@ -490,6 +491,21 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
               {BODY_TYPE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.label}>
                   {option.label}
+                </option>
+              ))}
+            </select>
+          </CatalogField>
+
+          <CatalogField label={cf.colorLabel}>
+            <select
+              value={form.exteriorColor}
+              onChange={(event) => patch({ exteriorColor: event.target.value })}
+              className={carFieldInputClass}
+            >
+              <option value="">{cf.colorPlaceholder}</option>
+              {CAR_EXTERIOR_COLORS.map((color) => (
+                <option key={color} value={color}>
+                  {color}
                 </option>
               ))}
             </select>
