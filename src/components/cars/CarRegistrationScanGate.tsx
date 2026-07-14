@@ -14,6 +14,7 @@ type CarRegistrationScanGateProps = {
   open: boolean;
   onSkip: () => void;
   onPrefill: (prefill: Partial<CarFormState>, missingFields: CarListingMissingFieldKey[]) => void;
+  preferUpload?: boolean;
 };
 
 const MISSING_LABELS: Record<CarListingMissingFieldKey, string> = {
@@ -34,7 +35,7 @@ const PHASE_COPY: Record<AztecScanPhase, string> = {
   success: "Gotowe!",
 };
 
-export default function CarRegistrationScanGate({ open, onSkip, onPrefill }: CarRegistrationScanGateProps) {
+export default function CarRegistrationScanGate({ open, onSkip, onPrefill, preferUpload = false }: CarRegistrationScanGateProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
@@ -205,11 +206,20 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill }: Car
       return;
     }
 
+    if (preferUpload) {
+      setPhase("position");
+      setCameraReady(false);
+      window.setTimeout(() => fileInputRef.current?.click(), 120);
+      return () => {
+        stopCamera();
+      };
+    }
+
     void startCamera();
     return () => {
       stopCamera();
     };
-  }, [open, startCamera, stopCamera]);
+  }, [open, preferUpload, startCamera, stopCamera]);
 
   if (!open) return null;
 

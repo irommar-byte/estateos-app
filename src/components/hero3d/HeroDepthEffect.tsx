@@ -199,7 +199,7 @@ export default function HeroDepthEffect() {
     trackHomeCta("home_cta_flow_opened", ctaId);
   };
 
-  const homeListRoute = loggedIn ? "/dodaj-oferte" : "/rejestracja?next=/dodaj-oferte";
+  const homeListRoute = "/dodaj-oferte";
   const homeSecondaryRoute = loggedIn ? "/moje-konto/ogloszenia" : "/oferty";
   const carSecondaryRoute = loggedIn ? "/moje-konto/ogloszenia?vertical=car" : "/cars";
 

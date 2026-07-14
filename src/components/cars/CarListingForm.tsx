@@ -17,9 +17,17 @@ import {
   CarFormSection,
   carFieldInputClass,
 } from "@/components/cars/carFormStyles";
+import type { CarAddEntryMethod } from "@/components/cars/CarAddEntryScreen";
 import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
 import { listMissingListingFields } from "@/lib/polishRegistrationDocument.shared";
 import { formatDateForForm } from "@/utils/polishDateInput";
+
+const CAR_DRAFT_VERSION = 1;
+const CAR_DRAFT_KEY = "estateos_car_listing_draft_v1";
+
+function scanGateForEntryMethod(method?: CarAddEntryMethod) {
+  return method === "scan" || method === "capture" || method === "upload";
+}
 
 export type CarFormState = CarVehicleDocsFormState & {
   title: string;
@@ -97,6 +105,7 @@ type CarListingFormProps = {
   initialValues?: CarFormState;
   carId?: number;
   onSuccess?: (id: number) => void;
+  entryMethod?: CarAddEntryMethod;
 };
 
 function toPayload(form: CarFormState, images: string[]) {
@@ -150,18 +159,26 @@ function validateForm(form: CarFormState, imageCount: number): string | null {
   return null;
 }
 
-export default function CarListingForm({ mode, initialValues, carId, onSuccess }: CarListingFormProps) {
+export default function CarListingForm({
+  mode,
+  initialValues,
+  carId,
+  onSuccess,
+  entryMethod,
+}: CarListingFormProps) {
   const [form, setForm] = useState<CarFormState>(initialValues || initialCarForm);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<number | null>(null);
-  const [scanGateOpen, setScanGateOpen] = useState(mode === "create");
+  const [scanGateOpen, setScanGateOpen] = useState(mode === "create" && scanGateForEntryMethod(entryMethod));
   const [authGateOpen, setAuthGateOpen] = useState(false);
   const [highlightKeys, setHighlightKeys] = useState<CarListingMissingFieldKey[]>([]);
   const [scanNotice, setScanNotice] = useState<string | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [draftReady, setDraftReady] = useState(mode !== "create");
   const photoGalleryRef = useRef<CarPhotoGalleryFieldHandle>(null);
+  const draftTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/check", { cache: "no-store", credentials: "include" })
@@ -169,6 +186,50 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       .then((data) => setLoggedIn(Boolean(data?.loggedIn && data?.user?.id)))
       .catch(() => setLoggedIn(false));
   }, []);
+
+  useEffect(() => {
+    if (mode !== "create" || typeof window === "undefined") {
+      setDraftReady(true);
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(CAR_DRAFT_KEY);
+      if (!raw) {
+        setDraftReady(true);
+        return;
+      }
+      const parsed = JSON.parse(raw) as { version?: number; form?: CarFormState };
+      if (parsed?.version === CAR_DRAFT_VERSION && parsed.form) {
+        setForm((prev) => ({ ...prev, ...parsed.form }));
+      }
+    } catch {
+      // ignore corrupt draft
+    } finally {
+      setDraftReady(true);
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "create" || !draftReady || typeof window === "undefined") return;
+    if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = window.setTimeout(() => {
+      try {
+        const serializable = {
+          ...form,
+          images: form.images.filter((url) => !url.startsWith("blob:")),
+        };
+        window.localStorage.setItem(
+          CAR_DRAFT_KEY,
+          JSON.stringify({ version: CAR_DRAFT_VERSION, savedAt: Date.now(), form: serializable }),
+        );
+      } catch {
+        // ignore quota errors
+      }
+    }, 450);
+    return () => {
+      if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
+    };
+  }, [form, mode, draftReady]);
 
   const refreshHighlights = (nextForm: CarFormState, hasImages = nextForm.images.length > 0) => {
     setHighlightKeys(listMissingListingFields(nextForm, hasImages));
@@ -263,7 +324,10 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       setLoggedIn(true);
       setSuccessId(savedId);
       if (savedId) onSuccess?.(savedId);
-      if (mode === "create") setForm(initialCarForm);
+      if (mode === "create") {
+        if (typeof window !== "undefined") window.localStorage.removeItem(CAR_DRAFT_KEY);
+        setForm(initialCarForm);
+      }
     } catch (publishError) {
       throw publishError instanceof Error ? publishError : new Error("Błąd sieci podczas zapisu ogłoszenia.");
     } finally {
@@ -304,6 +368,7 @@ export default function CarListingForm({ mode, initialValues, carId, onSuccess }
       {mode === "create" ? (
         <CarRegistrationScanGate
           open={scanGateOpen}
+          preferUpload={entryMethod === "upload"}
           onSkip={() => setScanGateOpen(false)}
           onPrefill={applyRegistrationPrefill}
         />

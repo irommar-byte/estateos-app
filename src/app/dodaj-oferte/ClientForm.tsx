@@ -16,6 +16,7 @@ import { Home,
 } from "lucide-react";
 
 import ProPhotoSessionDialog from '@/components/photoSession/ProPhotoSessionDialog';
+import PublishAuthGate from '@/components/auth/PublishAuthGate';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -310,6 +311,9 @@ export default function ClientForm({
   const [emailStatus, setEmailStatus] = useState('idle');
   const [phoneStatus, setPhoneStatus] = useState('idle');
   const [currentStep, setCurrentStep] = useState(1);
+  const [activeUser, setActiveUser] = useState(initialUser);
+  const [authGateOpen, setAuthGateOpen] = useState(false);
+  const isLoggedIn = Boolean(activeUser?.isLoggedIn);
   const [photoSessionOpen, setPhotoSessionOpen] = useState(false);
   const [locationCatalog, setLocationCatalog] = useState<DistrictCatalogResponse>({ strictCities: [], strictCityDistricts: {} });
 
@@ -392,12 +396,12 @@ export default function ClientForm({
 
 
   const isAgencyAdvertiser = useMemo(() => {
-    if (initialUser?.isLoggedIn) return isAgentOrAgencySeller(initialUser);
+    if (isLoggedIn) return isAgentOrAgencySeller(initialUser);
     return data.advertiserType === "agency";
   }, [initialUser, data.advertiserType]);
 
   useEffect(() => {
-    if (!initialUser?.isLoggedIn) return;
+    if (!isLoggedIn) return;
     const role = String(initialUser.role || "").toUpperCase();
     const company = String(initialUser.companyName || "").trim();
     if (role !== "AGENT" && !company) return;
@@ -406,7 +410,7 @@ export default function ClientForm({
       advertiserType: "agency",
       agencyName: company || prev.agencyName || "",
     }));
-  }, [initialUser?.isLoggedIn, initialUser?.role, initialUser?.companyName]);
+  }, [isLoggedIn, initialUser?.role, initialUser?.companyName]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !draftHydratedRef.current) return;
@@ -1062,14 +1066,61 @@ export default function ClientForm({
     return () => window.clearTimeout(id);
   }, [currentStep, data.lat, data.lng]);
 
+  const publishAfterAuth = async () => {
+    const checkRes = await fetch("/api/auth/check", { cache: "no-store", credentials: "include" });
+    const check = await checkRes.json().catch(() => ({}));
+    if (!check?.loggedIn || !check?.user?.id) {
+      throw new Error("Logowanie nie powiodło się — spróbuj ponownie.");
+    }
+
+    setActiveUser({
+      isLoggedIn: true,
+      id: check.user.id,
+      name: check.user.name,
+      email: check.user.email,
+      phone: check.user.phone,
+      role: check.user.role,
+      isEmailVerified: check.user.isEmailVerified,
+      isVerifiedPhone: check.user.isVerifiedPhone,
+    });
+
+    const walletRes = await fetch(`/api/user/publication-wallet?locale=${locale}`, { cache: "no-store", credentials: "include" });
+    const walletData = await walletRes.json().catch(() => ({}));
+    if (!walletRes.ok || !walletData?.success) {
+      throw new Error(String(walletData?.error || walletData?.message || ao.walletFetchFailed));
+    }
+
+    const coupons = Array.isArray(walletData.publicationCoupons)
+      ? walletData.publicationCoupons
+      : Array.isArray(walletData.coupons)
+        ? walletData.coupons
+        : [];
+    const selection = defaultPublicationSelection({
+      couponIds: coupons.map((c: PublicationCouponOption) => c.id),
+      hasPlusCredit: Boolean(walletData.hasPlusCredit),
+    });
+
+    setAuthGateOpen(false);
+    const resolved = publicationSelectionToRedemption(selection);
+    if ("action" in resolved && resolved.action === "buy_plus") {
+      await handlePlusPayment();
+      return;
+    }
+    await submitOfferWithRedemption(resolved as PublicationRedemption);
+  };
+
   const handleSubmit = async () => {
     if (isSubmitting) return;
-    if (initialUser?.isLoggedIn && !publishContactOk) {
+    if (isLoggedIn && !publishContactOk) {
       setActionModal('verify');
       return;
     }
     if (!canPublish) return;
-    if (initialUser?.isLoggedIn) {
+    if (!isLoggedIn) {
+      setAuthGateOpen(true);
+      return;
+    }
+    if (isLoggedIn) {
       if (!publicationSelection) {
         setServerErrorMessage(ao.selectPublicationMethod);
         setActionModal('error');
@@ -1081,95 +1132,12 @@ export default function ClientForm({
         return;
       }
       await submitOfferWithRedemption(resolved as PublicationRedemption);
-      return;
-    }
-    setIsSubmitting(true);
-    setUploadProgress(ao.progressSendingOffer);
-    try {
-      const { payload } = buildOfferPayload();
-      if (!applyAgentCommissionToPayload(payload)) return;
-
-      setUploadProgress(ao.progressCreatingOffer);
-      const response = await fetch('/api/offers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      const responseData = await response.json().catch(() => ({}));
-      if (response.ok) {
-        const createdOfferId = responseData?.offer?.id || responseData?.id;
-
-        if (createdOfferId) {
-          const uploadableImages = finalImages.filter((img) => filesMap[img]);
-          for (let i = 0; i < uploadableImages.length; i++) {
-            const blobKey = uploadableImages[i];
-            const file = filesMap[blobKey];
-            if (!file) continue;
-            setUploadProgress(
-              ao.progressUploadingPhoto
-                .replace("{current}", String(i + 1))
-                .replace("{total}", String(uploadableImages.length)),
-            );
-            const formData = new FormData();
-            formData.append('offerId', String(createdOfferId));
-            formData.append('file', file);
-            const uploadRes = await fetch('/api/upload', {
-              method: 'POST',
-              body: formData,
-              credentials: 'include',
-            });
-            if (!uploadRes.ok) {
-              throw new Error(ao.photoUploadFailed.replace("{n}", String(i + 1)));
-            }
-          }
-
-          if (floorPlanFile) {
-            setUploadProgress(ao.progressUploadingFloorPlan);
-            const fpFormData = new FormData();
-            fpFormData.append('offerId', String(createdOfferId));
-            fpFormData.append('file', floorPlanFile);
-            fpFormData.append('isFloorPlan', 'true');
-            const fpRes = await fetch('/api/upload', {
-              method: 'POST',
-              body: fpFormData,
-              credentials: 'include',
-            });
-            if (!fpRes.ok) throw new Error(ao.floorPlanUploadError);
-          }
-        }
-        if (!responseData.requiresVerification && typeof window !== "undefined") {
-          window.localStorage.removeItem(ADD_OFFER_DRAFT_KEY);
-        }
-        setActionModal(responseData.requiresVerification ? 'otp' : 'success');
-      } else if (responseData.errorCode === 'AUTH_REQUIRED' && responseData.redirect) {
-        window.location.href = String(responseData.redirect);
-      } else if (
-        responseData.errorCode === 'PHONE_VERIFICATION_REQUIRED' ||
-        responseData.errorCode === 'EMAIL_VERIFICATION_REQUIRED'
-      ) {
-        setServerErrorMessage(responseData.message || responseData.error);
-        setErrorFieldTarget(null);
-        setActionModal('verify');
-      } else {
-        const serverMessage = responseData.error || responseData.message || ao.serverRejected;
-        setServerErrorMessage(serverMessage);
-        setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
-        setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
-      }
-    } catch (_error) {
-      setServerErrorMessage(ao.apiConnectionError);
-      setErrorFieldTarget(null);
-      setActionModal('error');
-    } finally {
-      setIsSubmitting(false);
-      setUploadProgress('');
     }
   };
 
   const [isProcessingPlus, setIsProcessingPlus] = useState(false);
   const handlePlusPayment = async () => {
-    if (initialUser?.isLoggedIn && !publishContactOk) {
+    if (isLoggedIn && !publishContactOk) {
       setActionModal('verify');
       return;
     }
@@ -1336,7 +1304,7 @@ export default function ClientForm({
   const descriptionText = String(data.description || '').replace(/<[^>]*>/g, '').trim();
   const isMediaDone = isTechDone && imagesList.length > 0 && String(data.title || '').trim().length >= 10 && descriptionText.length >= 10;
   
-  const isContactDone = initialUser?.isLoggedIn ? true : (
+  const isContactDone = isLoggedIn ? true : (
     !!data.email && emailStatus === 'available' &&
     !!data.contactPhone && phoneStatus === 'available' &&
     !!data.contactName && !!data.password && data.password.length >= 6 &&
@@ -1344,8 +1312,8 @@ export default function ClientForm({
   );
 
   const publishContactOk =
-    !initialUser?.isLoggedIn ||
-    (Boolean(initialUser?.isEmailVerified) && Boolean(initialUser?.isVerifiedPhone));
+    !isLoggedIn ||
+    (Boolean(activeUser?.isEmailVerified) && Boolean(activeUser?.isVerifiedPhone));
 
   const canPublish =
     isTypeSelected &&
@@ -1353,22 +1321,19 @@ export default function ClientForm({
     isFinanceDone &&
     isTechDone &&
     isMediaDone &&
-    isContactDone &&
-    publishContactOk &&
-    (!initialUser?.isLoggedIn || Boolean(publicationSelection));
-  const totalSteps = initialUser?.isLoggedIn ? 5 : 6;
+    (isLoggedIn ? publishContactOk && Boolean(publicationSelection) : true);
+  const totalSteps = 5;
   const isStep1Done = isTypeSelected && (data.propertyType === 'PLOT' || !!data.condition);
   const isStep2Done = isLocationDone;
   const isStep3Done = isTechDone;
   const isStep4Done = isMediaDone;
-  const isStep5Done = initialUser?.isLoggedIn ? true : isContactDone;
+  const isStep5Done = isLoggedIn ? Boolean(publicationSelection) && publishContactOk : isMediaDone;
 
   const canAdvanceStep = (step: number) => {
     if (step === 1) return isStep1Done;
     if (step === 2) return isStep2Done;
     if (step === 3) return isStep3Done;
     if (step === 4) return isStep4Done;
-    if (step === 5) return isStep5Done;
     return true;
   };
 
@@ -1377,7 +1342,6 @@ export default function ClientForm({
     if (step === 2) return isStep2Done;
     if (step === 3) return isStep3Done;
     if (step === 4) return isStep4Done;
-    if (step === 5 && !initialUser?.isLoggedIn) return isStep5Done;
     if (step === totalSteps) return canPublish;
     return true;
   };
@@ -1393,13 +1357,10 @@ export default function ClientForm({
       { step: 2, label: ao.stepNavShort2 },
       { step: 3, label: ao.stepNavShort3 },
       { step: 4, label: ao.stepNavShort4 },
+      { step: totalSteps, label: ao.stepNavPublish },
     ];
-    if (!initialUser?.isLoggedIn) {
-      items.push({ step: 5, label: ao.stepNavShort5 });
-    }
-    items.push({ step: totalSteps, label: ao.stepNavPublish });
     return items;
-  }, [ao.stepNavShort1, ao.stepNavShort2, ao.stepNavShort3, ao.stepNavShort4, ao.stepNavShort5, ao.stepNavPublish, initialUser?.isLoggedIn, totalSteps]);
+  }, [ao.stepNavShort1, ao.stepNavShort2, ao.stepNavShort3, ao.stepNavShort4, ao.stepNavPublish, totalSteps]);
 
   const focusFieldTarget = (target: FormFieldTarget) => {
     if (!target) return;
@@ -1456,7 +1417,7 @@ export default function ClientForm({
     const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
     const payload: Record<string, unknown> = {
       ...data,
-      userId: initialUser?.id,
+      userId: activeUser?.id,
       transactionType: data.transactionType,
       propertyType: data.propertyType,
       condition: dbCondition,
@@ -1546,7 +1507,7 @@ export default function ClientForm({
 
   const nextStep = () => {
     if (!canAdvanceStep(currentStep)) return;
-    if (initialUser?.isLoggedIn) {
+    if (isLoggedIn) {
       setCurrentStep((prev) => Math.min(5, prev + 1));
       return;
     }
@@ -1576,18 +1537,18 @@ export default function ClientForm({
   );
 
   useEffect(() => {
-    if (!initialUser?.isLoggedIn || currentStep !== totalSteps) return;
+    if (!isLoggedIn || currentStep !== totalSteps) return;
     loadPublicationWallet().catch(() => {
       // panel pokaże błąd ładowania
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialUser?.isLoggedIn, currentStep, totalSteps]);
+  }, [isLoggedIn, currentStep, totalSteps]);
 
   const publishButtonLabel = useMemo(() => {
-    if (!initialUser?.isLoggedIn) return ao.publishFinishGuest;
+    if (!isLoggedIn) return ao.publishFinishGuest;
     if (!publicationSelection) return ao.publishSelectMethod;
     return publicationSelectionLabel(publicationSelection, locale).toUpperCase();
-  }, [initialUser?.isLoggedIn, publicationSelection, ao.publishFinishGuest, ao.publishSelectMethod, locale]);
+  }, [isLoggedIn, publicationSelection, ao.publishFinishGuest, ao.publishSelectMethod, locale]);
 
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] pt-28 pb-32 px-4 md:px-6 lg:px-8 font-sans overflow-x-hidden relative selection:bg-emerald-500/30">
@@ -2350,8 +2311,8 @@ export default function ClientForm({
               </div>
             </section>
 
-            {/* KROK 5: DANE KONTAKTOWE */}
-            {!initialUser?.isLoggedIn && (
+            {/* KROK 5: DANE KONTAKTOWE — przeniesione do modala rejestracji przy publikacji */}
+            {false && !isLoggedIn && (
               <section className={`${glassPanel} ${currentStep === 5 ? '' : 'hidden'} ring-1 ring-white/5 ${isMediaDone ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
                 <div className="flex items-center gap-5 mb-10">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isContactDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
@@ -2506,7 +2467,7 @@ export default function ClientForm({
                 ))}
               </div>
 
-              {initialUser?.isLoggedIn ? (
+              {isLoggedIn ? (
                 <PublicationWalletPanel
                   selectable
                   selection={publicationSelection ?? undefined}
@@ -2529,7 +2490,7 @@ export default function ClientForm({
                 />
               ) : null}
 
-              {initialUser?.isLoggedIn && !publishContactOk ? (
+              {isLoggedIn && !publishContactOk ? (
                 <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-left">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 mb-2">{ao.acctVerifyTitle}</p>
                   <p className="text-sm text-white/70 mb-4 leading-relaxed">
@@ -2855,6 +2816,13 @@ export default function ClientForm({
           </AnimatePresence>
         </div>
       )}
+
+      <PublishAuthGate
+        open={authGateOpen}
+        brand="home"
+        onClose={() => setAuthGateOpen(false)}
+        onAuthenticated={publishAfterAuth}
+      />
 
       <ProPhotoSessionDialog
         open={photoSessionOpen}
