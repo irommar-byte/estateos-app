@@ -8,8 +8,17 @@ export const metadata: Metadata = {
     'Gotowe posty, linki UTM i materiały do promocji sprzedaży samochodów w EstateOS™Car — kopiuj i udostępniaj.',
   openGraph: {
     title: 'EstateOS™Car — kampania sprzedaży aut',
-    description: 'Materiały do promocji dodawania pojazdów na sprzedaż w EstateOS™Car.',
+    description:
+      'Materiały do promocji sprzedaży samochodów w EstateOS™Car. Home i Car w jednym ekosystemie.',
     url: ESTATEOS_PUBLIC_URLS.carsPress,
+    siteName: 'EstateOS™Car',
+    locale: 'pl_PL',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'EstateOS™Car — kampania sprzedaży aut',
+    description: 'Materiały do promocji sprzedaży samochodów w EstateOS™Car.',
   },
   alternates: { canonical: ESTATEOS_PUBLIC_URLS.carsPress },
 };
