@@ -99,8 +99,11 @@ export default function Statystyki() {
 
   if (!stats) {
     return (
-      <div className="theme-aware-dashboard flex min-h-screen items-center justify-center bg-[var(--eos-bg)]">
-        <div className="size-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
+      <div className="theme-aware-dashboard flex min-h-screen flex-col items-center justify-center gap-3 bg-[var(--eos-bg)] px-6">
+        <Loader2 className="size-8 animate-spin text-emerald-500" />
+        <p className="text-xs font-semibold uppercase tracking-widest text-[var(--eos-muted)]">
+          Ładowanie analityki…
+        </p>
       </div>
     );
   }
