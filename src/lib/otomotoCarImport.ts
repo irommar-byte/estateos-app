@@ -99,7 +99,11 @@ function parseMileageKm(raw: string): string {
 }
 
 function parseEngineCapacity(raw: string): string {
-  return digitsOnly(raw);
+  // Strip units first — digitsOnly("3902 cm3") wrongly kept the trailing "3".
+  const cleaned = String(raw || "")
+    .replace(/cm[³3]|ccm|\bcc\b/gi, " ")
+    .replace(/litr(?:y|ów|a)?|\bl\b/gi, " ");
+  return digitsOnly(cleaned);
 }
 
 function parseEnginePower(raw: string): string {

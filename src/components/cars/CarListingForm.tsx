@@ -252,9 +252,9 @@ export default function CarListingForm({
       setDraftReady(true);
       return;
     }
-    // Pending Otomoto import always wins — never restore an older draft first.
+    // Pending Otomoto import always wins — never restore an older draft over it.
     const pendingOtomoto = sessionStorage.getItem(OTOMOTO_IMPORT_STORAGE_KEY);
-    if (pendingOtomoto || entryMethod === "otomoto") {
+    if (pendingOtomoto) {
       setDraftReady(true);
       return;
     }
@@ -407,7 +407,7 @@ export default function CarListingForm({
       setSuccessId(savedId);
       if (savedId) onSuccess?.(savedId);
       if (mode === "create") {
-        if (typeof window !== "undefined") window.localStorage.removeItem(CAR_DRAFT_KEY);
+        clearCarListingDraft();
         setForm(initialCarForm);
       }
     } catch (publishError) {

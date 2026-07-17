@@ -7,6 +7,7 @@ import {
   OTOMOTO_IMPORT_STORAGE_KEY,
   type OtomotoCarImportPrefill,
 } from "@/lib/otomotoCarImport";
+import { clearCarListingDraft } from "@/lib/carListingDraft";
 import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
 
 type OtomotoImportHeroCardProps = {
@@ -71,6 +72,7 @@ export default function OtomotoImportHeroCard({
         missingFields: data.missingFields || [],
         importedAt: Date.now(),
       };
+      clearCarListingDraft();
       try {
         sessionStorage.setItem(OTOMOTO_IMPORT_STORAGE_KEY, JSON.stringify(payload));
       } catch {
