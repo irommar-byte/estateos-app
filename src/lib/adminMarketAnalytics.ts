@@ -12,11 +12,14 @@ export const MARKET_PROPERTY_TYPES: Array<{ id: MarketPropertyFilter; label: str
 
 export type MarketOfferRow = {
   price?: unknown;
+  pricePln?: unknown;
+  pricePerSqm?: unknown;
   area?: unknown;
   district?: string | null;
   city?: string | null;
   status?: string | null;
   propertyType?: string | null;
+  transactionType?: string | null;
   localityCountry?: string | null;
   localityCountryCode?: string | null;
 };
@@ -25,9 +28,11 @@ export type MarketBucket = {
   key: string;
   label: string;
   avgSqm: number;
+  medianSqm: number;
   count: number;
   sharePct: number;
   totalPrice: number;
+  excludedOutliers: number;
 };
 
 export type MarketDrillPath = {
@@ -36,13 +41,34 @@ export type MarketDrillPath = {
   city?: string;
 };
 
-function parsePrice(price: unknown): number {
-  const n = Number(String(price ?? '').replace(/\D/g, ''));
+/** Realistic PLN/m² bounds for Polish sale listings (guards bad area/price data). */
+const UNIT_PRICE_BOUNDS: Record<Exclude<MarketPropertyFilter, 'ALL'>, { min: number; max: number; minArea: number }> = {
+  FLAT: { min: 2_500, max: 55_000, minArea: 12 },
+  HOUSE: { min: 1_500, max: 45_000, minArea: 40 },
+  PLOT: { min: 20, max: 8_000, minArea: 100 },
+  COMMERCIAL: { min: 1_500, max: 60_000, minArea: 15 },
+};
+
+function parseMoney(raw: unknown): number {
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
+  const cleaned = String(raw ?? '')
+    .trim()
+    .replace(/\s/g, '')
+    .replace(/,/g, '.')
+    .replace(/[^\d.]/g, '');
+  if (!cleaned) return 0;
+  const n = Number(cleaned);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 function parseArea(area: unknown): number {
-  const n = parseFloat(String(area ?? '').replace(',', '.').replace(/[^\d.]/g, ''));
+  if (typeof area === 'number' && Number.isFinite(area) && area > 0) return area;
+  const cleaned = String(area ?? '')
+    .trim()
+    .replace(/\s/g, '')
+    .replace(/,/g, '.')
+    .replace(/[^\d.]/g, '');
+  const n = Number(cleaned);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
@@ -58,20 +84,61 @@ function normalizeDistrict(district: unknown): string {
 }
 
 function countryMeta(offer: MarketOfferRow) {
-  const code = String(offer.localityCountryCode || 'PL')
-    .trim()
-    .toUpperCase()
-    .slice(0, 8) || 'PL';
+  const code =
+    String(offer.localityCountryCode || 'PL')
+      .trim()
+      .toUpperCase()
+      .slice(0, 8) || 'PL';
   const name = String(offer.localityCountry || (code === 'PL' ? 'Polska' : code)).trim() || code;
   return { code, name };
 }
 
+function propertyCanon(offer: MarketOfferRow): Exclude<MarketPropertyFilter, 'ALL'> | null {
+  const canon = normalizeOfferPropertyType(offer.propertyType);
+  if (canon === 'FLAT' || canon === 'HOUSE' || canon === 'PLOT' || canon === 'COMMERCIAL') return canon;
+  return null;
+}
+
+/** Unit price suitable for market averages — rejects rent and broken area/price pairs. */
+export function resolveOfferUnitPrice(offer: MarketOfferRow): number | null {
+  const tx = String(offer.transactionType || 'SELL').toUpperCase();
+  if (tx === 'RENT' || tx === 'LEASE') return null;
+
+  const status = String(offer.status || '').toUpperCase();
+  if (status && status !== 'ACTIVE') return null;
+
+  const canon = propertyCanon(offer) ?? 'FLAT';
+  const bounds = UNIT_PRICE_BOUNDS[canon];
+  const area = parseArea(offer.area);
+  if (area < bounds.minArea) return null;
+
+  const listedUnit = parseMoney(offer.pricePerSqm);
+  if (listedUnit >= bounds.min && listedUnit <= bounds.max) return Math.round(listedUnit);
+
+  const price = parseMoney(offer.pricePln) || parseMoney(offer.price);
+  if (price <= 0) return null;
+
+  const computed = price / area;
+  if (computed < bounds.min || computed > bounds.max) return null;
+  return Math.round(computed);
+}
+
+function median(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? Math.round((sorted[mid - 1]! + sorted[mid]!) / 2)
+    : sorted[mid]!;
+}
+
 export function filterMarketOffers(offers: MarketOfferRow[], propertyFilter: MarketPropertyFilter): MarketOfferRow[] {
   return offers.filter((o) => {
-    if (String(o.status || '').toUpperCase() === 'REJECTED') return false;
+    if (String(o.status || '').toUpperCase() !== 'ACTIVE') return false;
+    const tx = String(o.transactionType || 'SELL').toUpperCase();
+    if (tx === 'RENT' || tx === 'LEASE') return false;
     if (propertyFilter === 'ALL') return true;
-    const canon = normalizeOfferPropertyType(o.propertyType);
-    return canon === propertyFilter;
+    return propertyCanon(o) === propertyFilter;
   });
 }
 
@@ -80,51 +147,76 @@ function aggregateBuckets(
   pickKey: (o: MarketOfferRow) => string,
   pickLabel: (o: MarketOfferRow, key: string) => string,
 ): MarketBucket[] {
-  const map = new Map<string, { label: string; totalPrice: number; totalArea: number; count: number }>();
+  const map = new Map<
+    string,
+    { label: string; unitPrices: number[]; totalPrice: number; count: number; skipped: number }
+  >();
 
   for (const o of offers) {
-    const price = parsePrice(o.price);
-    const area = parseArea(o.area);
-    if (price <= 0 || area <= 0) continue;
     const key = pickKey(o);
-    const row = map.get(key) ?? { label: pickLabel(o, key), totalPrice: 0, totalArea: 0, count: 0 };
+    const row = map.get(key) ?? {
+      label: pickLabel(o, key),
+      unitPrices: [],
+      totalPrice: 0,
+      count: 0,
+      skipped: 0,
+    };
+    const unit = resolveOfferUnitPrice(o);
+    if (unit == null) {
+      row.skipped += 1;
+      map.set(key, row);
+      continue;
+    }
+    const price = parseMoney(o.pricePln) || parseMoney(o.price);
+    row.unitPrices.push(unit);
     row.totalPrice += price;
-    row.totalArea += area;
     row.count += 1;
     map.set(key, row);
   }
 
   const totalCount = Array.from(map.values()).reduce((s, r) => s + r.count, 0);
   return Array.from(map.entries())
-    .map(([key, data]) => ({
-      key,
-      label: data.label,
-      avgSqm: data.totalArea > 0 ? Math.round(data.totalPrice / data.totalArea) : 0,
-      count: data.count,
-      sharePct: totalCount > 0 ? Math.round((data.count / totalCount) * 100) : 0,
-      totalPrice: data.totalPrice,
-    }))
+    .map(([key, data]) => {
+      const avgSqm = data.unitPrices.length
+        ? Math.round(data.unitPrices.reduce((a, b) => a + b, 0) / data.unitPrices.length)
+        : 0;
+      return {
+        key,
+        label: data.label,
+        avgSqm,
+        medianSqm: median(data.unitPrices),
+        count: data.count,
+        sharePct: totalCount > 0 ? Math.round((data.count / totalCount) * 100) : 0,
+        totalPrice: data.totalPrice,
+        excludedOutliers: data.skipped,
+      };
+    })
     .filter((b) => b.count > 0)
-    .sort((a, b) => b.avgSqm - a.avgSqm);
+    .sort((a, b) => b.medianSqm - a.medianSqm);
 }
 
 export function summarizeOffers(offers: MarketOfferRow[]) {
+  const unitPrices: number[] = [];
   let totalPrice = 0;
-  let totalArea = 0;
-  let count = 0;
+  let excludedOutliers = 0;
   for (const o of offers) {
-    const price = parsePrice(o.price);
-    const area = parseArea(o.area);
-    if (price <= 0 || area <= 0) continue;
-    totalPrice += price;
-    totalArea += area;
-    count += 1;
+    const unit = resolveOfferUnitPrice(o);
+    if (unit == null) {
+      excludedOutliers += 1;
+      continue;
+    }
+    unitPrices.push(unit);
+    totalPrice += parseMoney(o.pricePln) || parseMoney(o.price);
   }
+  const avgSqm = unitPrices.length
+    ? Math.round(unitPrices.reduce((a, b) => a + b, 0) / unitPrices.length)
+    : 0;
   return {
-    avgSqm: totalArea > 0 ? Math.round(totalPrice / totalArea) : 0,
-    count,
+    avgSqm,
+    medianSqm: median(unitPrices),
+    count: unitPrices.length,
     totalPrice,
-    totalArea,
+    excludedOutliers,
   };
 }
 
@@ -170,16 +262,10 @@ export function countOffersByPropertyType(offers: MarketOfferRow[]): Record<Mark
     COMMERCIAL: 0,
   };
   for (const o of offers) {
-    if (String(o.status || '').toUpperCase() === 'REJECTED') continue;
-    const price = parsePrice(o.price);
-    const area = parseArea(o.area);
-    if (price <= 0 || area <= 0) continue;
+    if (resolveOfferUnitPrice(o) == null) continue;
     counts.ALL += 1;
-    const canon = normalizeOfferPropertyType(o.propertyType);
-    if (canon === 'FLAT') counts.FLAT += 1;
-    else if (canon === 'HOUSE') counts.HOUSE += 1;
-    else if (canon === 'PLOT') counts.PLOT += 1;
-    else if (canon === 'COMMERCIAL') counts.COMMERCIAL += 1;
+    const canon = propertyCanon(o);
+    if (canon) counts[canon] += 1;
   }
   return counts;
 }

@@ -11,41 +11,40 @@ import { ensurePageVisitLogTable } from '@/lib/pageVisitLogTable';
 export async function getAdminStatsPayload() {
   await ensurePageVisitLogTable();
 
-  const usersCount = await prisma.user.count();
-  const totalOffers = await prisma.offer.count();
-  const activeOffers = await prisma.offer.count({
-    where: { status: 'ACTIVE' },
-  });
-
-  const offersRaw = await prisma.offer.findMany({
-    select: {
-      price: true,
-      area: true,
-      district: true,
-      city: true,
-      createdAt: true,
-      status: true,
-      propertyType: true,
-      localityCountry: true,
-      localityCountryCode: true,
-    },
-  });
-
-  const usersTimelineRaw = await prisma.user.findMany({
-    select: {
-      createdAt: true,
-      role: true,
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 5000,
-  });
-
-  const visitsRaw = await prisma.$queryRawUnsafe<RawPageVisit[]>(`
-    SELECT ip, country, city, regionName, isp, geoSource, deviceType, path, userAgent, createdAt
-    FROM PageVisitLog
-    ORDER BY createdAt DESC
-    LIMIT 5000
-  `);
+  const [usersCount, totalOffers, activeOffers, marketOffersRaw, usersTimelineRaw, visitsRaw] =
+    await Promise.all([
+      prisma.user.count(),
+      prisma.offer.count(),
+      prisma.offer.count({ where: { status: 'ACTIVE' } }),
+      prisma.offer.findMany({
+        where: { status: 'ACTIVE' },
+        select: {
+          price: true,
+          pricePln: true,
+          pricePerSqm: true,
+          area: true,
+          district: true,
+          city: true,
+          status: true,
+          propertyType: true,
+          transactionType: true,
+          localityCountry: true,
+          localityCountryCode: true,
+          createdAt: true,
+        },
+      }),
+      prisma.user.findMany({
+        select: { createdAt: true, role: true },
+        orderBy: { createdAt: 'desc' },
+        take: 3000,
+      }),
+      prisma.$queryRawUnsafe<RawPageVisit[]>(`
+        SELECT ip, country, city, regionName, isp, geoSource, deviceType, path, userAgent, createdAt
+        FROM PageVisitLog
+        ORDER BY createdAt DESC
+        LIMIT 3000
+      `),
+    ]);
 
   const visitors = aggregateVisitorsFromVisits(visitsRaw, 50);
   const visitorCountries = buildVisitorCountryStats(visitors);
@@ -53,17 +52,27 @@ export async function getAdminStatsPayload() {
   const geoFromEdge = visitors.filter((v) => v.geoSource === 'cloudflare' || v.geoSource === 'vercel').length;
   const geoFromLookup = visitors.filter((v) => v.geoSource === 'ipapi').length;
 
-  const totalValue = offersRaw.reduce((acc, curr) => {
-    const price = Number(String(curr.price || '0').replace(/\D/g, ''));
-    return acc + (Number.isNaN(price) ? 0 : price);
+  const totalValue = marketOffersRaw.reduce((acc, curr) => {
+    const price = Number(curr.pricePln ?? curr.price ?? 0);
+    return acc + (Number.isFinite(price) && price > 0 ? price : 0);
   }, 0);
 
   const pageViews = visitsRaw.length;
   const uniqueViews = new Set(visitsRaw.map((v) => String(v.ip || ''))).size;
 
   const timeline = {
-    offers: offersRaw.map((o) => ({
-      ...o,
+    offers: marketOffersRaw.map((o) => ({
+      price: o.price,
+      pricePln: o.pricePln,
+      pricePerSqm: o.pricePerSqm,
+      area: o.area,
+      district: o.district,
+      city: o.city,
+      status: o.status,
+      propertyType: o.propertyType,
+      transactionType: o.transactionType,
+      localityCountry: o.localityCountry,
+      localityCountryCode: o.localityCountryCode,
       createdAt: serializeDbDateTime(o.createdAt) ?? String(o.createdAt),
     })),
     visits: visitsRaw.map((v) => ({
