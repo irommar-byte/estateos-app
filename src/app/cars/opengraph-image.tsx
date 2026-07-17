@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
-export const alt = "EstateOS™Car — samochody na sprzedaż";
+export const alt = "EstateOS™Car — wystaw auto za darmo";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -28,20 +28,39 @@ export default function CarsOpenGraphImage() {
               "radial-gradient(circle at 28% 22%, rgba(14,165,233,0.28), transparent 52%)",
           }}
         />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 72,
+            height: 72,
+            borderRadius: 999,
+            border: "1px solid rgba(56,189,248,0.45)",
+            background: "rgba(14,165,233,0.16)",
+            marginBottom: 28,
+            color: "#38bdf8",
+            fontSize: 22,
+            fontWeight: 800,
+            letterSpacing: "0.06em",
+          }}
+        >
+          EOS
+        </div>
         <p
           style={{
-            fontSize: 22,
+            fontSize: 20,
             letterSpacing: "0.32em",
             textTransform: "uppercase",
             color: "rgba(56,189,248,0.95)",
-            marginBottom: 20,
+            marginBottom: 18,
           }}
         >
           EstateOS™Car
         </p>
         <p
           style={{
-            fontSize: 72,
+            fontSize: 64,
             fontWeight: 800,
             letterSpacing: "-0.04em",
             color: "white",
@@ -51,19 +70,19 @@ export default function CarsOpenGraphImage() {
             maxWidth: 980,
           }}
         >
-          Samochody na sprzedaż
+          Wystaw auto za darmo
         </p>
         <p
           style={{
-            marginTop: 24,
-            fontSize: 28,
+            marginTop: 22,
+            fontSize: 26,
             color: "rgba(255,255,255,0.72)",
-            maxWidth: 780,
+            maxWidth: 820,
             textAlign: "center",
             lineHeight: 1.35,
           }}
         >
-          Wystaw auto · katalog · Home i Car w jednym koncie
+          Skan dowodu · galeria · katalog · Home i Car w jednym koncie
         </p>
       </div>
     ),

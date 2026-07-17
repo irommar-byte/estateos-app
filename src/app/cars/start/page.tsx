@@ -9,27 +9,27 @@ import {
   CatalogHeroSecondaryLink,
 } from '@/components/catalog/CatalogHeroActions';
 import { CAMPAIGN_LINK_PRESETS } from '@/lib/campaignLinks';
+import { carsOpenGraph, carsTwitter } from '@/lib/carsOgMetadata';
 import { ESTATEOS_PUBLIC_URLS } from '@/lib/estateOsPublicFacts';
 
 export const metadata: Metadata = {
-  title: 'Wystaw auto na sprzedaż',
+  title: 'Wystaw auto na sprzedaż za darmo',
   description:
-    'Dodaj ogłoszenie samochodu w EstateOS™Car — skan dowodu, galeria zdjęć, mapa i powiadomienia o zapytaniach. Jedno konto EstateOS.',
-  openGraph: {
-    title: 'EstateOS™Car — sprzedaj auto szybciej',
+    'Dodaj ogłoszenie samochodu za darmo w EstateOS™Car — skan dowodu, galeria zdjęć, mapa i powiadomienia o zapytaniach. Jedno konto EstateOS.',
+  openGraph: carsOpenGraph({
+    title: 'EstateOS™Car — wystaw auto za darmo',
     description:
-      'Samochody na sprzedaż w EstateOS. Skan dowodu, galeria, mapa — bez prowizji portalowej. Home i Car w jednym koncie.',
+      'Wystaw samochód za darmo. Skan dowodu, galeria, mapa — bez prowizji portalowej. Home i Car w jednym koncie.',
     url: ESTATEOS_PUBLIC_URLS.carsStart,
     siteName: 'EstateOS™Car',
     locale: 'pl_PL',
     type: 'website',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'EstateOS™Car — sprzedaj auto szybciej',
+  }),
+  twitter: carsTwitter({
+    title: 'EstateOS™Car — wystaw auto za darmo',
     description:
-      'Samochody na sprzedaż w EstateOS. Skan dowodu, galeria, mapa — Home i Car w jednym koncie.',
-  },
+      'Wystaw samochód za darmo. Skan dowodu, galeria, mapa — Home i Car w jednym koncie.',
+  }),
   alternates: { canonical: ESTATEOS_PUBLIC_URLS.carsStart },
 };
 
