@@ -26,13 +26,61 @@ import {
 import type { CarAddEntryMethod } from "@/components/cars/CarAddEntryScreen";
 import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
 import { listMissingListingFields } from "@/lib/polishRegistrationDocument.shared";
+import {
+  OTOMOTO_IMPORT_STORAGE_KEY,
+  type OtomotoCarImportPrefill,
+} from "@/lib/otomotoCarImport";
+import {
+  clearCarListingDraft,
+  readCarListingDraft,
+  writeCarListingDraft,
+} from "@/lib/carListingDraft";
 import { formatDateForForm } from "@/utils/polishDateInput";
-
-const CAR_DRAFT_VERSION = 1;
-const CAR_DRAFT_KEY = "estateos_car_listing_draft_v1";
 
 function scanGateForEntryMethod(method?: CarAddEntryMethod) {
   return method === "scan" || method === "capture" || method === "upload";
+}
+
+function formFromOtomotoPrefill(prefill: OtomotoCarImportPrefill): CarFormState {
+  return {
+    ...initialCarForm,
+    title: prefill.title || "",
+    description: prefill.description || "",
+    make: prefill.make || "",
+    model: prefill.model || "",
+    year: prefill.year || "",
+    mileageKm: prefill.mileageKm || "",
+    fuelType: prefill.fuelType || initialCarForm.fuelType,
+    transmission: prefill.transmission || initialCarForm.transmission,
+    bodyType: prefill.bodyType || initialCarForm.bodyType,
+    exteriorColor: prefill.exteriorColor || "",
+    generation: prefill.generation || "",
+    enginePower: prefill.enginePower || "",
+    engineCapacity: prefill.engineCapacity || "",
+    trimVersion: prefill.trimVersion || "",
+    doorCount: prefill.doorCount || "",
+    pricePln: prefill.pricePln || "",
+    city: prefill.city || "",
+    cityLat: prefill.cityLat ?? null,
+    cityLng: prefill.cityLng ?? null,
+    localityCountry: prefill.localityCountry || "Polska",
+    imageUrl: prefill.imageUrl || "",
+    images: prefill.images?.length ? [...prefill.images] : [],
+    vin: prefill.vin || "",
+    registrationNumber: prefill.registrationNumber || "",
+    firstRegistrationDate: prefill.firstRegistrationDate || "",
+    insuranceValidUntil: "",
+    restrictVehicleDocs: true,
+    makeSlug: "",
+    modelSlug: "",
+    fuelSlug: "",
+    gearboxSlug: "",
+    generationSlug: "",
+    enginePowerSlug: "",
+    engineCapacitySlug: "",
+    trimVersionSlug: "",
+    doorCountSlug: "",
+  };
 }
 
 export type CarFormState = CarVehicleDocsFormState & {
@@ -204,39 +252,56 @@ export default function CarListingForm({
       setDraftReady(true);
       return;
     }
-    try {
-      const raw = window.localStorage.getItem(CAR_DRAFT_KEY);
-      if (!raw) {
-        setDraftReady(true);
-        return;
-      }
-      const parsed = JSON.parse(raw) as { version?: number; form?: CarFormState };
-      if (parsed?.version === CAR_DRAFT_VERSION && parsed.form) {
-        setForm((prev) => ({ ...prev, ...parsed.form }));
-      }
-    } catch {
-      // ignore corrupt draft
-    } finally {
+    // Pending Otomoto import always wins — never restore an older draft over it.
+    const pendingOtomoto = sessionStorage.getItem(OTOMOTO_IMPORT_STORAGE_KEY);
+    if (pendingOtomoto) {
       setDraftReady(true);
+      return;
     }
-  }, [mode]);
+    const parsed = readCarListingDraft();
+    if (parsed?.form) {
+      setForm((prev) => ({ ...prev, ...parsed.form }));
+    }
+    setDraftReady(true);
+  }, [mode, entryMethod]);
+
+  useEffect(() => {
+    if (mode !== "create" || !draftReady || typeof window === "undefined") return;
+    const fromParam = new URLSearchParams(window.location.search).get("from");
+    if (entryMethod !== "otomoto" && fromParam !== "otomoto") {
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem(OTOMOTO_IMPORT_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        prefill?: OtomotoCarImportPrefill;
+        missingFields?: CarListingMissingFieldKey[];
+      };
+      if (!parsed?.prefill) return;
+      const next = formFromOtomotoPrefill(parsed.prefill);
+      clearCarListingDraft();
+      sessionStorage.removeItem(OTOMOTO_IMPORT_STORAGE_KEY);
+      setForm(next);
+      const keys =
+        parsed.missingFields?.length
+          ? parsed.missingFields
+          : listMissingListingFields(next, next.images.length > 0);
+      setHighlightKeys(keys);
+      setScanNotice(
+        `${f.otomotoLoaded} ${missingFieldsBanner(keys, c.scan) || f.otomotoCheckForm}`,
+      );
+      writeCarListingDraft(next);
+    } catch {
+      // ignore corrupt import payload
+    }
+  }, [mode, draftReady, entryMethod, f.otomotoLoaded, f.otomotoCheckForm, c.scan]);
 
   useEffect(() => {
     if (mode !== "create" || !draftReady || typeof window === "undefined") return;
     if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
     draftTimerRef.current = window.setTimeout(() => {
-      try {
-        const serializable = {
-          ...form,
-          images: form.images.filter((url) => !url.startsWith("blob:")),
-        };
-        window.localStorage.setItem(
-          CAR_DRAFT_KEY,
-          JSON.stringify({ version: CAR_DRAFT_VERSION, savedAt: Date.now(), form: serializable }),
-        );
-      } catch {
-        // ignore quota errors
-      }
+      writeCarListingDraft(form);
     }, 450);
     return () => {
       if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
@@ -287,7 +352,7 @@ export default function CarListingForm({
     });
   };
 
-  const publishListing = async () => {
+  const publishListing = async (report?: (step: string) => void) => {
     setError(null);
     setSuccessId(null);
     setSubmitting(true);
@@ -301,14 +366,18 @@ export default function CarListingForm({
     try {
       let uploadedImages = form.images;
       if (photoGalleryRef.current?.hasPending()) {
+        report?.("Wgrywam lokalne zdjęcia…");
         uploadedImages = await photoGalleryRef.current.uploadPending();
         setForm((prev) => ({
           ...prev,
           images: uploadedImages,
           imageUrl: uploadedImages[0] || "",
         }));
+      } else if (uploadedImages.some((url) => /^https?:\/\//i.test(url) && !url.includes("/uploads/cars/"))) {
+        report?.(`Przygotowuję ${uploadedImages.length} zdjęć z Otomoto…`);
       }
 
+      report?.("Zapisuję ogłoszenie w katalogu Cars…");
       const payload = toPayload(form, uploadedImages);
       const response = await fetch(mode === "create" ? "/api/cars" : `/api/cars/${carId}`, {
         method: mode === "create" ? "POST" : "PATCH",
@@ -321,6 +390,7 @@ export default function CarListingForm({
         throw new Error(typeof data?.error === "string" ? data.error : c.common.saveFailed);
       }
 
+      report?.("Ogłoszenie opublikowane.");
       const savedId = Number(data?.listing?.id || carId || 0) || null;
       if (data?.listing) {
         const listing = data.listing as Record<string, string>;
@@ -337,7 +407,7 @@ export default function CarListingForm({
       setSuccessId(savedId);
       if (savedId) onSuccess?.(savedId);
       if (mode === "create") {
-        if (typeof window !== "undefined") window.localStorage.removeItem(CAR_DRAFT_KEY);
+        clearCarListingDraft();
         setForm(initialCarForm);
       }
     } catch (publishError) {
@@ -434,6 +504,7 @@ export default function CarListingForm({
           }}
           onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
           loggedIn={loggedIn}
+          onRequestScan={() => setScanGateOpen(true)}
         />
 
         <CarFormSection eyebrow={f.offerEyebrow} title={f.offerTitle} description={f.offerDescription}>

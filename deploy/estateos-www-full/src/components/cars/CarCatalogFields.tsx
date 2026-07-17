@@ -4,7 +4,18 @@ import { useEffect, type ReactNode } from "react";
 import { BODY_TYPE_OPTIONS } from "@/lib/otomotoCatalog";
 import { CAR_EXTERIOR_COLORS } from "@/lib/carColors";
 import { pickDoorCountOption, pickGenerationForYear } from "@/lib/carCatalogInference";
-import { findEngineCapacityOption, findEnginePowerOption, findOptionByLabel, useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
+import {
+  findEngineCapacityOption,
+  findEnginePowerOption,
+  findOptionByLabel,
+  mergeCatalogOptions,
+  resolveFuelOption,
+  resolveGearboxOption,
+  STATIC_FUEL_OPTIONS,
+  STATIC_GEARBOX_OPTIONS,
+  syntheticOptionFromLabel,
+  useCarCatalogOptions,
+} from "@/hooks/useCarCatalogOptions";
 import type { CarFormState } from "@/components/cars/CarListingForm";
 import {
   CarFormSection,
@@ -146,11 +157,62 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
       Boolean(form.gearboxSlug),
   );
 
+  // Otomoto open catalog often returns [] for rare makes (e.g. Ferrari).
+  // Keep imported labels usable by injecting static / synthetic options.
+  const importedFuel = resolveFuelOption(form.fuelType, form.fuelSlug);
+  const importedGearbox = resolveGearboxOption(form.transmission, form.gearboxSlug);
+  const importedPower = syntheticOptionFromLabel(form.enginePower || form.enginePowerSlug, form.enginePowerSlug || undefined);
+  const importedCapacity = syntheticOptionFromLabel(
+    form.engineCapacity || form.engineCapacitySlug,
+    form.engineCapacitySlug || undefined,
+  );
+  const importedDoors = syntheticOptionFromLabel(form.doorCount || form.doorCountSlug, form.doorCountSlug || undefined);
+  const importedVersion = syntheticOptionFromLabel(form.trimVersion || form.trimVersionSlug, form.trimVersionSlug || undefined);
+
+  const fuelOptions = mergeCatalogOptions(
+    fuelTypes,
+    !fuelLoading && fuelTypes.length === 0 && hasMake && hasModel ? STATIC_FUEL_OPTIONS : [],
+    importedFuel ? [importedFuel] : [],
+  );
+  const powerDigits = String(form.enginePower || "").replace(/[^\d]/g, "");
+  const powerOptions = mergeCatalogOptions(
+    enginePowers,
+    !powerLoading && enginePowers.length === 0 && form.fuelSlug && powerDigits
+      ? [{ value: powerDigits, label: `${powerDigits} KM` }]
+      : [],
+    importedPower ? [importedPower] : [],
+  );
+  const capacityDigits = String(form.engineCapacity || "").replace(/[^\d]/g, "");
+  const capacityOptions = mergeCatalogOptions(
+    engineCapacities,
+    !capacityLoading && engineCapacities.length === 0 && form.enginePowerSlug && capacityDigits
+      ? [{ value: capacityDigits, label: capacityDigits }]
+      : [],
+    importedCapacity ? [importedCapacity] : [],
+  );
+  const doorDigits = String(form.doorCount || form.doorCountSlug || "").replace(/[^\d]/g, "");
+  const doorOptions = mergeCatalogOptions(
+    doorCounts,
+    !doorsLoading && doorCounts.length === 0 && form.engineCapacitySlug && doorDigits
+      ? [{ value: doorDigits, label: doorDigits }]
+      : [],
+    importedDoors ? [importedDoors] : [],
+  );
+  const gearboxOptions = mergeCatalogOptions(
+    gearboxes,
+    !gearboxLoading && gearboxes.length === 0 && form.engineCapacitySlug ? STATIC_GEARBOX_OPTIONS : [],
+    importedGearbox ? [importedGearbox] : [],
+  );
+  const versionOptions = mergeCatalogOptions(versions, importedVersion ? [importedVersion] : []);
+
   useEffect(() => {
     if (!form.make || form.makeSlug || !makes.length) return;
     const match = findOptionByLabel(makes, form.make);
     if (match) {
-      setForm((prev) => ({ ...prev, makeSlug: match.value, make: match.label }));
+      setForm((prev) => {
+        if (prev.makeSlug === match.value) return prev;
+        return { ...prev, makeSlug: match.value, make: match.label };
+      });
     }
   }, [form.make, form.makeSlug, makes, setForm]);
 
@@ -158,7 +220,10 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
     if (!form.model || form.modelSlug || !models.length) return;
     const match = findOptionByLabel(models, form.model);
     if (match) {
-      setForm((prev) => ({ ...prev, modelSlug: match.value, model: match.label }));
+      setForm((prev) => {
+        if (prev.modelSlug === match.value) return prev;
+        return { ...prev, modelSlug: match.value, model: match.label };
+      });
     }
   }, [form.model, form.modelSlug, models, setForm]);
 
@@ -171,12 +236,15 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
   }, [form.generationSlug, form.generation, form.year, hasModel, generations, setForm]);
 
   useEffect(() => {
-    if (form.doorCountSlug || !doorCounts.length || !form.engineCapacitySlug) return;
+    if (form.doorCountSlug || form.doorCount || !doorCounts.length || !form.engineCapacitySlug) return;
     const match = pickDoorCountOption(doorCounts, form.bodyType);
     if (match) {
-      setForm((prev) => ({ ...prev, doorCountSlug: match.value, doorCount: match.label }));
+      setForm((prev) => {
+        if (prev.doorCountSlug === match.value) return prev;
+        return { ...prev, doorCountSlug: match.value, doorCount: match.label };
+      });
     }
-  }, [form.doorCountSlug, form.bodyType, form.engineCapacitySlug, doorCounts, setForm]);
+  }, [form.doorCountSlug, form.doorCount, form.bodyType, form.engineCapacitySlug, doorCounts, setForm]);
 
   useEffect(() => {
     if (!form.generation || form.generationSlug || !generations.length) return;
@@ -187,47 +255,97 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
   }, [form.generation, form.generationSlug, generations, setForm]);
 
   useEffect(() => {
-    if (!form.fuelType || form.fuelSlug || !fuelTypes.length) return;
-    const match = findOptionByLabel(fuelTypes, form.fuelType);
+    if (!form.fuelType || form.fuelSlug) return;
+    if (fuelLoading) return;
+    const match = findOptionByLabel(fuelTypes.length ? fuelTypes : STATIC_FUEL_OPTIONS, form.fuelType) || resolveFuelOption(form.fuelType);
     if (match) {
-      setForm((prev) => ({ ...prev, fuelSlug: match.value, fuelType: match.label }));
+      setForm((prev) => {
+        if (prev.fuelSlug === match.value) return prev;
+        return { ...prev, fuelSlug: match.value, fuelType: match.label };
+      });
     }
-  }, [form.fuelType, form.fuelSlug, fuelTypes, setForm]);
+  }, [form.fuelType, form.fuelSlug, fuelLoading, fuelTypes, setForm]);
 
   useEffect(() => {
-    if (!form.enginePower || form.enginePowerSlug || !enginePowers.length) return;
+    if (!form.enginePower || form.enginePowerSlug) return;
+    if (powerLoading) return;
     const match = findEnginePowerOption(enginePowers, form.enginePower);
     if (match) {
-      setForm((prev) => ({ ...prev, enginePowerSlug: match.value, enginePower: match.label }));
+      setForm((prev) => {
+        if (prev.enginePowerSlug === match.value) return prev;
+        return { ...prev, enginePowerSlug: match.value, enginePower: match.label };
+      });
+      return;
     }
-  }, [form.enginePower, form.enginePowerSlug, enginePowers, setForm]);
+    const digits = String(form.enginePower).replace(/[^\d]/g, "");
+    if (digits && form.fuelSlug) {
+      setForm((prev) => {
+        if (prev.enginePowerSlug === digits) return prev;
+        return {
+          ...prev,
+          enginePowerSlug: digits,
+          enginePower: prev.enginePower.includes("KM") ? prev.enginePower : `${digits} KM`,
+        };
+      });
+    }
+  }, [form.enginePower, form.enginePowerSlug, form.fuelSlug, powerLoading, enginePowers, setForm]);
 
   useEffect(() => {
-    if (!form.engineCapacity || form.engineCapacitySlug || !engineCapacities.length) return;
+    if (!form.engineCapacity || form.engineCapacitySlug) return;
+    if (capacityLoading) return;
     const match = findEngineCapacityOption(engineCapacities, form.engineCapacity);
     if (match) {
-      setForm((prev) => ({ ...prev, engineCapacitySlug: match.value, engineCapacity: match.label }));
+      setForm((prev) => {
+        if (prev.engineCapacitySlug === match.value) return prev;
+        return { ...prev, engineCapacitySlug: match.value, engineCapacity: match.label };
+      });
+      return;
     }
-  }, [form.engineCapacity, form.engineCapacitySlug, engineCapacities, setForm]);
+    const digits = String(form.engineCapacity).replace(/[^\d]/g, "");
+    if (digits && form.enginePowerSlug) {
+      setForm((prev) => {
+        if (prev.engineCapacitySlug === digits) return prev;
+        return { ...prev, engineCapacitySlug: digits, engineCapacity: digits };
+      });
+    }
+  }, [form.engineCapacity, form.engineCapacitySlug, form.enginePowerSlug, capacityLoading, engineCapacities, setForm]);
 
   useEffect(() => {
-    if (!form.doorCount || form.doorCountSlug || !doorCounts.length) return;
+    if (!form.doorCount || form.doorCountSlug) return;
+    if (doorsLoading) return;
     const match =
       findOptionByLabel(doorCounts, form.doorCount) ||
       doorCounts.find((item) => item.label.trim().startsWith(form.doorCount.trim())) ||
       null;
     if (match) {
-      setForm((prev) => ({ ...prev, doorCountSlug: match.value, doorCount: match.label }));
+      setForm((prev) => {
+        if (prev.doorCountSlug === match.value) return prev;
+        return { ...prev, doorCountSlug: match.value, doorCount: match.label };
+      });
+      return;
     }
-  }, [form.doorCount, form.doorCountSlug, doorCounts, setForm]);
+    const digits = String(form.doorCount).replace(/[^\d]/g, "");
+    if (digits && form.engineCapacitySlug) {
+      setForm((prev) => {
+        if (prev.doorCountSlug === digits) return prev;
+        return { ...prev, doorCountSlug: digits, doorCount: digits };
+      });
+    }
+  }, [form.doorCount, form.doorCountSlug, form.engineCapacitySlug, doorsLoading, doorCounts, setForm]);
 
   useEffect(() => {
-    if (!form.transmission || form.gearboxSlug || !gearboxes.length) return;
-    const match = findOptionByLabel(gearboxes, form.transmission);
+    if (!form.transmission || form.gearboxSlug) return;
+    if (gearboxLoading) return;
+    const match =
+      findOptionByLabel(gearboxes.length ? gearboxes : STATIC_GEARBOX_OPTIONS, form.transmission) ||
+      resolveGearboxOption(form.transmission);
     if (match) {
-      setForm((prev) => ({ ...prev, gearboxSlug: match.value, transmission: match.label }));
+      setForm((prev) => {
+        if (prev.gearboxSlug === match.value) return prev;
+        return { ...prev, gearboxSlug: match.value, transmission: match.label };
+      });
     }
-  }, [form.transmission, form.gearboxSlug, gearboxes, setForm]);
+  }, [form.transmission, form.gearboxSlug, gearboxLoading, gearboxes, setForm]);
 
   useEffect(() => {
     if (!form.trimVersion || form.trimVersionSlug || !versions.length) return;
@@ -371,7 +489,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
           <CatalogSelect
             label={cf.fuelLabel}
             value={form.fuelSlug}
-            options={fuelTypes}
+            options={fuelOptions}
             loading={fuelLoading}
             disabled={!hasMake || !hasModel}
             required
@@ -401,7 +519,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
           <CatalogSelect
             label={cf.powerLabel}
             value={form.enginePowerSlug}
-            options={enginePowers}
+            options={powerOptions}
             loading={powerLoading}
             disabled={!form.fuelSlug}
             chooseFieldTemplate={chooseFieldTemplate}
@@ -424,7 +542,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
           <CatalogSelect
             label={cf.capacityLabel}
             value={form.engineCapacitySlug}
-            options={engineCapacities}
+            options={capacityOptions}
             loading={capacityLoading}
             disabled={!form.enginePowerSlug}
             chooseFieldTemplate={chooseFieldTemplate}
@@ -449,7 +567,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
           <CatalogSelect
             label={cf.doorsLabel}
             value={form.doorCountSlug}
-            options={doorCounts}
+            options={doorOptions}
             loading={doorsLoading}
             disabled={!form.engineCapacitySlug}
             chooseFieldTemplate={chooseFieldTemplate}
@@ -468,7 +586,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
           <CatalogSelect
             label={cf.gearboxLabel}
             value={form.gearboxSlug}
-            options={gearboxes}
+            options={gearboxOptions}
             loading={gearboxLoading}
             disabled={!form.engineCapacitySlug}
             chooseFieldTemplate={chooseFieldTemplate}
@@ -515,7 +633,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
         <CatalogSelect
           label={cf.trimLabel}
           value={form.trimVersionSlug}
-          options={versions}
+          options={versionOptions}
           loading={versionsLoading}
           disabled={!form.gearboxSlug}
           placeholder={cf.trimPlaceholder}
