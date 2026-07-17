@@ -6,7 +6,7 @@ export const CARS_OG_IMAGE = {
   width: 1200,
   height: 630,
   type: "image/png",
-  alt: "EstateOS™Car — wystaw auto za darmo",
+  alt: "EstateOS™Car — zastrzeż VIN, kupujący sprawdzi historię i OC",
 } as const;
 
 export function carsOpenGraph(

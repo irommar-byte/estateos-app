@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   openGraph: carsOpenGraph({
     title: "EstateOS™Car — katalog samochodów",
     description:
-      "Samochody na sprzedaż. Wystaw ogłoszenie za darmo — katalog, Contact, Home i Car w jednym koncie.",
+      "Zastrzeż VIN — kupujący sprawdzi historię i OC. Samochody na sprzedaż, wystawienie za darmo.",
     url: ESTATEOS_PUBLIC_URLS.carsCatalog,
     siteName: "EstateOS™Car",
     locale: "pl_PL",
@@ -18,7 +18,8 @@ export const metadata: Metadata = {
   }),
   twitter: carsTwitter({
     title: "EstateOS™Car — katalog samochodów",
-    description: "Samochody na sprzedaż. Wystaw ogłoszenie za darmo — Home i Car w jednym koncie.",
+    description:
+      "Zastrzeż VIN — kupujący sprawdzi historię i OC. Samochody na sprzedaż, wystawienie za darmo.",
   }),
   alternates: { canonical: ESTATEOS_PUBLIC_URLS.carsCatalog },
 };

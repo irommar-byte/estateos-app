@@ -15,11 +15,11 @@ import { ESTATEOS_PUBLIC_URLS } from '@/lib/estateOsPublicFacts';
 export const metadata: Metadata = {
   title: 'Wystaw auto na sprzedaż za darmo',
   description:
-    'Dodaj ogłoszenie samochodu za darmo w EstateOS™Car — skan dowodu, galeria zdjęć, mapa i powiadomienia o zapytaniach. Jedno konto EstateOS.',
+    'Zastrzeż VIN i rejestrację — kupujący i tak sprawdzi historię pojazdu i OC. Wystaw auto za darmo w EstateOS™Car.',
   openGraph: carsOpenGraph({
     title: 'EstateOS™Car — wystaw auto za darmo',
     description:
-      'Wystaw samochód za darmo. Skan dowodu, galeria, mapa — bez prowizji portalowej. Home i Car w jednym koncie.',
+      'Zastrzeż dane wrażliwe — kupujący sprawdzi historię i OC bez ujawniania pełnego VIN. Wystawienie za darmo.',
     url: ESTATEOS_PUBLIC_URLS.carsStart,
     siteName: 'EstateOS™Car',
     locale: 'pl_PL',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   twitter: carsTwitter({
     title: 'EstateOS™Car — wystaw auto za darmo',
     description:
-      'Wystaw samochód za darmo. Skan dowodu, galeria, mapa — Home i Car w jednym koncie.',
+      'Zastrzeż dane wrażliwe — kupujący sprawdzi historię i OC bez ujawniania pełnego VIN. Wystawienie za darmo.',
   }),
   alternates: { canonical: ESTATEOS_PUBLIC_URLS.carsStart },
 };

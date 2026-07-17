@@ -1,7 +1,8 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
-export const alt = "EstateOS™Car — wystaw auto za darmo";
+export const alt =
+  "EstateOS™Car — wystaw auto za darmo. Zastrzeż VIN, kupujący sprawdzi historię i OC.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -38,7 +39,7 @@ export default function CarsOpenGraphImage() {
             borderRadius: 999,
             border: "1px solid rgba(56,189,248,0.45)",
             background: "rgba(14,165,233,0.16)",
-            marginBottom: 28,
+            marginBottom: 24,
             color: "#38bdf8",
             fontSize: 22,
             fontWeight: 800,
@@ -49,18 +50,18 @@ export default function CarsOpenGraphImage() {
         </div>
         <p
           style={{
-            fontSize: 20,
+            fontSize: 18,
             letterSpacing: "0.32em",
             textTransform: "uppercase",
             color: "rgba(56,189,248,0.95)",
-            marginBottom: 18,
+            marginBottom: 16,
           }}
         >
           EstateOS™Car
         </p>
         <p
           style={{
-            fontSize: 64,
+            fontSize: 58,
             fontWeight: 800,
             letterSpacing: "-0.04em",
             color: "white",
@@ -74,15 +75,28 @@ export default function CarsOpenGraphImage() {
         </p>
         <p
           style={{
-            marginTop: 22,
-            fontSize: 26,
-            color: "rgba(255,255,255,0.72)",
-            maxWidth: 820,
+            marginTop: 20,
+            fontSize: 28,
+            fontWeight: 600,
+            color: "rgba(125,211,252,0.95)",
+            maxWidth: 920,
+            textAlign: "center",
+            lineHeight: 1.3,
+          }}
+        >
+          Zastrzeż VIN i rejestrację — kupujący i tak sprawdzi historię i OC
+        </p>
+        <p
+          style={{
+            marginTop: 16,
+            fontSize: 22,
+            color: "rgba(255,255,255,0.62)",
+            maxWidth: 860,
             textAlign: "center",
             lineHeight: 1.35,
           }}
         >
-          Skan dowodu · galeria · katalog · Home i Car w jednym koncie
+          Bez ujawniania pełnych danych · skan dowodu · Home i Car w jednym koncie
         </p>
       </div>
     ),

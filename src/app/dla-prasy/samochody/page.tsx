@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   openGraph: carsOpenGraph({
     title: 'EstateOS™Car — wystaw auto za darmo',
     description:
-      'Materiały do promocji: wystaw samochód za darmo w EstateOS™Car. Home i Car w jednym ekosystemie.',
+      'Zastrzeż VIN i rejestrację — kupujący sprawdzi historię i OC bez ujawniania pełnych danych. Materiały kampanii Cars.',
     url: ESTATEOS_PUBLIC_URLS.carsPress,
     siteName: 'EstateOS™Car',
     locale: 'pl_PL',
@@ -18,7 +18,8 @@ export const metadata: Metadata = {
   }),
   twitter: carsTwitter({
     title: 'EstateOS™Car — wystaw auto za darmo',
-    description: 'Materiały do promocji sprzedaży samochodów za darmo w EstateOS™Car.',
+    description:
+      'Zastrzeż VIN — kupujący sprawdzi historię i OC. Materiały kampanii EstateOS™Car.',
   }),
   alternates: { canonical: ESTATEOS_PUBLIC_URLS.carsPress },
 };
