@@ -63,10 +63,10 @@ export default function CatalogBrandHero({
           {brand === "car" ? "EstateOS™Car" : "EstateOS™Home"}
         </p>
         <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">{title}</h1>
-        <p className="mt-4 max-w-2xl text-sm text-[var(--eos-muted)] sm:text-base">{description}</p>
-        {children ? <div className="mt-6 flex flex-wrap gap-3">{children}</div> : null}
+        <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)] sm:text-base">{description}</p>
+        {children ? <div className="relative z-10">{children}</div> : null}
         {stats ? (
-          <p className={`mt-5 text-xs font-black uppercase tracking-[0.14em] ${styles.stats}`}>{stats}</p>
+          <p className={`mt-5 text-[11px] font-semibold uppercase tracking-[0.16em] ${styles.stats}`}>{stats}</p>
         ) : null}
       </div>
 

@@ -39,6 +39,10 @@ import CatalogPropertyTypeToggle, {
   type CatalogPropertyTypeFilter,
 } from "@/components/catalog/CatalogPropertyTypeToggle";
 import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
+import {
+  CatalogHeroActionRow,
+  CatalogHeroPrimaryLink,
+} from "@/components/catalog/CatalogHeroActions";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
@@ -556,33 +560,11 @@ export default function CatalogPage() {
                 : null
             }
           >
-            <Link
-              href="/dodaj-oferte"
-              className={`rounded-full border px-5 py-2 text-xs font-black uppercase tracking-[0.14em] transition ${
-                transactionMode === "rent"
-                  ? "border-sky-400/40 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20"
-                  : "border-emerald-400/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
-              }`}
-            >
-              Dodaj ogłoszenie
-            </Link>
-            <button
-              type="button"
-              onClick={() => handleSectionChange("mine")}
-              className={`rounded-full border px-5 py-2 text-xs font-black uppercase tracking-[0.14em] transition ${
-                transactionMode === "rent"
-                  ? "border-[var(--eos-border)] bg-[var(--eos-surface)] hover:border-sky-400/30"
-                  : "border-[var(--eos-border)] bg-[var(--eos-surface)] hover:border-emerald-400/30"
-              }`}
-            >
-              Moje ogłoszenia
-            </button>
-            <Link
-              href="/odkryj-mape"
-              className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-2 text-xs font-black uppercase tracking-[0.14em] transition hover:border-[var(--eos-border-strong)]"
-            >
-              Mapa
-            </Link>
+            <CatalogHeroActionRow>
+              <CatalogHeroPrimaryLink brand="home" accent={transactionMode} href="/dodaj-oferte">
+                Dodaj ogłoszenie
+              </CatalogHeroPrimaryLink>
+            </CatalogHeroActionRow>
           </CatalogBrandHero>
           {denied ? (
             <p className="-mt-4 mb-6 text-xs text-[var(--eos-muted)]">{nearestCopy.denied}</p>

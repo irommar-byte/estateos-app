@@ -6,6 +6,10 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Car, Heart, UserRound } from "lucide-react";
 import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
 import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
+import {
+  CatalogHeroActionRow,
+  CatalogHeroPrimaryLink,
+} from "@/components/catalog/CatalogHeroActions";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
@@ -203,11 +207,11 @@ export default function CarsCatalogClient() {
     }));
   };
 
-  const tabButtonClass = (active: boolean) =>
-    `inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${
+  const catalogScopeClass = (active: boolean) =>
+    `inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-semibold tracking-[-0.01em] transition ${
       active
-        ? "border-sky-400/50 bg-sky-500/15 text-sky-300"
-        : "border-[var(--eos-border)] bg-[var(--eos-surface)] text-[var(--eos-text)] hover:border-sky-400/30"
+        ? "bg-sky-500/15 text-sky-700 ring-1 ring-sky-400/35 dark:text-sky-300"
+        : "text-[var(--eos-muted)] hover:bg-[var(--eos-surface)] hover:text-[var(--eos-text)]"
     }`;
 
   const spotlightItems = useMemo(
@@ -248,26 +252,11 @@ export default function CarsCatalogClient() {
           description={cat.heroDescription}
           stats={statsLabel}
         >
-          <Link
-            href="/cars/dodaj"
-            className="rounded-full border border-sky-400/40 bg-sky-500/10 px-5 py-2 text-xs font-black uppercase tracking-[0.14em] text-sky-300 transition hover:bg-sky-500/20"
-          >
-            {cat.addListing}
-          </Link>
-          <button type="button" onClick={() => setTab("favorites")} className={tabButtonClass(tab === "favorites")}>
-            <Heart size={14} className={tab === "favorites" ? "fill-current" : ""} />
-            {cat.tabFavorites}
-          </button>
-          <button type="button" onClick={() => setTab("mine")} className={tabButtonClass(tab === "mine")}>
-            <UserRound size={14} />
-            {cat.tabMine}
-          </button>
-          {tab !== "all" ? (
-            <button type="button" onClick={() => setTab("all")} className={tabButtonClass(false)}>
-              <Car size={14} />
-              {cat.tabAll}
-            </button>
-          ) : null}
+          <CatalogHeroActionRow>
+            <CatalogHeroPrimaryLink brand="car" href="/cars/dodaj">
+              {cat.addListing}
+            </CatalogHeroPrimaryLink>
+          </CatalogHeroActionRow>
         </CatalogBrandHero>
 
         {tab === "mine" && !loggedIn && !loading ? (
@@ -291,13 +280,39 @@ export default function CarsCatalogClient() {
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">{cat.filtersEyebrow}</p>
               <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">{cat.filtersTitle}</h2>
             </div>
-            <button
-              type="button"
-              onClick={() => setFilters(EMPTY_FILTERS)}
-              className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)] transition hover:border-sky-400/35 hover:text-sky-500"
-            >
-              {cat.clearFilters}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                className="inline-flex items-center gap-0.5 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/80 p-1"
+                role="tablist"
+                aria-label={cat.filtersTitle}
+              >
+                <button type="button" role="tab" aria-selected={tab === "all"} onClick={() => setTab("all")} className={catalogScopeClass(tab === "all")}>
+                  <Car size={13} aria-hidden />
+                  {cat.tabAll}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "favorites"}
+                  onClick={() => setTab("favorites")}
+                  className={catalogScopeClass(tab === "favorites")}
+                >
+                  <Heart size={13} className={tab === "favorites" ? "fill-current" : ""} aria-hidden />
+                  {cat.tabFavorites}
+                </button>
+                <button type="button" role="tab" aria-selected={tab === "mine"} onClick={() => setTab("mine")} className={catalogScopeClass(tab === "mine")}>
+                  <UserRound size={13} aria-hidden />
+                  {cat.tabMine}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFilters(EMPTY_FILTERS)}
+                className="rounded-xl border border-[var(--eos-border)] bg-transparent px-3 py-2 text-[11px] font-semibold text-[var(--eos-muted)] transition hover:border-sky-400/35 hover:text-sky-600 dark:hover:text-sky-300"
+              >
+                {cat.clearFilters}
+              </button>
+            </div>
           </div>
 
           <div className="grid gap-5 p-5 sm:p-6">

@@ -3,6 +3,11 @@ import Link from 'next/link';
 import { ArrowRight, Car, ScanLine, Upload } from 'lucide-react';
 import AppStoreBadgeLink from '@/components/ui/AppStoreBadgeLink';
 import CatalogBrandHero from '@/components/catalog/CatalogBrandHero';
+import {
+  CatalogHeroActionRow,
+  CatalogHeroPrimaryLink,
+  CatalogHeroSecondaryLink,
+} from '@/components/catalog/CatalogHeroActions';
 import { CAMPAIGN_LINK_PRESETS } from '@/lib/campaignLinks';
 import { ESTATEOS_PUBLIC_URLS } from '@/lib/estateOsPublicFacts';
 
@@ -56,24 +61,12 @@ export default function CarsStartCampaignPage() {
           description="Profesjonalny katalog samochodów w tym samym koncie co nieruchomości. Bez prowizji portalowej — zdjęcia, mapa, skan dowodu i kontakt z kupującymi."
           stats="Kampania sprzedaży pojazdów — udostępnij link znajomym i w social media"
         >
-          <Link
-            href="/cars/dodaj"
-            className="rounded-full border border-sky-400/40 bg-sky-500/15 px-5 py-2 text-xs font-black uppercase tracking-[0.14em] text-sky-300 transition hover:bg-sky-500/25"
-          >
-            Dodaj ogłoszenie auta
-          </Link>
-          <Link
-            href="/cars"
-            className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-2 text-xs font-black uppercase tracking-[0.14em] transition hover:border-sky-400/30"
-          >
-            Przeglądaj katalog
-          </Link>
-          <Link
-            href="/dla-prasy/samochody"
-            className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-2 text-xs font-black uppercase tracking-[0.14em] transition hover:border-sky-400/30"
-          >
-            Materiały do promocji
-          </Link>
+          <CatalogHeroActionRow>
+            <CatalogHeroPrimaryLink brand="car" href="/cars/dodaj">
+              Dodaj ogłoszenie
+            </CatalogHeroPrimaryLink>
+            <CatalogHeroSecondaryLink href="/cars">Przeglądaj katalog</CatalogHeroSecondaryLink>
+          </CatalogHeroActionRow>
         </CatalogBrandHero>
 
         <section className="mt-8 grid gap-4 sm:grid-cols-3">
@@ -111,19 +104,11 @@ export default function CarsStartCampaignPage() {
             </li>
           </ul>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              href="/dla-prasy/samochody"
-              className="inline-flex items-center gap-1 rounded-full border border-sky-400/35 bg-sky-500/10 px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.14em] text-sky-300"
-            >
+            <CatalogHeroSecondaryLink href="/dla-prasy/samochody">
               Kopiuj gotowe posty
-              <ArrowRight size={14} />
-            </Link>
-            <Link
-              href="/kampania"
-              className="inline-flex rounded-full border border-[var(--eos-border)] px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.14em]"
-            >
-              Plan kampanii właściciela
-            </Link>
+              <ArrowRight size={14} aria-hidden />
+            </CatalogHeroSecondaryLink>
+            <CatalogHeroSecondaryLink href="/kampania">Plan kampanii</CatalogHeroSecondaryLink>
           </div>
         </section>
 
