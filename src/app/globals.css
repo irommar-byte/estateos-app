@@ -325,26 +325,58 @@ button.premium-action-btn > * { position: relative; z-index: 10; }
 
 
 /* --- ESTATE OS DARK THEME GLOBAL FIXES --- */
-/* Wymuszenie koloru tekstu w polach — wyjątek: /dolacz (.po-field w .portal-onboarding-shell) */
-input:not(.po-field):not(.sr-only),
+/* Wymuszenie koloru tekstu w polach — wyjątek: /dolacz (.po-field) oraz checkbox/radio/file */
+input:not(.po-field):not(.sr-only):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='hidden']):not([type='color']):not([type='submit']):not([type='button']),
 textarea:not(.po-field),
 select:not(.po-field) {
     color: var(--eos-input-text) !important;
     color-scheme: inherit;
 }
-input:not(.po-field):not(.sr-only)::placeholder,
+input:not(.po-field):not(.sr-only):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='hidden'])::placeholder,
 textarea:not(.po-field)::placeholder {
     color: var(--eos-subtle) !important;
 }
 
 /* BLOKADA CZARNEGO TEKSTU PRZY AUTOUZUPEŁNIANIU PRZEGLĄDARKI */
-input:not(.po-field):-webkit-autofill,
-input:not(.po-field):-webkit-autofill:hover, 
-input:not(.po-field):-webkit-autofill:focus, 
-input:not(.po-field):-webkit-autofill:active {
+input:not(.po-field):not([type='checkbox']):not([type='radio']):not([type='file']):-webkit-autofill,
+input:not(.po-field):not([type='checkbox']):not([type='radio']):not([type='file']):-webkit-autofill:hover,
+input:not(.po-field):not([type='checkbox']):not([type='radio']):not([type='file']):-webkit-autofill:focus,
+input:not(.po-field):not([type='checkbox']):not([type='radio']):not([type='file']):-webkit-autofill:active {
     -webkit-box-shadow: 0 0 0 30px var(--eos-bg-elevated) inset !important;
     -webkit-text-fill-color: var(--eos-accent) !important;
     transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Natywny checkbox zawsze widoczny (kwadrat do ptaszka) — gdy ktoś nie używa EosCheckbox */
+input[type='checkbox']:not(.sr-only) {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: 0;
+    flex-shrink: 0;
+    border-radius: 0.4rem;
+    border: 2px solid rgba(15, 23, 42, 0.32);
+    background-color: #ffffff;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 0.85rem;
+    cursor: pointer;
+    vertical-align: middle;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+html.dark input[type='checkbox']:not(.sr-only) {
+    border-color: rgba(255, 255, 255, 0.4);
+    background-color: rgba(255, 255, 255, 0.1);
+}
+input[type='checkbox']:not(.sr-only):checked {
+    border-color: #059669;
+    background-color: #10b981;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
+}
+input[type='checkbox']:not(.sr-only):focus-visible {
+    outline: 2px solid rgba(16, 185, 129, 0.55);
+    outline-offset: 2px;
 }
 
 /* TWARDY, ODPORNY NA BŁĘDY STYL CHECKBOXA */

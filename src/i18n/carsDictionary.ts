@@ -52,6 +52,18 @@ export type CarsDictionary = {
     methodOtomotoTitle: string;
     methodOtomotoDescription: string;
     methodOtomotoBadge: string;
+    methodDocTitle: string;
+    methodDocDescription: string;
+    methodDocBadge: string;
+    docModeLabel: string;
+    docModeLiveTitle: string;
+    docModeLiveDescription: string;
+    docModeUploadTitle: string;
+    docModeUploadDescription: string;
+    docModeCaptureTitle: string;
+    docModeCaptureDescription: string;
+    docContinue: string;
+    manualLink: string;
     hasAccount: string;
     signIn: string;
     changeEntryMethod: string;
@@ -353,7 +365,7 @@ const pl: CarsDictionary = {
   entry: {
     heroTitle: "Jak chcesz dodać auto?",
     heroDescription:
-      "Wybierz sposób wprowadzenia danych z dowodu rejestracyjnego. Formularz możesz wypełnić bez logowania — konto założysz dopiero przy publikacji.",
+      "Dwie ścieżki: import z Otomoto albo skan dowodu. Formularz możesz wypełnić bez logowania — konto założysz dopiero przy publikacji.",
     privacyEyebrow: "Nasza przewaga",
     privacyTitle: "Prywatność VIN i pełna historia dla kupującego",
     privacyBody:
@@ -382,6 +394,19 @@ const pl: CarsDictionary = {
     methodOtomotoDescription:
       "Masz już ogłoszenie na Otomoto? Wklej link — przeniesiemy zdjęcia, opis i specyfikację do formularza.",
     methodOtomotoBadge: "Szybki start",
+    methodDocTitle: "Skanuj dowód rejestracyjny",
+    methodDocDescription:
+      "Odczytaj kod Aztec z tyłu dowodu — uzupełnimy markę, model i VIN. Wybierz skan na żywo, wgranie lub nowe zdjęcie.",
+    methodDocBadge: "Z dowodu",
+    docModeLabel: "Jak chcesz odczytać kod?",
+    docModeLiveTitle: "Skan na żywo",
+    docModeLiveDescription: "Ustaw tył dowodu w kadrze kamery — kod odczytamy automatycznie.",
+    docModeUploadTitle: "Wgraj zdjęcie",
+    docModeUploadDescription: "Wybierz JPG, PNG lub HEIC z galerii telefonu lub komputera.",
+    docModeCaptureTitle: "Zrób zdjęcie",
+    docModeCaptureDescription: "Zrób nowe zdjęcie tyłu dowodu aparatem — od razu je przetworzymy.",
+    docContinue: "Kontynuuj z dowodem",
+    manualLink: "Wolę wypełnić formularz ręcznie",
     hasAccount: "Masz już konto?",
     signIn: "Zaloguj się",
     changeEntryMethod: "← Zmień sposób dodawania",
@@ -715,6 +740,19 @@ const en: CarsDictionary = {
     methodOtomotoDescription:
       "Already listed on Otomoto? Paste the link — we'll move photos, description and specs into the form.",
     methodOtomotoBadge: "Quick start",
+    methodDocTitle: "Scan registration document",
+    methodDocDescription:
+      "Read the Aztec code from the back of the card — we'll fill make, model and VIN. Choose live scan, upload or a new photo.",
+    methodDocBadge: "From document",
+    docModeLabel: "How do you want to read the code?",
+    docModeLiveTitle: "Live scan",
+    docModeLiveDescription: "Frame the back of the card with the camera — we'll decode automatically.",
+    docModeUploadTitle: "Upload photo",
+    docModeUploadDescription: "Pick a JPG, PNG or HEIC from your gallery.",
+    docModeCaptureTitle: "Take a photo",
+    docModeCaptureDescription: "Capture a new photo of the card back — we'll process it right away.",
+    docContinue: "Continue with document",
+    manualLink: "I'd rather fill the form manually",
     hasAccount: "Already have an account?",
     signIn: "Sign in",
     changeEntryMethod: "← Change entry method",
@@ -1045,6 +1083,19 @@ const uk: CarsDictionary = {
     methodOtomotoDescription:
       "Вже є оголошення на Otomoto? Вставте посилання — перенесемо фото, опис і специфікацію у форму.",
     methodOtomotoBadge: "Швидкий старт",
+    methodDocTitle: "Сканувати свідоцтво",
+    methodDocDescription:
+      "Зчитаємо код Aztec зі звороту свідоцтва — заповнимо марку, модель і VIN. Оберіть живе сканування, завантаження або нове фото.",
+    methodDocBadge: "Зі свідоцтва",
+    docModeLabel: "Як зчитати код?",
+    docModeLiveTitle: "Скан наживо",
+    docModeLiveDescription: "Наведіть камеру на зворот свідоцтва — код зчитаємо автоматично.",
+    docModeUploadTitle: "Завантажити фото",
+    docModeUploadDescription: "Оберіть JPG, PNG або HEIC з галереї.",
+    docModeCaptureTitle: "Зробити фото",
+    docModeCaptureDescription: "Зробіть нове фото звороту свідоцтва — обробимо одразу.",
+    docContinue: "Продовжити зі свідоцтвом",
+    manualLink: "Краще заповню форму вручну",
     hasAccount: "Вже маєте акаунт?",
     signIn: "Увійти",
     changeEntryMethod: "← Змінити спосіб додавання",

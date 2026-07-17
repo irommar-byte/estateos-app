@@ -5,7 +5,7 @@ import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
 import OtomotoImportHeroCard from "@/components/cars/OtomotoImportHeroCard";
 import AppleStyleSwitch from "@/components/ui/AppleStyleSwitch";
 import { useLocale } from "@/contexts/LocaleContext";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 export type CarAddEntryMethod = "scan" | "upload" | "capture" | "manual" | "otomoto";
 
@@ -13,65 +13,52 @@ type CarAddEntryScreenProps = {
   onChoose: (method: CarAddEntryMethod) => void;
 };
 
+type DocMode = "scan" | "upload" | "capture";
+
 export default function CarAddEntryScreen({ onChoose }: CarAddEntryScreenProps) {
   const { dict } = useLocale();
   const c = dict.cars.entry;
   const cat = dict.cars.catalog;
   const [demoRestrict, setDemoRestrict] = useState(true);
-  const [showOtomoto, setShowOtomoto] = useState(false);
+  const [path, setPath] = useState<"otomoto" | "doc" | null>(null);
+  const [docMode, setDocMode] = useState<DocMode>("scan");
 
-  const methods = useMemo(
-    () =>
-      [
-        {
-          id: "otomoto" as const,
-          icon: Link2,
-          title: c.methodOtomotoTitle,
-          description: c.methodOtomotoDescription,
-          badge: c.methodOtomotoBadge,
-        },
-        {
-          id: "scan" as const,
-          icon: ScanLine,
-          title: c.methodScanTitle,
-          description: c.methodScanDescription,
-          badge: c.methodScanBadge,
-        },
-        {
-          id: "upload" as const,
-          icon: Upload,
-          title: c.methodUploadTitle,
-          description: c.methodUploadDescription,
-        },
-        {
-          id: "capture" as const,
-          icon: Camera,
-          title: c.methodCaptureTitle,
-          description: c.methodCaptureDescription,
-        },
-        {
-          id: "manual" as const,
-          icon: Keyboard,
-          title: c.methodManualTitle,
-          description: c.methodManualDescription,
-        },
-      ] as const,
-    [c],
-  );
+  const docModes: { id: DocMode; icon: typeof ScanLine; title: string; description: string }[] = [
+    {
+      id: "scan",
+      icon: ScanLine,
+      title: c.docModeLiveTitle,
+      description: c.docModeLiveDescription,
+    },
+    {
+      id: "upload",
+      icon: Upload,
+      title: c.docModeUploadTitle,
+      description: c.docModeUploadDescription,
+    },
+    {
+      id: "capture",
+      icon: Camera,
+      title: c.docModeCaptureTitle,
+      description: c.docModeCaptureDescription,
+    },
+  ];
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-5">
       <CatalogBrandHero brand="car" title={c.heroTitle} description={c.heroDescription} />
 
-      <section className="overflow-hidden rounded-[1.75rem] border border-sky-400/25 bg-gradient-to-br from-sky-500/[0.08] via-[var(--eos-card)] to-[var(--eos-card)] p-5 shadow-[0_22px_70px_rgba(14,165,233,0.1)] sm:p-6">
+      <section className="overflow-hidden rounded-[1.5rem] border border-sky-400/25 bg-gradient-to-br from-sky-500/[0.08] via-[var(--eos-card)] to-[var(--eos-card)] p-4 shadow-[0_18px_50px_rgba(14,165,233,0.08)] sm:p-5">
         <div className="flex items-start gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-sky-500/15">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-sky-500/15">
             <ShieldCheck className="size-5 text-sky-500" aria-hidden />
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">{c.privacyEyebrow}</p>
-            <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">{c.privacyTitle}</h2>
-            <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">
+            <h2 className="mt-1 text-base font-semibold tracking-tight text-[var(--eos-text)] sm:text-lg">
+              {c.privacyTitle}
+            </h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-[var(--eos-muted)]">
               {c.privacyBody}{" "}
               <strong className="font-semibold text-[var(--eos-text)]">{c.privacyBodyRestrict}</strong>
               {c.privacyBodyHistory}
@@ -79,7 +66,7 @@ export default function CarAddEntryScreen({ onChoose }: CarAddEntryScreenProps) 
           </div>
         </div>
 
-        <div className="mt-5 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1">
+        <div className="mt-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1">
           <AppleStyleSwitch
             id="demo-restrict-docs"
             checked={demoRestrict}
@@ -89,55 +76,136 @@ export default function CarAddEntryScreen({ onChoose }: CarAddEntryScreenProps) 
           />
         </div>
 
-        <div className="mt-4 flex items-center gap-2 text-xs text-sky-700 dark:text-sky-300">
+        <div className="mt-3 flex items-center gap-2 text-xs text-sky-700 dark:text-sky-300">
           <FileSearch className="size-4 shrink-0 text-sky-500" aria-hidden />
           <span>{c.restrictHint}</span>
         </div>
       </section>
 
-      {showOtomoto ? (
-        <OtomotoImportHeroCard
-          title={cat.otomotoImportTitle}
-          body={cat.otomotoImportBody}
-          placeholder={cat.otomotoImportPlaceholder}
-          cta={cat.otomotoImportCta}
-          loadingLabel={cat.otomotoImportLoading}
-          redirectTo=""
-          onImported={() => onChoose("otomoto")}
-        />
-      ) : null}
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        {methods.map((method) => (
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Path A — Otomoto */}
+        <div
+          className={`flex flex-col overflow-hidden rounded-[1.5rem] border bg-[var(--eos-card)] shadow-[0_18px_50px_rgba(14,165,233,0.06)] transition ${
+            path === "otomoto"
+              ? "border-sky-400/50 ring-2 ring-sky-400/25"
+              : "border-[var(--eos-border)] hover:border-sky-400/35"
+          }`}
+        >
           <button
-            key={method.id}
             type="button"
-            onClick={() => {
-              if (method.id === "otomoto") {
-                setShowOtomoto(true);
-                return;
-              }
-              onChoose(method.id);
-            }}
-            className="group flex h-full flex-col rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 text-left shadow-[0_18px_50px_rgba(14,165,233,0.05)] transition hover:border-sky-400/35 hover:shadow-[0_22px_60px_rgba(14,165,233,0.12)]"
+            onClick={() => setPath("otomoto")}
+            className="flex flex-1 flex-col p-5 text-left"
           >
             <div className="flex items-start justify-between gap-3">
-              <div className="flex size-11 items-center justify-center rounded-2xl bg-sky-500/12 transition group-hover:bg-sky-500/18">
-                <method.icon className="size-5 text-sky-500" aria-hidden />
+              <div className="flex size-11 items-center justify-center rounded-2xl bg-sky-500/12">
+                <Link2 className="size-5 text-sky-500" aria-hidden />
               </div>
-              {"badge" in method && method.badge ? (
-                <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-sky-700 dark:text-sky-300">
-                  {method.badge}
-                </span>
-              ) : null}
+              <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-sky-700 dark:text-sky-300">
+                {c.methodOtomotoBadge}
+              </span>
             </div>
-            <h3 className="mt-4 text-base font-semibold tracking-tight text-[var(--eos-text)]">{method.title}</h3>
-            <p className="mt-2 flex-1 text-sm leading-relaxed text-[var(--eos-muted)]">{method.description}</p>
-            <span className="mt-4 text-[10px] font-black uppercase tracking-[0.16em] text-sky-600 transition group-hover:text-sky-500 dark:text-sky-400">
-              {dict.cars.common.choose}
-            </span>
+            <h3 className="mt-4 text-lg font-semibold tracking-tight text-[var(--eos-text)]">
+              {c.methodOtomotoTitle}
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{c.methodOtomotoDescription}</p>
           </button>
-        ))}
+
+          {path === "otomoto" ? (
+            <div className="border-t border-[var(--eos-border)] px-4 pb-4 pt-3">
+              <OtomotoImportHeroCard
+                title={cat.otomotoImportTitle}
+                body={cat.otomotoImportBody}
+                placeholder={cat.otomotoImportPlaceholder}
+                cta={cat.otomotoImportCta}
+                loadingLabel={cat.otomotoImportLoading}
+                redirectTo=""
+                compact
+                onImported={() => onChoose("otomoto")}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        {/* Path B — Registration document */}
+        <div
+          className={`flex flex-col overflow-hidden rounded-[1.5rem] border bg-[var(--eos-card)] shadow-[0_18px_50px_rgba(14,165,233,0.06)] transition ${
+            path === "doc"
+              ? "border-sky-400/50 ring-2 ring-sky-400/25"
+              : "border-[var(--eos-border)] hover:border-sky-400/35"
+          }`}
+        >
+          <button type="button" onClick={() => setPath("doc")} className="flex flex-1 flex-col p-5 text-left">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex size-11 items-center justify-center rounded-2xl bg-sky-500/12">
+                <ScanLine className="size-5 text-sky-500" aria-hidden />
+              </div>
+              <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-sky-700 dark:text-sky-300">
+                {c.methodDocBadge}
+              </span>
+            </div>
+            <h3 className="mt-4 text-lg font-semibold tracking-tight text-[var(--eos-text)]">{c.methodDocTitle}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{c.methodDocDescription}</p>
+          </button>
+
+          {path === "doc" ? (
+            <div className="border-t border-[var(--eos-border)] px-4 pb-4 pt-3">
+              <p className="mb-2.5 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
+                {c.docModeLabel}
+              </p>
+              <div className="grid gap-2">
+                {docModes.map((mode) => {
+                  const active = docMode === mode.id;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => setDocMode(mode.id)}
+                      className={`flex items-start gap-3 rounded-2xl border px-3.5 py-3 text-left transition ${
+                        active
+                          ? "border-sky-400/45 bg-sky-500/10 shadow-[0_8px_24px_rgba(14,165,233,0.12)]"
+                          : "border-[var(--eos-border)] bg-[var(--eos-surface)] hover:border-sky-400/30"
+                      }`}
+                    >
+                      <span
+                        className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                          active ? "border-sky-500 bg-sky-500" : "border-[var(--eos-border-strong)] bg-transparent"
+                        }`}
+                        aria-hidden
+                      >
+                        {active ? <span className="size-2 rounded-full bg-white" /> : null}
+                      </span>
+                      <mode.icon className={`mt-0.5 size-4 shrink-0 ${active ? "text-sky-500" : "text-[var(--eos-muted)]"}`} />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-[var(--eos-text)]">{mode.title}</span>
+                        <span className="mt-0.5 block text-xs leading-relaxed text-[var(--eos-muted)]">
+                          {mode.description}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={() => onChoose(docMode)}
+                className="mt-3 flex w-full items-center justify-center rounded-2xl bg-sky-500 px-4 py-3 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(14,165,233,0.28)] transition hover:bg-sky-400"
+              >
+                {c.docContinue}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex justify-center pb-2">
+        <button
+          type="button"
+          onClick={() => onChoose("manual")}
+          className="inline-flex items-center gap-2 rounded-full border border-transparent px-4 py-2 text-sm text-[var(--eos-muted)] transition hover:border-[var(--eos-border)] hover:bg-[var(--eos-surface)] hover:text-[var(--eos-text)]"
+        >
+          <Keyboard className="size-4" aria-hidden />
+          {c.manualLink}
+        </button>
       </div>
     </div>
   );
