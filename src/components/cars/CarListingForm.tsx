@@ -30,13 +30,57 @@ import {
   OTOMOTO_IMPORT_STORAGE_KEY,
   type OtomotoCarImportPrefill,
 } from "@/lib/otomotoCarImport";
+import {
+  clearCarListingDraft,
+  readCarListingDraft,
+  writeCarListingDraft,
+} from "@/lib/carListingDraft";
 import { formatDateForForm } from "@/utils/polishDateInput";
-
-const CAR_DRAFT_VERSION = 1;
-const CAR_DRAFT_KEY = "estateos_car_listing_draft_v1";
 
 function scanGateForEntryMethod(method?: CarAddEntryMethod) {
   return method === "scan" || method === "capture" || method === "upload";
+}
+
+function formFromOtomotoPrefill(prefill: OtomotoCarImportPrefill): CarFormState {
+  return {
+    ...initialCarForm,
+    title: prefill.title || "",
+    description: prefill.description || "",
+    make: prefill.make || "",
+    model: prefill.model || "",
+    year: prefill.year || "",
+    mileageKm: prefill.mileageKm || "",
+    fuelType: prefill.fuelType || initialCarForm.fuelType,
+    transmission: prefill.transmission || initialCarForm.transmission,
+    bodyType: prefill.bodyType || initialCarForm.bodyType,
+    exteriorColor: prefill.exteriorColor || "",
+    generation: prefill.generation || "",
+    enginePower: prefill.enginePower || "",
+    engineCapacity: prefill.engineCapacity || "",
+    trimVersion: prefill.trimVersion || "",
+    doorCount: prefill.doorCount || "",
+    pricePln: prefill.pricePln || "",
+    city: prefill.city || "",
+    cityLat: prefill.cityLat ?? null,
+    cityLng: prefill.cityLng ?? null,
+    localityCountry: prefill.localityCountry || "Polska",
+    imageUrl: prefill.imageUrl || "",
+    images: prefill.images?.length ? [...prefill.images] : [],
+    vin: prefill.vin || "",
+    registrationNumber: prefill.registrationNumber || "",
+    firstRegistrationDate: prefill.firstRegistrationDate || "",
+    insuranceValidUntil: "",
+    restrictVehicleDocs: true,
+    makeSlug: "",
+    modelSlug: "",
+    fuelSlug: "",
+    gearboxSlug: "",
+    generationSlug: "",
+    enginePowerSlug: "",
+    engineCapacitySlug: "",
+    trimVersionSlug: "",
+    doorCountSlug: "",
+  };
 }
 
 export type CarFormState = CarVehicleDocsFormState & {
@@ -208,22 +252,18 @@ export default function CarListingForm({
       setDraftReady(true);
       return;
     }
-    try {
-      const raw = window.localStorage.getItem(CAR_DRAFT_KEY);
-      if (!raw) {
-        setDraftReady(true);
-        return;
-      }
-      const parsed = JSON.parse(raw) as { version?: number; form?: CarFormState };
-      if (parsed?.version === CAR_DRAFT_VERSION && parsed.form) {
-        setForm((prev) => ({ ...prev, ...parsed.form }));
-      }
-    } catch {
-      // ignore corrupt draft
-    } finally {
+    // Pending Otomoto import always wins — never restore an older draft first.
+    const pendingOtomoto = sessionStorage.getItem(OTOMOTO_IMPORT_STORAGE_KEY);
+    if (pendingOtomoto || entryMethod === "otomoto") {
       setDraftReady(true);
+      return;
     }
-  }, [mode]);
+    const parsed = readCarListingDraft();
+    if (parsed?.form) {
+      setForm((prev) => ({ ...prev, ...parsed.form }));
+    }
+    setDraftReady(true);
+  }, [mode, entryMethod]);
 
   useEffect(() => {
     if (mode !== "create" || !draftReady || typeof window === "undefined") return;
@@ -239,59 +279,19 @@ export default function CarListingForm({
         missingFields?: CarListingMissingFieldKey[];
       };
       if (!parsed?.prefill) return;
-      const prefill = parsed.prefill;
-      setForm((prev) => {
-        const next: CarFormState = {
-          ...prev,
-          title: prefill.title || prev.title,
-          description: prefill.description || prev.description,
-          make: prefill.make || prev.make,
-          model: prefill.model || prev.model,
-          year: prefill.year || prev.year,
-          mileageKm: prefill.mileageKm || prev.mileageKm,
-          fuelType: prefill.fuelType || prev.fuelType,
-          transmission: prefill.transmission || prev.transmission,
-          bodyType: prefill.bodyType || prev.bodyType,
-          exteriorColor: prefill.exteriorColor || prev.exteriorColor,
-          generation: prefill.generation || prev.generation,
-          enginePower: prefill.enginePower || prev.enginePower,
-          engineCapacity: prefill.engineCapacity || prev.engineCapacity,
-          trimVersion: prefill.trimVersion || prev.trimVersion,
-          doorCount: prefill.doorCount || prev.doorCount,
-          pricePln: prefill.pricePln || prev.pricePln,
-          city: prefill.city || prev.city,
-          cityLat: prefill.cityLat ?? prev.cityLat,
-          cityLng: prefill.cityLng ?? prev.cityLng,
-          localityCountry: prefill.localityCountry || prev.localityCountry,
-          imageUrl: prefill.imageUrl || prev.imageUrl,
-          images: prefill.images?.length ? prefill.images : prev.images,
-          vin: prefill.vin || prev.vin,
-          registrationNumber: prefill.registrationNumber || prev.registrationNumber,
-          firstRegistrationDate: prefill.firstRegistrationDate || prev.firstRegistrationDate,
-        };
-        const keys =
-          parsed.missingFields?.length
-            ? parsed.missingFields
-            : listMissingListingFields(next, next.images.length > 0);
-        setHighlightKeys(keys);
-        setScanNotice(
-          `${f.otomotoLoaded} ${missingFieldsBanner(keys, c.scan) || f.otomotoCheckForm}`,
-        );
-        try {
-          window.localStorage.setItem(
-            CAR_DRAFT_KEY,
-            JSON.stringify({
-              version: CAR_DRAFT_VERSION,
-              savedAt: Date.now(),
-              form: { ...next, images: next.images.filter((url) => !url.startsWith("blob:")) },
-            }),
-          );
-        } catch {
-          // ignore quota
-        }
-        return next;
-      });
+      const next = formFromOtomotoPrefill(parsed.prefill);
+      clearCarListingDraft();
       sessionStorage.removeItem(OTOMOTO_IMPORT_STORAGE_KEY);
+      setForm(next);
+      const keys =
+        parsed.missingFields?.length
+          ? parsed.missingFields
+          : listMissingListingFields(next, next.images.length > 0);
+      setHighlightKeys(keys);
+      setScanNotice(
+        `${f.otomotoLoaded} ${missingFieldsBanner(keys, c.scan) || f.otomotoCheckForm}`,
+      );
+      writeCarListingDraft(next);
     } catch {
       // ignore corrupt import payload
     }
@@ -301,18 +301,7 @@ export default function CarListingForm({
     if (mode !== "create" || !draftReady || typeof window === "undefined") return;
     if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
     draftTimerRef.current = window.setTimeout(() => {
-      try {
-        const serializable = {
-          ...form,
-          images: form.images.filter((url) => !url.startsWith("blob:")),
-        };
-        window.localStorage.setItem(
-          CAR_DRAFT_KEY,
-          JSON.stringify({ version: CAR_DRAFT_VERSION, savedAt: Date.now(), form: serializable }),
-        );
-      } catch {
-        // ignore quota errors
-      }
+      writeCarListingDraft(form);
     }, 450);
     return () => {
       if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
