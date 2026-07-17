@@ -34,6 +34,9 @@ export type OtomotoCarImportPrefill = {
   imageUrl: string;
   images: string[];
   sourceUrl: string;
+  vin?: string;
+  registrationNumber?: string;
+  firstRegistrationDate?: string;
 };
 
 type DetailParam = {
@@ -101,6 +104,24 @@ function parseEngineCapacity(raw: string): string {
 
 function parseEnginePower(raw: string): string {
   return digitsOnly(raw);
+}
+
+function extractVehicleIdsFromText(htmlOrText: string): {
+  vin: string;
+  registrationNumber: string;
+  firstRegistrationDate: string;
+} {
+  const text = stripHtml(htmlOrText).toUpperCase();
+  const vinMatch = text.match(/\b([A-HJ-NPR-Z0-9]{17})\b/);
+  const dateMatch =
+    text.match(
+      /(?:PIERWSZ[AEY]\s+REJESTRAC\w*|DATA\s+REJESTRAC\w*|1\.?\s*REJ\.?)[^\d]{0,24}(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/i,
+    ) || text.match(/\b(\d{2}[./-]\d{2}[./-]\d{4})\b/);
+  return {
+    vin: vinMatch?.[1] || "",
+    registrationNumber: "",
+    firstRegistrationDate: dateMatch?.[1]?.replace(/-/g, ".") || "",
+  };
 }
 
 function mapBodyType(raw: string): string {
@@ -243,6 +264,16 @@ export function parseOtomotoAdvert(advert: Record<string, unknown>, sourceUrl: s
   const transmission = gearboxLabelToTransmission(gearboxRaw || "Automatyczna");
   const fuelType = fuelLabelToFuelType(params.fuel_type || "Benzyna");
 
+  // Otomoto encrypts VIN/plate/first-reg in details — only keep plaintext values or parse from description.
+  const plainVin = !looksLikeOtomotoEncryptedValue(params.vin || "") ? params.vin || "" : "";
+  const plainPlate = !looksLikeOtomotoEncryptedValue(params.registration || "")
+    ? params.registration || ""
+    : "";
+  const plainFirstReg = !looksLikeOtomotoEncryptedValue(params.date_registration || "")
+    ? params.date_registration || ""
+    : "";
+  const fromDescription = extractVehicleIdsFromText(String(advert.description || ""));
+
   return {
     title,
     description: stripHtml(String(advert.description || "")),
@@ -267,6 +298,9 @@ export function parseOtomotoAdvert(advert: Record<string, unknown>, sourceUrl: s
     imageUrl: images[0] || "",
     images,
     sourceUrl,
+    vin: (plainVin || fromDescription.vin || "").toUpperCase(),
+    registrationNumber: (plainPlate || fromDescription.registrationNumber || "").toUpperCase(),
+    firstRegistrationDate: plainFirstReg || fromDescription.firstRegistrationDate || "",
   };
 }
 

@@ -2970,7 +2970,10 @@ export default function ClientForm({
         open={authGateOpen}
         brand="home"
         onClose={() => setAuthGateOpen(false)}
-        onAuthenticated={publishAfterAuth}
+        onAuthenticated={async (report) => {
+          report("Publikuję ofertę nieruchomości…");
+          await publishAfterAuth();
+        }}
       />
 
       <ProPhotoSessionDialog

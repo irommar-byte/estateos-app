@@ -97,6 +97,8 @@ export async function GET(req: Request) {
   );
 }
 
+export const maxDuration = 120;
+
 export async function POST(req: Request) {
   try {
     const userId = await resolveUploaderUserId(req);
@@ -106,7 +108,10 @@ export async function POST(req: Request) {
     const body = (await req.json()) as Record<string, unknown>;
     const payload = validateBody(body);
     if (!payload.title || !payload.make || !payload.model || payload.pricePln <= 0) {
-      return NextResponse.json({ error: "Invalid car listing payload" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Uzupełnij tytuł, markę, model i cenę, aby opublikować ogłoszenie." },
+        { status: 400 },
+      );
     }
 
     const sourceImages =
@@ -115,15 +120,41 @@ export async function POST(req: Request) {
         : payload.imageUrl
           ? [payload.imageUrl]
           : [];
-    const hostedImages = await rehostRemoteCarImages({ userId, imageUrls: sourceImages });
-    const created = await createCarListing({
-      ...payload,
-      userId,
-      images: hostedImages.length ? hostedImages : sourceImages,
-      imageUrl: hostedImages[0] || payload.imageUrl,
-    });
-    return NextResponse.json({ success: true, listing: created }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Failed to create car listing" }, { status: 500 });
+
+    let hostedImages = sourceImages;
+    try {
+      hostedImages = await rehostRemoteCarImages({ userId, imageUrls: sourceImages });
+      if (!hostedImages.length) hostedImages = sourceImages;
+    } catch (rehostError) {
+      console.error("cars rehost", rehostError);
+      hostedImages = sourceImages;
+    }
+
+    try {
+      const created = await createCarListing({
+        ...payload,
+        userId,
+        images: hostedImages,
+        imageUrl: hostedImages[0] || payload.imageUrl,
+      });
+      return NextResponse.json({ success: true, listing: created }, { status: 201 });
+    } catch (createError) {
+      console.error("cars create", createError);
+      return NextResponse.json(
+        {
+          error:
+            createError instanceof Error
+              ? `Nie udało się zapisać ogłoszenia: ${createError.message}`
+              : "Nie udało się zapisać ogłoszenia.",
+        },
+        { status: 500 },
+      );
+    }
+  } catch (error) {
+    console.error("cars POST", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Nie udało się zapisać ogłoszenia." },
+      { status: 500 },
+    );
   }
 }

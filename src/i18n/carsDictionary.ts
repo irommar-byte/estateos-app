@@ -135,6 +135,12 @@ export type CarsDictionary = {
     restrictLabel: string;
     restrictDescription: string;
     loginBanner: string;
+    fillHintTitle: string;
+    fillHintBody: string;
+    scanCta: string;
+    manualCta: string;
+    otomotoPrivacyNote: string;
+    verifyNeedsLogin: string;
     checkHistory: string;
     checkingHistory: string;
     checkInsurance: string;
@@ -481,6 +487,14 @@ const pl: CarsDictionary = {
     restrictLabel: "Zastrzeż dane na ogłoszeniu publicznym",
     restrictDescription: "Na liście i karcie ogłoszenia widoczne będą tylko fragmenty VIN i tablicy.",
     loginBanner: "Zaloguj się, aby sprawdzić historię CEPIK i OC przed publikacją.",
+    fillHintTitle: "Uzupełnij dane z dowodu rejestracyjnego",
+    fillHintBody:
+      "Otomoto szyfruje VIN i rejestrację — nie da się ich przenieść z linku. Zeskanuj kod Aztec z dowodu albo wpisz dane ręcznie poniżej.",
+    scanCta: "Zeskanuj kod z dowodu",
+    manualCta: "Wpisuję ręcznie",
+    otomotoPrivacyNote:
+      "Po uzupełnieniu możesz zastrzec dane na ogłoszeniu — kupujący i tak sprawdzi historię i OC.",
+    verifyNeedsLogin: "Aby uruchomić CEPIK/OC, zaloguj się przy publikacji — dane z formularza zostaną zachowane.",
     checkHistory: "Sprawdź historię CEPIK",
     checkingHistory: "Pobieranie historii...",
     checkInsurance: "Sprawdź ważność OC",
@@ -825,6 +839,14 @@ const en: CarsDictionary = {
     restrictLabel: "Restrict data on public listing",
     restrictDescription: "Only partial VIN and plate shown on cards and detail page.",
     loginBanner: "Sign in to run CEPIK history and insurance checks before publishing.",
+    fillHintTitle: "Complete registration document details",
+    fillHintBody:
+      "Otomoto encrypts VIN and plate — they can't be imported from the link. Scan the Aztec code or type the details below.",
+    scanCta: "Scan document code",
+    manualCta: "I'll type manually",
+    otomotoPrivacyNote:
+      "After filling, you can restrict public data — buyers can still check history and insurance.",
+    verifyNeedsLogin: "Sign in at publish to run CEPIK/OC — your form data stays saved.",
     checkHistory: "Check CEPIK history",
     checkingHistory: "Loading history...",
     checkInsurance: "Check insurance validity",
@@ -1168,6 +1190,14 @@ const uk: CarsDictionary = {
     restrictLabel: "Обмежити дані в публічному оголошенні",
     restrictDescription: "У списку та картці видно лише фрагменти VIN і номера.",
     loginBanner: "Увійдіть, щоб перевірити історію CEPIK і OC перед публікацією.",
+    fillHintTitle: "Заповніть дані зі свідоцтва",
+    fillHintBody:
+      "Otomoto шифрує VIN і номер — їх не можна імпортувати з посилання. Відскануйте код Aztec або введіть дані нижче.",
+    scanCta: "Сканувати код зі свідоцтва",
+    manualCta: "Введу вручну",
+    otomotoPrivacyNote:
+      "Після заповнення можна обмежити дані в оголошенні — покупець все одно перевірить історію та OC.",
+    verifyNeedsLogin: "Щоб запустити CEPIK/OC, увійдіть при публікації — дані форми збережуться.",
     checkHistory: "Перевірити історію CEPIK",
     checkingHistory: "Завантаження історії...",
     checkInsurance: "Перевірити дійсність OC",

@@ -1,13 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { FileSearch, ShieldCheck } from "lucide-react";
+import { FileSearch, Keyboard, ScanLine, ShieldCheck } from "lucide-react";
 import AppleStyleSwitch from "@/components/ui/AppleStyleSwitch";
 import {
   CarFormField,
   CarFormSection,
-  carAlertErrorClass,
+  carAlertInfoClass,
   carAlertSuccessClass,
   carAlertWarningClass,
   carFieldInputClass,
@@ -27,6 +26,7 @@ type CarVehicleDocsFieldsProps = {
   value: CarVehicleDocsFormState;
   onChange: (patch: Partial<CarVehicleDocsFormState>) => void;
   loggedIn?: boolean;
+  onRequestScan?: () => void;
 };
 
 function isValidVinQuick(vin: string) {
@@ -34,7 +34,12 @@ function isValidVinQuick(vin: string) {
   return normalized.length === 17 && !/[IOQ]/.test(normalized);
 }
 
-export default function CarVehicleDocsFields({ value, onChange, loggedIn = false }: CarVehicleDocsFieldsProps) {
+export default function CarVehicleDocsFields({
+  value,
+  onChange,
+  loggedIn = false,
+  onRequestScan,
+}: CarVehicleDocsFieldsProps) {
   const { dict } = useLocale();
   const d = dict.cars.docs;
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -53,6 +58,8 @@ export default function CarVehicleDocsFields({ value, onChange, loggedIn = false
   const canVerify = Boolean(
     isValidVinQuick(value.vin) && value.registrationNumber.trim() && isCompletePolishDate(value.firstRegistrationDate),
   );
+  const docsEmpty =
+    !value.vin.trim() && !value.registrationNumber.trim() && !value.firstRegistrationDate.trim();
 
   useEffect(() => {
     if (!loggedIn || !canVerify) return;
@@ -133,13 +140,28 @@ export default function CarVehicleDocsFields({ value, onChange, loggedIn = false
 
   return (
     <CarFormSection eyebrow={d.eyebrow} title={d.title} description={d.description}>
-      {!loggedIn ? (
-        <p className={carAlertWarningClass}>
-          {d.loginBanner}{" "}
-          <Link href="/login" className="font-bold underline underline-offset-2">
-            {dict.cars.common.login}
-          </Link>
-        </p>
+      {docsEmpty ? (
+        <div className={carAlertInfoClass}>
+          <p className="font-semibold text-[var(--eos-text)]">{d.fillHintTitle}</p>
+          <p className="mt-1 text-[var(--eos-muted)]">{d.fillHintBody}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {onRequestScan ? (
+              <button
+                type="button"
+                onClick={onRequestScan}
+                className="inline-flex items-center gap-2 rounded-full border border-sky-400/40 bg-sky-500/15 px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] text-sky-800 transition hover:bg-sky-500/20 dark:text-sky-200"
+              >
+                <ScanLine className="size-4" />
+                {d.scanCta}
+              </button>
+            ) : null}
+            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)]">
+              <Keyboard className="size-4" />
+              {d.manualCta}
+            </span>
+          </div>
+          <p className="mt-2 text-xs text-[var(--eos-muted)]">{d.otomotoPrivacyNote}</p>
+        </div>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -213,6 +235,10 @@ export default function CarVehicleDocsFields({ value, onChange, loggedIn = false
           {insuranceLoading ? d.checkingInsurance : d.checkInsurance}
         </button>
       </div>
+
+      {!loggedIn && canVerify ? (
+        <p className={carAlertWarningClass}>{d.verifyNeedsLogin}</p>
+      ) : null}
 
       {loggedIn && autoChecking ? <p className="text-xs text-[var(--eos-muted)]">{d.autoChecking}</p> : null}
 

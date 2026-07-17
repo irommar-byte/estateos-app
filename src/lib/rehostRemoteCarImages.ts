@@ -1,10 +1,13 @@
 import { saveCarListingImage } from "@/lib/upload/carMediaUpload";
 import { isRemoteCarImageUrl } from "@/lib/otomotoCarImport";
 
-const MAX_REMOTE = 24;
-const DOWNLOAD_TIMEOUT_MS = 25_000;
+const MAX_REMOTE = 16;
+const DOWNLOAD_TIMEOUT_MS = 12_000;
+const CONCURRENCY = 3;
 
-async function downloadRemoteImage(url: string): Promise<{ buffer: Buffer; mime: string; fileName: string } | null> {
+async function downloadRemoteImage(
+  url: string,
+): Promise<{ buffer: Buffer; mime: string; fileName: string } | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
   try {
@@ -21,7 +24,7 @@ async function downloadRemoteImage(url: string): Promise<{ buffer: Buffer; mime:
     if (!response.ok) return null;
     const mime = String(response.headers.get("content-type") || "image/jpeg").split(";")[0].trim();
     const buffer = Buffer.from(await response.arrayBuffer());
-    if (!buffer.length) return null;
+    if (!buffer.length || buffer.length > 8 * 1024 * 1024) return null;
     return { buffer, mime, fileName: "otomoto-import.jpg" };
   } catch {
     return null;
@@ -30,28 +33,48 @@ async function downloadRemoteImage(url: string): Promise<{ buffer: Buffer; mime:
   }
 }
 
-/** Re-host remote Otomoto CDN images into EstateOS car uploads during publish. */
+/**
+ * Re-host remote Otomoto CDN images. Never throws — keeps original URLs on failure
+ * so listing create still succeeds.
+ */
 export async function rehostRemoteCarImages(params: {
   userId: number;
   imageUrls: string[];
 }): Promise<string[]> {
-  const out: string[] = [];
-  for (const raw of params.imageUrls.slice(0, MAX_REMOTE)) {
-    const url = String(raw || "").trim();
-    if (!url) continue;
-    if (!isRemoteCarImageUrl(url)) {
-      out.push(url);
-      continue;
+  const source = params.imageUrls.map((u) => String(u || "").trim()).filter(Boolean).slice(0, MAX_REMOTE);
+  if (!source.length) return [];
+
+  const out: string[] = new Array(source.length);
+  let cursor = 0;
+
+  const worker = async () => {
+    while (cursor < source.length) {
+      const index = cursor;
+      cursor += 1;
+      const url = source[index];
+      if (!isRemoteCarImageUrl(url)) {
+        out[index] = url;
+        continue;
+      }
+      try {
+        const file = await downloadRemoteImage(url);
+        if (!file) {
+          out[index] = url;
+          continue;
+        }
+        const saved = await saveCarListingImage({
+          buffer: file.buffer,
+          mimeTypeDeclared: file.mime,
+          originalFileName: file.fileName,
+          userId: params.userId,
+        });
+        out[index] = saved.ok ? saved.url : url;
+      } catch {
+        out[index] = url;
+      }
     }
-    const file = await downloadRemoteImage(url);
-    if (!file) continue;
-    const saved = await saveCarListingImage({
-      buffer: file.buffer,
-      mimeTypeDeclared: file.mime,
-      originalFileName: file.fileName,
-      userId: params.userId,
-    });
-    if (saved.ok) out.push(saved.url);
-  }
-  return out;
+  };
+
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, source.length) }, () => worker()));
+  return out.filter(Boolean);
 }

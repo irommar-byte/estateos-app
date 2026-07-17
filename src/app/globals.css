@@ -101,9 +101,9 @@ select,
 textarea {
   appearance: none;
   outline: none;
-  background: transparent;
-  box-shadow: none;
-  border: none;
+  font: inherit;
+  color: inherit;
+  /* Nie kasuj border/background — utility Tailwind (border, bg-*) muszą być widoczne */
 }
 
 button {
@@ -113,13 +113,27 @@ button {
   color: inherit;
 }
 
-/* Zapobieganie autouzupełnianiu na biało w Chrome */
+/* Autofill: zachowaj czytelne tło i wyraźną ramkę (Chrome maluje insetem cały input) */
 input:-webkit-autofill,
-input:-webkit-autofill:hover, 
-input:-webkit-autofill:focus {
-  -webkit-text-fill-color: var(--eos-input-text);
-  -webkit-box-shadow: 0 0 0px 1000px var(--eos-bg-elevated) inset;
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--eos-input-text) !important;
+  caret-color: var(--eos-input-text);
+  border: 1.5px solid rgba(15, 23, 42, 0.28) !important;
+  -webkit-box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.12),
+    0 0 0 1000px var(--eos-input, #f3f3f1) inset !important;
   transition: background-color 5000s ease-in-out 0s;
+}
+html.dark input:-webkit-autofill,
+html.dark input:-webkit-autofill:hover,
+html.dark input:-webkit-autofill:focus,
+html.dark input:-webkit-autofill:active {
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  -webkit-box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 0 0 1000px var(--eos-input, #1e1e22) inset !important;
 }
 
 /* Luksusowa karta do formularza */
@@ -337,14 +351,13 @@ textarea:not(.po-field)::placeholder {
     color: var(--eos-subtle) !important;
 }
 
-/* BLOKADA CZARNEGO TEKSTU PRZY AUTOUZUPEŁNIANIU PRZEGLĄDARKI */
+/* BLOKADA CZARNEGO TEKSTU PRZY AUTOUZUPEŁNIANIU PRZEGLĄDARKI — tylko kolor tekstu, ramka zostaje z reguły wyżej */
 input:not(.po-field):not([type='checkbox']):not([type='radio']):not([type='file']):-webkit-autofill,
 input:not(.po-field):not([type='checkbox']):not([type='radio']):not([type='file']):-webkit-autofill:hover,
 input:not(.po-field):not([type='checkbox']):not([type='radio']):not([type='file']):-webkit-autofill:focus,
 input:not(.po-field):not([type='checkbox']):not([type='radio']):not([type='file']):-webkit-autofill:active {
-    -webkit-box-shadow: 0 0 0 30px var(--eos-bg-elevated) inset !important;
-    -webkit-text-fill-color: var(--eos-accent) !important;
-    transition: background-color 5000s ease-in-out 0s;
+    -webkit-text-fill-color: var(--eos-input-text) !important;
+    caret-color: var(--eos-input-text);
 }
 
 /* Natywny checkbox zawsze widoczny (kwadrat do ptaszka) — gdy ktoś nie używa EosCheckbox */

@@ -265,6 +265,9 @@ export default function CarListingForm({
           localityCountry: prefill.localityCountry || prev.localityCountry,
           imageUrl: prefill.imageUrl || prev.imageUrl,
           images: prefill.images?.length ? prefill.images : prev.images,
+          vin: prefill.vin || prev.vin,
+          registrationNumber: prefill.registrationNumber || prev.registrationNumber,
+          firstRegistrationDate: prefill.firstRegistrationDate || prev.firstRegistrationDate,
         };
         const keys =
           parsed.missingFields?.length
@@ -360,7 +363,7 @@ export default function CarListingForm({
     });
   };
 
-  const publishListing = async () => {
+  const publishListing = async (report?: (step: string) => void) => {
     setError(null);
     setSuccessId(null);
     setSubmitting(true);
@@ -374,14 +377,18 @@ export default function CarListingForm({
     try {
       let uploadedImages = form.images;
       if (photoGalleryRef.current?.hasPending()) {
+        report?.("Wgrywam lokalne zdjęcia…");
         uploadedImages = await photoGalleryRef.current.uploadPending();
         setForm((prev) => ({
           ...prev,
           images: uploadedImages,
           imageUrl: uploadedImages[0] || "",
         }));
+      } else if (uploadedImages.some((url) => /^https?:\/\//i.test(url) && !url.includes("/uploads/cars/"))) {
+        report?.(`Przygotowuję ${uploadedImages.length} zdjęć z Otomoto…`);
       }
 
+      report?.("Zapisuję ogłoszenie w katalogu Cars…");
       const payload = toPayload(form, uploadedImages);
       const response = await fetch(mode === "create" ? "/api/cars" : `/api/cars/${carId}`, {
         method: mode === "create" ? "POST" : "PATCH",
@@ -394,6 +401,7 @@ export default function CarListingForm({
         throw new Error(typeof data?.error === "string" ? data.error : c.common.saveFailed);
       }
 
+      report?.("Ogłoszenie opublikowane.");
       const savedId = Number(data?.listing?.id || carId || 0) || null;
       if (data?.listing) {
         const listing = data.listing as Record<string, string>;
@@ -507,6 +515,7 @@ export default function CarListingForm({
           }}
           onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
           loggedIn={loggedIn}
+          onRequestScan={() => setScanGateOpen(true)}
         />
 
         <CarFormSection eyebrow={f.offerEyebrow} title={f.offerTitle} description={f.offerDescription}>

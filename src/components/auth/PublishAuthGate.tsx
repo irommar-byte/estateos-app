@@ -15,7 +15,8 @@ type PublishAuthGateProps = {
   context?: AuthGateContext;
   open: boolean;
   onClose: () => void;
-  onAuthenticated: () => void | Promise<void>;
+  /** Called after successful login/register. `report` updates the progress UI. */
+  onAuthenticated: (report: (step: string) => void) => void | Promise<void>;
 };
 
 const brandCopy = {
@@ -101,19 +102,33 @@ export default function PublishAuthGate({
   const [loginPassword, setLoginPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [otpPending, setOtpPending] = useState(false);
+  const [progressStep, setProgressStep] = useState<string | null>(null);
+  const [progressLog, setProgressLog] = useState<string[]>([]);
+
+  const reportProgress = (step: string) => {
+    setProgressStep(step);
+    setProgressLog((prev) => (prev[prev.length - 1] === step ? prev : [...prev.slice(-4), step]));
+  };
 
   if (!open) return null;
 
-  const fieldClass = `w-full rounded-xl border-2 border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2.5 text-sm text-[var(--eos-text)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.05)] outline-none transition focus:ring-2 ${styles.ring}`;
+  const fieldClass = `w-full rounded-xl border-2 border-slate-300/90 bg-[var(--eos-input,#f3f3f1)] px-3 py-2.5 text-sm text-[var(--eos-text)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] outline-none transition placeholder:text-[var(--eos-muted)] focus:ring-2 dark:border-white/25 dark:bg-[var(--eos-input,#1e1e22)] ${styles.ring}`;
   const labelClass = "text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]";
 
   const finishAuth = async () => {
     setLoading(true);
     setError(null);
     try {
-      await onAuthenticated();
+      reportProgress(
+        context === "publish"
+          ? "Konto gotowe — publikuję ogłoszenie…"
+          : "Konto gotowe — kontynuuję…",
+      );
+      await onAuthenticated(reportProgress);
+      reportProgress("Gotowe.");
     } catch (authError) {
       setError(authError instanceof Error ? authError.message : "Nie udało się kontynuować.");
+      setProgressStep(null);
     } finally {
       setLoading(false);
     }
@@ -153,6 +168,7 @@ export default function PublishAuthGate({
 
     setLoading(true);
     try {
+      reportProgress("Rejestruję konto EstateOS…");
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,12 +188,15 @@ export default function PublishAuthGate({
       if (!res.ok || !data.success) {
         setError(typeof data.message === "string" ? data.message : "Rejestracja nie powiodła się.");
         setLoading(false);
+        setProgressStep(null);
         return;
       }
+      reportProgress("Konto utworzone — loguję sesję…");
       await finishAuth();
     } catch {
       setError("Błąd połączenia podczas rejestracji.");
       setLoading(false);
+      setProgressStep(null);
     }
   };
 
@@ -187,6 +206,7 @@ export default function PublishAuthGate({
     setLoading(true);
 
     try {
+      reportProgress("Loguję do konta…");
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -204,14 +224,17 @@ export default function PublishAuthGate({
         setOtpPending(true);
         setError(null);
         setLoading(false);
+        reportProgress("Wymagany kod SMS — wpisz go poniżej.");
         return;
       }
 
       setError(typeof data.message === "string" ? data.message : "Nieprawidłowe dane logowania.");
       setLoading(false);
+      setProgressStep(null);
     } catch {
       setError("Błąd połączenia podczas logowania.");
       setLoading(false);
+      setProgressStep(null);
     }
   };
 
@@ -221,6 +244,7 @@ export default function PublishAuthGate({
     setLoading(true);
 
     try {
+      reportProgress("Weryfikuję kod SMS…");
       const resVerify = await fetch("/api/szukaj/weryfikacja", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -231,9 +255,11 @@ export default function PublishAuthGate({
       if (!resVerify.ok) {
         setError(typeof dataVerify.error === "string" ? dataVerify.error : "Nieprawidłowy kod SMS.");
         setLoading(false);
+        setProgressStep(null);
         return;
       }
 
+      reportProgress("Kod OK — loguję…");
       const resLogin = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -249,9 +275,11 @@ export default function PublishAuthGate({
 
       setError(typeof dataLogin.message === "string" ? dataLogin.message : "Logowanie nie powiodło się.");
       setLoading(false);
+      setProgressStep(null);
     } catch {
       setError("Błąd połączenia podczas weryfikacji.");
       setLoading(false);
+      setProgressStep(null);
     }
   };
 
@@ -420,6 +448,23 @@ export default function PublishAuthGate({
         </div>
 
         <div className="shrink-0 border-t border-[var(--eos-border)] px-5 py-3.5 sm:px-6">
+          {loading && (progressStep || progressLog.length) ? (
+            <div className="mb-3 rounded-2xl border border-sky-400/25 bg-sky-500/[0.08] px-3.5 py-3">
+              <div className="flex items-center gap-2 text-[12px] font-semibold text-sky-800 dark:text-sky-200">
+                <Loader2 size={14} className="animate-spin shrink-0" />
+                <span>{progressStep || "Przetwarzam…"}</span>
+              </div>
+              {progressLog.length > 1 ? (
+                <ul className="mt-2 space-y-1 border-t border-sky-400/15 pt-2">
+                  {progressLog.slice(0, -1).map((step) => (
+                    <li key={step} className="text-[11px] text-[var(--eos-muted)]">
+                      ✓ {step}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
           <button
             type="submit"
             form="auth-gate-form"
@@ -427,7 +472,7 @@ export default function PublishAuthGate({
             className={`flex w-full items-center justify-center gap-2 rounded-full border px-5 py-3 text-xs font-black uppercase tracking-[0.12em] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55 ${styles.button}`}
           >
             {loading ? <Loader2 size={16} className="animate-spin" /> : null}
-            {submitLabel}
+            {loading && progressStep ? "Trwa publikacja…" : submitLabel}
           </button>
         </div>
       </div>

@@ -4,7 +4,7 @@ export const carFieldLabelClass =
   "text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]";
 
 export const carFieldInputClass =
-  "w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3.5 py-2.5 text-sm text-[var(--eos-text)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.05)] outline-none transition focus:border-sky-400/55 focus:ring-2 focus:ring-sky-400/20 disabled:cursor-not-allowed disabled:opacity-50";
+  "w-full rounded-xl border-2 border-slate-300/90 bg-[var(--eos-input,#f3f3f1)] px-3.5 py-2.5 text-sm text-[var(--eos-text)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] outline-none transition placeholder:text-[var(--eos-muted)] focus:border-sky-400 focus:bg-[var(--eos-surface-strong,#fff)] focus:ring-2 focus:ring-sky-400/25 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/25 dark:bg-[var(--eos-input,#1e1e22)]";
 
 export const carSectionShellClass =
   "overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_22px_70px_rgba(14,165,233,0.08)]";
