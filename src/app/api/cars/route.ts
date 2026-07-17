@@ -4,6 +4,7 @@ import type { CarListingUpdateInput } from "@/lib/carsStorage";
 import { normalizeCarExteriorColor } from "@/lib/carColors";
 import { sanitizeCarListingForViewer } from "@/lib/carVehicleDocPrivacy";
 import { isPromotionActive } from "@/lib/listingPromotion";
+import { rehostRemoteCarImages } from "@/lib/rehostRemoteCarImages";
 import { resolveUploaderUserId } from "@/lib/upload/resolveUploader";
 
 function withFeaturedFlag<T extends { promotedUntil?: string | null }>(listing: T) {
@@ -107,9 +108,19 @@ export async function POST(req: Request) {
     if (!payload.title || !payload.make || !payload.model || payload.pricePln <= 0) {
       return NextResponse.json({ error: "Invalid car listing payload" }, { status: 400 });
     }
+
+    const sourceImages =
+      payload.images && payload.images.length
+        ? payload.images
+        : payload.imageUrl
+          ? [payload.imageUrl]
+          : [];
+    const hostedImages = await rehostRemoteCarImages({ userId, imageUrls: sourceImages });
     const created = await createCarListing({
       ...payload,
       userId,
+      images: hostedImages.length ? hostedImages : sourceImages,
+      imageUrl: hostedImages[0] || payload.imageUrl,
     });
     return NextResponse.json({ success: true, listing: created }, { status: 201 });
   } catch {

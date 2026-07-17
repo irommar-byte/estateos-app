@@ -4,3 +4,9 @@ location ~ ^/api/(mobile/v1/)?(pro/)?otodom-import(/create)?$ {
     proxy_send_timeout 300s;
     proxy_connect_timeout 60s;
 }
+
+location = /api/cars/otomoto-import {
+    proxy_read_timeout 120s;
+    proxy_send_timeout 120s;
+    proxy_connect_timeout 60s;
+}

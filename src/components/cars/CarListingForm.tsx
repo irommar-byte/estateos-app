@@ -26,6 +26,10 @@ import {
 import type { CarAddEntryMethod } from "@/components/cars/CarAddEntryScreen";
 import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
 import { listMissingListingFields } from "@/lib/polishRegistrationDocument.shared";
+import {
+  OTOMOTO_IMPORT_STORAGE_KEY,
+  type OtomotoCarImportPrefill,
+} from "@/lib/otomotoCarImport";
 import { formatDateForForm } from "@/utils/polishDateInput";
 
 const CAR_DRAFT_VERSION = 1;
@@ -220,6 +224,75 @@ export default function CarListingForm({
       setDraftReady(true);
     }
   }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "create" || !draftReady || typeof window === "undefined") return;
+    const fromParam = new URLSearchParams(window.location.search).get("from");
+    if (entryMethod !== "otomoto" && fromParam !== "otomoto") {
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem(OTOMOTO_IMPORT_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        prefill?: OtomotoCarImportPrefill;
+        missingFields?: CarListingMissingFieldKey[];
+      };
+      if (!parsed?.prefill) return;
+      const prefill = parsed.prefill;
+      setForm((prev) => {
+        const next: CarFormState = {
+          ...prev,
+          title: prefill.title || prev.title,
+          description: prefill.description || prev.description,
+          make: prefill.make || prev.make,
+          model: prefill.model || prev.model,
+          year: prefill.year || prev.year,
+          mileageKm: prefill.mileageKm || prev.mileageKm,
+          fuelType: prefill.fuelType || prev.fuelType,
+          transmission: prefill.transmission || prev.transmission,
+          bodyType: prefill.bodyType || prev.bodyType,
+          exteriorColor: prefill.exteriorColor || prev.exteriorColor,
+          generation: prefill.generation || prev.generation,
+          enginePower: prefill.enginePower || prev.enginePower,
+          engineCapacity: prefill.engineCapacity || prev.engineCapacity,
+          trimVersion: prefill.trimVersion || prev.trimVersion,
+          doorCount: prefill.doorCount || prev.doorCount,
+          pricePln: prefill.pricePln || prev.pricePln,
+          city: prefill.city || prev.city,
+          cityLat: prefill.cityLat ?? prev.cityLat,
+          cityLng: prefill.cityLng ?? prev.cityLng,
+          localityCountry: prefill.localityCountry || prev.localityCountry,
+          imageUrl: prefill.imageUrl || prev.imageUrl,
+          images: prefill.images?.length ? prefill.images : prev.images,
+        };
+        const keys =
+          parsed.missingFields?.length
+            ? parsed.missingFields
+            : listMissingListingFields(next, next.images.length > 0);
+        setHighlightKeys(keys);
+        setScanNotice(
+          `${f.otomotoLoaded} ${missingFieldsBanner(keys, c.scan) || f.otomotoCheckForm}`,
+        );
+        try {
+          window.localStorage.setItem(
+            CAR_DRAFT_KEY,
+            JSON.stringify({
+              version: CAR_DRAFT_VERSION,
+              savedAt: Date.now(),
+              form: { ...next, images: next.images.filter((url) => !url.startsWith("blob:")) },
+            }),
+          );
+        } catch {
+          // ignore quota
+        }
+        return next;
+      });
+      sessionStorage.removeItem(OTOMOTO_IMPORT_STORAGE_KEY);
+    } catch {
+      // ignore corrupt import payload
+    }
+  }, [mode, draftReady, entryMethod, f.otomotoLoaded, f.otomotoCheckForm, c.scan]);
 
   useEffect(() => {
     if (mode !== "create" || !draftReady || typeof window === "undefined") return;

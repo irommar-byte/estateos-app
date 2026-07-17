@@ -49,6 +49,9 @@ export type CarsDictionary = {
     methodCaptureDescription: string;
     methodManualTitle: string;
     methodManualDescription: string;
+    methodOtomotoTitle: string;
+    methodOtomotoDescription: string;
+    methodOtomotoBadge: string;
     hasAccount: string;
     signIn: string;
     changeEntryMethod: string;
@@ -57,6 +60,8 @@ export type CarsDictionary = {
     guestBanner: string;
     scanLoaded: string;
     scanCheckCatalog: string;
+    otomotoLoaded: string;
+    otomotoCheckForm: string;
     contentEyebrow: string;
     contentTitle: string;
     contentDescription: string;
@@ -194,6 +199,11 @@ export type CarsDictionary = {
     statsMine: string;
     statsAll: string;
     addListing: string;
+    otomotoImportTitle: string;
+    otomotoImportBody: string;
+    otomotoImportPlaceholder: string;
+    otomotoImportCta: string;
+    otomotoImportLoading: string;
     tabFavorites: string;
     tabMine: string;
     tabAll: string;
@@ -368,6 +378,10 @@ const pl: CarsDictionary = {
     methodManualTitle: "Wypełnię ręcznie",
     methodManualDescription:
       "Nie masz dowodu pod ręką? Przejdź do formularza i wpisz dane samodzielnie w swoim tempie.",
+    methodOtomotoTitle: "Import z Otomoto",
+    methodOtomotoDescription:
+      "Masz już ogłoszenie na Otomoto? Wklej link — przeniesiemy zdjęcia, opis i specyfikację do formularza.",
+    methodOtomotoBadge: "Szybki start",
     hasAccount: "Masz już konto?",
     signIn: "Zaloguj się",
     changeEntryMethod: "← Zmień sposób dodawania",
@@ -377,6 +391,8 @@ const pl: CarsDictionary = {
       "Możesz wypełnić formularz bez logowania. Po kliknięciu „Opublikuj” założysz konto — ogłoszenie trafi od razu do katalogu, a Ty dostaniesz powiadomienia o zapytaniach.",
     scanLoaded: "Dane z dowodu wczytane.",
     scanCheckCatalog: "Sprawdź katalog i uzupełnij ogłoszenie.",
+    otomotoLoaded: "Dane z Otomoto wczytane.",
+    otomotoCheckForm: "Sprawdź formularz i uzupełnij brakujące pola przed publikacją.",
     contentEyebrow: "Treść ogłoszenia",
     contentTitle: "Tytuł i opis",
     contentDescription: "Krótki, konkretny tytuł i opis stanu auta zwiększają zaufanie kupujących.",
@@ -517,6 +533,12 @@ const pl: CarsDictionary = {
     statsMine: "{n} Twoich ogłoszeń",
     statsAll: "{n} aktywnych ogłoszeń w katalogu",
     addListing: "Dodaj ogłoszenie",
+    otomotoImportTitle: "Masz ogłoszenie na Otomoto?",
+    otomotoImportBody:
+      "Wklej link — w jeden moment przeniesiesz zdjęcia, opis i całą specyfikację do formularza EstateOS™Car.",
+    otomotoImportPlaceholder: "https://www.otomoto.pl/osobowe/oferta/…",
+    otomotoImportCta: "Przenieś",
+    otomotoImportLoading: "Pobieram…",
     tabFavorites: "Ulubione",
     tabMine: "Moje samochody",
     tabAll: "Cały katalog",
@@ -689,6 +711,10 @@ const en: CarsDictionary = {
     methodCaptureDescription: "Capture the back of the card with your phone or webcam — instant decode.",
     methodManualTitle: "Fill in manually",
     methodManualDescription: "No document handy? Go to the form and enter details at your own pace.",
+    methodOtomotoTitle: "Import from Otomoto",
+    methodOtomotoDescription:
+      "Already listed on Otomoto? Paste the link — we'll move photos, description and specs into the form.",
+    methodOtomotoBadge: "Quick start",
     hasAccount: "Already have an account?",
     signIn: "Sign in",
     changeEntryMethod: "← Change entry method",
@@ -698,6 +724,8 @@ const en: CarsDictionary = {
       "You can complete the form without signing in. When you tap Publish you'll create an account — the listing goes live and you'll get inquiry notifications.",
     scanLoaded: "Registration data loaded.",
     scanCheckCatalog: "Check the catalog and complete your listing.",
+    otomotoLoaded: "Otomoto data loaded.",
+    otomotoCheckForm: "Review the form and fill any missing fields before publishing.",
     contentEyebrow: "Listing content",
     contentTitle: "Title and description",
     contentDescription: "A clear title and honest description build buyer trust.",
@@ -835,6 +863,12 @@ const en: CarsDictionary = {
     statsMine: "{n} of your listings",
     statsAll: "{n} active listings in catalog",
     addListing: "Add listing",
+    otomotoImportTitle: "Already listed on Otomoto?",
+    otomotoImportBody:
+      "Paste the link — move photos, description and full specs into the EstateOS™Car form in one step.",
+    otomotoImportPlaceholder: "https://www.otomoto.pl/osobowe/oferta/…",
+    otomotoImportCta: "Import",
+    otomotoImportLoading: "Fetching…",
     tabFavorites: "Favorites",
     tabMine: "My cars",
     tabAll: "Full catalog",
@@ -1007,6 +1041,10 @@ const uk: CarsDictionary = {
     methodCaptureDescription: "Зробіть фото задньої сторони свідоцтва — код зчитається одразу.",
     methodManualTitle: "Заповню вручну",
     methodManualDescription: "Немає свідоцтва? Перейдіть до форми та введіть дані у своєму темпі.",
+    methodOtomotoTitle: "Імпорт з Otomoto",
+    methodOtomotoDescription:
+      "Вже є оголошення на Otomoto? Вставте посилання — перенесемо фото, опис і специфікацію у форму.",
+    methodOtomotoBadge: "Швидкий старт",
     hasAccount: "Вже маєте акаунт?",
     signIn: "Увійти",
     changeEntryMethod: "← Змінити спосіб додавання",
@@ -1016,6 +1054,8 @@ const uk: CarsDictionary = {
       "Форму можна заповнити без входу. Після «Опублікувати» створите акаунт — оголошення з'явиться в каталозі, а запити надійдуть на ваш акаунт.",
     scanLoaded: "Дані зі свідоцтва завантажено.",
     scanCheckCatalog: "Перевірте каталог і доповніть оголошення.",
+    otomotoLoaded: "Дані з Otomoto завантажено.",
+    otomotoCheckForm: "Перевірте форму та доповніть відсутні поля перед публікацією.",
     contentEyebrow: "Зміст оголошення",
     contentTitle: "Заголовок і опис",
     contentDescription: "Короткий заголовок і чесний опис підвищують довіру покупців.",
@@ -1153,6 +1193,12 @@ const uk: CarsDictionary = {
     statsMine: "{n} ваших оголошень",
     statsAll: "{n} активних оголошень у каталозі",
     addListing: "Додати оголошення",
+    otomotoImportTitle: "Маєте оголошення на Otomoto?",
+    otomotoImportBody:
+      "Вставте посилання — за мить перенесете фото, опис і всю специфікацію у форму EstateOS™Car.",
+    otomotoImportPlaceholder: "https://www.otomoto.pl/osobowe/oferta/…",
+    otomotoImportCta: "Перенести",
+    otomotoImportLoading: "Завантажую…",
     tabFavorites: "Обране",
     tabMine: "Мої авто",
     tabAll: "Весь каталог",

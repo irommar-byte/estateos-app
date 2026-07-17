@@ -10,6 +10,7 @@ import {
   CatalogHeroActionRow,
   CatalogHeroPrimaryLink,
 } from "@/components/catalog/CatalogHeroActions";
+import OtomotoImportHeroCard from "@/components/cars/OtomotoImportHeroCard";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
@@ -257,6 +258,15 @@ export default function CarsCatalogClient() {
               {cat.addListing}
             </CatalogHeroPrimaryLink>
           </CatalogHeroActionRow>
+          <div className="mt-4 max-w-2xl">
+            <OtomotoImportHeroCard
+              title={cat.otomotoImportTitle}
+              body={cat.otomotoImportBody}
+              placeholder={cat.otomotoImportPlaceholder}
+              cta={cat.otomotoImportCta}
+              loadingLabel={cat.otomotoImportLoading}
+            />
+          </div>
         </CatalogBrandHero>
 
         {tab === "mine" && !loggedIn && !loading ? (

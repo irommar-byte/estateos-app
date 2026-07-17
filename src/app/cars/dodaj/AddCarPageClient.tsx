@@ -1,21 +1,48 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocale } from "@/contexts/LocaleContext";
 import CarAddEntryScreen, { type CarAddEntryMethod } from "@/components/cars/CarAddEntryScreen";
 import CarListingForm from "@/components/cars/CarListingForm";
+import { OTOMOTO_IMPORT_STORAGE_KEY } from "@/lib/otomotoCarImport";
 
 export default function AddCarPageClient() {
   const { dict } = useLocale();
   const c = dict.cars;
   const [phase, setPhase] = useState<"entry" | "form">("entry");
   const [entryMethod, setEntryMethod] = useState<CarAddEntryMethod>("manual");
+  const [bootstrapped, setBootstrapped] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const fromOtomoto = params.get("from") === "otomoto";
+      const raw = sessionStorage.getItem(OTOMOTO_IMPORT_STORAGE_KEY);
+      if (fromOtomoto || raw) {
+        setEntryMethod("otomoto");
+        setPhase("form");
+      }
+    } catch {
+      // ignore
+    } finally {
+      setBootstrapped(true);
+    }
+  }, []);
 
   const handleChoose = useCallback((method: CarAddEntryMethod) => {
     setEntryMethod(method);
     setPhase("form");
   }, []);
+
+  if (!bootstrapped) {
+    return (
+      <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-36 text-[var(--eos-text)] sm:px-6">
+        <div className="mx-auto max-w-4xl text-sm text-[var(--eos-muted)]">…</div>
+      </main>
+    );
+  }
 
   if (phase === "entry") {
     return (

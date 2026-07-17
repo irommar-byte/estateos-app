@@ -8,6 +8,7 @@ import {
   CatalogHeroPrimaryLink,
   CatalogHeroSecondaryLink,
 } from '@/components/catalog/CatalogHeroActions';
+import OtomotoImportHeroCard from '@/components/cars/OtomotoImportHeroCard';
 import { CAMPAIGN_LINK_PRESETS } from '@/lib/campaignLinks';
 import { carsOpenGraph, carsTwitter } from '@/lib/carsOgMetadata';
 import { ESTATEOS_PUBLIC_URLS } from '@/lib/estateOsPublicFacts';
@@ -67,6 +68,15 @@ export default function CarsStartCampaignPage() {
             </CatalogHeroPrimaryLink>
             <CatalogHeroSecondaryLink href="/cars">Przeglądaj katalog</CatalogHeroSecondaryLink>
           </CatalogHeroActionRow>
+          <div className="mt-4 max-w-2xl">
+            <OtomotoImportHeroCard
+              title="Masz ogłoszenie na Otomoto?"
+              body="Wklej link — w jeden moment przeniesiesz zdjęcia, opis i całą specyfikację do formularza EstateOS™Car."
+              placeholder="https://www.otomoto.pl/osobowe/oferta/…"
+              cta="Przenieś"
+              loadingLabel="Pobieram…"
+            />
+          </div>
         </CatalogBrandHero>
 
         <section className="mt-8 grid gap-4 sm:grid-cols-3">

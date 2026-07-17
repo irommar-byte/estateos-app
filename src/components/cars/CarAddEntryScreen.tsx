@@ -1,12 +1,13 @@
 "use client";
 
-import { Camera, FileSearch, Keyboard, ScanLine, ShieldCheck, Upload } from "lucide-react";
+import { Camera, FileSearch, Keyboard, Link2, ScanLine, ShieldCheck, Upload } from "lucide-react";
 import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
+import OtomotoImportHeroCard from "@/components/cars/OtomotoImportHeroCard";
 import AppleStyleSwitch from "@/components/ui/AppleStyleSwitch";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useMemo, useState } from "react";
 
-export type CarAddEntryMethod = "scan" | "upload" | "capture" | "manual";
+export type CarAddEntryMethod = "scan" | "upload" | "capture" | "manual" | "otomoto";
 
 type CarAddEntryScreenProps = {
   onChoose: (method: CarAddEntryMethod) => void;
@@ -15,11 +16,20 @@ type CarAddEntryScreenProps = {
 export default function CarAddEntryScreen({ onChoose }: CarAddEntryScreenProps) {
   const { dict } = useLocale();
   const c = dict.cars.entry;
+  const cat = dict.cars.catalog;
   const [demoRestrict, setDemoRestrict] = useState(true);
+  const [showOtomoto, setShowOtomoto] = useState(false);
 
   const methods = useMemo(
     () =>
       [
+        {
+          id: "otomoto" as const,
+          icon: Link2,
+          title: c.methodOtomotoTitle,
+          description: c.methodOtomotoDescription,
+          badge: c.methodOtomotoBadge,
+        },
         {
           id: "scan" as const,
           icon: ScanLine,
@@ -85,12 +95,30 @@ export default function CarAddEntryScreen({ onChoose }: CarAddEntryScreenProps) 
         </div>
       </section>
 
+      {showOtomoto ? (
+        <OtomotoImportHeroCard
+          title={cat.otomotoImportTitle}
+          body={cat.otomotoImportBody}
+          placeholder={cat.otomotoImportPlaceholder}
+          cta={cat.otomotoImportCta}
+          loadingLabel={cat.otomotoImportLoading}
+          redirectTo=""
+          onImported={() => onChoose("otomoto")}
+        />
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2">
         {methods.map((method) => (
           <button
             key={method.id}
             type="button"
-            onClick={() => onChoose(method.id)}
+            onClick={() => {
+              if (method.id === "otomoto") {
+                setShowOtomoto(true);
+                return;
+              }
+              onChoose(method.id);
+            }}
             className="group flex h-full flex-col rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 text-left shadow-[0_18px_50px_rgba(14,165,233,0.05)] transition hover:border-sky-400/35 hover:shadow-[0_22px_60px_rgba(14,165,233,0.12)]"
           >
             <div className="flex items-start justify-between gap-3">
