@@ -1,11 +1,42 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Luxury TV design system (Apple-like restraint)
+
+enum EOSPalette {
+    static let canvasTop = Color(red: 0.06, green: 0.06, blue: 0.07)
+    static let canvas = Color.black
+    static let elevated = Color(white: 0.10)
+    static let textPrimary = Color.white.opacity(0.96)
+    static let textSecondary = Color.white.opacity(0.55)
+    static let textTertiary = Color.white.opacity(0.38)
+    static let hairline = Color.white.opacity(0.14)
+    static let hairlineSoft = Color.white.opacity(0.08)
+    /// Brand gold — used sparingly (splash, rare accents).
+    static let gold = Color(red: 0.83, green: 0.69, blue: 0.22)
+    /// Muted sage (Home) / steel (Car) — never neon fills on chrome.
+    static let home = Color(red: 0.62, green: 0.74, blue: 0.64)
+    static let car = Color(red: 0.58, green: 0.70, blue: 0.78)
+
+    static func accent(for brand: CatalogBrand) -> Color {
+        brand == .car ? car : home
+    }
+}
+
+enum EOSTvSpacing {
+    static let screenHorizontal: CGFloat = 64
+    static let screenVertical: CGFloat = 28
+    static let chromeGap: CGFloat = 14
+    static let sectionGap: CGFloat = 36
+    static let cardPad: CGFloat = 16
+    static let controlPad: CGFloat = 14
+}
+
 // MARK: - Glass surfaces
 
 struct EOSGlassSurface: ViewModifier {
     var cornerRadius: CGFloat = 24
-    var opacity: Double = 0.42
+    var opacity: Double = 0.32
 
     func body(content: Content) -> some View {
         content
@@ -33,7 +64,7 @@ struct EOSGlassSurface: ViewModifier {
 }
 
 extension View {
-    func eosGlass(cornerRadius: CGFloat = 24, opacity: Double = 0.42) -> some View {
+    func eosGlass(cornerRadius: CGFloat = 24, opacity: Double = 0.32) -> some View {
         modifier(EOSGlassSurface(cornerRadius: cornerRadius, opacity: opacity))
     }
 }
@@ -76,6 +107,55 @@ extension View {
     }
 }
 
+extension AnyTransition {
+    /// The one shared "mode change" transition — crossfade + a whisper of scale and blur so
+    /// switching between hero / info / description / gallery feels like one continuous surface
+    /// rather than separate screens being swapped.
+    static var eosModeTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity
+                .combined(with: .scale(scale: 1.035, anchor: .center))
+                .combined(with: .modifier(
+                    active: EOSBlurTransitionModifier(radius: 14),
+                    identity: EOSBlurTransitionModifier(radius: 0)
+                )),
+            removal: .opacity
+                .combined(with: .scale(scale: 0.975, anchor: .center))
+        )
+    }
+}
+
+private struct EOSBlurTransitionModifier: ViewModifier {
+    let radius: CGFloat
+    func body(content: Content) -> some View {
+        content.blur(radius: radius)
+    }
+}
+
+/// Directional "parallax" swap for full-bleed gallery photos — the incoming shot drifts in
+/// from the side you navigated toward and gently overshoots on scale, so cycling images feels
+/// dimensional rather than a flat crossfade.
+enum EOSGallerySlideDirection {
+    case none, forward, back
+
+    var transition: AnyTransition {
+        switch self {
+        case .forward:
+            return .asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity).combined(with: .scale(scale: 1.08, anchor: .center)),
+                removal: .move(edge: .leading).combined(with: .opacity)
+            )
+        case .back:
+            return .asymmetric(
+                insertion: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 1.08, anchor: .center)),
+                removal: .move(edge: .trailing).combined(with: .opacity)
+            )
+        case .none:
+            return .opacity.combined(with: .scale(scale: 1.04, anchor: .center))
+        }
+    }
+}
+
 struct EOSFocusRing: ViewModifier {
     @Environment(\.isFocused) private var isFocused
     var cornerRadius: CGFloat
@@ -94,14 +174,6 @@ struct EOSFocusRing: ViewModifier {
 
 // MARK: - Spacing tokens
 
-enum EOSTvSpacing {
-    static let screenHorizontal: CGFloat = 48
-    static let screenVertical: CGFloat = 20
-    static let chromeGap: CGFloat = 6
-    static let sectionGap: CGFloat = 28
-    static let cardPad: CGFloat = 16
-}
-
 struct EOSBrandButtonStyle: ButtonStyle {
     var selected: Bool
     var accent: Color
@@ -110,18 +182,22 @@ struct EOSBrandButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(selected ? accent : Color.white.opacity(0.1))
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(selected ? Color.white.opacity(0.14) : Color.white.opacity(0.04))
             )
-            .foregroundStyle(selected ? Color.black : Color.white.opacity(0.92))
+            .foregroundStyle(selected ? EOSPalette.textPrimary : EOSPalette.textSecondary)
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.white.opacity(selected ? 0.15 : 0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(
+                        isFocused ? Color.white.opacity(0.55)
+                            : (selected ? accent.opacity(0.55) : EOSPalette.hairlineSoft),
+                        lineWidth: isFocused ? 2 : 1
+                    )
             )
-            .scaleEffect(isFocused ? 1.06 : (configuration.isPressed ? 0.98 : 1.0))
-            .shadow(color: .black.opacity(isFocused ? 0.35 : 0.12), radius: isFocused ? 16 : 6, y: isFocused ? 10 : 3)
-            .animation(.easeOut(duration: 0.18), value: isFocused)
-            .animation(.easeOut(duration: 0.15), value: selected)
+            .scaleEffect(isFocused ? 1.04 : (configuration.isPressed ? 0.99 : 1.0))
+            .shadow(color: .black.opacity(isFocused ? 0.35 : 0.08), radius: isFocused ? 14 : 4, y: isFocused ? 8 : 2)
+            .animation(.easeOut(duration: 0.16), value: isFocused)
+            .animation(.easeOut(duration: 0.14), value: selected)
     }
 }
 
@@ -133,26 +209,29 @@ struct EOSChipButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.callout.weight(.semibold))
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 22)
             .padding(.vertical, 12)
             .background(
                 Capsule(style: .continuous)
-                    .fill(selected ? accent : Color.white.opacity(0.12))
+                    .fill(selected ? Color.white.opacity(0.16) : Color.white.opacity(0.05))
             )
-            .foregroundStyle(selected ? Color.black : Color.white.opacity(0.92))
+            .foregroundStyle(selected ? EOSPalette.textPrimary : EOSPalette.textSecondary)
             .overlay(
                 Capsule(style: .continuous)
-                    .stroke(Color.white.opacity(selected ? 0.2 : 0.08), lineWidth: 1)
+                    .stroke(
+                        isFocused ? Color.white.opacity(0.65)
+                            : (selected ? accent.opacity(0.45) : EOSPalette.hairlineSoft),
+                        lineWidth: isFocused ? 2 : 1
+                    )
             )
-            .scaleEffect(isFocused ? 1.12 : (configuration.isPressed ? 0.98 : 1.0))
-            .shadow(color: .black.opacity(isFocused ? 0.4 : 0), radius: isFocused ? 18 : 0, y: isFocused ? 10 : 0)
-            .animation(.easeOut(duration: 0.18), value: isFocused)
-            .animation(.easeOut(duration: 0.15), value: selected)
+            .scaleEffect(isFocused ? 1.08 : (configuration.isPressed ? 0.98 : 1.0))
+            .shadow(color: .black.opacity(isFocused ? 0.32 : 0), radius: isFocused ? 14 : 0, y: isFocused ? 8 : 0)
+            .animation(.easeOut(duration: 0.16), value: isFocused)
+            .animation(.easeOut(duration: 0.14), value: selected)
     }
 }
 
-
-/// Half-size chips for showroom filters / layout.
+/// Quiet filter / layout chips — selected = soft fill + accent hairline, never neon plates.
 struct EOSMicroChipButtonStyle: ButtonStyle {
     var selected: Bool
     var accent: Color
@@ -161,21 +240,24 @@ struct EOSMicroChipButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
             .background(
                 Capsule(style: .continuous)
-                    .fill(selected ? accent.opacity(0.92) : Color.white.opacity(0.08))
+                    .fill(selected ? Color.white.opacity(0.12) : Color.clear)
             )
-            .foregroundStyle(selected ? Color.black : Color.white.opacity(0.88))
+            .foregroundStyle(selected ? EOSPalette.textPrimary : EOSPalette.textSecondary)
             .overlay(
                 Capsule(style: .continuous)
-                    .stroke(Color.white.opacity(selected ? 0.18 : 0.06), lineWidth: 1)
+                    .stroke(
+                        isFocused ? Color.white.opacity(0.55)
+                            : (selected ? accent.opacity(0.4) : EOSPalette.hairlineSoft),
+                        lineWidth: isFocused ? 1.5 : 1
+                    )
             )
-            .scaleEffect(isFocused ? 1.08 : (configuration.isPressed ? 0.98 : 1.0))
-            .shadow(color: .black.opacity(isFocused ? 0.28 : 0), radius: isFocused ? 10 : 0, y: isFocused ? 6 : 0)
-            .animation(.easeOut(duration: 0.16), value: isFocused)
-            .animation(.easeOut(duration: 0.14), value: selected)
+            .scaleEffect(isFocused ? 1.06 : (configuration.isPressed ? 0.98 : 1.0))
+            .animation(.easeOut(duration: 0.15), value: isFocused)
+            .animation(.easeOut(duration: 0.12), value: selected)
     }
 }
 
@@ -271,6 +353,10 @@ enum EOSOfferMedia {
 
 struct EOSFullBleedOfferImage: View {
     let url: URL?
+    /// Enables a slow, continuous Ken-Burns drift — used for the naked immersive gallery so a
+    /// still photo keeps a faint pulse of life instead of looking frozen.
+    var ambient: Bool = false
+    @State private var ambientZoomed = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -278,9 +364,22 @@ struct EOSFullBleedOfferImage: View {
                 placeholder
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
+            .scaleEffect(ambient && ambientZoomed ? 1.055 : 1.0)
             .clipped()
         }
         .ignoresSafeArea()
+        .onAppear {
+            guard ambient else { return }
+            withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
+                ambientZoomed = true
+            }
+        }
+        .onChange(of: ambient) { _, isAmbient in
+            guard isAmbient else { return }
+            withAnimation(.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
+                ambientZoomed = true
+            }
+        }
     }
 
     private var placeholder: some View {
@@ -390,16 +489,10 @@ struct EOSPosterCardChrome: ViewModifier {
                         lineWidth: isFocused ? 3.5 : 1
                     )
             )
-            .brightness(isFocused ? 0.04 : 0)
             .shadow(
-                color: accent.opacity(isFocused ? 0.28 : 0),
-                radius: isFocused ? 20 : 0,
-                y: isFocused ? 8 : 0
-            )
-            .shadow(
-                color: .black.opacity(isFocused ? 0.45 : 0.2),
-                radius: isFocused ? 18 : 8,
-                y: isFocused ? 10 : 4
+                color: .black.opacity(isFocused ? 0.4 : 0.18),
+                radius: isFocused ? 16 : 6,
+                y: isFocused ? 8 : 3
             )
             .animation(.easeOut(duration: 0.18), value: isFocused)
     }
@@ -500,8 +593,8 @@ struct EOSListingStatsRow: View {
             Label(Self.format(favorites), systemImage: "heart.fill")
             Spacer(minLength: 0)
         }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(accent.opacity(0.95))
+        .font(.caption.weight(.medium))
+        .foregroundStyle(EOSPalette.textTertiary)
         .labelStyle(.titleAndIcon)
     }
 
@@ -540,24 +633,27 @@ struct EOSDetailActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.callout.weight(.semibold))
-            .foregroundStyle(isFocused ? Color.black.opacity(0.92) : Color.white.opacity(0.95))
+            .foregroundStyle(EOSPalette.textPrimary)
             .padding(.horizontal, 24)
             .padding(.vertical, 15)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(
                         isFocused
-                            ? AnyShapeStyle(accent.opacity(0.92))
-                            : AnyShapeStyle(.ultraThinMaterial.opacity(0.42))
+                            ? AnyShapeStyle(Color.white.opacity(0.16))
+                            : AnyShapeStyle(.ultraThinMaterial.opacity(0.36))
                     )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(accent.opacity(isFocused ? 0.15 : 0.35), lineWidth: isFocused ? 0 : 1)
+                    .stroke(
+                        isFocused ? Color.white.opacity(0.7) : accent.opacity(0.35),
+                        lineWidth: isFocused ? 2 : 1
+                    )
             )
-            .scaleEffect(isFocused ? 1.1 : (configuration.isPressed ? 0.98 : 1.0))
-            .shadow(color: accent.opacity(isFocused ? 0.35 : 0), radius: isFocused ? 16 : 0, y: isFocused ? 8 : 0)
-            .animation(.easeOut(duration: 0.18), value: isFocused)
+            .scaleEffect(isFocused ? 1.08 : (configuration.isPressed ? 0.98 : 1.0))
+            .shadow(color: .black.opacity(isFocused ? 0.35 : 0.1), radius: isFocused ? 16 : 4, y: isFocused ? 8 : 2)
+            .animation(.easeOut(duration: 0.16), value: isFocused)
     }
 }
 

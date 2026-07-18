@@ -40,7 +40,7 @@ struct CarsCatalogView: View {
                         onSelect(car)
                     } label: {
                         CarListRowView(car: car, distanceLabel: app.distanceLabel(forCity: car.city))
-                            .eosListRowFocus(accent: .cyan)
+                            .eosListRowFocus(accent: EOSPalette.car)
                             .background(CarFocusSectionProbe(title: sectionTitle))
                     }
                     .buttonStyle(EOSPosterButtonStyle(focusScale: 1.05))
@@ -99,12 +99,12 @@ struct CarListRowView: View {
                     .lineLimit(2)
                 Text(car.displayPrice)
                     .font(.title3.bold())
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(EOSPalette.car)
                 HStack {
-                    EOSListingStatsRow(views: car.viewsCount, favorites: car.favoritesCount, accent: .cyan)
+                    EOSListingStatsRow(views: car.viewsCount, favorites: car.favoritesCount, accent: EOSPalette.car)
                     Spacer()
                     if let distanceLabel {
-                        Text(distanceLabel).font(.caption.weight(.semibold)).foregroundStyle(.cyan)
+                        Text(distanceLabel).font(.caption.weight(.semibold)).foregroundStyle(EOSPalette.car)
                     } else if !car.city.isEmpty {
                         Text(car.city).font(.caption).foregroundStyle(.secondary)
                     }
@@ -148,7 +148,7 @@ struct CarCardView: View {
                             .font(.caption2.weight(.black))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
-                            .background(Capsule().fill(Color.cyan.opacity(0.92)))
+                            .background(Capsule().fill(EOSPalette.car.opacity(0.92)))
                             .foregroundStyle(.black)
                             .padding(10)
                     }
@@ -178,7 +178,7 @@ struct CarCardView: View {
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(Capsule().fill(Color.cyan.opacity(0.85)))
+                                .background(Capsule().fill(EOSPalette.car.opacity(0.85)))
                                 .foregroundStyle(.black)
                         }
                     }
@@ -196,14 +196,14 @@ struct CarCardView: View {
 
             Text(car.displayPrice)
                 .font(compact ? .title3.bold() : .title2.bold())
-                .foregroundStyle(Color.cyan)
+                .foregroundStyle(EOSPalette.car)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
 
             EOSListingStatsRow(
                 views: car.viewsCount,
                 favorites: car.favoritesCount,
-                accent: .cyan
+                accent: EOSPalette.car
             )
 
             Text(car.displaySpecs)
@@ -212,7 +212,7 @@ struct CarCardView: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .eosPosterCard(cornerRadius: 22, accent: .cyan)
+        .eosPosterCard(cornerRadius: 22, accent: EOSPalette.car)
     }
 }
 
@@ -223,7 +223,7 @@ struct BrandSwitcher: View {
     var body: some View {
         HStack {
             Spacer(minLength: 0)
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 ForEach(CatalogBrand.allCases) { item in
                     Button {
                         guard brand != item else { return }
@@ -232,35 +232,22 @@ struct BrandSwitcher: View {
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: item.accent)
-                                .font(.title3.weight(.semibold))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.shortTitle)
-                                    .font(.subheadline.weight(.bold))
-                                Text(item == .home ? "Mieszkania · domy · działki" : "Marki · paliwo · skrzynia")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .opacity(0.7)
-                            }
+                                .font(.body.weight(.semibold))
+                            Text(item.shortTitle)
+                                .font(.subheadline.weight(.semibold))
                         }
-                        .padding(.horizontal, 18)
+                        .padding(.horizontal, 22)
                         .padding(.vertical, 12)
-                        .frame(minWidth: 220, alignment: .leading)
+                        .frame(minWidth: 200)
                     }
                     .buttonStyle(EOSBrandButtonStyle(
                         selected: brand == item,
-                        accent: item == .home ? .green : .cyan
+                        accent: EOSPalette.accent(for: item)
                     ))
                     .focusEffectDisabled()
                 }
             }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(.ultraThinMaterial.opacity(0.28))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-            )
+            .padding(6)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
@@ -301,8 +288,9 @@ struct ShowroomHeroCard: View {
                     .tracking(1.3)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 7)
-                    .background(Capsule().fill(accent.opacity(0.9)))
-                    .foregroundStyle(.black)
+                    .background(Capsule().fill(Color.white.opacity(0.14)))
+                    .overlay(Capsule().stroke(accent.opacity(0.5), lineWidth: 1))
+                    .foregroundStyle(EOSPalette.textPrimary)
 
                 EOSAdaptiveTitle(text: title, maxLines: 2, maxSize: 42, minSize: 26)
                     .foregroundStyle(.white)

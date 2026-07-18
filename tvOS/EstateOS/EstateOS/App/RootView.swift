@@ -2,17 +2,36 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var app: AppModel
+    @State private var splashFinished = false
+
+    private var showHome: Bool {
+        splashFinished && !app.isBootstrapping
+    }
 
     var body: some View {
-        Group {
-            if app.isBootstrapping {
-                ProgressView("Starting EstateOS...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if showHome {
                 HomeView()
+                    .transition(.opacity)
+            }
+
+            if !splashFinished {
+                AppleSplashView {
+                    splashFinished = true
+                }
+                .transition(.opacity)
+                .zIndex(2)
+            } else if app.isBootstrapping {
+                // Bootstrap still running after splash — keep branded black + logo (no spinner).
+                brandedHold
+                    .transition(.opacity)
+                    .zIndex(2)
             }
         }
-        .background(Color.black.ignoresSafeArea())
+        .animation(.easeOut(duration: 0.35), value: showHome)
+        .animation(.easeOut(duration: 0.25), value: splashFinished)
         .preferredColorScheme(.dark)
         .fullScreenCover(isPresented: $app.isLoginSheetPresented) {
             LoginView()
@@ -34,6 +53,67 @@ struct RootView: View {
             }
         } message: {
             Text(app.globalError ?? "")
+        }
+    }
+
+    private var brandedHold: some View {
+        LivingHoldView()
+    }
+}
+
+/// Branded hold between splash-finish and bootstrap-complete. Everything here breathes
+/// continuously so a slow network fetch never reads as a frozen screen.
+private struct LivingHoldView: View {
+    private static let gold = Color(red: 212 / 255, green: 175 / 255, blue: 55 / 255)
+
+    @State private var breathe = false
+    @State private var dotPhase = 0
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [Self.gold.opacity(breathe ? 0.22 : 0.1), .clear],
+                        center: .center,
+                        startRadius: 20,
+                        endRadius: 280
+                    )
+                )
+                .frame(width: 560, height: 560)
+                .scaleEffect(breathe ? 1.08 : 0.94)
+
+            VStack(spacing: 26) {
+                Image("EstateOSLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 480)
+                    .scaleEffect(breathe ? 1.02 : 0.985)
+                    .shadow(color: Self.gold.opacity(breathe ? 0.3 : 0.12), radius: 26, y: 6)
+
+                HStack(spacing: 10) {
+                    ForEach(0..<3) { i in
+                        Circle()
+                            .fill(Self.gold.opacity(dotPhase == i ? 0.95 : 0.28))
+                            .frame(width: 10, height: 10)
+                            .scaleEffect(dotPhase == i ? 1.25 : 1)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.32), value: dotPhase)
+            }
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
+                breathe = true
+            }
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 420_000_000)
+                dotPhase = (dotPhase + 1) % 3
+            }
         }
     }
 }

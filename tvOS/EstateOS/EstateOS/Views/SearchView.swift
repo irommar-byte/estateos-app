@@ -8,7 +8,7 @@ struct SearchView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
                 Text(app.catalogBrand == .home ? "Szukaj nieruchomości" : "Szukaj samochodów")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(.system(size: 30, weight: .semibold))
                 Spacer(minLength: 12)
                 Text(resultCountLabel)
                     .font(.callout.weight(.semibold))
@@ -103,18 +103,18 @@ struct SearchView: View {
                                     if let d = app.distanceLabel(forCity: offer.city) {
                                         Text(d)
                                             .font(.caption.weight(.semibold))
-                                            .foregroundStyle(.green)
+                                            .foregroundStyle(EOSPalette.home)
                                     }
                                 }
                             }
                             Spacer(minLength: 16)
                             Text(EOSFormat.pricePLN(offer.price))
                                 .font(.title3.weight(.bold))
-                                .foregroundStyle(.green)
+                                .foregroundStyle(EOSPalette.home)
                         }
                         .padding(16)
                         .eosGlass(cornerRadius: 18, opacity: 0.32)
-                        .eosFocusRing(cornerRadius: 18, accent: .green)
+                        .eosFocusRing(cornerRadius: 18, accent: EOSPalette.home)
                     }
                     .buttonStyle(EOSPosterButtonStyle())
                     .focusEffectDisabled()
@@ -162,18 +162,18 @@ struct SearchView: View {
                                     if let d = app.distanceLabel(forCity: car.city) {
                                         Text(d)
                                             .font(.caption.weight(.semibold))
-                                            .foregroundStyle(.cyan)
+                                            .foregroundStyle(EOSPalette.car)
                                     }
                                 }
                             }
                             Spacer(minLength: 16)
                             Text(car.displayPrice)
                                 .font(.title3.weight(.bold))
-                                .foregroundStyle(.cyan)
+                                .foregroundStyle(EOSPalette.car)
                         }
                         .padding(16)
                         .eosGlass(cornerRadius: 18, opacity: 0.32)
-                        .eosFocusRing(cornerRadius: 18, accent: .cyan)
+                        .eosFocusRing(cornerRadius: 18, accent: EOSPalette.car)
                     }
                     .buttonStyle(EOSPosterButtonStyle())
                     .focusEffectDisabled()

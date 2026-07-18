@@ -79,7 +79,7 @@ struct TopShelfImmersiveView: View {
                 Button("POKAŻ") {
                     app.openDetail(currentOffer)
                 }
-                .buttonStyle(EOSDetailActionButtonStyle(accent: .green))
+                .buttonStyle(EOSDetailActionButtonStyle(accent: EOSPalette.home))
                 .focusEffectDisabled()
 
                 if let area = currentOffer.area {
@@ -109,8 +109,8 @@ struct TopShelfImmersiveView: View {
             .background(
                 Capsule(style: .continuous)
                     .fill(currentOffer.transactionType?.uppercased() == "RENT"
-                          ? Color.blue.opacity(0.38)
-                          : Color.green.opacity(0.34))
+                          ? Color(red: 0.45, green: 0.55, blue: 0.72).opacity(0.38)
+                          : EOSPalette.home.opacity(0.34))
             )
             .overlay(
                 Capsule(style: .continuous)
@@ -215,7 +215,7 @@ private struct ImmersiveMetaRow: View {
             HStack(spacing: 14) {
                 Text(EOSFormat.pricePLN(offer.price))
                     .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(EOSPalette.home)
 
                 if offer.pricePerSqm != nil {
                     Text(offer.displayPricePerSqm)

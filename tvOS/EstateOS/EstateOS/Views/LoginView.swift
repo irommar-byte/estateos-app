@@ -88,7 +88,7 @@ struct LoginView: View {
                         focusedField = .login
                     }
                 }
-                .buttonStyle(EOSChipButtonStyle(selected: mode == item, accent: .white))
+                .buttonStyle(EOSChipButtonStyle(selected: mode == item, accent: EOSPalette.gold))
                 .focusEffectDisabled()
             }
         }
@@ -154,7 +154,7 @@ struct LoginView: View {
                             .frame(maxWidth: .infinity)
                     }
                 }
-                .buttonStyle(EOSDetailActionButtonStyle(accent: .green))
+                .buttonStyle(EOSDetailActionButtonStyle(accent: EOSPalette.home))
                 .focusEffectDisabled()
                 .focused($focusedField, equals: .submit)
 

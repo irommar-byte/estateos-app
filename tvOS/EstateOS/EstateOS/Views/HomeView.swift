@@ -20,37 +20,18 @@ struct HomeView: View {
         case topShelf(TopShelfPresentationStyle)
     }
 
+    private var brandAccent: Color { EOSPalette.accent(for: app.catalogBrand) }
+
     var body: some View {
         ZStack {
             background
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: EOSTvSpacing.chromeGap) {
-                    header
-                    brandAndFilters
-                    if tab == .showroom {
-                        layoutModeRow
-                        activeSectionBanner
-                    }
-                }
-                .padding(.bottom, 4)
-                .background(
-                    LinearGradient(
-                        colors: [
-                            app.catalogBrand == .car
-                                ? Color(red: 0.04, green: 0.08, blue: 0.14)
-                                : Color(red: 0.04, green: 0.06, blue: 0.1),
-                            Color.black.opacity(0.98),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .padding(.horizontal, -52)
-                    .padding(.top, -32)
-                )
-                .zIndex(2)
+            VStack(spacing: 0) {
+                chromeDeck
+                    .padding(.bottom, 18)
+                    .zIndex(2)
 
                 content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .zIndex(1)
             }
             .padding(.horizontal, EOSTvSpacing.screenHorizontal)
@@ -78,67 +59,10 @@ struct HomeView: View {
         }
     }
 
-    private var background: some View {
-        LinearGradient(
-            colors: [
-                app.catalogBrand == .car
-                    ? Color(red: 0.04, green: 0.08, blue: 0.14)
-                    : Color(red: 0.04, green: 0.06, blue: 0.1),
-                Color.black,
-                app.catalogBrand == .car
-                    ? Color(red: 0.02, green: 0.06, blue: 0.1)
-                    : Color(red: 0.02, green: 0.05, blue: 0.08),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
-        .animation(.easeOut(duration: 0.2), value: app.catalogBrand)
-    }
-
-    private var header: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(app.catalogBrand == .home ? "EstateOS™ Home" : "EstateOS™ Car")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                Text(subtitle)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 24)
-            HStack(spacing: 12) {
-                ForEach(Tab.allCases, id: \.self) { item in
-                    Button(item.rawValue) { tab = item }
-                        .buttonStyle(EOSChipButtonStyle(
-                            selected: tab == item,
-                            accent: app.catalogBrand == .car ? .cyan : .green
-                        ))
-                        .focusEffectDisabled()
-                        .focused($focusedTab, equals: item)
-                }
-            }
-            .padding(8)
-            .eosGlass(cornerRadius: 20, opacity: 0.26)
-            .focusSection()
-            .onMoveCommand { direction in
-                if direction == .down, tab == .account {
-                    accountContentFocus = true
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .focusSection()
-    }
-
-    private var subtitle: String {
-        if let login = app.session?.user.login {
-            return "Witaj, \(login) · przeglądaj z kanapy"
-        }
-        return "Showroom bez logowania · zaloguj, by synchronizować ulubione"
-    }
-
-    private var brandAndFilters: some View {
-        VStack(alignment: .center, spacing: EOSTvSpacing.chromeGap) {
+    /// One composed chrome — brand, nav, filters, layout as a single deck (symmetry + restraint).
+    private var chromeDeck: some View {
+        VStack(spacing: 16) {
+            header
             BrandSwitcher(
                 brand: Binding(
                     get: { app.catalogBrand },
@@ -148,85 +72,128 @@ struct HomeView: View {
             )
 
             if tab == .showroom || tab == .search {
-                if app.catalogBrand == .home {
-                    filterRowHome
-                    homePropertyTypeRow
-                } else {
-                    filterRowCar
-                    if !app.popularCarMakes.isEmpty {
-                        carMakeRow
-                    }
+                controlStrip
+            }
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(.ultraThinMaterial.opacity(0.22))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(EOSPalette.hairlineSoft, lineWidth: 1)
+        )
+    }
+
+    private var background: some View {
+        ZStack {
+            EOSPalette.canvas.ignoresSafeArea()
+            LinearGradient(
+                colors: [
+                    EOSPalette.canvasTop.opacity(0.95),
+                    EOSPalette.canvas,
+                    EOSPalette.canvas,
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+            // Soft vignette — no brand-tinted washes.
+            RadialGradient(
+                colors: [Color.white.opacity(0.04), .clear],
+                center: .top,
+                startRadius: 40,
+                endRadius: 900
+            )
+            .ignoresSafeArea()
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 24) {
+            HStack(spacing: 14) {
+                Image("EstateOSLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 36)
+                    .opacity(0.95)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(app.catalogBrand == .home ? "EstateOS™ Home" : "EstateOS™ Car")
+                        .font(.system(size: 28, weight: .semibold, design: .default))
+                        .foregroundStyle(EOSPalette.textPrimary)
+                    Text(subtitle)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(EOSPalette.textTertiary)
+                        .lineLimit(1)
+                        .contentTransition(.opacity)
+                        .id(subtitle)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .animation(.easeOut(duration: 0.22), value: subtitle)
+                }
+            }
+            Spacer(minLength: 16)
+            HStack(spacing: 8) {
+                ForEach(Tab.allCases, id: \.self) { item in
+                    Button(item.rawValue) { tab = item }
+                        .buttonStyle(EOSChipButtonStyle(selected: tab == item, accent: brandAccent))
+                        .focusEffectDisabled()
+                        .focused($focusedTab, equals: item)
+                }
+            }
+            .focusSection()
+            .onMoveCommand { direction in
+                if direction == .down, tab == .account {
+                    accountContentFocus = true
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .focusSection()
+    }
+
+    private var subtitle: String {
+        if tab == .showroom, !app.activeShowroomSection.isEmpty {
+            return app.activeShowroomSection
+        }
+        if let login = app.session?.user.login {
+            return "Witaj, \(login)"
+        }
+        return "Przeglądaj z kanapy"
+    }
+
+    private var controlStrip: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if app.catalogBrand == .home {
+                filterRowHome
+                homePropertyTypeRow
+            } else {
+                filterRowCar
+                if !app.popularCarMakes.isEmpty {
+                    carMakeRow
                 }
             }
             if let msg = app.location.statusMessage, (app.carNearest || app.homeNearest) {
                 Text(msg)
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EOSPalette.textTertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var layoutModeRow: some View {
-        HStack(spacing: 8) {
-            Text("Układ")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-            ForEach(ShowroomLayoutMode.allCases) { mode in
-                Button {
-                    app.setShowroomLayout(mode)
-                } label: {
-                    Label(mode.title, systemImage: mode.systemImage)
-                }
-                .buttonStyle(EOSMicroChipButtonStyle(
-                    selected: app.showroomLayout == mode,
-                    accent: app.catalogBrand == .car ? .cyan : .green
-                ))
-                .focusEffectDisabled()
-            }
-            Spacer(minLength: 0)
-        }
-        .focusSection()
-    }
-
-    private var activeSectionBanner: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "rectangle.stack.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(app.catalogBrand == .car ? Color.cyan : Color.green)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(app.showroomLayout.title)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text(app.activeShowroomSection.isEmpty ? "Wybierz ofertę poniżej" : app.activeShowroomSection)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(white: 0.1).opacity(0.92))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-        )
     }
 
     private var filterRowHome: some View {
+
         VStack(alignment: .leading, spacing: 6) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     Button("Wszystkie") { app.clearHomeFilters() }
                         .buttonStyle(EOSMicroChipButtonStyle(
                             selected: !app.isHomeFilteringActive && !app.homeCitiesPickerExpanded,
-                            accent: .green
+                            accent: EOSPalette.home
                         ))
                         .focusEffectDisabled()
 
@@ -235,7 +202,7 @@ struct HomeView: View {
                     } label: {
                         Label("Najbliżej", systemImage: "location.fill")
                     }
-                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.homeNearest, accent: .green))
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.homeNearest, accent: EOSPalette.home))
                     .focusEffectDisabled()
 
                     Button {
@@ -250,7 +217,7 @@ struct HomeView: View {
                     }
                     .buttonStyle(EOSMicroChipButtonStyle(
                         selected: app.homeCitiesPickerExpanded || !app.selectedHomeCities.isEmpty,
-                        accent: .green
+                        accent: EOSPalette.home
                     ))
                     .focusEffectDisabled()
 
@@ -258,13 +225,13 @@ struct HomeView: View {
                         Button(kind.title) { app.toggleHomeTransaction(kind) }
                             .buttonStyle(EOSMicroChipButtonStyle(
                                 selected: app.selectedHomeTransactions.contains(kind),
-                                accent: .green
+                                accent: EOSPalette.home
                             ))
                             .focusEffectDisabled()
                     }
 
                     Button("Premium") { app.toggleHomePremium() }
-                        .buttonStyle(EOSMicroChipButtonStyle(selected: app.homePremium, accent: .green))
+                        .buttonStyle(EOSMicroChipButtonStyle(selected: app.homePremium, accent: EOSPalette.home))
                         .focusEffectDisabled()
                 }
                 .padding(.vertical, 2)
@@ -282,7 +249,7 @@ struct HomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 Button("Wszystkie miejscowości") { app.clearHomeCities() }
-                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.selectedHomeCities.isEmpty, accent: .green))
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.selectedHomeCities.isEmpty, accent: EOSPalette.home))
                     .focusEffectDisabled()
 
                 ForEach(app.homeCityCounts, id: \.name) { item in
@@ -294,7 +261,7 @@ struct HomeView: View {
                         selected: app.selectedHomeCities.contains(where: {
                             $0.caseInsensitiveCompare(item.name) == .orderedSame
                         }),
-                        accent: .green
+                        accent: EOSPalette.home
                     ))
                     .focusEffectDisabled()
                 }
@@ -309,7 +276,7 @@ struct HomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 Button("Wszystkie typy") { app.clearHomePropertyTypes() }
-                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.selectedHomePropertyTypes.isEmpty, accent: .green))
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.selectedHomePropertyTypes.isEmpty, accent: EOSPalette.home))
                     .focusEffectDisabled()
 
                 ForEach(app.homePropertyTypeCounts, id: \.kind) { item in
@@ -319,7 +286,7 @@ struct HomeView: View {
                     }
                     .buttonStyle(EOSMicroChipButtonStyle(
                         selected: app.selectedHomePropertyTypes.contains(item.kind),
-                        accent: .green
+                        accent: EOSPalette.home
                     ))
                     .focusEffectDisabled()
                 }
@@ -338,7 +305,7 @@ struct HomeView: View {
                     Button("Wszystkie") { app.clearCarFilters() }
                         .buttonStyle(EOSMicroChipButtonStyle(
                             selected: !app.isCarFilteringActive && !app.carCitiesPickerExpanded,
-                            accent: .cyan
+                            accent: EOSPalette.car
                         ))
                         .focusEffectDisabled()
 
@@ -347,7 +314,7 @@ struct HomeView: View {
                     } label: {
                         Label("Najbliżej", systemImage: "location.fill")
                     }
-                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.carNearest, accent: .cyan))
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.carNearest, accent: EOSPalette.car))
                     .focusEffectDisabled()
 
                     Button {
@@ -362,7 +329,7 @@ struct HomeView: View {
                     }
                     .buttonStyle(EOSMicroChipButtonStyle(
                         selected: app.carCitiesPickerExpanded || !app.selectedCarCities.isEmpty,
-                        accent: .cyan
+                        accent: EOSPalette.car
                     ))
                     .focusEffectDisabled()
 
@@ -370,7 +337,7 @@ struct HomeView: View {
                         Button(attr.title) { app.toggleCarAttribute(attr) }
                             .buttonStyle(EOSMicroChipButtonStyle(
                                 selected: app.selectedCarAttributes.contains(attr),
-                                accent: .cyan
+                                accent: EOSPalette.car
                             ))
                             .focusEffectDisabled()
                     }
@@ -390,7 +357,7 @@ struct HomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 Button("Wszystkie miejscowości") { app.clearCarCities() }
-                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.selectedCarCities.isEmpty, accent: .cyan))
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.selectedCarCities.isEmpty, accent: EOSPalette.car))
                     .focusEffectDisabled()
 
                 ForEach(app.carCityCounts, id: \.name) { item in
@@ -402,7 +369,7 @@ struct HomeView: View {
                         selected: app.selectedCarCities.contains(where: {
                             $0.caseInsensitiveCompare(item.name) == .orderedSame
                         }),
-                        accent: .cyan
+                        accent: EOSPalette.car
                     ))
                     .focusEffectDisabled()
                 }
@@ -417,7 +384,7 @@ struct HomeView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 Button("Wszystkie marki") { app.clearCarMakes() }
-                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.selectedCarMakes.isEmpty, accent: .cyan))
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.selectedCarMakes.isEmpty, accent: EOSPalette.car))
                     .focusEffectDisabled()
 
                 ForEach(Array(app.popularCarMakes.prefix(16)), id: \.name) { item in
@@ -429,7 +396,7 @@ struct HomeView: View {
                         selected: app.selectedCarMakes.contains(where: {
                             $0.caseInsensitiveCompare(item.name) == .orderedSame
                         }),
-                        accent: .cyan
+                        accent: EOSPalette.car
                     ))
                     .focusEffectDisabled()
                 }
@@ -447,18 +414,23 @@ struct HomeView: View {
             switch tab {
             case .showroom:
                 catalogLoadingGate { showroomView }
+                    .transition(.eosModeTransition)
             case .search:
                 catalogLoadingGate {
                     SearchView()
                         .environmentObject(app)
                 }
+                .transition(.eosModeTransition)
             case .favorites:
                 favoritesView
+                    .transition(.eosModeTransition)
             case .account:
                 accountView
+                    .transition(.eosModeTransition)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .animation(.spring(response: 0.5, dampingFraction: 0.88, blendDuration: 0.25), value: tab)
     }
 
     @ViewBuilder
@@ -481,7 +453,7 @@ struct HomeView: View {
                         emptyCatalogBanner(
                             title: "Brak nieruchomości w katalogu",
                             subtitle: "Odśwież katalogi w zakładce Konto lub spróbuj ponownie za chwilę.",
-                            accent: .green
+                            accent: EOSPalette.home
                         )
                     } else {
                         homeShowroom
@@ -490,15 +462,18 @@ struct HomeView: View {
                     emptyCatalogBanner(
                         title: "Brak samochodów w katalogu",
                         subtitle: "Odśwież katalogi w zakładce Konto lub spróbuj ponownie za chwilę.",
-                        accent: .cyan
+                        accent: EOSPalette.car
                     )
                 } else {
                     carShowroom
                 }
             }
+            .transition(.eosModeTransition)
+            .id(app.catalogBrand)
             .padding(.top, 12)
             .padding(.bottom, 72)
         }
+        .animation(.spring(response: 0.5, dampingFraction: 0.88, blendDuration: 0.25), value: app.catalogBrand)
         .focusSection()
         .onAppear {
             if app.activeShowroomSection.isEmpty {
@@ -541,7 +516,7 @@ struct HomeView: View {
                 subtitle: [EOSFormat.pricePLN(hero.price), hero.displayLocation].filter { !$0.isEmpty }.joined(separator: "  ·  "),
                 badge: hero.transactionLabel.uppercased(),
                 imageURL: EOSOfferMedia.primaryImageURL(for: hero),
-                accent: .green,
+                accent: EOSPalette.home,
                 primaryTitle: "POKAŻ",
                 secondaryTitle: newest.count > 1 ? "Immersyjny przegląd" : nil,
                 onPrimary: { app.openDetail(hero) },
@@ -552,7 +527,7 @@ struct HomeView: View {
             emptyFilterBanner(
                 title: "Brak nieruchomości w tym filtrze",
                 subtitle: "Wybierz inny typ lub wróć do „Wszystkie”.",
-                accent: .green
+                accent: EOSPalette.home
             ) {
                 withAnimation { app.clearHomeFilters() }
             }
@@ -599,7 +574,7 @@ struct HomeView: View {
                 subtitle: [hero.displayPrice, hero.displaySpecs].filter { !$0.isEmpty }.joined(separator: "  ·  "),
                 badge: hero.featured ? "PROMO" : (app.selectedCarMakes.isEmpty ? "EstateOS™ Car" : makeLabel.uppercased()),
                 imageURL: EOSOfferMedia.imageURL(from: hero.imageUrl),
-                accent: .cyan,
+                accent: EOSPalette.car,
                 primaryTitle: "POKAŻ",
                 secondaryTitle: fresh.count > 1 ? "Immersyjny przegląd" : nil,
                 onPrimary: { app.openCarDetail(hero) },
@@ -610,7 +585,7 @@ struct HomeView: View {
             emptyFilterBanner(
                 title: "Brak aut dla „\(makeLabel)”",
                 subtitle: "Zmień markę lub filtr paliwa — katalog odświeży się od razu.",
-                accent: .cyan
+                accent: EOSPalette.car
             ) {
                 withAnimation {
                     app.clearCarFilters()
@@ -714,16 +689,17 @@ struct HomeView: View {
                 Image(systemName: "heart.fill").foregroundStyle(.pink)
             }
             Text(title)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                .font(.system(size: 26, weight: .semibold, design: .default))
+                .foregroundStyle(EOSPalette.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
             Text("\(count)")
-                .font(.callout.weight(.bold).monospacedDigit())
-                .foregroundStyle(.black)
+                .font(.caption.weight(.bold).monospacedDigit())
+                .foregroundStyle(EOSPalette.textSecondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(Capsule().fill(app.catalogBrand == .car ? Color.cyan : Color.green))
+                .background(Capsule().fill(Color.white.opacity(0.08)))
+                .overlay(Capsule().stroke(EOSPalette.hairlineSoft, lineWidth: 1))
             Spacer(minLength: 8)
             if let immersiveHome, immersiveHome.count > 1 {
                 Button("Immersyjny przegląd") {
@@ -740,13 +716,8 @@ struct HomeView: View {
                 .focusEffectDisabled()
             }
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 2)
-        // Solid backing so title never “disappears” into chrome/background.
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.black.opacity(0.55))
-        )
+        .padding(.horizontal, 2)
+        .padding(.vertical, 6)
         .onAppear { app.noteShowroomSection(title) }
     }
 
@@ -754,13 +725,13 @@ struct HomeView: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 28) {
                 Text("Ulubione nieruchomości")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.system(size: 28, weight: .semibold))
 
                 if app.session == nil {
                     Text("Zaloguj się, aby synchronizować ulubione z iPhone i WWW.")
                         .foregroundStyle(.secondary)
                     Button("Zaloguj się") { app.openLoginSheet() }
-                        .buttonStyle(EOSDetailActionButtonStyle(accent: .green))
+                        .buttonStyle(EOSDetailActionButtonStyle(accent: EOSPalette.home))
                         .focusEffectDisabled()
                 } else {
                     let favs = app.favoriteOffers.isEmpty
@@ -778,7 +749,7 @@ struct HomeView: View {
                 }
 
                 Text("Ulubione samochody")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.system(size: 28, weight: .semibold))
                     .padding(.top, 12)
                 if app.favoriteCars.isEmpty {
                     Text("Oznacz sercem auto w szczegółach — zapisujemy lokalnie na Apple TV.")
@@ -787,7 +758,7 @@ struct HomeView: View {
                         app.setCatalogBrand(.car)
                         tab = .showroom
                     }
-                    .buttonStyle(EOSDetailActionButtonStyle(accent: .cyan))
+                    .buttonStyle(EOSDetailActionButtonStyle(accent: EOSPalette.car))
                     .focusEffectDisabled()
                 } else {
                     CarsRailView(cars: app.favoriteCars, onSelect: app.openCarDetail)
@@ -824,7 +795,7 @@ struct HomeView: View {
     private var accountSection: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Konto")
-                .font(.system(size: 40, weight: .bold, design: .rounded))
+                .font(.system(size: 32, weight: .semibold))
             Text(app.session?.user.login ?? "Tryb showroom bez logowania")
                 .foregroundStyle(.secondary)
                 .font(.title3)
@@ -855,7 +826,7 @@ struct HomeView: View {
 
                 if app.session == nil {
                     Button("Zaloguj się") { app.openLoginSheet() }
-                        .buttonStyle(EOSDetailActionButtonStyle(accent: .green))
+                        .buttonStyle(EOSDetailActionButtonStyle(accent: EOSPalette.home))
                         .focusEffectDisabled()
                         .focused($accountFocusedItem, equals: .login)
                         .id(AccountFocus.login)
@@ -876,7 +847,7 @@ struct HomeView: View {
     private var topShelfSettingsSection: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Górny pasek Apple TV")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(.system(size: 28, weight: .semibold))
             Text("Górny pasek: nieruchomości z 24h oraz wyróżnione samochody EstateOS™ Car.")
                 .font(.body)
                 .foregroundStyle(.secondary)
@@ -906,7 +877,7 @@ struct HomeView: View {
                 }
                 .buttonStyle(.plain)
                 .focusEffectDisabled()
-                .eosFocusRing(cornerRadius: 20, accent: .cyan)
+                .eosFocusRing(cornerRadius: 20, accent: EOSPalette.car)
                 .focused($accountFocusedItem, equals: focusID)
                 .id(focusID)
             }
@@ -965,7 +936,7 @@ struct OffersCatalogView: View {
                             isFavorite: app.isFavorite(offer.id),
                             distanceLabel: app.distanceLabel(forCity: offer.city)
                         )
-                        .eosListRowFocus(accent: .green)
+                        .eosListRowFocus(accent: EOSPalette.home)
                         .background(FocusSectionProbe(title: sectionTitle))
                     }
                     .buttonStyle(EOSPosterButtonStyle(focusScale: 1.05))
@@ -1066,7 +1037,8 @@ struct OfferCardView: View {
                             .font(.caption.weight(.bold))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 2)
-                            .background(Capsule().fill(offer.isRentBadge ? Color.blue.opacity(0.85) : Color.green.opacity(0.85)))
+                            .background(Capsule().fill(Color.white.opacity(0.14)))
+                            .overlay(Capsule().stroke(offer.isRentBadge ? Color(red: 0.45, green: 0.55, blue: 0.72).opacity(0.7) : EOSPalette.home.opacity(0.55), lineWidth: 1))
                             .foregroundStyle(.white)
                         if let city = offer.city {
                             Text(city)
@@ -1081,7 +1053,7 @@ struct OfferCardView: View {
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 2)
-                                .background(Capsule().fill(Color.green.opacity(0.85)))
+                                .background(Capsule().fill(Color.white.opacity(0.12)))
                                 .foregroundStyle(.black)
                         }
                     }
@@ -1099,14 +1071,14 @@ struct OfferCardView: View {
 
             Text(EOSFormat.pricePLN(offer.price))
                 .font(compact ? .title3.bold() : .title2.bold())
-                .foregroundStyle(.green)
+                .foregroundStyle(EOSPalette.home)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
 
             EOSListingStatsRow(
                 views: offer.viewsCount,
                 favorites: offer.favoritesCount,
-                accent: .green
+                accent: EOSPalette.home
             )
 
             Text(offer.displayLocation)
@@ -1114,7 +1086,7 @@ struct OfferCardView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
-        .eosPosterCard(cornerRadius: 22, accent: .green)
+        .eosPosterCard(cornerRadius: 22, accent: EOSPalette.home)
     }
 }
 
@@ -1136,12 +1108,13 @@ struct OfferListRowView: View {
                         .font(.caption2.weight(.bold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Capsule().fill(offer.isRentBadge ? Color.blue.opacity(0.85) : Color.green.opacity(0.85)))
+                        .background(Capsule().fill(Color.white.opacity(0.14)))
+                            .overlay(Capsule().stroke(offer.isRentBadge ? Color(red: 0.45, green: 0.55, blue: 0.72).opacity(0.7) : EOSPalette.home.opacity(0.55), lineWidth: 1))
                     if isFavorite {
                         Image(systemName: "heart.fill").foregroundStyle(.pink).font(.caption)
                     }
                     if let distanceLabel {
-                        Text(distanceLabel).font(.caption2.weight(.semibold)).foregroundStyle(.green)
+                        Text(distanceLabel).font(.caption2.weight(.semibold)).foregroundStyle(EOSPalette.home)
                     }
                 }
                 Text(offer.title)
@@ -1150,9 +1123,9 @@ struct OfferListRowView: View {
                     .lineLimit(2)
                 Text(EOSFormat.pricePLN(offer.price))
                     .font(.title3.bold())
-                    .foregroundStyle(.green)
+                    .foregroundStyle(EOSPalette.home)
                 HStack {
-                    EOSListingStatsRow(views: offer.viewsCount, favorites: offer.favoritesCount, accent: .green)
+                    EOSListingStatsRow(views: offer.viewsCount, favorites: offer.favoritesCount, accent: EOSPalette.home)
                     Spacer()
                     Text(offer.displayLocation)
                         .font(.caption)

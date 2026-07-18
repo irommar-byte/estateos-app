@@ -29,6 +29,7 @@ struct CarDetailView: View {
     @State private var photoIndex = 0
     /// When false: full-bleed photo, L/R changes shots; OK brings the strip back.
     @State private var galleryStripVisible = true
+    @State private var gallerySlide: EOSGallerySlideDirection = .none
     @FocusState private var landing: Landing?
 
     private var imageURLs: [URL] {
@@ -87,7 +88,9 @@ struct CarDetailView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            EOSFullBleedOfferImage(url: currentImageURL)
+            EOSFullBleedOfferImage(url: currentImageURL, ambient: mode == .gallery && !galleryStripVisible)
+                .id(photoIndex)
+                .transition(gallerySlide.transition)
                 .ignoresSafeArea()
                 .opacity((mode == .info || mode == .description) ? 0.28 : 1)
 
@@ -106,15 +109,19 @@ struct CarDetailView: View {
                     Spacer(minLength: 0)
                     heroCard
                 }
+                .transition(.eosModeTransition)
             case .info:
                 fullInfoScreen
+                    .transition(.eosModeTransition)
             case .description:
                 fullDescriptionScreen
+                    .transition(.eosModeTransition)
             case .gallery:
                 galleryScreen
+                    .transition(.eosModeTransition)
             }
         }
-        .animation(.easeOut(duration: 0.22), value: mode)
+        .animation(.spring(response: 0.5, dampingFraction: 0.88, blendDuration: 0.25), value: mode)
         .animation(.easeOut(duration: 0.15), value: photoIndex)
         .sheet(isPresented: $showQR) {
             CarContactQrSheet(car: car)
@@ -198,7 +205,7 @@ struct CarDetailView: View {
 
             Text(car.displayPrice)
                 .font(.system(size: 36, weight: .bold, design: .rounded))
-                .foregroundStyle(.cyan)
+                .foregroundStyle(EOSPalette.car)
 
             Text(car.displaySpecs)
                 .font(.title3.weight(.medium))
@@ -239,7 +246,7 @@ struct CarDetailView: View {
                 } label: {
                     Label("Więcej informacji", systemImage: "info.circle")
                 }
-                .buttonStyle(EOSDetailActionButtonStyle(accent: .cyan))
+                .buttonStyle(EOSDetailActionButtonStyle(accent: EOSPalette.car))
                 .focusEffectDisabled()
                 .focused($landing, equals: .moreInfo)
             }
@@ -285,7 +292,7 @@ struct CarDetailView: View {
                 Button { showQR = true } label: {
                     Label("Kontakt QR", systemImage: "qrcode")
                 }
-                .buttonStyle(EOSDetailActionButtonStyle(accent: .cyan))
+                .buttonStyle(EOSDetailActionButtonStyle(accent: EOSPalette.car))
                 .focusEffectDisabled()
 
                 Button { app.toggleFavoriteCar(car) } label: {
@@ -329,7 +336,7 @@ struct CarDetailView: View {
                     .foregroundStyle(.white)
                 Text(car.displayPrice)
                     .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(EOSPalette.car)
                 Text(car.displaySpecs)
                     .font(.body.weight(.medium))
                     .foregroundStyle(.white.opacity(0.78))
@@ -384,25 +391,28 @@ struct CarDetailView: View {
 
             VStack(spacing: 0) {
                 ForEach(specRows) { row in
-                    HStack(alignment: .center, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline, spacing: 16) {
                         Image(systemName: row.icon)
                             .font(.body.weight(.semibold))
-                            .foregroundStyle(Color.cyan)
-                            .frame(width: 28, alignment: .center)
+                            .foregroundStyle(EOSPalette.car)
+                            .frame(width: 26, alignment: .center)
 
-                        Text(row.label)
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(.white.opacity(0.55))
-                            .frame(width: 120, alignment: .leading)
-                            .fixedSize(horizontal: true, vertical: false)
+                        Text(row.label.uppercased())
+                            .font(.system(size: 14, weight: .semibold))
+                            .tracking(0.6)
+                            .foregroundStyle(.white.opacity(0.5))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .frame(width: 168, alignment: .leading)
 
                         Text(row.value)
-                            .font(.body.weight(.semibold))
+                            .font(.system(size: 19, weight: .semibold))
                             .foregroundStyle(.white)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.9)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .padding(.vertical, 9)
+                    .padding(.vertical, 11)
                     .padding(.horizontal, 4)
 
                     if row.id != specRows.last?.id {
@@ -526,6 +536,11 @@ struct CarDetailView: View {
                 .focusSection()
 
                 Spacer(minLength: 0)
+
+                galleryCaptionPanel
+                    .padding(.horizontal, 56)
+                    .padding(.bottom, galleryStripVisible ? 232 : 64)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .zIndex(2)
 
@@ -536,6 +551,31 @@ struct CarDetailView: View {
                 .animation(.spring(response: 0.45, dampingFraction: 0.86), value: galleryStripVisible)
                 .zIndex(3)
         }
+        .animation(.spring(response: 0.5, dampingFraction: 0.86), value: photoIndex)
+    }
+
+    /// Fills the "naked" full-bleed gallery photo with a compact identity — make/model,
+    /// price, location — so browsing shots never feels like a bare filmstrip.
+    private var galleryCaptionPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            EOSCountryLocationLabel(
+                locationLine: car.city,
+                country: car.resolvedCountry,
+                font: .system(size: 16, weight: .medium, design: .rounded),
+                foreground: .white.opacity(0.82)
+            )
+            EOSAdaptiveTitle(text: car.displayHeadline, maxLines: 2, maxSize: 32, minSize: 20)
+                .foregroundStyle(.white)
+            Text(car.displayPrice)
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(EOSPalette.car)
+        }
+        .padding(24)
+        .eosGlass(cornerRadius: 26, opacity: 0.4)
+        .frame(maxWidth: 620, alignment: .leading)
+        .shadow(color: .black.opacity(0.35), radius: 24, y: 14)
+        .id(photoIndex)
+        .transition(.opacity.combined(with: .move(edge: .leading)))
     }
 
     private var galleryFilmstrip: some View {
@@ -551,7 +591,7 @@ struct CarDetailView: View {
                             .overlay(
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                                     .stroke(
-                                        photoIndex == index ? Color.cyan : Color.white.opacity(0.25),
+                                        photoIndex == index ? EOSPalette.car : Color.white.opacity(0.25),
                                         lineWidth: photoIndex == index ? 3 : 1
                                     )
                             )
@@ -580,6 +620,7 @@ struct CarDetailView: View {
     }
 
     private func enterGalleryImmersive(at index: Int) {
+        gallerySlide = index > photoIndex ? .forward : (index < photoIndex ? .back : .none)
         photoIndex = index
         withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) {
             galleryStripVisible = false
@@ -596,6 +637,7 @@ struct CarDetailView: View {
 
     private func stepGalleryPhoto(_ delta: Int) {
         guard imageURLs.count > 1 else { return }
+        gallerySlide = delta > 0 ? .forward : .back
         photoIndex = (photoIndex + delta + imageURLs.count) % imageURLs.count
     }
 }

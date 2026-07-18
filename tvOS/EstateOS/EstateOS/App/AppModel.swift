@@ -18,7 +18,8 @@ final class AppModel: ObservableObject {
     @Published var passkeyPairingCode = ""
     @Published var immersiveBrowse: ImmersiveBrowseContext?
     @Published var topShelfStyle: TopShelfPresentationStyle = TvPreferences.topShelfStyle
-    @Published var showroomLayout: ShowroomLayoutMode = TvPreferences.showroomLayout
+    /// Rails are the only showroom layout now — luxurious, consistent, no user-facing switcher.
+    let showroomLayout: ShowroomLayoutMode = .rails
     @Published var activeShowroomSection: String = ""
     @Published var pairingStatusMessage: String?
     @Published var favoriteOfferIds: Set<Int> = []
@@ -91,11 +92,6 @@ final class AppModel: ObservableObject {
 #if canImport(TVServices)
         TVTopShelfContentProvider.topShelfContentDidChange()
 #endif
-    }
-
-    func setShowroomLayout(_ mode: ShowroomLayoutMode) {
-        showroomLayout = mode
-        TvPreferences.showroomLayout = mode
     }
 
     func noteShowroomSection(_ title: String) {

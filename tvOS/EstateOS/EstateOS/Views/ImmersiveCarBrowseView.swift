@@ -70,7 +70,7 @@ struct ImmersiveCarBrowseView: View {
                         .tracking(1.1)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(Capsule(style: .continuous).fill(Color.cyan.opacity(0.55)))
+                        .background(Capsule(style: .continuous).fill(Color.white.opacity(0.14)))
                 }
             }
 
@@ -81,7 +81,7 @@ struct ImmersiveCarBrowseView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text(current.displayPrice)
                     .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(EOSPalette.car)
                 Text(current.displaySpecs)
                     .font(.system(size: 22, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.86))
@@ -98,7 +98,7 @@ struct ImmersiveCarBrowseView: View {
                 Button("POKAŻ") {
                     app.openCarDetail(current)
                 }
-                .buttonStyle(EOSDetailActionButtonStyle(accent: .cyan))
+                .buttonStyle(EOSDetailActionButtonStyle(accent: EOSPalette.car))
                 .focusEffectDisabled()
 
                 Button {
@@ -177,7 +177,7 @@ private struct ImmersiveCarBackdrop: View {
         Rectangle()
             .fill(
                 LinearGradient(
-                    colors: [Color(white: 0.12), Color.cyan.opacity(0.18), Color(white: 0.05)],
+                    colors: [Color(white: 0.12), EOSPalette.car.opacity(0.12), Color(white: 0.05)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
