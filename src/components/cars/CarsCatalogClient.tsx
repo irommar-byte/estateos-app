@@ -13,7 +13,6 @@ import {
 import OtomotoImportHeroCard from "@/components/cars/OtomotoImportHeroCard";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
-import { useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { EstateOsCarListing } from "@/lib/carsCatalog";
 import { isCarFavoriteId, loadCarFavoriteIds } from "@/lib/carFavoritesStorage";
@@ -31,6 +30,7 @@ type CatalogTab = "all" | "favorites" | "mine";
 
 type Filters = {
   query: string;
+  vehicleType: string;
   makeSlug: string;
   make: string;
   modelSlug: string;
@@ -44,6 +44,7 @@ type Filters = {
 
 const EMPTY_FILTERS: Filters = {
   query: "",
+  vehicleType: "",
   makeSlug: "",
   make: "",
   modelSlug: "",
@@ -110,21 +111,55 @@ export default function CarsCatalogClient() {
     }
   }, []);
 
-  const { options: makeOptions, loading: makesLoading } = useCarCatalogOptions("makes", {}, true);
-  const { options: modelOptions, loading: modelsLoading } = useCarCatalogOptions(
-    "models",
-    { make: filters.makeSlug },
-    Boolean(filters.makeSlug),
-  );
-  const { options: generationOptions, loading: generationsLoading } = useCarCatalogOptions(
-    "generations",
-    { make: filters.makeSlug, model: filters.modelSlug },
-    Boolean(filters.makeSlug && filters.modelSlug),
-  );
-
   useEffect(() => {
     setFavoriteIds(loadCarFavoriteIds());
   }, [tab]);
+
+  const makeOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const car of cars) {
+      const carType = String((car as EstateOsCarListing & { vehicleType?: string }).vehicleType || "car");
+      if (filters.vehicleType && carType !== filters.vehicleType) continue;
+      const label = String(car.make || "").trim();
+      if (!label) continue;
+      const key = normalizeLabel(label);
+      if (!map.has(key)) map.set(key, label);
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], locale))
+      .map(([key, label]) => ({ value: key, label }));
+  }, [cars, filters.vehicleType, locale]);
+
+  const modelOptions = useMemo(() => {
+    if (!filters.make) return [];
+    const map = new Map<string, string>();
+    for (const car of cars) {
+      if (normalizeLabel(car.make) !== normalizeLabel(filters.make)) continue;
+      const label = String(car.model || "").trim();
+      if (!label) continue;
+      const key = normalizeLabel(label);
+      if (!map.has(key)) map.set(key, label);
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], locale))
+      .map(([key, label]) => ({ value: key, label }));
+  }, [cars, filters.make, locale]);
+
+  const generationOptions = useMemo(() => {
+    if (!filters.make || !filters.model) return [];
+    const map = new Map<string, string>();
+    for (const car of cars) {
+      if (normalizeLabel(car.make) !== normalizeLabel(filters.make)) continue;
+      if (normalizeLabel(car.model) !== normalizeLabel(filters.model)) continue;
+      const label = String((car as EstateOsCarListing & { generation?: string }).generation || "").trim();
+      if (!label) continue;
+      const key = normalizeLabel(label);
+      if (!map.has(key)) map.set(key, label);
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], locale))
+      .map(([key, label]) => ({ value: key, label }));
+  }, [cars, filters.make, filters.model, locale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +188,8 @@ export default function CarsCatalogClient() {
     const q = filters.query.trim().toLowerCase();
     const maxPrice = Number(filters.maxPrice.replace(/\D/g, ""));
     const rows = cars.filter((car) => {
+      const carType = String((car as EstateOsCarListing & { vehicleType?: string }).vehicleType || "car");
+      if (filters.vehicleType && carType !== filters.vehicleType) return false;
       if (filters.make && normalizeLabel(car.make) !== normalizeLabel(filters.make)) return false;
       if (filters.model && normalizeLabel(car.model) !== normalizeLabel(filters.model)) return false;
       if (filters.generation) {
@@ -245,7 +282,7 @@ export default function CarsCatalogClient() {
     : null;
 
   return (
-    <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-36 text-[var(--eos-text)] sm:px-6">
+    <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-40 text-[var(--eos-text)] sm:px-6 sm:pt-44">
       <div className="mx-auto max-w-7xl">
         <CatalogBrandHero
           brand="car"
@@ -336,7 +373,32 @@ export default function CarsCatalogClient() {
             </FilterField>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <FilterField label={`${cat.makeLabel}${makesLoading ? "…" : ""}`}>
+              <FilterField label={cat.vehicleTypeFilterLabel}>
+                <select
+                  value={filters.vehicleType}
+                  onChange={(e) =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      vehicleType: e.target.value,
+                      makeSlug: "",
+                      make: "",
+                      modelSlug: "",
+                      model: "",
+                      generationSlug: "",
+                      generation: "",
+                    }))
+                  }
+                  className={filterInputClass}
+                >
+                  <option value="">{cat.allVehicleTypes}</option>
+                  <option value="car">{cat.typeCar}</option>
+                  <option value="motorcycle">{cat.typeMotorcycle}</option>
+                  <option value="van">{cat.typeVan}</option>
+                  <option value="truck">{cat.typeTruck}</option>
+                </select>
+              </FilterField>
+
+              <FilterField label={cat.makeLabel}>
                 <select value={filters.makeSlug} onChange={(e) => selectMake(e.target.value)} className={filterInputClass}>
                   <option value="">{cat.allMakes}</option>
                   {makeOptions.map((option) => (
@@ -347,7 +409,7 @@ export default function CarsCatalogClient() {
                 </select>
               </FilterField>
 
-              <FilterField label={`${cat.modelLabel}${modelsLoading ? "…" : ""}`}>
+              <FilterField label={cat.modelLabel}>
                 <select
                   value={filters.modelSlug}
                   onChange={(e) => selectModel(e.target.value)}
@@ -363,7 +425,7 @@ export default function CarsCatalogClient() {
                 </select>
               </FilterField>
 
-              <FilterField label={`${cat.generationLabel}${generationsLoading ? "…" : ""}`}>
+              <FilterField label={cat.generationLabel}>
                 <select
                   value={filters.generationSlug}
                   onChange={(e) => selectGeneration(e.target.value)}

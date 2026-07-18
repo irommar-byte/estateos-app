@@ -235,15 +235,18 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
   const phaseLabel = phaseCopy[phase];
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto bg-[var(--eos-bg)]/85 px-3 pb-6 backdrop-blur-md sm:px-4" style={{ paddingTop: "calc(var(--eos-nav-height) + 0.75rem)" }}>
-      <div className="my-auto flex max-h-[calc(100dvh-var(--eos-nav-height)-1.5rem)] w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-2xl">
+    <div
+      className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto overscroll-contain bg-[var(--eos-bg)]/85 px-3 pb-8 backdrop-blur-md sm:px-4 sm:pb-10"
+      style={{ paddingTop: "calc(var(--eos-nav-height) + 0.75rem)" }}
+    >
+      <div className="my-auto flex w-full max-w-xl flex-col rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-2xl">
         <div className="shrink-0 border-b border-[var(--eos-border)] px-5 py-3 sm:px-6 sm:py-4">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-sky-500">EstateOS™Car</p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)] sm:text-xl">{s.title}</h2>
           <p className="mt-1 text-xs text-[var(--eos-muted)]">{s.subtitle}</p>
         </div>
 
-        <div className="relative min-h-[min(58dvh,520px)] flex-1 bg-[var(--eos-bg-elevated)]">
+        <div className="relative h-[min(42dvh,360px)] shrink-0 bg-[var(--eos-bg-elevated)] sm:h-[min(46dvh,400px)]">
           <video
             ref={videoRef}
             className="absolute inset-0 h-full w-full object-contain"

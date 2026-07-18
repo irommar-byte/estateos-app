@@ -4,6 +4,12 @@ import {
   queryCepikVehicle,
   type CepikVehicleQuery,
 } from '@/lib/cepikHistoriaPojazduClient';
+import { fuelLabelToFuelType } from '@/lib/otomotoCatalog';
+import { mapBodyTypeFromKind, type CarRegistrationPrefill } from '@/lib/polishRegistrationDocument.shared';
+import {
+  defaultBodyTypeForVehicleType,
+  inferVehicleTypeFromCategoryLabel,
+} from '@/lib/vehicleTypes';
 
 export type VehicleHistoryRequest = {
   vin: string;
@@ -536,4 +542,126 @@ export async function checkVehicleInsurance(input: InsuranceCheckRequest): Promi
   throw new Error(
     'Podaj VIN (17 znaków), numer rejestracyjny i datę pierwszej rejestracji (DD.MM.RRRR), aby sprawdzić OC w CEPIK/UFG, lub uzupełnij pole ważności polisy.',
   );
+}
+
+
+function cleanCepikScalar(value: unknown): string {
+  if (value == null || value === '') return '';
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const obj = value as Record<string, unknown>;
+    if ('value' in obj) return cleanCepikScalar(obj.value);
+  }
+  const raw = String(value).trim();
+  if (!raw || raw === '—') return '';
+  return raw;
+}
+
+function digitsFromCepik(value: unknown): string {
+  return cleanCepikScalar(value).replace(/[^\d]/g, '');
+}
+
+function powerFromCepik(value: unknown): string {
+  const cleaned = cleanCepikScalar(value);
+  if (!cleaned) return '';
+  const kwMatch = cleaned.match(/(\d+(?:[.,]\d+)?)\s*kw/i);
+  if (kwMatch) {
+    const kw = Number(kwMatch[1].replace(',', '.'));
+    if (Number.isFinite(kw) && kw > 0) return String(Math.round(kw));
+  }
+  const kmMatch = cleaned.match(/(\d+(?:[.,]\d+)?)\s*km/i);
+  if (kmMatch) {
+    const km = Number(kmMatch[1].replace(',', '.'));
+    if (Number.isFinite(km) && km > 0) return String(Math.round(km / 1.35962));
+  }
+  const num = Number(cleaned.replace(',', '.').replace(/[^\d.]/g, ''));
+  if (Number.isFinite(num) && num > 0) {
+    // CEPIK basicData.enginePower is typically kW
+    return String(Math.round(num));
+  }
+  return '';
+}
+
+/** Prefill katalogu Cars z CEPIK na podstawie VIN + rejestracji + daty 1. rejestracji. */
+export async function buildCarFormPrefillFromDocs(input: VehicleHistoryRequest): Promise<{
+  prefill: CarRegistrationPrefill & { insuranceValidUntil?: string };
+  report: VehicleHistoryReport;
+}> {
+  const query = buildCepikQuery(input);
+  const { vehicleData, timelineData } = await queryCepikVehicle(query);
+
+  if (!vehicleData && !timelineData) {
+    throw new Error('CEPIK nie zwrócił danych pojazdu. Sprawdź VIN, tablicę i datę pierwszej rejestracji.');
+  }
+
+  const sections = buildTechnicalSections(vehicleData);
+  const timelineSection = buildTimelineSection(timelineData);
+  if (timelineSection) sections.push(timelineSection);
+
+  const technical = asRecord(vehicleData?.technicalData) || vehicleData || {};
+  const basic = asRecord(technical.basicData) || technical || {};
+  const timeline = asRecord(asRecord(timelineData)?.timelineData) || asRecord(timelineData) || {};
+
+  const make = cleanCepikScalar(basic.make);
+  const model = cleanCepikScalar(basic.model) || cleanCepikScalar(basic.type);
+  const firstRegistrationDate = formatDisplayDate(input.firstRegistrationDate);
+  const year =
+    digitsFromCepik(basic.yearOfManufacture).slice(0, 4) ||
+    (firstRegistrationDate.match(/\d{4}$/)?.[0] ?? '');
+  const fuelRaw = cleanCepikScalar(basic.fuelType);
+  const fuelType = fuelRaw ? fuelLabelToFuelType(fuelRaw) : '';
+  const engineCapacity = digitsFromCepik(basic.engineCapacity);
+  const enginePower = powerFromCepik(basic.enginePower);
+  const bodyRaw = cleanCepikScalar(basic.vehicleCategory) || cleanCepikScalar(basic.type);
+  const vehicleType = inferVehicleTypeFromCategoryLabel(bodyRaw || cleanCepikScalar(basic.vehicleCategory));
+  const trimVersion = [cleanCepikScalar(basic.version), cleanCepikScalar(basic.variant)].filter(Boolean).join(' ').trim();
+  const title = [make, model, trimVersion].filter(Boolean).join(' ').trim();
+
+  const summaryParts = [
+    `Dane CEPIK dla ${normalizePlate(input.registrationNumber)}.`,
+    make || model ? `Pojazd: ${[make, model].filter(Boolean).join(' ')}`.trim() : null,
+    sections.length ? `Pobrano ${sections.length} sekcji.` : null,
+  ].filter(Boolean);
+
+  const report: VehicleHistoryReport = {
+    vin: query.vin,
+    registrationNumber: normalizePlate(input.registrationNumber),
+    firstRegistrationDate,
+    summary: summaryParts.join(' '),
+    sections,
+    checkedAt: new Date().toISOString(),
+    source: 'CEPIK',
+  };
+
+  let insuranceValidUntil = '';
+  try {
+    const oc = await checkVehicleInsurance({
+      vin: query.vin,
+      registrationNumber: input.registrationNumber,
+      firstRegistrationDate: input.firstRegistrationDate,
+    });
+    if (oc.validUntil) insuranceValidUntil = String(oc.validUntil);
+  } catch {
+    const fromTimeline = cleanCepikScalar(timeline.insuranceExpiryDate || timeline.insuranceValidUntil);
+    if (fromTimeline) insuranceValidUntil = formatDisplayDate(fromTimeline);
+  }
+
+  const prefill: CarRegistrationPrefill & { insuranceValidUntil?: string; vehicleType?: string } = {
+    title,
+    make,
+    model,
+    year,
+    fuelType,
+    bodyType: bodyRaw ? mapBodyTypeFromKind(bodyRaw) : defaultBodyTypeForVehicleType(vehicleType),
+    generation: cleanCepikScalar(basic.type),
+    enginePower,
+    engineCapacity,
+    vin: query.vin,
+    registrationNumber: normalizePlate(input.registrationNumber),
+    firstRegistrationDate,
+    trimVersion,
+    insuranceValidUntil: insuranceValidUntil || undefined,
+    vehicleType,
+  };
+
+  return { prefill, report };
 }

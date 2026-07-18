@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FileSearch, Keyboard, ScanLine, ShieldCheck } from "lucide-react";
+import { FileSearch, Keyboard, Loader2, ScanLine, ShieldCheck, Wand2 } from "lucide-react";
 import AppleStyleSwitch from "@/components/ui/AppleStyleSwitch";
 import {
   CarFormField,
@@ -27,6 +27,8 @@ type CarVehicleDocsFieldsProps = {
   onChange: (patch: Partial<CarVehicleDocsFormState>) => void;
   loggedIn?: boolean;
   onRequestScan?: () => void;
+  onFillFromDocs?: () => Promise<void> | void;
+  fillingFromDocs?: boolean;
 };
 
 function isValidVinQuick(vin: string) {
@@ -39,6 +41,8 @@ export default function CarVehicleDocsFields({
   onChange,
   loggedIn = false,
   onRequestScan,
+  onFillFromDocs,
+  fillingFromDocs = false,
 }: CarVehicleDocsFieldsProps) {
   const { dict } = useLocale();
   const d = dict.cars.docs;
@@ -213,6 +217,21 @@ export default function CarVehicleDocsFields({
         label={d.restrictLabel}
         description={d.restrictDescription}
       />
+
+      {onFillFromDocs ? (
+        <div className="rounded-2xl border border-sky-400/30 bg-sky-500/[0.08] p-4">
+          <p className="text-sm text-[var(--eos-muted)]">{d.fillFromVinHint}</p>
+          <button
+            type="button"
+            onClick={() => void onFillFromDocs()}
+            disabled={fillingFromDocs || !canVerify || !loggedIn}
+            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-sky-500 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-white shadow-[0_10px_24px_rgba(14,165,233,0.28)] transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {fillingFromDocs ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
+            {fillingFromDocs ? d.fillingFromVin : d.fillFromVinCta}
+          </button>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <button

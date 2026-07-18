@@ -102,6 +102,9 @@ export type CarsDictionary = {
     eyebrow: string;
     title: string;
     description: string;
+    vehicleTypeLabel: string;
+    modelFreePlaceholder: string;
+    notApplicable: string;
     yearLabel: string;
     yearPlaceholder: string;
     makeLabel: string;
@@ -140,6 +143,10 @@ export type CarsDictionary = {
     scanCta: string;
     manualCta: string;
     otomotoPrivacyNote: string;
+    fillFromVinCta: string;
+    fillingFromVin: string;
+    fillFromVinHint: string;
+    errFillFromVin: string;
     verifyNeedsLogin: string;
     checkHistory: string;
     checkingHistory: string;
@@ -233,6 +240,12 @@ export type CarsDictionary = {
     clearFilters: string;
     searchLabel: string;
     searchPlaceholder: string;
+    vehicleTypeFilterLabel: string;
+    allVehicleTypes: string;
+    typeCar: string;
+    typeMotorcycle: string;
+    typeVan: string;
+    typeTruck: string;
     makeLabel: string;
     allMakes: string;
     modelLabel: string;
@@ -452,7 +465,10 @@ const pl: CarsDictionary = {
   catalogFields: {
     eyebrow: "Katalog pojazdu",
     title: "Marka, model i parametry",
-    description: "Wybierz dane z katalogu EstateOS™Car — ułatwia to filtrowanie i wiarygodność ogłoszenia.",
+    description: "Najpierw wybierz typ pojazdu — potem markę i model z właściwej bazy Otomoto.",
+    vehicleTypeLabel: "Typ pojazdu",
+    modelFreePlaceholder: "np. R 450, Actros 1845",
+    notApplicable: "Nie dotyczy",
     yearLabel: "Rocznik produkcji",
     yearPlaceholder: "Wybierz rocznik",
     makeLabel: "Marka",
@@ -494,6 +510,11 @@ const pl: CarsDictionary = {
     manualCta: "Wpisuję ręcznie",
     otomotoPrivacyNote:
       "Po uzupełnieniu możesz zastrzec dane na ogłoszeniu — kupujący i tak sprawdzi historię i OC.",
+    fillFromVinCta: "Uzupełnij formularz z VIN",
+    fillingFromVin: "Pobieram dane z CEPIK…",
+    fillFromVinHint:
+      "Po wpisaniu VIN, tablicy i daty pierwszej rejestracji uzupełnimy markę, model, rocznik i silnik — tak jak po skanie dowodu.",
+    errFillFromVin: "Nie udało się uzupełnić formularza z VIN.",
     verifyNeedsLogin: "Aby uruchomić CEPIK/OC, zaloguj się przy publikacji — dane z formularza zostaną zachowane.",
     checkHistory: "Sprawdź historię CEPIK",
     checkingHistory: "Pobieranie historii...",
@@ -589,6 +610,12 @@ const pl: CarsDictionary = {
     clearFilters: "Wyczyść filtry",
     searchLabel: "Szukaj",
     searchPlaceholder: "BMW, Warszawa, diesel...",
+    vehicleTypeFilterLabel: "Typ pojazdu",
+    allVehicleTypes: "Wszystkie typy",
+    typeCar: "Osobowy",
+    typeMotorcycle: "Motocykl",
+    typeVan: "Dostawczy",
+    typeTruck: "Ciężarowy",
     makeLabel: "Marka",
     allMakes: "Wszystkie marki",
     modelLabel: "Seria / model",
@@ -805,7 +832,10 @@ const en: CarsDictionary = {
   catalogFields: {
     eyebrow: "Vehicle catalog",
     title: "Make, model and specs",
-    description: "Pick data from the EstateOS™Car catalog — better filters and credibility.",
+    description: "Pick the vehicle type first — then make and model from the matching Otomoto catalog.",
+    vehicleTypeLabel: "Vehicle type",
+    modelFreePlaceholder: "e.g. R 450, Actros 1845",
+    notApplicable: "N/A",
     yearLabel: "Model year",
     yearPlaceholder: "Select year",
     makeLabel: "Make",
@@ -846,6 +876,11 @@ const en: CarsDictionary = {
     manualCta: "I'll type manually",
     otomotoPrivacyNote:
       "After filling, you can restrict public data — buyers can still check history and insurance.",
+    fillFromVinCta: "Fill form from VIN",
+    fillingFromVin: "Fetching CEPIK data…",
+    fillFromVinHint:
+      "After entering VIN, plate and first registration date we fill make, model, year and engine — same as after scanning the document.",
+    errFillFromVin: "Could not fill the form from VIN.",
     verifyNeedsLogin: "Sign in at publish to run CEPIK/OC — your form data stays saved.",
     checkHistory: "Check CEPIK history",
     checkingHistory: "Loading history...",
@@ -940,7 +975,13 @@ const en: CarsDictionary = {
     clearFilters: "Clear filters",
     searchLabel: "Search",
     searchPlaceholder: "BMW, Warsaw, diesel...",
-    makeLabel: "Make",
+    vehicleTypeFilterLabel: "Vehicle type",
+    allVehicleTypes: "All types",
+    typeCar: "Car",
+    typeMotorcycle: "Motorcycle",
+    typeVan: "Van",
+    typeTruck: "Truck",
+        makeLabel: "Make",
     allMakes: "All makes",
     modelLabel: "Series / model",
     allModels: "All series",
@@ -1156,7 +1197,10 @@ const uk: CarsDictionary = {
   catalogFields: {
     eyebrow: "Каталог авто",
     title: "Марка, модель і параметри",
-    description: "Оберіть дані з каталогу EstateOS™Car — кращі фільтри та довіра.",
+    description: "Спочатку оберіть тип транспорту — потім марку й модель з відповідного каталогу Otomoto.",
+    vehicleTypeLabel: "Тип транспорту",
+    modelFreePlaceholder: "напр. R 450, Actros 1845",
+    notApplicable: "Не застосовується",
     yearLabel: "Рік випуску",
     yearPlaceholder: "Оберіть рік",
     makeLabel: "Марка",
@@ -1197,6 +1241,11 @@ const uk: CarsDictionary = {
     manualCta: "Введу вручну",
     otomotoPrivacyNote:
       "Після заповнення можна обмежити дані в оголошенні — покупець все одно перевірить історію та OC.",
+    fillFromVinCta: "Заповнити форму з VIN",
+    fillingFromVin: "Отримую дані з CEPIK…",
+    fillFromVinHint:
+      "Після введення VIN, номера та дати першої реєстрації заповнимо марку, модель, рік і двигун — як після скану свідоцтва.",
+    errFillFromVin: "Не вдалося заповнити форму з VIN.",
     verifyNeedsLogin: "Щоб запустити CEPIK/OC, увійдіть при публікації — дані форми збережуться.",
     checkHistory: "Перевірити історію CEPIK",
     checkingHistory: "Завантаження історії...",
@@ -1291,7 +1340,13 @@ const uk: CarsDictionary = {
     clearFilters: "Очистити фільтри",
     searchLabel: "Пошук",
     searchPlaceholder: "BMW, Варшава, дизель...",
-    makeLabel: "Марка",
+    vehicleTypeFilterLabel: "Тип транспорту",
+    allVehicleTypes: "Усі типи",
+    typeCar: "Легковий",
+    typeMotorcycle: "Мотоцикл",
+    typeVan: "Фургон",
+    typeTruck: "Вантажівка",
+        makeLabel: "Марка",
     allMakes: "Усі марки",
     modelLabel: "Серія / модель",
     allModels: "Усі серії",

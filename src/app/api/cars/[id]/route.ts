@@ -33,6 +33,7 @@ function validateBody(raw: Record<string, unknown>): CarListingUpdateInput {
     fuelType: String(raw?.fuelType || "").trim() || "Benzyna",
     transmission: String(raw?.transmission || "").trim() || "Automatyczna",
     bodyType: String(raw?.bodyType || "").trim() || "Sedan",
+    vehicleType: String(raw?.vehicleType || "car").trim() || "car",
     exteriorColor: normalizeCarExteriorColor(raw?.exteriorColor),
     generation: String(raw?.generation || "").trim(),
     enginePower: String(raw?.enginePower || "").trim(),

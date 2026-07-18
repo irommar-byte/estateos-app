@@ -5,6 +5,17 @@ import { BODY_TYPE_OPTIONS } from "@/lib/otomotoCatalog";
 import { CAR_EXTERIOR_COLORS } from "@/lib/carColors";
 import { pickDoorCountOption, pickGenerationForYear } from "@/lib/carCatalogInference";
 import {
+  DEFAULT_VEHICLE_TYPE,
+  VEHICLE_TYPE_OPTIONS,
+  bodyOptionsForVehicleType,
+  defaultBodyTypeForVehicleType,
+  normalizeVehicleType,
+  vehicleTypeSupportsDoorCount,
+  vehicleTypeSupportsGenerations,
+  vehicleTypeSupportsModelCatalog,
+  type VehicleType,
+} from "@/lib/vehicleTypes";
+import {
   findEngineCapacityOption,
   findEnginePowerOption,
   findOptionByLabel,
@@ -90,17 +101,57 @@ function CatalogSelect({
   );
 }
 
+function emptyCatalogCascade(autoTx: string, bodyType: string) {
+  return {
+    makeSlug: "",
+    make: "",
+    modelSlug: "",
+    model: "",
+    generationSlug: "",
+    generation: "",
+    fuelSlug: "",
+    fuelType: "",
+    enginePowerSlug: "",
+    enginePower: "",
+    engineCapacitySlug: "",
+    engineCapacity: "",
+    doorCountSlug: "",
+    doorCount: "",
+    gearboxSlug: "",
+    transmission: autoTx,
+    trimVersionSlug: "",
+    trimVersion: "",
+    bodyType,
+  };
+}
+
 export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProps) {
-  const { dict } = useLocale();
+  const { dict, locale } = useLocale();
   const cf = dict.cars.catalogFields;
   const autoTx = dict.cars.common.automaticTransmission;
   const chooseFieldTemplate = dict.cars.common.chooseField;
+  const vehicleType = normalizeVehicleType(form.vehicleType || DEFAULT_VEHICLE_TYPE);
+  const hasModelCatalog = vehicleTypeSupportsModelCatalog(vehicleType);
+  const showGenerations = vehicleTypeSupportsGenerations(vehicleType);
+  const showDoors = vehicleTypeSupportsDoorCount(vehicleType);
+  const bodyOptions =
+    vehicleType === "car" ? BODY_TYPE_OPTIONS : bodyOptionsForVehicleType(vehicleType);
+  const vehicleTypeLabels =
+    locale === "en"
+      ? { car: "Passenger car", motorcycle: "Motorcycle", van: "Van / LCV", truck: "Truck" }
+      : locale === "uk"
+        ? { car: "Легковий", motorcycle: "Мотоцикл", van: "Фургон", truck: "Вантажівка" }
+        : { car: "Samochód osobowy", motorcycle: "Motocykl", van: "Dostawczy", truck: "Ciężarowy" };
+
   const hasMake = Boolean(form.makeSlug);
-  const hasModel = Boolean(form.modelSlug);
+  const hasModel = hasModelCatalog ? Boolean(form.modelSlug) : Boolean(form.model.trim());
   const hasYear = Boolean(form.year);
+  const modelParam = form.modelSlug || (hasModelCatalog ? undefined : "other");
+  const catalogVehicle = { vehicleType };
   const catalogBase = {
+    ...catalogVehicle,
     make: form.makeSlug,
-    model: form.modelSlug,
+    model: modelParam,
     year: form.year || undefined,
     generation: form.generationSlug || undefined,
     fuel_type: form.fuelSlug || undefined,
@@ -110,32 +161,41 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
     gearbox: form.gearboxSlug || undefined,
   };
 
-  const { options: makes, loading: makesLoading } = useCarCatalogOptions("makes", {}, true);
-  const { options: models, loading: modelsLoading } = useCarCatalogOptions("models", { make: form.makeSlug }, hasMake);
+  const { options: makes, loading: makesLoading } = useCarCatalogOptions("makes", catalogVehicle, true);
+  const { options: models, loading: modelsLoading } = useCarCatalogOptions(
+    "models",
+    { ...catalogVehicle, make: form.makeSlug },
+    hasMake && hasModelCatalog,
+  );
   const { options: generations, loading: generationsLoading } = useCarCatalogOptions(
     "generations",
-    { make: form.makeSlug, model: form.modelSlug },
-    hasMake && hasModel,
+    { ...catalogVehicle, make: form.makeSlug, model: form.modelSlug },
+    showGenerations && hasMake && hasModel,
   );
   const { options: fuelTypes, loading: fuelLoading } = useCarCatalogOptions(
     "fuel_types",
-    { make: form.makeSlug, model: form.modelSlug, year: form.year || undefined },
-    hasMake && hasModel,
+    { ...catalogVehicle, make: form.makeSlug, model: modelParam, year: form.year || undefined },
+    hasMake && hasModel && hasModelCatalog,
   );
   const { options: enginePowers, loading: powerLoading } = useCarCatalogOptions(
     "engine_powers",
     catalogBase,
-    hasMake && hasModel && Boolean(form.fuelSlug),
+    hasMake && hasModel && Boolean(form.fuelSlug) && hasModelCatalog,
   );
   const { options: engineCapacities, loading: capacityLoading } = useCarCatalogOptions(
     "engine_capacities",
     catalogBase,
-    hasMake && hasModel && Boolean(form.fuelSlug) && Boolean(form.enginePowerSlug),
+    hasMake && hasModel && Boolean(form.fuelSlug) && Boolean(form.enginePowerSlug) && hasModelCatalog,
   );
   const { options: doorCounts, loading: doorsLoading } = useCarCatalogOptions(
     "door_counts",
     catalogBase,
-    hasMake && hasModel && Boolean(form.fuelSlug) && Boolean(form.enginePowerSlug) && Boolean(form.engineCapacitySlug),
+    showDoors &&
+      hasMake &&
+      hasModel &&
+      Boolean(form.fuelSlug) &&
+      Boolean(form.enginePowerSlug) &&
+      Boolean(form.engineCapacitySlug),
   );
   const { options: gearboxes, loading: gearboxLoading } = useCarCatalogOptions(
     "gearboxes",
@@ -144,7 +204,8 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
       hasModel &&
       Boolean(form.fuelSlug) &&
       Boolean(form.enginePowerSlug) &&
-      Boolean(form.engineCapacitySlug),
+      Boolean(form.engineCapacitySlug) &&
+      hasModelCatalog,
   );
   const { options: versions, loading: versionsLoading } = useCarCatalogOptions(
     "versions",
@@ -154,7 +215,8 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
       Boolean(form.fuelSlug) &&
       Boolean(form.enginePowerSlug) &&
       Boolean(form.engineCapacitySlug) &&
-      Boolean(form.gearboxSlug),
+      Boolean(form.gearboxSlug) &&
+      hasModelCatalog,
   );
 
   // Otomoto open catalog often returns [] for rare makes (e.g. Ferrari).
@@ -171,13 +233,15 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
 
   const fuelOptions = mergeCatalogOptions(
     fuelTypes,
-    !fuelLoading && fuelTypes.length === 0 && hasMake && hasModel ? STATIC_FUEL_OPTIONS : [],
+    (!fuelLoading && fuelTypes.length === 0 && hasMake && hasModel) || (!hasModelCatalog && hasMake && hasModel)
+      ? STATIC_FUEL_OPTIONS
+      : [],
     importedFuel ? [importedFuel] : [],
   );
   const powerDigits = String(form.enginePower || "").replace(/[^\d]/g, "");
   const powerOptions = mergeCatalogOptions(
     enginePowers,
-    !powerLoading && enginePowers.length === 0 && form.fuelSlug && powerDigits
+    ((!powerLoading && enginePowers.length === 0) || !hasModelCatalog) && form.fuelSlug && powerDigits
       ? [{ value: powerDigits, label: `${powerDigits} KM` }]
       : [],
     importedPower ? [importedPower] : [],
@@ -185,7 +249,9 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
   const capacityDigits = String(form.engineCapacity || "").replace(/[^\d]/g, "");
   const capacityOptions = mergeCatalogOptions(
     engineCapacities,
-    !capacityLoading && engineCapacities.length === 0 && form.enginePowerSlug && capacityDigits
+    ((!capacityLoading && engineCapacities.length === 0) || !hasModelCatalog) &&
+      form.enginePowerSlug &&
+      capacityDigits
       ? [{ value: capacityDigits, label: capacityDigits }]
       : [],
     importedCapacity ? [importedCapacity] : [],
@@ -200,7 +266,9 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
   );
   const gearboxOptions = mergeCatalogOptions(
     gearboxes,
-    !gearboxLoading && gearboxes.length === 0 && form.engineCapacitySlug ? STATIC_GEARBOX_OPTIONS : [],
+    ((!gearboxLoading && gearboxes.length === 0) || !hasModelCatalog) && form.engineCapacitySlug
+      ? STATIC_GEARBOX_OPTIONS
+      : [],
     importedGearbox ? [importedGearbox] : [],
   );
   const versionOptions = mergeCatalogOptions(versions, importedVersion ? [importedVersion] : []);
@@ -359,6 +427,27 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
 
   return (
     <CarFormSection eyebrow={cf.eyebrow} title={cf.title} description={cf.description}>
+        <CatalogField label={cf.vehicleTypeLabel}>
+          <select
+            value={vehicleType}
+            onChange={(event) => {
+              const nextType = normalizeVehicleType(event.target.value) as VehicleType;
+              patch({
+                vehicleType: nextType,
+                ...emptyCatalogCascade(autoTx, defaultBodyTypeForVehicleType(nextType)),
+              });
+            }}
+            className={carFieldInputClass}
+            required
+          >
+            {VEHICLE_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {vehicleTypeLabels[option.value]}
+              </option>
+            ))}
+          </select>
+        </CatalogField>
+
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <CatalogField label={cf.yearLabel}>
             <select
@@ -426,35 +515,67 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
             }
           />
 
-          <CatalogSelect
-            label={cf.modelLabel}
-            value={form.modelSlug}
-            options={models}
-            loading={modelsLoading}
-            disabled={!hasMake}
-            required
-            chooseFieldTemplate={chooseFieldTemplate}
-            onChange={(slug, label) =>
-              patch({
-                modelSlug: slug,
-                model: label,
-                generationSlug: "",
-                generation: "",
-                fuelSlug: "",
-                fuelType: "",
-                enginePowerSlug: "",
-                enginePower: "",
-                engineCapacitySlug: "",
-                engineCapacity: "",
-                doorCountSlug: "",
-                doorCount: "",
-                gearboxSlug: "",
-                transmission: autoTx,
-                trimVersionSlug: "",
-                trimVersion: "",
-              })
-            }
-          />
+          {hasModelCatalog ? (
+            <CatalogSelect
+              label={cf.modelLabel}
+              value={form.modelSlug}
+              options={models}
+              loading={modelsLoading}
+              disabled={!hasMake}
+              required
+              chooseFieldTemplate={chooseFieldTemplate}
+              onChange={(slug, label) =>
+                patch({
+                  modelSlug: slug,
+                  model: label,
+                  generationSlug: "",
+                  generation: "",
+                  fuelSlug: "",
+                  fuelType: "",
+                  enginePowerSlug: "",
+                  enginePower: "",
+                  engineCapacitySlug: "",
+                  engineCapacity: "",
+                  doorCountSlug: "",
+                  doorCount: "",
+                  gearboxSlug: "",
+                  transmission: autoTx,
+                  trimVersionSlug: "",
+                  trimVersion: "",
+                })
+              }
+            />
+          ) : (
+            <CatalogField label={cf.modelLabel}>
+              <input
+                value={form.model}
+                disabled={!hasMake}
+                required
+                placeholder={cf.modelFreePlaceholder}
+                onChange={(event) =>
+                  patch({
+                    model: event.target.value,
+                    modelSlug: "",
+                    generationSlug: "",
+                    generation: "",
+                    fuelSlug: "",
+                    fuelType: "",
+                    enginePowerSlug: "",
+                    enginePower: "",
+                    engineCapacitySlug: "",
+                    engineCapacity: "",
+                    doorCountSlug: "",
+                    doorCount: "",
+                    gearboxSlug: "",
+                    transmission: autoTx,
+                    trimVersionSlug: "",
+                    trimVersion: "",
+                  })
+                }
+                className={carFieldInputClass}
+              />
+            </CatalogField>
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -463,8 +584,8 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
             value={form.generationSlug}
             options={generations}
             loading={generationsLoading}
-            disabled={!hasMake || !hasModel}
-            placeholder={dict.cars.common.optional}
+            disabled={!showGenerations || !hasMake || !hasModel}
+            placeholder={showGenerations ? dict.cars.common.optional : cf.notApplicable}
             chooseFieldTemplate={chooseFieldTemplate}
             onChange={(slug, label) =>
               patch({
@@ -569,7 +690,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
             value={form.doorCountSlug}
             options={doorOptions}
             loading={doorsLoading}
-            disabled={!form.engineCapacitySlug}
+            disabled={!showDoors || !form.engineCapacitySlug}
             chooseFieldTemplate={chooseFieldTemplate}
             onChange={(slug, label) =>
               patch({
@@ -606,7 +727,7 @@ export default function CarCatalogFields({ form, setForm }: CarCatalogFieldsProp
               onChange={(event) => patch({ bodyType: event.target.value })}
               className={carFieldInputClass}
             >
-              {BODY_TYPE_OPTIONS.map((option) => (
+              {bodyOptions.map((option) => (
                 <option key={option.value} value={option.label}>
                   {option.label}
                 </option>

@@ -3,6 +3,11 @@ import {
   fuelLabelToFuelType,
   gearboxLabelToTransmission,
 } from "@/lib/otomotoCatalog";
+import {
+  defaultBodyTypeForVehicleType,
+  inferVehicleTypeFromOtomotoUrl,
+  type VehicleType,
+} from "@/lib/vehicleTypes";
 import { listMissingListingFields, type CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
 
 const FETCH_TIMEOUT_MS = 40_000;
@@ -11,6 +16,7 @@ const MAX_IMPORT_IMAGES = 24;
 export const OTOMOTO_IMPORT_STORAGE_KEY = "estateos_otomoto_car_import_v1";
 
 export type OtomotoCarImportPrefill = {
+  vehicleType: VehicleType;
   title: string;
   description: string;
   make: string;
@@ -278,7 +284,9 @@ export function parseOtomotoAdvert(advert: Record<string, unknown>, sourceUrl: s
     : "";
   const fromDescription = extractVehicleIdsFromText(String(advert.description || ""));
 
+  const vehicleType = inferVehicleTypeFromOtomotoUrl(sourceUrl);
   return {
+    vehicleType,
     title,
     description: stripHtml(String(advert.description || "")),
     make,
@@ -287,7 +295,7 @@ export function parseOtomotoAdvert(advert: Record<string, unknown>, sourceUrl: s
     mileageKm: parseMileageKm(params.mileage || ""),
     fuelType,
     transmission,
-    bodyType: mapBodyType(params.body_type || ""),
+    bodyType: mapBodyType(params.body_type || "") || defaultBodyTypeForVehicleType(vehicleType),
     exteriorColor: params.color || "",
     generation: params.generation || "",
     enginePower: parseEnginePower(params.engine_power || ""),
