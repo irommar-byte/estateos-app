@@ -129,18 +129,34 @@ export const notificationService = {
       if (payload?.subtitle) msg.subtitle = String(payload.subtitle);
       const channelId = payload?.channelId || payload?.android?.channelId;
       if (channelId) msg.channelId = String(channelId);
-      if (payload?.collapseId) msg.collapseId = String(payload.collapseId);
-      if (payload?.tag) msg.tag = String(payload.tag);
+      // collapseId/tag NIE forwardujemy — na iOS collapseId zostawia tylko ostatni banner.
       if (typeof payload?.mutableContent === 'boolean') {
         msg.mutableContent = payload.mutableContent;
       }
       if (platform === 'ANDROID') {
         if (payload?.android && typeof payload.android === 'object') {
-          msg.android = payload.android;
+          const android = { ...(payload.android as Record<string, unknown>) };
+          delete android.tag;
+          msg.android = android;
         }
       }
       if (payload?.ios && typeof payload.ios === 'object') {
-        msg.ios = payload.ios;
+        msg.ios = { ...(payload.ios as Record<string, unknown>) };
+      }
+      const threadIdentifier =
+        payload?.threadIdentifier ||
+        payload?.ios?.threadId ||
+        (payload?.data && typeof payload.data === 'object'
+          ? (payload.data as { threadIdentifier?: unknown }).threadIdentifier
+          : undefined);
+      if (threadIdentifier) {
+        (msg as Record<string, unknown>).threadIdentifier = String(threadIdentifier);
+        msg.ios = {
+          ...(typeof msg.ios === 'object' && msg.ios != null
+            ? (msg.ios as Record<string, unknown>)
+            : {}),
+          threadId: String(threadIdentifier),
+        };
       }
 
       return msg;

@@ -24,9 +24,8 @@ export function buildDealroomMessagePushPayload(params: {
     body: params.preview,
     sound: ESTATEOS_NOTIFY_SOUND,
     channelId: DEALROOM_PUSH_CHANNEL_ID,
-    collapseId: threadIdentifier,
-    tag: androidGroup,
     mutableContent: true,
+    threadIdentifier,
     ios: {
       threadId: threadIdentifier,
       sound: ESTATEOS_NOTIFY_SOUND,
