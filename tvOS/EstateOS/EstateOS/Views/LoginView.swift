@@ -88,9 +88,8 @@ struct LoginView: View {
                         focusedField = .login
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(mode == item ? .white : .white.opacity(0.14))
-                .foregroundStyle(mode == item ? .black : .white)
+                .buttonStyle(EOSChipButtonStyle(selected: mode == item, accent: .white))
+                .focusEffectDisabled()
             }
         }
         .padding(8)
@@ -155,14 +154,15 @@ struct LoginView: View {
                             .frame(maxWidth: .infinity)
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.green)
+                .buttonStyle(EOSDetailActionButtonStyle(accent: .green))
+                .focusEffectDisabled()
                 .focused($focusedField, equals: .submit)
 
                 Button("Anuluj") {
                     app.closeLoginSheet()
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(EOSDetailChromeButtonStyle())
+                .focusEffectDisabled()
                 .focused($focusedField, equals: .cancel)
             }
         }
@@ -222,7 +222,8 @@ struct LoginView: View {
                 .monospaced()
 
             Button("Odśwież kod") { onRefresh() }
-                .buttonStyle(.bordered)
+                .buttonStyle(EOSDetailChromeButtonStyle())
+                .focusEffectDisabled()
         }
         .frame(width: 420)
         .padding(20)

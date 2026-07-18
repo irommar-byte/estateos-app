@@ -18,6 +18,8 @@ final class AppModel: ObservableObject {
     @Published var passkeyPairingCode = ""
     @Published var immersiveBrowse: ImmersiveBrowseContext?
     @Published var topShelfStyle: TopShelfPresentationStyle = TvPreferences.topShelfStyle
+    @Published var showroomLayout: ShowroomLayoutMode = TvPreferences.showroomLayout
+    @Published var activeShowroomSection: String = ""
     @Published var pairingStatusMessage: String?
     @Published var favoriteOfferIds: Set<Int> = []
     @Published var favoriteOffers: [EstateOffer] = []
@@ -27,8 +29,15 @@ final class AppModel: ObservableObject {
     @Published var selectedCar: CarListing?
     @Published var isLoadingCars = false
     @Published var carSearchQuery = ""
-    @Published var homeFilterChip: HomeFilterChip = .all
-    @Published var carFilterChip: CarFilterChip = .all
+    @Published var homeNearest = false
+    @Published var homePremium = false
+    @Published var selectedHomeTransactions: Set<HomeTransactionFilter> = []
+    @Published var selectedHomeCities: Set<String> = []
+    @Published var homeCitiesPickerExpanded = false
+    @Published var carNearest = false
+    @Published var selectedCarAttributes: Set<CarAttributeFilter> = []
+    @Published var selectedCarCities: Set<String> = []
+    @Published var carCitiesPickerExpanded = false
     @Published var selectedCarMakes: Set<String> = []
     @Published var selectedHomePropertyTypes: Set<HomePropertyKind> = []
     @Published var favoriteCarIds: Set<Int> = TvPreferences.favoriteCarIds
@@ -78,9 +87,20 @@ final class AppModel: ObservableObject {
     func setTopShelfStyle(_ style: TopShelfPresentationStyle) {
         topShelfStyle = style
         TvPreferences.topShelfStyle = style
+        // Ask tvOS to reload Top Shelf; user still must focus the app icon on the Home screen.
 #if canImport(TVServices)
         TVTopShelfContentProvider.topShelfContentDidChange()
 #endif
+    }
+
+    func setShowroomLayout(_ mode: ShowroomLayoutMode) {
+        showroomLayout = mode
+        TvPreferences.showroomLayout = mode
+    }
+
+    func noteShowroomSection(_ title: String) {
+        guard !title.isEmpty, activeShowroomSection != title else { return }
+        activeShowroomSection = title
     }
 
     func logout() {
@@ -201,6 +221,15 @@ final class AppModel: ObservableObject {
         catalogBrand = brand
         selectedCarMakes = []
         selectedHomePropertyTypes = []
+        selectedHomeTransactions = []
+        selectedHomeCities = []
+        selectedCarAttributes = []
+        selectedCarCities = []
+        homeNearest = false
+        homePremium = false
+        carNearest = false
+        homeCitiesPickerExpanded = false
+        carCitiesPickerExpanded = false
         if brand == .car, cars.isEmpty {
             Task { try? await refreshCars() }
         }
@@ -216,18 +245,89 @@ final class AppModel: ObservableObject {
             .store(in: &locationBag)
     }
 
-    func selectCarFilter(_ chip: CarFilterChip) {
-        carFilterChip = chip
-        if chip == .nearest {
-            location.requestIfNeeded()
+    func clearHomeFilters() {
+        homeNearest = false
+        homePremium = false
+        selectedHomeTransactions = []
+        selectedHomeCities = []
+        selectedHomePropertyTypes = []
+        homeCitiesPickerExpanded = false
+    }
+
+    func clearCarFilters() {
+        carNearest = false
+        selectedCarAttributes = []
+        selectedCarCities = []
+        selectedCarMakes = []
+        carCitiesPickerExpanded = false
+    }
+
+    func toggleHomeNearest() {
+        homeNearest.toggle()
+        if homeNearest { location.requestIfNeeded() }
+    }
+
+    func toggleHomePremium() {
+        homePremium.toggle()
+    }
+
+    func toggleHomeTransaction(_ kind: HomeTransactionFilter) {
+        if selectedHomeTransactions.contains(kind) {
+            selectedHomeTransactions.remove(kind)
+        } else {
+            selectedHomeTransactions.insert(kind)
         }
     }
 
-    func selectHomeFilter(_ chip: HomeFilterChip) {
-        homeFilterChip = chip
-        if chip == .nearest {
-            location.requestIfNeeded()
+    func toggleHomeCity(_ city: String) {
+        let key = city.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        if let existing = selectedHomeCities.first(where: { $0.caseInsensitiveCompare(key) == .orderedSame }) {
+            selectedHomeCities.remove(existing)
+        } else {
+            selectedHomeCities.insert(key)
         }
+    }
+
+    func clearHomeCities() {
+        selectedHomeCities = []
+    }
+
+    func toggleHomeCitiesPicker() {
+        homeCitiesPickerExpanded.toggle()
+        if homeCitiesPickerExpanded { carCitiesPickerExpanded = false }
+    }
+
+    func toggleCarNearest() {
+        carNearest.toggle()
+        if carNearest { location.requestIfNeeded() }
+    }
+
+    func toggleCarAttribute(_ attr: CarAttributeFilter) {
+        if selectedCarAttributes.contains(attr) {
+            selectedCarAttributes.remove(attr)
+        } else {
+            selectedCarAttributes.insert(attr)
+        }
+    }
+
+    func toggleCarCity(_ city: String) {
+        let key = city.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        if let existing = selectedCarCities.first(where: { $0.caseInsensitiveCompare(key) == .orderedSame }) {
+            selectedCarCities.remove(existing)
+        } else {
+            selectedCarCities.insert(key)
+        }
+    }
+
+    func clearCarCities() {
+        selectedCarCities = []
+    }
+
+    func toggleCarCitiesPicker() {
+        carCitiesPickerExpanded.toggle()
+        if carCitiesPickerExpanded { homeCitiesPickerExpanded = false }
     }
 
     func toggleCarMake(_ make: String) {
@@ -293,30 +393,150 @@ final class AppModel: ObservableObject {
 
     var filteredOffersForBrowse: [EstateOffer] {
         var base = filteredOffers
-        switch homeFilterChip {
-        case .all, .nearest:
-            break
-        case .sale:
-            base = base.filter {
-                let t = ($0.transactionType ?? "").uppercased()
-                return t.contains("SELL") || t.contains("SALE") || t.isEmpty
+        if !selectedHomeTransactions.isEmpty {
+            base = base.filter { offer in
+                let tx = (offer.transactionType ?? "").uppercased()
+                return selectedHomeTransactions.contains { kind in
+                    switch kind {
+                    case .sale:
+                        return tx.contains("SELL") || tx.contains("SALE") || tx.isEmpty
+                    case .rent:
+                        return tx.contains("RENT")
+                    }
+                }
             }
-        case .rent:
-            base = base.filter { ($0.transactionType ?? "").uppercased().contains("RENT") }
-        case .warsaw:
-            base = base.filter { ($0.city ?? "").localizedCaseInsensitiveContains("warsz") }
-        case .luxury:
+        }
+        if homePremium {
             base = base.filter { ($0.price ?? 0) >= 1_500_000 }
+        }
+        if !selectedHomeCities.isEmpty {
+            base = base.filter { offer in
+                let city = (offer.city ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !city.isEmpty else { return false }
+                return selectedHomeCities.contains { $0.caseInsensitiveCompare(city) == .orderedSame }
+            }
         }
         if !selectedHomePropertyTypes.isEmpty {
             base = base.filter { offer in
                 selectedHomePropertyTypes.contains { matchesHomePropertyType(offer, kind: $0) }
             }
         }
-        if homeFilterChip == .nearest {
+        if homeNearest {
             return sortOffersByDistance(base)
         }
         return base
+    }
+
+    var homeFilterSummary: String {
+        var parts: [String] = []
+        if homeNearest { parts.append("Najbliżej") }
+        for kind in HomeTransactionFilter.allCases where selectedHomeTransactions.contains(kind) {
+            parts.append(kind.title)
+        }
+        if homePremium { parts.append("Premium") }
+        if !selectedHomeCities.isEmpty {
+            parts.append(selectedHomeCities.sorted().joined(separator: " · "))
+        }
+        return parts.isEmpty ? "Wszystkie" : parts.joined(separator: " · ")
+    }
+
+    var carFilterSummary: String {
+        var parts: [String] = []
+        if carNearest { parts.append("Najbliżej") }
+        for attr in CarAttributeFilter.allCases where selectedCarAttributes.contains(attr) {
+            parts.append(attr.title)
+        }
+        if !selectedCarCities.isEmpty {
+            parts.append(selectedCarCities.sorted().joined(separator: " · "))
+        }
+        if !selectedCarMakes.isEmpty {
+            parts.append(selectedCarMakes.sorted().joined(separator: " · "))
+        }
+        return parts.isEmpty ? "Wszystkie" : parts.joined(separator: " · ")
+    }
+
+    var homeCityCounts: [(name: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for offer in offers {
+            let city = (offer.city ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !city.isEmpty else { continue }
+            // Normalize display key by first-seen casing of lowercase group
+            if let existing = counts.keys.first(where: { $0.caseInsensitiveCompare(city) == .orderedSame }) {
+                counts[existing, default: 0] += 1
+            } else {
+                counts[city] = 1
+            }
+        }
+        return counts.keys.sorted {
+            let c0 = counts[$0] ?? 0
+            let c1 = counts[$1] ?? 0
+            if c0 != c1 { return c0 > c1 }
+            return $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+        .map { (name: $0, count: counts[$0] ?? 0) }
+    }
+
+    var carCityCounts: [(name: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for car in cars {
+            let city = car.city.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !city.isEmpty else { continue }
+            if let existing = counts.keys.first(where: { $0.caseInsensitiveCompare(city) == .orderedSame }) {
+                counts[existing, default: 0] += 1
+            } else {
+                counts[city] = 1
+            }
+        }
+        return counts.keys.sorted {
+            let c0 = counts[$0] ?? 0
+            let c1 = counts[$1] ?? 0
+            if c0 != c1 { return c0 > c1 }
+            return $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+        .map { (name: $0, count: counts[$0] ?? 0) }
+    }
+
+
+    // MARK: - Showroom section slices (Set-based, cheap to re-read)
+
+    var showroomHomeNewest: [EstateOffer] {
+        let filtered = filteredOffersForBrowse
+        if isHomeFilteringActive {
+            let ids = Set(filtered.map(\.id))
+            return offersLast24Hours.filter { ids.contains($0.id) }
+        }
+        return offersLast24Hours
+    }
+
+    var showroomHomeWarsaw: [EstateOffer] {
+        Array(offers.filter { ($0.city ?? "").localizedCaseInsensitiveContains("warsz") }.prefix(28))
+    }
+
+    var showroomHomePremium: [EstateOffer] {
+        Array(offers.filter { ($0.price ?? 0) >= 2_000_000 }.prefix(28))
+    }
+
+    var showroomHomeRent: [EstateOffer] {
+        Array(offers.filter { ($0.transactionType ?? "").uppercased().contains("RENT") }.prefix(28))
+    }
+
+    var showroomCarFresh: [CarListing] {
+        filteredCars.filter(\.isWithinLast24Hours).sorted { $0.sortDate > $1.sortDate }
+    }
+
+    var showroomCarFeatured: [CarListing] {
+        filteredCars.filter(\.featured)
+    }
+
+    var showroomCarAutomatic: [CarListing] {
+        Array(cars.filter { $0.transmission.localizedCaseInsensitiveContains("automat") }.prefix(28))
+    }
+
+    var showroomCarElectricHybrid: [CarListing] {
+        Array(cars.filter {
+            let f = $0.fuelType.lowercased()
+            return f.contains("elektr") || f.contains("hybr") || f.contains("ev")
+        }.prefix(28))
     }
 
     var popularCarMakes: [(name: String, count: Int)] {
@@ -342,11 +562,18 @@ final class AppModel: ObservableObject {
     }
 
     var isCarFilteringActive: Bool {
-        (carFilterChip != .all && carFilterChip != .nearest) || !selectedCarMakes.isEmpty || carFilterChip == .nearest
+        carNearest
+            || !selectedCarAttributes.isEmpty
+            || !selectedCarMakes.isEmpty
+            || !selectedCarCities.isEmpty
     }
 
     var isHomeFilteringActive: Bool {
-        (homeFilterChip != .all && homeFilterChip != .nearest) || !selectedHomePropertyTypes.isEmpty || homeFilterChip == .nearest
+        homeNearest
+            || homePremium
+            || !selectedHomeTransactions.isEmpty
+            || !selectedHomeCities.isEmpty
+            || !selectedHomePropertyTypes.isEmpty
     }
 
     var filteredCars: [CarListing] {
@@ -357,29 +584,37 @@ final class AppModel: ObservableObject {
                 return selectedCarMakes.contains(where: { $0.caseInsensitiveCompare(make) == .orderedSame })
             }
         }
-        switch carFilterChip {
-        case .all, .nearest:
-            break
-        case .featured:
-            base = base.filter(\.featured)
-        case .petrol:
-            base = base.filter { $0.fuelType.localizedCaseInsensitiveContains("benz") }
-        case .diesel:
-            base = base.filter {
-                $0.fuelType.localizedCaseInsensitiveContains("diesel")
-                    || $0.fuelType.localizedCaseInsensitiveContains("olej")
+        if !selectedCarCities.isEmpty {
+            base = base.filter { car in
+                let city = car.city.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !city.isEmpty else { return false }
+                return selectedCarCities.contains { $0.caseInsensitiveCompare(city) == .orderedSame }
             }
-        case .electric:
-            base = base.filter {
-                $0.fuelType.localizedCaseInsensitiveContains("elektr")
-                    || $0.fuelType.localizedCaseInsensitiveContains("ev")
-            }
-        case .hybrid:
-            base = base.filter { $0.fuelType.localizedCaseInsensitiveContains("hybr") }
-        case .automatic:
-            base = base.filter { $0.transmission.localizedCaseInsensitiveContains("automat") }
         }
-        if carFilterChip == .nearest {
+        if !selectedCarAttributes.isEmpty {
+            let fuels: Set<CarAttributeFilter> = selectedCarAttributes.intersection([.petrol, .diesel, .electric, .hybrid])
+            let wantsFeatured = selectedCarAttributes.contains(.featured)
+            let wantsAuto = selectedCarAttributes.contains(.automatic)
+            base = base.filter { car in
+                if wantsFeatured, !car.featured { return false }
+                if wantsAuto, !car.transmission.localizedCaseInsensitiveContains("automat") { return false }
+                if !fuels.isEmpty {
+                    let fuel = car.fuelType.lowercased()
+                    let match = fuels.contains { attr in
+                        switch attr {
+                        case .petrol: return fuel.contains("benz")
+                        case .diesel: return fuel.contains("diesel") || fuel.contains("olej")
+                        case .electric: return fuel.contains("elektr") || fuel.contains("ev")
+                        case .hybrid: return fuel.contains("hybr")
+                        default: return false
+                        }
+                    }
+                    if !match { return false }
+                }
+                return true
+            }
+        }
+        if carNearest {
             return sortCarsByDistance(base)
         }
         return base
@@ -670,17 +905,13 @@ struct ImmersiveBrowseContext: Identifiable {
 }
 
 
-enum HomeFilterChip: String, CaseIterable, Identifiable {
-    case all, nearest, sale, rent, warsaw, luxury
+enum HomeTransactionFilter: String, CaseIterable, Identifiable {
+    case sale, rent
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .all: return "Wszystkie"
-        case .nearest: return "Najbliżej"
         case .sale: return "Sprzedaż"
         case .rent: return "Wynajem"
-        case .warsaw: return "Warszawa"
-        case .luxury: return "Premium"
         }
     }
 }
@@ -697,13 +928,11 @@ enum HomePropertyKind: String, CaseIterable, Identifiable {
     }
 }
 
-enum CarFilterChip: String, CaseIterable, Identifiable {
-    case all, nearest, featured, petrol, diesel, electric, hybrid, automatic
+enum CarAttributeFilter: String, CaseIterable, Identifiable {
+    case featured, petrol, diesel, electric, hybrid, automatic
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .all: return "Wszystkie"
-        case .nearest: return "Najbliżej"
         case .featured: return "Wyróżnione"
         case .petrol: return "Benzyna"
         case .diesel: return "Diesel"

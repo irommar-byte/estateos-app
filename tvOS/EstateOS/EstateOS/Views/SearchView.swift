@@ -5,9 +5,15 @@ struct SearchView: View {
     @FocusState private var queryFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text(app.catalogBrand == .home ? "Szukaj nieruchomości" : "Szukaj samochodów")
-                .font(.system(size: 36, weight: .bold, design: .rounded))
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(app.catalogBrand == .home ? "Szukaj nieruchomości" : "Szukaj samochodów")
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                Spacer(minLength: 12)
+                Text(resultCountLabel)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
 
             TextField(
                 app.catalogBrand == .home
@@ -31,85 +37,43 @@ struct SearchView: View {
             .eosGlass(cornerRadius: 16, opacity: 0.34)
             .focused($queryFocused)
 
-            if app.catalogBrand == .home {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(HomeFilterChip.allCases) { chip in
-                            Button(chip.title) { app.selectHomeFilter(chip) }
-                                .buttonStyle(EOSChipButtonStyle(selected: app.homeFilterChip == chip, accent: .green))
-                                .focusEffectDisabled()
-                        }
-                    }
+            Text("Filtry Home / Car ustawiasz nad listą — tu wpisz frazę.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+
+            Group {
+                if app.catalogBrand == .home {
+                    homeResults
+                } else {
+                    carResults
                 }
-                .focusSection()
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        Button("Wszystkie typy") { app.clearHomePropertyTypes() }
-                            .buttonStyle(EOSChipButtonStyle(selected: app.selectedHomePropertyTypes.isEmpty, accent: .green))
-                            .focusEffectDisabled()
-                        ForEach(app.homePropertyTypeCounts, id: \.kind) { item in
-                            Button("\(item.kind.title) (\(item.count))") {
-                                app.toggleHomePropertyType(item.kind)
-                            }
-                            .buttonStyle(EOSChipButtonStyle(
-                                selected: app.selectedHomePropertyTypes.contains(item.kind),
-                                accent: .green
-                            ))
-                            .focusEffectDisabled()
-                        }
-                    }
-                }
-                .focusSection()
-                homeResults
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(CarFilterChip.allCases) { chip in
-                            Button(chip.title) { app.selectCarFilter(chip) }
-                                .buttonStyle(EOSChipButtonStyle(selected: app.carFilterChip == chip, accent: .cyan))
-                                .focusEffectDisabled()
-                        }
-                    }
-                }
-                .focusSection()
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        Button("Wszystkie marki") { app.clearCarMakes() }
-                            .buttonStyle(EOSChipButtonStyle(selected: app.selectedCarMakes.isEmpty, accent: .cyan))
-                            .focusEffectDisabled()
-                        ForEach(Array(app.popularCarMakes.prefix(12)), id: \.name) { item in
-                            Button("\(item.name) (\(item.count))") {
-                                app.toggleCarMake(item.name)
-                            }
-                            .buttonStyle(EOSChipButtonStyle(
-                                selected: app.selectedCarMakes.contains(where: {
-                                    $0.caseInsensitiveCompare(item.name) == .orderedSame
-                                }),
-                                accent: .cyan
-                            ))
-                            .focusEffectDisabled()
-                        }
-                    }
-                }
-                .focusSection()
-                carResults
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .onAppear {
+            if app.searchQuery.isEmpty, app.carSearchQuery.isEmpty {
+                queryFocused = true
             }
         }
-        .padding(24)
-        .eosGlass(cornerRadius: 28, opacity: 0.26)
-        .focusSection()
-        .onAppear { queryFocused = true }
-        .onChange(of: app.catalogBrand) { _, _ in
-            queryFocused = true
+    }
+
+    private var resultCountLabel: String {
+        if app.catalogBrand == .home {
+            return "\(app.filteredOffersForBrowse.count) wyników"
         }
+        return "\(app.filteredCars.count) wyników"
     }
 
     private var homeResults: some View {
         let items = app.filteredOffersForBrowse
         return ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(spacing: 16) {
-                if items.isEmpty {
-                    Text("Brak wyników. Zmień frazę lub filtr.")
+            LazyVStack(spacing: 14) {
+                if app.isLoadingOffers, app.offers.isEmpty {
+                    ProgressView("Ładowanie…")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 24)
+                } else if items.isEmpty {
+                    Text("Brak wyników. Zmień frazę lub filtry nad listą.")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 24)
@@ -135,15 +99,13 @@ struct SearchView: View {
                                     Text(offer.displayLocation)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                     if let d = app.distanceLabel(forCity: offer.city) {
                                         Text(d)
                                             .font(.caption.weight(.semibold))
                                             .foregroundStyle(.green)
                                     }
                                 }
-                                Text(offer.transactionLabel)
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(.green.opacity(0.9))
                             }
                             Spacer(minLength: 16)
                             Text(EOSFormat.pricePLN(offer.price))
@@ -152,6 +114,7 @@ struct SearchView: View {
                         }
                         .padding(16)
                         .eosGlass(cornerRadius: 18, opacity: 0.32)
+                        .eosFocusRing(cornerRadius: 18, accent: .green)
                     }
                     .buttonStyle(EOSPosterButtonStyle())
                     .focusEffectDisabled()
@@ -163,9 +126,13 @@ struct SearchView: View {
     private var carResults: some View {
         let items = app.filteredCars
         return ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(spacing: 16) {
-                if items.isEmpty {
-                    Text("Brak wyników. Zmień frazę lub filtr.")
+            LazyVStack(spacing: 14) {
+                if app.isLoadingCars, app.cars.isEmpty {
+                    ProgressView("Ładowanie…")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 24)
+                } else if items.isEmpty {
+                    Text("Brak wyników. Zmień frazę lub filtry nad listą.")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 24)
@@ -206,6 +173,7 @@ struct SearchView: View {
                         }
                         .padding(16)
                         .eosGlass(cornerRadius: 18, opacity: 0.32)
+                        .eosFocusRing(cornerRadius: 18, accent: .cyan)
                     }
                     .buttonStyle(EOSPosterButtonStyle())
                     .focusEffectDisabled()

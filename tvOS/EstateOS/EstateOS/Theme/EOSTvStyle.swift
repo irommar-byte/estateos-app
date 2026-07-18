@@ -83,8 +83,23 @@ struct EOSFocusRing: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(accent.opacity(isFocused ? 0.95 : 0), lineWidth: isFocused ? 3 : 0)
+            )
+            .shadow(color: accent.opacity(isFocused ? 0.35 : 0), radius: isFocused ? 16 : 0, y: isFocused ? 8 : 0)
             .animation(.easeOut(duration: 0.18), value: isFocused)
     }
+}
+
+// MARK: - Spacing tokens
+
+enum EOSTvSpacing {
+    static let screenHorizontal: CGFloat = 48
+    static let screenVertical: CGFloat = 20
+    static let chromeGap: CGFloat = 6
+    static let sectionGap: CGFloat = 28
+    static let cardPad: CGFloat = 16
 }
 
 struct EOSBrandButtonStyle: ButtonStyle {
@@ -103,8 +118,8 @@ struct EOSBrandButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(Color.white.opacity(selected ? 0.15 : 0.08), lineWidth: 1)
             )
-            .scaleEffect(isFocused ? 1.1 : (configuration.isPressed ? 0.98 : 1.0))
-            .shadow(color: .black.opacity(isFocused ? 0.45 : 0.15), radius: isFocused ? 22 : 8, y: isFocused ? 14 : 4)
+            .scaleEffect(isFocused ? 1.06 : (configuration.isPressed ? 0.98 : 1.0))
+            .shadow(color: .black.opacity(isFocused ? 0.35 : 0.12), radius: isFocused ? 16 : 6, y: isFocused ? 10 : 3)
             .animation(.easeOut(duration: 0.18), value: isFocused)
             .animation(.easeOut(duration: 0.15), value: selected)
     }
@@ -133,6 +148,89 @@ struct EOSChipButtonStyle: ButtonStyle {
             .shadow(color: .black.opacity(isFocused ? 0.4 : 0), radius: isFocused ? 18 : 0, y: isFocused ? 10 : 0)
             .animation(.easeOut(duration: 0.18), value: isFocused)
             .animation(.easeOut(duration: 0.15), value: selected)
+    }
+}
+
+
+/// Half-size chips for showroom filters / layout.
+struct EOSMicroChipButtonStyle: ButtonStyle {
+    var selected: Bool
+    var accent: Color
+    @Environment(\.isFocused) private var isFocused
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(selected ? accent.opacity(0.92) : Color.white.opacity(0.08))
+            )
+            .foregroundStyle(selected ? Color.black : Color.white.opacity(0.88))
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(Color.white.opacity(selected ? 0.18 : 0.06), lineWidth: 1)
+            )
+            .scaleEffect(isFocused ? 1.08 : (configuration.isPressed ? 0.98 : 1.0))
+            .shadow(color: .black.opacity(isFocused ? 0.28 : 0), radius: isFocused ? 10 : 0, y: isFocused ? 6 : 0)
+            .animation(.easeOut(duration: 0.16), value: isFocused)
+            .animation(.easeOut(duration: 0.14), value: selected)
+    }
+}
+
+
+
+// MARK: - Cached remote images (cancellable)
+
+enum EOSImageCache {
+    private static let cache = NSCache<NSURL, UIImage>()
+
+    static func image(for url: URL) -> UIImage? {
+        cache.object(forKey: url as NSURL)
+    }
+
+    static func store(_ image: UIImage, for url: URL) {
+        cache.setObject(image, forKey: url as NSURL)
+    }
+}
+
+struct EOSCachedRemoteImage<Placeholder: View>: View {
+    let url: URL?
+    var contentMode: ContentMode = .fill
+    @ViewBuilder var placeholder: () -> Placeholder
+
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: contentMode)
+            } else {
+                placeholder()
+            }
+        }
+        .task(id: url?.absoluteString) {
+            image = nil
+            guard let url else { return }
+            if let cached = EOSImageCache.image(for: url) {
+                image = cached
+                return
+            }
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                try Task.checkCancellation()
+                guard let ui = UIImage(data: data) else { return }
+                EOSImageCache.store(ui, for: url)
+                image = ui
+            } catch is CancellationError {
+                return
+            } catch {
+                return
+            }
+        }
     }
 }
 
@@ -176,25 +274,11 @@ struct EOSFullBleedOfferImage: View {
 
     var body: some View {
         GeometryReader { proxy in
-            Group {
-                if let url {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: proxy.size.width, height: proxy.size.height)
-                                .clipped()
-                        default:
-                            placeholder
-                        }
-                    }
-                } else {
-                    placeholder
-                }
+            EOSCachedRemoteImage(url: url, contentMode: .fill) {
+                placeholder
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
         .ignoresSafeArea()
     }
@@ -222,23 +306,8 @@ struct EOSOfferThumbnail: View {
     @Environment(\.isFocused) private var isFocused
 
     var body: some View {
-        Group {
-            if let url {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure, .empty:
-                        placeholder
-                    @unknown default:
-                        placeholder
-                    }
-                }
-            } else {
-                placeholder
-            }
+        EOSCachedRemoteImage(url: url, contentMode: .fill) {
+            placeholder
         }
         .frame(height: height)
         .clipped()
@@ -288,10 +357,16 @@ enum EOSFormat {
 // MARK: - Poster cards (no system white focus plate)
 
 struct EOSPosterButtonStyle: ButtonStyle {
+    /// > 1 only for tiles/list — rails stay at 1 to avoid horizontal clip ghosts.
+    var focusScale: CGFloat = 1.0
+    @Environment(\.isFocused) private var isFocused
+
     func makeBody(configuration: Configuration) -> some View {
-        // No scaleEffect — scaling overflowed ScrollView clips / caused ghost layers.
         configuration.label
+            .scaleEffect(focusScale > 1.001 && isFocused ? focusScale : 1.0)
+            .zIndex(focusScale > 1.001 && isFocused ? 20 : 0)
             .opacity(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.easeOut(duration: 0.18), value: isFocused)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
@@ -303,7 +378,7 @@ struct EOSPosterCardChrome: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .padding(18)
+            .padding(EOSTvSpacing.cardPad)
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(Color(white: 0.09).opacity(0.97))
@@ -312,8 +387,14 @@ struct EOSPosterCardChrome: ViewModifier {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(
                         isFocused ? accent : Color.white.opacity(0.12),
-                        lineWidth: isFocused ? 3 : 1
+                        lineWidth: isFocused ? 3.5 : 1
                     )
+            )
+            .brightness(isFocused ? 0.04 : 0)
+            .shadow(
+                color: accent.opacity(isFocused ? 0.28 : 0),
+                radius: isFocused ? 20 : 0,
+                y: isFocused ? 8 : 0
             )
             .shadow(
                 color: .black.opacity(isFocused ? 0.45 : 0.2),
@@ -324,9 +405,29 @@ struct EOSPosterCardChrome: ViewModifier {
     }
 }
 
+/// Focus chrome + safe lift for list rows (space reserved by outer padding in catalogs).
+struct EOSListRowFocusChrome: ViewModifier {
+    @Environment(\.isFocused) private var isFocused
+    var accent: Color = .green
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(isFocused ? accent : Color.white.opacity(0.1), lineWidth: isFocused ? 3 : 1)
+            )
+            .shadow(color: accent.opacity(isFocused ? 0.3 : 0), radius: isFocused ? 16 : 0, y: isFocused ? 8 : 0)
+            .animation(.easeOut(duration: 0.18), value: isFocused)
+    }
+}
+
 extension View {
     func eosPosterCard(cornerRadius: CGFloat = 22, accent: Color = .cyan) -> some View {
         modifier(EOSPosterCardChrome(cornerRadius: cornerRadius, accent: accent))
+    }
+
+    func eosListRowFocus(accent: Color = .green) -> some View {
+        modifier(EOSListRowFocusChrome(accent: accent))
     }
 }
 
@@ -409,5 +510,75 @@ struct EOSListingStatsRow: View {
         formatter.numberStyle = .decimal
         formatter.groupingSeparator = " "
         return formatter.string(from: NSNumber(value: max(0, value))) ?? "\(value)"
+    }
+}
+
+
+// MARK: - Detail / immersive actions
+
+struct EOSDetailChromeButtonStyle: ButtonStyle {
+    @Environment(\.isFocused) private var isFocused
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.7 : 0.92))
+            .padding(.horizontal, 22)
+            .padding(.vertical, 12)
+            .background(Capsule(style: .continuous).fill(.ultraThinMaterial.opacity(isFocused ? 0.62 : 0.38)))
+            .overlay(Capsule(style: .continuous).stroke(.white.opacity(isFocused ? 0.55 : 0.2), lineWidth: isFocused ? 2 : 1))
+            .scaleEffect(isFocused ? 1.12 : (configuration.isPressed ? 0.98 : 1.0))
+            .shadow(color: .black.opacity(isFocused ? 0.4 : 0.12), radius: isFocused ? 18 : 6, y: isFocused ? 10 : 3)
+            .animation(.easeOut(duration: 0.18), value: isFocused)
+    }
+}
+
+struct EOSDetailActionButtonStyle: ButtonStyle {
+    var accent: Color = .white
+    @Environment(\.isFocused) private var isFocused
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(isFocused ? Color.black.opacity(0.92) : Color.white.opacity(0.95))
+            .padding(.horizontal, 24)
+            .padding(.vertical, 15)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(
+                        isFocused
+                            ? AnyShapeStyle(accent.opacity(0.92))
+                            : AnyShapeStyle(.ultraThinMaterial.opacity(0.42))
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(accent.opacity(isFocused ? 0.15 : 0.35), lineWidth: isFocused ? 0 : 1)
+            )
+            .scaleEffect(isFocused ? 1.1 : (configuration.isPressed ? 0.98 : 1.0))
+            .shadow(color: accent.opacity(isFocused ? 0.35 : 0), radius: isFocused ? 16 : 0, y: isFocused ? 8 : 0)
+            .animation(.easeOut(duration: 0.18), value: isFocused)
+    }
+}
+
+struct EOSDetailCardButtonStyle: ButtonStyle {
+    @Environment(\.isFocused) private var isFocused
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(isFocused ? 1.02 : 1.0)
+            .shadow(color: .black.opacity(isFocused ? 0.35 : 0.1), radius: isFocused ? 14 : 4, y: isFocused ? 8 : 2)
+            .animation(.easeOut(duration: 0.18), value: isFocused)
+    }
+}
+
+struct EOSGalleryThumbButtonStyle: ButtonStyle {
+    @Environment(\.isFocused) private var isFocused
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(isFocused ? 1.12 : (configuration.isPressed ? 0.98 : 1.0))
+            .shadow(color: .black.opacity(isFocused ? 0.5 : 0.2), radius: isFocused ? 22 : 8, y: isFocused ? 14 : 4)
+            .animation(.easeOut(duration: 0.18), value: isFocused)
     }
 }

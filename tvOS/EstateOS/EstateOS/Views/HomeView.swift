@@ -24,13 +24,16 @@ struct HomeView: View {
         ZStack {
             background
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: EOSTvSpacing.chromeGap) {
                     header
                     brandAndFilters
+                    if tab == .showroom {
+                        layoutModeRow
+                        activeSectionBanner
+                    }
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, 4)
                 .background(
-                    // Opaque chrome — prevents any scroll bleed / ghosting under filters.
                     LinearGradient(
                         colors: [
                             app.catalogBrand == .car
@@ -50,8 +53,8 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .zIndex(1)
             }
-            .padding(.horizontal, 52)
-            .padding(.vertical, 32)
+            .padding(.horizontal, EOSTvSpacing.screenHorizontal)
+            .padding(.vertical, EOSTvSpacing.screenVertical)
         }
         .fullScreenCover(item: $app.selectedOffer) { offer in
             OfferDetailView(offer: offer)
@@ -135,7 +138,7 @@ struct HomeView: View {
     }
 
     private var brandAndFilters: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .center, spacing: EOSTvSpacing.chromeGap) {
             BrandSwitcher(
                 brand: Binding(
                     get: { app.catalogBrand },
@@ -155,25 +158,148 @@ struct HomeView: View {
                     }
                 }
             }
-            if let msg = app.location.statusMessage, (app.carFilterChip == .nearest || app.homeFilterChip == .nearest) {
+            if let msg = app.location.statusMessage, (app.carNearest || app.homeNearest) {
                 Text(msg)
-                    .font(.caption.weight(.medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var layoutModeRow: some View {
+        HStack(spacing: 8) {
+            Text("Układ")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(ShowroomLayoutMode.allCases) { mode in
+                Button {
+                    app.setShowroomLayout(mode)
+                } label: {
+                    Label(mode.title, systemImage: mode.systemImage)
+                }
+                .buttonStyle(EOSMicroChipButtonStyle(
+                    selected: app.showroomLayout == mode,
+                    accent: app.catalogBrand == .car ? .cyan : .green
+                ))
+                .focusEffectDisabled()
+            }
+            Spacer(minLength: 0)
+        }
+        .focusSection()
+    }
+
+    private var activeSectionBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "rectangle.stack.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(app.catalogBrand == .car ? Color.cyan : Color.green)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(app.showroomLayout.title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(app.activeShowroomSection.isEmpty ? "Wybierz ofertę poniżej" : app.activeShowroomSection)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(white: 0.1).opacity(0.92))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
     }
 
     private var filterRowHome: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(HomeFilterChip.allCases) { chip in
-                    Button(chip.title) { app.selectHomeFilter(chip) }
-                        .buttonStyle(EOSChipButtonStyle(selected: app.homeFilterChip == chip, accent: .green))
+        VStack(alignment: .leading, spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    Button("Wszystkie") { app.clearHomeFilters() }
+                        .buttonStyle(EOSMicroChipButtonStyle(
+                            selected: !app.isHomeFilteringActive && !app.homeCitiesPickerExpanded,
+                            accent: .green
+                        ))
+                        .focusEffectDisabled()
+
+                    Button {
+                        app.toggleHomeNearest()
+                    } label: {
+                        Label("Najbliżej", systemImage: "location.fill")
+                    }
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.homeNearest, accent: .green))
+                    .focusEffectDisabled()
+
+                    Button {
+                        app.toggleHomeCitiesPicker()
+                    } label: {
+                        Label(
+                            app.selectedHomeCities.isEmpty
+                                ? "Miejscowości"
+                                : "Miejscowości (\(app.selectedHomeCities.count))",
+                            systemImage: "building.2"
+                        )
+                    }
+                    .buttonStyle(EOSMicroChipButtonStyle(
+                        selected: app.homeCitiesPickerExpanded || !app.selectedHomeCities.isEmpty,
+                        accent: .green
+                    ))
+                    .focusEffectDisabled()
+
+                    ForEach(HomeTransactionFilter.allCases) { kind in
+                        Button(kind.title) { app.toggleHomeTransaction(kind) }
+                            .buttonStyle(EOSMicroChipButtonStyle(
+                                selected: app.selectedHomeTransactions.contains(kind),
+                                accent: .green
+                            ))
+                            .focusEffectDisabled()
+                    }
+
+                    Button("Premium") { app.toggleHomePremium() }
+                        .buttonStyle(EOSMicroChipButtonStyle(selected: app.homePremium, accent: .green))
                         .focusEffectDisabled()
                 }
+                .padding(.vertical, 2)
             }
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .focusSection()
+
+            if app.homeCitiesPickerExpanded {
+                homeCitiesRow
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var homeCitiesRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                Button("Wszystkie miejscowości") { app.clearHomeCities() }
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.selectedHomeCities.isEmpty, accent: .green))
+                    .focusEffectDisabled()
+
+                ForEach(app.homeCityCounts, id: \.name) { item in
+                    Button("\(item.name) (\(item.count))") {
+                        app.toggleHomeCity(item.name)
+                        tab = .showroom
+                    }
+                    .buttonStyle(EOSMicroChipButtonStyle(
+                        selected: app.selectedHomeCities.contains(where: {
+                            $0.caseInsensitiveCompare(item.name) == .orderedSame
+                        }),
+                        accent: .green
+                    ))
+                    .focusEffectDisabled()
+                }
+            }
+            .padding(.vertical, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .focusSection()
@@ -181,9 +307,9 @@ struct HomeView: View {
 
     private var homePropertyTypeRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            HStack(spacing: 6) {
                 Button("Wszystkie typy") { app.clearHomePropertyTypes() }
-                    .buttonStyle(EOSChipButtonStyle(selected: app.selectedHomePropertyTypes.isEmpty, accent: .green))
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.selectedHomePropertyTypes.isEmpty, accent: .green))
                     .focusEffectDisabled()
 
                 ForEach(app.homePropertyTypeCounts, id: \.kind) { item in
@@ -191,14 +317,14 @@ struct HomeView: View {
                         app.toggleHomePropertyType(item.kind)
                         tab = .showroom
                     }
-                    .buttonStyle(EOSChipButtonStyle(
+                    .buttonStyle(EOSMicroChipButtonStyle(
                         selected: app.selectedHomePropertyTypes.contains(item.kind),
                         accent: .green
                     ))
                     .focusEffectDisabled()
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -206,16 +332,82 @@ struct HomeView: View {
     }
 
     private var filterRowCar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(CarFilterChip.allCases) { chip in
-                    Button(chip.title) { app.selectCarFilter(chip) }
-                        .buttonStyle(EOSChipButtonStyle(selected: app.carFilterChip == chip, accent: .cyan))
+        VStack(alignment: .leading, spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    Button("Wszystkie") { app.clearCarFilters() }
+                        .buttonStyle(EOSMicroChipButtonStyle(
+                            selected: !app.isCarFilteringActive && !app.carCitiesPickerExpanded,
+                            accent: .cyan
+                        ))
                         .focusEffectDisabled()
+
+                    Button {
+                        app.toggleCarNearest()
+                    } label: {
+                        Label("Najbliżej", systemImage: "location.fill")
+                    }
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.carNearest, accent: .cyan))
+                    .focusEffectDisabled()
+
+                    Button {
+                        app.toggleCarCitiesPicker()
+                    } label: {
+                        Label(
+                            app.selectedCarCities.isEmpty
+                                ? "Miejscowości"
+                                : "Miejscowości (\(app.selectedCarCities.count))",
+                            systemImage: "building.2"
+                        )
+                    }
+                    .buttonStyle(EOSMicroChipButtonStyle(
+                        selected: app.carCitiesPickerExpanded || !app.selectedCarCities.isEmpty,
+                        accent: .cyan
+                    ))
+                    .focusEffectDisabled()
+
+                    ForEach(CarAttributeFilter.allCases) { attr in
+                        Button(attr.title) { app.toggleCarAttribute(attr) }
+                            .buttonStyle(EOSMicroChipButtonStyle(
+                                selected: app.selectedCarAttributes.contains(attr),
+                                accent: .cyan
+                            ))
+                            .focusEffectDisabled()
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .focusSection()
+
+            if app.carCitiesPickerExpanded {
+                carCitiesRow
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var carCitiesRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                Button("Wszystkie miejscowości") { app.clearCarCities() }
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.selectedCarCities.isEmpty, accent: .cyan))
+                    .focusEffectDisabled()
+
+                ForEach(app.carCityCounts, id: \.name) { item in
+                    Button("\(item.name) (\(item.count))") {
+                        app.toggleCarCity(item.name)
+                        tab = .showroom
+                    }
+                    .buttonStyle(EOSMicroChipButtonStyle(
+                        selected: app.selectedCarCities.contains(where: {
+                            $0.caseInsensitiveCompare(item.name) == .orderedSame
+                        }),
+                        accent: .cyan
+                    ))
+                    .focusEffectDisabled()
                 }
             }
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .focusSection()
@@ -223,9 +415,9 @@ struct HomeView: View {
 
     private var carMakeRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            HStack(spacing: 6) {
                 Button("Wszystkie marki") { app.clearCarMakes() }
-                    .buttonStyle(EOSChipButtonStyle(selected: app.selectedCarMakes.isEmpty, accent: .cyan))
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.selectedCarMakes.isEmpty, accent: .cyan))
                     .focusEffectDisabled()
 
                 ForEach(Array(app.popularCarMakes.prefix(16)), id: \.name) { item in
@@ -233,7 +425,7 @@ struct HomeView: View {
                         app.toggleCarMake(item.name)
                         tab = .showroom
                     }
-                    .buttonStyle(EOSChipButtonStyle(
+                    .buttonStyle(EOSMicroChipButtonStyle(
                         selected: app.selectedCarMakes.contains(where: {
                             $0.caseInsensitiveCompare(item.name) == .orderedSame
                         }),
@@ -242,7 +434,7 @@ struct HomeView: View {
                     .focusEffectDisabled()
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -251,41 +443,88 @@ struct HomeView: View {
 
     @ViewBuilder
     private var content: some View {
+        Group {
+            switch tab {
+            case .showroom:
+                catalogLoadingGate { showroomView }
+            case .search:
+                catalogLoadingGate {
+                    SearchView()
+                        .environmentObject(app)
+                }
+            case .favorites:
+                favoritesView
+            case .account:
+                accountView
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private func catalogLoadingGate<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         let loading = app.catalogBrand == .home ? app.isLoadingOffers : app.isLoadingCars
-        if loading && (app.catalogBrand == .home ? app.offers.isEmpty : app.cars.isEmpty) {
+        let empty = app.catalogBrand == .home ? app.offers.isEmpty : app.cars.isEmpty
+        if loading && empty {
             ProgressView(app.catalogBrand == .home ? "Ładowanie nieruchomości…" : "Ładowanie samochodów…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            Group {
-                switch tab {
-                case .showroom:
-                    showroomView
-                case .search:
-                    SearchView()
-                        .environmentObject(app)
-                case .favorites:
-                    favoritesView
-                case .account:
-                    accountView
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            content()
         }
     }
 
     private var showroomView: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 32) {
+            VStack(alignment: .leading, spacing: EOSTvSpacing.sectionGap) {
                 if app.catalogBrand == .home {
-                    homeShowroom
+                    if app.offers.isEmpty, !app.isLoadingOffers {
+                        emptyCatalogBanner(
+                            title: "Brak nieruchomości w katalogu",
+                            subtitle: "Odśwież katalogi w zakładce Konto lub spróbuj ponownie za chwilę.",
+                            accent: .green
+                        )
+                    } else {
+                        homeShowroom
+                    }
+                } else if app.cars.isEmpty, !app.isLoadingCars {
+                    emptyCatalogBanner(
+                        title: "Brak samochodów w katalogu",
+                        subtitle: "Odśwież katalogi w zakładce Konto lub spróbuj ponownie za chwilę.",
+                        accent: .cyan
+                    )
                 } else {
                     carShowroom
                 }
             }
-            .padding(.top, 4)
-            .padding(.bottom, 56)
+            .padding(.top, 12)
+            .padding(.bottom, 72)
         }
-        // Must clip — scrollClipDisabled left ghost cards under sticky filters.
+        .focusSection()
+        .onAppear {
+            if app.activeShowroomSection.isEmpty {
+                app.noteShowroomSection(app.catalogBrand == .home ? "Nowe w ostatnich 24h" : "Nowe auta · 24h")
+            }
+        }
+    }
+
+    private func emptyCatalogBanner(title: String, subtitle: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title)
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+            Text(subtitle)
+                .foregroundStyle(.secondary)
+            Button("Odśwież") {
+                Task {
+                    try? await app.refreshOffers()
+                    try? await app.refreshCars()
+                }
+            }
+            .buttonStyle(EOSDetailActionButtonStyle(accent: accent))
+            .focusEffectDisabled()
+        }
+        .padding(28)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .eosGlass(cornerRadius: 24, opacity: 0.34)
         .focusSection()
     }
 
@@ -293,11 +532,10 @@ struct HomeView: View {
     private var homeShowroom: some View {
         let filtered = app.filteredOffersForBrowse
         let filtering = app.isHomeFilteringActive
-        let newest = filtering
-            ? app.offersLast24Hours.filter { offer in filtered.contains(where: { $0.id == offer.id }) }
-            : app.offersLast24Hours
+        let newest = app.showroomHomeNewest
 
-        if let hero = (filtering ? filtered.first : (newest.first ?? filtered.first)) {
+        if app.showroomLayout == .rails,
+           let hero = (filtering ? filtered.first : (newest.first ?? filtered.first)) {
             ShowroomHeroCard(
                 title: hero.title,
                 subtitle: [EOSFormat.pricePLN(hero.price), hero.displayLocation].filter { !$0.isEmpty }.joined(separator: "  ·  "),
@@ -309,20 +547,20 @@ struct HomeView: View {
                 onPrimary: { app.openDetail(hero) },
                 onSecondary: newest.count > 1 ? { app.openImmersiveBrowse(at: 0, from: Array(newest.prefix(40))) } : nil
             )
-            .id("home-hero-\(hero.id)-\(app.homeFilterChip.rawValue)")
+            .id("home-hero-\(hero.id)-\(app.homeFilterSummary)")
         } else if filtering {
             emptyFilterBanner(
                 title: "Brak nieruchomości w tym filtrze",
                 subtitle: "Wybierz inny typ lub wróć do „Wszystkie”.",
                 accent: .green
             ) {
-                withAnimation { app.homeFilterChip = .all }
+                withAnimation { app.clearHomeFilters() }
             }
         }
 
         if !newest.isEmpty {
             homeSection(
-                filtering ? "Nowe · \(app.homeFilterChip.title)" : "Nowe w ostatnich 24h",
+                filtering ? "Nowe · \(app.homeFilterSummary)" : "Nowe w ostatnich 24h",
                 offers: Array(newest.prefix(24)),
                 immersive: true
             )
@@ -336,22 +574,13 @@ struct HomeView: View {
             }
         }
         homeSection(
-            filtering ? "Wyniki · \(app.homeFilterChip.title)" : "Polecane nieruchomości",
+            filtering ? "Wyniki · \(app.homeFilterSummary)" : "Polecane nieruchomości",
             offers: Array(filtered.prefix(40))
         )
         if !filtering {
-            homeSection(
-                "Warszawa i okolice",
-                offers: Array(app.offers.filter { ($0.city ?? "").localizedCaseInsensitiveContains("warsz") }.prefix(28))
-            )
-            homeSection(
-                "Segment premium",
-                offers: Array(app.offers.filter { ($0.price ?? 0) >= 2_000_000 }.prefix(28))
-            )
-            homeSection(
-                "Wynajem",
-                offers: Array(app.offers.filter { ($0.transactionType ?? "").uppercased().contains("RENT") }.prefix(28))
-            )
+            homeSection("Warszawa i okolice", offers: app.showroomHomeWarsaw)
+            homeSection("Segment premium", offers: app.showroomHomePremium)
+            homeSection("Wynajem", offers: app.showroomHomeRent)
         }
     }
 
@@ -359,16 +588,12 @@ struct HomeView: View {
     private var carShowroom: some View {
         let filtered = app.filteredCars
         let filtering = app.isCarFilteringActive
-        let featured = filtered.filter(\.featured)
-        let fresh = filtered.filter(\.isWithinLast24Hours).sorted { $0.sortDate > $1.sortDate }
-        let makeLabel: String = {
-            if !app.selectedCarMakes.isEmpty {
-                return app.selectedCarMakes.sorted().joined(separator: " · ")
-            }
-            return app.carFilterChip.title
-        }()
+        let featured = app.showroomCarFeatured
+        let fresh = app.showroomCarFresh
+        let makeLabel = app.carFilterSummary
 
-        if let hero = (featured.first ?? fresh.first ?? filtered.first) {
+        if app.showroomLayout == .rails,
+           let hero = (featured.first ?? fresh.first ?? filtered.first) {
             ShowroomHeroCard(
                 title: hero.displayHeadline,
                 subtitle: [hero.displayPrice, hero.displaySpecs].filter { !$0.isEmpty }.joined(separator: "  ·  "),
@@ -380,7 +605,7 @@ struct HomeView: View {
                 onPrimary: { app.openCarDetail(hero) },
                 onSecondary: fresh.count > 1 ? { app.openImmersiveCarBrowse(at: 0, from: Array(fresh.prefix(40))) } : nil
             )
-            .id("car-hero-\(hero.id)-\(app.selectedCarMakes.sorted().joined(separator: "-"))-\(app.carFilterChip.rawValue)")
+            .id("car-hero-\(hero.id)-\(app.carFilterSummary)")
         } else if filtering {
             emptyFilterBanner(
                 title: "Brak aut dla „\(makeLabel)”",
@@ -388,8 +613,7 @@ struct HomeView: View {
                 accent: .cyan
             ) {
                 withAnimation {
-                    app.clearCarMakes()
-                    app.carFilterChip = .all
+                    app.clearCarFilters()
                 }
             }
         }
@@ -414,17 +638,8 @@ struct HomeView: View {
             cars: Array(filtered.prefix(48))
         )
         if !filtering {
-            carSection(
-                "Automatyczna skrzynia",
-                cars: Array(app.cars.filter { $0.transmission.localizedCaseInsensitiveContains("automat") }.prefix(28))
-            )
-            carSection(
-                "Elektryczne i hybrydy",
-                cars: Array(app.cars.filter {
-                    let f = $0.fuelType.lowercased()
-                    return f.contains("elektr") || f.contains("hybr") || f.contains("ev")
-                }.prefix(28))
-            )
+            carSection("Automatyczna skrzynia", cars: app.showroomCarAutomatic)
+            carSection("Elektryczne i hybrydy", cars: app.showroomCarElectricHybrid)
         }
     }
 
@@ -435,9 +650,8 @@ struct HomeView: View {
             Text(subtitle)
                 .foregroundStyle(.secondary)
             Button("Wyczyść filtry", action: reset)
-                .buttonStyle(.borderedProminent)
-                .tint(accent)
-                .foregroundStyle(.black)
+                .buttonStyle(EOSDetailActionButtonStyle(accent: accent))
+                .focusEffectDisabled()
         }
         .padding(28)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -448,23 +662,16 @@ struct HomeView: View {
     private func homeSection(_ title: String, offers: [EstateOffer], showsHeart: Bool = false, immersive: Bool = false) -> some View {
         Group {
             if !offers.isEmpty {
-                VStack(alignment: .leading, spacing: 20) {
-                    HStack(spacing: 12) {
-                        if showsHeart {
-                            Image(systemName: "heart.fill").foregroundStyle(.pink)
-                        }
-                        Text(title)
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
-                        Spacer()
-                        if immersive {
-                            Button("Immersyjny przegląd") {
-                                app.openImmersiveBrowse(at: 0, from: offers)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                    OffersRailView(offers: offers, onSelect: app.openDetail)
+                VStack(alignment: .leading, spacing: 14) {
+                    sectionHeader(title: title, count: offers.count, showsHeart: showsHeart, immersiveHome: immersive ? offers : nil, immersiveCars: nil)
+                    OffersCatalogView(
+                        offers: offers,
+                        layout: app.showroomLayout,
+                        sectionTitle: title,
+                        onSelect: app.openDetail
+                    )
                 }
+                .padding(.top, 8)
                 .focusSection()
             }
         }
@@ -473,40 +680,88 @@ struct HomeView: View {
     private func carSection(_ title: String, cars: [CarListing], showsHeart: Bool = false, immersive: Bool = false) -> some View {
         Group {
             if !cars.isEmpty {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 12) {
-                        if showsHeart {
-                            Image(systemName: "heart.fill").foregroundStyle(.pink)
-                        }
-                        Text(title)
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
-                        Spacer()
-                        if immersive, cars.count > 1 {
-                            Button("Immersyjny przegląd") {
-                                app.openImmersiveCarBrowse(at: 0, from: cars)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                    CarsRailView(cars: cars, onSelect: app.openCarDetail)
+                VStack(alignment: .leading, spacing: 14) {
+                    sectionHeader(
+                        title: title,
+                        count: cars.count,
+                        showsHeart: showsHeart,
+                        immersiveHome: nil,
+                        immersiveCars: immersive && cars.count > 1 ? cars : nil
+                    )
+                    CarsCatalogView(
+                        cars: cars,
+                        layout: app.showroomLayout,
+                        sectionTitle: title,
+                        onSelect: app.openCarDetail
+                    )
                 }
+                .padding(.top, 8)
                 .focusSection()
             }
         }
+    }
+
+    @ViewBuilder
+    private func sectionHeader(
+        title: String,
+        count: Int,
+        showsHeart: Bool,
+        immersiveHome: [EstateOffer]?,
+        immersiveCars: [CarListing]?
+    ) -> some View {
+        HStack(spacing: 12) {
+            if showsHeart {
+                Image(systemName: "heart.fill").foregroundStyle(.pink)
+            }
+            Text(title)
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            Text("\(count)")
+                .font(.callout.weight(.bold).monospacedDigit())
+                .foregroundStyle(.black)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(app.catalogBrand == .car ? Color.cyan : Color.green))
+            Spacer(minLength: 8)
+            if let immersiveHome, immersiveHome.count > 1 {
+                Button("Immersyjny przegląd") {
+                    app.openImmersiveBrowse(at: 0, from: immersiveHome)
+                }
+                .buttonStyle(EOSDetailChromeButtonStyle())
+                .focusEffectDisabled()
+            }
+            if let immersiveCars, immersiveCars.count > 1 {
+                Button("Immersyjny przegląd") {
+                    app.openImmersiveCarBrowse(at: 0, from: immersiveCars)
+                }
+                .buttonStyle(EOSDetailChromeButtonStyle())
+                .focusEffectDisabled()
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        // Solid backing so title never “disappears” into chrome/background.
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.black.opacity(0.55))
+        )
+        .onAppear { app.noteShowroomSection(title) }
     }
 
     private var favoritesView: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 28) {
                 Text("Ulubione nieruchomości")
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
 
                 if app.session == nil {
                     Text("Zaloguj się, aby synchronizować ulubione z iPhone i WWW.")
                         .foregroundStyle(.secondary)
                     Button("Zaloguj się") { app.openLoginSheet() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.green)
+                        .buttonStyle(EOSDetailActionButtonStyle(accent: .green))
+                        .focusEffectDisabled()
                 } else {
                     let favs = app.favoriteOffers.isEmpty
                         ? app.offers.filter { app.isFavorite($0.id) }
@@ -514,13 +769,16 @@ struct HomeView: View {
                     if favs.isEmpty {
                         Text("Brak ulubionych. Otwórz ofertę i dodaj do ulubionych.")
                             .foregroundStyle(.secondary)
+                        Button("Przejdź do showroomu") { tab = .showroom }
+                            .buttonStyle(EOSDetailChromeButtonStyle())
+                            .focusEffectDisabled()
                     } else {
                         OffersRailView(offers: favs, onSelect: app.openDetail)
                     }
                 }
 
                 Text("Ulubione samochody")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
                     .padding(.top, 12)
                 if app.favoriteCars.isEmpty {
                     Text("Oznacz sercem auto w szczegółach — zapisujemy lokalnie na Apple TV.")
@@ -529,7 +787,8 @@ struct HomeView: View {
                         app.setCatalogBrand(.car)
                         tab = .showroom
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(EOSDetailActionButtonStyle(accent: .cyan))
+                    .focusEffectDisabled()
                 } else {
                     CarsRailView(cars: app.favoriteCars, onSelect: app.openCarDetail)
                 }
@@ -586,7 +845,8 @@ struct HomeView: View {
                         await app.refreshFavorites()
                     }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(EOSDetailChromeButtonStyle())
+                .focusEffectDisabled()
                 .focused($accountFocusedItem, equals: .refresh)
                 .id(AccountFocus.refresh)
                 .onMoveCommand { direction in
@@ -595,14 +855,14 @@ struct HomeView: View {
 
                 if app.session == nil {
                     Button("Zaloguj się") { app.openLoginSheet() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.green)
+                        .buttonStyle(EOSDetailActionButtonStyle(accent: .green))
+                        .focusEffectDisabled()
                         .focused($accountFocusedItem, equals: .login)
                         .id(AccountFocus.login)
                 } else {
                     Button("Wyloguj") { app.logout() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.red)
+                        .buttonStyle(EOSDetailActionButtonStyle(accent: .pink))
+                        .focusEffectDisabled()
                         .focused($accountFocusedItem, equals: .login)
                         .id(AccountFocus.login)
                 }
@@ -645,11 +905,13 @@ struct HomeView: View {
                     .eosGlass(cornerRadius: 20, opacity: app.topShelfStyle == style ? 0.48 : 0.3)
                 }
                 .buttonStyle(.plain)
+                .focusEffectDisabled()
+                .eosFocusRing(cornerRadius: 20, accent: .cyan)
                 .focused($accountFocusedItem, equals: focusID)
                 .id(focusID)
             }
 
-            Text("Po zmianie wróć na ekran główny Apple TV i ustaw fokus na ikonie EstateOS.")
+            Text("Po zmianie wyjdź na ekran główny Apple TV (Menu) i ustaw fokus na ikonie EstateOS — dopiero wtedy Górny pasek przełącza się na kafelki.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -659,34 +921,121 @@ struct HomeView: View {
     }
 }
 
+struct OffersCatalogView: View {
+    let offers: [EstateOffer]
+    let layout: ShowroomLayoutMode
+    let sectionTitle: String
+    let onSelect: (EstateOffer) -> Void
+    @EnvironmentObject private var app: AppModel
+
+    private var items: [EstateOffer] { Array(offers.prefix(80)) }
+
+    var body: some View {
+        switch layout {
+        case .rails:
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 22) {
+                    ForEach(items) { offer in
+                        offerButton(offer, width: 360, imageHeight: 180, compact: true, focusScale: 1.0)
+                    }
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 2)
+            }
+            .focusSection()
+        case .tiles:
+            // Spacing + cell padding reserve room so focus scale never overlaps / clips.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 32)], spacing: 32) {
+                ForEach(items) { offer in
+                    offerButton(offer, width: nil, imageHeight: 140, compact: true, focusScale: 1.07)
+                        .padding(18)
+                }
+            }
+            .padding(.vertical, 10)
+            .focusSection()
+        case .list:
+            LazyVStack(spacing: 22) {
+                ForEach(items) { offer in
+                    Button {
+                        app.noteShowroomSection(sectionTitle)
+                        onSelect(offer)
+                    } label: {
+                        OfferListRowView(
+                            offer: offer,
+                            isFavorite: app.isFavorite(offer.id),
+                            distanceLabel: app.distanceLabel(forCity: offer.city)
+                        )
+                        .eosListRowFocus(accent: .green)
+                        .background(FocusSectionProbe(title: sectionTitle))
+                    }
+                    .buttonStyle(EOSPosterButtonStyle(focusScale: 1.05))
+                    .focusEffectDisabled()
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 8)
+                }
+            }
+            .padding(.vertical, 8)
+            .focusSection()
+        }
+    }
+
+    private func offerButton(
+        _ offer: EstateOffer,
+        width: CGFloat?,
+        imageHeight: CGFloat,
+        compact: Bool,
+        focusScale: CGFloat
+    ) -> some View {
+        Button {
+            app.noteShowroomSection(sectionTitle)
+            onSelect(offer)
+        } label: {
+            OfferCardView(
+                offer: offer,
+                isFavorite: app.isFavorite(offer.id),
+                distanceLabel: app.distanceLabel(forCity: offer.city),
+                imageHeight: imageHeight,
+                compact: compact
+            )
+            .frame(width: width)
+            .background(FocusSectionProbe(title: sectionTitle))
+        }
+        .buttonStyle(EOSPosterButtonStyle(focusScale: focusScale))
+        .focusEffectDisabled()
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+/// Updates sticky section banner when a poster inside the section becomes focused.
+private struct FocusSectionProbe: View {
+    let title: String
+    @EnvironmentObject private var app: AppModel
+    @Environment(\.isFocused) private var isFocused
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: isFocused) { _, focused in
+                if focused { app.noteShowroomSection(title) }
+            }
+            .onAppear {
+                if isFocused { app.noteShowroomSection(title) }
+            }
+    }
+}
+
 struct OffersRailView: View {
     let offers: [EstateOffer]
     let onSelect: (EstateOffer) -> Void
     @EnvironmentObject private var app: AppModel
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 28) {
-                ForEach(offers.prefix(80)) { offer in
-                    Button {
-                        onSelect(offer)
-                    } label: {
-                        OfferCardView(
-                            offer: offer,
-                            isFavorite: app.isFavorite(offer.id),
-                            distanceLabel: app.distanceLabel(forCity: offer.city)
-                        )
-                        .frame(width: 460)
-                    }
-                    .buttonStyle(EOSPosterButtonStyle())
-                    .focusEffectDisabled()
-                    .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                }
-            }
-            .padding(.vertical, 14)
-            .padding(.horizontal, 2)
-        }
-        .focusSection()
+        OffersCatalogView(
+            offers: offers,
+            layout: .rails,
+            sectionTitle: "Oferty",
+            onSelect: onSelect
+        )
     }
 }
 
@@ -694,11 +1043,12 @@ struct OfferCardView: View {
     let offer: EstateOffer
     var isFavorite: Bool = false
     var distanceLabel: String? = nil
-    @Environment(\.isFocused) private var isFocused
+    var imageHeight: CGFloat = 180
+    var compact: Bool = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            EOSOfferThumbnail(url: EOSOfferMedia.primaryImageURL(for: offer), height: 240)
+        VStack(alignment: .leading, spacing: compact ? 10 : 14) {
+            EOSOfferThumbnail(url: EOSOfferMedia.primaryImageURL(for: offer), height: imageHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(alignment: .topTrailing) {
                     if isFavorite {
@@ -715,7 +1065,7 @@ struct OfferCardView: View {
                         Text(offer.transactionLabel)
                             .font(.caption.weight(.bold))
                             .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
+                            .padding(.vertical, 2)
                             .background(Capsule().fill(offer.isRentBadge ? Color.blue.opacity(0.85) : Color.green.opacity(0.85)))
                             .foregroundStyle(.white)
                         if let city = offer.city {
@@ -723,14 +1073,14 @@ struct OfferCardView: View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
+                                .padding(.vertical, 2)
                                 .background(Capsule().fill(.black.opacity(0.55)))
                         }
                         if let distanceLabel {
                             Text(distanceLabel)
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
+                                .padding(.vertical, 2)
                                 .background(Capsule().fill(Color.green.opacity(0.85)))
                                 .foregroundStyle(.black)
                         }
@@ -739,16 +1089,16 @@ struct OfferCardView: View {
                 }
 
             Text(offer.title)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: compact ? 18 : 22, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(2)
                 .minimumScaleFactor(0.72)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
+                .frame(maxWidth: .infinity, minHeight: compact ? 44 : 60, alignment: .topLeading)
 
             Text(EOSFormat.pricePLN(offer.price))
-                .font(.title2.bold())
+                .font(compact ? .title3.bold() : .title2.bold())
                 .foregroundStyle(.green)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -765,6 +1115,58 @@ struct OfferCardView: View {
                 .lineLimit(1)
         }
         .eosPosterCard(cornerRadius: 22, accent: .green)
+    }
+}
+
+
+struct OfferListRowView: View {
+    let offer: EstateOffer
+    var isFavorite: Bool = false
+    var distanceLabel: String? = nil
+
+    var body: some View {
+        HStack(spacing: 16) {
+            EOSOfferThumbnail(url: EOSOfferMedia.primaryImageURL(for: offer), height: 96)
+                .frame(width: 160)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(offer.transactionLabel)
+                        .font(.caption2.weight(.bold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(offer.isRentBadge ? Color.blue.opacity(0.85) : Color.green.opacity(0.85)))
+                    if isFavorite {
+                        Image(systemName: "heart.fill").foregroundStyle(.pink).font(.caption)
+                    }
+                    if let distanceLabel {
+                        Text(distanceLabel).font(.caption2.weight(.semibold)).foregroundStyle(.green)
+                    }
+                }
+                Text(offer.title)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                Text(EOSFormat.pricePLN(offer.price))
+                    .font(.title3.bold())
+                    .foregroundStyle(.green)
+                HStack {
+                    EOSListingStatsRow(views: offer.viewsCount, favorites: offer.favoritesCount, accent: .green)
+                    Spacer()
+                    Text(offer.displayLocation)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(white: 0.09).opacity(0.96))
+        )
     }
 }
 

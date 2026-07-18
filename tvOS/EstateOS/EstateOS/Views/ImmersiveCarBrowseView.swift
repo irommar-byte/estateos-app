@@ -85,11 +85,12 @@ struct ImmersiveCarBrowseView: View {
                 Text(current.displaySpecs)
                     .font(.system(size: 22, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.86))
-                if !current.city.isEmpty {
-                    Label(current.city, systemImage: "mappin.and.ellipse")
-                        .font(.system(size: 20, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.78))
-                }
+                EOSCountryLocationLabel(
+                    locationLine: current.city,
+                    country: current.resolvedCountry,
+                    font: .system(size: 20, weight: .medium, design: .rounded),
+                    foreground: .white.opacity(0.78)
+                )
             }
             .id("car-meta-\(current.id)")
 
@@ -97,9 +98,8 @@ struct ImmersiveCarBrowseView: View {
                 Button("POKAŻ") {
                     app.openCarDetail(current)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.cyan)
-                .foregroundStyle(.black)
+                .buttonStyle(EOSDetailActionButtonStyle(accent: .cyan))
+                .focusEffectDisabled()
 
                 Button {
                     app.toggleFavoriteCar(current)
@@ -109,7 +109,8 @@ struct ImmersiveCarBrowseView: View {
                         systemImage: app.isFavoriteCar(current.id) ? "heart.fill" : "heart"
                     )
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(EOSDetailActionButtonStyle(accent: app.isFavoriteCar(current.id) ? .pink : .cyan))
+                .focusEffectDisabled()
 
                 Spacer()
 
@@ -163,22 +164,11 @@ private struct ImmersiveCarBackdrop: View {
     var body: some View {
         GeometryReader { proxy in
             Group {
-                if let url = EOSOfferMedia.imageURL(from: car.imageUrl) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: proxy.size.width, height: proxy.size.height)
-                                .clipped()
-                        default:
-                            placeholder
-                        }
-                    }
-                } else {
+                EOSCachedRemoteImage(url: EOSOfferMedia.imageURL(from: car.imageUrl), contentMode: .fill) {
                     placeholder
                 }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
             }
         }
     }

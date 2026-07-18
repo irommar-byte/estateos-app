@@ -46,7 +46,8 @@ struct OfferDetailView: View {
             ("rooms", "Pokoje", "bed.double", liveOffer.rooms.map { String(format: "%.0f", $0) }),
             ("ppsm", "Cena za m²", "chart.bar", liveOffer.pricePerSqm != nil ? liveOffer.displayPricePerSqm : nil),
             ("city", "Miasto", "mappin.and.ellipse", liveOffer.city),
-            ("district", "Dzielnica", "map", liveOffer.district),
+            ("district", "Dzielnica", "map", liveOffer.displayDistrict),
+            ("country", "Kraj", "globe.europe.africa", "\(liveOffer.resolvedCountry.flagEmoji) \(liveOffer.resolvedCountry.name)"),
         ]
         return raw.compactMap { id, label, icon, value in
             guard let value else { return nil }
@@ -61,8 +62,7 @@ struct OfferDetailView: View {
             Color.black.ignoresSafeArea()
             EOSFullBleedOfferImage(url: currentImageURL)
                 .ignoresSafeArea()
-                .blur(radius: (mode == .info || mode == .description) ? 16 : 0)
-                .opacity((mode == .info || mode == .description) ? 0.55 : 1)
+                .opacity((mode == .info || mode == .description) ? 0.28 : 1)
             if mode != .gallery {
                 LinearGradient(
                     colors: [.black.opacity(0.4), .clear, .black.opacity(0.35), .black.opacity(0.92)],
@@ -87,13 +87,12 @@ struct OfferDetailView: View {
             mode = .hero
             photoIndex = 0
             landing = .moreInfo
-            if descriptionText == nil {
-                isLoadingDescription = true
-                Task {
-                    await app.refreshSelectedOfferDetail(id: offer.id)
-                    isLoadingDescription = false
-                }
-            }
+        }
+        .task(id: offer.id) {
+            guard descriptionText == nil else { return }
+            isLoadingDescription = true
+            defer { isLoadingDescription = false }
+            await app.refreshSelectedOfferDetail(id: offer.id)
         }
         .onChange(of: liveOffer.description) { _, _ in
             if descriptionText != nil { isLoadingDescription = false }
@@ -140,10 +139,10 @@ struct OfferDetailView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
                 transactionCapsule
-                if !liveOffer.displayLocation.isEmpty {
-                    Label(liveOffer.displayLocation, systemImage: "mappin.and.ellipse")
-                        .font(.callout.weight(.semibold)).foregroundStyle(.white.opacity(0.75))
-                }
+                EOSCountryLocationLabel(
+                    locationLine: liveOffer.displayLocation,
+                    country: liveOffer.resolvedCountry
+                )
             }
             EOSAdaptiveTitle(text: liveOffer.title, maxLines: 2, maxSize: 46, minSize: 28).foregroundStyle(.white)
             Text(EOSFormat.pricePLN(liveOffer.price))
@@ -161,8 +160,8 @@ struct OfferDetailView: View {
                     Label(app.isFavorite(liveOffer.id) ? "W ulubionych" : "Ulubione",
                           systemImage: app.isFavorite(liveOffer.id) ? "heart.fill" : "heart")
                 }
-                .buttonStyle(.borderedProminent).focusEffectDisabled()
-                .tint(app.isFavorite(liveOffer.id) ? .pink : .white.opacity(0.28)).foregroundStyle(.white)
+                .buttonStyle(EOSDetailActionButtonStyle(accent: app.isFavorite(liveOffer.id) ? .pink : .green))
+                .focusEffectDisabled()
 
                 Button { showQR = true } label: { Label("Kontakt QR", systemImage: "qrcode") }
                     .buttonStyle(EOSDetailActionButtonStyle()).focusEffectDisabled()
@@ -228,10 +227,10 @@ struct OfferDetailView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     transactionCapsule
-                    if !liveOffer.displayLocation.isEmpty {
-                        Label(liveOffer.displayLocation, systemImage: "mappin.and.ellipse")
-                            .font(.callout.weight(.semibold)).foregroundStyle(.white.opacity(0.7))
-                    }
+                    EOSCountryLocationLabel(
+                        locationLine: liveOffer.displayLocation,
+                        country: liveOffer.resolvedCountry
+                    )
                 }
                 EOSAdaptiveTitle(text: liveOffer.title, maxLines: 2, maxSize: 36, minSize: 24).foregroundStyle(.white)
                 Text(EOSFormat.pricePLN(liveOffer.price))
@@ -418,48 +417,5 @@ struct OfferDetailView: View {
     private func stepGalleryPhoto(_ delta: Int) {
         guard imageURLs.count > 1 else { return }
         photoIndex = (photoIndex + delta + imageURLs.count) % imageURLs.count
-    }
-}
-
-
-// MARK: - Button styles
-
-struct EOSDetailChromeButtonStyle: ButtonStyle {
-    @Environment(\.isFocused) private var isFocused
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.callout.weight(.semibold))
-            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.7 : 0.92))
-            .padding(.horizontal, 22)
-            .padding(.vertical, 12)
-            .background(Capsule(style: .continuous).fill(.ultraThinMaterial.opacity(isFocused ? 0.62 : 0.38)))
-            .overlay(Capsule(style: .continuous).stroke(.white.opacity(isFocused ? 0.55 : 0.2), lineWidth: isFocused ? 2 : 1))
-            .scaleEffect(isFocused ? 1.12 : (configuration.isPressed ? 0.98 : 1.0))
-            .shadow(color: .black.opacity(isFocused ? 0.4 : 0.12), radius: isFocused ? 18 : 6, y: isFocused ? 10 : 3)
-            .animation(.easeOut(duration: 0.18), value: isFocused)
-    }
-}
-
-struct EOSDetailActionButtonStyle: ButtonStyle {
-    var accent: Color = .white
-    @Environment(\.isFocused) private var isFocused
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.callout.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.95))
-            .padding(.horizontal, 24)
-            .padding(.vertical, 15)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(AnyShapeStyle(.ultraThinMaterial.opacity(0.42)))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isFocused ? .clear : accent.opacity(0.25), lineWidth: 1)
-            )
-            .scaleEffect(isFocused ? 1.12 : (configuration.isPressed ? 0.98 : 1.0))
-            .animation(.easeOut(duration: 0.18), value: isFocused)
     }
 }

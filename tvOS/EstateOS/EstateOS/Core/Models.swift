@@ -54,6 +54,8 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
     let description: String?
     let city: String?
     let district: String?
+    let localityCountry: String?
+    let localityCountryCode: String?
     let price: Double?
     let area: Double?
     let rooms: Double?
@@ -66,7 +68,8 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
     let favoritesCount: Int
 
     enum CodingKeys: String, CodingKey {
-        case id, title, description, city, district, price, area, rooms
+        case id, title, description, city, district, localityCountry, localityCountryCode
+        case price, area, rooms
         case transactionType, propertyType, createdAt
         case imageUrl, mainImage, thumbnail, image
         case images, views, viewsCount, favoritesCount
@@ -79,6 +82,8 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
         description = try c.decodeIfPresent(String.self, forKey: .description)
         city = try c.decodeIfPresent(String.self, forKey: .city)
         district = try c.decodeIfPresent(String.self, forKey: .district)
+        localityCountry = try c.decodeIfPresent(String.self, forKey: .localityCountry)
+        localityCountryCode = try c.decodeIfPresent(String.self, forKey: .localityCountryCode)
         price = try EstateOffer.decodeFlexibleDouble(from: c, key: .price)
         area = try EstateOffer.decodeFlexibleDouble(from: c, key: .area)
         rooms = try EstateOffer.decodeFlexibleDouble(from: c, key: .rooms)
@@ -114,6 +119,8 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
         description: String?,
         city: String?,
         district: String?,
+        localityCountry: String? = nil,
+        localityCountryCode: String? = nil,
         price: Double?,
         area: Double?,
         rooms: Double?,
@@ -130,6 +137,8 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
         self.description = description
         self.city = city
         self.district = district
+        self.localityCountry = localityCountry
+        self.localityCountryCode = localityCountryCode
         self.price = price
         self.area = area
         self.rooms = rooms
@@ -220,6 +229,8 @@ struct CarListing: Decodable, Identifiable, Hashable {
     let doorCount: Int?
     let pricePln: Double
     let city: String
+    let localityCountry: String?
+    let localityCountryCode: String?
     let imageUrl: String?
     let imageCandidates: [String]
     let featured: Bool
@@ -231,7 +242,8 @@ struct CarListing: Decodable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, title, description, make, model, year, mileageKm, fuelType, transmission, bodyType
         case exteriorColor, generation, enginePower, engineCapacity, trimVersion, doorCount
-        case pricePln, city, imageUrl, images, featured, createdAt, vin, vinMasked
+        case pricePln, city, localityCountry, localityCountryCode
+        case imageUrl, images, featured, createdAt, vin, vinMasked
         case views, viewsCount, favoritesCount
     }
 
@@ -261,6 +273,8 @@ struct CarListing: Decodable, Identifiable, Hashable {
             pricePln = 0
         }
         city = try c.decodeIfPresent(String.self, forKey: .city) ?? ""
+        localityCountry = try c.decodeIfPresent(String.self, forKey: .localityCountry)
+        localityCountryCode = try c.decodeIfPresent(String.self, forKey: .localityCountryCode)
         let imgs = Self.decodeStringArray(from: c, key: .images)
         let primary = (try? c.decodeIfPresent(String.self, forKey: .imageUrl)) ?? imgs.first
         imageUrl = primary

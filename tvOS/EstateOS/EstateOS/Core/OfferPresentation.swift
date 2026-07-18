@@ -72,13 +72,39 @@ enum OfferPresentation {
         return price / area
     }
 
+    /// Dzielnica z katalogu bywa placeholderem „Inny obszar” gdy pinezka nie ma konkretnej dzielnicy — wtedy nie pokazujemy jej.
     static func locationLine(city: String?, district: String?) -> String {
-        [city, district]
-            .compactMap { value in
+        let parts = [city, meaningfulDistrict(district)]
+            .compactMap { value -> String? in
                 let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 return trimmed.isEmpty ? nil : trimmed
             }
-            .joined(separator: " · ")
+        return parts.joined(separator: " · ")
+    }
+
+    static func meaningfulDistrict(_ district: String?) -> String? {
+        guard let raw = district?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+        let key = raw
+            .folding(options: .diacriticInsensitive, locale: Locale(identifier: "en_US_POSIX"))
+            .lowercased()
+        let placeholders: Set<String> = [
+            "inny obszar",
+            "other area",
+            "other",
+            "reszta kraju",
+            "pozostale",
+            "pozostałe",
+            "caly kraj",
+            "cały kraj",
+            "n/a",
+            "-",
+            "—",
+        ]
+        if placeholders.contains(key) { return nil }
+        if key.hasPrefix("inny ") { return nil }
+        return raw
     }
 
     static func propertyTypeLabel(for raw: String?) -> String? {
@@ -103,6 +129,19 @@ extension EstateOffer {
 
     var displayLocation: String {
         OfferPresentation.locationLine(city: city, district: district)
+    }
+
+    var displayDistrict: String? {
+        OfferPresentation.meaningfulDistrict(district)
+    }
+
+    var resolvedCountry: ResolvedLocalityCountry {
+        LocalityCountry.resolve(
+            city: city,
+            district: district,
+            localityCountry: localityCountry,
+            localityCountryCode: localityCountryCode
+        )
     }
 
     var sortDate: Date {

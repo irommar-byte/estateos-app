@@ -72,6 +72,7 @@ struct CarDetailView: View {
             ("color", "Kolor", "paintpalette", car.exteriorColor),
             ("doors", "Drzwi", "car", car.doorCount.map(String.init)),
             ("city", "Miasto", "mappin.and.ellipse", car.city.isEmpty ? nil : car.city),
+            ("country", "Kraj", "globe.europe.africa", "\(car.resolvedCountry.flagEmoji) \(car.resolvedCountry.name)"),
             ("vin", "VIN", "barcode", car.vinMasked),
         ]
         return raw.compactMap { id, label, icon, value in
@@ -88,8 +89,7 @@ struct CarDetailView: View {
 
             EOSFullBleedOfferImage(url: currentImageURL)
                 .ignoresSafeArea()
-                .blur(radius: (mode == .info || mode == .description) ? 16 : 0)
-                .opacity((mode == .info || mode == .description) ? 0.55 : 1)
+                .opacity((mode == .info || mode == .description) ? 0.28 : 1)
 
             if mode != .gallery {
                 heroVeil
@@ -188,11 +188,10 @@ struct CarDetailView: View {
 
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !car.city.isEmpty {
-                Label(car.city, systemImage: "mappin.and.ellipse")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.75))
-            }
+            EOSCountryLocationLabel(
+                locationLine: car.city,
+                country: car.resolvedCountry
+            )
 
             EOSAdaptiveTitle(text: car.displayHeadline, maxLines: 2, maxSize: 46, minSize: 28)
                 .foregroundStyle(.white)
@@ -213,10 +212,8 @@ struct CarDetailView: View {
                         systemImage: app.isFavoriteCar(car.id) ? "heart.fill" : "heart"
                     )
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(EOSDetailActionButtonStyle(accent: app.isFavoriteCar(car.id) ? .pink : .cyan))
                 .focusEffectDisabled()
-                .tint(app.isFavoriteCar(car.id) ? .pink : .white.opacity(0.28))
-                .foregroundStyle(.white)
 
                 Button { showQR = true } label: {
                     Label("Kontakt QR", systemImage: "qrcode")
@@ -324,11 +321,10 @@ struct CarDetailView: View {
     private func leftInfoColumn(availableHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
-                if !car.city.isEmpty {
-                    Label(car.city, systemImage: "mappin.and.ellipse")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.7))
-                }
+                EOSCountryLocationLabel(
+                locationLine: car.city,
+                country: car.resolvedCountry
+            )
                 EOSAdaptiveTitle(text: car.displayHeadline, maxLines: 2, maxSize: 36, minSize: 24)
                     .foregroundStyle(.white)
                 Text(car.displayPrice)
@@ -604,32 +600,6 @@ struct CarDetailView: View {
     }
 }
 
-
-// MARK: - Focus card
-
-struct EOSDetailCardButtonStyle: ButtonStyle {
-    @Environment(\.isFocused) private var isFocused
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(isFocused ? 1.02 : 1.0)
-            .shadow(color: .black.opacity(isFocused ? 0.35 : 0.1), radius: isFocused ? 14 : 4, y: isFocused ? 8 : 2)
-            .animation(.easeOut(duration: 0.18), value: isFocused)
-    }
-}
-
-// MARK: - Gallery thumb focus
-
-struct EOSGalleryThumbButtonStyle: ButtonStyle {
-    @Environment(\.isFocused) private var isFocused
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(isFocused ? 1.12 : (configuration.isPressed ? 0.98 : 1.0))
-            .shadow(color: .black.opacity(isFocused ? 0.5 : 0.2), radius: isFocused ? 22 : 8, y: isFocused ? 14 : 4)
-            .animation(.easeOut(duration: 0.18), value: isFocused)
-    }
-}
 
 
 /// Gentle vertical drift for long preview text (e-book feel).

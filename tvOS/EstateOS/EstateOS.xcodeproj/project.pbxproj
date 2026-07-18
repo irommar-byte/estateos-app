@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1B2C3D4E5F60718293A4B5C /* LocalityCountry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A91C2E4D5F6A7B8C9D0E1F /* LocalityCountry.swift */; };
 		028BFE5643C64BEAABBE9260 /* EOSTvStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB18F7C7A164CBAB42F11BE /* EOSTvStyle.swift */; };
 		0566C38E13174BC5A2F1EC91 /* ContactQrSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7ABB97FB17944EAA0F49470 /* ContactQrSheet.swift */; };
 		1532BF56224D43CF91CCA44E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37CC71F43E324D02BAE91401 /* HomeView.swift */; };
@@ -63,6 +64,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B7A91C2E4D5F6A7B8C9D0E1F /* LocalityCountry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalityCountry.swift; sourceTree = "<group>"; };
 		07D9A63D3156452491ECDC51 /* TvPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TvPreferences.swift; sourceTree = "<group>"; };
 		083EA9ABD84D4CF7B478349E /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		14633F28558A4673AD5B6CBF /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 				FC1C46958EF34DC09B6050AA /* CarPresentation.swift */,
 				083EA9ABD84D4CF7B478349E /* Models.swift */,
 				835F3B340DEE4DD4A66D4D59 /* OfferPresentation.swift */,
+				B7A91C2E4D5F6A7B8C9D0E1F /* LocalityCountry.swift */,
 				B3343CFA254C45E2BCF86D4F /* SessionStore.swift */,
 				C64F7C9C8259470AB7B1E60C /* TvDeepLink.swift */,
 				07D9A63D3156452491ECDC51 /* TvPreferences.swift */,
@@ -347,6 +350,7 @@
 				4154080611064668B346B553 /* CarPresentation.swift in Sources */,
 				F08ABCD4AC6F4655BC97178F /* Models.swift in Sources */,
 				F5178361EB1F4898BC092997 /* OfferPresentation.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5C /* LocalityCountry.swift in Sources */,
 				CC6DE026B53D422799BB9607 /* SessionStore.swift in Sources */,
 				7DE266580D714E48A3793ECD /* TvDeepLink.swift in Sources */,
 				DD968EE818C74FC48F656C44 /* TvPreferences.swift in Sources */,

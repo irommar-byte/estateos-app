@@ -36,3 +36,14 @@ extension CarListing {
     var sortDate: Date { OfferPresentation.parseCreatedAt(createdAt) }
     var isWithinLast24Hours: Bool { OfferPresentation.isWithinLast24Hours(sortDate) }
 }
+
+
+extension CarListing {
+    var resolvedCountry: ResolvedLocalityCountry {
+        LocalityCountry.resolve(
+            city: city.isEmpty ? nil : city,
+            localityCountry: localityCountry,
+            localityCountryCode: localityCountryCode
+        )
+    }
+}

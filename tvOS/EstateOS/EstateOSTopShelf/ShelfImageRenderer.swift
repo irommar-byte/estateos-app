@@ -529,15 +529,28 @@ enum TopShelfSharedPreferences {
   private static let styleKey = "topShelfPresentationStyle"
 
   private static var store: UserDefaults {
-    // App Group may be unavailable in Simulator / unsigned extension — never block Top Shelf.
     if let suite = UserDefaults(suiteName: suiteName) { return suite }
     return .standard
   }
 
+  static var presentationRawValue: String {
+    if let raw = store.string(forKey: styleKey), !raw.isEmpty {
+      return raw
+    }
+    if let url = FileManager.default
+      .containerURL(forSecurityApplicationGroupIdentifier: suiteName)?
+      .appendingPathComponent("topShelfPresentationStyle.txt"),
+       let data = try? Data(contentsOf: url),
+       let raw = String(data: data, encoding: .utf8)?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+       !raw.isEmpty {
+      return raw
+    }
+    return "carousel"
+  }
+
   static var isSectioned: Bool {
-    // Always default to full-bleed carousel (Apple TV+ style).
-    let raw = store.string(forKey: styleKey) ?? "carousel"
-    return raw == "sectioned"
+    presentationRawValue == "sectioned"
   }
 }
 

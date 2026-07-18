@@ -1,40 +1,146 @@
 import SwiftUI
 
+
+struct CarsCatalogView: View {
+    let cars: [CarListing]
+    let layout: ShowroomLayoutMode
+    let sectionTitle: String
+    let onSelect: (CarListing) -> Void
+    @EnvironmentObject private var app: AppModel
+
+    private var items: [CarListing] { Array(cars.prefix(80)) }
+
+    var body: some View {
+        switch layout {
+        case .rails:
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 22) {
+                    ForEach(items) { car in
+                        carButton(car, width: 360, imageHeight: 180, focusScale: 1.0)
+                    }
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 2)
+            }
+            .focusSection()
+        case .tiles:
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 32)], spacing: 32) {
+                ForEach(items) { car in
+                    carButton(car, width: nil, imageHeight: 140, focusScale: 1.07)
+                        .padding(18)
+                }
+            }
+            .padding(.vertical, 10)
+            .focusSection()
+        case .list:
+            LazyVStack(spacing: 22) {
+                ForEach(items) { car in
+                    Button {
+                        app.noteShowroomSection(sectionTitle)
+                        onSelect(car)
+                    } label: {
+                        CarListRowView(car: car, distanceLabel: app.distanceLabel(forCity: car.city))
+                            .eosListRowFocus(accent: .cyan)
+                            .background(CarFocusSectionProbe(title: sectionTitle))
+                    }
+                    .buttonStyle(EOSPosterButtonStyle(focusScale: 1.05))
+                    .focusEffectDisabled()
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 8)
+                }
+            }
+            .padding(.vertical, 8)
+            .focusSection()
+        }
+    }
+
+    private func carButton(_ car: CarListing, width: CGFloat?, imageHeight: CGFloat, focusScale: CGFloat) -> some View {
+        Button {
+            app.noteShowroomSection(sectionTitle)
+            onSelect(car)
+        } label: {
+            CarCardView(car: car, isFavorite: app.isFavoriteCar(car.id), distanceLabel: app.distanceLabel(forCity: car.city), imageHeight: imageHeight, compact: true)
+                .frame(width: width)
+                .background(CarFocusSectionProbe(title: sectionTitle))
+        }
+        .buttonStyle(EOSPosterButtonStyle(focusScale: focusScale))
+        .focusEffectDisabled()
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+private struct CarFocusSectionProbe: View {
+    let title: String
+    @EnvironmentObject private var app: AppModel
+    @Environment(\.isFocused) private var isFocused
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: isFocused) { _, focused in
+                if focused { app.noteShowroomSection(title) }
+            }
+    }
+}
+
+struct CarListRowView: View {
+    let car: CarListing
+    var distanceLabel: String? = nil
+
+    var body: some View {
+        HStack(spacing: 16) {
+            EOSOfferThumbnail(url: EOSOfferMedia.imageURL(from: car.imageUrl), height: 96)
+                .frame(width: 160)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(car.displayHeadline)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                Text(car.displayPrice)
+                    .font(.title3.bold())
+                    .foregroundStyle(.cyan)
+                HStack {
+                    EOSListingStatsRow(views: car.viewsCount, favorites: car.favoritesCount, accent: .cyan)
+                    Spacer()
+                    if let distanceLabel {
+                        Text(distanceLabel).font(.caption.weight(.semibold)).foregroundStyle(.cyan)
+                    } else if !car.city.isEmpty {
+                        Text(car.city).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Text(car.displaySpecs)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(white: 0.09).opacity(0.96)))
+    }
+}
+
 struct CarsRailView: View {
     let cars: [CarListing]
     let onSelect: (CarListing) -> Void
     @EnvironmentObject private var app: AppModel
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 28) {
-                ForEach(cars.prefix(80)) { car in
-                    Button {
-                        onSelect(car)
-                    } label: {
-                        CarCardView(car: car, distanceLabel: app.distanceLabel(forCity: car.city))
-                            .frame(width: 460)
-                    }
-                    .buttonStyle(EOSPosterButtonStyle())
-                    .focusEffectDisabled()
-                    .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                }
-            }
-            .padding(.vertical, 14)
-            .padding(.horizontal, 2)
-        }
-        .focusSection()
+        CarsCatalogView(cars: cars, layout: .rails, sectionTitle: "Samochody", onSelect: onSelect)
     }
 }
 
 struct CarCardView: View {
     let car: CarListing
+    var isFavorite: Bool = false
     var distanceLabel: String? = nil
-    @Environment(\.isFocused) private var isFocused
+    var imageHeight: CGFloat = 180
+    var compact: Bool = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            EOSOfferThumbnail(url: EOSOfferMedia.imageURL(from: car.imageUrl), height: 240)
+        VStack(alignment: .leading, spacing: compact ? 10 : 14) {
+            EOSOfferThumbnail(url: EOSOfferMedia.imageURL(from: car.imageUrl), height: imageHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(alignment: .topLeading) {
                     if car.featured {
@@ -44,6 +150,16 @@ struct CarCardView: View {
                             .padding(.vertical, 5)
                             .background(Capsule().fill(Color.cyan.opacity(0.92)))
                             .foregroundStyle(.black)
+                            .padding(10)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if isFavorite {
+                        Image(systemName: "heart.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.pink)
+                            .padding(10)
+                            .background(Circle().fill(.black.opacity(0.45)))
                             .padding(10)
                     }
                 }
@@ -70,16 +186,16 @@ struct CarCardView: View {
                 }
 
             Text(car.displayHeadline)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: compact ? 18 : 22, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(2)
                 .minimumScaleFactor(0.72)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
+                .frame(maxWidth: .infinity, minHeight: compact ? 44 : 60, alignment: .topLeading)
 
             Text(car.displayPrice)
-                .font(.title2.bold())
+                .font(compact ? .title3.bold() : .title2.bold())
                 .foregroundStyle(Color.cyan)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -105,38 +221,49 @@ struct BrandSwitcher: View {
     var onChange: (CatalogBrand) -> Void = { _ in }
 
     var body: some View {
-        HStack(spacing: 14) {
-            ForEach(CatalogBrand.allCases) { item in
-                Button {
-                    guard brand != item else { return }
-                    brand = item
-                    onChange(item)
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: item.accent)
-                            .font(.title2.weight(.semibold))
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.shortTitle)
-                                .font(.headline.weight(.bold))
-                            Text(item == .home ? "Mieszkania · domy · działki" : "Marki · paliwo · skrzynia")
-                                .font(.caption2.weight(.medium))
-                                .opacity(0.72)
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 12) {
+                ForEach(CatalogBrand.allCases) { item in
+                    Button {
+                        guard brand != item else { return }
+                        brand = item
+                        onChange(item)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: item.accent)
+                                .font(.title3.weight(.semibold))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.shortTitle)
+                                    .font(.subheadline.weight(.bold))
+                                Text(item == .home ? "Mieszkania · domy · działki" : "Marki · paliwo · skrzynia")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .opacity(0.7)
+                            }
                         }
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .frame(minWidth: 220, alignment: .leading)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 14)
-                    .frame(minWidth: 260, alignment: .leading)
+                    .buttonStyle(EOSBrandButtonStyle(
+                        selected: brand == item,
+                        accent: item == .home ? .green : .cyan
+                    ))
+                    .focusEffectDisabled()
                 }
-                .buttonStyle(EOSBrandButtonStyle(
-                    selected: brand == item,
-                    accent: item == .home ? .green : .cyan
-                ))
-                .focusEffectDisabled()
             }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(.ultraThinMaterial.opacity(0.28))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
+            Spacer(minLength: 0)
         }
-        .padding(12)
-        .eosGlass(cornerRadius: 24, opacity: 0.3)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .focusSection()
     }
 }

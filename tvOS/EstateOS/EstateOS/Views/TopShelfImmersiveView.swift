@@ -163,22 +163,11 @@ private struct ImmersiveOfferBackdrop: View {
     var body: some View {
         GeometryReader { proxy in
             Group {
-                if let url = EOSOfferMedia.primaryImageURL(for: offer) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: proxy.size.width, height: proxy.size.height)
-                                .clipped()
-                        default:
-                            placeholder
-                        }
-                    }
-                } else {
+                EOSCachedRemoteImage(url: EOSOfferMedia.primaryImageURL(for: offer), contentMode: .fill) {
                     placeholder
                 }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
             }
         }
     }
@@ -221,21 +210,9 @@ private struct ImmersiveAdaptiveTitle: View {
 private struct ImmersiveMetaRow: View {
     let offer: EstateOffer
 
-    private var isRent: Bool {
-        (offer.transactionType ?? "").uppercased().contains("RENT")
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 14) {
-                Text(offer.transactionLabel.uppercased())
-                    .font(.system(size: 16, weight: .heavy, design: .rounded))
-                    .tracking(1.0)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .background(Capsule().fill(isRent ? Color.blue.opacity(0.55) : Color.green.opacity(0.55)))
-                    .foregroundStyle(.white)
-
                 Text(EOSFormat.pricePLN(offer.price))
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(.green)
@@ -247,19 +224,12 @@ private struct ImmersiveMetaRow: View {
                 }
             }
 
-            Text([
-                offer.transactionLabel,
-                EOSFormat.pricePLN(offer.price),
-                offer.displayLocation,
-            ].filter { !$0.isEmpty }.joined(separator: "  ·  "))
-                .font(.system(size: 22, weight: .medium, design: .rounded))
-                .foregroundStyle(.white.opacity(0.88))
-
-            if !offer.displayLocation.isEmpty {
-                Label(offer.displayLocation, systemImage: "mappin.and.ellipse")
-                    .font(.system(size: 20, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.78))
-            }
+            EOSCountryLocationLabel(
+                locationLine: offer.displayLocation,
+                country: offer.resolvedCountry,
+                font: .system(size: 20, weight: .medium, design: .rounded),
+                foreground: .white.opacity(0.78)
+            )
         }
     }
 }
