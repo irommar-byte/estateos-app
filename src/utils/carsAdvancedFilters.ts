@@ -1,9 +1,10 @@
 import type { CarListing } from '../services/carsApi';
 
-export type CarsSortKey = 'newest' | 'price_asc' | 'price_desc' | 'mileage_asc';
+export type CarsSortKey = 'newest' | 'price_asc' | 'price_desc' | 'mileage_asc' | 'year_desc';
 
 export type CarsAdvancedFilters = {
   query: string;
+  vehicleType: string;
   make: string;
   makeSlug: string;
   model: string;
@@ -26,6 +27,7 @@ export type CarsAdvancedFilters = {
 
 export const EMPTY_CARS_ADVANCED_FILTERS: CarsAdvancedFilters = {
   query: '',
+  vehicleType: '',
   make: '',
   makeSlug: '',
   model: '',
@@ -60,6 +62,7 @@ function parseDigits(value: string): number | null {
 export function carsAdvancedFiltersActive(filters: CarsAdvancedFilters): boolean {
   return (
     filters.query.trim() !== '' ||
+    filters.vehicleType.trim() !== '' ||
     filters.make.trim() !== '' ||
     filters.model.trim() !== '' ||
     filters.generation.trim() !== '' ||
@@ -91,6 +94,10 @@ export function applyCarsAdvancedFilters(
   const maxMileage = parseDigits(filters.maxMileage);
 
   const rows = cars.filter((car) => {
+    if (filters.vehicleType) {
+      const carType = normalizeLabel(String(car.vehicleType || 'car'));
+      if (carType !== normalizeLabel(filters.vehicleType)) return false;
+    }
     if (filters.make && normalizeLabel(car.make) !== normalizeLabel(filters.make)) return false;
     if (filters.model && normalizeLabel(car.model) !== normalizeLabel(filters.model)) return false;
     if (filters.generation) {
@@ -138,6 +145,8 @@ export function sortCarListings(cars: CarListing[], sort: CarsSortKey): CarListi
       return copy.sort((a, b) => b.pricePln - a.pricePln);
     case 'mileage_asc':
       return copy.sort((a, b) => a.mileageKm - b.mileageKm);
+    case 'year_desc':
+      return copy.sort((a, b) => b.year - a.year || b.pricePln - a.pricePln);
     case 'newest':
     default:
       return copy.sort(

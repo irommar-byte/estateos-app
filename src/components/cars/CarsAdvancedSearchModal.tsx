@@ -143,6 +143,7 @@ export default function CarsAdvancedSearchModal({
         { key: 'price_asc' as const, label: 'Cena ↑' },
         { key: 'price_desc' as const, label: 'Cena ↓' },
         { key: 'mileage_asc' as const, label: 'Przebieg ↑' },
+        { key: 'year_desc' as const, label: 'Rocznik ↓' },
       ] as const,
     [],
   );

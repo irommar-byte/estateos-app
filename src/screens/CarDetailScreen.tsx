@@ -20,6 +20,7 @@ import CarAuthGateModal from '../components/cars/CarAuthGateModal';
 import CarFavoriteButton from '../components/cars/CarFavoriteButton';
 import CarInquirySheet from '../components/cars/CarInquirySheet';
 import CarVehicleChecksPanel from '../components/cars/CarVehicleChecksPanel';
+import SellerCarsSection from '../components/cars/SellerCarsSection';
 import { fetchCarById, formatCarPrice, parseCarImages, type CarListing } from '../services/carsApi';
 import { deleteCarListing } from '../services/carsMutations';
 import { openDirectContactChat } from '../utils/openDirectContact';
@@ -259,6 +260,8 @@ export default function CarDetailScreen({ navigation, route }: CarDetailScreenPr
               insuranceValidUntil={car.insuranceValidUntil}
               restrictVehicleDocs={Boolean(car.restrictVehicleDocs)}
             />
+
+            {car.userId ? <SellerCarsSection userId={Number(car.userId)} excludeCarId={car.id} /> : null}
 
             <Pressable onPress={handleContact} style={styles.contactBtn}>
               <Text style={styles.contactLabel}>Wyślij profesjonalne zapytanie</Text>

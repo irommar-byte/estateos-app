@@ -5,6 +5,7 @@ export type CarListing = {
   userId?: number | null;
   title: string;
   description?: string;
+  vehicleType?: string;
   make: string;
   model: string;
   year: number;
@@ -84,6 +85,16 @@ export function withCarImage(listing: CarListing): CarListing {
 export async function fetchCarsCatalog(): Promise<CarListing[]> {
   const response = await fetch(`${API_URL}/api/cars`, { headers: { 'Cache-Control': 'no-cache' } });
   if (!response.ok) throw new Error('Nie udało się pobrać katalogu aut.');
+  const payload = await response.json();
+  const rows = Array.isArray(payload) ? payload : [];
+  return rows.map((row) => withCarImage(row as CarListing));
+}
+
+export async function fetchCarsByUserId(userId: number): Promise<CarListing[]> {
+  const response = await fetch(`${API_URL}/api/cars?userId=${userId}`, {
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  if (!response.ok) throw new Error('Nie udało się pobrać ogłoszeń sprzedającego.');
   const payload = await response.json();
   const rows = Array.isArray(payload) ? payload : [];
   return rows.map((row) => withCarImage(row as CarListing));

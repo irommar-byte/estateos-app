@@ -32,6 +32,7 @@ import {
   EMPTY_CARS_ADVANCED_FILTERS,
   type CarsAdvancedFilters,
 } from '../utils/carsAdvancedFilters';
+import { VEHICLE_TYPE_OPTIONS } from '../utils/vehicleTypes';
 
 const CAR_ACCENT = '#0EA5E9';
 
@@ -206,6 +207,35 @@ export default function CarsCatalogScreen() {
           ) : null}
 
           <View style={styles.filters}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+              <Pressable
+                onPress={() => setAdvancedFilters((prev) => ({ ...prev, vehicleType: '' }))}
+                style={[styles.chip, !advancedFilters.vehicleType && styles.chipActive]}
+              >
+                <Text style={[styles.chipLabel, !advancedFilters.vehicleType && styles.chipLabelActive]}>Typ: wszystkie</Text>
+              </Pressable>
+              {VEHICLE_TYPE_OPTIONS.map((option) => (
+                <Pressable
+                  key={option.value}
+                  onPress={() =>
+                    setAdvancedFilters((prev) => ({
+                      ...prev,
+                      vehicleType: prev.vehicleType === option.value ? '' : option.value,
+                    }))
+                  }
+                  style={[styles.chip, advancedFilters.vehicleType === option.value && styles.chipActive]}
+                >
+                  <Text
+                    style={[
+                      styles.chipLabel,
+                      advancedFilters.vehicleType === option.value && styles.chipLabelActive,
+                    ]}
+                  >
+                    {option.labelPl}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
               <Pressable
                 onPress={() =>

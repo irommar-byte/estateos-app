@@ -18,6 +18,8 @@ type CarAuthGateModalProps = {
   onClose: () => void;
   onLoginPress: () => void;
   onRegisterPress: () => void;
+  /** inquiry = wiadomość do sprzedającego; publish = publikacja ogłoszenia */
+  mode?: 'inquiry' | 'publish';
 };
 
 export default function CarAuthGateModal({
@@ -25,6 +27,7 @@ export default function CarAuthGateModal({
   onClose,
   onLoginPress,
   onRegisterPress,
+  mode = 'inquiry',
 }: CarAuthGateModalProps) {
   const { colors, isDark } = useCarScreenTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -58,9 +61,13 @@ export default function CarAuthGateModal({
             <View style={styles.iconWrap}>
               <MessageCircle color={colors.success} size={30} />
             </View>
-            <Text style={styles.title}>Zaloguj się, by napisać</Text>
+            <Text style={styles.title}>
+              {mode === 'publish' ? 'Zaloguj się, by opublikować' : 'Zaloguj się, by napisać'}
+            </Text>
             <Text style={styles.sub}>
-              Aby wysłać zapytanie o auto, utwórz konto lub zaloguj się. Twoja wiadomość trafi bezpośrednio do sprzedającego.
+              {mode === 'publish'
+                ? 'Formularz jest gotowy. Załóż konto lub zaloguj się — ogłoszenie opublikujemy zaraz po wejściu.'
+                : 'Aby wysłać zapytanie o auto, utwórz konto lub zaloguj się. Twoja wiadomość trafi bezpośrednio do sprzedającego.'}
             </Text>
             <TouchableOpacity
               activeOpacity={0.9}

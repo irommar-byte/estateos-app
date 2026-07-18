@@ -27,6 +27,8 @@ type CarRegistrationScanPromptProps = {
   token: string | null;
   onSkip: () => void;
   onPrefill: (prefill: CarRegistrationPrefill, missingFields: string[]) => void;
+  /** When set, immediately start this capture path when the modal opens. */
+  initialMode?: 'live' | 'upload' | 'capture';
 };
 
 const hasNativeCameraModule = Boolean(requireOptionalNativeModule('ExpoCamera'));
@@ -36,6 +38,7 @@ export default function CarRegistrationScanPrompt({
   token,
   onSkip,
   onPrefill,
+  initialMode,
 }: CarRegistrationScanPromptProps) {
   const { colors, elevation } = useCarScreenTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -141,6 +144,22 @@ export default function CarRegistrationScanPrompt({
     setCameraScanner(null);
     setCameraOpen(true);
   };
+
+  useEffect(() => {
+    if (!visible || !initialMode) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      if (initialMode === 'live') openLiveScanner();
+      else if (initialMode === 'capture') void pickImage('camera');
+      else if (initialMode === 'upload') void pickImage('library');
+    }, 80);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- launch preferred path once per open
+  }, [visible, initialMode]);
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onSkip}>

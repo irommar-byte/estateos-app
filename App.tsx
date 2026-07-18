@@ -260,11 +260,7 @@ const FloatingNextButton = (props: any) => {
     if (!isFocused) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (activeVertical === 'car') {
-        if (!isLoggedIn) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          navigation.navigate('Profil');
-          return;
-        }
+        // Guest can open the form; login/register only at publish.
         navigation.navigate('AddCarListing', { mode: 'create' });
         return;
       }

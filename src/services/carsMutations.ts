@@ -4,6 +4,7 @@ import { withCarImage, type CarListing } from './carsApi';
 export type CarFormPayload = {
   title: string;
   description?: string;
+  vehicleType?: string;
   make: string;
   model: string;
   year: number;

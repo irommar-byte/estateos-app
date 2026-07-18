@@ -16,8 +16,10 @@ import {
   fetchVehicleHistoryReport,
   type VehicleHistoryReport,
 } from '../../services/carVehicleChecks';
+import { fillCarFormFromDocs } from '../../services/carsDocsPrefill';
 import { useAuthStore } from '../../store/useAuthStore';
 import { formatPolishDateInput, isCompletePolishDate } from '../../utils/polishDateInput';
+import type { CarListingMissingFieldKey, CarRegistrationPrefill } from '../../utils/carRegistrationPrefill';
 import { useCarScreenTheme, type CarScreenColors } from '../../theme/carScreenTheme';
 
 export type CarVehicleDocsState = {
@@ -31,6 +33,10 @@ export type CarVehicleDocsState = {
 type CarVehicleDocsSectionProps = {
   value: CarVehicleDocsState;
   onChange: (patch: Partial<CarVehicleDocsState>) => void;
+  onPrefillFromDocs?: (
+    prefill: CarRegistrationPrefill & { insuranceValidUntil?: string; vehicleType?: string },
+    missingFields: CarListingMissingFieldKey[],
+  ) => void;
 };
 
 function isValidVinQuick(vin: string) {
@@ -38,12 +44,17 @@ function isValidVinQuick(vin: string) {
   return normalized.length === 17 && !/[IOQ]/.test(normalized);
 }
 
-export default function CarVehicleDocsSection({ value, onChange }: CarVehicleDocsSectionProps) {
+export default function CarVehicleDocsSection({
+  value,
+  onChange,
+  onPrefillFromDocs,
+}: CarVehicleDocsSectionProps) {
   const { colors, elevation } = useCarScreenTheme();
   const token = useAuthStore((s) => s.token);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [insuranceLoading, setInsuranceLoading] = useState(false);
+  const [fillFromDocsLoading, setFillFromDocsLoading] = useState(false);
   const [autoChecking, setAutoChecking] = useState(false);
   const [historyReport, setHistoryReport] = useState<VehicleHistoryReport | null>(null);
   const [insuranceMessage, setInsuranceMessage] = useState<string | null>(null);
@@ -142,6 +153,34 @@ export default function CarVehicleDocsSection({ value, onChange }: CarVehicleDoc
     }
   };
 
+  const handleFillFromDocs = async () => {
+    if (!canCheckHistory) {
+      Alert.alert('Dokumenty', 'Podaj VIN, numer rejestracyjny i datę pierwszej rejestracji.');
+      return;
+    }
+    if (!token) {
+      Alert.alert(
+        'Zaloguj się',
+        'Uzupełnienie formularza z CEPIK wymaga konta. Możesz najpierw wypełnić ogłoszenie ręcznie i zalogować się przed publikacją.',
+      );
+      return;
+    }
+    if (!onPrefillFromDocs) return;
+    setFillFromDocsLoading(true);
+    try {
+      const result = await fillCarFormFromDocs(token, {
+        vin: value.vin,
+        registrationNumber: value.registrationNumber,
+        firstRegistrationDate: value.firstRegistrationDate,
+      });
+      onPrefillFromDocs(result.prefill, result.missingFields);
+    } catch (error) {
+      Alert.alert('CEPIK', error instanceof Error ? error.message : 'Nie udało się uzupełnić formularza.');
+    } finally {
+      setFillFromDocsLoading(false);
+    }
+  };
+
   return (
     <View style={[styles.root, elevation.cardSm]}>
       <Text style={styles.heading}>Dokumenty pojazdu</Text>
@@ -166,6 +205,23 @@ export default function CarVehicleDocsSection({ value, onChange }: CarVehicleDoc
         styles={styles}
         colors={colors}
       />
+
+      {onPrefillFromDocs ? (
+        <Pressable
+          onPress={() => void handleFillFromDocs()}
+          disabled={fillFromDocsLoading || !canCheckHistory}
+          style={styles.actionBtnSecondary}
+        >
+          {fillFromDocsLoading ? (
+            <ActivityIndicator color={colors.successButtonText} />
+          ) : (
+            <>
+              <FileSearch color={colors.successButtonText} size={18} />
+              <Text style={styles.actionLabelSecondary}>Uzupełnij formularz z VIN (CEPIK)</Text>
+            </>
+          )}
+        </Pressable>
+      ) : null}
 
       <Pressable
         onPress={() => onChange({ restrictVehicleDocs: !value.restrictVehicleDocs })}
