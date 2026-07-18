@@ -4374,7 +4374,7 @@ function ProfileScreenLoggedIn({
           publicationCredits={hasPlusPublicationAvailable ? plusSlots : 0}
           couponCount={bonusCouponCards.length}
           hasInvestorProActive={hasInvestorProActive}
-          defaultHubExpanded={false}
+          defaultHubExpanded={true}
           shopExpandRequestId={shopExpandRequestId}
           bonusCoupons={{
             cards: bonusCouponCards,
@@ -4418,12 +4418,30 @@ function ProfileScreenLoggedIn({
             buying: isBuyingInvestorPro,
             isActive: hasInvestorProActive,
             footer: (
-              <Text style={[styles.sectionFooter, styles.shopPanelFooter]}>
-                {t('profile.shop.investorProFooter')}
-                {!hasInvestorProActive && investorProListing && !investorProListing.hasFreeTrial
-                  ? `\n\n${t('profile.shop.investorProTrialAscHint')}`
-                  : ''}
-              </Text>
+              <View>
+                <Text style={[styles.sectionFooter, styles.shopPanelFooter]}>
+                  {t('profile.shop.investorProFooter')}
+                  {!hasInvestorProActive && investorProListing && !investorProListing.hasFreeTrial
+                    ? `\n\n${t('profile.shop.investorProTrialAscHint')}`
+                    : ''}
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
+                  <Pressable onPress={() => navigation.navigate('Terms' as never)}>
+                    <Text style={{ color: '#0A84FF', fontSize: 13, fontWeight: '600' }}>
+                      {t('profile.help.terms')}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() =>
+                      navigation.navigate('Terms' as never, { initialScrollTo: 'privacy' } as never)
+                    }
+                  >
+                    <Text style={{ color: '#0A84FF', fontSize: 13, fontWeight: '600' }}>
+                      {t('profile.help.privacy')}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
             ),
             onBuy: handleBuyInvestorPro,
           }}

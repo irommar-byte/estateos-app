@@ -26,7 +26,7 @@ export const offer = {
   investorPro: {
     alertTitle: 'Investor Pro',
     alertBody:
-      'Investor Pro is an account status available outside the app. We do not sell Pro in the app; this listing will unlock automatically after the waiting period.',
+      'Investor Pro is a monthly auto-renewable subscription in the app (Profile → Purchases & Shop). It unlocks off-market early access and Pro tools. You can also wait until the listing becomes public.',
     paidFeaturesTitle: 'Paid packages on your account',
     deleteAccountPlusNote:
       'Plus Package — one-time App Store purchase: one extra 30-day publication for a listing you choose (not a subscription).',

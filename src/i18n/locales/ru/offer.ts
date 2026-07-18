@@ -26,7 +26,7 @@ export const offer = {
   investorPro: {
     alertTitle: 'Инвестор Про',
     alertBody:
-      'Investor Pro is an account status available outside the app. We do not sell Pro in the app; this listing will unlock automatically after the waiting period.',
+      'Investor Pro — ежемесячная автопродлеваемая подписка в приложении (Профиль → Покупки и магазин). Открывает off-market и Pro-инструменты. Можно также дождаться конца периода ожидания.',
     paidFeaturesTitle: 'Платные пакеты в аккаунте',
     deleteAccountPlusNote:
       'Pakiet Plus — разовая покупка в App Store: одна дополнительная публикация выбранного объявления на 30 дней (не подписка).',

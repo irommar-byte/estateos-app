@@ -145,7 +145,14 @@ export default function TermsScreen() {
           konta. Zakup jest jednorazowy (consumable) i odbywa się wyłącznie przez systemy płatnicze
           platform: Apple App Store na iOS i Google Play na Androidzie. Apple i Google dostarczają
           osobne potwierdzenia płatności na adres e-mail powiązany z kontem.
-          Investor Pro jest statusem konta dostępnym poza aplikacją i nie jest kupowany w aplikacji.
+          {'\n\n'}
+          Investor Pro to miesięczna subskrypcja z automatycznym odnawianiem (auto-renewable),
+          dostępna do zakupu w aplikacji (Profil → Zakupy i sklep). Odblokowuje import z portali,
+          oferty off-market oraz narzędzia Pro. Po okresie próbnym (jeśli jest skonfigurowany
+          w sklepie) płatność jest pobierana przez Apple App Store / Google Play według ceny
+          widocznej przy zakupie. Subskrypcję możesz anulować lub zarządzać nią w ustawieniach
+          konta sklepu (iOS: Ustawienia → Apple ID → Subskrypcje). Investor Pro nie jest tym
+          samym produktem co Pakiet Plus.
         </Text>
 
         <Text style={[styles.sectionTitle, { color: textColor }]}>5. Prowizja agentów</Text>
