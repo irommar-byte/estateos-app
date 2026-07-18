@@ -94,7 +94,7 @@ struct ImmersiveCarBrowseView: View {
             .id("car-meta-\(current.id)")
 
             HStack(spacing: 18) {
-                Button("Szczegóły auta") {
+                Button("POKAŻ") {
                     app.openCarDetail(current)
                 }
                 .buttonStyle(.borderedProminent)

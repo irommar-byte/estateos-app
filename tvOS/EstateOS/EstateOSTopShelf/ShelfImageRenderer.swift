@@ -529,10 +529,13 @@ enum TopShelfSharedPreferences {
   private static let styleKey = "topShelfPresentationStyle"
 
   private static var store: UserDefaults {
-    UserDefaults(suiteName: suiteName) ?? .standard
+    // App Group may be unavailable in Simulator / unsigned extension — never block Top Shelf.
+    if let suite = UserDefaults(suiteName: suiteName) { return suite }
+    return .standard
   }
 
   static var isSectioned: Bool {
+    // Always default to full-bleed carousel (Apple TV+ style).
     let raw = store.string(forKey: styleKey) ?? "carousel"
     return raw == "sectioned"
   }

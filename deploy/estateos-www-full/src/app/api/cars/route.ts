@@ -7,6 +7,54 @@ import { isPromotionActive } from "@/lib/listingPromotion";
 import { rehostRemoteCarImages } from "@/lib/rehostRemoteCarImages";
 import { resolveUploaderUserId } from "@/lib/upload/resolveUploader";
 
+
+async function ensureCarEngagementTable() {
+  const { prisma } = await import("@/lib/prisma");
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS CarEngagement (
+      carId INT NOT NULL,
+      viewsCount INT NOT NULL DEFAULT 0,
+      favoritesCount INT NOT NULL DEFAULT 0,
+      updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+      PRIMARY KEY (carId)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `);
+}
+
+async function loadCarEngagement(ids: number[]): Promise<Map<number, { viewsCount: number; favoritesCount: number }>> {
+  const map = new Map<number, { viewsCount: number; favoritesCount: number }>();
+  if (!ids.length) return map;
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    await ensureCarEngagementTable();
+    const rows = (await prisma.$queryRawUnsafe(
+      `SELECT carId, viewsCount, favoritesCount FROM CarEngagement WHERE carId IN (${ids.join(",")})`,
+    )) as Array<{ carId: number; viewsCount: number; favoritesCount: number }>;
+    for (const row of rows) {
+      map.set(Number(row.carId), {
+        viewsCount: Number(row.viewsCount || 0),
+        favoritesCount: Number(row.favoritesCount || 0),
+      });
+    }
+  } catch {
+    // ignore
+  }
+  return map;
+}
+
+function withEngagement<T extends { id: number }>(
+  listing: T,
+  engagement: Map<number, { viewsCount: number; favoritesCount: number }>,
+) {
+  const stats = engagement.get(Number(listing.id)) || { viewsCount: 0, favoritesCount: 0 };
+  return {
+    ...listing,
+    viewsCount: stats.viewsCount,
+    favoritesCount: stats.favoritesCount,
+    views: stats.viewsCount,
+  };
+}
+
 function withFeaturedFlag<T extends { promotedUntil?: string | null }>(listing: T) {
   return {
     ...listing,
@@ -81,19 +129,29 @@ export async function GET(req: Request) {
   if (scope === "mine") {
     if (!viewerUserId) return NextResponse.json([], { status: 200 });
     const mine = await listCarsByUser(viewerUserId, 100);
-    return NextResponse.json(mine.map((listing) => withFeaturedFlag(listing)), { status: 200 });
+    const engagement = await loadCarEngagement(mine.map((c) => c.id));
+    return NextResponse.json(
+      mine.map((listing) => withEngagement(withFeaturedFlag(listing), engagement)),
+      { status: 200 },
+    );
   }
   const sellerId = Number(searchParams.get("userId") || "");
   if (Number.isFinite(sellerId) && sellerId > 0) {
     const sellerCars = await listCarsByUser(sellerId, 50);
+    const engagement = await loadCarEngagement(sellerCars.map((c) => c.id));
     return NextResponse.json(
-      sellerCars.map((listing) => withFeaturedFlag(sanitizeCarListingForViewer(listing))),
+      sellerCars.map((listing) =>
+        withEngagement(withFeaturedFlag(sanitizeCarListingForViewer(listing)), engagement),
+      ),
       { status: 200 },
     );
   }
   const all = await listCars(100);
+  const engagement = await loadCarEngagement(all.map((c) => c.id));
   return NextResponse.json(
-    all.map((listing) => withFeaturedFlag(sanitizeCarListingForViewer(listing))),
+    all.map((listing) =>
+      withEngagement(withFeaturedFlag(sanitizeCarListingForViewer(listing)), engagement),
+    ),
     { status: 200 },
   );
 }

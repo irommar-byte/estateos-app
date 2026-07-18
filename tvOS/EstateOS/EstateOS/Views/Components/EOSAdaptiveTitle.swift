@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Title that scales down to fit without breaking words mid-token.
+/// Title that scales down to fit width without clipping glyphs vertically.
 struct EOSAdaptiveTitle: View {
     let text: String
     var maxLines: Int = 2
@@ -9,20 +9,18 @@ struct EOSAdaptiveTitle: View {
     var maxSize: CGFloat = 28
     var minSize: CGFloat = 16
 
-    private var sizes: [CGFloat] {
-        stride(from: maxSize, through: minSize, by: -1).map { $0 }
+    private var reservedHeight: CGFloat {
+        ceil(maxSize * 1.35) * CGFloat(max(1, maxLines))
     }
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            ForEach(sizes, id: \.self) { size in
-                Text(text)
-                    .font(.system(size: size, weight: weight, design: design))
-                    .lineLimit(maxLines)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        Text(text)
+            .font(.system(size: maxSize, weight: weight, design: design))
+            .lineLimit(maxLines)
+            .minimumScaleFactor(min(1, minSize / max(maxSize, 1)))
+            .multilineTextAlignment(.leading)
+            .truncationMode(.tail)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: reservedHeight, alignment: .topLeading)
     }
 }

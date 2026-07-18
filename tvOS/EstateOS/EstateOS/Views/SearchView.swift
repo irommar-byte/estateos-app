@@ -32,8 +32,66 @@ struct SearchView: View {
             .focused($queryFocused)
 
             if app.catalogBrand == .home {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(HomeFilterChip.allCases) { chip in
+                            Button(chip.title) { app.selectHomeFilter(chip) }
+                                .buttonStyle(EOSChipButtonStyle(selected: app.homeFilterChip == chip, accent: .green))
+                                .focusEffectDisabled()
+                        }
+                    }
+                }
+                .focusSection()
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        Button("Wszystkie typy") { app.clearHomePropertyTypes() }
+                            .buttonStyle(EOSChipButtonStyle(selected: app.selectedHomePropertyTypes.isEmpty, accent: .green))
+                            .focusEffectDisabled()
+                        ForEach(app.homePropertyTypeCounts, id: \.kind) { item in
+                            Button("\(item.kind.title) (\(item.count))") {
+                                app.toggleHomePropertyType(item.kind)
+                            }
+                            .buttonStyle(EOSChipButtonStyle(
+                                selected: app.selectedHomePropertyTypes.contains(item.kind),
+                                accent: .green
+                            ))
+                            .focusEffectDisabled()
+                        }
+                    }
+                }
+                .focusSection()
                 homeResults
             } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(CarFilterChip.allCases) { chip in
+                            Button(chip.title) { app.selectCarFilter(chip) }
+                                .buttonStyle(EOSChipButtonStyle(selected: app.carFilterChip == chip, accent: .cyan))
+                                .focusEffectDisabled()
+                        }
+                    }
+                }
+                .focusSection()
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        Button("Wszystkie marki") { app.clearCarMakes() }
+                            .buttonStyle(EOSChipButtonStyle(selected: app.selectedCarMakes.isEmpty, accent: .cyan))
+                            .focusEffectDisabled()
+                        ForEach(Array(app.popularCarMakes.prefix(12)), id: \.name) { item in
+                            Button("\(item.name) (\(item.count))") {
+                                app.toggleCarMake(item.name)
+                            }
+                            .buttonStyle(EOSChipButtonStyle(
+                                selected: app.selectedCarMakes.contains(where: {
+                                    $0.caseInsensitiveCompare(item.name) == .orderedSame
+                                }),
+                                accent: .cyan
+                            ))
+                            .focusEffectDisabled()
+                        }
+                    }
+                }
+                .focusSection()
                 carResults
             }
         }
@@ -73,9 +131,16 @@ struct SearchView: View {
                                     .lineLimit(2)
                                     .multilineTextAlignment(.leading)
                                     .foregroundStyle(.white)
-                                Text(offer.displayLocation)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                HStack(spacing: 8) {
+                                    Text(offer.displayLocation)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    if let d = app.distanceLabel(forCity: offer.city) {
+                                        Text(d)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.green)
+                                    }
+                                }
                                 Text(offer.transactionLabel)
                                     .font(.caption2.weight(.bold))
                                     .foregroundStyle(.green.opacity(0.9))
@@ -88,8 +153,8 @@ struct SearchView: View {
                         .padding(16)
                         .eosGlass(cornerRadius: 18, opacity: 0.32)
                     }
-                    .buttonStyle(.plain)
-                    .eosFocusParallax(lift: 10, scale: 1.03)
+                    .buttonStyle(EOSPosterButtonStyle())
+                    .focusEffectDisabled()
                 }
             }
         }
@@ -122,10 +187,17 @@ struct SearchView: View {
                                     .lineLimit(2)
                                     .multilineTextAlignment(.leading)
                                     .foregroundStyle(.white)
-                                Text(car.displaySpecs)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
+                                HStack(spacing: 8) {
+                                    Text(car.city.isEmpty ? car.displaySpecs : "\(car.city) · \(car.displaySpecs)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                    if let d = app.distanceLabel(forCity: car.city) {
+                                        Text(d)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.cyan)
+                                    }
+                                }
                             }
                             Spacer(minLength: 16)
                             Text(car.displayPrice)
@@ -135,8 +207,8 @@ struct SearchView: View {
                         .padding(16)
                         .eosGlass(cornerRadius: 18, opacity: 0.32)
                     }
-                    .buttonStyle(.plain)
-                    .eosFocusParallax(lift: 10, scale: 1.03)
+                    .buttonStyle(EOSPosterButtonStyle())
+                    .focusEffectDisabled()
                 }
             }
         }

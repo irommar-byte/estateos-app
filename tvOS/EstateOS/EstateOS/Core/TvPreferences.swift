@@ -9,7 +9,7 @@ enum TopShelfPresentationStyle: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .carousel: return "Pełny ekran (Apple TV+)"
-        case .sectioned: return "Karty w rzędzie"
+        case .sectioned: return "Kafelki (w rzędzie)"
         }
     }
 

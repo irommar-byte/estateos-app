@@ -21,7 +21,7 @@ python3 generate_xcode_project.py
 open EstateOS.xcodeproj
 ```
 
-Target: Apple TV · Bundle ID `pl.estateos.app.tvos` · Deployment tvOS 17+
+Target: Apple TV · Bundle ID `pl.estateos.app (shared with iOS · Universal Purchase)` · Deployment tvOS 17+
 
 ## Deep linki
 

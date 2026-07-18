@@ -62,12 +62,14 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
     let imageUrl: String?
     let imageCandidates: [String]
     let createdAt: String?
+    let viewsCount: Int
+    let favoritesCount: Int
 
     enum CodingKeys: String, CodingKey {
         case id, title, description, city, district, price, area, rooms
         case transactionType, propertyType, createdAt
         case imageUrl, mainImage, thumbnail, image
-        case images
+        case images, views, viewsCount, favoritesCount
     }
 
     init(from decoder: Decoder) throws {
@@ -83,6 +85,10 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
         transactionType = try c.decodeIfPresent(String.self, forKey: .transactionType)
         propertyType = try c.decodeIfPresent(String.self, forKey: .propertyType)
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        viewsCount = (try? c.decodeIfPresent(Int.self, forKey: .viewsCount))
+            ?? (try? c.decodeIfPresent(Int.self, forKey: .views))
+            ?? 0
+        favoritesCount = (try? c.decodeIfPresent(Int.self, forKey: .favoritesCount)) ?? 0
         let directImages = EstateOffer.decodeFlexibleStringArray(from: c, key: .images)
         let primaryImage: String?
         if let v = try c.decodeIfPresent(String.self, forKey: .imageUrl), !v.isEmpty {
@@ -115,7 +121,9 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
         propertyType: String?,
         imageUrl: String?,
         imageCandidates: [String] = [],
-        createdAt: String?
+        createdAt: String?,
+        viewsCount: Int = 0,
+        favoritesCount: Int = 0
     ) {
         self.id = id
         self.title = title
@@ -130,6 +138,8 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
         self.imageUrl = imageUrl
         self.imageCandidates = imageCandidates
         self.createdAt = createdAt
+        self.viewsCount = viewsCount
+        self.favoritesCount = favoritesCount
     }
 
     private static func decodeFlexibleDouble(
@@ -180,6 +190,14 @@ extension EstateOfferListEnvelope {
     }
 }
 
+struct EstateOfferDetailEnvelope: Decodable {
+    let offer: EstateOffer?
+    let data: EstateOffer?
+    let success: Bool?
+
+    var resolvedOffer: EstateOffer? { offer ?? data }
+}
+
 
 // MARK: - Cars (EstateOS™Car)
 
@@ -207,11 +225,14 @@ struct CarListing: Decodable, Identifiable, Hashable {
     let featured: Bool
     let createdAt: String?
     let vinMasked: String?
+    let viewsCount: Int
+    let favoritesCount: Int
 
     enum CodingKeys: String, CodingKey {
         case id, title, description, make, model, year, mileageKm, fuelType, transmission, bodyType
         case exteriorColor, generation, enginePower, engineCapacity, trimVersion, doorCount
         case pricePln, city, imageUrl, images, featured, createdAt, vin, vinMasked
+        case views, viewsCount, favoritesCount
     }
 
     init(from decoder: Decoder) throws {
@@ -255,6 +276,10 @@ struct CarListing: Decodable, Identifiable, Hashable {
         } else {
             vinMasked = nil
         }
+        viewsCount = (try? c.decodeIfPresent(Int.self, forKey: .viewsCount))
+            ?? (try? c.decodeIfPresent(Int.self, forKey: .views))
+            ?? 0
+        favoritesCount = (try? c.decodeIfPresent(Int.self, forKey: .favoritesCount)) ?? 0
     }
 
     private static func decodeInt(from c: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) throws -> Int? {
@@ -293,8 +318,8 @@ enum CatalogBrand: String, CaseIterable, Identifiable {
 
     var shortTitle: String {
         switch self {
-        case .home: return "Home"
-        case .car: return "Car"
+        case .home: return "Nieruchomości"
+        case .car: return "Samochody"
         }
     }
 

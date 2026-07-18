@@ -1,118 +1,548 @@
 // !$*UTF8*$!
 {
 	archiveVersion = 1;
-	classes = {};
+	classes = {
+	};
 	objectVersion = 56;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		D202AD1E6A5244A0A837AA04 /* App/AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEAC0897835149DBA37814A5 /* App/AppModel.swift */; };
-		335D7916B8B74BBEBAFF0756 /* App/EstateOSTvApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7511E1E749E94D118C4ABA8B /* App/EstateOSTvApp.swift */; };
-		CAB77A62DAA142FFB72BB0EA /* App/RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07F2093E967C4B85B887C92B /* App/RootView.swift */; };
-		DDEE2B2F7A074423968F8BA4 /* Core/AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EC50670F2C244DB9691F495 /* Core/AppConfig.swift */; };
-		3DDC8ABD811B467782A3A0F7 /* Core/CarPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D66DE6598C64C3DB5454DEE /* Core/CarPresentation.swift */; };
-		6C5AE516DFA74B5E9C069CBF /* Core/Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE069DAF15F24EB387701EB7 /* Core/Models.swift */; };
-		693A7826076A4996B68EDFD8 /* Core/OfferPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E74F778EF574483892C179AC /* Core/OfferPresentation.swift */; };
-		AB5FE4B8692D412E92BB253F /* Core/SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5CF8C81C104D5CA76D1149 /* Core/SessionStore.swift */; };
-		05C771EDEA06455D8F8C0E2B /* Core/TvDeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C1C36FD79947579013C77D /* Core/TvDeepLink.swift */; };
-		B3B428CE722F4B05BDECE699 /* Core/TvPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = C42C3B5AADD846939FEA6C60 /* Core/TvPreferences.swift */; };
-		7D8B62A43D9948B289D40D98 /* Services/EstateAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABDEAA4CB314427786E94044 /* Services/EstateAPIClient.swift */; };
-		A7388DED23E64336BDC77E99 /* Theme/EOSTvStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CEE03961C604AF3803B139F /* Theme/EOSTvStyle.swift */; };
-		C0096383B5504E2D857A75FC /* Views/CarDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD5483A650448E59158AA7E /* Views/CarDetailView.swift */; };
-		68A6080BFAA34AA498DB24D3 /* Views/CatalogComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1042F857B74B5FA708A482 /* Views/CatalogComponents.swift */; };
-		43B2D04DEE90428A9FB43A17 /* Views/Components/EOSAdaptiveTitle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A5DB5709D64BEA9598DB14 /* Views/Components/EOSAdaptiveTitle.swift */; };
-		A449E2872B9D430DB408ED99 /* Views/ContactQrSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88BFA89DA2164B5D8E680E3B /* Views/ContactQrSheet.swift */; };
-		CC72DE1E32ED4ADC8A5D1292 /* Views/HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEA17759CF77463B8722750F /* Views/HomeView.swift */; };
-		19FC38083EE446EE9D131207 /* Views/ImmersiveCarBrowseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB2AF8E7E00044EB8F15AA43 /* Views/ImmersiveCarBrowseView.swift */; };
-		E5BAD8E21066430B8A7499E4 /* Views/LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B5F2014AA4C4D7690CE998C /* Views/LoginView.swift */; };
-		5BEE3D36327F46D287F9A0F0 /* Views/OfferDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53720B51689A4E4E80048F23 /* Views/OfferDetailView.swift */; };
-		8B329077DFF547EABA752DAE /* Views/SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF8CC72EC7954D1AB59B44A2 /* Views/SearchView.swift */; };
-		09A23C7A46104BB6B8E945C4 /* Views/TopShelfImmersiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7458567A7C64BC68DE9C11E /* Views/TopShelfImmersiveView.swift */; };
-		15264ABC676447C3847B1466 /* Resources/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1954507453E944179B1B1C8B /* Resources/Assets.xcassets */; };
+		028BFE5643C64BEAABBE9260 /* EOSTvStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB18F7C7A164CBAB42F11BE /* EOSTvStyle.swift */; };
+		0566C38E13174BC5A2F1EC91 /* ContactQrSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7ABB97FB17944EAA0F49470 /* ContactQrSheet.swift */; };
+		1532BF56224D43CF91CCA44E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37CC71F43E324D02BAE91401 /* HomeView.swift */; };
+		176C0480A82542D09F734FEA /* CarDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42A141A3DBA4BB2A953DB43 /* CarDetailView.swift */; };
+		1D12462A385F4FF09BF8A3C7 /* EstateOSTopShelf.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 69B8A94768D44F3DB05D7995 /* EstateOSTopShelf.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		1D7C79859C8C47EB99E30C88 /* ImmersiveCarBrowseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45D543F8DEBD4F9FBA5438ED /* ImmersiveCarBrowseView.swift */; };
+		20963C351F3248A5839F85FB /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14633F28558A4673AD5B6CBF /* RootView.swift */; };
+		2D049411213B4DFAB10064BB /* TopShelfImmersiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48C83B433B2841069EFFDC72 /* TopShelfImmersiveView.swift */; };
+		320AC5B199984793A8CD4F9A /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 680CEE0B69A44EBC8DA76C24 /* AppModel.swift */; };
+		3F2C04FA3C814D4DAC7F8600 /* EOSAdaptiveTitle.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC21D8707080447D9812ACE6 /* EOSAdaptiveTitle.swift */; };
+		4154080611064668B346B553 /* CarPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC1C46958EF34DC09B6050AA /* CarPresentation.swift */; };
+		58DF733E324E4247A0351339 /* TVServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FD9EC73CF8764FD9A8A6DFF0 /* TVServices.framework */; };
+		61C16277FD474520BD0E6B9F /* CatalogComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70009057F3FF475B8DCA4D22 /* CatalogComponents.swift */; };
+		63D22924EF2D440B9074CE12 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D63AA69AF1484229A18A9D26 /* LoginView.swift */; };
+		78F6D354886A4FE08310976F /* TVServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FD9EC73CF8764FD9A8A6DFF0 /* TVServices.framework */; };
+		7DE266580D714E48A3793ECD /* TvDeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C64F7C9C8259470AB7B1E60C /* TvDeepLink.swift */; };
+		92B7F0402AE344C280E64768 /* EstateOSTvApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58E205A477BC4DB08E54B074 /* EstateOSTvApp.swift */; };
+		A0262DCD3C5B4699B06CF92E /* TvLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBE9513BF07849A9842830B3 /* TvLocation.swift */; };
+		B83C9FC50C2D48AA8ED50859 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D4DC801AC9514A4D89D1879B /* Assets.xcassets */; };
+		BC7A62B4A18043E683ABDDE8 /* EstateAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC889D61ADA543BEA4876DFC /* EstateAPIClient.swift */; };
+		C42B3CFC961341E0B64CFD78 /* ContentProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C6CE4D1F5BB4119A689D7E3 /* ContentProvider.swift */; };
+		B2C3D4E5F64789A0B1C2D3E4 /* ShelfImageRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F64789A0B1C2D3 /* ShelfImageRenderer.swift */; };
+		C63EF7329E1E4DF4803E4587 /* OfferDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CE5DAAE829143F19910A810 /* OfferDetailView.swift */; };
+		CC6DE026B53D422799BB9607 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3343CFA254C45E2BCF86D4F /* SessionStore.swift */; };
+		DD968EE818C74FC48F656C44 /* TvPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D9A63D3156452491ECDC51 /* TvPreferences.swift */; };
+		ECA1622367134FF38CD1A16F /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5159F7E47E643709EE7CCFD /* SearchView.swift */; };
+		ED3BF236363F43E486C89C7D /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57036D9AD16A43B19DE02FBB /* AppConfig.swift */; };
+		F08ABCD4AC6F4655BC97178F /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 083EA9ABD84D4CF7B478349E /* Models.swift */; };
+		F5178361EB1F4898BC092997 /* OfferPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 835F3B340DEE4DD4A66D4D59 /* OfferPresentation.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		50F5A48FF2A14E318F3A1254 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DA3A36D60D0342A094D587F6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4FA96F542F9B46DEBCCC684F;
+			remoteInfo = EstateOSTopShelf;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		209FD479D92F4202B2D5431C /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				1D12462A385F4FF09BF8A3C7 /* EstateOSTopShelf.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
-		90DB4C60D2A441D99921AE8D /* EstateOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EstateOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		EEAC0897835149DBA37814A5 /* App/AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
-		7511E1E749E94D118C4ABA8B /* App/EstateOSTvApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstateOSTvApp.swift; sourceTree = "<group>"; };
-		07F2093E967C4B85B887C92B /* App/RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
-		7EC50670F2C244DB9691F495 /* Core/AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
-		3D66DE6598C64C3DB5454DEE /* Core/CarPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPresentation.swift; sourceTree = "<group>"; };
-		EE069DAF15F24EB387701EB7 /* Core/Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
-		E74F778EF574483892C179AC /* Core/OfferPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfferPresentation.swift; sourceTree = "<group>"; };
-		DE5CF8C81C104D5CA76D1149 /* Core/SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
-		E5C1C36FD79947579013C77D /* Core/TvDeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TvDeepLink.swift; sourceTree = "<group>"; };
-		C42C3B5AADD846939FEA6C60 /* Core/TvPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TvPreferences.swift; sourceTree = "<group>"; };
-		ABDEAA4CB314427786E94044 /* Services/EstateAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstateAPIClient.swift; sourceTree = "<group>"; };
-		4CEE03961C604AF3803B139F /* Theme/EOSTvStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSTvStyle.swift; sourceTree = "<group>"; };
-		5DD5483A650448E59158AA7E /* Views/CarDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarDetailView.swift; sourceTree = "<group>"; };
-		FA1042F857B74B5FA708A482 /* Views/CatalogComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogComponents.swift; sourceTree = "<group>"; };
-		A0A5DB5709D64BEA9598DB14 /* Views/Components/EOSAdaptiveTitle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSAdaptiveTitle.swift; sourceTree = "<group>"; };
-		88BFA89DA2164B5D8E680E3B /* Views/ContactQrSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactQrSheet.swift; sourceTree = "<group>"; };
-		EEA17759CF77463B8722750F /* Views/HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
-		EB2AF8E7E00044EB8F15AA43 /* Views/ImmersiveCarBrowseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmersiveCarBrowseView.swift; sourceTree = "<group>"; };
-		3B5F2014AA4C4D7690CE998C /* Views/LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-		53720B51689A4E4E80048F23 /* Views/OfferDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfferDetailView.swift; sourceTree = "<group>"; };
-		AF8CC72EC7954D1AB59B44A2 /* Views/SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
-		B7458567A7C64BC68DE9C11E /* Views/TopShelfImmersiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopShelfImmersiveView.swift; sourceTree = "<group>"; };
-		1954507453E944179B1B1C8B /* Resources/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		07D9A63D3156452491ECDC51 /* TvPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TvPreferences.swift; sourceTree = "<group>"; };
+		083EA9ABD84D4CF7B478349E /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		14633F28558A4673AD5B6CBF /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		2DB18F7C7A164CBAB42F11BE /* EOSTvStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSTvStyle.swift; sourceTree = "<group>"; };
+		33045B4A9BEF4AD1B8F2F52D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		37CC71F43E324D02BAE91401 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		3C6AA58CD0CE4354B84D2726 /* EstateOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EstateOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3C6CE4D1F5BB4119A689D7E3 /* ContentProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentProvider.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F64789A0B1C2D3 /* ShelfImageRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfImageRenderer.swift; sourceTree = "<group>"; };
+		42BBEE5BE6ED4867A35D8A31 /* EstateOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = EstateOS.entitlements; sourceTree = "<group>"; };
+		45D543F8DEBD4F9FBA5438ED /* ImmersiveCarBrowseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmersiveCarBrowseView.swift; sourceTree = "<group>"; };
+		48C83B433B2841069EFFDC72 /* TopShelfImmersiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopShelfImmersiveView.swift; sourceTree = "<group>"; };
+		57036D9AD16A43B19DE02FBB /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		58E205A477BC4DB08E54B074 /* EstateOSTvApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstateOSTvApp.swift; sourceTree = "<group>"; };
+		5CE5DAAE829143F19910A810 /* OfferDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfferDetailView.swift; sourceTree = "<group>"; };
+		680CEE0B69A44EBC8DA76C24 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		69B8A94768D44F3DB05D7995 /* EstateOSTopShelf.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = EstateOSTopShelf.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		70009057F3FF475B8DCA4D22 /* CatalogComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogComponents.swift; sourceTree = "<group>"; };
+		835F3B340DEE4DD4A66D4D59 /* OfferPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfferPresentation.swift; sourceTree = "<group>"; };
+		A7ABB97FB17944EAA0F49470 /* ContactQrSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactQrSheet.swift; sourceTree = "<group>"; };
+		B3343CFA254C45E2BCF86D4F /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		C64F7C9C8259470AB7B1E60C /* TvDeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TvDeepLink.swift; sourceTree = "<group>"; };
+		CBE9513BF07849A9842830B3 /* TvLocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TvLocation.swift; sourceTree = "<group>"; };
+		D4DC801AC9514A4D89D1879B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D5159F7E47E643709EE7CCFD /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
+		D63AA69AF1484229A18A9D26 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		DC21D8707080447D9812ACE6 /* EOSAdaptiveTitle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSAdaptiveTitle.swift; sourceTree = "<group>"; };
+		F42A141A3DBA4BB2A953DB43 /* CarDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarDetailView.swift; sourceTree = "<group>"; };
+		F4AA627A114640499B8F87ED /* EstateOSTopShelf.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = EstateOSTopShelf.entitlements; sourceTree = "<group>"; };
+		FC1C46958EF34DC09B6050AA /* CarPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPresentation.swift; sourceTree = "<group>"; };
+		FC889D61ADA543BEA4876DFC /* EstateAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EstateAPIClient.swift; sourceTree = "<group>"; };
+		FD9EC73CF8764FD9A8A6DFF0 /* TVServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = TVServices.framework; path = System/Library/Frameworks/TVServices.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		6D39C275A6AF4DF0BA4A9490 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		31DBEEDD93DA4F6C9AF6F5BB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				58DF733E324E4247A0351339 /* TVServices.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C5101D0D73CC4280B6DE33B1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				78F6D354886A4FE08310976F /* TVServices.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		2A3209ADE64048D686EBF2D8 = {isa = PBXGroup; children = (90DB4C60D2A441D99921AE8D /* EstateOS.app */); name = Products; sourceTree = "<group>"; };
-		DDE49E0D379E4FAB8FA07B8C = {isa = PBXGroup; children = (4AC1DC2D39414081B442151B /* EstateOS */, 2A3209ADE64048D686EBF2D8 /* Products */); sourceTree = "<group>"; };
-		5199AC94827A4515A2CBC4A5 = {isa = PBXGroup; children = (EEAC0897835149DBA37814A5 /* AppModel.swift */, 7511E1E749E94D118C4ABA8B /* EstateOSTvApp.swift */, 07F2093E967C4B85B887C92B /* RootView.swift */); path = App; sourceTree = "<group>"; };
-		AD346BFDFA04470CB5919C88 = {isa = PBXGroup; children = (7EC50670F2C244DB9691F495 /* AppConfig.swift */, 3D66DE6598C64C3DB5454DEE /* CarPresentation.swift */, EE069DAF15F24EB387701EB7 /* Models.swift */, E74F778EF574483892C179AC /* OfferPresentation.swift */, DE5CF8C81C104D5CA76D1149 /* SessionStore.swift */, E5C1C36FD79947579013C77D /* TvDeepLink.swift */, C42C3B5AADD846939FEA6C60 /* TvPreferences.swift */); path = Core; sourceTree = "<group>"; };
-		DB5EF24360DB4BC7A9B05879 = {isa = PBXGroup; children = (1954507453E944179B1B1C8B /* Assets.xcassets */); path = Resources; sourceTree = "<group>"; };
-		BEF77EBFA70B4D5A85B7B8C9 = {isa = PBXGroup; children = (ABDEAA4CB314427786E94044 /* EstateAPIClient.swift */); path = Services; sourceTree = "<group>"; };
-		D9202E59E12B4C9585ACFB65 = {isa = PBXGroup; children = (4CEE03961C604AF3803B139F /* EOSTvStyle.swift */); path = Theme; sourceTree = "<group>"; };
-		2F32B25387134E7D9D7EF5B3 = {isa = PBXGroup; children = (5DD5483A650448E59158AA7E /* CarDetailView.swift */, FA1042F857B74B5FA708A482 /* CatalogComponents.swift */, 88BFA89DA2164B5D8E680E3B /* ContactQrSheet.swift */, EEA17759CF77463B8722750F /* HomeView.swift */, EB2AF8E7E00044EB8F15AA43 /* ImmersiveCarBrowseView.swift */, 3B5F2014AA4C4D7690CE998C /* LoginView.swift */, 53720B51689A4E4E80048F23 /* OfferDetailView.swift */, AF8CC72EC7954D1AB59B44A2 /* SearchView.swift */, B7458567A7C64BC68DE9C11E /* TopShelfImmersiveView.swift */, 350DEC5AB528467B9E72BE29 /* Components */); path = Views; sourceTree = "<group>"; };
-		350DEC5AB528467B9E72BE29 = {isa = PBXGroup; children = (A0A5DB5709D64BEA9598DB14 /* EOSAdaptiveTitle.swift */); path = Components; sourceTree = "<group>"; };
-		4AC1DC2D39414081B442151B = {isa = PBXGroup; children = (5199AC94827A4515A2CBC4A5 /* App */, AD346BFDFA04470CB5919C88 /* Core */, DB5EF24360DB4BC7A9B05879 /* Resources */, BEF77EBFA70B4D5A85B7B8C9 /* Services */, D9202E59E12B4C9585ACFB65 /* Theme */, 2F32B25387134E7D9D7EF5B3 /* Views */); path = EstateOS; sourceTree = "<group>"; };
+		062CCCFF400948BCB56ADB07 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				D4DC801AC9514A4D89D1879B /* Assets.xcassets */,
+				42BBEE5BE6ED4867A35D8A31 /* EstateOS.entitlements */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		0ACD2C7F362341299D84C09B /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				F42A141A3DBA4BB2A953DB43 /* CarDetailView.swift */,
+				70009057F3FF475B8DCA4D22 /* CatalogComponents.swift */,
+				A7ABB97FB17944EAA0F49470 /* ContactQrSheet.swift */,
+				37CC71F43E324D02BAE91401 /* HomeView.swift */,
+				45D543F8DEBD4F9FBA5438ED /* ImmersiveCarBrowseView.swift */,
+				D63AA69AF1484229A18A9D26 /* LoginView.swift */,
+				5CE5DAAE829143F19910A810 /* OfferDetailView.swift */,
+				D5159F7E47E643709EE7CCFD /* SearchView.swift */,
+				48C83B433B2841069EFFDC72 /* TopShelfImmersiveView.swift */,
+				ACE731068A9D44FDBA14FF03 /* Components */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		4445593BA6F8474296BAE414 = {
+			isa = PBXGroup;
+			children = (
+				7CC0F54E1517405E9BC3E5C6 /* EstateOS */,
+				711F1EC1B5CC46E0B83348D1 /* EstateOSTopShelf */,
+				827B67CB889740CCB4EAD48C /* Products */,
+				7DEBAAF1BC434B0BA98D9437 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		5D074BD73C2F41459AB28A4A /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				57036D9AD16A43B19DE02FBB /* AppConfig.swift */,
+				FC1C46958EF34DC09B6050AA /* CarPresentation.swift */,
+				083EA9ABD84D4CF7B478349E /* Models.swift */,
+				835F3B340DEE4DD4A66D4D59 /* OfferPresentation.swift */,
+				B3343CFA254C45E2BCF86D4F /* SessionStore.swift */,
+				C64F7C9C8259470AB7B1E60C /* TvDeepLink.swift */,
+				07D9A63D3156452491ECDC51 /* TvPreferences.swift */,
+				CBE9513BF07849A9842830B3 /* TvLocation.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		65D8530827704E6196F97961 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				2DB18F7C7A164CBAB42F11BE /* EOSTvStyle.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		711F1EC1B5CC46E0B83348D1 /* EstateOSTopShelf */ = {
+			isa = PBXGroup;
+			children = (
+				3C6CE4D1F5BB4119A689D7E3 /* ContentProvider.swift */,
+				A1B2C3D4E5F64789A0B1C2D3 /* ShelfImageRenderer.swift */,
+				F4AA627A114640499B8F87ED /* EstateOSTopShelf.entitlements */,
+				33045B4A9BEF4AD1B8F2F52D /* Info.plist */,
+			);
+			path = EstateOSTopShelf;
+			sourceTree = "<group>";
+		};
+		7CC0F54E1517405E9BC3E5C6 /* EstateOS */ = {
+			isa = PBXGroup;
+			children = (
+				CA76DA371A4A4B12B03B99A5 /* App */,
+				5D074BD73C2F41459AB28A4A /* Core */,
+				062CCCFF400948BCB56ADB07 /* Resources */,
+				CCF40FF7951842B594FA84AE /* Services */,
+				65D8530827704E6196F97961 /* Theme */,
+				0ACD2C7F362341299D84C09B /* Views */,
+			);
+			path = EstateOS;
+			sourceTree = "<group>";
+		};
+		7DEBAAF1BC434B0BA98D9437 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				FD9EC73CF8764FD9A8A6DFF0 /* TVServices.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		827B67CB889740CCB4EAD48C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				3C6AA58CD0CE4354B84D2726 /* EstateOS.app */,
+				69B8A94768D44F3DB05D7995 /* EstateOSTopShelf.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		ACE731068A9D44FDBA14FF03 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				DC21D8707080447D9812ACE6 /* EOSAdaptiveTitle.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		CA76DA371A4A4B12B03B99A5 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				680CEE0B69A44EBC8DA76C24 /* AppModel.swift */,
+				58E205A477BC4DB08E54B074 /* EstateOSTvApp.swift */,
+				14633F28558A4673AD5B6CBF /* RootView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		CCF40FF7951842B594FA84AE /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				FC889D61ADA543BEA4876DFC /* EstateAPIClient.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		F0F0EE51DD5B418D8F388EAD = {
-			isa = PBXNativeTarget; buildConfigurationList = 91FBC3AFA3B74F97B92BD84E;
-			buildPhases = (0CF6E3F0027449B7A1694EAD /* Sources */, 6D39C275A6AF4DF0BA4A9490 /* Frameworks */, F4ED6835E1954A44A90015C8 /* Resources */);
-			buildRules = (); dependencies = (); name = EstateOS;
-			productReference = 90DB4C60D2A441D99921AE8D; productType = "com.apple.product-type.application";
+		4FA96F542F9B46DEBCCC684F /* EstateOSTopShelf */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4CD3E8CAA80D43F89017D86C /* Build configuration list for PBXNativeTarget "EstateOSTopShelf" */;
+			buildPhases = (
+				0E026FB619064E0DA25A6F38 /* Sources */,
+				31DBEEDD93DA4F6C9AF6F5BB /* Frameworks */,
+				960FBCC46C4C4C53B856CACF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EstateOSTopShelf;
+			productName = EstateOSTopShelf;
+			productReference = 69B8A94768D44F3DB05D7995 /* EstateOSTopShelf.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B3575B4DEE4F4476B5F5CF6D /* EstateOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F076A0340C15484FBAA3DFC8 /* Build configuration list for PBXNativeTarget "EstateOS" */;
+			buildPhases = (
+				D7E3888FAB50401C9F211707 /* Sources */,
+				C5101D0D73CC4280B6DE33B1 /* Frameworks */,
+				910C45D8FFFB4E8A97786BCA /* Resources */,
+				209FD479D92F4202B2D5431C /* Embed App Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2D3683A8BC884E42B43B4E59 /* PBXTargetDependency */,
+			);
+			name = EstateOS;
+			productName = EstateOS;
+			productReference = 3C6AA58CD0CE4354B84D2726 /* EstateOS.app */;
+			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		7D536028A3CD42B6808A2F44 = {
-			isa = PBXProject; buildConfigurationList = E18C61EDC76144108AE080BB; compatibilityVersion = "Xcode 14.0";
-			developmentRegion = en; hasScannedForEncodings = 0;
-			mainGroup = DDE49E0D379E4FAB8FA07B8C; productRefGroup = 2A3209ADE64048D686EBF2D8;
-			projectDirPath = ""; projectRoot = "";
-			targets = (F0F0EE51DD5B418D8F388EAD /* EstateOS */);
+		DA3A36D60D0342A094D587F6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+			};
+			buildConfigurationList = 8CC0B64054374569B5408D7A /* Build configuration list for PBXProject "EstateOS" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 4445593BA6F8474296BAE414;
+			productRefGroup = 827B67CB889740CCB4EAD48C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B3575B4DEE4F4476B5F5CF6D /* EstateOS */,
+				4FA96F542F9B46DEBCCC684F /* EstateOSTopShelf */,
+			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		F4ED6835E1954A44A90015C8 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (15264ABC676447C3847B1466 /* Resources/Assets.xcassets in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+		910C45D8FFFB4E8A97786BCA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B83C9FC50C2D48AA8ED50859 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		960FBCC46C4C4C53B856CACF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		0CF6E3F0027449B7A1694EAD = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (D202AD1E6A5244A0A837AA04 /* App/AppModel.swift in Sources */, 335D7916B8B74BBEBAFF0756 /* App/EstateOSTvApp.swift in Sources */, CAB77A62DAA142FFB72BB0EA /* App/RootView.swift in Sources */, DDEE2B2F7A074423968F8BA4 /* Core/AppConfig.swift in Sources */, 3DDC8ABD811B467782A3A0F7 /* Core/CarPresentation.swift in Sources */, 6C5AE516DFA74B5E9C069CBF /* Core/Models.swift in Sources */, 693A7826076A4996B68EDFD8 /* Core/OfferPresentation.swift in Sources */, AB5FE4B8692D412E92BB253F /* Core/SessionStore.swift in Sources */, 05C771EDEA06455D8F8C0E2B /* Core/TvDeepLink.swift in Sources */, B3B428CE722F4B05BDECE699 /* Core/TvPreferences.swift in Sources */, 7D8B62A43D9948B289D40D98 /* Services/EstateAPIClient.swift in Sources */, A7388DED23E64336BDC77E99 /* Theme/EOSTvStyle.swift in Sources */, C0096383B5504E2D857A75FC /* Views/CarDetailView.swift in Sources */, 68A6080BFAA34AA498DB24D3 /* Views/CatalogComponents.swift in Sources */, 43B2D04DEE90428A9FB43A17 /* Views/Components/EOSAdaptiveTitle.swift in Sources */, A449E2872B9D430DB408ED99 /* Views/ContactQrSheet.swift in Sources */, CC72DE1E32ED4ADC8A5D1292 /* Views/HomeView.swift in Sources */, 19FC38083EE446EE9D131207 /* Views/ImmersiveCarBrowseView.swift in Sources */, E5BAD8E21066430B8A7499E4 /* Views/LoginView.swift in Sources */, 5BEE3D36327F46D287F9A0F0 /* Views/OfferDetailView.swift in Sources */, 8B329077DFF547EABA752DAE /* Views/SearchView.swift in Sources */, 09A23C7A46104BB6B8E945C4 /* Views/TopShelfImmersiveView.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		0E026FB619064E0DA25A6F38 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C42B3CFC961341E0B64CFD78 /* ContentProvider.swift in Sources */,
+				B2C3D4E5F64789A0B1C2D3E4 /* ShelfImageRenderer.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D7E3888FAB50401C9F211707 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				320AC5B199984793A8CD4F9A /* AppModel.swift in Sources */,
+				92B7F0402AE344C280E64768 /* EstateOSTvApp.swift in Sources */,
+				20963C351F3248A5839F85FB /* RootView.swift in Sources */,
+				ED3BF236363F43E486C89C7D /* AppConfig.swift in Sources */,
+				4154080611064668B346B553 /* CarPresentation.swift in Sources */,
+				F08ABCD4AC6F4655BC97178F /* Models.swift in Sources */,
+				F5178361EB1F4898BC092997 /* OfferPresentation.swift in Sources */,
+				CC6DE026B53D422799BB9607 /* SessionStore.swift in Sources */,
+				7DE266580D714E48A3793ECD /* TvDeepLink.swift in Sources */,
+				DD968EE818C74FC48F656C44 /* TvPreferences.swift in Sources */,
+				A0262DCD3C5B4699B06CF92E /* TvLocation.swift in Sources */,
+				BC7A62B4A18043E683ABDDE8 /* EstateAPIClient.swift in Sources */,
+				028BFE5643C64BEAABBE9260 /* EOSTvStyle.swift in Sources */,
+				176C0480A82542D09F734FEA /* CarDetailView.swift in Sources */,
+				61C16277FD474520BD0E6B9F /* CatalogComponents.swift in Sources */,
+				3F2C04FA3C814D4DAC7F8600 /* EOSAdaptiveTitle.swift in Sources */,
+				0566C38E13174BC5A2F1EC91 /* ContactQrSheet.swift in Sources */,
+				1532BF56224D43CF91CCA44E /* HomeView.swift in Sources */,
+				1D7C79859C8C47EB99E30C88 /* ImmersiveCarBrowseView.swift in Sources */,
+				63D22924EF2D440B9074CE12 /* LoginView.swift in Sources */,
+				C63EF7329E1E4DF4803E4587 /* OfferDetailView.swift in Sources */,
+				ECA1622367134FF38CD1A16F /* SearchView.swift in Sources */,
+				2D049411213B4DFAB10064BB /* TopShelfImmersiveView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		2D3683A8BC884E42B43B4E59 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4FA96F542F9B46DEBCCC684F /* EstateOSTopShelf */;
+			targetProxy = 50F5A48FF2A14E318F3A1254 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
-		D1354D5286614BD5A74058B7 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_DYNAMIC_NO_PIC = NO; GCC_OPTIMIZATION_LEVEL = 0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; ONLY_ACTIVE_ARCH = YES; SDKROOT = appletvos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; };
-		78A6D4258E2C4F18BEA94A91 = {isa = XCBuildConfiguration; name = Release; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SDKROOT = appletvos; SWIFT_COMPILATION_MODE = wholemodule; VALIDATE_PRODUCT = YES; }; };
-		E37EE0143BE244069FB9337B = {isa = XCBuildConfiguration; name = Debug; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image"; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = NW3YW69KL9; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = EstateOS/Resources/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks"); MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.tvos; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = appletvos; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 3; TVOS_DEPLOYMENT_TARGET = 17.0; }; };
-		74858E620F8E43C5BA00C790 = {isa = XCBuildConfiguration; name = Release; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image"; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = NW3YW69KL9; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = EstateOS/Resources/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks"); MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.tvos; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = appletvos; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 3; TVOS_DEPLOYMENT_TARGET = 17.0; }; };
+		75A3CAEB6919413580CCBCA2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				SDKROOT = appletvos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A23E75AF1F9644EFBE18E864 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = EstateOSTopShelf/EstateOSTopShelf.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = NW3YW69KL9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EstateOSTopShelf/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.EstateOSTopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Debug;
+		};
+		AD07C1A0DF41455793B7BC5C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = appletvos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		B85B86EDCB3A45DA8C54B3DB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = EstateOS/Resources/EstateOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = NW3YW69KL9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EstateOS/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Release;
+		};
+		D07CA7B30EBE4363A74ED47D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = EstateOSTopShelf/EstateOSTopShelf.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = NW3YW69KL9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EstateOSTopShelf/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.EstateOSTopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Release;
+		};
+		E280145DB7FF49BE94C93E03 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = EstateOS/Resources/EstateOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = NW3YW69KL9;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EstateOS/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		E18C61EDC76144108AE080BB = {isa = XCConfigurationList; buildConfigurations = (D1354D5286614BD5A74058B7 /* Debug */, 78A6D4258E2C4F18BEA94A91 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		91FBC3AFA3B74F97B92BD84E = {isa = XCConfigurationList; buildConfigurations = (E37EE0143BE244069FB9337B /* Debug */, 74858E620F8E43C5BA00C790 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		4CD3E8CAA80D43F89017D86C /* Build configuration list for PBXNativeTarget "EstateOSTopShelf" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A23E75AF1F9644EFBE18E864 /* Debug */,
+				D07CA7B30EBE4363A74ED47D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8CC0B64054374569B5408D7A /* Build configuration list for PBXProject "EstateOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AD07C1A0DF41455793B7BC5C /* Debug */,
+				75A3CAEB6919413580CCBCA2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F076A0340C15484FBAA3DFC8 /* Build configuration list for PBXNativeTarget "EstateOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E280145DB7FF49BE94C93E03 /* Debug */,
+				B85B86EDCB3A45DA8C54B3DB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 	};
-	rootObject = 7D536028A3CD42B6808A2F44;
+	rootObject = DA3A36D60D0342A094D587F6 /* Project object */;
 }

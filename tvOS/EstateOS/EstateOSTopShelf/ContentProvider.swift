@@ -1,5 +1,5 @@
 import Foundation
-@preconcurrency import TVServices
+import TVServices
 import UIKit
 
 private struct TopShelfOfferEnvelope: Decodable {
@@ -51,6 +51,7 @@ struct TopShelfOffer: Decodable {
   }
 }
 
+@objc(TopShelfContentProvider)
 public class TopShelfContentProvider: TVTopShelfContentProvider {
   private let offersURL = URL(string: "https://estateos.pl/api/mobile/v1/offers?catalog=1")!
   private let appGroupID = "group.pl.estateos.app.tvos"
@@ -58,9 +59,15 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
 
   public override func loadTopShelfContent(completionHandler: @escaping (TVTopShelfContent?) -> Void) {
     Task {
-      let content = await buildContent()
-      DispatchQueue.main.async {
-        completionHandler(content ?? Self.emergencyContent())
+      let content: TVTopShelfContent?
+      do {
+        content = await buildContent()
+      } catch {
+        content = nil
+      }
+      let resolved = content ?? Self.emergencyContent()
+      await MainActor.run {
+        completionHandler(resolved)
       }
     }
   }
@@ -81,30 +88,38 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     let limitedOffers = Array(offers.prefix(offerLimit))
     let limitedCars = Array(cars.prefix(carLimit))
 
+    // Explicit "Karty w rzędzie" preference → sectioned Home + Car.
     if TopShelfSharedPreferences.isSectioned {
-      return await buildDualSectionedContent(offers: limitedOffers, cars: limitedCars) ?? fallbackContent()
-    }
-    if !limitedOffers.isEmpty {
-      let homeCarousel = await buildCarouselContent(offers: limitedOffers)
-      if limitedCars.isEmpty {
-        return homeCarousel ?? fallbackContent()
+      if let sectioned = await buildDualSectionedContent(offers: limitedOffers, cars: limitedCars) {
+        return sectioned
       }
-      // Prefer dual sectioned when cars exist so both catalogs are visible.
-      return await buildDualSectionedContent(offers: Array(limitedOffers.prefix(6)), cars: limitedCars)
-        ?? homeCarousel
-        ?? fallbackContent()
+      if !limitedOffers.isEmpty, let carousel = await buildCarouselContent(offers: limitedOffers) {
+        return carousel
+      }
+      return fallbackContent()
     }
-    return await buildDualSectionedContent(offers: [], cars: limitedCars) ?? fallbackContent()
+
+    // Default: full-bleed Apple TV+ carousel with property photos (Top Shelf hero).
+    if !limitedOffers.isEmpty {
+      if let carousel = await buildCarouselContent(offers: limitedOffers) {
+        return carousel
+      }
+      return fallbackContent()
+    }
+
+    if let carsOnly = await buildDualSectionedContent(offers: [], cars: limitedCars) {
+      return carsOnly
+    }
+    return fallbackContent()
   }
 
   // MARK: - Carousel
 
   private func buildCarouselContent(offers: [TopShelfOffer]) async -> TVTopShelfContent? {
-    #if targetEnvironment(simulator)
-    return await buildStyledCarouselContent(offers: offers)
-    #else
+    // Always use remote HTTPS images. UIKit offscreen rendering in the
+    // Top Shelf extension process is unstable on Simulator and was crashing
+    // the plugin → HeadBoard fell back to the static brand banner.
     return buildRemoteCarouselContent(offers: offers)
-    #endif
   }
 
   /// Physical Apple TV: remote HTTPS images only (proven in build 6).
@@ -187,11 +202,7 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   // MARK: - Sectioned
 
   private func buildSectionedContent(offers: [TopShelfOffer]) async -> TVTopShelfContent? {
-    #if targetEnvironment(simulator)
-    return await buildStyledSectionedContent(offers: offers)
-    #else
     return buildRemoteSectionedContent(offers: offers)
-    #endif
   }
 
   private func buildRemoteSectionedContent(offers: [TopShelfOffer]) -> TVTopShelfContent? {
@@ -318,19 +329,10 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
   }
 
   private func buildDualSectionedContent(offers: [TopShelfOffer], cars: [TopShelfCar]) async -> TVTopShelfContent? {
-    var sections: [TVTopShelfItemCollection] = []
+    var sections: [TVTopShelfItemCollection<TVTopShelfSectionedItem>] = []
 
     if !offers.isEmpty {
-      #if targetEnvironment(simulator)
-      var homeItems: [TVTopShelfSectionedItem] = []
-      for offer in offers {
-        if let item = await makeStyledSectionedItem(for: offer) {
-          homeItems.append(item)
-        }
-      }
-      #else
       let homeItems = offers.compactMap { makeRemoteSectionedItem(for: $0) }
-      #endif
       if !homeItems.isEmpty {
         let collection = TVTopShelfItemCollection(items: homeItems)
         collection.title = "Nieruchomości · 24h"

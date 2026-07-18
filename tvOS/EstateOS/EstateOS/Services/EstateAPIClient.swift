@@ -48,10 +48,11 @@ final class EstateAPIClient {
     }
 
     func fetchOffers() async throws -> [EstateOffer] {
+        // Prefer full payloads — catalog=1 strips body copy to VERIFY tokens only.
         let endpoints = [
-            "/api/mobile/v1/offers?catalog=1",
             "/api/mobile/v1/offers",
             "/api/offers",
+            "/api/mobile/v1/offers?catalog=1",
         ]
         for path in endpoints {
             do {
@@ -88,18 +89,75 @@ final class EstateAPIClient {
     }
 
     func offerDetail(id: Int, fallbackOffers: [EstateOffer]) async throws -> EstateOffer {
-        if let exact: EstateOffer = try? await request("GET", path: "/api/mobile/v1/offers/\(id)") {
+        let detailPaths = [
+            "/api/mobile/v1/offers/\(id)",
+            "/api/offers/\(id)",
+        ]
+        for path in detailPaths {
+            if let env: EstateOfferDetailEnvelope = try? await request("GET", path: path, authorized: false),
+               let exact = env.resolvedOffer,
+               OfferPresentation.plainDescription(from: exact.description) != nil {
+                return exact
+            }
+            if let exact: EstateOffer = try? await request("GET", path: path, authorized: false),
+               OfferPresentation.plainDescription(from: exact.description) != nil {
+                return exact
+            }
+        }
+
+        if let exact = fallbackOffers.first(where: { $0.id == id }),
+           OfferPresentation.plainDescription(from: exact.description) != nil {
+            return exact
+        }
+
+        let all = try await fetchOffers()
+        if let exact = all.first(where: { $0.id == id }) {
             return exact
         }
         if let exact = fallbackOffers.first(where: { $0.id == id }) {
             return exact
         }
-        let all = try await fetchOffers()
-        if let exact = all.first(where: { $0.id == id }) {
-            return exact
-        }
         throw APIError.server("Nie znaleziono oferty.")
     }
+
+
+    func recordOfferView(id: Int) async {
+        struct ViewEnvelope: Decodable { let success: Bool?; let viewsCount: Int? }
+        do {
+            let _: ViewEnvelope = try await request(
+                "POST",
+                path: "/api/offers/\(id)/view",
+                body: ["source": "tvos"],
+                authorized: false
+            )
+        } catch {}
+    }
+
+    func recordCarView(id: Int) async {
+        struct ViewEnvelope: Decodable { let success: Bool?; let viewsCount: Int?; let favoritesCount: Int? }
+        do {
+            let _: ViewEnvelope = try await request(
+                "POST",
+                path: "/api/cars/\(id)/view",
+                body: [:],
+                authorized: false
+            )
+        } catch {}
+    }
+
+    func bumpCarFavoriteCount(id: Int, favorited: Bool) async {
+        struct FavEnvelope: Decodable { let success: Bool?; let favoritesCount: Int? }
+        do {
+            let _: FavEnvelope = try await request(
+                "POST",
+                path: "/api/cars/\(id)/favorite-count",
+                body: ["delta": favorited ? 1 : -1],
+                authorized: false
+            )
+        } catch {}
+    }
+
+
 
     func startTvPairing(mode: String, pairCode: String? = nil) async throws -> TvPairStartResponse {
         var body: [String: Any] = ["mode": mode]

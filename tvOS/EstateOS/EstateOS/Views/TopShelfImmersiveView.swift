@@ -76,12 +76,11 @@ struct TopShelfImmersiveView: View {
                 .id("meta-\(currentOffer.id)")
 
             HStack(spacing: 18) {
-                Button("Szczegóły oferty") {
+                Button("POKAŻ") {
                     app.openDetail(currentOffer)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.white)
-                .foregroundStyle(.black)
+                .buttonStyle(EOSDetailActionButtonStyle(accent: .green))
+                .focusEffectDisabled()
 
                 if let area = currentOffer.area {
                     Label("\(Int(area)) m²", systemImage: "square.split.bottomrightquarter")
@@ -222,24 +221,44 @@ private struct ImmersiveAdaptiveTitle: View {
 private struct ImmersiveMetaRow: View {
     let offer: EstateOffer
 
+    private var isRent: Bool {
+        (offer.transactionType ?? "").uppercased().contains("RENT")
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                Text(offer.transactionLabel.uppercased())
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .tracking(1.0)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(isRent ? Color.blue.opacity(0.55) : Color.green.opacity(0.55)))
+                    .foregroundStyle(.white)
+
                 Text(EOSFormat.pricePLN(offer.price))
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(.green)
 
                 if offer.pricePerSqm != nil {
                     Text(offer.displayPricePerSqm)
-                        .font(.system(size: 24, weight: .semibold, design: .rounded))
+                        .font(.system(size: 22, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.9))
                 }
             }
 
+            Text([
+                offer.transactionLabel,
+                EOSFormat.pricePLN(offer.price),
+                offer.displayLocation,
+            ].filter { !$0.isEmpty }.joined(separator: "  ·  "))
+                .font(.system(size: 22, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.88))
+
             if !offer.displayLocation.isEmpty {
                 Label(offer.displayLocation, systemImage: "mappin.and.ellipse")
-                    .font(.system(size: 22, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.84))
+                    .font(.system(size: 20, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.78))
             }
         }
     }

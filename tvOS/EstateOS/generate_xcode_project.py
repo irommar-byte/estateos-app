@@ -204,7 +204,7 @@ tgt_settings = (
     "GENERATE_INFOPLIST_FILE = NO; "
     "INFOPLIST_FILE = EstateOS/Resources/Info.plist; "
     "LD_RUNPATH_SEARCH_PATHS = (\"$(inherited)\", \"@executable_path/Frameworks\"); "
-    "MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.tvos; "
+    "MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app; "
     "PRODUCT_NAME = \"$(TARGET_NAME)\"; SDKROOT = appletvos; SWIFT_EMIT_LOC_STRINGS = YES; "
     "SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 3; TVOS_DEPLOYMENT_TARGET = 17.0;"
 )
