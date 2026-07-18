@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { decryptSession } from '@/lib/sessionUtils';
+import { buildDealroomMessagePushPayload } from '@/lib/dealroomPushPayload';
 import { notificationService } from '@/lib/services/notification.service';
 import { getWebFormData } from '@/lib/requestFormData';
 import {
@@ -271,18 +272,15 @@ export async function POST(
       });
 
       try {
-        await notificationService.sendPushToUser(receiverId, {
-          title: 'Nowa wiadomość w Dealroom',
-          body: shortPreview,
-          data: {
-            targetType: 'DEAL',
-            targetId: String(dealId),
-            dealId: String(dealId),
-            kind: 'deal_message',
-            senderId: String(senderId),
+        await notificationService.sendPushToUser(
+          receiverId,
+          buildDealroomMessagePushPayload({
+            dealId,
+            preview: shortPreview,
+            senderId,
             senderName: senderUser?.name || 'Użytkownik',
-          },
-        });
+          }),
+        );
       } catch (pushError) {
         console.warn('[DEAL MESSAGE PUSH WARN]', pushError);
       }
