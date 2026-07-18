@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { buildDealroomMessagePushPayload } from '@/lib/dealroomPushPayload';
 import { notificationService } from '@/lib/services/notification.service';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import jwt from 'jsonwebtoken';
@@ -287,22 +288,15 @@ export async function POST(req: Request) {
 
     if (shouldSendPush) {
       try {
-        await notificationService.sendPushToUser(receiverId, {
-          title: 'Nowa wiadomość w Dealroom',
-          body: shortPreview,
-          data: {
-            target: 'dealroom',
-            notificationType: 'dealroom_chat',
-            targetType: 'DEAL',
-            targetId: String(dealIdInt),
+        await notificationService.sendPushToUser(
+          receiverId,
+          buildDealroomMessagePushPayload({
             dealId: dealIdInt,
+            preview: shortPreview,
+            senderId: userId,
             offerId: deal.offerId,
-            deeplink: `estateos://dealroom/${dealIdInt}`,
-            screen: 'DealroomChat',
-            route: 'DealroomChat',
-            kind: 'deal_message',
-          },
-        });
+          }),
+        );
       } catch (pushError) {
         console.warn('[CHAT PUSH WARN]', pushError);
       }

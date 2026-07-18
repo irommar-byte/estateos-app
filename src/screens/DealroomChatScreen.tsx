@@ -1707,6 +1707,7 @@ export default function DealroomChatScreen() {
           title: isPrice ? t('dealroom.chat.eventProposedPrice') : t('dealroom.chat.eventProposedAppointment'),
           body,
           subtitle: dealId ? `Transakcja #${dealId}` : undefined,
+          sound: 'estateos_notify.wav',
           threadIdentifier,
           data: {
             target: 'dealroom',

@@ -127,9 +127,14 @@ export const notificationService = {
       };
 
       if (payload?.subtitle) msg.subtitle = String(payload.subtitle);
+      const channelId = payload?.channelId || payload?.android?.channelId;
+      if (channelId) msg.channelId = String(channelId);
+      if (payload?.collapseId) msg.collapseId = String(payload.collapseId);
+      if (payload?.tag) msg.tag = String(payload.tag);
+      if (typeof payload?.mutableContent === 'boolean') {
+        msg.mutableContent = payload.mutableContent;
+      }
       if (platform === 'ANDROID') {
-        const channelId = payload?.channelId || payload?.android?.channelId;
-        if (channelId) msg.channelId = String(channelId);
         if (payload?.android && typeof payload.android === 'object') {
           msg.android = payload.android;
         }

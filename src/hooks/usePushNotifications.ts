@@ -12,8 +12,32 @@ import {
   resolveContactPushThreadIdentifier,
   shouldSuppressContactPushForActiveChat,
 } from '../utils/activeContactPush';
+import { mergePushPayload as mergeCanonicalPushPayload } from '../contracts/parityContracts';
 import type { Notification } from 'expo-notifications';
 import { API_URL } from '../config/network';
+
+const ESTATEOS_NOTIFY_SOUND = 'estateos_notify.wav';
+
+function resolveDealroomPushThreadIdentifier(notification: Notification): string | null {
+  const data = mergeCanonicalPushPayload({
+    baseData: notification.request.content?.data,
+    triggerPayload: (notification.request as any)?.trigger?.payload,
+  });
+  const explicit = String(data.threadIdentifier ?? '').trim();
+  if (explicit) return explicit;
+  const dealId = Number(data.dealId ?? data.targetId);
+  if (Number.isFinite(dealId) && dealId > 0) return `estateos-deal-${dealId}`;
+  return null;
+}
+
+function isDealroomChatPush(notification: Notification): boolean {
+  const data = mergeCanonicalPushPayload({
+    baseData: notification.request.content?.data,
+    triggerPayload: (notification.request as any)?.trigger?.payload,
+  });
+  const type = String(data.targetType ?? data.target ?? data.notificationType ?? data.kind ?? '').toUpperCase();
+  return type.includes('DEAL') || type.includes('DEALROOM') || String(data.kind || '') === 'deal_message';
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async (notification: Notification) => {
@@ -48,6 +72,7 @@ Notifications.setNotificationHandler({
             title,
             subtitle: 'EstateOS Contact',
             body,
+            sound: ESTATEOS_NOTIFY_SOUND,
             threadIdentifier,
             data: {
               ...(typeof data === 'object' && data != null ? data : {}),
@@ -72,6 +97,40 @@ Notifications.setNotificationHandler({
         shouldPlaySound: true,
         shouldSetBadge: true,
       };
+    }
+
+    if (isDealroomChatPush(notification)) {
+      const existingThread = String(notification.request.content.threadIdentifier || '').trim();
+      if (!existingThread) {
+        const threadIdentifier = resolveDealroomPushThreadIdentifier(notification);
+        if (threadIdentifier) {
+          const data = notification.request.content.data;
+          try {
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: notification.request.content.title || 'Dealroom',
+                subtitle: notification.request.content.subtitle || undefined,
+                body: notification.request.content.body || '',
+                sound: ESTATEOS_NOTIFY_SOUND,
+                threadIdentifier,
+                data: {
+                  ...(typeof data === 'object' && data != null ? data : {}),
+                  threadIdentifier,
+                },
+              },
+              trigger: null,
+            });
+            return {
+              shouldShowBanner: false,
+              shouldShowList: false,
+              shouldPlaySound: true,
+              shouldSetBadge: true,
+            };
+          } catch {
+            /* fallback poniżej */
+          }
+        }
+      }
     }
 
     return {
@@ -216,12 +275,22 @@ export async function registerPushNotifications(
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#10b981',
+        sound: 'estateos_notify.wav',
       });
-      await Notifications.setNotificationChannelAsync('contact-messages', {
+      // v2: custom EstateOS sound (Android nie zmienia sound w istniejącym kanale)
+      await Notifications.setNotificationChannelAsync('contact-messages-v2', {
         name: 'Wiadomości bezpośrednie',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#10b981',
+        sound: 'estateos_notify.wav',
+      });
+      await Notifications.setNotificationChannelAsync('dealroom-messages-v2', {
+        name: 'Wiadomości Dealroom',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#10b981',
+        sound: 'estateos_notify.wav',
       });
     }
 

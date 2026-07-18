@@ -19,6 +19,8 @@
 		D41F4E919AC528A0BA2DC1F8 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D2E6DEEE36C84C4FDB55A967 /* PrivacyInfo.xcprivacy */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		F4D628C75A06E861897B67D7 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B8CA87BA5AE40A2557800FC /* ExpoModulesProvider.swift */; };
+E05N071F01FACEF30001B001 /* estateos_notify.wav in Resources */ = {isa = PBXBuildFile; fileRef = E05N071F01FACEF30001B002 /* estateos_notify.wav */; };
+E05N071F01FACEF30001A001 /* EstateOSNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E05N071F01FACEF30001A002 /* EstateOSNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,6 +30,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 569AEEB12FACEF3B0019F923;
 			remoteInfo = EstateOSRadarWidgetExtensionExtension;
+		};
+		E05N071F01FACEF30001A003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E05N071F01FACEF30001A007;
+			remoteInfo = EstateOSNotificationService;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -39,6 +48,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				569AEEC32FACEF3D0019F923 /* EstateOSRadarWidgetExtensionExtension.appex in Embed Foundation Extensions */,
+				E05N071F01FACEF30001A001 /* EstateOSNotificationService.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -64,6 +74,8 @@
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = EstateOS/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* EstateOS-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "EstateOS-Bridging-Header.h"; path = "EstateOS/EstateOS-Bridging-Header.h"; sourceTree = "<group>"; };
+E05N071F01FACEF30001B002 /* estateos_notify.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; name = estateos_notify.wav; path = EstateOS/estateos_notify.wav; sourceTree = "<group>"; };
+E05N071F01FACEF30001A002 /* EstateOSNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = EstateOSNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -74,10 +86,18 @@
 			);
 			target = 569AEEB12FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension */;
 		};
+		E05N071F01FACEF30001A006 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = E05N071F01FACEF30001A007 /* EstateOSNotificationService */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		569AEEB72FACEF3B0019F923 /* EstateOSRadarWidgetExtension */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (569AEEC72FACEF3D0019F923 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = EstateOSRadarWidgetExtension; sourceTree = "<group>"; };
+		E05N071F01FACEF30001A005 /* EstateOSNotificationService */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (E05N071F01FACEF30001A006 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = EstateOSNotificationService; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -98,6 +118,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E05N071F01FACEF30001A009 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -113,6 +140,7 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
 				D2E6DEEE36C84C4FDB55A967 /* PrivacyInfo.xcprivacy */,
+				E05N071F01FACEF30001B002 /* estateos_notify.wav */,
 			);
 			name = EstateOS;
 			sourceTree = "<group>";
@@ -158,6 +186,7 @@
 				13B07FAE1A68108700A75B9A /* EstateOS */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				569AEEB72FACEF3B0019F923 /* EstateOSRadarWidgetExtension */,
+				E05N071F01FACEF30001A005 /* EstateOSNotificationService */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				22308234ECDABB74FC919D94 /* Pods */,
@@ -173,6 +202,7 @@
 			children = (
 				13B07F961A680F5B00A75B9A /* EstateOS.app */,
 				569AEEB22FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension.appex */,
+				E05N071F01FACEF30001A002 /* EstateOSNotificationService.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -216,6 +246,7 @@
 			);
 			dependencies = (
 				569AEEC22FACEF3D0019F923 /* PBXTargetDependency */,
+				E05N071F01FACEF30001A004 /* PBXTargetDependency */,
 			);
 			name = EstateOS;
 			productName = EstateOS;
@@ -242,6 +273,26 @@
 			productReference = 569AEEB22FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		E05N071F01FACEF30001A007 /* EstateOSNotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E05N071F01FACEF30001A00D /* Build configuration list for PBXNativeTarget "EstateOSNotificationService" */;
+			buildPhases = (
+				E05N071F01FACEF30001A008 /* Sources */,
+				E05N071F01FACEF30001A009 /* Frameworks */,
+				E05N071F01FACEF30001A00A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				E05N071F01FACEF30001A005 /* EstateOSNotificationService */,
+			);
+			name = EstateOSNotificationService;
+			productName = EstateOSNotificationService;
+			productReference = E05N071F01FACEF30001A002 /* EstateOSNotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -259,6 +310,11 @@
 					};
 					569AEEB12FACEF3B0019F923 = {
 						CreatedOnToolsVersion = 26.4.1;
+					};
+					E05N071F01FACEF30001A007 = {
+						CreatedOnToolsVersion = 26.4.1;
+						DevelopmentTeam = NW3YW69KL9;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -290,10 +346,18 @@
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
 				D41F4E919AC528A0BA2DC1F8 /* PrivacyInfo.xcprivacy in Resources */,
+				E05N071F01FACEF30001B001 /* estateos_notify.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		569AEEB02FACEF3B0019F923 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E05N071F01FACEF30001A00A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -473,6 +537,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E05N071F01FACEF30001A008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -480,6 +551,11 @@
 			isa = PBXTargetDependency;
 			target = 569AEEB12FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension */;
 			targetProxy = 569AEEC12FACEF3D0019F923 /* PBXContainerItemProxy */;
+		};
+		E05N071F01FACEF30001A004 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E05N071F01FACEF30001A007 /* EstateOSNotificationService */;
+			targetProxy = E05N071F01FACEF30001A003 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -782,6 +858,63 @@
 			};
 			name = Release;
 		};
+		E05N071F01FACEF30001A00B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = EstateOSNotificationService/EstateOSNotificationService.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = NW3YW69KL9;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = EstateOSNotificationService/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = EstateOSNotificationService;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
+				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.NotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		E05N071F01FACEF30001A00C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = EstateOSNotificationService/EstateOSNotificationService.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = NW3YW69KL9;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = EstateOSNotificationService/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = EstateOSNotificationService;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
+				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.NotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -808,6 +941,15 @@
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,
 				83CBBA211A601CBA00E9B192 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E05N071F01FACEF30001A00D /* Build configuration list for PBXNativeTarget "EstateOSNotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E05N071F01FACEF30001A00B /* Debug */,
+				E05N071F01FACEF30001A00C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
