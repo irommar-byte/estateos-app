@@ -144,13 +144,14 @@ struct CarCardView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(alignment: .topLeading) {
                     if car.featured {
-                        Text("PROMO")
-                            .font(.caption2.weight(.black))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Capsule().fill(EOSPalette.car.opacity(0.92)))
-                            .foregroundStyle(.black)
-                            .padding(10)
+                        EOSMediaBadge(
+                            text: "PROMO",
+                            fill: EOSPalette.car.opacity(0.92),
+                            stroke: Color.clear,
+                            foreground: .black,
+                            fontSize: 12
+                        )
+                        .padding(10)
                     }
                 }
                 .overlay(alignment: .topTrailing) {
@@ -166,20 +167,15 @@ struct CarCardView: View {
                 .overlay(alignment: .bottomLeading) {
                     HStack(spacing: 8) {
                         if !car.city.isEmpty {
-                            Text(car.city)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Capsule().fill(.black.opacity(0.55)))
+                            EOSMediaBadge(text: car.city)
                         }
                         if let distanceLabel {
-                            Text(distanceLabel)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Capsule().fill(EOSPalette.car.opacity(0.85)))
-                                .foregroundStyle(.black)
+                            EOSMediaBadge(
+                                text: distanceLabel,
+                                fill: EOSPalette.car.opacity(0.9),
+                                stroke: Color.clear,
+                                foreground: .black
+                            )
                         }
                     }
                     .padding(10)

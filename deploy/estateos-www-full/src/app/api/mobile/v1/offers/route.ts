@@ -13,6 +13,11 @@ import {
 } from '@/lib/contactVerification';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
+import {
+  enrichOfferPriceDiscountFields,
+  fetchMaxHistoricalPricePlnByOfferIds,
+  resolveEffectiveListPricePln,
+} from '@/lib/offerPriceHistory';
 import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { MOBILE_OFFER_CATALOG_SELECT } from '@/lib/mobileOfferCatalogSelect';
 import {
@@ -168,16 +173,23 @@ export async function GET(req: Request) {
 
     const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
 
+    const historyMaxMap = await fetchMaxHistoricalPricePlnByOfferIds(offerIds);
+
     const normalizedOffers = publicationGatedOffers.map((offer: any) => {
       const viewsCount = viewsMap.get(Number(offer.id)) || 0;
       const favoritesCount = favoritesMap.get(Number(offer.id)) || 0;
       const legalOffer = applyLegalStatusOverride(offer, legalOverrides);
-      return enrichOfferWithLegalAliases({
+      const withListPrice = {
         ...legalOffer,
+        listPricePln: resolveEffectiveListPricePln(
+          legalOffer,
+          historyMaxMap.get(Number(offer.id)),
+        ),
         views: viewsCount,
         viewsCount,
         favoritesCount,
-      });
+      };
+      return enrichOfferWithLegalAliases(enrichOfferPriceDiscountFields(withListPrice));
     });
 
     return NextResponse.json({ success: true, offers: normalizedOffers }, {

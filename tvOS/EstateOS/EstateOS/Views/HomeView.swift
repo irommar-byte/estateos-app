@@ -233,6 +233,17 @@ struct HomeView: View {
                     Button("Premium") { app.toggleHomePremium() }
                         .buttonStyle(EOSMicroChipButtonStyle(selected: app.homePremium, accent: EOSPalette.home))
                         .focusEffectDisabled()
+
+                    Button {
+                        app.toggleHomeDiscounted()
+                    } label: {
+                        Label(
+                            "Przecenione (\(app.homeDiscountedCount))",
+                            systemImage: "percent"
+                        )
+                    }
+                    .buttonStyle(EOSMicroChipButtonStyle(selected: app.homeDiscounted, accent: Color(red: 0.92, green: 0.32, blue: 0.28)))
+                    .focusEffectDisabled()
                 }
                 .padding(.vertical, 2)
             }
@@ -555,6 +566,7 @@ struct HomeView: View {
         if !filtering {
             homeSection("Warszawa i okolice", offers: app.showroomHomeWarsaw)
             homeSection("Segment premium", offers: app.showroomHomePremium)
+            homeSection("Przecenione", offers: app.showroomHomeDiscounted)
             homeSection("Wynajem", offers: app.showroomHomeRent)
         }
     }
@@ -934,6 +946,7 @@ struct OffersCatalogView: View {
                         OfferListRowView(
                             offer: offer,
                             isFavorite: app.isFavorite(offer.id),
+                            showsOwnerStats: app.isOwner(of: offer),
                             distanceLabel: app.distanceLabel(forCity: offer.city)
                         )
                         .eosListRowFocus(accent: EOSPalette.home)
@@ -964,6 +977,7 @@ struct OffersCatalogView: View {
             OfferCardView(
                 offer: offer,
                 isFavorite: app.isFavorite(offer.id),
+                showsOwnerStats: app.isOwner(of: offer),
                 distanceLabel: app.distanceLabel(forCity: offer.city),
                 imageHeight: imageHeight,
                 compact: compact
@@ -1013,6 +1027,7 @@ struct OffersRailView: View {
 struct OfferCardView: View {
     let offer: EstateOffer
     var isFavorite: Bool = false
+    var showsOwnerStats: Bool = false
     var distanceLabel: String? = nil
     var imageHeight: CGFloat = 180
     var compact: Bool = true
@@ -1021,6 +1036,12 @@ struct OfferCardView: View {
         VStack(alignment: .leading, spacing: compact ? 10 : 14) {
             EOSOfferThumbnail(url: EOSOfferMedia.primaryImageURL(for: offer), height: imageHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    if let discount = offer.priceDiscountBadgeText {
+                        EOSDiscountBadge(percentText: discount)
+                            .padding(10)
+                    }
+                }
                 .overlay(alignment: .topTrailing) {
                     if isFavorite {
                         Image(systemName: "heart.fill")
@@ -1032,29 +1053,22 @@ struct OfferCardView: View {
                     }
                 }
                 .overlay(alignment: .bottomLeading) {
+                    // One clean badge row — full words, never hyphenated; city lives in the footer.
                     HStack(spacing: 8) {
-                        Text(offer.transactionLabel)
-                            .font(.caption.weight(.bold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(Color.white.opacity(0.14)))
-                            .overlay(Capsule().stroke(offer.isRentBadge ? Color(red: 0.45, green: 0.55, blue: 0.72).opacity(0.7) : EOSPalette.home.opacity(0.55), lineWidth: 1))
-                            .foregroundStyle(.white)
-                        if let city = offer.city {
-                            Text(city)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(.black.opacity(0.55)))
-                        }
+                        EOSMediaBadge(
+                            text: offer.transactionBadgeText,
+                            fill: (offer.isRentBadge
+                                   ? Color(red: 0.45, green: 0.55, blue: 0.72)
+                                   : EOSPalette.home).opacity(0.88),
+                            stroke: Color.white.opacity(0.28)
+                        )
                         if let distanceLabel {
-                            Text(distanceLabel)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(Color.white.opacity(0.12)))
-                                .foregroundStyle(.black)
+                            EOSMediaBadge(
+                                text: distanceLabel,
+                                fill: Color.white.opacity(0.88),
+                                stroke: Color.clear,
+                                foreground: .black
+                            )
                         }
                     }
                     .padding(10)
@@ -1069,22 +1083,34 @@ struct OfferCardView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, minHeight: compact ? 44 : 60, alignment: .topLeading)
 
-            Text(EOSFormat.pricePLN(offer.price))
-                .font(compact ? .title3.bold() : .title2.bold())
-                .foregroundStyle(EOSPalette.home)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(EOSFormat.pricePLN(offer.price))
+                    .font(compact ? .title3.bold() : .title2.bold())
+                    .foregroundStyle(EOSPalette.home)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                if let discount = offer.priceDiscountBadgeText {
+                    Text(discount)
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(Color(red: 0.95, green: 0.42, blue: 0.36))
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+            }
 
-            EOSListingStatsRow(
-                views: offer.viewsCount,
-                favorites: offer.favoritesCount,
-                accent: EOSPalette.home
-            )
+            if showsOwnerStats {
+                EOSListingStatsRow(
+                    views: offer.viewsCount,
+                    favorites: offer.favoritesCount,
+                    accent: EOSPalette.home
+                )
+            }
 
             Text(offer.displayLocation)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
         .eosPosterCard(cornerRadius: 22, accent: EOSPalette.home)
     }
@@ -1094,6 +1120,7 @@ struct OfferCardView: View {
 struct OfferListRowView: View {
     let offer: EstateOffer
     var isFavorite: Bool = false
+    var showsOwnerStats: Bool = false
     var distanceLabel: String? = nil
 
     var body: some View {
@@ -1101,20 +1128,33 @@ struct OfferListRowView: View {
             EOSOfferThumbnail(url: EOSOfferMedia.primaryImageURL(for: offer), height: 96)
                 .frame(width: 160)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    if let discount = offer.priceDiscountBadgeText {
+                        EOSDiscountBadge(percentText: discount)
+                            .scaleEffect(0.85, anchor: .topLeading)
+                            .padding(6)
+                    }
+                }
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
-                    Text(offer.transactionLabel)
-                        .font(.caption2.weight(.bold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(Color.white.opacity(0.14)))
-                            .overlay(Capsule().stroke(offer.isRentBadge ? Color(red: 0.45, green: 0.55, blue: 0.72).opacity(0.7) : EOSPalette.home.opacity(0.55), lineWidth: 1))
+                    EOSMediaBadge(
+                        text: offer.transactionBadgeText,
+                        fill: (offer.isRentBadge
+                               ? Color(red: 0.45, green: 0.55, blue: 0.72)
+                               : EOSPalette.home).opacity(0.88),
+                        stroke: Color.white.opacity(0.28),
+                        fontSize: 11
+                    )
                     if isFavorite {
                         Image(systemName: "heart.fill").foregroundStyle(.pink).font(.caption)
                     }
                     if let distanceLabel {
-                        Text(distanceLabel).font(.caption2.weight(.semibold)).foregroundStyle(EOSPalette.home)
+                        Text(distanceLabel)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(EOSPalette.home)
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                 }
                 Text(offer.title)
@@ -1124,13 +1164,17 @@ struct OfferListRowView: View {
                 Text(EOSFormat.pricePLN(offer.price))
                     .font(.title3.bold())
                     .foregroundStyle(EOSPalette.home)
+                    .lineLimit(1)
                 HStack {
-                    EOSListingStatsRow(views: offer.viewsCount, favorites: offer.favoritesCount, accent: EOSPalette.home)
+                    if showsOwnerStats {
+                        EOSListingStatsRow(views: offer.viewsCount, favorites: offer.favoritesCount, accent: EOSPalette.home)
+                    }
                     Spacer()
                     Text(offer.displayLocation)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
             }
             Spacer(minLength: 0)

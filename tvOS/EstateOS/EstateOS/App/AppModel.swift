@@ -32,6 +32,7 @@ final class AppModel: ObservableObject {
     @Published var carSearchQuery = ""
     @Published var homeNearest = false
     @Published var homePremium = false
+    @Published var homeDiscounted = false
     @Published var selectedHomeTransactions: Set<HomeTransactionFilter> = []
     @Published var selectedHomeCities: Set<String> = []
     @Published var homeCitiesPickerExpanded = false
@@ -223,6 +224,7 @@ final class AppModel: ObservableObject {
         selectedCarCities = []
         homeNearest = false
         homePremium = false
+        homeDiscounted = false
         carNearest = false
         homeCitiesPickerExpanded = false
         carCitiesPickerExpanded = false
@@ -244,6 +246,7 @@ final class AppModel: ObservableObject {
     func clearHomeFilters() {
         homeNearest = false
         homePremium = false
+        homeDiscounted = false
         selectedHomeTransactions = []
         selectedHomeCities = []
         selectedHomePropertyTypes = []
@@ -265,6 +268,16 @@ final class AppModel: ObservableObject {
 
     func toggleHomePremium() {
         homePremium.toggle()
+    }
+
+    func toggleHomeDiscounted() {
+        homeDiscounted.toggle()
+    }
+
+    /// Engagement stats (views / favorites) are private to the listing owner.
+    func isOwner(of offer: EstateOffer) -> Bool {
+        guard let ownerId = offer.userId, let me = session?.user.id else { return false }
+        return ownerId == me
     }
 
     func toggleHomeTransaction(_ kind: HomeTransactionFilter) {
@@ -405,6 +418,9 @@ final class AppModel: ObservableObject {
         if homePremium {
             base = base.filter { ($0.price ?? 0) >= 1_500_000 }
         }
+        if homeDiscounted {
+            base = base.filter { $0.isPriceReduced(minPercent: 2) }
+        }
         if !selectedHomeCities.isEmpty {
             base = base.filter { offer in
                 let city = (offer.city ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -430,6 +446,7 @@ final class AppModel: ObservableObject {
             parts.append(kind.title)
         }
         if homePremium { parts.append("Premium") }
+        if homeDiscounted { parts.append("Przecenione") }
         if !selectedHomeCities.isEmpty {
             parts.append(selectedHomeCities.sorted().joined(separator: " · "))
         }
@@ -567,9 +584,19 @@ final class AppModel: ObservableObject {
     var isHomeFilteringActive: Bool {
         homeNearest
             || homePremium
+            || homeDiscounted
             || !selectedHomeTransactions.isEmpty
             || !selectedHomeCities.isEmpty
             || !selectedHomePropertyTypes.isEmpty
+    }
+
+    /// Offers currently discounted by ≥2% (catalog-wide, for the filter chip count).
+    var homeDiscountedCount: Int {
+        offers.filter { $0.isPriceReduced(minPercent: 2) }.count
+    }
+
+    var showroomHomeDiscounted: [EstateOffer] {
+        Array(offers.filter { $0.isPriceReduced(minPercent: 2) }.prefix(28))
     }
 
     var filteredCars: [CarListing] {

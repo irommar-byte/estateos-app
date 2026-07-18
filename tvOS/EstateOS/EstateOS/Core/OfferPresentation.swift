@@ -168,4 +168,23 @@ extension EstateOffer {
     var displayPropertyType: String? {
         OfferPresentation.propertyTypeLabel(for: propertyType)
     }
+
+    /// True when the listing has been reduced by at least `minPercent` vs its list price.
+    func isPriceReduced(minPercent: Int = 2) -> Bool {
+        guard let pct = priceDiscountPercent else { return false }
+        return pct >= minPercent
+    }
+
+    /// Compact badge text like "−12%" — never wraps.
+    var priceDiscountBadgeText: String? {
+        guard isPriceReduced(minPercent: 2), let pct = priceDiscountPercent else { return nil }
+        return "−\(pct)%"
+    }
+
+    var transactionBadgeText: String {
+        // Uppercase short labels that fit a media capsule without hyphenation.
+        let raw = (transactionType ?? "").uppercased()
+        if raw.contains("RENT") { return "WYNAJEM" }
+        return "SPRZEDAŻ"
+    }
 }

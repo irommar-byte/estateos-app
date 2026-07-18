@@ -582,6 +582,57 @@ struct EOSScreenFitText: View {
 }
 
 
+/// Single-line media capsule — never wraps or hyphenates. Use for transaction / city / discount.
+struct EOSMediaBadge: View {
+    let text: String
+    var fill: Color = Color.black.opacity(0.58)
+    var stroke: Color = Color.white.opacity(0.22)
+    var foreground: Color = .white
+    var fontSize: CGFloat = 13
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: fontSize, weight: .bold, design: .rounded))
+            .tracking(0.5)
+            .foregroundStyle(foreground)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: true)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Capsule(style: .continuous).fill(fill))
+            .overlay(Capsule(style: .continuous).stroke(stroke, lineWidth: 1))
+            .layoutPriority(1)
+    }
+}
+
+struct EOSDiscountBadge: View {
+    let percentText: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "percent")
+                .font(.system(size: 11, weight: .heavy))
+            Text(percentText)
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .tracking(0.3)
+        }
+        .foregroundStyle(.white)
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: true)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color(red: 0.92, green: 0.32, blue: 0.28).opacity(0.92))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(Color.white.opacity(0.28), lineWidth: 1)
+        )
+        .layoutPriority(2)
+    }
+}
+
 struct EOSListingStatsRow: View {
     let views: Int
     let favorites: Int

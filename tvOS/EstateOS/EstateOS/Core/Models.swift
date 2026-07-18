@@ -66,6 +66,14 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
     let createdAt: String?
     let viewsCount: Int
     let favoritesCount: Int
+    /// Owner of the listing — used to show engagement stats only to the seller.
+    let userId: Int?
+    /// List / previous price in PLN (reference for discount %).
+    let listPricePln: Double?
+    let previousPrice: Double?
+    /// Whole-percent drop vs list price (e.g. 12 for −12%). Nil when not discounted.
+    let priceDiscountPercent: Int?
+    let isDiscounted: Bool
 
     enum CodingKeys: String, CodingKey {
         case id, title, description, city, district, localityCountry, localityCountryCode
@@ -73,6 +81,7 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
         case transactionType, propertyType, createdAt
         case imageUrl, mainImage, thumbnail, image
         case images, views, viewsCount, favoritesCount
+        case userId, listPricePln, previousPrice, oldPrice, priceDiscountPercent, isDiscounted
     }
 
     init(from decoder: Decoder) throws {
@@ -94,6 +103,25 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
             ?? (try? c.decodeIfPresent(Int.self, forKey: .views))
             ?? 0
         favoritesCount = (try? c.decodeIfPresent(Int.self, forKey: .favoritesCount)) ?? 0
+        userId = try? c.decodeIfPresent(Int.self, forKey: .userId)
+        listPricePln = try EstateOffer.decodeFlexibleDouble(from: c, key: .listPricePln)
+        if let prev = try EstateOffer.decodeFlexibleDouble(from: c, key: .previousPrice) {
+            previousPrice = prev
+        } else {
+            previousPrice = try EstateOffer.decodeFlexibleDouble(from: c, key: .oldPrice)
+        }
+        if let pct = try? c.decodeIfPresent(Int.self, forKey: .priceDiscountPercent) {
+            priceDiscountPercent = pct
+        } else if let pctD = try? c.decodeIfPresent(Double.self, forKey: .priceDiscountPercent) {
+            priceDiscountPercent = Int(pctD.rounded())
+        } else {
+            priceDiscountPercent = nil
+        }
+        if let flag = try? c.decodeIfPresent(Bool.self, forKey: .isDiscounted) {
+            isDiscounted = flag
+        } else {
+            isDiscounted = (priceDiscountPercent ?? 0) > 0
+        }
         let directImages = EstateOffer.decodeFlexibleStringArray(from: c, key: .images)
         let primaryImage: String?
         if let v = try c.decodeIfPresent(String.self, forKey: .imageUrl), !v.isEmpty {
@@ -130,7 +158,12 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
         imageCandidates: [String] = [],
         createdAt: String?,
         viewsCount: Int = 0,
-        favoritesCount: Int = 0
+        favoritesCount: Int = 0,
+        userId: Int? = nil,
+        listPricePln: Double? = nil,
+        previousPrice: Double? = nil,
+        priceDiscountPercent: Int? = nil,
+        isDiscounted: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -149,6 +182,11 @@ struct EstateOffer: Decodable, Identifiable, Hashable {
         self.createdAt = createdAt
         self.viewsCount = viewsCount
         self.favoritesCount = favoritesCount
+        self.userId = userId
+        self.listPricePln = listPricePln
+        self.previousPrice = previousPrice
+        self.priceDiscountPercent = priceDiscountPercent
+        self.isDiscounted = isDiscounted
     }
 
     private static func decodeFlexibleDouble(
