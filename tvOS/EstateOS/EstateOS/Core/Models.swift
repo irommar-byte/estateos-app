@@ -179,3 +179,129 @@ extension EstateOfferListEnvelope {
         offers ?? data ?? items ?? []
     }
 }
+
+
+// MARK: - Cars (EstateOS™Car)
+
+struct CarListing: Decodable, Identifiable, Hashable {
+    let id: Int
+    let title: String
+    let description: String?
+    let make: String
+    let model: String
+    let year: Int
+    let mileageKm: Int
+    let fuelType: String
+    let transmission: String
+    let bodyType: String
+    let exteriorColor: String?
+    let generation: String?
+    let enginePower: String?
+    let engineCapacity: String?
+    let trimVersion: String?
+    let doorCount: Int?
+    let pricePln: Double
+    let city: String
+    let imageUrl: String?
+    let imageCandidates: [String]
+    let featured: Bool
+    let createdAt: String?
+    let vinMasked: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, description, make, model, year, mileageKm, fuelType, transmission, bodyType
+        case exteriorColor, generation, enginePower, engineCapacity, trimVersion, doorCount
+        case pricePln, city, imageUrl, images, featured, createdAt, vin, vinMasked
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? "Auto #\(id)"
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        make = try c.decodeIfPresent(String.self, forKey: .make) ?? ""
+        model = try c.decodeIfPresent(String.self, forKey: .model) ?? ""
+        year = try Self.decodeInt(from: c, key: .year) ?? 0
+        mileageKm = try Self.decodeInt(from: c, key: .mileageKm) ?? 0
+        fuelType = try c.decodeIfPresent(String.self, forKey: .fuelType) ?? ""
+        transmission = try c.decodeIfPresent(String.self, forKey: .transmission) ?? ""
+        bodyType = try c.decodeIfPresent(String.self, forKey: .bodyType) ?? ""
+        exteriorColor = try c.decodeIfPresent(String.self, forKey: .exteriorColor)
+        generation = try c.decodeIfPresent(String.self, forKey: .generation)
+        enginePower = try c.decodeIfPresent(String.self, forKey: .enginePower)
+        engineCapacity = try c.decodeIfPresent(String.self, forKey: .engineCapacity)
+        trimVersion = try c.decodeIfPresent(String.self, forKey: .trimVersion)
+        doorCount = try Self.decodeInt(from: c, key: .doorCount)
+        if let d = try? c.decode(Double.self, forKey: .pricePln) {
+            pricePln = d
+        } else if let i = try? c.decode(Int.self, forKey: .pricePln) {
+            pricePln = Double(i)
+        } else {
+            pricePln = 0
+        }
+        city = try c.decodeIfPresent(String.self, forKey: .city) ?? ""
+        let imgs = Self.decodeStringArray(from: c, key: .images)
+        let primary = (try? c.decodeIfPresent(String.self, forKey: .imageUrl)) ?? imgs.first
+        imageUrl = primary
+        imageCandidates = ([primary].compactMap { $0 } + imgs)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        featured = (try? c.decodeIfPresent(Bool.self, forKey: .featured)) ?? false
+        createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        if let masked = try c.decodeIfPresent(String.self, forKey: .vinMasked), !masked.isEmpty {
+            vinMasked = masked
+        } else if let vin = try c.decodeIfPresent(String.self, forKey: .vin), vin.count >= 5 {
+            vinMasked = String(vin.prefix(3)) + "••••" + String(vin.suffix(2))
+        } else {
+            vinMasked = nil
+        }
+    }
+
+    private static func decodeInt(from c: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) throws -> Int? {
+        if let v = try? c.decode(Int.self, forKey: key) { return v }
+        if let v = try? c.decode(Double.self, forKey: key) { return Int(v) }
+        if let s = try? c.decode(String.self, forKey: key) { return Int(s) }
+        return nil
+    }
+
+    private static func decodeStringArray(from c: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) -> [String] {
+        if let list = try? c.decode([String].self, forKey: key) { return list }
+        if let s = try? c.decode(String.self, forKey: key) {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.hasPrefix("["), let data = t.data(using: .utf8),
+               let parsed = try? JSONDecoder().decode([String].self, from: data) {
+                return parsed
+            }
+            return t.isEmpty ? [] : [t]
+        }
+        return []
+    }
+}
+
+enum CatalogBrand: String, CaseIterable, Identifiable {
+    case home
+    case car
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .home: return "Nieruchomości"
+        case .car: return "Samochody"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .home: return "Home"
+        case .car: return "Car"
+        }
+    }
+
+    var accent: String {
+        switch self {
+        case .home: return "house.fill"
+        case .car: return "car.fill"
+        }
+    }
+}

@@ -21,14 +21,24 @@ final class AppModel: ObservableObject {
     @Published var favoriteOfferIds: Set<Int> = []
     @Published var favoriteOffers: [EstateOffer] = []
     @Published var isLoadingFavorites = false
+    @Published var catalogBrand: CatalogBrand = .home
+    @Published var cars: [CarListing] = []
+    @Published var selectedCar: CarListing?
+    @Published var isLoadingCars = false
+    @Published var carSearchQuery = ""
+    @Published var homeFilterChip: HomeFilterChip = .all
+    @Published var carFilterChip: CarFilterChip = .all
+    @Published var favoriteCarIds: Set<Int> = TvPreferences.favoriteCarIds
 
     let api = EstateAPIClient()
     private var tvPairPollTask: Task<Void, Never>?
     private var pendingDeepLinkOfferId: Int?
+    private var pendingDeepLinkCarId: Int?
 
     func bootstrap() async {
         defer { isBootstrapping = false }
         try? await refreshOffers()
+        try? await refreshCars()
         if let saved = SessionStore.load() {
             api.setToken(saved.token)
             session = saved
@@ -48,6 +58,7 @@ final class AppModel: ObservableObject {
             self.session = session
             pairingStatusMessage = nil
             try await refreshOffers()
+            try? await refreshCars()
             await refreshFavorites()
             closeLoginSheet()
         } catch {
@@ -67,11 +78,15 @@ final class AppModel: ObservableObject {
         SessionStore.clear()
         session = nil
         selectedOffer = nil
+        selectedCar = nil
         immersiveBrowse = nil
         favoriteOfferIds = []
         favoriteOffers = []
         api.setToken(nil)
-        Task { try? await refreshOffers() }
+        Task {
+            try? await refreshOffers()
+            try? await refreshCars()
+        }
     }
 
     func isFavorite(_ offerId: Int) -> Bool {
@@ -132,7 +147,24 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func refreshOffers() async throws {
+    func isFavoriteCar(_ carId: Int) -> Bool {
+        favoriteCarIds.contains(carId)
+    }
+
+    var favoriteCars: [CarListing] {
+        cars.filter { favoriteCarIds.contains($0.id) }
+    }
+
+    func toggleFavoriteCar(_ car: CarListing) {
+        if favoriteCarIds.contains(car.id) {
+            favoriteCarIds.remove(car.id)
+        } else {
+            favoriteCarIds.insert(car.id)
+        }
+        TvPreferences.favoriteCarIds = favoriteCarIds
+    }
+
+        func refreshOffers() async throws {
         isLoadingOffers = true
         defer { isLoadingOffers = false }
         do {
@@ -153,6 +185,72 @@ final class AppModel: ObservableObject {
             .sorted { $0.sortDate > $1.sortDate }
     }
 
+
+    func setCatalogBrand(_ brand: CatalogBrand) {
+        catalogBrand = brand
+        if brand == .car, cars.isEmpty {
+            Task { try? await refreshCars() }
+        }
+    }
+
+    func refreshCars() async throws {
+        isLoadingCars = true
+        defer { isLoadingCars = false }
+        do {
+            cars = try await api.fetchCars()
+        } catch {
+            globalError = error.localizedDescription
+            throw error
+        }
+    }
+
+    var filteredOffersForBrowse: [EstateOffer] {
+        let base = filteredOffers
+        switch homeFilterChip {
+        case .all: return base
+        case .sale:
+            return base.filter {
+                let t = ($0.transactionType ?? "").uppercased()
+                return t.contains("SELL") || t.contains("SALE") || t.isEmpty
+            }
+        case .rent:
+            return base.filter { ($0.transactionType ?? "").uppercased().contains("RENT") }
+        case .warsaw:
+            return base.filter { ($0.city ?? "").localizedCaseInsensitiveContains("warsz") }
+        case .luxury:
+            return base.filter { ($0.price ?? 0) >= 1_500_000 }
+        }
+    }
+
+    var filteredCars: [CarListing] {
+        let base = api.searchCars(query: carSearchQuery, source: cars)
+        switch carFilterChip {
+        case .all: return base
+        case .featured: return base.filter(\.featured)
+        case .petrol: return base.filter { $0.fuelType.localizedCaseInsensitiveContains("benz") }
+        case .diesel: return base.filter { $0.fuelType.localizedCaseInsensitiveContains("diesel") || $0.fuelType.localizedCaseInsensitiveContains("olej") }
+        case .electric: return base.filter { $0.fuelType.localizedCaseInsensitiveContains("elektr") || $0.fuelType.localizedCaseInsensitiveContains("ev") }
+        case .hybrid: return base.filter { $0.fuelType.localizedCaseInsensitiveContains("hybr") }
+        case .automatic: return base.filter { $0.transmission.localizedCaseInsensitiveContains("automat") }
+        }
+    }
+
+    var carsFeatured: [CarListing] {
+        cars.filter(\.featured)
+    }
+
+    var carsLast24Hours: [CarListing] {
+        cars.filter(\.isWithinLast24Hours).sorted { $0.sortDate > $1.sortDate }
+    }
+
+    func openCarDetail(_ car: CarListing) {
+        selectedCar = car
+    }
+
+    func closeCarDetail() {
+        selectedCar = nil
+    }
+
     func openDetail(_ offer: EstateOffer) {
         selectedOffer = offer
     }
@@ -165,7 +263,14 @@ final class AppModel: ObservableObject {
         let pool = source ?? offersLast24Hours
         guard !pool.isEmpty else { return }
         let clamped = min(max(0, index), pool.count - 1)
-        immersiveBrowse = ImmersiveBrowseContext(offers: pool, startIndex: clamped)
+        immersiveBrowse = ImmersiveBrowseContext(kind: .homes(pool), startIndex: clamped)
+    }
+
+    func openImmersiveCarBrowse(at index: Int, from source: [CarListing]? = nil) {
+        let pool = source ?? (carsLast24Hours.isEmpty ? filteredCars : carsLast24Hours)
+        guard !pool.isEmpty else { return }
+        let clamped = min(max(0, index), pool.count - 1)
+        immersiveBrowse = ImmersiveBrowseContext(kind: .cars(pool), startIndex: clamped)
     }
 
     func closeImmersiveBrowse() {
@@ -173,6 +278,10 @@ final class AppModel: ObservableObject {
     }
 
     func handleDeepLink(_ url: URL) {
+        if let carId = TvDeepLink.carId(from: url) {
+            handleCarDeepLink(carId: carId, immersive: TvDeepLink.opensImmersive(from: url))
+            return
+        }
         guard let offerId = TvDeepLink.offerId(from: url) else { return }
         let immersive = TvDeepLink.opensImmersive(from: url)
 
@@ -204,9 +313,59 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func handleCarDeepLink(carId: Int, immersive: Bool) {
+        func resolve() {
+            if immersive {
+                let pool = carsLast24Hours.isEmpty ? cars : carsLast24Hours
+                if let index = pool.firstIndex(where: { $0.id == carId }) {
+                    pendingDeepLinkCarId = nil
+                    openImmersiveCarBrowse(at: index, from: pool)
+                } else if let car = cars.first(where: { $0.id == carId }) {
+                    pendingDeepLinkCarId = nil
+                    openImmersiveCarBrowse(at: 0, from: [car])
+                }
+            } else if let car = cars.first(where: { $0.id == carId }) {
+                pendingDeepLinkCarId = nil
+                openCarDetail(car)
+            }
+        }
+
+        if cars.isEmpty {
+            pendingDeepLinkCarId = carId
+            pendingDeepLinkCarImmersive = immersive
+            Task {
+                try? await refreshCars()
+                consumePendingDeepLink()
+            }
+        } else {
+            resolve()
+        }
+    }
+
     private var pendingDeepLinkImmersive = false
+    private var pendingDeepLinkCarImmersive = false
 
     private func consumePendingDeepLink() {
+        if let carId = pendingDeepLinkCarId {
+            let immersive = pendingDeepLinkCarImmersive
+            pendingDeepLinkCarId = nil
+            pendingDeepLinkCarImmersive = false
+            if immersive {
+                let pool = carsLast24Hours.isEmpty ? cars : carsLast24Hours
+                if let index = pool.firstIndex(where: { $0.id == carId }) {
+                    openImmersiveCarBrowse(at: index, from: pool)
+                    return
+                }
+                if let car = cars.first(where: { $0.id == carId }) {
+                    openImmersiveCarBrowse(at: 0, from: [car])
+                    return
+                }
+            } else if let car = cars.first(where: { $0.id == carId }) {
+                openCarDetail(car)
+                return
+            }
+        }
+
         guard let offerId = pendingDeepLinkOfferId else { return }
         let immersive = pendingDeepLinkImmersive
         pendingDeepLinkOfferId = nil
@@ -306,7 +465,43 @@ final class AppModel: ObservableObject {
 }
 
 struct ImmersiveBrowseContext: Identifiable {
+    enum Kind {
+        case homes([EstateOffer])
+        case cars([CarListing])
+    }
+
     let id = UUID()
-    let offers: [EstateOffer]
+    let kind: Kind
     let startIndex: Int
+}
+
+
+enum HomeFilterChip: String, CaseIterable, Identifiable {
+    case all, sale, rent, warsaw, luxury
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .all: return "Wszystkie"
+        case .sale: return "Sprzedaż"
+        case .rent: return "Wynajem"
+        case .warsaw: return "Warszawa"
+        case .luxury: return "Premium"
+        }
+    }
+}
+
+enum CarFilterChip: String, CaseIterable, Identifiable {
+    case all, featured, petrol, diesel, electric, hybrid, automatic
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .all: return "Wszystkie"
+        case .featured: return "Wyróżnione"
+        case .petrol: return "Benzyna"
+        case .diesel: return "Diesel"
+        case .electric: return "Elektryczne"
+        case .hybrid: return "Hybryda"
+        case .automatic: return "Automat"
+        }
+    }
 }

@@ -200,7 +200,7 @@ o(
 tgt_settings = (
     "ASSETCATALOG_COMPILER_APPICON_NAME = \"App Icon & Top Shelf Image\"; "
     "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; "
-    "CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; "
+    "CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = NW3YW69KL9; CURRENT_PROJECT_VERSION = 1; "
     "GENERATE_INFOPLIST_FILE = NO; "
     "INFOPLIST_FILE = EstateOS/Resources/Info.plist; "
     "LD_RUNPATH_SEARCH_PATHS = (\"$(inherited)\", \"@executable_path/Frameworks\"); "

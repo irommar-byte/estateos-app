@@ -123,6 +123,50 @@ final class EstateAPIClient {
         )
     }
 
+    func fetchCars() async throws -> [CarListing] {
+        if let list: [CarListing] = try? await request("GET", path: "/api/cars", authorized: false) {
+            return list
+        }
+        struct CarsEnvelope: Decodable {
+            let cars: [CarListing]?
+            let items: [CarListing]?
+            let data: [CarListing]?
+            var resolved: [CarListing] { cars ?? items ?? data ?? [] }
+        }
+        let env: CarsEnvelope = try await request("GET", path: "/api/cars", authorized: false)
+        if !env.resolved.isEmpty { return env.resolved }
+        throw APIError.server("Nie udało się pobrać ogłoszeń samochodowych.")
+    }
+
+    func carDetail(id: Int, fallback: [CarListing]) async throws -> CarListing {
+        if let exact: CarListing = try? await request("GET", path: "/api/cars/\(id)", authorized: false) {
+            return exact
+        }
+        if let exact = fallback.first(where: { $0.id == id }) {
+            return exact
+        }
+        let all = try await fetchCars()
+        if let exact = all.first(where: { $0.id == id }) {
+            return exact
+        }
+        throw APIError.server("Nie znaleziono ogłoszenia auta.")
+    }
+
+    func searchCars(query: String, source: [CarListing]) -> [CarListing] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return source }
+        return source.filter { car in
+            [
+                car.title, car.make, car.model, car.city, car.fuelType,
+                car.transmission, car.bodyType, car.description ?? "",
+                String(car.year),
+            ]
+            .joined(separator: " ")
+            .lowercased()
+            .contains(q)
+        }
+    }
+
     func fetchFavorites() async throws -> EstateFavoritesEnvelope {
         try await request("GET", path: "/api/favorites")
     }

@@ -19,8 +19,14 @@ struct RootView: View {
                 .environmentObject(app)
         }
         .fullScreenCover(item: $app.immersiveBrowse, onDismiss: app.closeImmersiveBrowse) { context in
-            TopShelfImmersiveView(offers: context.offers, startIndex: context.startIndex)
-                .environmentObject(app)
+            switch context.kind {
+            case .homes(let offers):
+                TopShelfImmersiveView(offers: offers, startIndex: context.startIndex)
+                    .environmentObject(app)
+            case .cars(let cars):
+                ImmersiveCarBrowseView(cars: cars, startIndex: context.startIndex)
+                    .environmentObject(app)
+            }
         }
         .alert("Error", isPresented: .constant(app.globalError != nil)) {
             Button("OK") {

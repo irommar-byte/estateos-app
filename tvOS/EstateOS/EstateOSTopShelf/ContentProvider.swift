@@ -65,16 +65,36 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     }
   }
 
+  private let carsURL = URL(string: "https://estateos.pl/api/cars")!
+  private let carLimit = 6
+
   private func buildContent() async -> TVTopShelfContent? {
-    guard let offers = await fetchOffersForTopShelf(), !offers.isEmpty else {
+    async let offersTask = fetchOffersForTopShelf()
+    async let carsTask = fetchCarsForTopShelf()
+    let offers = await offersTask ?? []
+    let cars = await carsTask ?? []
+
+    guard !offers.isEmpty || !cars.isEmpty else {
       return fallbackContent()
     }
 
-    let limited = Array(offers.prefix(offerLimit))
+    let limitedOffers = Array(offers.prefix(offerLimit))
+    let limitedCars = Array(cars.prefix(carLimit))
+
     if TopShelfSharedPreferences.isSectioned {
-      return await buildSectionedContent(offers: limited) ?? fallbackContent()
+      return await buildDualSectionedContent(offers: limitedOffers, cars: limitedCars) ?? fallbackContent()
     }
-    return await buildCarouselContent(offers: limited) ?? fallbackContent()
+    if !limitedOffers.isEmpty {
+      let homeCarousel = await buildCarouselContent(offers: limitedOffers)
+      if limitedCars.isEmpty {
+        return homeCarousel ?? fallbackContent()
+      }
+      // Prefer dual sectioned when cars exist so both catalogs are visible.
+      return await buildDualSectionedContent(offers: Array(limitedOffers.prefix(6)), cars: limitedCars)
+        ?? homeCarousel
+        ?? fallbackContent()
+    }
+    return await buildDualSectionedContent(offers: [], cars: limitedCars) ?? fallbackContent()
   }
 
   // MARK: - Carousel
@@ -234,6 +254,148 @@ public class TopShelfContentProvider: TVTopShelfContentProvider {
     attachActions(to: item, offerId: offer.id)
     return item
   }
+
+
+  // MARK: - Dual Home + Car sections
+
+  private struct TopShelfCarEnvelope: Decodable {
+    let cars: [TopShelfCar]?
+    let items: [TopShelfCar]?
+    let data: [TopShelfCar]?
+  }
+
+  private struct TopShelfCar: Decodable {
+    let id: Int
+    let title: String?
+    let make: String?
+    let model: String?
+    let year: Int?
+    let pricePln: Double?
+    let city: String?
+    let imageUrl: String?
+    let fuelType: String?
+    let transmission: String?
+    let featured: Bool?
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+      case id, title, make, model, year, pricePln, city, imageUrl, fuelType, transmission, featured, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+      let c = try decoder.container(keyedBy: CodingKeys.self)
+      id = try c.decode(Int.self, forKey: .id)
+      title = try c.decodeIfPresent(String.self, forKey: .title)
+      make = try c.decodeIfPresent(String.self, forKey: .make)
+      model = try c.decodeIfPresent(String.self, forKey: .model)
+      city = try c.decodeIfPresent(String.self, forKey: .city)
+      imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
+      fuelType = try c.decodeIfPresent(String.self, forKey: .fuelType)
+      transmission = try c.decodeIfPresent(String.self, forKey: .transmission)
+      featured = try c.decodeIfPresent(Bool.self, forKey: .featured)
+      createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+      if let y = try? c.decode(Int.self, forKey: .year) {
+        year = y
+      } else if let y = try? c.decode(Double.self, forKey: .year) {
+        year = Int(y)
+      } else {
+        year = nil
+      }
+      if let p = try? c.decode(Double.self, forKey: .pricePln) {
+        pricePln = p
+      } else if let p = try? c.decode(Int.self, forKey: .pricePln) {
+        pricePln = Double(p)
+      } else {
+        pricePln = nil
+      }
+    }
+
+    var displayTitle: String {
+      let parts = [make, model, year.map(String.init)].compactMap { $0 }.filter { !$0.isEmpty }
+      if !parts.isEmpty { return parts.joined(separator: " · ") }
+      return title ?? "Auto #\(id)"
+    }
+  }
+
+  private func buildDualSectionedContent(offers: [TopShelfOffer], cars: [TopShelfCar]) async -> TVTopShelfContent? {
+    var sections: [TVTopShelfItemCollection] = []
+
+    if !offers.isEmpty {
+      #if targetEnvironment(simulator)
+      var homeItems: [TVTopShelfSectionedItem] = []
+      for offer in offers {
+        if let item = await makeStyledSectionedItem(for: offer) {
+          homeItems.append(item)
+        }
+      }
+      #else
+      let homeItems = offers.compactMap { makeRemoteSectionedItem(for: $0) }
+      #endif
+      if !homeItems.isEmpty {
+        let collection = TVTopShelfItemCollection(items: homeItems)
+        collection.title = "Nieruchomości · 24h"
+        sections.append(collection)
+      }
+    }
+
+    if !cars.isEmpty {
+      let carItems = cars.compactMap { makeRemoteCarSectionedItem(for: $0) }
+      if !carItems.isEmpty {
+        let collection = TVTopShelfItemCollection(items: carItems)
+        collection.title = "Samochody"
+        sections.append(collection)
+      }
+    }
+
+    guard !sections.isEmpty else { return nil }
+    return TVTopShelfSectionedContent(sections: sections)
+  }
+
+  private func makeRemoteCarSectionedItem(for car: TopShelfCar) -> TVTopShelfSectionedItem? {
+    guard let remote = absoluteURL(car.imageUrl ?? "") else { return nil }
+    let item = TVTopShelfSectionedItem(identifier: "car-\(car.id)")
+    item.title = car.displayTitle
+    item.imageShape = .hdtv
+    item.setImageURL(remote, for: .screenScale1x)
+    item.setImageURL(remote, for: .screenScale2x)
+    if let url = carDeepLink(for: car.id) {
+      item.displayAction = TVTopShelfAction(url: url)
+    }
+    return item
+  }
+
+  private func fetchCarsForTopShelf() async -> [TopShelfCar]? {
+    var request = URLRequest(url: carsURL)
+    request.setValue("EstateOS-tvOS-TopShelf/1.0", forHTTPHeaderField: "User-Agent")
+    request.timeoutInterval = 8
+    do {
+      let (data, response) = try await URLSession.shared.data(for: request)
+      guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+        return nil
+      }
+      let list: [TopShelfCar]
+      if let decoded = try? JSONDecoder().decode([TopShelfCar].self, from: data) {
+        list = decoded
+      } else {
+        let envelope = try JSONDecoder().decode(TopShelfCarEnvelope.self, from: data)
+        list = envelope.cars ?? envelope.items ?? envelope.data ?? []
+      }
+      let featured = list.filter { $0.featured == true }
+      let pool = featured.isEmpty ? list : featured
+      return Array(pool.prefix(carLimit))
+    } catch {
+      return nil
+    }
+  }
+
+  private func carDeepLink(for carId: Int) -> URL? {
+    var components = URLComponents()
+    components.scheme = "estateos"
+    components.host = "car"
+    components.queryItems = [URLQueryItem(name: "id", value: String(carId))]
+    return components.url
+  }
+
 
   // MARK: - Shared helpers
 
