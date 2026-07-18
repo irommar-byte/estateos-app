@@ -24,12 +24,10 @@ export function buildContactMessagePushPayload(params: {
     body: params.preview,
     sound: ESTATEOS_NOTIFY_SOUND,
     channelId: CONTACT_PUSH_CHANNEL_ID,
-    /** Zamienia poprzedni banner tej samej rozmowy (WhatsApp-style). */
-    collapseId: threadIdentifier,
-    /** Android: zamiana już wyświetlonego powiadomienia tej rozmowy. */
-    tag: androidGroup,
-    /** NSE ustawia threadIdentifier z data (Expo nie mapuje oficjalnie thread-id). */
+    /** Bez collapseId/tag — każde powiadomienie zostaje; iOS/Android grupują po thread/group. */
     mutableContent: true,
+    /** Expo / APNs: ten sam thread = grupa na lock screen (nie zastępowanie). */
+    threadIdentifier,
     ios: {
       threadId: threadIdentifier,
       sound: ESTATEOS_NOTIFY_SOUND,
