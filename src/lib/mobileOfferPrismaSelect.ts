@@ -51,6 +51,7 @@ export const MOBILE_OFFER_PRISMA_SELECT = {
   status: true,
   expiresAt: true,
   promotedUntil: true,
+  listPricePln: true,
   createdAt: true,
   updatedAt: true,
   userId: true,
