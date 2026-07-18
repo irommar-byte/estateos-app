@@ -9,7 +9,7 @@ import { Readable } from "node:stream";
 import { spawnSync, spawn } from "node:child_process";
 import os from "node:os";
 import crypto from "node:crypto";
-import { isCdaHdPlayerHost, isMirrorHost, resolveMirrorPage } from "./voe-resolver.js";
+import { isCdaHdPlayerHost, isMirrorHost, isDoodLikeUrl, resolveMirrorPage } from "./voe-resolver.js";
 import {
   isCdaHdTvShowUrl,
   isCdaHdFilmUrl,
@@ -867,9 +867,11 @@ function startTransferJob({ jobId, url, args, purpose = "download", movieDownloa
   return jobId;
 }
 
-async function getMirrorStream(url) {
-  const cached = getCachedMirrorStream(url);
-  if (cached) return cached;
+async function getMirrorStream(url, { force = false } = {}) {
+  if (!force) {
+    const cached = getCachedMirrorStream(url);
+    if (cached) return cached;
+  }
 
   const target = await resolveMirrorPlayUrl(url);
   let mirror = null;
@@ -946,6 +948,7 @@ function createStreamProxyPreviewJob({
   previewHeight,
   streamSizeBytes,
   streamContentType,
+  mirrorPageUrl,
   req,
 }) {
   const meta = hlsFormatId
@@ -959,6 +962,7 @@ function createStreamProxyPreviewJob({
     mode: "stream-proxy",
     streamUrl,
     streamReferer,
+    mirrorPageUrl: mirrorPageUrl || null,
     streamType: streamType || detectStreamType(streamUrl),
     streamSizeBytes: streamSizeBytes || 0,
     streamContentType: streamContentType || "video/mp4",
@@ -1841,6 +1845,14 @@ async function proxyRemoteUrl(req, res, job, targetUrl) {
     }
   }
   if (!upstream?.ok && upstream?.status !== 206) {
+    if (
+      job.mirrorPageUrl &&
+      [403, 404, 410, 502, 503].includes(upstream?.status) &&
+      (await refreshMirrorStreamOnJob(job))
+    ) {
+      const nextUrl = typeof req.query.u === "string" ? null : job.streamUrl;
+      if (nextUrl) return proxyStreamPlay(req, res, job);
+    }
     if (/\.m3u8(\?|$)/i.test(targetUrl)) {
       const text = await fetchRemoteText(targetUrl, job.streamReferer || "");
       if (text) {
@@ -2460,6 +2472,26 @@ function proxyMp4WithCurl(req, res, job) {
   });
 }
 
+
+async function refreshMirrorStreamOnJob(job) {
+  if (!job?.mirrorPageUrl) return false;
+  try {
+    const mirror = await getMirrorStream(job.mirrorPageUrl, { force: true });
+    if (!mirror?.stream?.url) return false;
+    job.streamUrl = mirror.stream.url;
+    job.streamReferer = mirror.stream.referer || job.streamReferer;
+    job.streamType = mirror.stream.type === "hls" ? "hls" : detectStreamType(mirror.stream.url);
+    job.streamSizeBytes = 0;
+    job.streamContentType = job.streamType === "hls" ? "application/vnd.apple.mpegurl" : "video/mp4";
+    setCachedMirrorStream(job.mirrorPageUrl, mirror);
+    console.warn("stream proxy: odświeżono URL mirror dla", job.id, job.streamType);
+    return true;
+  } catch (err) {
+    console.warn("stream proxy refresh:", err?.message || err);
+    return false;
+  }
+}
+
 async function proxyStreamPlay(req, res, job) {
   if (job.streamType === "hls-master" && job.audioStreamUrl && !req.query.u) {
     res.set({
@@ -2472,6 +2504,11 @@ async function proxyStreamPlay(req, res, job) {
   if (job.streamType === "hls" || job.streamType === "hls-master") {
     return proxyHlsPlaylist(req, res, job);
   }
+  // Dood/playmogo CDN często dusi długi fetch() — curl jest stabilniejszy.
+  if (isDoodLikeUrl(job.streamUrl)) {
+    return proxyMp4WithCurl(req, res, job);
+  }
+
   const headers = { "User-Agent": UA, Referer: job.streamReferer || "" };
   if (req.headers.range) headers.Range = req.headers.range;
 
@@ -2479,6 +2516,7 @@ async function proxyStreamPlay(req, res, job) {
     const upstream = await fetch(job.streamUrl, {
       headers,
       redirect: "follow",
+      // Długi progressive MP4 — bez krótkiego idle timeout na całe body.
       signal: AbortSignal.timeout(STREAM_PROXY_TIMEOUT_MS),
     });
     if (upstream.ok || upstream.status === 206) {
@@ -2499,8 +2537,14 @@ async function proxyStreamPlay(req, res, job) {
       }
       return res.end();
     }
+    if ([403, 404, 410, 416, 502, 503].includes(upstream.status) && (await refreshMirrorStreamOnJob(job))) {
+      return proxyMp4WithCurl(req, res, job);
+    }
   } catch (err) {
     console.warn("stream fetch fallback curl:", err?.message || err);
+    if (await refreshMirrorStreamOnJob(job)) {
+      return proxyMp4WithCurl(req, res, job);
+    }
   }
 
   return proxyMp4WithCurl(req, res, job);
@@ -4393,9 +4437,15 @@ app.post("/api/preview", async (req, res) => {
         streamReferer: mirror.stream.referer,
         title: previewTitle || mirror.title,
         streamType: mirror.stream.type === "hls" ? "hls" : "mp4",
+        mirrorPageUrl: previewUrl,
         req,
       });
-      return res.json({ jobId, purpose: "preview", instant: true, mode: "stream" });
+      return res.json({
+        jobId,
+        purpose: "preview",
+        instant: true,
+        mode: mirror.stream.type === "hls" ? "hls" : "stream",
+      });
     } catch (err) {
       return res.status(500).json({ error: friendlyError(err) });
     }

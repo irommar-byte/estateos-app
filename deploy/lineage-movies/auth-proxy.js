@@ -215,6 +215,7 @@ function upstreamRequest(targetUrl, req, res, extraHeaders = {}) {
       path: parsed.pathname + parsed.search,
       method: req.method,
       headers,
+      timeout: 0,
     },
     (upRes) => {
       res.status(upRes.statusCode || 502);
@@ -225,6 +226,15 @@ function upstreamRequest(targetUrl, req, res, extraHeaders = {}) {
       upRes.pipe(res);
     }
   );
+
+  // Długie streamy MP4/HLS — bez domyślnych timeoutów socketa.
+  upstream.setTimeout(0);
+  try {
+    req.setTimeout?.(0);
+    res.setTimeout?.(0);
+  } catch {
+    /* ignore */
+  }
 
   upstream.on("error", (err) => {
     if (!res.headersSent) {

@@ -65,6 +65,31 @@ function saveSession() {
   fs.renameSync(tmp, SESSION_PATH);
 }
 
+function isAllowedCdaHdResultUrl(url) {
+  try {
+    const u = new URL(url);
+    if (/^chrome:/i.test(u.protocol)) return false;
+    return /(?:^|\.)cda-hd\.(?:cc|pl|to|online|info)$/i.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isValidCdaHdHtml(html, finalUrl = "") {
+  const body = String(html || "");
+  const url = String(finalUrl || "");
+  if (!body || body.length < 800) return false;
+  if (/^chrome:/i.test(url) || /new-tab-page/i.test(url)) return false;
+  if (url && !isAllowedCdaHdResultUrl(url)) return false;
+  if (/<title>\s*New Tab/i.test(body)) return false;
+  if (isCloudflareChallenge(body, 200)) return false;
+  return (
+    /cda-hd/i.test(body) ||
+    /class="item"|typepost|enlaces|player\.cda-hd|ogladaj\.me|playmogo/i.test(body) ||
+    /property="og:title"/i.test(body)
+  );
+}
+
 export function isCloudflareChallenge(html, status = 200) {
   if (status === 403 || status === 503) {
     const body = String(html || "");
@@ -164,12 +189,18 @@ async function flareSolverrGet(pageUrl) {
     const sol = data.solution;
     const html = String(sol.response || "");
     const status = Number(sol.status) || 0;
+    const finalUrl = sol.url || pageUrl;
     if (isCloudflareChallenge(html, status)) {
       throw new Error("Cloudflare nadal blokuje po FlareSolverr — spróbuj ponownie.");
     }
+    if (!isValidCdaHdHtml(html, finalUrl)) {
+      throw new Error(
+        `FlareSolverr zwrócił nieprawidłową stronę (${finalUrl || "brak URL"}). Restart flaresolverr lub spróbuj ponownie.`
+      );
+    }
     return {
       html,
-      finalUrl: sol.url || pageUrl,
+      finalUrl,
       status: status || 200,
       cookies: Array.isArray(sol.cookies) ? sol.cookies : [],
       userAgent: sol.userAgent || DEFAULT_CDA_HD_UA,
@@ -214,13 +245,25 @@ async function refreshSessionViaFlare(pageUrl) {
     loadSession();
     if (session.cookies.length && Date.now() - session.updatedAt < 30_000) {
       const probe = await plainFetchHtml(pageUrl);
-      if (!isCloudflareChallenge(probe.html, probe.status) && probe.status >= 200 && probe.status < 400) {
+      if (
+        !isCloudflareChallenge(probe.html, probe.status) &&
+        probe.status >= 200 &&
+        probe.status < 400 &&
+        isValidCdaHdHtml(probe.html, probe.finalUrl)
+      ) {
         return probe;
       }
     }
 
     console.warn("cda-hd: Cloudflare challenge — solve via FlareSolverr");
-    const solved = await flareSolverrGet(pageUrl);
+    let solved;
+    try {
+      solved = await flareSolverrGet(pageUrl);
+    } catch (err) {
+      console.warn("cda-hd flaresolverr retry:", err?.message || err);
+      await new Promise((r) => setTimeout(r, 1200));
+      solved = await flareSolverrGet(pageUrl);
+    }
     session = {
       cookies: mergeCookies(session.cookies, solved.cookies),
       userAgent: solved.userAgent || session.userAgent || DEFAULT_CDA_HD_UA,
@@ -245,7 +288,12 @@ export async function fetchCdaHdHtmlResilient(pageUrl) {
   if (sessionFresh || session.cookies.length) {
     try {
       const first = await plainFetchHtml(pageUrl);
-      if (!isCloudflareChallenge(first.html, first.status) && first.status >= 200 && first.status < 400) {
+      if (
+        !isCloudflareChallenge(first.html, first.status) &&
+        first.status >= 200 &&
+        first.status < 400 &&
+        isValidCdaHdHtml(first.html, first.finalUrl)
+      ) {
         if (!sessionFresh) {
           session.updatedAt = Date.now();
           saveSession();

@@ -137,24 +137,30 @@ REMOTE
 echo "→ FlareSolverr (Cloudflare bypass dla CDA-HD)"
 ssh "$REMOTE" bash -s <<'REMOTE'
 set -euo pipefail
-if ! sudo docker ps -a --format '{{.Names}}' | grep -qx flaresolverr; then
-  sudo docker pull ghcr.io/flaresolverr/flaresolverr:latest
-  sudo docker run -d --name flaresolverr --restart unless-stopped \
-    -p 127.0.0.1:8191:8191 -e LOG_LEVEL=info \
-    ghcr.io/flaresolverr/flaresolverr:latest
-else
-  sudo docker start flaresolverr >/dev/null || true
+ensure_fs() {
+  if ! sudo docker ps -a --format '{{.Names}}' | grep -qx flaresolverr; then
+    sudo docker pull ghcr.io/flaresolverr/flaresolverr:latest
+    sudo docker run -d --name flaresolverr --restart unless-stopped       -p 127.0.0.1:8191:8191 -e LOG_LEVEL=info       ghcr.io/flaresolverr/flaresolverr:latest
+  else
+    sudo docker start flaresolverr >/dev/null || true
+  fi
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if curl -fsS http://127.0.0.1:8191/ >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+ensure_fs || echo "  WARN: FlareSolverr nie odpowiada na :8191" >&2
+# Self-heal: jeśli Chromium utknie na new-tab/spam, odtwórz kontener.
+PROBE=$(curl -sS -X POST http://127.0.0.1:8191/v1   -H "Content-Type: application/json"   -d "{"cmd":"request.get","url":"https://cda-hd.cc/","maxTimeout":60000}"   --max-time 75 2>/dev/null || true)
+if ! printf '%s' "$PROBE" | grep -q 'CDA-HD'; then
+  echo "  FlareSolverr zwrócił śmieci — recreate"
+  sudo docker rm -f flaresolverr >/dev/null || true
+  ensure_fs || true
 fi
-for i in 1 2 3 4 5 6 7 8 9 10; do
-  if curl -fsS http://127.0.0.1:8191/ >/dev/null 2>&1; then
-    echo "  FlareSolverr ready"
-    break
-  fi
-  sleep 2
-  if [ "$i" -eq 10 ]; then
-    echo "  WARN: FlareSolverr nie odpowiada na :8191" >&2
-  fi
-done
+echo "  FlareSolverr ready"
 REMOTE
 
 echo "→ PM2"

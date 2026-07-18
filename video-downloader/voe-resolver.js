@@ -504,7 +504,35 @@ const MIRROR_HOSTS = /(?:^|\.)cda-hd\.(?:cc|pl|to|online|info)$/i;
 const EMBED_HOSTS =
   /(?:ogladaj\.me|playmogo\.com|do\d+go\.com|voe\.sx|vtbe\.to|voe-unblock\.com|[^.]+\.(?:sbs|cfd|digital|watch))$/i;
 const SKIP_IFRAME_HOSTS =
-  /(?:youtube\.com|youtu\.be|youtube-nocookie\.com|vimeo\.com|dailymotion\.com)/i;
+  /(?:youtube\.com|youtu\.be|youtube-nocookie\.com|vimeo\.com|dailymotion\.com|googletagmanager\.com|googleads|doubleclick\.net)/i;
+
+export function isDoodLikeUrl(url) {
+  try {
+    return isDoodHost(url) || /cloudatacdn\.com|doodcdn|playmogo/i.test(new URL(url).hostname + url);
+  } catch {
+    return false;
+  }
+}
+
+/** Niższy = lepszy. VOE/HLS i player.cda-hd przed throttlowanym Dood/playmogo. */
+function embedPlaybackPriority(embedUrl) {
+  try {
+    if (isCdaHdPlayerHost(embedUrl)) return 0;
+    if (isVoeEmbedHost(embedUrl)) return 1;
+    if (isDoodHost(embedUrl)) return 5;
+    return 3;
+  } catch {
+    return 9;
+  }
+}
+
+function streamPlaybackPriority(stream) {
+  if (!stream?.url) return 99;
+  if (stream.type === "hls") return 0;
+  if (isCdaHdPlayerHost(stream.url) || isCdaHdPlayerHost(stream.embedUrl || "")) return 1;
+  if (isDoodLikeUrl(stream.url) || isDoodHost(stream.embedUrl || stream.url)) return 5;
+  return 3;
+}
 
 export function isMirrorHost(url) {
   try {
@@ -638,27 +666,41 @@ export async function resolveMirrorPage(pageUrl) {
 
   let stream = null;
   let playbackError = null;
-  for (const embed of embeds) {
+  const rankedEmbeds = [...embeds].sort(
+    (a, b) => embedPlaybackPriority(a.url) - embedPlaybackPriority(b.url)
+  );
+  // Zbieramy kandydatów: preferuj HLS (VOE / player.cda-hd) zamiast wolnego Dood.
+  const candidates = [];
+  for (const embed of rankedEmbeds) {
     try {
+      let resolved = null;
       if (isCdaHdPlayerHost(embed.url)) {
         const clickHash = embed.hashScriptUrl
           ? fetchCdaHdHashFromScript(embed.hashScriptUrl, finalUrl || pageUrl)
           : null;
-        stream = resolveCdaHdPlayerPage(embed.url, {
+        resolved = resolveCdaHdPlayerPage(embed.url, {
           referer: finalUrl || pageUrl,
           clickHash: clickHash || undefined,
         });
       } else {
-        stream = await resolveVoePage(embed.url);
+        resolved = await resolveVoePage(embed.url);
       }
-      if (stream) {
-        stream.embedUrl = embed.url;
-        stream.label = embed.label;
+      if (!resolved?.url) continue;
+      resolved.embedUrl = embed.url;
+      resolved.label = embed.label;
+      candidates.push(resolved);
+      // HLS / natywny player — bierz od razu, nie szukaj dalej w dood.
+      if (streamPlaybackPriority(resolved) <= 1) {
+        stream = resolved;
         break;
       }
     } catch (err) {
       if (err?.code === "CDAHD_UNAVAILABLE") playbackError = err;
     }
+  }
+  if (!stream && candidates.length) {
+    candidates.sort((a, b) => streamPlaybackPriority(a) - streamPlaybackPriority(b));
+    stream = candidates[0];
   }
 
   return {
@@ -667,7 +709,7 @@ export async function resolveMirrorPage(pageUrl) {
     embeds,
     stream,
     playbackError,
-    webpageUrl: pageUrl,
+    webpageUrl: finalUrl || pageUrl,
     duration: parsePageDuration(html),
     html,
   };
