@@ -8,6 +8,7 @@ export type EstateOsCarListing = {
   fuelType: string;
   transmission: string;
   bodyType: string;
+  vehicleType?: string;
   pricePln: number;
   city: string;
   imageUrl: string;

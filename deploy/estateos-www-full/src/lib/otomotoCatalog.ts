@@ -1,3 +1,10 @@
+import {
+  DEFAULT_VEHICLE_TYPE,
+  normalizeVehicleType,
+  otomotoCategoryIdForVehicleType,
+  type VehicleType,
+} from "@/lib/vehicleTypes";
+
 export type CatalogOption = {
   value: string;
   label: string;
@@ -16,6 +23,7 @@ export type CatalogResource =
 
 export type CatalogQuery = {
   resource: CatalogResource;
+  vehicleType?: VehicleType;
   make?: string;
   model?: string;
   year?: string;
@@ -27,7 +35,11 @@ export type CatalogQuery = {
   gearbox?: string;
 };
 
-const OTOMOTO_BASE = "https://www.otomoto.pl/api/open/categories/29";
+function otomotoBaseForQuery(query: CatalogQuery): string {
+  const type = normalizeVehicleType(query.vehicleType || DEFAULT_VEHICLE_TYPE);
+  const categoryId = otomotoCategoryIdForVehicleType(type);
+  return `https://www.otomoto.pl/api/open/categories/${categoryId}`;
+}
 
 type OtomotoOptionsResponse = {
   options?: Record<string, { pl?: string; en?: string }>;
@@ -49,16 +61,17 @@ export function normalizeOtomotoOptions(payload: OtomotoOptionsResponse): Catalo
 
 function buildCatalogPath(query: CatalogQuery): string {
   const { resource, make, model } = query;
+  const base = otomotoBaseForQuery(query);
   const makeSlug = String(make || "").trim().toLowerCase();
   const modelSlug = String(model || "").trim().toLowerCase();
 
-  if (resource === "makes") return `${OTOMOTO_BASE}/makes`;
+  if (resource === "makes") return `${base}/makes`;
 
   if (!makeSlug) throw new Error("Parametr make jest wymagany.");
-  if (resource === "models") return `${OTOMOTO_BASE}/models/${encodeURIComponent(makeSlug)}`;
+  if (resource === "models") return `${base}/models/${encodeURIComponent(makeSlug)}`;
   if (!modelSlug) throw new Error("Parametr model jest wymagany.");
 
-  return `${OTOMOTO_BASE}/models/${encodeURIComponent(makeSlug)}/${resource}/${encodeURIComponent(modelSlug)}`;
+  return `${base}/models/${encodeURIComponent(makeSlug)}/${resource}/${encodeURIComponent(modelSlug)}`;
 }
 
 function buildCatalogSearch(query: CatalogQuery): string {
@@ -82,7 +95,9 @@ export async function fetchOtomotoCatalog(query: CatalogQuery): Promise<CatalogO
   });
 
   if (!response.ok) {
-    throw new Error(`Katalog aut niedostępny (${response.status}).`);
+    // Ciężarówki: open API często nie ma modeli — zwracamy pustą listę zamiast 502.
+    if (response.status === 404) return [];
+    throw new Error(`Katalog pojazdów niedostępny (${response.status}).`);
   }
 
   const payload = (await response.json()) as OtomotoOptionsResponse;
@@ -127,8 +142,10 @@ export function fuelLabelToFuelType(label: string): string {
 
 export function parseCatalogQuery(searchParams: URLSearchParams): CatalogQuery {
   const resource = String(searchParams.get("resource") || "").trim() as CatalogResource;
+  const vehicleTypeRaw = String(searchParams.get("vehicleType") || searchParams.get("vehicle_type") || "").trim();
   return {
     resource,
+    vehicleType: vehicleTypeRaw ? normalizeVehicleType(vehicleTypeRaw) : DEFAULT_VEHICLE_TYPE,
     make: String(searchParams.get("make") || "").trim() || undefined,
     model: String(searchParams.get("model") || "").trim() || undefined,
     year: String(searchParams.get("year") || "").trim() || undefined,

@@ -36,6 +36,11 @@ import {
   writeCarListingDraft,
 } from "@/lib/carListingDraft";
 import { formatDateForForm } from "@/utils/polishDateInput";
+import {
+  DEFAULT_VEHICLE_TYPE,
+  normalizeVehicleType,
+  type VehicleType,
+} from "@/lib/vehicleTypes";
 
 function scanGateForEntryMethod(method?: CarAddEntryMethod) {
   return method === "scan" || method === "capture" || method === "upload";
@@ -44,6 +49,7 @@ function scanGateForEntryMethod(method?: CarAddEntryMethod) {
 function formFromOtomotoPrefill(prefill: OtomotoCarImportPrefill): CarFormState {
   return {
     ...initialCarForm,
+    vehicleType: normalizeVehicleType((prefill as { vehicleType?: VehicleType }).vehicleType),
     title: prefill.title || "",
     description: prefill.description || "",
     make: prefill.make || "",
@@ -84,6 +90,7 @@ function formFromOtomotoPrefill(prefill: OtomotoCarImportPrefill): CarFormState 
 }
 
 export type CarFormState = CarVehicleDocsFormState & {
+  vehicleType: VehicleType;
   title: string;
   description: string;
   make: string;
@@ -118,6 +125,7 @@ export type CarFormState = CarVehicleDocsFormState & {
 };
 
 export const initialCarForm: CarFormState = {
+  vehicleType: DEFAULT_VEHICLE_TYPE,
   title: "",
   description: "",
   make: "",
@@ -169,6 +177,7 @@ function toPayload(form: CarFormState, images: string[]) {
   const normalizedImages = images.map((item) => item.trim()).filter(Boolean);
   const coverImage = normalizedImages[0] || form.imageUrl.trim();
   return {
+    vehicleType: normalizeVehicleType(form.vehicleType),
     title: form.title.trim(),
     description: form.description.trim(),
     make: form.make.trim(),
@@ -237,6 +246,7 @@ export default function CarListingForm({
   const [scanNotice, setScanNotice] = useState<string | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
   const [draftReady, setDraftReady] = useState(mode !== "create");
+  const [fillingFromDocs, setFillingFromDocs] = useState(false);
   const photoGalleryRef = useRef<CarPhotoGalleryFieldHandle>(null);
   const draftTimerRef = useRef<number | null>(null);
 
@@ -321,6 +331,7 @@ export default function CarListingForm({
       const next = {
         ...prev,
         ...prefill,
+        vehicleType: normalizeVehicleType(prefill.vehicleType || prev.vehicleType),
         title: prefill.title || prev.title,
         make: prefill.make || prev.make,
         model: prefill.model || prev.model,
@@ -334,6 +345,17 @@ export default function CarListingForm({
         vin: prefill.vin || prev.vin,
         registrationNumber: prefill.registrationNumber || prev.registrationNumber,
         firstRegistrationDate: prefill.firstRegistrationDate || prev.firstRegistrationDate,
+        insuranceValidUntil: prefill.insuranceValidUntil || prev.insuranceValidUntil,
+        // Force catalog cascade to rematch imported labels.
+        makeSlug: "",
+        modelSlug: "",
+        fuelSlug: "",
+        gearboxSlug: "",
+        generationSlug: "",
+        enginePowerSlug: "",
+        engineCapacitySlug: "",
+        trimVersionSlug: "",
+        doorCountSlug: "",
       };
       const keys = missingFields.length ? missingFields : listMissingListingFields(next, next.images.length > 0);
       setHighlightKeys(keys);
@@ -342,6 +364,32 @@ export default function CarListingForm({
       );
       return next;
     });
+  };
+
+  const fillFormFromDocs = async () => {
+    setError(null);
+    setFillingFromDocs(true);
+    try {
+      const response = await fetch("/api/cars/docs-prefill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          vin: form.vin,
+          registrationNumber: form.registrationNumber,
+          firstRegistrationDate: form.firstRegistrationDate,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.prefill) {
+        throw new Error(typeof data?.error === "string" ? data.error : dict.cars.docs.errFillFromVin);
+      }
+      applyRegistrationPrefill(data.prefill, data.missingFields || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : dict.cars.docs.errFillFromVin);
+    } finally {
+      setFillingFromDocs(false);
+    }
   };
 
   const setField = (key: keyof CarFormState, value: string) => {
@@ -462,7 +510,7 @@ export default function CarListingForm({
         onAuthenticated={publishListing}
       />
 
-      <form onSubmit={handleSubmit} className="grid gap-6">
+      <form onSubmit={handleSubmit} className="grid gap-6 pb-28">
         {!loggedIn && mode === "create" ? (
           <p className={carAlertInfoClass}>{f.guestBanner}</p>
         ) : null}
@@ -470,6 +518,21 @@ export default function CarListingForm({
         {scanNotice ? (
           <p className={carAlertWarningClass}>{scanNotice}</p>
         ) : null}
+
+        <CarVehicleDocsFields
+          value={{
+            vin: form.vin,
+            registrationNumber: form.registrationNumber,
+            firstRegistrationDate: form.firstRegistrationDate,
+            insuranceValidUntil: form.insuranceValidUntil,
+            restrictVehicleDocs: form.restrictVehicleDocs,
+          }}
+          onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+          loggedIn={loggedIn}
+          onRequestScan={() => setScanGateOpen(true)}
+          onFillFromDocs={fillFormFromDocs}
+          fillingFromDocs={fillingFromDocs}
+        />
 
         <CarCatalogFields form={form} setForm={setForm} />
 
@@ -493,19 +556,6 @@ export default function CarListingForm({
             />
           </CarFormField>
         </CarFormSection>
-
-        <CarVehicleDocsFields
-          value={{
-            vin: form.vin,
-            registrationNumber: form.registrationNumber,
-            firstRegistrationDate: form.firstRegistrationDate,
-            insuranceValidUntil: form.insuranceValidUntil,
-            restrictVehicleDocs: form.restrictVehicleDocs,
-          }}
-          onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-          loggedIn={loggedIn}
-          onRequestScan={() => setScanGateOpen(true)}
-        />
 
         <CarFormSection eyebrow={f.offerEyebrow} title={f.offerTitle} description={f.offerDescription}>
           <div className="grid gap-4 sm:grid-cols-2">

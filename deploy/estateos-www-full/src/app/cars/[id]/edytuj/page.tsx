@@ -1,3 +1,4 @@
+import { normalizeVehicleType } from "@/lib/vehicleTypes";
 import { notFound } from "next/navigation";
 import { findCarById } from "@/lib/carsStorage";
 import EditCarPageClient from "./EditCarPageClient";
@@ -37,6 +38,7 @@ export default async function EditCarPage({ params }: { params: Promise<{ id: st
         transmission: car.transmission,
         gearboxSlug: "",
         bodyType: car.bodyType,
+        vehicleType: normalizeVehicleType((car as { vehicleType?: string }).vehicleType),
         exteriorColor: car.exteriorColor || "",
         generation: car.generation || "",
         generationSlug: "",

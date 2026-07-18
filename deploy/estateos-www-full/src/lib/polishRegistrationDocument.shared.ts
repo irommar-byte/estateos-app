@@ -1,3 +1,4 @@
+import { defaultBodyTypeForVehicleType, inferVehicleTypeFromCategoryLabel } from "@/lib/vehicleTypes";
 export type ParsedRegistrationDocument = {
   registrationNumber: string;
   make: string;
@@ -20,6 +21,7 @@ export type ParsedRegistrationDocument = {
 };
 
 export type CarRegistrationPrefill = {
+  vehicleType?: string;
   title: string;
   make: string;
   model: string;
@@ -224,13 +226,15 @@ export function mapToCarFormPrefill(parsed: ParsedRegistrationDocument): CarRegi
   const trimVersion = buildTrimVersion(parsed);
   const title = [parsed.make, parsed.model, trimVersion].filter(Boolean).join(" ").trim();
 
+  const vehicleType = inferVehicleTypeFromCategoryLabel(parsed.bodyTypeKind);
   return {
+    vehicleType,
     title,
     make: parsed.make,
     model: parsed.model,
     year,
     fuelType: parsed.fuelType,
-    bodyType: mapBodyTypeFromKind(parsed.bodyTypeKind),
+    bodyType: mapBodyTypeFromKind(parsed.bodyTypeKind) || defaultBodyTypeForVehicleType(vehicleType),
     generation: parsed.typeCode,
     enginePower: powerKw > 0 ? String(powerKw) : "",
     engineCapacity: capacityNum > 0 ? String(Math.round(capacityNum)) : "",

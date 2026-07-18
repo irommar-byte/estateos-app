@@ -49,6 +49,21 @@ export type CarsDictionary = {
     methodCaptureDescription: string;
     methodManualTitle: string;
     methodManualDescription: string;
+    methodOtomotoTitle: string;
+    methodOtomotoDescription: string;
+    methodOtomotoBadge: string;
+    methodDocTitle: string;
+    methodDocDescription: string;
+    methodDocBadge: string;
+    docModeLabel: string;
+    docModeLiveTitle: string;
+    docModeLiveDescription: string;
+    docModeUploadTitle: string;
+    docModeUploadDescription: string;
+    docModeCaptureTitle: string;
+    docModeCaptureDescription: string;
+    docContinue: string;
+    manualLink: string;
     hasAccount: string;
     signIn: string;
     changeEntryMethod: string;
@@ -57,6 +72,8 @@ export type CarsDictionary = {
     guestBanner: string;
     scanLoaded: string;
     scanCheckCatalog: string;
+    otomotoLoaded: string;
+    otomotoCheckForm: string;
     contentEyebrow: string;
     contentTitle: string;
     contentDescription: string;
@@ -85,6 +102,9 @@ export type CarsDictionary = {
     eyebrow: string;
     title: string;
     description: string;
+    vehicleTypeLabel: string;
+    modelFreePlaceholder: string;
+    notApplicable: string;
     yearLabel: string;
     yearPlaceholder: string;
     makeLabel: string;
@@ -118,6 +138,16 @@ export type CarsDictionary = {
     restrictLabel: string;
     restrictDescription: string;
     loginBanner: string;
+    fillHintTitle: string;
+    fillHintBody: string;
+    scanCta: string;
+    manualCta: string;
+    otomotoPrivacyNote: string;
+    fillFromVinCta: string;
+    fillingFromVin: string;
+    fillFromVinHint: string;
+    errFillFromVin: string;
+    verifyNeedsLogin: string;
     checkHistory: string;
     checkingHistory: string;
     checkInsurance: string;
@@ -194,6 +224,11 @@ export type CarsDictionary = {
     statsMine: string;
     statsAll: string;
     addListing: string;
+    otomotoImportTitle: string;
+    otomotoImportBody: string;
+    otomotoImportPlaceholder: string;
+    otomotoImportCta: string;
+    otomotoImportLoading: string;
     tabFavorites: string;
     tabMine: string;
     tabAll: string;
@@ -205,6 +240,12 @@ export type CarsDictionary = {
     clearFilters: string;
     searchLabel: string;
     searchPlaceholder: string;
+    vehicleTypeFilterLabel: string;
+    allVehicleTypes: string;
+    typeCar: string;
+    typeMotorcycle: string;
+    typeVan: string;
+    typeTruck: string;
     makeLabel: string;
     allMakes: string;
     modelLabel: string;
@@ -343,7 +384,7 @@ const pl: CarsDictionary = {
   entry: {
     heroTitle: "Jak chcesz dodać auto?",
     heroDescription:
-      "Wybierz sposób wprowadzenia danych z dowodu rejestracyjnego. Formularz możesz wypełnić bez logowania — konto założysz dopiero przy publikacji.",
+      "Dwie ścieżki: import z Otomoto albo skan dowodu. Formularz możesz wypełnić bez logowania — konto założysz dopiero przy publikacji.",
     privacyEyebrow: "Nasza przewaga",
     privacyTitle: "Prywatność VIN i pełna historia dla kupującego",
     privacyBody:
@@ -368,6 +409,23 @@ const pl: CarsDictionary = {
     methodManualTitle: "Wypełnię ręcznie",
     methodManualDescription:
       "Nie masz dowodu pod ręką? Przejdź do formularza i wpisz dane samodzielnie w swoim tempie.",
+    methodOtomotoTitle: "Import z Otomoto",
+    methodOtomotoDescription:
+      "Masz już ogłoszenie na Otomoto? Wklej link — przeniesiemy zdjęcia, opis i specyfikację do formularza.",
+    methodOtomotoBadge: "Szybki start",
+    methodDocTitle: "Skanuj dowód rejestracyjny",
+    methodDocDescription:
+      "Odczytaj kod Aztec z tyłu dowodu — uzupełnimy markę, model i VIN. Wybierz skan na żywo, wgranie lub nowe zdjęcie.",
+    methodDocBadge: "Z dowodu",
+    docModeLabel: "Jak chcesz odczytać kod?",
+    docModeLiveTitle: "Skan na żywo",
+    docModeLiveDescription: "Ustaw tył dowodu w kadrze kamery — kod odczytamy automatycznie.",
+    docModeUploadTitle: "Wgraj zdjęcie",
+    docModeUploadDescription: "Wybierz JPG, PNG lub HEIC z galerii telefonu lub komputera.",
+    docModeCaptureTitle: "Zrób zdjęcie",
+    docModeCaptureDescription: "Zrób nowe zdjęcie tyłu dowodu aparatem — od razu je przetworzymy.",
+    docContinue: "Kontynuuj z dowodem",
+    manualLink: "Wolę wypełnić formularz ręcznie",
     hasAccount: "Masz już konto?",
     signIn: "Zaloguj się",
     changeEntryMethod: "← Zmień sposób dodawania",
@@ -377,6 +435,8 @@ const pl: CarsDictionary = {
       "Możesz wypełnić formularz bez logowania. Po kliknięciu „Opublikuj” założysz konto — ogłoszenie trafi od razu do katalogu, a Ty dostaniesz powiadomienia o zapytaniach.",
     scanLoaded: "Dane z dowodu wczytane.",
     scanCheckCatalog: "Sprawdź katalog i uzupełnij ogłoszenie.",
+    otomotoLoaded: "Dane z Otomoto wczytane.",
+    otomotoCheckForm: "Sprawdź formularz i uzupełnij brakujące pola przed publikacją.",
     contentEyebrow: "Treść ogłoszenia",
     contentTitle: "Tytuł i opis",
     contentDescription: "Krótki, konkretny tytuł i opis stanu auta zwiększają zaufanie kupujących.",
@@ -405,7 +465,10 @@ const pl: CarsDictionary = {
   catalogFields: {
     eyebrow: "Katalog pojazdu",
     title: "Marka, model i parametry",
-    description: "Wybierz dane z katalogu EstateOS™Car — ułatwia to filtrowanie i wiarygodność ogłoszenia.",
+    description: "Najpierw wybierz typ pojazdu — potem markę i model z właściwej bazy Otomoto.",
+    vehicleTypeLabel: "Typ pojazdu",
+    modelFreePlaceholder: "np. R 450, Actros 1845",
+    notApplicable: "Nie dotyczy",
     yearLabel: "Rocznik produkcji",
     yearPlaceholder: "Wybierz rocznik",
     makeLabel: "Marka",
@@ -440,6 +503,19 @@ const pl: CarsDictionary = {
     restrictLabel: "Zastrzeż dane na ogłoszeniu publicznym",
     restrictDescription: "Na liście i karcie ogłoszenia widoczne będą tylko fragmenty VIN i tablicy.",
     loginBanner: "Zaloguj się, aby sprawdzić historię CEPIK i OC przed publikacją.",
+    fillHintTitle: "Uzupełnij dane z dowodu rejestracyjnego",
+    fillHintBody:
+      "Otomoto szyfruje VIN i rejestrację — nie da się ich przenieść z linku. Zeskanuj kod Aztec z dowodu albo wpisz dane ręcznie poniżej.",
+    scanCta: "Zeskanuj kod z dowodu",
+    manualCta: "Wpisuję ręcznie",
+    otomotoPrivacyNote:
+      "Po uzupełnieniu możesz zastrzec dane na ogłoszeniu — kupujący i tak sprawdzi historię i OC.",
+    fillFromVinCta: "Uzupełnij formularz z VIN",
+    fillingFromVin: "Pobieram dane z CEPIK…",
+    fillFromVinHint:
+      "Po wpisaniu VIN, tablicy i daty pierwszej rejestracji uzupełnimy markę, model, rocznik i silnik — tak jak po skanie dowodu.",
+    errFillFromVin: "Nie udało się uzupełnić formularza z VIN.",
+    verifyNeedsLogin: "Aby uruchomić CEPIK/OC, zaloguj się przy publikacji — dane z formularza zostaną zachowane.",
     checkHistory: "Sprawdź historię CEPIK",
     checkingHistory: "Pobieranie historii...",
     checkInsurance: "Sprawdź ważność OC",
@@ -516,7 +592,13 @@ const pl: CarsDictionary = {
     statsFavorites: "{n} ulubionych z {total} zapisanych",
     statsMine: "{n} Twoich ogłoszeń",
     statsAll: "{n} aktywnych ogłoszeń w katalogu",
-    addListing: "Dodaj ogłoszenie auta",
+    addListing: "Dodaj ogłoszenie",
+    otomotoImportTitle: "Masz ogłoszenie na Otomoto?",
+    otomotoImportBody:
+      "Wklej link — w jeden moment przeniesiesz zdjęcia, opis i całą specyfikację do formularza EstateOS™Car.",
+    otomotoImportPlaceholder: "https://www.otomoto.pl/osobowe/oferta/…",
+    otomotoImportCta: "Przenieś",
+    otomotoImportLoading: "Pobieram…",
     tabFavorites: "Ulubione",
     tabMine: "Moje samochody",
     tabAll: "Cały katalog",
@@ -528,6 +610,12 @@ const pl: CarsDictionary = {
     clearFilters: "Wyczyść filtry",
     searchLabel: "Szukaj",
     searchPlaceholder: "BMW, Warszawa, diesel...",
+    vehicleTypeFilterLabel: "Typ pojazdu",
+    allVehicleTypes: "Wszystkie typy",
+    typeCar: "Osobowy",
+    typeMotorcycle: "Motocykl",
+    typeVan: "Dostawczy",
+    typeTruck: "Ciężarowy",
     makeLabel: "Marka",
     allMakes: "Wszystkie marki",
     modelLabel: "Seria / model",
@@ -689,6 +777,23 @@ const en: CarsDictionary = {
     methodCaptureDescription: "Capture the back of the card with your phone or webcam — instant decode.",
     methodManualTitle: "Fill in manually",
     methodManualDescription: "No document handy? Go to the form and enter details at your own pace.",
+    methodOtomotoTitle: "Import from Otomoto",
+    methodOtomotoDescription:
+      "Already listed on Otomoto? Paste the link — we'll move photos, description and specs into the form.",
+    methodOtomotoBadge: "Quick start",
+    methodDocTitle: "Scan registration document",
+    methodDocDescription:
+      "Read the Aztec code from the back of the card — we'll fill make, model and VIN. Choose live scan, upload or a new photo.",
+    methodDocBadge: "From document",
+    docModeLabel: "How do you want to read the code?",
+    docModeLiveTitle: "Live scan",
+    docModeLiveDescription: "Frame the back of the card with the camera — we'll decode automatically.",
+    docModeUploadTitle: "Upload photo",
+    docModeUploadDescription: "Pick a JPG, PNG or HEIC from your gallery.",
+    docModeCaptureTitle: "Take a photo",
+    docModeCaptureDescription: "Capture a new photo of the card back — we'll process it right away.",
+    docContinue: "Continue with document",
+    manualLink: "I'd rather fill the form manually",
     hasAccount: "Already have an account?",
     signIn: "Sign in",
     changeEntryMethod: "← Change entry method",
@@ -698,6 +803,8 @@ const en: CarsDictionary = {
       "You can complete the form without signing in. When you tap Publish you'll create an account — the listing goes live and you'll get inquiry notifications.",
     scanLoaded: "Registration data loaded.",
     scanCheckCatalog: "Check the catalog and complete your listing.",
+    otomotoLoaded: "Otomoto data loaded.",
+    otomotoCheckForm: "Review the form and fill any missing fields before publishing.",
     contentEyebrow: "Listing content",
     contentTitle: "Title and description",
     contentDescription: "A clear title and honest description build buyer trust.",
@@ -725,7 +832,10 @@ const en: CarsDictionary = {
   catalogFields: {
     eyebrow: "Vehicle catalog",
     title: "Make, model and specs",
-    description: "Pick data from the EstateOS™Car catalog — better filters and credibility.",
+    description: "Pick the vehicle type first — then make and model from the matching Otomoto catalog.",
+    vehicleTypeLabel: "Vehicle type",
+    modelFreePlaceholder: "e.g. R 450, Actros 1845",
+    notApplicable: "N/A",
     yearLabel: "Model year",
     yearPlaceholder: "Select year",
     makeLabel: "Make",
@@ -759,6 +869,19 @@ const en: CarsDictionary = {
     restrictLabel: "Restrict data on public listing",
     restrictDescription: "Only partial VIN and plate shown on cards and detail page.",
     loginBanner: "Sign in to run CEPIK history and insurance checks before publishing.",
+    fillHintTitle: "Complete registration document details",
+    fillHintBody:
+      "Otomoto encrypts VIN and plate — they can't be imported from the link. Scan the Aztec code or type the details below.",
+    scanCta: "Scan document code",
+    manualCta: "I'll type manually",
+    otomotoPrivacyNote:
+      "After filling, you can restrict public data — buyers can still check history and insurance.",
+    fillFromVinCta: "Fill form from VIN",
+    fillingFromVin: "Fetching CEPIK data…",
+    fillFromVinHint:
+      "After entering VIN, plate and first registration date we fill make, model, year and engine — same as after scanning the document.",
+    errFillFromVin: "Could not fill the form from VIN.",
+    verifyNeedsLogin: "Sign in at publish to run CEPIK/OC — your form data stays saved.",
     checkHistory: "Check CEPIK history",
     checkingHistory: "Loading history...",
     checkInsurance: "Check insurance validity",
@@ -834,7 +957,13 @@ const en: CarsDictionary = {
     statsFavorites: "{n} favorites of {total} saved",
     statsMine: "{n} of your listings",
     statsAll: "{n} active listings in catalog",
-    addListing: "Add car listing",
+    addListing: "Add listing",
+    otomotoImportTitle: "Already listed on Otomoto?",
+    otomotoImportBody:
+      "Paste the link — move photos, description and full specs into the EstateOS™Car form in one step.",
+    otomotoImportPlaceholder: "https://www.otomoto.pl/osobowe/oferta/…",
+    otomotoImportCta: "Import",
+    otomotoImportLoading: "Fetching…",
     tabFavorites: "Favorites",
     tabMine: "My cars",
     tabAll: "Full catalog",
@@ -846,7 +975,13 @@ const en: CarsDictionary = {
     clearFilters: "Clear filters",
     searchLabel: "Search",
     searchPlaceholder: "BMW, Warsaw, diesel...",
-    makeLabel: "Make",
+    vehicleTypeFilterLabel: "Vehicle type",
+    allVehicleTypes: "All types",
+    typeCar: "Car",
+    typeMotorcycle: "Motorcycle",
+    typeVan: "Van",
+    typeTruck: "Truck",
+        makeLabel: "Make",
     allMakes: "All makes",
     modelLabel: "Series / model",
     allModels: "All series",
@@ -1007,6 +1142,23 @@ const uk: CarsDictionary = {
     methodCaptureDescription: "Зробіть фото задньої сторони свідоцтва — код зчитається одразу.",
     methodManualTitle: "Заповню вручну",
     methodManualDescription: "Немає свідоцтва? Перейдіть до форми та введіть дані у своєму темпі.",
+    methodOtomotoTitle: "Імпорт з Otomoto",
+    methodOtomotoDescription:
+      "Вже є оголошення на Otomoto? Вставте посилання — перенесемо фото, опис і специфікацію у форму.",
+    methodOtomotoBadge: "Швидкий старт",
+    methodDocTitle: "Сканувати свідоцтво",
+    methodDocDescription:
+      "Зчитаємо код Aztec зі звороту свідоцтва — заповнимо марку, модель і VIN. Оберіть живе сканування, завантаження або нове фото.",
+    methodDocBadge: "Зі свідоцтва",
+    docModeLabel: "Як зчитати код?",
+    docModeLiveTitle: "Скан наживо",
+    docModeLiveDescription: "Наведіть камеру на зворот свідоцтва — код зчитаємо автоматично.",
+    docModeUploadTitle: "Завантажити фото",
+    docModeUploadDescription: "Оберіть JPG, PNG або HEIC з галереї.",
+    docModeCaptureTitle: "Зробити фото",
+    docModeCaptureDescription: "Зробіть нове фото звороту свідоцтва — обробимо одразу.",
+    docContinue: "Продовжити зі свідоцтвом",
+    manualLink: "Краще заповню форму вручну",
     hasAccount: "Вже маєте акаунт?",
     signIn: "Увійти",
     changeEntryMethod: "← Змінити спосіб додавання",
@@ -1016,6 +1168,8 @@ const uk: CarsDictionary = {
       "Форму можна заповнити без входу. Після «Опублікувати» створите акаунт — оголошення з'явиться в каталозі, а запити надійдуть на ваш акаунт.",
     scanLoaded: "Дані зі свідоцтва завантажено.",
     scanCheckCatalog: "Перевірте каталог і доповніть оголошення.",
+    otomotoLoaded: "Дані з Otomoto завантажено.",
+    otomotoCheckForm: "Перевірте форму та доповніть відсутні поля перед публікацією.",
     contentEyebrow: "Зміст оголошення",
     contentTitle: "Заголовок і опис",
     contentDescription: "Короткий заголовок і чесний опис підвищують довіру покупців.",
@@ -1043,7 +1197,10 @@ const uk: CarsDictionary = {
   catalogFields: {
     eyebrow: "Каталог авто",
     title: "Марка, модель і параметри",
-    description: "Оберіть дані з каталогу EstateOS™Car — кращі фільтри та довіра.",
+    description: "Спочатку оберіть тип транспорту — потім марку й модель з відповідного каталогу Otomoto.",
+    vehicleTypeLabel: "Тип транспорту",
+    modelFreePlaceholder: "напр. R 450, Actros 1845",
+    notApplicable: "Не застосовується",
     yearLabel: "Рік випуску",
     yearPlaceholder: "Оберіть рік",
     makeLabel: "Марка",
@@ -1077,6 +1234,19 @@ const uk: CarsDictionary = {
     restrictLabel: "Обмежити дані в публічному оголошенні",
     restrictDescription: "У списку та картці видно лише фрагменти VIN і номера.",
     loginBanner: "Увійдіть, щоб перевірити історію CEPIK і OC перед публікацією.",
+    fillHintTitle: "Заповніть дані зі свідоцтва",
+    fillHintBody:
+      "Otomoto шифрує VIN і номер — їх не можна імпортувати з посилання. Відскануйте код Aztec або введіть дані нижче.",
+    scanCta: "Сканувати код зі свідоцтва",
+    manualCta: "Введу вручну",
+    otomotoPrivacyNote:
+      "Після заповнення можна обмежити дані в оголошенні — покупець все одно перевірить історію та OC.",
+    fillFromVinCta: "Заповнити форму з VIN",
+    fillingFromVin: "Отримую дані з CEPIK…",
+    fillFromVinHint:
+      "Після введення VIN, номера та дати першої реєстрації заповнимо марку, модель, рік і двигун — як після скану свідоцтва.",
+    errFillFromVin: "Не вдалося заповнити форму з VIN.",
+    verifyNeedsLogin: "Щоб запустити CEPIK/OC, увійдіть при публікації — дані форми збережуться.",
     checkHistory: "Перевірити історію CEPIK",
     checkingHistory: "Завантаження історії...",
     checkInsurance: "Перевірити дійсність OC",
@@ -1152,7 +1322,13 @@ const uk: CarsDictionary = {
     statsFavorites: "{n} обраних з {total} збережених",
     statsMine: "{n} ваших оголошень",
     statsAll: "{n} активних оголошень у каталозі",
-    addListing: "Додати оголошення авто",
+    addListing: "Додати оголошення",
+    otomotoImportTitle: "Маєте оголошення на Otomoto?",
+    otomotoImportBody:
+      "Вставте посилання — за мить перенесете фото, опис і всю специфікацію у форму EstateOS™Car.",
+    otomotoImportPlaceholder: "https://www.otomoto.pl/osobowe/oferta/…",
+    otomotoImportCta: "Перенести",
+    otomotoImportLoading: "Завантажую…",
     tabFavorites: "Обране",
     tabMine: "Мої авто",
     tabAll: "Весь каталог",
@@ -1164,7 +1340,13 @@ const uk: CarsDictionary = {
     clearFilters: "Очистити фільтри",
     searchLabel: "Пошук",
     searchPlaceholder: "BMW, Варшава, дизель...",
-    makeLabel: "Марка",
+    vehicleTypeFilterLabel: "Тип транспорту",
+    allVehicleTypes: "Усі типи",
+    typeCar: "Легковий",
+    typeMotorcycle: "Мотоцикл",
+    typeVan: "Фургон",
+    typeTruck: "Вантажівка",
+        makeLabel: "Марка",
     allMakes: "Усі марки",
     modelLabel: "Серія / модель",
     allModels: "Усі серії",

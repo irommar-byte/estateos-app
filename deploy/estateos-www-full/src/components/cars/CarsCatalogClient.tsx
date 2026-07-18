@@ -4,26 +4,33 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Car, Heart, UserRound } from "lucide-react";
-import { useLocale } from "@/contexts/LocaleContext";
-import { getCarsDictionary } from "@/i18n/carsDictionary";
 import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
+import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
+import {
+  CatalogHeroActionRow,
+  CatalogHeroPrimaryLink,
+} from "@/components/catalog/CatalogHeroActions";
+import OtomotoImportHeroCard from "@/components/cars/OtomotoImportHeroCard";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
-import { useCarCatalogOptions } from "@/hooks/useCarCatalogOptions";
+import { useLocale } from "@/contexts/LocaleContext";
 import type { EstateOsCarListing } from "@/lib/carsCatalog";
 import { isCarFavoriteId, loadCarFavoriteIds } from "@/lib/carFavoritesStorage";
 import {
-  CAR_SORT_OPTIONS,
   carImageSrc,
   formatCarPrice,
+  formatMileage,
   sortCarListings,
   type CarSortKey,
 } from "@/lib/carsPresentation";
+import { fmtCars, getCarSortOptions } from "@/i18n/carsDictionary";
+import { carAlertWarningClass } from "@/components/cars/carFormStyles";
 
 type CatalogTab = "all" | "favorites" | "mine";
 
 type Filters = {
   query: string;
+  vehicleType: string;
   makeSlug: string;
   make: string;
   modelSlug: string;
@@ -37,6 +44,7 @@ type Filters = {
 
 const EMPTY_FILTERS: Filters = {
   query: "",
+  vehicleType: "",
   makeSlug: "",
   make: "",
   modelSlug: "",
@@ -74,8 +82,9 @@ function normalizeLabel(value: string) {
 }
 
 export default function CarsCatalogClient() {
-  const { locale } = useLocale();
-  const d = getCarsDictionary(locale);
+  const { dict, locale } = useLocale();
+  const cat = dict.cars.catalog;
+  const sortOptions = useMemo(() => getCarSortOptions(locale), [locale]);
   const [cars, setCars] = useState<EstateOsCarListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<CatalogTab>("all");
@@ -102,21 +111,55 @@ export default function CarsCatalogClient() {
     }
   }, []);
 
-  const { options: makeOptions, loading: makesLoading } = useCarCatalogOptions("makes", {}, true);
-  const { options: modelOptions, loading: modelsLoading } = useCarCatalogOptions(
-    "models",
-    { make: filters.makeSlug },
-    Boolean(filters.makeSlug),
-  );
-  const { options: generationOptions, loading: generationsLoading } = useCarCatalogOptions(
-    "generations",
-    { make: filters.makeSlug, model: filters.modelSlug },
-    Boolean(filters.makeSlug && filters.modelSlug),
-  );
-
   useEffect(() => {
     setFavoriteIds(loadCarFavoriteIds());
   }, [tab]);
+
+  const makeOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const car of cars) {
+      const carType = String((car as EstateOsCarListing & { vehicleType?: string }).vehicleType || "car");
+      if (filters.vehicleType && carType !== filters.vehicleType) continue;
+      const label = String(car.make || "").trim();
+      if (!label) continue;
+      const key = normalizeLabel(label);
+      if (!map.has(key)) map.set(key, label);
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], locale))
+      .map(([key, label]) => ({ value: key, label }));
+  }, [cars, filters.vehicleType, locale]);
+
+  const modelOptions = useMemo(() => {
+    if (!filters.make) return [];
+    const map = new Map<string, string>();
+    for (const car of cars) {
+      if (normalizeLabel(car.make) !== normalizeLabel(filters.make)) continue;
+      const label = String(car.model || "").trim();
+      if (!label) continue;
+      const key = normalizeLabel(label);
+      if (!map.has(key)) map.set(key, label);
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], locale))
+      .map(([key, label]) => ({ value: key, label }));
+  }, [cars, filters.make, locale]);
+
+  const generationOptions = useMemo(() => {
+    if (!filters.make || !filters.model) return [];
+    const map = new Map<string, string>();
+    for (const car of cars) {
+      if (normalizeLabel(car.make) !== normalizeLabel(filters.make)) continue;
+      if (normalizeLabel(car.model) !== normalizeLabel(filters.model)) continue;
+      const label = String((car as EstateOsCarListing & { generation?: string }).generation || "").trim();
+      if (!label) continue;
+      const key = normalizeLabel(label);
+      if (!map.has(key)) map.set(key, label);
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], locale))
+      .map(([key, label]) => ({ value: key, label }));
+  }, [cars, filters.make, filters.model, locale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,14 +180,16 @@ export default function CarsCatalogClient() {
   }, [tab, loadCars]);
 
   const fuelTypes = useMemo(
-    () => Array.from(new Set(cars.map((c) => c.fuelType).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pl")),
-    [cars],
+    () => Array.from(new Set(cars.map((c) => c.fuelType).filter(Boolean))).sort((a, b) => a.localeCompare(b, locale)),
+    [cars, locale],
   );
 
   const filtered = useMemo(() => {
     const q = filters.query.trim().toLowerCase();
     const maxPrice = Number(filters.maxPrice.replace(/\D/g, ""));
     const rows = cars.filter((car) => {
+      const carType = String((car as EstateOsCarListing & { vehicleType?: string }).vehicleType || "car");
+      if (filters.vehicleType && carType !== filters.vehicleType) return false;
       if (filters.make && normalizeLabel(car.make) !== normalizeLabel(filters.make)) return false;
       if (filters.model && normalizeLabel(car.model) !== normalizeLabel(filters.model)) return false;
       if (filters.generation) {
@@ -200,11 +245,11 @@ export default function CarsCatalogClient() {
     }));
   };
 
-  const tabButtonClass = (active: boolean) =>
-    `inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.12em] transition ${
+  const catalogScopeClass = (active: boolean) =>
+    `inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-semibold tracking-[-0.01em] transition ${
       active
-        ? "border-sky-400/50 bg-sky-500/15 text-sky-300"
-        : "border-[var(--eos-border)] bg-[var(--eos-surface)] text-[var(--eos-text)] hover:border-sky-400/30"
+        ? "bg-sky-500/15 text-sky-700 ring-1 ring-sky-400/35 dark:text-sky-300"
+        : "text-[var(--eos-muted)] hover:bg-[var(--eos-surface)] hover:text-[var(--eos-text)]"
     }`;
 
   const spotlightItems = useMemo(
@@ -221,106 +266,141 @@ export default function CarsCatalogClient() {
           href: `/cars/${car.id}`,
           title: car.title,
           subtitle: `${car.make} · ${car.model} · ${car.year} · ${car.city}`,
-          priceLabel: formatCarPrice(car.pricePln),
+          priceLabel: formatCarPrice(car.pricePln, locale),
           imageUrl: carImageSrc(car.imageUrl),
-          badge: d.featuredBadge,
+          badge: cat.featuredBadge,
         })),
-    [cars],
+    [cars, cat.featuredBadge, locale],
   );
 
+  const statsLabel = !loading
+    ? tab === "favorites"
+      ? fmtCars(cat.statsFavorites, { n: filtered.length, total: favoriteIds.length })
+      : tab === "mine"
+        ? fmtCars(cat.statsMine, { n: filtered.length })
+        : fmtCars(cat.statsAll, { n: cars.length })
+    : null;
+
   return (
-    <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-36 text-[var(--eos-text)] sm:px-6">
+    <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-40 text-[var(--eos-text)] sm:px-6 sm:pt-44">
       <div className="mx-auto max-w-7xl">
-        <header className="relative mb-8 overflow-hidden rounded-3xl border border-sky-400/20 bg-[var(--eos-card)] p-6 sm:p-8">
-          <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-sky-500/10 blur-3xl" />
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-sky-400">{d.brand}</p>
-          <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-tight sm:text-5xl">
-            {d.catalogTitle}
-          </h1>
-          <p className="mt-4 max-w-3xl text-sm text-[var(--eos-muted)] sm:text-base">
-            {d.catalogSubtitle}
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              href="/cars/dodaj"
-              className="rounded-full border border-sky-400/40 bg-sky-500/10 px-5 py-2 text-xs font-black uppercase tracking-[0.14em] text-sky-300 transition hover:bg-sky-500/20"
-            >
-              {d.addListing}
-            </Link>
-            <button type="button" onClick={() => setTab("favorites")} className={tabButtonClass(tab === "favorites")}>
-              <Heart size={14} className={tab === "favorites" ? "fill-current" : ""} />
-              {d.tabFavorites}
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("mine")}
-              className={tabButtonClass(tab === "mine")}
-            >
-              <UserRound size={14} />
-              {d.tabMine}
-            </button>
-            {tab !== "all" ? (
-              <button type="button" onClick={() => setTab("all")} className={tabButtonClass(false)}>
-                <Car size={14} />
-                {d.tabAll}
-              </button>
-            ) : null}
+        <CatalogBrandHero
+          brand="car"
+          title={cat.heroTitle}
+          description={cat.heroDescription}
+          stats={statsLabel}
+        >
+          <CatalogHeroActionRow>
+            <CatalogHeroPrimaryLink brand="car" href="/cars/dodaj">
+              {cat.addListing}
+            </CatalogHeroPrimaryLink>
+          </CatalogHeroActionRow>
+          <div className="mt-4 max-w-2xl">
+            <OtomotoImportHeroCard
+              title={cat.otomotoImportTitle}
+              body={cat.otomotoImportBody}
+              placeholder={cat.otomotoImportPlaceholder}
+              cta={cat.otomotoImportCta}
+              loadingLabel={cat.otomotoImportLoading}
+            />
           </div>
-          {!loading ? (
-            <p className="mt-5 text-xs font-black uppercase tracking-[0.14em] text-sky-700 dark:text-sky-300">
-              {tab === "favorites"
-                ? d.countFavorites(filtered.length, favoriteIds.length)
-                : tab === "mine"
-                  ? d.countMine(filtered.length)
-                  : d.countAll(cars.length)}
-            </p>
-          ) : null}
-        </header>
+        </CatalogBrandHero>
 
         {tab === "mine" && !loggedIn && !loading ? (
-          <div className="mb-6 rounded-2xl border border-amber-500/35 bg-amber-50 px-5 py-4 text-sm text-amber-950 shadow-[0_12px_30px_rgba(245,158,11,0.12)] dark:border-amber-400/30 dark:bg-amber-500/15 dark:text-amber-50">
-            {d.loginPrompt}{" "}
-            <Link href="/login" className="font-bold text-amber-800 underline underline-offset-2 dark:text-amber-200">
-              {d.loginLink}
+          <div className={`mb-6 ${carAlertWarningClass}`}>
+            {cat.loginMineBanner}{" "}
+            <Link href="/login" className="font-bold underline underline-offset-2">
+              {cat.goLogin}
             </Link>
           </div>
         ) : null}
 
         {tab === "favorites" && !loading && favoriteIds.length === 0 ? (
           <div className="mb-6 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm text-[var(--eos-muted)]">
-            {d.favoritesEmpty}
+            {cat.favoritesEmpty}
           </div>
         ) : null}
 
         <section className="mb-8 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_22px_70px_rgba(14,165,233,0.08)]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--eos-border)] bg-gradient-to-r from-sky-500/[0.07] via-transparent to-cyan-500/[0.04] px-5 py-4 sm:px-6">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">{d.searchSectionBadge}</p>
-              <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">{d.searchTitle}</h2>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">{cat.filtersEyebrow}</p>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">{cat.filtersTitle}</h2>
             </div>
-            <button
-              type="button"
-              onClick={() => setFilters(EMPTY_FILTERS)}
-              className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)] transition hover:border-sky-400/35 hover:text-sky-500"
-            >
-              {d.clearFilters}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                className="inline-flex items-center gap-0.5 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/80 p-1"
+                role="tablist"
+                aria-label={cat.filtersTitle}
+              >
+                <button type="button" role="tab" aria-selected={tab === "all"} onClick={() => setTab("all")} className={catalogScopeClass(tab === "all")}>
+                  <Car size={13} aria-hidden />
+                  {cat.tabAll}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "favorites"}
+                  onClick={() => setTab("favorites")}
+                  className={catalogScopeClass(tab === "favorites")}
+                >
+                  <Heart size={13} className={tab === "favorites" ? "fill-current" : ""} aria-hidden />
+                  {cat.tabFavorites}
+                </button>
+                <button type="button" role="tab" aria-selected={tab === "mine"} onClick={() => setTab("mine")} className={catalogScopeClass(tab === "mine")}>
+                  <UserRound size={13} aria-hidden />
+                  {cat.tabMine}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFilters(EMPTY_FILTERS)}
+                className="rounded-xl border border-[var(--eos-border)] bg-transparent px-3 py-2 text-[11px] font-semibold text-[var(--eos-muted)] transition hover:border-sky-400/35 hover:text-sky-600 dark:hover:text-sky-300"
+              >
+                {cat.clearFilters}
+              </button>
+            </div>
           </div>
 
           <div className="grid gap-5 p-5 sm:p-6">
-            <FilterField label={d.filterSearch}>
+            <FilterField label={cat.searchLabel}>
               <input
                 value={filters.query}
                 onChange={(e) => setFilter("query", e.target.value)}
-                placeholder={d.searchPlaceholder}
+                placeholder={cat.searchPlaceholder}
                 className={filterInputClass}
               />
             </FilterField>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <FilterField label={d.filterMake(makesLoading)}>
+              <FilterField label={cat.vehicleTypeFilterLabel}>
+                <select
+                  value={filters.vehicleType}
+                  onChange={(e) =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      vehicleType: e.target.value,
+                      makeSlug: "",
+                      make: "",
+                      modelSlug: "",
+                      model: "",
+                      generationSlug: "",
+                      generation: "",
+                    }))
+                  }
+                  className={filterInputClass}
+                >
+                  <option value="">{cat.allVehicleTypes}</option>
+                  <option value="car">{cat.typeCar}</option>
+                  <option value="motorcycle">{cat.typeMotorcycle}</option>
+                  <option value="van">{cat.typeVan}</option>
+                  <option value="truck">{cat.typeTruck}</option>
+                </select>
+              </FilterField>
+
+              <FilterField label={cat.makeLabel}>
                 <select value={filters.makeSlug} onChange={(e) => selectMake(e.target.value)} className={filterInputClass}>
-                  <option value="">{d.allMakes}</option>
+                  <option value="">{cat.allMakes}</option>
                   {makeOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -329,14 +409,14 @@ export default function CarsCatalogClient() {
                 </select>
               </FilterField>
 
-              <FilterField label={d.filterModel(modelsLoading)}>
+              <FilterField label={cat.modelLabel}>
                 <select
                   value={filters.modelSlug}
                   onChange={(e) => selectModel(e.target.value)}
                   disabled={!filters.makeSlug}
                   className={filterInputClass}
                 >
-                  <option value="">{filters.makeSlug ? d.allSeries : d.pickMakeFirst}</option>
+                  <option value="">{filters.makeSlug ? cat.allModels : cat.pickMakeFirst}</option>
                   {modelOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -345,14 +425,14 @@ export default function CarsCatalogClient() {
                 </select>
               </FilterField>
 
-              <FilterField label={d.filterGeneration(generationsLoading)}>
+              <FilterField label={cat.generationLabel}>
                 <select
                   value={filters.generationSlug}
                   onChange={(e) => selectGeneration(e.target.value)}
                   disabled={!filters.modelSlug}
                   className={filterInputClass}
                 >
-                  <option value="">{filters.modelSlug ? d.allGenerations : d.pickSeriesFirst}</option>
+                  <option value="">{filters.modelSlug ? cat.allGenerations : cat.pickModelFirst}</option>
                   {generationOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -363,13 +443,13 @@ export default function CarsCatalogClient() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <FilterField label={d.filterFuel}>
+              <FilterField label={cat.fuelLabel}>
                 <select
                   value={filters.fuelType}
                   onChange={(e) => setFilter("fuelType", e.target.value)}
                   className={filterInputClass}
                 >
-                  <option value="">{d.allFuels}</option>
+                  <option value="">{cat.allFuels}</option>
                   {fuelTypes.map((fuel) => (
                     <option key={fuel} value={fuel}>
                       {fuel}
@@ -378,13 +458,13 @@ export default function CarsCatalogClient() {
                 </select>
               </FilterField>
 
-              <FilterField label={d.filterSort}>
+              <FilterField label={cat.sortLabel}>
                 <select
                   value={filters.sort}
                   onChange={(e) => setFilter("sort", e.target.value as CarSortKey)}
                   className={filterInputClass}
                 >
-                  {CAR_SORT_OPTIONS.map((option) => (
+                  {sortOptions.map((option) => (
                     <option key={option.key} value={option.key}>
                       {option.label}
                     </option>
@@ -392,7 +472,7 @@ export default function CarsCatalogClient() {
                 </select>
               </FilterField>
 
-              <FilterField label={d.filterMaxPrice}>
+              <FilterField label={cat.maxPriceLabel}>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -400,7 +480,7 @@ export default function CarsCatalogClient() {
                   onChange={(e) =>
                     setFilter("maxPrice", e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " "))
                   }
-                  placeholder={d.maxPricePlaceholder}
+                  placeholder={cat.maxPricePlaceholder}
                   className={filterInputClass}
                 />
               </FilterField>
@@ -409,20 +489,22 @@ export default function CarsCatalogClient() {
         </section>
 
         <p className="mb-4 text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">
-          {loading ? d.loading : d.resultsCount(filtered.length, cars.length)}
+          {loading
+            ? dict.cars.common.loading
+            : fmtCars(cat.resultsCount, { filtered: filtered.length, total: cars.length })}
         </p>
 
         {loading ? (
-          <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">{d.loadingOffers}</p>
+          <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">{cat.loadingOffers}</p>
         ) : filtered.length === 0 ? (
           <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
-            <p className="text-sm text-[var(--eos-muted)]">{d.noResults}</p>
+            <p className="text-sm text-[var(--eos-muted)]">{cat.noResults}</p>
             <button
               type="button"
               onClick={() => setFilters(EMPTY_FILTERS)}
               className="mt-4 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-xs font-black uppercase tracking-[0.12em]"
             >
-              {d.clearFilters}
+              {cat.clearFilters}
             </button>
           </div>
         ) : (
@@ -460,9 +542,9 @@ export default function CarsCatalogClient() {
                   </p>
                   <h2 className="line-clamp-2 text-lg font-semibold">{car.title}</h2>
                   <p className="text-sm text-[var(--eos-muted)]">
-                    {car.city} · {new Intl.NumberFormat("pl-PL").format(car.mileageKm)} km · {car.fuelType}
+                    {car.city} · {formatMileage(car.mileageKm, locale)} · {car.fuelType}
                   </p>
-                  <p className="text-lg font-bold text-sky-300">{formatCarPrice(car.pricePln)}</p>
+                  <p className="text-lg font-bold text-sky-300">{formatCarPrice(car.pricePln, locale)}</p>
                 </div>
               </Link>
             ))}
