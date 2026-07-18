@@ -13,7 +13,6 @@ import {
 } from '@/lib/contactVerification';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
-import { isPromotionActive } from '@/lib/listingPromotion';
 import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { MOBILE_OFFER_CATALOG_SELECT } from '@/lib/mobileOfferCatalogSelect';
 import {
@@ -152,23 +151,32 @@ export async function GET(req: Request) {
     const viewsMap = new Map<number, number>(
       viewsRows.map((row: any) => [Number(row.offerId), Number(row.total || 0)])
     );
+
+    let favoritesMap = new Map<number, number>();
+    try {
+      const favRows = await prisma.favoriteOffer.groupBy({
+        by: ['offerId'],
+        where: { offerId: { in: offerIds } },
+        _count: { _all: true },
+      });
+      favoritesMap = new Map(
+        favRows.map((row) => [Number(row.offerId), Number(row._count._all || 0)]),
+      );
+    } catch {
+      // FavoriteOffer table may be temporarily unavailable — keep zeros.
+    }
+
     const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
 
     const normalizedOffers = publicationGatedOffers.map((offer: any) => {
       const viewsCount = viewsMap.get(Number(offer.id)) || 0;
+      const favoritesCount = favoritesMap.get(Number(offer.id)) || 0;
       const legalOffer = applyLegalStatusOverride(offer, legalOverrides);
-      const promotedUntil =
-        offer.promotedUntil instanceof Date
-          ? offer.promotedUntil.toISOString()
-          : offer.promotedUntil
-            ? String(offer.promotedUntil)
-            : null;
       return enrichOfferWithLegalAliases({
         ...legalOffer,
         views: viewsCount,
         viewsCount,
-        promotedUntil,
-        featured: isPromotionActive(promotedUntil),
+        favoritesCount,
       });
     });
 
