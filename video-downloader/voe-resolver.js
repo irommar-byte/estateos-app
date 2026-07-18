@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fetchCdaHdHtmlResilient, isCloudflareChallenge } from "./cda-hd-fetch.js";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -565,13 +566,28 @@ function fetchCdaHdHashFromScript(hashScriptUrl, referer) {
   }
 }
 
-export async function resolveMirrorPage(pageUrl) {
+async function fetchMirrorHtml(pageUrl) {
+  if (isMirrorHost(pageUrl)) {
+    const { html, finalUrl } = await fetchCdaHdHtmlResilient(pageUrl);
+    if (!html || isCloudflareChallenge(html, 200)) {
+      throw new Error("Nie udało się otworzyć strony mirror.");
+    }
+    return { html, finalUrl: finalUrl || pageUrl };
+  }
+
   const res = await fetch(pageUrl, {
     headers: { "User-Agent": UA, Accept: "text/html,*/*" },
     redirect: "follow",
   });
-  if (!res.ok) throw new Error("Nie udało się otworzyć strony mirror.");
   const html = await res.text();
+  if (!res.ok || isCloudflareChallenge(html, res.status)) {
+    throw new Error("Nie udało się otworzyć strony mirror.");
+  }
+  return { html, finalUrl: res.url || pageUrl };
+}
+
+export async function resolveMirrorPage(pageUrl) {
+  const { html, finalUrl } = await fetchMirrorHtml(pageUrl);
 
   const title =
     html.match(/<h1[^>]*>([^<]+)/i)?.[1]?.trim() ||
@@ -626,10 +642,10 @@ export async function resolveMirrorPage(pageUrl) {
     try {
       if (isCdaHdPlayerHost(embed.url)) {
         const clickHash = embed.hashScriptUrl
-          ? fetchCdaHdHashFromScript(embed.hashScriptUrl, pageUrl)
+          ? fetchCdaHdHashFromScript(embed.hashScriptUrl, finalUrl || pageUrl)
           : null;
         stream = resolveCdaHdPlayerPage(embed.url, {
-          referer: pageUrl,
+          referer: finalUrl || pageUrl,
           clickHash: clickHash || undefined,
         });
       } else {
