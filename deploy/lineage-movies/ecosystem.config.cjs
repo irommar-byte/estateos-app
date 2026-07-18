@@ -11,6 +11,8 @@ module.exports = {
         MUSIC_PLAYLIST_DOWNLOADS_DIR: "/home/rommar/lineage-movies/downloads",
         MOVIES_JWT_SECRET: "lineage-movies-jwt-prod-set-on-vps",
         LINEAGE_LOGIN_URL: "http://192.168.50.200/login.php",
+        FLARESOLVERR_URL: "http://127.0.0.1:8191",
+        CDA_HD_BASE: "https://cda-hd.cc",
       },
       max_memory_restart: "800M",
     },

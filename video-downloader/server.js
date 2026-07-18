@@ -21,7 +21,9 @@ import {
   searchCdaHd,
   fetchCdaHdLatest,
   fetchCdaHdCatalog,
+  loadCdaHdDiskCatalog,
 } from "./cda-hd.js";
+import { getCdaHdSessionInfo } from "./cda-hd-fetch.js";
 import {
   detectPortal,
   portalCookieArgs,
@@ -3233,6 +3235,22 @@ const SEARCH_HANDLERS = {
   "apple-music": (q, limit) => searchAppleMusic(q, Math.min(limit, SOURCE_FETCH_LIMITS["apple-music"])),
 };
 
+// GET /api/cda-hd/health — diagnostyka sesji Cloudflare / FlareSolverr
+app.get("/api/cda-hd/health", async (_req, res) => {
+  const disk = loadCdaHdDiskCatalog();
+  res.json({
+    ok: true,
+    session: getCdaHdSessionInfo(),
+    memoryCache: {
+      latestCount: cdaHdLatestCache.items.length,
+      ageMs: cdaHdLatestCache.at ? Date.now() - cdaHdLatestCache.at : null,
+    },
+    diskCache: disk
+      ? { count: disk.latest?.length || 0, ageMs: disk.ageMs, stale: disk.stale }
+      : null,
+  });
+});
+
 // GET /api/cda-hd/latest?limit=20 — public feed for Top Shelf (cached)
 app.get("/api/cda-hd/latest", async (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 60);
@@ -3242,6 +3260,7 @@ app.get("/api/cda-hd/latest", async (req, res) => {
   }
   try {
     const items = mapSearchThumbnails(await fetchCdaHdLatest(60));
+    if (!items.length) throw new Error("Pusta lista CDA-HD.");
     cdaHdLatestCache = { at: now, items };
     res.json({ items: items.slice(0, limit), cached: false });
   } catch (err) {
@@ -3249,7 +3268,21 @@ app.get("/api/cda-hd/latest", async (req, res) => {
     if (cdaHdLatestCache.items.length) {
       return res.json({ items: cdaHdLatestCache.items.slice(0, limit), cached: true, stale: true });
     }
-    res.status(502).json({ error: "Nie udało się pobrać najnowszych z CDA-HD." });
+    const disk = loadCdaHdDiskCatalog();
+    if (disk?.latest?.length) {
+      const items = mapSearchThumbnails(disk.latest);
+      cdaHdLatestCache = { at: now, items };
+      return res.json({
+        items: items.slice(0, limit),
+        cached: true,
+        stale: true,
+        disk: true,
+      });
+    }
+    res.status(502).json({
+      error: err?.message || "Nie udało się pobrać najnowszych z CDA-HD.",
+      session: getCdaHdSessionInfo(),
+    });
   }
 });
 
@@ -3284,7 +3317,26 @@ app.get("/api/cda-hd/catalog", async (req, res) => {
     if (cacheHit) {
       return res.json({ ...cacheHit, cached: true, stale: true });
     }
-    res.status(502).json({ error: "Nie udało się pobrać katalogu CDA-HD." });
+    const disk = loadCdaHdDiskCatalog();
+    if (disk?.latest?.length && mode === "latest" && page === 1) {
+      const items = mapSearchThumbnails(disk.latest).slice(0, pageSize);
+      const payload = {
+        mode,
+        page,
+        pageSize,
+        totalItems: items.length,
+        hasMore: disk.latest.length > pageSize,
+        items,
+        cached: true,
+        stale: true,
+        disk: true,
+      };
+      return res.json(payload);
+    }
+    res.status(502).json({
+      error: err?.message || "Nie udało się pobrać katalogu CDA-HD.",
+      session: getCdaHdSessionInfo(),
+    });
   }
 });
 

@@ -54,6 +54,12 @@ rsync -az \
   --exclude node_modules \
   --exclude downloads \
   --exclude tmp \
+  --exclude data/cda-hd-session.json \
+  --exclude data/cda-hd-catalog-cache.json \
+  --exclude data/movies-favorites \
+  --exclude data/movies-library \
+  --exclude data/music-library \
+  --exclude data/portal-sessions \
   "$ROOT/video-downloader/" \
   "$REMOTE:$REMOTE_DIR/video-downloader/"
 
@@ -128,6 +134,29 @@ sudo nginx -t
 sudo systemctl reload nginx
 REMOTE
 
+echo "→ FlareSolverr (Cloudflare bypass dla CDA-HD)"
+ssh "$REMOTE" bash -s <<'REMOTE'
+set -euo pipefail
+if ! sudo docker ps -a --format '{{.Names}}' | grep -qx flaresolverr; then
+  sudo docker pull ghcr.io/flaresolverr/flaresolverr:latest
+  sudo docker run -d --name flaresolverr --restart unless-stopped \
+    -p 127.0.0.1:8191:8191 -e LOG_LEVEL=info \
+    ghcr.io/flaresolverr/flaresolverr:latest
+else
+  sudo docker start flaresolverr >/dev/null || true
+fi
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsS http://127.0.0.1:8191/ >/dev/null 2>&1; then
+    echo "  FlareSolverr ready"
+    break
+  fi
+  sleep 2
+  if [ "$i" -eq 10 ]; then
+    echo "  WARN: FlareSolverr nie odpowiada na :8191" >&2
+  fi
+done
+REMOTE
+
 echo "→ PM2"
 ssh "$REMOTE" "cd $REMOTE_DIR && pm2 delete lineage-movies-downloader lineage-movies-proxy 2>/dev/null || true; pm2 start ecosystem.config.cjs && pm2 save"
 
@@ -175,6 +204,24 @@ fi
 
 ssh "$REMOTE" "for i in 1 2 3 4 5; do curl -sf http://127.0.0.1:4321/api/health >/dev/null && exit 0; sleep 1; done; exit 1" \
   && echo "  OK downloader health" || { echo "  FAIL downloader health"; FAIL=1; }
+
+# CDA-HD: pierwszy request może iść przez FlareSolverr (~30–90s)
+CDA_OK=0
+for attempt in 1 2 3 4 5 6 7 8; do
+  CDA_BODY=$(ssh "$REMOTE" "curl -fsS --max-time 120 'http://127.0.0.1:4321/api/cda-hd/latest?limit=5'" 2>/dev/null || true)
+  if printf '%s' "$CDA_BODY" | grep -qE '"items":\[\{|"url":"https://cda-hd'; then
+    echo "  OK cda-hd/latest (items)"
+    CDA_OK=1
+    break
+  fi
+  echo "  … cda-hd/latest attempt $attempt"
+  sleep 8
+done
+if [ "$CDA_OK" -ne 1 ]; then
+  echo "  FAIL cda-hd/latest (brak items)"
+  echo "  $(ssh "$REMOTE" "curl -fsS --max-time 20 'http://127.0.0.1:4321/api/cda-hd/health' 2>/dev/null || true")"
+  FAIL=1
+fi
 
 if [ "$FAIL" -ne 0 ]; then
   echo ""

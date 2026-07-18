@@ -1,8 +1,18 @@
 /** CDA-HD.cc — wyszukiwarka i parser seriali (sezony / odcinki). */
 
-export const CDA_HD_BASE = "https://cda-hd.cc";
-export const CDA_HD_UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { DEFAULT_CDA_HD_UA, fetchCdaHdHtmlResilient } from "./cda-hd-fetch.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export const CDA_HD_BASE = (process.env.CDA_HD_BASE || "https://cda-hd.cc").replace(/\/$/, "");
+export const CDA_HD_UA = process.env.CDA_HD_UA || DEFAULT_CDA_HD_UA;
+
+const CDA_HD_DISK_CACHE_PATH =
+  process.env.CDA_HD_DISK_CACHE_PATH || path.join(__dirname, "data", "cda-hd-catalog-cache.json");
+const CDA_HD_DISK_CACHE_TTL_MS = Number(process.env.CDA_HD_DISK_CACHE_TTL_MS) || 24 * 60 * 60 * 1000;
 
 export function isCdaHdEpisodeUrl(url) {
   try {
@@ -130,7 +140,7 @@ function parseCdaHdSeriesMeta(html, pageUrl, counts = {}) {
 function parseTaggedLinks(block, pageUrl) {
   if (!block) return [];
   const links = [];
-  const re = /<a href="(https:\/\/cda-hd\.cc\/[^"]+)" rel="(?:tag|category tag)">([^<]*)<\/a>/gi;
+  const re = /<a href="((?:https?:\/\/)?(?:www\.)?cda-hd\.(?:cc|pl|to|online|info)\/[^"]+)" rel="(?:tag|category tag)">([^<]*)<\/a>/gi;
   let m;
   while ((m = re.exec(block))) {
     const name = decodeHtml(m[2]);
@@ -319,12 +329,45 @@ function absUrl(url, base = CDA_HD_BASE) {
 }
 
 export async function fetchCdaHdHtml(pageUrl) {
-  const res = await fetch(pageUrl, {
-    headers: { "User-Agent": CDA_HD_UA, Accept: "text/html,*/*" },
-    redirect: "follow",
-  });
-  if (!res.ok) throw new Error(`Nie udało się otworzyć strony CDA-HD (${res.status}).`);
-  return { html: await res.text(), finalUrl: res.url || pageUrl };
+  return fetchCdaHdHtmlResilient(pageUrl);
+}
+
+function readDiskCatalogCache() {
+  try {
+    if (!fs.existsSync(CDA_HD_DISK_CACHE_PATH)) return null;
+    const parsed = JSON.parse(fs.readFileSync(CDA_HD_DISK_CACHE_PATH, "utf8"));
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeDiskCatalogCache(patch) {
+  try {
+    fs.mkdirSync(path.dirname(CDA_HD_DISK_CACHE_PATH), { recursive: true });
+    const prev = readDiskCatalogCache() || {};
+    const next = { ...prev, ...patch, updatedAt: Date.now() };
+    const tmp = `${CDA_HD_DISK_CACHE_PATH}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(next) + "\n", "utf8");
+    fs.renameSync(tmp, CDA_HD_DISK_CACHE_PATH);
+  } catch (err) {
+    console.warn("cda-hd disk cache write:", err?.message || err);
+  }
+}
+
+/** Zwraca zapisany katalog, jeśli nie jest starszy niż maxAgeMs (domyślnie 24h). */
+export function loadCdaHdDiskCatalog(maxAgeMs = CDA_HD_DISK_CACHE_TTL_MS) {
+  const cache = readDiskCatalogCache();
+  if (!cache?.latest?.length) return null;
+  const age = Date.now() - (Number(cache.updatedAt) || 0);
+  if (age > maxAgeMs) return { ...cache, stale: true, ageMs: age };
+  return { ...cache, stale: false, ageMs: age };
+}
+
+export function saveCdaHdDiskCatalog(items) {
+  if (!Array.isArray(items) || !items.length) return;
+  writeDiskCatalogCache({ latest: items.slice(0, 60) });
 }
 
 export function parseCdaHdSearch(html, limit = 12) {
@@ -336,10 +379,10 @@ export function parseCdaHdSearch(html, limit = 12) {
   while ((m = itemRe.exec(html)) && results.length < limit) {
     const block = m[1];
     const typepost = decodeHtml(m[2]);
-    const urlMatch = block.match(/href="(https:\/\/cda-hd\.cc\/[^"]+)"/i);
+    const urlMatch = block.match(/href="((?:https?:\/\/)?(?:www\.)?cda-hd\.(?:cc|pl|to|online|info)\/[^"]+)"/i) || block.match(/href="(\/(?:film|tvshows?|episode)\/[^"]+)"/i);
     if (!urlMatch) continue;
-    const url = urlMatch[1];
-    if (seen.has(url)) continue;
+    const url = absUrl(urlMatch[1]);
+    if (!url || seen.has(url)) continue;
     seen.add(url);
 
     const title =
@@ -389,10 +432,14 @@ async function fetchCdaHdListingPool(minCount = 20, maxCdaPages = CDA_HD_MAX_SIT
     let html;
     try {
       ({ html } = await fetchCdaHdHtml(pageUrl));
-    } catch {
+    } catch (err) {
+      if (p === 1) throw err;
       break;
     }
     const batch = parseCdaHdSearch(html, 80);
+    if (p === 1 && !batch.length) {
+      throw new Error("CDA-HD zwróciło stronę bez listy filmów (parser/ochrona).");
+    }
     for (const item of batch) {
       if (seen.has(item.url)) continue;
       seen.add(item.url);
@@ -450,6 +497,7 @@ export async function fetchCdaHdLatest(limit = 20) {
     page: 1,
     pageSize: safeLimit,
   });
+  if (items.length) saveCdaHdDiskCatalog(items);
   return items;
 }
 
@@ -544,7 +592,7 @@ export function parseCdaHdTvShow(html, pageUrl) {
   if (!seasons.length) {
     const episodes = [];
     const epRe =
-      /<div class="numerando">([^<]*)<\/div>[\s\S]*?<a href="(https:\/\/cda-hd\.cc\/episode\/[^"]+)">\s*([^<]*)\s*<\/a>/gi;
+      /<div class="numerando">([^<]*)<\/div>[\s\S]*?<a href="((?:https?:\/\/)?(?:www\.)?cda-hd\.(?:cc|pl|to|online|info)\/episode\/[^"]+|\/episode\/[^"]+)">\s*([^<]*)\s*<\/a>/gi;
     let em;
     while ((em = epRe.exec(html))) {
       const numbering = em[1].trim();
