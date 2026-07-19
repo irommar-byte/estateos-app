@@ -212,7 +212,7 @@ final class MovieDownloadService: ObservableObject {
             activeBatch = batch
 
             do {
-                let jobId = try await MediaPlaybackLauncher.startDownload(
+                let started = try await MediaPlaybackLauncher.startDownload(
                     api: app.api,
                     url: item.url,
                     title: item.title,
@@ -222,8 +222,14 @@ final class MovieDownloadService: ObservableObject {
                     quality: batch.quality,
                     allOptions: batch.allQualityOptions
                 )
+                let jobId = started.jobId
                 currentJobId = jobId
-                try await waitForJob(jobId: jobId, itemIndex: index)
+                if started.ready == true || started.reused == true {
+                    batch.items[index].state = .downloading(progress: 100)
+                    activeBatch = batch
+                } else {
+                    try await waitForJob(jobId: jobId, itemIndex: index)
+                }
                 _ = try? await app.api.linkMovieDownload(
                     url: item.url,
                     title: item.title,
@@ -265,17 +271,31 @@ final class MovieDownloadService: ObservableObject {
             if Task.isCancelled || activeBatch?.isCancelled == true {
                 throw APIError.server("Anulowano.")
             }
-            let job = try await app.api.fetchJobStatus(jobId: jobId)
-            if let progress = job.progress, var batch = activeBatch {
-                let pct = progress <= 1.0 ? progress * 100 : progress
-                batch.items[itemIndex].state = .downloading(progress: min(max(pct, 0), 100))
-                activeBatch = batch
-            }
-            if job.status == "error" {
-                throw APIError.server(job.error ?? "Pobieranie nie powiodło się.")
-            }
-            if job.ready == true || job.status == "done" {
-                return
+            do {
+                let job = try await app.api.fetchJobStatus(jobId: jobId)
+                if let progress = job.progress, var batch = activeBatch {
+                    let pct = progress <= 1.0 ? progress * 100 : progress
+                    batch.items[itemIndex].state = .downloading(progress: min(max(pct, 0), 100))
+                    activeBatch = batch
+                }
+                if job.status == "error" {
+                    throw APIError.server(job.error ?? "Pobieranie nie powiodło się.")
+                }
+                if job.ready == true || job.status == "done" {
+                    return
+                }
+            } catch {
+                await app.refreshMovieDownloads()
+                if let url = activeBatch?.items[itemIndex].url, app.isMovieDownloaded(url: url) {
+                    if var batch = activeBatch {
+                        batch.items[itemIndex].state = .downloading(progress: 100)
+                        activeBatch = batch
+                    }
+                    return
+                }
+                if poll > 4 {
+                    throw error
+                }
             }
             poll += 1
             let delayNs: UInt64 = poll < 30 ? 500_000_000 : 1_000_000_000

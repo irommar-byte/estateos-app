@@ -187,11 +187,8 @@ function reconcileDownloadsFromDisk(store, moviesDir) {
     if (match) {
       entry.filename = match.relativeName;
       changed = true;
-    } else {
-      entry.downloadJobId = "";
-      entry.filename = "";
-      changed = true;
     }
+    // Never wipe downloadJobId when file is temporarily missing — that breaks offline library.
   }
 
   for (const file of files) {

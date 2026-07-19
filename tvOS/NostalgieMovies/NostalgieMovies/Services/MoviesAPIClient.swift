@@ -54,7 +54,7 @@ final class MoviesAPIClient {
         kind: String = "video",
         container: String = "mp4",
         audioBitrate: Int? = nil
-    ) async throws -> String {
+    ) async throws -> DownloadStartResponse {
         var body: [String: Any] = [
             "url": url,
             "height": height == 0 ? "best" : height,
@@ -67,8 +67,7 @@ final class MoviesAPIClient {
         if let title, !title.isEmpty { body["title"] = title }
         if let thumbnail, !thumbnail.isEmpty { body["thumbnail"] = thumbnail }
         if let source, !source.isEmpty { body["source"] = source }
-        let response: DownloadStartResponse = try await request("POST", path: "/api/download", body: body)
-        return response.jobId
+        return try await request("POST", path: "/api/download", body: body)
     }
 
     func fetchMovieDownloads() async throws -> MovieDownloadsResponse {

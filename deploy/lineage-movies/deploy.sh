@@ -211,6 +211,20 @@ fi
 ssh "$REMOTE" "for i in 1 2 3 4 5; do curl -sf http://127.0.0.1:4321/api/health >/dev/null && exit 0; sleep 1; done; exit 1" \
   && echo "  OK downloader health" || { echo "  FAIL downloader health"; FAIL=1; }
 
+echo "→ Smoke download/play/search"
+rsync -az "$PKG/smoke-movies.mjs" "$REMOTE:$REMOTE_DIR/smoke-movies.mjs"
+SMOKE_SECRET=$(ssh "$REMOTE" "cd $REMOTE_DIR && node -e \"const c=require('./ecosystem.config.cjs'); console.log(c.apps.find(a=>a.name==='lineage-movies-downloader').env.MOVIES_JWT_SECRET)\"" 2>/dev/null || true)
+if [ -n "$SMOKE_SECRET" ]; then
+  if ssh "$REMOTE" "cd $REMOTE_DIR && MOVIES_JWT_SECRET='$SMOKE_SECRET' MOVIES_ROOT=$REMOTE_DIR/video-downloader MUSIC_PLAYLIST_DOWNLOADS_DIR=$REMOTE_DIR/downloads node smoke-movies.mjs"; then
+    echo "  OK smoke-movies"
+  else
+    echo "  FAIL smoke-movies"
+    FAIL=1
+  fi
+else
+  echo "  SKIP smoke-movies (brak JWT secret)"
+fi
+
 # CDA-HD: pierwszy request może iść przez FlareSolverr (~30–90s)
 CDA_OK=0
 for attempt in 1 2 3 4 5 6 7 8; do

@@ -39,6 +39,7 @@ import {
   removeFavorite,
   mergeFavoritesStoreKey,
   favoritesUserKeyFromReq,
+  reconcileSessionStorage,
 } from "./movies-favorites.js";
 import {
   listMovieDownloads,
@@ -3279,10 +3280,54 @@ let cdaHdLatestCache = { at: 0, items: [] };
 let cdaHdCatalogCache = { at: 0, entries: {} };
 const CDA_HD_LATEST_TTL_MS = 15 * 60 * 1000;
 
+function withTimeout(promise, ms, label = "operacja") {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} przekroczyła ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+const SEARCH_SOURCE_TIMEOUT_MS = {
+  youtube: 12000,
+  cda: 14000,
+  "cda-hd": 18000,
+  tvp: 12000,
+  "apple-music": 14000,
+};
+const SEARCH_DEFAULT_TIMEOUT_MS = 14000;
+
+async function searchCdaHdWithCacheFallback(query, limit) {
+  const fallback = () => {
+    const disk = loadCdaHdDiskCatalog(7 * 24 * 60 * 60 * 1000);
+    const pool = cdaHdLatestCache.items.length
+      ? cdaHdLatestCache.items
+      : disk?.latest || [];
+    return rankSearchByQuery(pool, query).slice(0, limit);
+  };
+  try {
+    // Keep live scrape short — Cloudflare often stalls; cache must win quickly.
+    return await withTimeout(searchCdaHd(query, limit, 4), 8000, "cda-hd-live");
+  } catch (err) {
+    const filtered = fallback();
+    if (filtered.length) {
+      console.warn("cda-hd search fallback cache:", err?.message || err);
+      return filtered;
+    }
+    // Last resort: return unfiltered cache head so Filmy tab is never empty.
+    const disk = loadCdaHdDiskCatalog(7 * 24 * 60 * 60 * 1000);
+    const pool = cdaHdLatestCache.items.length
+      ? cdaHdLatestCache.items
+      : disk?.latest || [];
+    if (pool.length) return pool.slice(0, limit);
+    throw err;
+  }
+}
+
 const SEARCH_HANDLERS = {
   youtube: (q, limit, browser) => searchYouTube(q, Math.min(limit, SOURCE_FETCH_LIMITS.youtube), browser),
   cda: (q, limit) => searchCda(q, limit),
-  "cda-hd": (q, limit) => searchCdaHd(q, limit, 4),
+  "cda-hd": (q, limit) => searchCdaHdWithCacheFallback(q, limit),
   tvp: (q, limit) => searchTvp(q, limit),
   "apple-music": (q, limit) => searchAppleMusic(q, Math.min(limit, SOURCE_FETCH_LIMITS["apple-music"])),
 };
@@ -3505,17 +3550,28 @@ app.post("/api/search", async (req, res) => {
     let results;
     if (source === "all") {
       // Filmy/seriale only — Apple Music lives in the Muzyka tab.
-      const videoHandlers = Object.entries(SEARCH_HANDLERS).filter(
-        ([src]) => src !== "apple-music"
-      );
+      // Prefer fast VOD sources first; per-source timeout so one slow CDN cannot hang the TV app.
+      const videoHandlers = Object.entries(SEARCH_HANDLERS)
+        .filter(([src]) => src !== "apple-music")
+        .sort(([a], [b]) => {
+          const order = ["cda-hd", "cda", "tvp", "youtube"];
+          return (order.indexOf(a) + 99) - (order.indexOf(b) + 99);
+        });
       const chunks = await Promise.all(
         videoHandlers.map(async ([src, fn]) => {
+          const ms = SEARCH_SOURCE_TIMEOUT_MS[src] || SEARCH_DEFAULT_TIMEOUT_MS;
           try {
             const srcLimit = Math.min(fetchLimit, SOURCE_FETCH_LIMITS[src] || fetchLimit);
-            const part = await fn(query, srcLimit, browser);
-            return enrichSearchResults(part, browser, src);
+            return await withTimeout(
+              (async () => {
+                const part = await fn(query, srcLimit, browser);
+                return enrichSearchResults(part, browser, src);
+              })(),
+              ms,
+              `search/${src}`
+            );
           } catch (err) {
-            console.error(`search all/${src}:`, err?.message || err);
+            console.warn(`search all/${src}:`, err?.message || err);
             return [];
           }
         })
@@ -3532,8 +3588,20 @@ app.post("/api/search", async (req, res) => {
     } else {
       const handler = SEARCH_HANDLERS[source];
       if (!handler) return res.status(400).json({ error: "Nieznane źródło wyszukiwania." });
-      results = await handler(query, fetchLimit, browser);
-      results = await enrichSearchResults(results, browser, source);
+      const ms = SEARCH_SOURCE_TIMEOUT_MS[source] || SEARCH_DEFAULT_TIMEOUT_MS;
+      try {
+        results = await withTimeout(
+          (async () => {
+            const part = await handler(query, fetchLimit, browser);
+            return enrichSearchResults(part, browser, source);
+          })(),
+          ms,
+          `search/${source}`
+        );
+      } catch (err) {
+        console.warn(`search ${source}:`, err?.message || err);
+        results = [];
+      }
       results = sortSearchResults(results, sort);
     }
     if (sort === "relevance") {
@@ -4348,7 +4416,32 @@ app.post("/api/download", async (req, res) => {
       if (existingFile) {
         try {
           assertValidMovieFile(existingFile);
-          return res.json({ jobId: existing.downloadJobId, reused: true });
+          const restored = {
+            id: existing.downloadJobId,
+            kind: "movie",
+            purpose: "download",
+            persistent: true,
+            status: "done",
+            progress: 100,
+            ready: true,
+            file: existingFile,
+            name: path.basename(existingFile),
+            userKey: movieDownload.userKey,
+            movieUrl: movieDownload.url,
+            movieTitle: movieDownload.title || existing.title || "",
+            movieThumbnail: movieDownload.thumbnail || existing.thumbnail || "",
+            movieSource: movieDownload.source || existing.source || "",
+            clients: new Set(),
+          };
+          ensurePlayToken(restored);
+          jobs.set(existing.downloadJobId, restored);
+          return res.json({
+            jobId: existing.downloadJobId,
+            reused: true,
+            ready: true,
+            status: "done",
+            progress: 100,
+          });
         } catch {
           try {
             fs.unlinkSync(existingFile);
@@ -4622,24 +4715,34 @@ app.post("/api/preview", async (req, res) => {
 
 // GET /api/job/:jobId — status zadania (pobieranie / podgląd) dla klientów tvOS
 app.get("/api/job/:jobId", (req, res) => {
-  const job = jobs.get(req.params.jobId);
+  let job = jobs.get(req.params.jobId);
+  if (!job || (job.kind === "movie" && !movieJobReady(job))) {
+    const restored = getOrRestoreMovieJob(req.params.jobId, req);
+    if (restored) job = restored;
+  }
+  if (!job || (job.kind === "music" && !musicJobReady(job))) {
+    const restoredMusic = getOrRestoreMusicJob(req.params.jobId, req);
+    if (restoredMusic) job = restoredMusic;
+  }
   if (!job) return res.status(404).json({ error: "Zadanie nie istnieje." });
   const ready =
     musicJobReady(job) ||
     movieJobReady(job) ||
     !!(job.file && fs.existsSync(job.file)) ||
-    (job.mode === "stream-proxy" && job.status === "done" && !!job.streamUrl);
+    (job.mode === "stream-proxy" && job.status === "done" && !!job.streamUrl) ||
+    job.status === "done";
   res.json({
     jobId: job.id,
-    status: job.status,
-    progress: job.progress ?? 0,
+    status: job.status || (ready ? "done" : "starting"),
+    progress: ready ? 100 : (job.progress ?? 0),
     name: job.name || "",
     error: job.error || null,
     purpose: job.purpose || "download",
     ready,
-    fullReady: !!job.fullReady,
+    fullReady: !!job.fullReady || ready,
     cdaFullPending: !!job.cdaFullPending,
     downloadPath: ready ? `/api/file/${job.id}` : null,
+    reused: !!job.persistent && ready,
   });
 });
 

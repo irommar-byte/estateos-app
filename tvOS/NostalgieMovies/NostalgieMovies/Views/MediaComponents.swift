@@ -1056,7 +1056,7 @@ enum MediaPlaybackLauncher {
         format: MediaDownloadFormat,
         quality: MediaQualityOption,
         allOptions: [MediaQualityOption]
-    ) async throws -> String {
+    ) async throws -> DownloadStartResponse {
         if format.kind == "audio" {
             let br = quality.isBest ? 0 : (quality.bitrate ?? 256)
             return try await api.startDownload(

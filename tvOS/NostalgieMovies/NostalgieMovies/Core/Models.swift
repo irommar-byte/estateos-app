@@ -540,6 +540,10 @@ struct PlaybackSession: Identifiable, Hashable {
 
 struct DownloadStartResponse: Codable {
     let jobId: String
+    let reused: Bool?
+    let ready: Bool?
+    let status: String?
+    let progress: Double?
 }
 
 struct MovieDownload: Codable, Identifiable, Hashable {
