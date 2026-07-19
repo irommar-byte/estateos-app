@@ -316,7 +316,7 @@ struct MediaDetailView: View {
                     .glassCapsule(paddingH: 10, paddingV: 6)
             }
             if isDownloaded {
-                Label("Pobrany", systemImage: "checkmark.circle.fill")
+                Label("Offline · Biblioteka", systemImage: "checkmark.circle.fill")
                     .font(NostalgieFont.caption)
                     .foregroundStyle(.green)
                     .glassCapsule(paddingH: 10, paddingV: 6)
@@ -349,8 +349,11 @@ struct MediaDetailView: View {
             Button {
                 Task { await play() }
             } label: {
-                Label("Odtwórz", systemImage: "play.fill")
-                    .font(NostalgieFont.rounded(.title3, weight: .semibold))
+                Label(
+                    isDownloaded ? "Odtwórz offline" : "Odtwórz",
+                    systemImage: isDownloaded ? "arrow.down.circle.fill" : "play.fill"
+                )
+                .font(NostalgieFont.rounded(.title3, weight: .semibold))
             }
             .buttonStyle(DetailPlayButtonStyle())
             .disabled(isBusy)
@@ -375,9 +378,16 @@ struct MediaDetailView: View {
                     Task { await deleteDownloaded() }
                 }
             } else if downloadService.isRunning && downloadService.batchMatches(contextKey: selection.url) {
-                Label("Pobieranie…", systemImage: "arrow.down.circle")
-                    .font(NostalgieFont.rowTitle)
-                    .foregroundStyle(.green)
+                let pct = Int(downloadService.overallProgress * 100)
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Pobieranie \(pct)% → Biblioteka", systemImage: "arrow.down.circle.fill")
+                        .font(NostalgieFont.rowTitle)
+                        .foregroundStyle(.green)
+                    ProgressView(value: downloadService.overallProgress, total: 1)
+                        .progressViewStyle(.linear)
+                        .tint(.green)
+                        .frame(width: 220)
+                }
             } else {
                 toolbarButton(title: "Pobierz", icon: "arrow.down.circle") {
                     if mediaInfo != nil {
@@ -491,7 +501,7 @@ struct MediaDetailView: View {
             allQualityOptions: options
         )
         statusIsError = false
-        statusMessage = "Pobieranie w tle — możesz wrócić do listy."
+        statusMessage = "Pobieranie w tle → zakładka Biblioteka (MOVIES). Po zakończeniu: Odtwórz offline."
     }
 
     private func deleteDownloaded() async {
@@ -501,7 +511,7 @@ struct MediaDetailView: View {
             try await downloadService.deleteDownload(url: selection.url)
             localDownloadJobId = nil
             statusIsError = false
-            statusMessage = "Usunięto z biblioteki MOVIES."
+            statusMessage = "Usunięto z Biblioteki (MOVIES)."
         } catch {
             statusIsError = true
             statusMessage = error.localizedDescription

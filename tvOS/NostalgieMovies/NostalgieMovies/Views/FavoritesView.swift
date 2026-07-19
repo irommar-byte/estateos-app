@@ -11,21 +11,27 @@ struct FavoritesView: View {
     @Binding var requestContentFocus: Bool
 
     @State private var items: [FavoriteItem] = []
-    @State private var latestItems: [SearchResultItem] = []
     @State private var isLoading = true
     @State private var loadError: String?
     @State private var seriesInfo: VideoInfoResponse?
     @State private var selectedDetail: MediaSelection?
-    @State private var showLatestCatalog = false
+    @State private var selectedMusic: MusicSelection?
     @State private var reloadToken = UUID()
     @State private var openingSeries = false
     @State private var gridColumnCount = 4
     @FocusState private var localFocus: FavoritesFocus?
-    @FocusState private var latestFocusedID: String?
 
     private let cardMinimum: CGFloat = 300
     private let gridSpacing: CGFloat = 32
     private let columns = [GridItem(.adaptive(minimum: 300, maximum: 360), spacing: 32)]
+
+    private var videoFavorites: [FavoriteItem] {
+        items.filter { !$0.isMusicFavorite }
+    }
+
+    private var musicFavorites: [FavoriteItem] {
+        items.filter(\.isMusicFavorite)
+    }
 
     var body: some View {
         Group {
@@ -42,9 +48,12 @@ struct FavoritesView: View {
                         }
                         .environmentObject(app)
                     }
-                    .fullScreenCover(isPresented: $showLatestCatalog) {
-                        LatestCdaHdCatalogView()
-                            .environmentObject(app)
+                    .fullScreenCover(item: $selectedMusic) { selection in
+                        MusicDetailView(
+                            selection: selection,
+                            folders: app.musicFolders
+                        )
+                        .environmentObject(app)
                     }
             }
         }
@@ -69,7 +78,7 @@ struct FavoritesView: View {
                     HStack(alignment: .top) {
                         ScreenTitle(
                             title: "Twoje ulubione",
-                            subtitle: isLoading ? nil : "\(items.count) pozycji"
+                            subtitle: isLoading ? nil : "\(items.count) pozycji · osobno filmy i muzyka"
                         )
                         Spacer()
                         if !isLoading {
@@ -83,32 +92,12 @@ struct FavoritesView: View {
                             .onMoveCommand { direction in
                                 if direction == .up {
                                     focusedTab.wrappedValue = navigationTab
-                                } else if direction == .down {
-                                    focusLatestShelf()
                                 }
                             }
                         }
                     }
 
                     GridColumnReader(minimumCardWidth: cardMinimum, spacing: gridSpacing, columnCount: $gridColumnCount)
-
-                    LatestCdaHdRow(
-                        focusedItemID: $latestFocusedID,
-                        onSelect: { item in
-                            Task { await openLatestItem(item) }
-                        },
-                        onShowAll: {
-                            showLatestCatalog = true
-                        },
-                        onMoveUp: {
-                            localFocus = .refresh
-                        },
-                        onMoveDown: {
-                            latestFocusedID = nil
-                            localFocus = nil
-                        },
-                        onItemsChange: { latestItems = $0 }
-                    )
 
                     if isLoading {
                         ProgressView("Ładuję ulubione…")
@@ -126,7 +115,7 @@ struct FavoritesView: View {
                         EmptyStateView(
                             icon: "heart",
                             title: "Brak ulubionych",
-                            message: "Dodaj filmy i seriale w panelu www (MOVIES) — pojawią się tutaj automatycznie.",
+                            message: "Dodaj filmy z zakładki Filmy albo utwory z Muzyki — pojawią się w osobnych sekcjach.",
                             actionTitle: "Odśwież"
                         ) {
                             Task { await load() }
@@ -135,26 +124,56 @@ struct FavoritesView: View {
                         if openingSeries {
                             ProgressView("Ładuję odcinki…")
                         }
-                        LazyVGrid(columns: columns, spacing: gridSpacing) {
-                            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                                MediaCard(
-                                    title: item.title,
-                                    subtitle: MediaCardCopy.cleanedSubtitle(detail: item.detail, source: item.source),
-                                    thumbnailURL: item.thumbnail.flatMap(URL.init(string:)),
-                                    source: MediaCardCopy.normalizedSourceKey(item.source),
-                                    typeLabel: item.type == "series" ? "SERIAL" : "FILM",
-                                    quality: nil,
-                                    duration: item.duration,
-                                    isFavorite: true
-                                ) {
-                                    Task { await openItem(item) }
-                                }
-                                .onGridMoveUp(columnCount: gridColumnCount, index: index) {
-                                    focusTargetAboveGrid()
+                        if !videoFavorites.isEmpty {
+                            MusicSectionHeader(
+                                title: "Filmy i seriale",
+                                subtitle: "\(videoFavorites.count) w ulubionych"
+                            )
+                            LazyVGrid(columns: columns, spacing: gridSpacing) {
+                                ForEach(Array(videoFavorites.enumerated()), id: \.element.id) { index, item in
+                                    MediaCard(
+                                        title: item.title,
+                                        subtitle: MediaCardCopy.cleanedSubtitle(detail: item.detail, source: item.source),
+                                        thumbnailURL: item.thumbnail.flatMap(URL.init(string:)),
+                                        source: MediaCardCopy.normalizedSourceKey(item.source),
+                                        typeLabel: item.mediaTypeLabel,
+                                        quality: nil,
+                                        duration: item.duration,
+                                        isFavorite: true
+                                    ) {
+                                        Task { await openItem(item) }
+                                    }
+                                    .onGridMoveUp(columnCount: gridColumnCount, index: index) {
+                                        localFocus = .refresh
+                                    }
                                 }
                             }
+                            .padding(.top, 4)
                         }
-                        .padding(.top, 4)
+                        if !musicFavorites.isEmpty {
+                            MusicSectionHeader(
+                                title: "Muzyka",
+                                subtitle: "\(musicFavorites.count) w ulubionych"
+                            )
+                            .padding(.top, videoFavorites.isEmpty ? 4 : 20)
+                            LazyVGrid(columns: columns, spacing: gridSpacing) {
+                                ForEach(Array(musicFavorites.enumerated()), id: \.element.id) { index, item in
+                                    MediaCard(
+                                        title: item.title,
+                                        subtitle: MediaCardCopy.cleanedSubtitle(detail: item.detail, source: item.source),
+                                        thumbnailURL: item.thumbnail.flatMap(URL.init(string:)),
+                                        source: MediaCardCopy.normalizedSourceKey(item.source),
+                                        typeLabel: item.mediaTypeLabel,
+                                        quality: nil,
+                                        duration: item.duration,
+                                        isFavorite: true
+                                    ) {
+                                        Task { await openItem(item) }
+                                    }
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
                     }
                 }
                 .padding(.horizontal, NostalgieSpacing.screenH)
@@ -172,26 +191,7 @@ struct FavoritesView: View {
 
     private func focusFavoritesContent() {
         guard !isLoading else { return }
-        if !latestItems.isEmpty {
-            focusLatestShelf()
-        } else {
-            localFocus = .refresh
-        }
-    }
-
-    private func focusLatestShelf() {
-        localFocus = nil
-        if let first = latestItems.first {
-            latestFocusedID = first.id
-        }
-    }
-
-    private func focusTargetAboveGrid() {
-        if !latestItems.isEmpty {
-            focusLatestShelf()
-        } else {
-            localFocus = .refresh
-        }
+        localFocus = .refresh
     }
 
     private func load() async {
@@ -201,12 +201,25 @@ struct FavoritesView: View {
         do {
             items = try await app.api.fetchFavorites()
             await app.refreshFavorites()
+            await app.refreshMusicLibrary()
         } catch {
             loadError = error.localizedDescription
         }
     }
 
     private func openItem(_ item: FavoriteItem) async {
+        if item.isMusicFavorite {
+            selectedMusic = MusicSelection(
+                title: item.title,
+                url: item.url,
+                artist: item.detail,
+                thumbnail: item.thumbnail,
+                duration: item.duration,
+                downloadJobId: app.downloadJobId(for: item.url)
+            )
+            return
+        }
+
         let selection = MediaSelection(
             from: SearchResultItem(
                 title: item.title,
@@ -242,22 +255,6 @@ struct FavoritesView: View {
             }
         }
         selectedDetail = selection
-    }
-
-    private func openLatestItem(_ item: SearchResultItem) async {
-        if item.isSerial == true {
-            do {
-                let info = try await app.api.fetchInfo(url: item.url)
-                if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
-                    seriesInfo = info
-                    return
-                }
-            } catch {
-                loadError = error.localizedDescription
-                return
-            }
-        }
-        selectedDetail = MediaSelection(from: item)
     }
 
     private func openSeriesFromDetail(_ url: String) async {

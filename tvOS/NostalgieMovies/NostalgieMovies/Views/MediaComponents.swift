@@ -964,11 +964,11 @@ struct MovieDownloadBatchBanner: View {
                 }
 
                 HStack {
-                    Text("\(service.completedCount) z \(service.totalCount) gotowych")
+                    Text("\(service.completedCount)/\(service.totalCount) · zapis do Biblioteki (MOVIES)")
                         .font(NostalgieFont.caption)
                         .foregroundStyle(.secondary)
                     if service.pendingCount > 0 {
-                        Text("· zostało \(service.pendingCount)")
+                        Text("· kolejka \(service.pendingCount)")
                             .font(NostalgieFont.caption)
                             .foregroundStyle(.secondary)
                     }

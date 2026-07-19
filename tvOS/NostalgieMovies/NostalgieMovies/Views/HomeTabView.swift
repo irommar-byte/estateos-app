@@ -2,7 +2,7 @@ import SwiftUI
 
 struct HomeTabView: View {
     @EnvironmentObject private var app: AppModel
-    @State private var tab: Tab = .favorites
+    @State private var tab: Tab = .search
     @FocusState private var focusedTab: Tab?
     @Namespace private var primaryTabNamespace
     @State private var deepLinkSeries: VideoInfoResponse?
@@ -10,19 +10,22 @@ struct HomeTabView: View {
     @State private var searchContentFocus = false
     @State private var favoritesContentFocus = false
     @State private var musicContentFocus = false
+    @State private var libraryContentFocus = false
     @State private var accountContentFocus = false
 
     enum Tab: String, CaseIterable {
-        case favorites = "Ulubione"
         case search = "Filmy"
         case music = "Muzyka"
+        case library = "Biblioteka"
+        case favorites = "Ulubione"
         case account = "Konto"
 
         var icon: String {
             switch self {
-            case .favorites: return "heart.fill"
             case .search: return "film.fill"
             case .music: return "opticaldisc.fill"
+            case .library: return "square.stack.3d.up.fill"
+            case .favorites: return "heart.fill"
             case .account: return "person.crop.circle"
             }
         }
@@ -31,13 +34,14 @@ struct HomeTabView: View {
             switch self {
             case .search: return "Wyszukiwarka filmów i seriali"
             case .music: return "Apple Music i playlisty MP3"
+            case .library: return "Pobrane filmy, seriale i muzyka offline"
             default: return rawValue
             }
         }
 
-        /// Filmy i Muzyka to główne cele nawigacji — reszta jest dodatkiem.
+        /// Filmy, Muzyka i Biblioteka — główne cele nawigacji.
         var isPrimaryDestination: Bool {
-            self == .search || self == .music
+            self == .search || self == .music || self == .library
         }
     }
 
@@ -62,13 +66,6 @@ struct HomeTabView: View {
 
             Group {
                 switch tab {
-                case .favorites:
-                    FavoritesView(
-                        navigationTab: .favorites,
-                        focusedTab: $focusedTab,
-                        requestContentFocus: $favoritesContentFocus
-                    )
-                    .onExitCommand { selectTab(.search) }
                 case .search:
                     SearchView(
                         navigationTab: .search,
@@ -80,6 +77,20 @@ struct HomeTabView: View {
                         navigationTab: .music,
                         focusedTab: $focusedTab,
                         requestContentFocus: $musicContentFocus
+                    )
+                    .onExitCommand { selectTab(.search) }
+                case .library:
+                    LibraryView(
+                        navigationTab: .library,
+                        focusedTab: $focusedTab,
+                        requestContentFocus: $libraryContentFocus
+                    )
+                    .onExitCommand { selectTab(.search) }
+                case .favorites:
+                    FavoritesView(
+                        navigationTab: .favorites,
+                        focusedTab: $focusedTab,
+                        requestContentFocus: $favoritesContentFocus
                     )
                     .onExitCommand { selectTab(.search) }
                 case .account:
@@ -248,12 +259,14 @@ struct HomeTabView: View {
 
     private func requestContentFocus(for tab: Tab) {
         switch tab {
-        case .favorites:
-            favoritesContentFocus = true
         case .search:
             searchContentFocus = true
         case .music:
             musicContentFocus = true
+        case .library:
+            libraryContentFocus = true
+        case .favorites:
+            favoritesContentFocus = true
         case .account:
             accountContentFocus = true
         }

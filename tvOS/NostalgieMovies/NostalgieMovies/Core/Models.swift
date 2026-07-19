@@ -52,6 +52,24 @@ struct FavoritesResponse: Codable {
     let items: [FavoriteItem]
 }
 
+extension FavoriteItem {
+    var isMusicFavorite: Bool {
+        let t = type.lowercased()
+        if t == "music" || t == "track" || t == "song" || t == "album" || t == "artist" {
+            return true
+        }
+        let s = (source ?? "").lowercased()
+        if s.contains("apple") { return true }
+        return url.localizedCaseInsensitiveContains("music.apple.com")
+    }
+
+    var mediaTypeLabel: String {
+        if isMusicFavorite { return "MUZYKA" }
+        if type == "series" { return "SERIAL" }
+        return "FILM"
+    }
+}
+
 struct SearchResultItem: Codable, Identifiable, Hashable {
     var id: String { url }
     let title: String
@@ -792,9 +810,14 @@ enum SearchSource: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Filmy / seriale — bez Apple Music (to osobna zakładka Muzyka).
+    static var filmCases: [SearchSource] {
+        [.all, .tvp, .cda, .cdaHd, .youtube]
+    }
+
     var label: String {
         switch self {
-        case .all: return "Wszystkie"
+        case .all: return "Wszystkie filmy"
         case .tvp: return "TVP VOD"
         case .cda: return "CDA"
         case .cdaHd: return "CDA-HD"

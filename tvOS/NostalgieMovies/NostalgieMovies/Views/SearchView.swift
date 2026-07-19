@@ -6,7 +6,6 @@ private enum SearchFocus: Hashable {
     case source(SearchSource)
     case access(CdaAccessFilter)
     case sort(SearchSort)
-    case downloadedFolder(String)
 }
 
 struct SearchView: View {
@@ -28,8 +27,10 @@ struct SearchView: View {
     @State private var errorMessage: String?
     @State private var seriesInfo: VideoInfoResponse?
     @State private var selectedDetail: MediaSelection?
-    @State private var activeDownloadFolder: DownloadedMediaFolder?
+    @State private var showLatestCatalog = false
+    @State private var latestItems: [SearchResultItem] = []
     @State private var gridColumnCount = 4
+    @FocusState private var latestFocusedID: String?
     @FocusState private var localFocus: SearchFocus?
 
     private let pageSize = 24
@@ -37,9 +38,6 @@ struct SearchView: View {
     private let gridSpacing: CGFloat = 32
     private let columns = [GridItem(.adaptive(minimum: 300, maximum: 360), spacing: 32)]
 
-    private var downloadedFolders: [DownloadedMediaFolder] {
-        DownloadedMediaLibrary.folders(from: app.movieDownloads)
-    }
 
     var body: some View {
         Group {
@@ -47,14 +45,6 @@ struct SearchView: View {
                 SeriesEpisodesView(info: series, backLabel: "Wróć do wyników") {
                     seriesInfo = nil
                 }
-                .environmentObject(app)
-            } else if let folder = activeDownloadFolder {
-                DownloadedMediaFolderView(
-                    folder: folder,
-                    navigationTab: navigationTab,
-                    focusedTab: focusedTab,
-                    onBack: { activeDownloadFolder = nil }
-                )
                 .environmentObject(app)
             } else {
                 searchContent
@@ -64,12 +54,15 @@ struct SearchView: View {
                         }
                         .environmentObject(app)
                     }
+                    .fullScreenCover(isPresented: $showLatestCatalog) {
+                        LatestCdaHdCatalogView()
+                            .environmentObject(app)
+                    }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task {
             await app.refreshFavorites()
-            await app.refreshMovieDownloads()
         }
         .onChange(of: requestContentFocus) { _, requested in
             guard requested else { return }
@@ -84,12 +77,20 @@ struct SearchView: View {
                 VStack(alignment: .leading, spacing: NostalgieSpacing.section) {
                     Color.clear.frame(height: 1).id("searchTop")
 
-                    ScreenTitle(title: "Szukaj", subtitle: "Filmy, seriale i odcinki")
+                    ScreenTitle(title: "Filmy", subtitle: "Filmy i seriale — bez muzyki")
 
                     searchControls
                         .defaultFocus($localFocus, .query)
 
-                    downloadedFoldersSection
+                    LatestCdaHdRow(
+                        focusedItemID: $latestFocusedID,
+                        onSelect: { item in
+                            Task { await openLatestItem(item) }
+                        },
+                        onShowAll: { showLatestCatalog = true },
+                        onMoveUp: { localFocus = .query },
+                        onItemsChange: { latestItems = $0 }
+                    )
 
                     GridColumnReader(minimumCardWidth: cardMinimum, spacing: gridSpacing, columnCount: $gridColumnCount)
 
@@ -137,47 +138,7 @@ struct SearchView: View {
                     withAnimation(NostalgieTheme.contentSpring) {
                         scrollProxy.scrollTo("searchTop", anchor: .top)
                     }
-                case .downloadedFolder:
-                    withAnimation(NostalgieTheme.contentSpring) {
-                        scrollProxy.scrollTo("downloadedFolders", anchor: .top)
-                    }
                 }
-            }
-        }
-    }
-
-    private var downloadedFoldersSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Color.clear.frame(height: 1).id("downloadedFolders")
-
-            MusicSectionHeader(
-                title: "Pobrane filmy i seriale",
-                subtitle: "Foldery MOVIES · odtwarzanie offline z dysku"
-            )
-
-            if downloadedFolders.isEmpty {
-                Text("Brak pobranych materiałów — pobierz film lub odcinki serialu z wyszukiwania.")
-                    .font(NostalgieFont.metadata)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 4)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 16) {
-                        ForEach(downloadedFolders) { folder in
-                            DownloadedMediaFolderCard(folder: folder) {
-                                activeDownloadFolder = folder
-                            }
-                            .focused($localFocus, equals: .downloadedFolder(folder.id))
-                            .onMoveCommand { direction in
-                                if direction == .up {
-                                    localFocus = .query
-                                }
-                            }
-                        }
-                    }
-                    .padding(.vertical, 10)
-                }
-                .fullBleedShelf()
             }
         }
     }
@@ -232,7 +193,7 @@ struct SearchView: View {
             .frame(maxWidth: 980)
 
             filterRow(title: "Źródło") {
-                ForEach(SearchSource.allCases) { src in
+                ForEach(SearchSource.filmCases) { src in
                     Button {
                         source = src
                         if !SearchSort.options(for: src).contains(sort) {
@@ -453,6 +414,22 @@ struct SearchView: View {
             || item.url.localizedCaseInsensitiveContains("/tvshow/")
             || (item.detail?.localizedCaseInsensitiveContains("serial") == true)
         if looksLikeSeries {
+            do {
+                let info = try await app.api.fetchInfo(url: item.url)
+                if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
+                    seriesInfo = info
+                    return
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+                return
+            }
+        }
+        selectedDetail = MediaSelection(from: item)
+    }
+
+    private func openLatestItem(_ item: SearchResultItem) async {
+        if item.isSerial == true {
             do {
                 let info = try await app.api.fetchInfo(url: item.url)
                 if info.isPlaylist == true, !info.playableEpisodes.isEmpty {

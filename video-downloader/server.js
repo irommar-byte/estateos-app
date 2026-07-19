@@ -1947,15 +1947,21 @@ async function downloadStreamToFile(job, streamUrl, referer, destPath, opts = {}
       }
       file.write(chunk);
       downloaded += chunk.length;
+      const cap = forAirPlay ? 90 : 99;
       if (total > 0) {
-        job.progress = Math.min(forAirPlay ? 90 : 99, (downloaded / total) * (forAirPlay ? 90 : 99));
-        sendEvent(job, {
-          status: "downloading",
-          progress: job.progress,
-          purpose: job.purpose,
-          airplayPrepare: forAirPlay,
-        });
+        job.progress = Math.min(cap, Math.round((downloaded / total) * cap));
+      } else {
+        // No Content-Length (common on CDNs) — show byte-based progress so UI isn't stuck at 0%.
+        job.progress = Math.min(cap, Math.max(1, Math.round(downloaded / (3 * 1024 * 1024))));
       }
+      sendEvent(job, {
+        status: "downloading",
+        progress: job.progress,
+        purpose: job.purpose,
+        airplayPrepare: forAirPlay,
+        downloadedBytes: downloaded,
+        totalBytes: total || null,
+      });
     }
 
     if (job.cancelled) {
@@ -1989,6 +1995,7 @@ async function downloadStreamToFile(job, streamUrl, referer, destPath, opts = {}
 
     job.status = forAirPlay ? "airplay-ready" : "done";
     job.progress = 100;
+    job.ready = true;
     if (forAirPlay) ensurePlayToken(job);
     if (job.kind === "movie" && !forAirPlay) {
       assertValidMovieFile(destPath);
@@ -2002,6 +2009,7 @@ async function downloadStreamToFile(job, streamUrl, referer, destPath, opts = {}
       purpose: job.purpose,
       airplayPrepare: forAirPlay,
       playToken: job.playToken,
+      ready: true,
     });
   } catch (err) {
     if (job.cancelled || err?.name === "AbortError") return;
@@ -3496,8 +3504,12 @@ app.post("/api/search", async (req, res) => {
   try {
     let results;
     if (source === "all") {
+      // Filmy/seriale only — Apple Music lives in the Muzyka tab.
+      const videoHandlers = Object.entries(SEARCH_HANDLERS).filter(
+        ([src]) => src !== "apple-music"
+      );
       const chunks = await Promise.all(
-        Object.entries(SEARCH_HANDLERS).map(async ([src, fn]) => {
+        videoHandlers.map(async ([src, fn]) => {
           try {
             const srcLimit = Math.min(fetchLimit, SOURCE_FETCH_LIMITS[src] || fetchLimit);
             const part = await fn(query, srcLimit, browser);

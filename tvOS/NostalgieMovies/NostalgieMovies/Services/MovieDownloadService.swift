@@ -119,7 +119,8 @@ final class MovieDownloadService: ObservableObject {
             case .done, .skipped:
                 sum += 1
             case .downloading(let progress):
-                sum += progress / 100
+                let pct = progress <= 1.0 ? progress * 100 : progress
+                sum += min(max(pct, 0), 100) / 100
             default:
                 break
             }
@@ -247,11 +248,11 @@ final class MovieDownloadService: ObservableObject {
         batch.isFinished = true
         activeBatch = batch
         if batch.isCancelled {
-            statusMessage = "Pobieranie zatrzymane — \(completedCount) z \(batch.items.count) gotowych."
+            statusMessage = "Zatrzymano — \(completedCount)/\(batch.items.count) w Bibliotece (MOVIES)."
         } else if batch.items.contains(where: { if case .failed = $0.state { return true }; return false }) {
-            statusMessage = "Nie udało się pobrać \(batch.items.count - completedCount) z \(batch.items.count) pozycji."
+            statusMessage = "Błędy: \(failedCount)/\(batch.items.count). Udane są w zakładce Biblioteka."
         } else {
-            statusMessage = "Pobrano \(completedCount) z \(batch.items.count) pozycji."
+            statusMessage = "Gotowe — \(completedCount) w Bibliotece. Odtwarzaj offline natychmiast."
         }
         batchTask = nil
     }
@@ -266,7 +267,8 @@ final class MovieDownloadService: ObservableObject {
             }
             let job = try await app.api.fetchJobStatus(jobId: jobId)
             if let progress = job.progress, var batch = activeBatch {
-                batch.items[itemIndex].state = .downloading(progress: progress)
+                let pct = progress <= 1.0 ? progress * 100 : progress
+                batch.items[itemIndex].state = .downloading(progress: min(max(pct, 0), 100))
                 activeBatch = batch
             }
             if job.status == "error" {
