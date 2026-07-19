@@ -23,7 +23,7 @@ import {
   fetchCdaHdCatalog,
   loadCdaHdDiskCatalog,
 } from "./cda-hd.js";
-import { getCdaHdSessionInfo } from "./cda-hd-fetch.js";
+import { getCdaHdSessionInfo, startCdaHdSessionKeeper } from "./cda-hd-fetch.js";
 import {
   detectPortal,
   portalCookieArgs,
@@ -3279,6 +3279,57 @@ const SEARCH_HANDLERS = {
   "apple-music": (q, limit) => searchAppleMusic(q, Math.min(limit, SOURCE_FETCH_LIMITS["apple-music"])),
 };
 
+
+let cdaHdWarmRunning = false;
+let cdaHdWarmTimer = null;
+
+async function warmCdaHdCaches() {
+  if (cdaHdWarmRunning) return;
+  cdaHdWarmRunning = true;
+  try {
+    const items = mapSearchThumbnails(await fetchCdaHdLatest(60));
+    if (!items.length) return;
+    const now = Date.now();
+    cdaHdLatestCache = { at: now, items };
+    const pageSize = 20;
+    const page1 = {
+      mode: "latest",
+      page: 1,
+      pageSize,
+      totalItems: items.length,
+      hasMore: items.length > pageSize,
+      items: items.slice(0, pageSize),
+      cached: false,
+    };
+    cdaHdCatalogCache.at = now;
+    cdaHdCatalogCache.entries = cdaHdCatalogCache.entries || {};
+    cdaHdCatalogCache.entries[`latest|1|${pageSize}`] = page1;
+    const seriesCount = items.filter((i) => i.isSerial).length;
+    console.warn(`cda-hd warm: ${items.length} pozycji (seriali: ${seriesCount})`);
+  } catch (err) {
+    console.warn("cda-hd warm:", err?.message || err);
+  } finally {
+    cdaHdWarmRunning = false;
+  }
+}
+
+function scheduleCdaHdWarm() {
+  if (cdaHdWarmRunning) return;
+  setTimeout(() => {
+    warmCdaHdCaches().catch(() => {});
+  }, 50);
+}
+
+function startCdaHdBackgroundJobs() {
+  startCdaHdSessionKeeper(process.env.CDA_HD_BASE || "https://cda-hd.cc/");
+  scheduleCdaHdWarm();
+  if (cdaHdWarmTimer) clearInterval(cdaHdWarmTimer);
+  cdaHdWarmTimer = setInterval(() => {
+    warmCdaHdCaches().catch(() => {});
+  }, 12 * 60 * 1000);
+  if (typeof cdaHdWarmTimer.unref === "function") cdaHdWarmTimer.unref();
+}
+
 // GET /api/cda-hd/health — diagnostyka sesji Cloudflare / FlareSolverr
 app.get("/api/cda-hd/health", async (_req, res) => {
   const disk = loadCdaHdDiskCatalog();
@@ -3299,9 +3350,38 @@ app.get("/api/cda-hd/health", async (_req, res) => {
 app.get("/api/cda-hd/latest", async (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 60);
   const now = Date.now();
-  if (now - cdaHdLatestCache.at < CDA_HD_LATEST_TTL_MS && cdaHdLatestCache.items.length >= limit) {
+  const fresh =
+    now - cdaHdLatestCache.at < CDA_HD_LATEST_TTL_MS && cdaHdLatestCache.items.length >= Math.min(limit, 8);
+
+  if (fresh) {
     return res.json({ items: cdaHdLatestCache.items.slice(0, limit), cached: true });
   }
+
+  // Cache-first: nie blokuj Apple TV na FlareSolverr — oddaj stale i odśwież w tle.
+  if (cdaHdLatestCache.items.length) {
+    res.json({
+      items: cdaHdLatestCache.items.slice(0, limit),
+      cached: true,
+      stale: true,
+    });
+    scheduleCdaHdWarm();
+    return;
+  }
+
+  const disk = loadCdaHdDiskCatalog();
+  if (disk?.latest?.length) {
+    const items = mapSearchThumbnails(disk.latest);
+    cdaHdLatestCache = { at: disk.updatedAt || now, items };
+    res.json({
+      items: items.slice(0, limit),
+      cached: true,
+      stale: true,
+      disk: true,
+    });
+    scheduleCdaHdWarm();
+    return;
+  }
+
   try {
     const items = mapSearchThumbnails(await fetchCdaHdLatest(60));
     if (!items.length) throw new Error("Pusta lista CDA-HD.");
@@ -3309,26 +3389,13 @@ app.get("/api/cda-hd/latest", async (req, res) => {
     res.json({ items: items.slice(0, limit), cached: false });
   } catch (err) {
     console.error("cda-hd latest:", err?.message || err);
-    if (cdaHdLatestCache.items.length) {
-      return res.json({ items: cdaHdLatestCache.items.slice(0, limit), cached: true, stale: true });
-    }
-    const disk = loadCdaHdDiskCatalog();
-    if (disk?.latest?.length) {
-      const items = mapSearchThumbnails(disk.latest);
-      cdaHdLatestCache = { at: now, items };
-      return res.json({
-        items: items.slice(0, limit),
-        cached: true,
-        stale: true,
-        disk: true,
-      });
-    }
     res.status(502).json({
       error: err?.message || "Nie udało się pobrać najnowszych z CDA-HD.",
       session: getCdaHdSessionInfo(),
     });
   }
 });
+
 
 // GET /api/cda-hd/catalog?mode=latest|top-rated&page=1&pageSize=20
 app.get("/api/cda-hd/catalog", async (req, res) => {
@@ -3341,6 +3408,13 @@ app.get("/api/cda-hd/catalog", async (req, res) => {
   if (now - cdaHdCatalogCache.at < CDA_HD_LATEST_TTL_MS && cacheHit) {
     return res.json({ ...cacheHit, cached: true });
   }
+
+  if (cacheHit?.items?.length) {
+    res.json({ ...cacheHit, cached: true, stale: true });
+    scheduleCdaHdWarm();
+    return;
+  }
+
   try {
     const data = await fetchCdaHdCatalog({ mode, page, pageSize });
     const payload = {
@@ -3355,6 +3429,9 @@ app.get("/api/cda-hd/catalog", async (req, res) => {
     cdaHdCatalogCache.at = now;
     cdaHdCatalogCache.entries = cdaHdCatalogCache.entries || {};
     cdaHdCatalogCache.entries[cacheKey] = payload;
+    if (mode === "latest" && page === 1 && payload.items.length) {
+      cdaHdLatestCache = { at: now, items: payload.items };
+    }
     res.json(payload);
   } catch (err) {
     console.error("cda-hd catalog:", err?.message || err);
@@ -3364,7 +3441,7 @@ app.get("/api/cda-hd/catalog", async (req, res) => {
     const disk = loadCdaHdDiskCatalog();
     if (disk?.latest?.length && mode === "latest" && page === 1) {
       const items = mapSearchThumbnails(disk.latest).slice(0, pageSize);
-      const payload = {
+      return res.json({
         mode,
         page,
         pageSize,
@@ -3374,8 +3451,7 @@ app.get("/api/cda-hd/catalog", async (req, res) => {
         cached: true,
         stale: true,
         disk: true,
-      };
-      return res.json(payload);
+      });
     }
     res.status(502).json({
       error: err?.message || "Nie udało się pobrać katalogu CDA-HD.",
@@ -3383,6 +3459,7 @@ app.get("/api/cda-hd/catalog", async (req, res) => {
     });
   }
 });
+
 
 // GET /api/cda-hd/browse?url=&limit=24 — filmy wg reżysera, aktora, gatunku, roku
 app.get("/api/cda-hd/browse", async (req, res) => {
@@ -4853,6 +4930,7 @@ ensureBinary()
     app.listen(PORT, "0.0.0.0", () => {
       cleanupStaleJobDirs();
       setInterval(cleanupStaleJobDirs, 30 * 60 * 1000);
+      startCdaHdBackgroundJobs();
       const lan = getLanIPv4();
       console.log(`\n▶  Pobieralnia filmów działa: http://localhost:${PORT}`);
       if (lan) {

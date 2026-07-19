@@ -8,6 +8,8 @@ import { DEFAULT_CDA_HD_UA, fetchCdaHdHtmlResilient } from "./cda-hd-fetch.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const CDA_HD_BASE = (process.env.CDA_HD_BASE || "https://cda-hd.cc").replace(/\/$/, "");
+export const CDA_HD_TVSHOWS_BASE =
+  (process.env.CDA_HD_TVSHOWS_BASE || `${CDA_HD_BASE}/tvshows`).replace(/\/$/, "");
 export const CDA_HD_UA = process.env.CDA_HD_UA || DEFAULT_CDA_HD_UA;
 
 const CDA_HD_DISK_CACHE_PATH =
@@ -367,7 +369,10 @@ export function loadCdaHdDiskCatalog(maxAgeMs = CDA_HD_DISK_CACHE_TTL_MS) {
 
 export function saveCdaHdDiskCatalog(items) {
   if (!Array.isArray(items) || !items.length) return;
-  writeDiskCatalogCache({ latest: items.slice(0, 60) });
+  const latest = items.slice(0, 80);
+  const series = latest.filter((i) => i.isSerial || isCdaHdTvShowUrl(i.url));
+  const films = latest.filter((i) => !(i.isSerial || isCdaHdTvShowUrl(i.url)));
+  writeDiskCatalogCache({ latest, series: series.slice(0, 40), films: films.slice(0, 40) });
 }
 
 export function parseCdaHdSearch(html, limit = 12) {
@@ -397,7 +402,7 @@ export function parseCdaHdSearch(html, limit = 12) {
       "";
     const ratingRaw = block.match(/<span class="imdbs">([^<]*)<\/span>/i)?.[1]?.trim() || null;
     const rating = ratingRaw != null && ratingRaw !== "" ? Number(ratingRaw) : null;
-    const isSerial = /serial/i.test(typepost);
+    const isSerial = /serial/i.test(typepost) || isCdaHdTvShowUrl(url) || /\/tvshows?\//i.test(url);
 
     results.push({
       id: url.replace(/\/$/, "").split("/").pop(),
@@ -421,14 +426,15 @@ export function parseCdaHdSearch(html, limit = 12) {
 const CDA_HD_CATALOG_PAGE_SIZE = 20;
 const CDA_HD_MAX_SITE_PAGES = 30;
 
-async function fetchCdaHdListingPool(minCount = 20, maxCdaPages = CDA_HD_MAX_SITE_PAGES) {
+async function fetchCdaHdListingFromBase(baseUrl, minCount = 20, maxCdaPages = CDA_HD_MAX_SITE_PAGES) {
   const all = [];
   const seen = new Set();
   const target = Math.max(Number(minCount) || 20, 1);
   const cap = Math.max(1, Math.min(Number(maxCdaPages) || CDA_HD_MAX_SITE_PAGES, CDA_HD_MAX_SITE_PAGES));
+  const root = String(baseUrl || CDA_HD_BASE).replace(/\/$/, "");
 
   for (let p = 1; p <= cap; p += 1) {
-    const pageUrl = p === 1 ? CDA_HD_BASE : `${CDA_HD_BASE}/page/${p}/`;
+    const pageUrl = p === 1 ? `${root}/` : `${root}/page/${p}/`;
     let html;
     try {
       ({ html } = await fetchCdaHdHtml(pageUrl));
@@ -438,7 +444,7 @@ async function fetchCdaHdListingPool(minCount = 20, maxCdaPages = CDA_HD_MAX_SIT
     }
     const batch = parseCdaHdSearch(html, 80);
     if (p === 1 && !batch.length) {
-      throw new Error("CDA-HD zwróciło stronę bez listy filmów (parser/ochrona).");
+      throw new Error(`CDA-HD zwróciło stronę bez listy (${root}).`);
     }
     for (const item of batch) {
       if (seen.has(item.url)) continue;
@@ -451,6 +457,47 @@ async function fetchCdaHdListingPool(minCount = 20, maxCdaPages = CDA_HD_MAX_SIT
   return all;
 }
 
+function interleavePools(films, series) {
+  const out = [];
+  const max = Math.max(films.length, series.length);
+  for (let i = 0; i < max; i += 1) {
+    if (films[i]) out.push(films[i]);
+    if (series[i]) out.push(series[i]);
+  }
+  return out;
+}
+
+/** Pobiera filmy (home) + seriale (/tvshows/) i scala — inaczej katalog TV jest samymi filmami. */
+async function fetchCdaHdListingPool(minCount = 20, maxCdaPages = CDA_HD_MAX_SITE_PAGES) {
+  const perSource = Math.max(12, Math.ceil(Number(minCount) || 20));
+  const pages = Math.max(1, Math.min(Number(maxCdaPages) || 3, CDA_HD_MAX_SITE_PAGES));
+
+  const settled = await Promise.allSettled([
+    fetchCdaHdListingFromBase(CDA_HD_BASE, perSource, pages),
+    fetchCdaHdListingFromBase(CDA_HD_TVSHOWS_BASE, perSource, pages),
+  ]);
+
+  const films = settled[0].status === "fulfilled" ? settled[0].value : [];
+  const series = settled[1].status === "fulfilled" ? settled[1].value : [];
+
+  if (!films.length && !series.length) {
+    const err =
+      (settled[0].status === "rejected" && settled[0].reason) ||
+      (settled[1].status === "rejected" && settled[1].reason) ||
+      new Error("Nie udało się pobrać katalogu CDA-HD (filmy + seriale).");
+    throw err;
+  }
+
+  if (settled[0].status === "rejected") {
+    console.warn("cda-hd films listing:", settled[0].reason?.message || settled[0].reason);
+  }
+  if (settled[1].status === "rejected") {
+    console.warn("cda-hd series listing:", settled[1].reason?.message || settled[1].reason);
+  }
+
+  return interleavePools(films, series);
+}
+
 function orderCdaHdCatalog(pool, mode) {
   if (mode === "top-rated") {
     return pool
@@ -461,7 +508,8 @@ function orderCdaHdCatalog(pool, mode) {
         return String(a.title || "").localeCompare(String(b.title || ""), "pl");
       });
   }
-  return [...pool].sort((a, b) => Number(a.isSerial) - Number(b.isSerial));
+  // latest: zachowaj przeplatanie film/serial z listingu (nie spychaj seriali na koniec)
+  return [...pool];
 }
 
 export async function fetchCdaHdCatalog({

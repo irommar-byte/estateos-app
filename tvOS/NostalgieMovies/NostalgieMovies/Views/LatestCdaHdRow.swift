@@ -68,7 +68,7 @@ struct LatestCdaHdRow: View {
                         subtitle: MediaCardCopy.cleanedSubtitle(detail: item.detail, source: item.source),
                         thumbnailURL: item.thumbnail.flatMap(URL.init(string:)),
                         source: MediaCardCopy.normalizedSourceKey(item.source),
-                        typeLabel: (item.isSerial == true) ? "SERIAL" : "FILM",
+                        typeLabel: (item.isSerial == true || item.url.localizedCaseInsensitiveContains("/tvshows/")) ? "SERIAL" : "FILM",
                         quality: item.quality,
                         duration: item.duration,
                         isFavorite: app.isFavorite(item.url),

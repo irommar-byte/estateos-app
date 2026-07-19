@@ -87,7 +87,7 @@ struct LatestCdaHdCatalogView: View {
                                     subtitle: catalogSubtitle(for: item),
                                     thumbnailURL: item.thumbnail.flatMap(URL.init(string:)),
                                     source: MediaCardCopy.normalizedSourceKey(item.source),
-                                    typeLabel: (item.isSerial == true) ? "SERIAL" : "FILM",
+                                    typeLabel: (item.isSerial == true || item.url.localizedCaseInsensitiveContains("/tvshows/")) ? "SERIAL" : "FILM",
                                     quality: item.quality,
                                     duration: item.duration,
                                     isFavorite: app.isFavorite(item.url)
@@ -199,7 +199,12 @@ struct LatestCdaHdCatalogView: View {
     }
 
     private func openItem(_ item: SearchResultItem) async {
-        if item.isSerial == true {
+        let looksLikeSeries =
+            item.isSerial == true
+            || item.url.localizedCaseInsensitiveContains("/tvshows/")
+            || item.url.localizedCaseInsensitiveContains("/tvshow/")
+            || (item.detail?.localizedCaseInsensitiveContains("serial") == true)
+        if looksLikeSeries {
             do {
                 let info = try await app.api.fetchInfo(url: item.url)
                 if info.isPlaylist == true, !info.playableEpisodes.isEmpty {

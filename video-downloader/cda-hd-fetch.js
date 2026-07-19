@@ -300,6 +300,12 @@ export async function fetchCdaHdHtmlResilient(pageUrl) {
         }
         return { html: first.html, finalUrl: first.finalUrl };
       }
+      // Martwa sesja cf_clearance — wyczyść zanim FlareSolverr rozwiąże na nowo.
+      if (session.cookies.length) {
+        console.warn("cda-hd: sesja Cloudflare nieważna — odświeżam");
+        session = { cookies: [], userAgent: session.userAgent || DEFAULT_CDA_HD_UA, updatedAt: 0 };
+        saveSession();
+      }
     } catch (err) {
       console.warn("cda-hd plain fetch:", err?.message || err);
     }
@@ -321,4 +327,27 @@ export function getCdaHdSessionInfo() {
     updatedAt: session.updatedAt,
     flaresolverrUrl: FLARESOLVERR_URL,
   };
+}
+
+let keeperTimer = null;
+
+/** Odświeża cf_clearance w tle, żeby katalog TV nie padał po wygaśnięciu cookies. */
+export function startCdaHdSessionKeeper(baseUrl = "https://cda-hd.cc/") {
+  if (keeperTimer) return;
+  const tick = async () => {
+    try {
+      loadSession();
+      const age = Date.now() - (session.updatedAt || 0);
+      // Odśwież zanim sesja padnie (domyślnie co ~2.5h albo gdy brak clearance).
+      if (!session.cookies.some((c) => c.name === "cf_clearance") || age > SESSION_MAX_AGE_MS * 0.45) {
+        await fetchCdaHdHtmlResilient(baseUrl);
+        console.warn("cda-hd keeper: sesja odświeżona");
+      }
+    } catch (err) {
+      console.warn("cda-hd keeper:", err?.message || err);
+    }
+  };
+  keeperTimer = setInterval(tick, 20 * 60 * 1000);
+  if (typeof keeperTimer.unref === "function") keeperTimer.unref();
+  setTimeout(tick, 15_000);
 }
