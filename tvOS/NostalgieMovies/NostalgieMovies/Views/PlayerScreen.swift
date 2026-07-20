@@ -166,17 +166,33 @@ struct VideoPlayerView: UIViewControllerRepresentable {
             upgradeTask?.cancel()
             upgradeTask = Task { [weak self] in
                 guard let self else { return }
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                var sawPending = false
+                var failures = 0
+                // CDA: partial start → czekamy na pełny plik (do ~12 min).
+                let deadline = Date().addingTimeInterval(12 * 60)
+                while !Task.isCancelled, Date() < deadline {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
                     guard !Task.isCancelled else { return }
                     do {
                         let job = try await api.fetchJobStatus(jobId: jobId)
-                        if job.fullReady == true {
-                            await upgradeToFullStream(jobId: jobId, token: token)
+                        failures = 0
+                        if job.cdaFullPending == true {
+                            sawPending = true
+                        }
+                        // Pełny film: albo explicit fullReady po pending, albo ready bez pending.
+                        let isTrulyFull =
+                            job.fullReady == true
+                            && job.cdaFullPending != true
+                        if isTrulyFull {
+                            // Jeśli nigdy nie było partial — nie trzeba przeładowywać.
+                            if sawPending || job.progress == 100 {
+                                await upgradeToFullStream(jobId: jobId, token: token)
+                            }
                             return
                         }
                     } catch {
-                        return
+                        failures += 1
+                        if failures > 8 { return }
                     }
                 }
             }
@@ -187,6 +203,7 @@ struct VideoPlayerView: UIViewControllerRepresentable {
             guard let controller, let player = controller.player else { return }
             let current = player.currentTime()
             let wasPlaying = player.rate > 0
+            // Cache-bust: nowy parametr t wymusza świeży Content-Length pełnego pliku.
             let upgraded = api.streamURL(jobId: jobId, token: token)
             let item = AVPlayerItem(url: upgraded)
             player.replaceCurrentItem(with: item)

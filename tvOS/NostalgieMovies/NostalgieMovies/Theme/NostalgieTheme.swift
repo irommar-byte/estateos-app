@@ -434,12 +434,12 @@ struct PrimaryTabButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(NostalgieFont.rounded(17, weight: .bold))
+            .font(NostalgieFont.rounded(26, weight: .bold))
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
-            .foregroundStyle(isSelected ? .white : .white.opacity(0.68))
-            .padding(.horizontal, 20)
-            .padding(.vertical, 13)
+            .foregroundStyle(isSelected ? .white : .white.opacity(0.72))
+            .padding(.horizontal, 28)
+            .padding(.vertical, 18)
             .background {
                 Group {
                     if isSelected, let namespace {
@@ -453,15 +453,15 @@ struct PrimaryTabButtonStyle: ButtonStyle {
                             )
                             .matchedGeometryEffect(id: "primaryTabPill", in: namespace)
                     } else {
-                        Capsule().fill(Color.white.opacity(focused ? 0.16 : 0.055))
+                        Capsule().fill(Color.white.opacity(focused ? 0.18 : 0.06))
                     }
                 }
             }
             .overlay {
-                Capsule().stroke(focused ? Color.white : Color.clear, lineWidth: 3)
+                Capsule().stroke(focused ? Color.white : Color.clear, lineWidth: 3.5)
             }
-            .shadow(color: isSelected ? NostalgieTheme.accent.opacity(0.45) : .clear, radius: focused ? 20 : 12, y: 5)
-            .scaleEffect(focused ? 1.07 : (isSelected ? 1.02 : 1.0))
+            .shadow(color: isSelected ? NostalgieTheme.accent.opacity(0.5) : .clear, radius: focused ? 24 : 14, y: 6)
+            .scaleEffect(focused ? 1.08 : (isSelected ? 1.03 : 1.0))
             .animation(NostalgieTheme.tabSpring, value: focused)
             .animation(NostalgieTheme.tabSpring, value: isSelected)
     }

@@ -1253,8 +1253,9 @@ function startCdaStreamingPreview({ jobId, videoUrl, audioUrl, referer, previewH
   const audioFull = path.join(jobDir, "a.full");
   const videoPart = path.join(jobDir, "v.part");
   const audioPart = path.join(jobDir, "a.part");
-  const videoPartialEnd = 22 * 1024 * 1024 - 1;
-  const audioPartialEnd = 3 * 1024 * 1024 - 1;
+  // ~55 MB wideo ≈ kilka–kilkanaście minut 720p — start od razu, pełny plik w tle.
+  const videoPartialEnd = 55 * 1024 * 1024 - 1;
+  const audioPartialEnd = 8 * 1024 * 1024 - 1;
 
   const job = {
     id: jobId,
@@ -4886,16 +4887,19 @@ app.get("/api/job/:jobId", (req, res) => {
     !!(job.file && fs.existsSync(job.file)) ||
     (job.mode === "stream-proxy" && job.status === "done" && !!job.streamUrl) ||
     job.status === "done";
+  // CDA: partial preview jest „ready”, ale NIE fullReady — inaczej TV nigdy nie przełączy na pełny film.
+  const cdaPending = !!job.cdaFullPending;
+  const fullReady = cdaPending ? !!job.fullReady : (!!job.fullReady || ready);
   res.json({
     jobId: job.id,
     status: job.status || (ready ? "done" : "starting"),
-    progress: ready ? 100 : (job.progress ?? 0),
+    progress: cdaPending ? (job.progress ?? 35) : (ready ? 100 : (job.progress ?? 0)),
     name: job.name || "",
     error: job.error || null,
     purpose: job.purpose || "download",
     ready,
-    fullReady: !!job.fullReady || ready,
-    cdaFullPending: !!job.cdaFullPending,
+    fullReady,
+    cdaFullPending: cdaPending,
     downloadPath: ready ? `/api/file/${job.id}` : null,
     reused: !!job.persistent && ready,
   });

@@ -170,70 +170,88 @@ struct HomeTabView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 32) {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [NostalgieTheme.accent, NostalgieTheme.accentSecondary],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+        ZStack(alignment: .center) {
+            HStack(alignment: .center) {
+                brandMark
+                Spacer(minLength: 12)
+                secondaryTabs
+            }
+
+            primaryTabs
+        }
+        .padding(.bottom, 22)
+        .focusSection()
+    }
+
+    private var brandMark: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [NostalgieTheme.accent, NostalgieTheme.accentSecondary],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
-                        .frame(width: 34, height: 34)
-                    Image(systemName: "play.tv.fill")
-                        .font(NostalgieFont.rounded(15, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(AppConfig.appName)
-                        .font(NostalgieFont.brand)
-                        .tracking(0.3)
-                    if let login = app.session?.user.login {
-                        Text(login)
-                            .font(NostalgieFont.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                    )
+                    .frame(width: 34, height: 34)
+                Image(systemName: "play.tv.fill")
+                    .font(NostalgieFont.rounded(15, weight: .semibold))
+                    .foregroundStyle(.white)
             }
 
-            Spacer(minLength: 24)
-
-            HStack(spacing: 20) {
-                HStack(spacing: 10) {
-                    ForEach(Tab.allCases.filter(\.isPrimaryDestination), id: \.self) { item in
-                        primaryTabButton(item)
-                    }
-                }
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.1))
-                    .frame(width: 1, height: 24)
-
-                HStack(spacing: 8) {
-                    ForEach(Tab.allCases.filter { !$0.isPrimaryDestination }, id: \.self) { item in
-                        secondaryTabButton(item)
-                    }
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial.opacity(0.55), in: Capsule(style: .continuous))
-            .overlay {
-                Capsule(style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-            }
-            .focusSection()
-            .onMoveCommand { direction in
-                if direction == .down {
-                    requestContentFocus(for: tab)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(AppConfig.appName)
+                    .font(NostalgieFont.brand)
+                    .tracking(0.3)
+                if let login = app.session?.user.login {
+                    Text(login)
+                        .font(NostalgieFont.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.bottom, 18)
+        .frame(minWidth: 220, alignment: .leading)
+    }
+
+    private var primaryTabs: some View {
+        HStack(spacing: 18) {
+            ForEach(Tab.allCases.filter(\.isPrimaryDestination), id: \.self) { item in
+                primaryTabButton(item)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial.opacity(0.62), in: Capsule(style: .continuous))
+        .overlay {
+            Capsule(style: .continuous)
+                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
         .focusSection()
+        .onMoveCommand { direction in
+            if direction == .down {
+                requestContentFocus(for: tab)
+            }
+        }
+    }
+
+    private var secondaryTabs: some View {
+        HStack(spacing: 8) {
+            ForEach(Tab.allCases.filter { !$0.isPrimaryDestination }, id: \.self) { item in
+                secondaryTabButton(item)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.04), in: Capsule(style: .continuous))
+        .frame(minWidth: 220, alignment: .trailing)
+        .focusSection()
+        .onMoveCommand { direction in
+            if direction == .down {
+                requestContentFocus(for: tab)
+            }
+        }
     }
 
     private func selectTab(_ item: Tab) {
@@ -249,20 +267,21 @@ struct HomeTabView: View {
         Button {
             selectTab(item)
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .fill(Color.white.opacity(isSelected ? 0.22 : 0.1))
-                        .frame(width: 30, height: 30)
+                        .fill(Color.white.opacity(isSelected ? 0.28 : 0.12))
+                        .frame(width: 42, height: 42)
                     Image(systemName: item.icon)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(isSelected ? .white : .white.opacity(0.82))
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(isSelected ? .white : .white.opacity(0.85))
                 }
                 Text(item.rawValue)
             }
         }
         .buttonStyle(PrimaryTabButtonStyle(isSelected: isSelected, namespace: primaryTabNamespace))
         .focused($focusedTab, equals: item)
+        .accessibilityHint(item.accessibilityHint)
     }
 
     @ViewBuilder
