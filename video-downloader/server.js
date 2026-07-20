@@ -3215,80 +3215,148 @@ async function searchCda(query, limit = 48) {
   return rankSearchByQuery(all.slice(0, target), query);
 }
 
+function mapTvpVodApiItem(item) {
+  const url = item?.webUrl;
+  if (!url) return null;
+  const isSerial = item.type === "SERIAL" || /serial/i.test(String(item.type || ""));
+  const quality = item.uhd ? "4K" : null;
+  const genreBits = (item.genres || [])
+    .map((g) => g?.name || g?.key)
+    .filter(Boolean)
+    .slice(0, 4);
+  const detailParts = [
+    isSerial ? "Serial · TVP VOD" : "TVP VOD",
+    item.mainCategory?.name,
+    ...genreBits,
+  ].filter(Boolean);
+  return {
+    id: String(item.id),
+    title: item.title || "Bez tytułu",
+    url,
+    thumbnail: normalizePosterUrl(item.images?.["16x9"]?.[0]?.url || item.images?.["3x4"]?.[0]?.url),
+    uploader: item.mainCategory?.name || "TVP VOD",
+    duration: 0,
+    quality,
+    qualities: quality ? [quality] : [],
+    source: "tvp",
+    detail: detailParts.join(" · "),
+    isSerial,
+  };
+}
+
+async function fetchTvpJson(url, ms = 8000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`TVP HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Szybka pula z listingu VOD (filmy + seriale) — bez wolnego scrapu tvp.pl. */
+async function fetchTvpVodListingPool(limit = 120) {
+  const target = Math.min(Math.max(Number(limit) || 120, 24), 240);
+  const seen = new Set();
+  const results = [];
+  const pageSize = 100;
+  for (let first = 0; first < target && results.length < target; first += pageSize) {
+    const apiUrl =
+      `https://vod.tvp.pl/api/products/vods?` +
+      new URLSearchParams({
+        platform: "BROWSER",
+        firstResult: String(first),
+        maxResults: String(Math.min(pageSize, target - results.length)),
+      });
+    try {
+      const data = await fetchTvpJson(apiUrl, 9000);
+      const batch = data.items || [];
+      if (!batch.length) break;
+      for (const raw of batch) {
+        const item = mapTvpVodApiItem(raw);
+        if (!item || seen.has(item.url)) continue;
+        seen.add(item.url);
+        results.push(item);
+        if (results.length >= target) break;
+      }
+      if (batch.length < pageSize) break;
+    } catch (err) {
+      console.warn("tvp listing:", err?.message || err);
+      break;
+    }
+  }
+  return results;
+}
+
 async function searchTvp(query, limit = 48) {
   const target = Math.min(Math.max(Number(limit) || 48, 1), 120);
   const seen = new Set();
   const results = [];
 
-  const addItem = (item) => {
-    const url = item.webUrl;
-    if (!url || seen.has(url)) return;
-    seen.add(url);
-    const quality = item.uhd ? "4K" : null;
-    results.push({
-      id: String(item.id),
-      title: item.title || "Bez tytułu",
-      url,
-      thumbnail: normalizePosterUrl(item.images?.["16x9"]?.[0]?.url || item.images?.["3x4"]?.[0]?.url),
-      uploader: item.mainCategory?.name || "TVP VOD",
-      duration: 0,
-      quality,
-      qualities: quality ? [quality] : [],
-      source: "tvp",
-      detail: item.type === "SERIAL" ? "Serial · TVP VOD" : "TVP VOD",
-      isSerial: item.type === "SERIAL" || /serial/i.test(String(item.type || "")),
-    });
+  const addItem = (raw) => {
+    const item = mapTvpVodApiItem(raw);
+    if (!item || seen.has(item.url)) return;
+    seen.add(item.url);
+    results.push(item);
   };
 
   for (const type of ["VOD", "VOD_SERIAL"]) {
+    if (results.length >= target) break;
     const apiUrl =
       `https://vod.tvp.pl/api/products/vods/search/${type}?` +
       new URLSearchParams({ keyword: query, platform: "BROWSER" });
     try {
-      const data = await fetch(apiUrl, {
-        headers: { "User-Agent": UA, Accept: "application/json" },
-      }).then((r) => r.json());
+      const data = await fetchTvpJson(apiUrl, 8000);
       for (const item of data.items || []) addItem(item);
     } catch (err) {
       console.error("tvp search error:", err?.message || err);
     }
   }
 
-  // Playable materiały z tvp.pl (poza VOD)
-  try {
-    const html = await fetch(
-      `https://www.tvp.pl/szukaj?query=${encodeURIComponent(query)}`,
-      { headers: { "User-Agent": UA } }
-    ).then((r) => r.text());
-    const itemsMatch = html.match(/"items"\s*:\s*(\[[\s\S]*?\])\s*,\s*"countings"/);
-    if (itemsMatch) {
-      const items = JSON.parse(itemsMatch[1]);
-      for (const item of items) {
-        if (item.type !== "video" || !item.playable || results.length >= target) continue;
-        let url = item.url || "";
-        if (url.startsWith("/")) url = "https://www.tvp.pl" + url;
-        if (!url || seen.has(url)) continue;
-        seen.add(url);
-        results.push({
-          id: String(item._id),
-          title: item.title || "Bez tytułu",
-          url,
-          thumbnail: normalizePosterUrl(
-            item.image?.url
-              ?.replace(/\{width(?::\d+)?\}/gi, "640")
-              ?.replace(/\{height(?::\d+)?\}/gi, "360")
-          ),
-          uploader: "TVP",
-          duration: 0,
-          quality: null,
-          qualities: [],
-          source: "tvp",
-          detail: "Wideo · tvp.pl",
-        });
+  // Playable materiały z tvp.pl — tylko gdy VOD dał mało wyników (HTML bywa wolny/padnięty).
+  if (results.length < Math.min(12, target)) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6000);
+      const html = await fetch(
+        `https://www.tvp.pl/szukaj?query=${encodeURIComponent(query)}`,
+        { headers: { "User-Agent": UA }, signal: ctrl.signal }
+      ).then((r) => r.text()).finally(() => clearTimeout(timer));
+      const itemsMatch = html.match(/"items"\s*:\s*(\[[\s\S]*?\])\s*,\s*"countings"/);
+      if (itemsMatch) {
+        const items = JSON.parse(itemsMatch[1]);
+        for (const item of items) {
+          if (item.type !== "video" || !item.playable || results.length >= target) continue;
+          let url = item.url || "";
+          if (url.startsWith("/")) url = "https://www.tvp.pl" + url;
+          if (!url || seen.has(url)) continue;
+          seen.add(url);
+          results.push({
+            id: String(item._id),
+            title: item.title || "Bez tytułu",
+            url,
+            thumbnail: normalizePosterUrl(
+              item.image?.url
+                ?.replace(/\{width(?::\d+)?\}/gi, "640")
+                ?.replace(/\{height(?::\d+)?\}/gi, "360")
+            ),
+            uploader: "TVP",
+            duration: 0,
+            quality: null,
+            qualities: [],
+            source: "tvp",
+            detail: "Wideo · tvp.pl",
+          });
+        }
       }
+    } catch (err) {
+      console.error("tvp.pl search error:", err?.message || err);
     }
-  } catch (err) {
-    console.error("tvp.pl search error:", err?.message || err);
   }
 
   return results.slice(0, target);
@@ -3561,6 +3629,16 @@ async function resolveFilmsCatalogPool(source) {
     } catch (err) {
       console.warn("catalog pool cda-hd:", err?.message || err);
       return { pool: [], error: String(err?.message || err) };
+    }
+  }
+
+  // TVP: listing VOD jest szybki i stabilny — nie zależymy od wolnego search/HTML.
+  if (src === "tvp") {
+    try {
+      const items = await withTimeout(fetchTvpVodListingPool(120), 14000, "catalog-tvp-listing");
+      if (items.length) return { pool: items, cached: false };
+    } catch (err) {
+      console.warn("catalog pool tvp listing:", err?.message || err);
     }
   }
 
@@ -4025,6 +4103,14 @@ app.get("/api/films/service-home", async (req, res) => {
       pool = Array.isArray(resolved.pool) ? [...resolved.pool] : [];
     } catch {}
 
+    if (!pool.length && source === "tvp") {
+      try {
+        pool = await withTimeout(fetchTvpVodListingPool(120), 14000, "service-home/tvp/listing");
+      } catch (err) {
+        console.warn("service-home tvp listing:", err?.message || err);
+      }
+    }
+
     if (!pool.length && filmsHomeCache?.payload?.shelves?.length) {
       for (const sh of filmsHomeCache.payload.shelves) {
         if (String(sh.source || "").toLowerCase().includes(source)) {
@@ -4035,7 +4121,7 @@ app.get("/api/films/service-home", async (req, res) => {
 
     // 2) Dokarmianie: max 3 seedy, po kolei (nie 16 równoległych requestów).
     // Cały endpoint ma budżet czasu — TVP bywa wolne/padnięte; lepiej zwrócić częściowe półki.
-    const deadline = Date.now() + (source === "tvp" ? 35_000 : 55_000);
+    const deadline = Date.now() + (source === "tvp" ? 28_000 : 55_000);
     const timeLeft = () => Math.max(0, deadline - Date.now());
     if (pool.length < 24 && timeLeft() > 2500) {
       const seeds = SERVICE_HOME_SEARCH_SEEDS[source] || ["film"];
@@ -4051,8 +4137,9 @@ app.get("/api/films/service-home", async (req, res) => {
           pool.push(item);
         }
         if (pool.length >= 40) break;
-        // TVP: jeśli pierwszy seed padł, nie męcz kolejnymi.
-        if (source === "tvp" && !batch.length) break;
+        // TVP: jeśli listing już dał pulę, nie męcz padniętymi searchami.
+        if (source === "tvp" && !batch.length && pool.length >= 12) break;
+        if (source === "tvp" && !batch.length && pool.length < 12) continue;
       }
     }
 
