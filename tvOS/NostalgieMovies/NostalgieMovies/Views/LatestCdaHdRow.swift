@@ -88,9 +88,7 @@ struct LatestCdaHdRow: View {
         do {
             items = try await app.api.fetchCdaHdLatest(limit: shelfLimit)
             onItemsChange?(items)
-            if focusedItemID.wrappedValue == nil, let first = items.first {
-                focusedItemID.wrappedValue = first.id
-            }
+            // Nie kradnij focusu przy ładowaniu — użytkownik schodzi ↓ z filtrów / query.
         } catch {
             items = []
             onItemsChange?([])

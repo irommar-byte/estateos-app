@@ -11,6 +11,7 @@ private enum SeriesFocus: Hashable {
     case back
     case favorite
     case season(Int)
+    case episode(String)
 }
 
 struct SeriesEpisodesView: View {
@@ -159,6 +160,24 @@ struct SeriesEpisodesView: View {
         } message: {
             Text(playError ?? "")
         }
+        .overlay {
+            if playingEpisodeID != nil {
+                ZStack {
+                    Color.black.opacity(0.55)
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .scaleEffect(1.4)
+                        Text("Przygotowuję odcinek…")
+                            .font(NostalgieFont.rowTitle)
+                            .foregroundStyle(.white)
+                    }
+                    .padding(28)
+                    .background(NostalgieTheme.card, in: RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
+                }
+                .ignoresSafeArea()
+            }
+        }
+        .defaultFocus($localFocus, .back)
     }
 
     // MARK: - Header (jak MusicAlbumView)
@@ -170,7 +189,17 @@ struct SeriesEpisodesView: View {
                     Label(backLabel, systemImage: "chevron.left")
                 }
                 .buttonStyle(BackLinkButtonStyle())
+                .focusEffectDisabled()
                 .focused($localFocus, equals: .back)
+                .onMoveCommand { direction in
+                    if direction == .down {
+                        if seasonSections.count > 1 {
+                            localFocus = .season(selectedSeasonIndex)
+                        } else if let first = visibleEpisodes.first {
+                            localFocus = .episode(first.id)
+                        }
+                    }
+                }
 
                 Spacer()
 
@@ -183,7 +212,19 @@ struct SeriesEpisodesView: View {
                     )
                 }
                 .buttonStyle(ChipButtonStyle(isSelected: app.isFavorite(info.webpageUrl)))
+                .focusEffectDisabled()
                 .focused($localFocus, equals: .favorite)
+                .onMoveCommand { direction in
+                    if direction == .down {
+                        if seasonSections.count > 1 {
+                            localFocus = .season(selectedSeasonIndex)
+                        } else if let first = visibleEpisodes.first {
+                            localFocus = .episode(first.id)
+                        }
+                    } else if direction == .left {
+                        localFocus = .back
+                    }
+                }
             }
 
             HStack(alignment: .center, spacing: 14) {
@@ -336,6 +377,17 @@ struct SeriesEpisodesView: View {
                                 Task { await playEpisode(episode) }
                             }
                         }
+                        .focusEffectDisabled()
+                        .focused($localFocus, equals: .episode(episode.id))
+                        .onMoveCommand { direction in
+                            if direction == .up, index == 0 {
+                                if seasonSections.count > 1 {
+                                    localFocus = .season(selectedSeasonIndex)
+                                } else {
+                                    localFocus = .favorite
+                                }
+                            }
+                        }
                         .contextMenu {
                             Button("Odtwórz") {
                                 Task { await playEpisode(episode) }
@@ -352,6 +404,7 @@ struct SeriesEpisodesView: View {
                         .disabled(playingEpisodeID == episode.id)
                     }
                 }
+                .focusSection()
             }
         }
     }
@@ -416,17 +469,29 @@ struct SeriesEpisodesView: View {
                         Button {
                             selectedSeasonIndex = index
                             selectedEpisodeIDs.removeAll()
+                            if let first = season.episodes.first {
+                                localFocus = .episode(first.id)
+                            }
                         } label: {
                             Text(season.title)
                                 .lineLimit(1)
                         }
                         .buttonStyle(ChipButtonStyle(isSelected: selectedSeasonIndex == index))
+                        .focusEffectDisabled()
                         .focused($localFocus, equals: .season(index))
+                        .onMoveCommand { direction in
+                            if direction == .down, let first = (index == selectedSeasonIndex ? visibleEpisodes : season.episodes).first {
+                                localFocus = .episode(first.id)
+                            } else if direction == .up {
+                                localFocus = .favorite
+                            }
+                        }
                     }
                 }
                 .padding(.vertical, 2)
             }
         }
+        .focusSection()
     }
 
     // MARK: - Actions

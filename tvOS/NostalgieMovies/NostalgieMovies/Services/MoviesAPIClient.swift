@@ -383,7 +383,7 @@ final class MoviesAPIClient {
 
     func waitForPreviewReady(
         jobId: String,
-        timeoutSeconds: Int = 600,
+        timeoutSeconds: Int = 90,
         onProgress: ((Int) -> Void)? = nil
     ) async throws {
         let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
@@ -419,6 +419,14 @@ final class MoviesAPIClient {
 
     private struct OkResponse: Codable { let ok: Bool? }
 
+    /// Dopasowany timeout na wolne endpointy (yt-dlp/Cloudflare potrafią się długo namyślać).
+    private func timeoutInterval(forPath path: String) -> TimeInterval {
+        if path.hasPrefix("/api/search") { return 40 }
+        if path.hasPrefix("/api/info") { return 50 }
+        if path.hasPrefix("/api/cda-hd/") { return 45 }
+        return 30
+    }
+
     private func requestJSON<T: Decodable, B: Encodable>(
         _ method: String,
         path: String,
@@ -431,6 +439,7 @@ final class MoviesAPIClient {
         }
         var req = URLRequest(url: url)
         req.httpMethod = method
+        req.timeoutInterval = timeoutInterval(forPath: path)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("NostalgieMovies-tvOS/1.0", forHTTPHeaderField: "User-Agent")
         if authorized, let token {
@@ -453,6 +462,7 @@ final class MoviesAPIClient {
 
         var req = URLRequest(url: url)
         req.httpMethod = method
+        req.timeoutInterval = timeoutInterval(forPath: path)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("NostalgieMovies-tvOS/1.0", forHTTPHeaderField: "User-Agent")
         if authorized, let token {
@@ -493,6 +503,8 @@ final class MoviesAPIClient {
             }
         } catch let error as APIError {
             throw error
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            throw APIError.server("Serwer nie odpowiedział na czas — spróbuj ponownie za chwilę.")
         } catch {
             throw APIError.network(error)
         }

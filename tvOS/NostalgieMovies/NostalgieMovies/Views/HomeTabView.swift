@@ -207,6 +207,14 @@ struct HomeTabView: View {
                     }
                 }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial.opacity(0.55), in: Capsule(style: .continuous))
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            }
+            .focusSection()
             .onMoveCommand { direction in
                 if direction == .down {
                     requestContentFocus(for: tab)
@@ -214,6 +222,7 @@ struct HomeTabView: View {
             }
         }
         .padding(.bottom, 18)
+        .focusSection()
     }
 
     private func selectTab(_ item: Tab) {

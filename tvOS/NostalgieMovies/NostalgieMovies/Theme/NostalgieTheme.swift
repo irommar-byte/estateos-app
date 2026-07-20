@@ -407,6 +407,8 @@ struct DetailToolbarButtonStyle: ButtonStyle {
 }
 
 struct MediaCardButtonStyle: ButtonStyle {
+    /// > 1 tylko siatka — półki zostają 1.0 żeby nie ucinać sąsiadów (jak EstateOS).
+    var focusScale: CGFloat = 1.04
     @Environment(\.isFocused) private var focused
 
     func makeBody(configuration: Configuration) -> some View {
@@ -415,10 +417,12 @@ struct MediaCardButtonStyle: ButtonStyle {
             .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous)
-                    .stroke(focused ? Color.white.opacity(0.95) : Color.white.opacity(0.06), lineWidth: focused ? 3 : 1)
+                    .stroke(focused ? Color.white.opacity(0.95) : Color.white.opacity(0.06), lineWidth: focused ? 3.5 : 1)
             }
-            .shadow(color: focused ? Color.white.opacity(0.16) : .clear, radius: 18, y: focused ? 6 : 0)
-            .scaleEffect(focused ? 1.04 : 1.0)
+            .shadow(color: focused ? Color.white.opacity(0.18) : .clear, radius: focused ? 18 : 0, y: focused ? 8 : 0)
+            .scaleEffect(focusScale > 1.001 && focused ? focusScale : 1.0)
+            .zIndex(focusScale > 1.001 && focused ? 20 : 0)
+            .opacity(configuration.isPressed ? 0.92 : 1.0)
             .animation(NostalgieTheme.focusSpring, value: focused)
     }
 }
@@ -495,16 +499,22 @@ struct ChipButtonStyle: ButtonStyle {
             .font(NostalgieFont.caption)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
             .background(isSelected ? Color.white.opacity(0.16) : Color.white.opacity(0.05))
             .foregroundStyle(isSelected ? .white : .white.opacity(0.68))
             .clipShape(Capsule())
             .overlay {
                 Capsule()
-                    .stroke(focused ? Color.white : (isSelected ? Color.white.opacity(0.28) : Color.clear), lineWidth: focused ? 2 : 1)
+                    .stroke(
+                        focused ? Color.white.opacity(0.9)
+                            : (isSelected ? Color.white.opacity(0.35) : Color.white.opacity(0.1)),
+                        lineWidth: focused ? 2 : 1
+                    )
             }
-            .scaleEffect(focused ? 1.03 : 1.0)
+            .scaleEffect(focused ? 1.08 : (configuration.isPressed ? 0.98 : 1.0))
+            .shadow(color: .black.opacity(focused ? 0.28 : 0), radius: focused ? 12 : 0, y: focused ? 6 : 0)
             .animation(NostalgieTheme.focusSpring, value: focused)
+            .animation(NostalgieTheme.focusSpring, value: isSelected)
     }
 }

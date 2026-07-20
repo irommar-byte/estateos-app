@@ -4279,11 +4279,21 @@ app.post("/api/info", async (req, res) => {
     if (/cda\.pl\/video\//i.test(url)) {
       resolveCdaDualStream(url, 480, browser, req).catch(() => {});
     }
-    const data = await resolveMediaInfo(url, browser, req);
+    const data = await withTimeout(
+      resolveMediaInfo(url, browser, req),
+      45000,
+      "info"
+    );
     res.json(data);
   } catch (err) {
     console.error("info error:", err?.message || err);
-    res.status(500).json({ error: friendlyError(err) });
+    const msg = String(err?.message || "");
+    const timedOut = /przekroczyła|timeout|Timeout/i.test(msg);
+    res.status(timedOut ? 504 : 500).json({
+      error: timedOut
+        ? "Serwer źródła nie odpowiedział na czas (Cloudflare). Spróbuj ponownie za chwilę."
+        : friendlyError(err),
+    });
   }
 });
 
