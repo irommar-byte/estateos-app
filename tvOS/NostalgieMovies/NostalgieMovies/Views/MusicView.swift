@@ -174,7 +174,7 @@ struct MusicView: View {
                     hasSearched = false
                     localFocus = .query
                 } else {
-                    focusedTab.wrappedValue = .search
+                    focusedTab.wrappedValue = .films
                 }
             }
         }

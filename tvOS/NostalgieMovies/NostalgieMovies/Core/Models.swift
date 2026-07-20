@@ -284,6 +284,22 @@ enum CdaHdCatalogMode: String, CaseIterable, Identifiable {
     }
 }
 
+struct FilmsHomeShelf: Codable, Identifiable, Hashable {
+    let id: String
+    let source: String
+    let title: String
+    let subtitle: String?
+    let items: [SearchResultItem]
+    let catalogMode: String?
+    let cached: Bool?
+}
+
+struct FilmsHomeResponse: Codable {
+    let ok: Bool?
+    let generatedAt: String?
+    let shelves: [FilmsHomeShelf]
+}
+
 struct CdaHdCatalogResponse: Codable {
     let mode: String
     let page: Int

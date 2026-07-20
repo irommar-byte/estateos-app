@@ -3531,6 +3531,106 @@ app.get("/api/cda-hd/browse", async (req, res) => {
 });
 
 // POST /api/search  { query, source, limit?, page?, pageSize?, sort?, access? }
+
+// GET /api/films/home — półki per serwis dla zakładki Filmy (Apple TV)
+app.get("/api/films/home", async (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 16, 8), 24);
+  const browser = null;
+
+  const shelf = (id, source, title, subtitle, items, meta = {}) => ({
+    id,
+    source,
+    title,
+    subtitle,
+    items: mapSearchThumbnails(items || []).slice(0, limit),
+    ...meta,
+  });
+
+  const safeSearch = async (source, query, ms = 12000) => {
+    const handler = SEARCH_HANDLERS[source];
+    if (!handler) return [];
+    try {
+      return await withTimeout(
+        (async () => {
+          const part = await handler(query, limit, browser);
+          return enrichSearchResults(part, browser, source);
+        })(),
+        ms,
+        `films-home/${source}`
+      );
+    } catch (err) {
+      console.warn(`films/home ${source}:`, err?.message || err);
+      return [];
+    }
+  };
+
+  const safeCdaHdLatest = async () => {
+    try {
+      if (cdaHdLatestCache.items?.length) {
+        return { items: cdaHdLatestCache.items, cached: true };
+      }
+      const disk = loadCdaHdDiskCatalog();
+      if (disk?.latest?.length) {
+        return { items: mapSearchThumbnails(disk.latest), cached: true, disk: true };
+      }
+      const items = mapSearchThumbnails(await fetchCdaHdLatest(Math.max(limit, 20)));
+      if (items.length) cdaHdLatestCache = { at: Date.now(), items };
+      return { items, cached: false };
+    } catch (err) {
+      console.warn("films/home cda-hd latest:", err?.message || err);
+      return { items: [], error: String(err?.message || err) };
+    }
+  };
+
+  const safeCdaHdTop = async () => {
+    try {
+      const data = await fetchCdaHdCatalog({ mode: "top-rated", page: 1, pageSize: limit });
+      return { items: mapSearchThumbnails(data.items || []), cached: false };
+    } catch (err) {
+      console.warn("films/home cda-hd top:", err?.message || err);
+      const disk = loadCdaHdDiskCatalog();
+      if (disk?.topRated?.length || disk?.["top-rated"]?.length) {
+        const items = mapSearchThumbnails(disk.topRated || disk["top-rated"] || []);
+        return { items, cached: true, disk: true };
+      }
+      return { items: [], error: String(err?.message || err) };
+    }
+  };
+
+  try {
+    const [cdaHdLatest, cdaHdTop, cdaItems, tvpItems, ytItems] = await Promise.all([
+      safeCdaHdLatest(),
+      safeCdaHdTop(),
+      safeSearch("cda", "film", 14000),
+      safeSearch("tvp", "serial", 14000),
+      safeSearch("youtube", "pełny film", 14000),
+    ]);
+
+    const shelves = [
+      shelf("cda-hd-latest", "cda-hd", "CDA-HD", "Najnowsze filmy i seriale", cdaHdLatest.items, {
+        catalogMode: "latest",
+        cached: !!cdaHdLatest.cached,
+      }),
+      shelf("cda-hd-top", "cda-hd", "CDA-HD", "Najlepiej oceniane", cdaHdTop.items, {
+        catalogMode: "top-rated",
+        cached: !!cdaHdTop.cached,
+      }),
+      shelf("cda-featured", "cda", "CDA", "Wyróżnione", cdaItems),
+      shelf("tvp-featured", "tvp", "TVP VOD", "Polecane", tvpItems),
+      shelf("youtube-featured", "youtube", "YouTube", "Filmy", ytItems),
+    ].filter((row) => Array.isArray(row.items) && row.items.length > 0);
+
+    res.json({
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      shelves,
+    });
+  } catch (err) {
+    console.error("films/home:", err?.message || err);
+    res.status(500).json({ error: friendlyError(err) });
+  }
+});
+
 app.post("/api/search", async (req, res) => {
   const query = (req.body?.query || "").trim();
   const source = (req.body?.source || "youtube").toLowerCase();

@@ -22,11 +22,12 @@
 		CDABRW001BLD000001 /* Views/CdaHdBrowseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDABRW001SWIFT0001 /* Views/CdaHdBrowseView.swift */; };
 		DPLNK001A1B2C3D4E5F678901 /* Core/DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = DPLNK001A1B2C3D4E5F678902 /* Core/DeepLink.swift */; };
 		DWNFLD001BLD000001 /* Views/DownloadedMediaFolderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DWNFLD001SWIFT0001 /* Views/DownloadedMediaFolderView.swift */; };
-		LIBVW001BLD000001 /* Views/LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIBVW001SWIFT0001 /* Views/LibraryView.swift */; };
 		E64FD85C688F4FA490A0E636 /* App/AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E64FD85C688F4FA490A0E636R /* App/AppModel.swift */; };
 		EE2764E6CE454E5A83C28B7D /* Core/Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2764E6CE454E5A83C28B7DR /* Core/Models.swift */; };
 		EEED268459684BB9BF69079D /* Views/HomeTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEED268459684BB9BF69079DR /* Views/HomeTabView.swift */; };
+		LIBVW001BLD000001 /* Views/LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIBVW001SWIFT0001 /* Views/LibraryView.swift */; };
 		LTCDA001A1B2C3D4E5F678901 /* Views/LatestCdaHdRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = LTCDA001A1B2C3D4E5F678902 /* Views/LatestCdaHdRow.swift */; };
+		FLMSHOME01A1B2C3D4E5F678901 /* Views/FilmsHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FLMSHOME01A1B2C3D4E5F678902 /* Views/FilmsHomeView.swift */; };
 		LTCDA002A1B2C3D4E5F678901 /* Views/LatestCdaHdCatalogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LTCDA002A1B2C3D4E5F678902 /* Views/LatestCdaHdCatalogView.swift */; };
 		MOVDL001BLD000001 /* Services/MovieDownloadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOVDL001SWIFT0001 /* Services/MovieDownloadService.swift */; };
 		MUSALB001BLD000001 /* Views/MusicAlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MUSALB001SWIFT0001 /* Views/MusicAlbumView.swift */; };
@@ -85,11 +86,12 @@
 		CDABRW001SWIFT0001 /* Views/CdaHdBrowseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/CdaHdBrowseView.swift; sourceTree = "<group>"; };
 		DPLNK001A1B2C3D4E5F678902 /* Core/DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/DeepLink.swift; sourceTree = "<group>"; };
 		DWNFLD001SWIFT0001 /* Views/DownloadedMediaFolderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/DownloadedMediaFolderView.swift; sourceTree = "<group>"; };
-		LIBVW001SWIFT0001 /* Views/LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/LibraryView.swift; sourceTree = "<group>"; };
 		E64FD85C688F4FA490A0E636R /* App/AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AppModel.swift; sourceTree = "<group>"; };
 		EE2764E6CE454E5A83C28B7DR /* Core/Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Models.swift; sourceTree = "<group>"; };
 		EEED268459684BB9BF69079DR /* Views/HomeTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/HomeTabView.swift; sourceTree = "<group>"; };
+		LIBVW001SWIFT0001 /* Views/LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/LibraryView.swift; sourceTree = "<group>"; };
 		LTCDA001A1B2C3D4E5F678902 /* Views/LatestCdaHdRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/LatestCdaHdRow.swift; sourceTree = "<group>"; };
+		FLMSHOME01A1B2C3D4E5F678902 /* Views/FilmsHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/FilmsHomeView.swift; sourceTree = "<group>"; };
 		LTCDA002A1B2C3D4E5F678902 /* Views/LatestCdaHdCatalogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/LatestCdaHdCatalogView.swift; sourceTree = "<group>"; };
 		MOVDL001SWIFT0001 /* Services/MovieDownloadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/MovieDownloadService.swift; sourceTree = "<group>"; };
 		MUSALB001SWIFT0001 /* Views/MusicAlbumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MusicAlbumView.swift; sourceTree = "<group>"; };
@@ -164,6 +166,7 @@
 				A1B2C3D4E5F6478990ABCDE1R /* Views/SeriesEpisodesView.swift */,
 				08934D1279074CD9867B9ED1R /* Views/SearchView.swift */,
 				LTCDA001A1B2C3D4E5F678902 /* Views/LatestCdaHdRow.swift */,
+				FLMSHOME01A1B2C3D4E5F678902 /* Views/FilmsHomeView.swift */,
 				LTCDA002A1B2C3D4E5F678902 /* Views/LatestCdaHdCatalogView.swift */,
 				MUSALB001SWIFT0001 /* Views/MusicAlbumView.swift */,
 				MUSART001SWIFT0001 /* Views/MusicArtistView.swift */,
@@ -304,6 +307,7 @@
 				3F32D2D154A14C56A583E22E /* Services/MoviesAPIClient.swift in Sources */,
 				DPLNK001A1B2C3D4E5F678901 /* Core/DeepLink.swift in Sources */,
 				LTCDA001A1B2C3D4E5F678901 /* Views/LatestCdaHdRow.swift in Sources */,
+				FLMSHOME01A1B2C3D4E5F678901 /* Views/FilmsHomeView.swift in Sources */,
 				LTCDA002A1B2C3D4E5F678901 /* Views/LatestCdaHdCatalogView.swift in Sources */,
 				MUSALB001BLD000001 /* Views/MusicAlbumView.swift in Sources */,
 				MUSART001BLD000001 /* Views/MusicArtistView.swift in Sources */,
@@ -344,9 +348,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "828BF411FC2B826D7B8B17CBE0470F3852F36CE5";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=appletvos*]" = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -462,9 +466,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "828BF411FC2B826D7B8B17CBE0470F3852F36CE5";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=appletvos*]" = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -489,9 +493,9 @@
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "828BF411FC2B826D7B8B17CBE0470F3852F36CE5";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=appletvos*]" = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -518,9 +522,9 @@
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "828BF411FC2B826D7B8B17CBE0470F3852F36CE5";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=appletvos*]" = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;

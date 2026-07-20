@@ -6,8 +6,10 @@ private enum SearchFocus: Hashable {
     case source(SearchSource)
     case access(CdaAccessFilter)
     case sort(SearchSort)
+    case result(String)
 }
 
+/// Zakładka Szukaj — wyłącznie wyszukiwanie filmów/seriali z intuicyjnym focusem.
 struct SearchView: View {
     @EnvironmentObject private var app: AppModel
     let navigationTab: HomeTabView.Tab
@@ -28,11 +30,8 @@ struct SearchView: View {
     @State private var errorMessage: String?
     @State private var seriesInfo: VideoInfoResponse?
     @State private var selectedDetail: MediaSelection?
-    @State private var showLatestCatalog = false
-    @State private var latestItems: [SearchResultItem] = []
     @State private var gridColumnCount = 4
     @State private var searchTask: Task<Void, Never>?
-    @FocusState private var latestFocusedID: String?
     @FocusState private var localFocus: SearchFocus?
 
     private let pageSize = 24
@@ -43,53 +42,47 @@ struct SearchView: View {
     var body: some View {
         Group {
             if let series = seriesInfo {
-                SeriesEpisodesView(info: series, backLabel: "Wróć do wyników") {
+                SeriesEpisodesView(info: series, backLabel: "Wróć do wyszukiwania") {
                     seriesInfo = nil
                 }
                 .environmentObject(app)
             } else {
                 searchContent
-                    .overlay {
-                        if openingSeries {
-                            ZStack {
-                                Color.black.opacity(0.55)
-                                VStack(spacing: 16) {
-                                    ProgressView()
-                                        .scaleEffect(1.4)
-                                    Text("Ładuję odcinki…")
-                                        .font(NostalgieFont.rowTitle)
-                                        .foregroundStyle(.white)
-                                }
-                                .padding(28)
-                                .background(NostalgieTheme.card, in: RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
-                            }
-                            .ignoresSafeArea()
-                        }
-                    }
+                    .overlay { openingOverlay }
                     .fullScreenCover(item: $selectedDetail) { detail in
                         MediaDetailView(selection: detail) {
                             Task { await openSeriesFromDetail(detail.url) }
                         }
                         .environmentObject(app)
                     }
-                    .fullScreenCover(isPresented: $showLatestCatalog) {
-                        LatestCdaHdCatalogView()
-                            .environmentObject(app)
-                    }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .task {
-            await app.refreshFavorites()
-        }
+        .task { await app.refreshFavorites() }
         .onChange(of: requestContentFocus) { _, requested in
             guard requested else { return }
-            latestFocusedID = nil
             localFocus = .query
             requestContentFocus = false
         }
-        .onDisappear {
-            searchTask?.cancel()
+        .onDisappear { searchTask?.cancel() }
+    }
+
+    private var openingOverlay: some View {
+        Group {
+            if openingSeries {
+                ZStack {
+                    Color.black.opacity(0.55)
+                    VStack(spacing: 16) {
+                        ProgressView().scaleEffect(1.4)
+                        Text("Ładuję odcinki…")
+                            .font(NostalgieFont.rowTitle)
+                            .foregroundStyle(.white)
+                    }
+                    .padding(28)
+                    .background(NostalgieTheme.card, in: RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
+                }
+                .ignoresSafeArea()
+            }
         }
     }
 
@@ -99,64 +92,34 @@ struct SearchView: View {
                 VStack(alignment: .leading, spacing: NostalgieSpacing.section) {
                     Color.clear.frame(height: 1).id("searchTop")
 
-                    ScreenTitle(title: "Filmy", subtitle: "Filmy i seriale — wybierz serwis, potem wyszukaj")
+                    ScreenTitle(
+                        title: "Szukaj",
+                        subtitle: "Wybierz serwis, wpisz tytuł — nawigacja Siri Remote: ↑ zakładki · ↓ wyniki"
+                    )
 
                     searchControls
                         .defaultFocus($localFocus, .query)
                         .focusSection()
 
-                    LatestCdaHdRow(
-                        focusedItemID: $latestFocusedID,
-                        onSelect: { item in
-                            Task { await openLatestItem(item) }
-                        },
-                        onShowAll: { showLatestCatalog = true },
-                        onMoveUp: { focusAboveShelf() },
-                        onMoveDown: { focusBelowShelf() },
-                        onItemsChange: { latestItems = $0 }
-                    )
-                    .focusSection()
-
                     GridColumnReader(minimumCardWidth: cardMinimum, spacing: gridSpacing, columnCount: $gridColumnCount)
 
-                    if isLoading {
-                        ProgressView("Szukam…")
-                            .padding(.top, 8)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else if let errorMessage {
-                        EmptyStateView(
-                            icon: "exclamationmark.magnifyingglass",
-                            title: "Błąd wyszukiwania",
-                            message: errorMessage
-                        )
-                    } else if !results.isEmpty {
-                        resultsHeader
-                        resultsGrid
-                            .focusSection()
-                    } else if !query.trimmingCharacters(in: .whitespaces).isEmpty {
-                        EmptyStateView(
-                            icon: "magnifyingglass",
-                            title: "Brak wyników",
-                            message: "Spróbuj innej frazy, serwisu lub sortowania."
-                        )
-                    }
+                    resultsArea
+                        .focusSection()
                 }
                 .padding(.horizontal, NostalgieSpacing.screenH)
                 .padding(.bottom, NostalgieSpacing.scrollBottom)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onPlayPauseCommand {
-                latestFocusedID = nil
-                localFocus = .query
-            }
+            .onPlayPauseCommand { localFocus = .query }
             .onExitCommand {
-                if !query.isEmpty || !results.isEmpty {
+                if localFocus != .query && (!query.isEmpty || !results.isEmpty) {
+                    localFocus = .query
+                } else if !query.isEmpty || !results.isEmpty {
                     searchTask?.cancel()
                     query = ""
                     results = []
                     totalResults = 0
                     errorMessage = nil
-                    latestFocusedID = nil
                     localFocus = .query
                 } else {
                     focusedTab.wrappedValue = navigationTab
@@ -169,23 +132,55 @@ struct SearchView: View {
                     withAnimation(NostalgieTheme.contentSpring) {
                         scrollProxy.scrollTo("searchTop", anchor: .top)
                     }
+                case .result(let id):
+                    withAnimation(NostalgieTheme.contentSpring) {
+                        scrollProxy.scrollTo(id, anchor: .center)
+                    }
                 }
             }
         }
     }
 
+    @ViewBuilder
+    private var resultsArea: some View {
+        if isLoading {
+            ProgressView("Szukam…")
+                .padding(.top, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let errorMessage {
+            EmptyStateView(
+                icon: "exclamationmark.magnifyingglass",
+                title: "Błąd wyszukiwania",
+                message: errorMessage
+            )
+        } else if !results.isEmpty {
+            resultsHeader
+            resultsGrid
+        } else if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+            EmptyStateView(
+                icon: "magnifyingglass",
+                title: "Brak wyników",
+                message: "Zmień frazę albo serwis (CDA-HD, CDA, TVP, YouTube)."
+            )
+        } else {
+            EmptyStateView(
+                icon: "text.magnifyingglass",
+                title: "Gotowy do wyszukania",
+                message: "Wpisz tytuł filmu lub serialu. Wyniki pokażą się poniżej według wybranego serwisu."
+            )
+        }
+    }
+
     private var searchControls: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 20) {
                 HStack(spacing: 14) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
-                    TextField("Tytuł, serial, film…", text: $query)
+                    TextField("Tytuł filmu lub serialu…", text: $query)
                         .textFieldStyle(.plain)
                         .font(NostalgieFont.field)
-                        .onSubmit {
-                            scheduleSearch(resetPage: true)
-                        }
+                        .onSubmit { scheduleSearch(resetPage: true) }
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
@@ -202,12 +197,12 @@ struct SearchView: View {
                         focusedTab.wrappedValue = navigationTab
                     } else if direction == .down {
                         localFocus = .source(source)
+                    } else if direction == .right {
+                        localFocus = .searchButton
                     }
                 }
 
-                Button {
-                    scheduleSearch(resetPage: true)
-                } label: {
+                Button { scheduleSearch(resetPage: true) } label: {
                     Label("Szukaj", systemImage: "arrow.right.circle.fill")
                 }
                 .buttonStyle(FocusCardButtonStyle())
@@ -218,6 +213,8 @@ struct SearchView: View {
                         focusedTab.wrappedValue = navigationTab
                     } else if direction == .down {
                         localFocus = .source(source)
+                    } else if direction == .left {
+                        localFocus = .query
                     }
                 }
                 .disabled(query.trimmingCharacters(in: .whitespaces).isEmpty || isLoading)
@@ -294,7 +291,7 @@ struct SearchView: View {
                                     localFocus = .source(source)
                                 }
                             } else if direction == .down {
-                                focusBelowSort()
+                                focusFirstResult()
                             }
                         }
                     }
@@ -310,10 +307,12 @@ struct SearchView: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
                 .tracking(0.6)
-            HStack(spacing: 12) {
-                content()
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    content()
+                }
+                .padding(.vertical, 2)
             }
-            .padding(.vertical, 2)
         }
     }
 
@@ -324,14 +323,7 @@ struct SearchView: View {
                 : "\(results.count) z \(totalResults) · \(source.label)")
                 .font(NostalgieFont.metadata)
                 .foregroundStyle(.secondary)
-            if !app.favoriteURLs.isEmpty {
-                Label("\(app.favoriteURLs.count) ulub.", systemImage: "heart.fill")
-                    .foregroundStyle(.secondary)
-                    .font(NostalgieFont.caption)
-            }
-            if isLoadingMore {
-                ProgressView()
-            }
+            if isLoadingMore { ProgressView() }
             Spacer()
         }
     }
@@ -352,6 +344,8 @@ struct SearchView: View {
                 ) {
                     Task { await openSearchResult(item) }
                 }
+                .id(item.id)
+                .focused($localFocus, equals: .result(item.id))
                 .onGridMoveUp(columnCount: gridColumnCount, index: index) {
                     focusTargetAboveResults()
                 }
@@ -372,7 +366,7 @@ struct SearchView: View {
         source == .cda || source == .all
     }
 
-    // MARK: - Focus graph (jak EstateOS — nigdy nie zerujemy focusu do nil)
+    // MARK: - Focus graph
 
     private func focusBelowSources() {
         if showsCdaAccessFilter {
@@ -380,7 +374,7 @@ struct SearchView: View {
         } else if !results.isEmpty || totalResults > 0 {
             localFocus = .sort(sort)
         } else {
-            focusShelfOrIdle()
+            localFocus = .searchButton
         }
     }
 
@@ -388,30 +382,17 @@ struct SearchView: View {
         if !results.isEmpty || totalResults > 0 {
             localFocus = .sort(sort)
         } else {
-            focusShelfOrIdle()
+            localFocus = .searchButton
         }
     }
 
-    private func focusBelowSort() {
-        if !results.isEmpty {
-            // Shelf nie kradnie focusu — nil lokalnego FocusState wypuszcza ↓ do siatki.
-            latestFocusedID = nil
-            localFocus = nil
-        } else {
-            focusShelfOrIdle()
+    private func focusFirstResult() {
+        if let first = results.first {
+            localFocus = .result(first.id)
         }
     }
 
-    private func focusShelfOrIdle() {
-        if let first = latestItems.first {
-            localFocus = nil
-            latestFocusedID = first.id
-        }
-        // gdy brak półki — zostaw aktualny focus (nie nil-uj na siłę)
-    }
-
-    private func focusAboveShelf() {
-        latestFocusedID = nil
+    private func focusTargetAboveResults() {
         if !results.isEmpty || totalResults > 0 {
             localFocus = .sort(sort)
         } else if showsCdaAccessFilter {
@@ -421,35 +402,13 @@ struct SearchView: View {
         }
     }
 
-    private func focusBelowShelf() {
-        latestFocusedID = nil
-        if !results.isEmpty {
-            // Zwolnij shelf — siatka przejmie
-            localFocus = nil
-        }
-    }
-
-    private func focusTargetAboveResults() {
-        if !results.isEmpty || totalResults > 0 {
-            if !latestItems.isEmpty {
-                // Najpierw półka nad wynikami
-                localFocus = nil
-                latestFocusedID = latestItems.first?.id
-            } else {
-                localFocus = .sort(sort)
-            }
-        } else {
-            localFocus = .searchButton
-        }
-    }
-
     // MARK: - Search
 
     private func scheduleSearch(resetPage: Bool) {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
         searchTask?.cancel()
-        searchTask = Task {
-            await runSearch(resetPage: resetPage)
-        }
+        searchTask = Task { await runSearch(resetPage: resetPage) }
     }
 
     private func loadMoreResults() async {
@@ -490,17 +449,16 @@ struct SearchView: View {
                 results.append(contentsOf: response.results.filter { !existing.contains($0.id) })
             } else {
                 results = response.results
+                if let first = response.results.first {
+                    localFocus = .result(first.id)
+                }
             }
             totalResults = response.total ?? max(results.count, response.results.count)
             hasMore = response.hasMore ?? false
-            if response.results.isEmpty {
-                hasMore = false
-            }
+            if response.results.isEmpty { hasMore = false }
             page = response.page ?? page
         } catch is CancellationError {
-            // ignored
         } catch let urlError as URLError where urlError.code == .cancelled {
-            // ignored
         } catch {
             if append {
                 page = max(1, page - 1)
@@ -523,14 +481,6 @@ struct SearchView: View {
             || item.url.localizedCaseInsensitiveContains("/tvshow/")
             || (item.detail?.localizedCaseInsensitiveContains("serial") == true)
         if looksLikeSeries {
-            await loadSeries(url: item.url, fallbackToDetail: item)
-            return
-        }
-        selectedDetail = MediaSelection(from: item)
-    }
-
-    private func openLatestItem(_ item: SearchResultItem) async {
-        if item.isSerial == true {
             await loadSeries(url: item.url, fallbackToDetail: item)
             return
         }

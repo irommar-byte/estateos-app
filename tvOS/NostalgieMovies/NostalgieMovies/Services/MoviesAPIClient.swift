@@ -329,6 +329,14 @@ final class MoviesAPIClient {
         return try await request("POST", path: "/api/search", body: body)
     }
 
+    func fetchFilmsHome(limit: Int = 16) async throws -> FilmsHomeResponse {
+        try await request(
+            "GET",
+            path: "/api/films/home?limit=\(limit)",
+            authorized: true
+        )
+    }
+
     func fetchCdaHdLatest(limit: Int = 20) async throws -> [SearchResultItem] {
         let response: LatestFeedResponse = try await request(
             "GET",

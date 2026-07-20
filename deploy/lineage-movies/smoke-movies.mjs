@@ -152,6 +152,11 @@ let filmUrl = null;
   const { res, json } = await api("GET", "/api/cda-hd/latest?limit=12", { timeoutMs: 90000 });
   const items = searchItems(json);
   assert(res.ok && items.length > 0, "cda-hd/latest", `items=${items.length}`);
+  {
+    const { res, json } = await api("GET", "/api/films/home?limit=12", { timeoutMs: 90000 });
+    const shelves = json?.shelves || [];
+    assert(res.ok && shelves.length > 0, "films/home", `shelves=${shelves.length}`);
+  }
   filmUrl = items.find((i) => !i.isSerial)?.url || items[0]?.url;
   const seriesUrl = items.find((i) => i.isSerial)?.url;
   assert(!!filmUrl, "cda-hd film url");
