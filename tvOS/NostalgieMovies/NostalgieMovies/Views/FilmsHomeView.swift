@@ -14,12 +14,15 @@ struct FilmsHomeView: View {
     @Binding var requestContentFocus: Bool
 
     @State private var shelves: [FilmsHomeShelf] = []
+    @State private var cdaHdShelves: [FilmsHomeShelf] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var serviceFilter: SearchSource = .all
     @State private var seriesOpen: SeriesOpenRequest?
     @State private var selectedDetail: MediaSelection?
     @State private var presentedCatalog: SearchSource?
+    @State private var presentedBrowse: CdaHdBrowseContext?
+    @State private var presentedCatalogMode: FilmsCatalogMode = .all
     @State private var didSetInitialFocus = false
     @FocusState private var focus: FilmsHomeFocus?
 
@@ -27,8 +30,22 @@ struct FilmsHomeView: View {
     private var serviceCases: [SearchSource] { [.all, .cdaHd, .cda, .tvp, .youtube] }
 
     private var visibleShelves: [FilmsHomeShelf] {
+        if serviceFilter == .cdaHd {
+            return cdaHdShelves.isEmpty ? shelves.filter { shelfMatchesFilter($0) } : cdaHdShelves
+        }
         if serviceFilter == .all { return shelves }
         return shelves.filter { shelfMatchesFilter($0) }
+    }
+
+    private var isCdaHdMode: Bool { serviceFilter == .cdaHd }
+
+    private var homeTitle: String { isCdaHdMode ? "CDA-HD" : "Filmy" }
+
+    private var homeSubtitle: String {
+        if isCdaHdMode {
+            return "Przesuwaj w prawo · gatunki jak w Apple TV+"
+        }
+        return "Wybierz serwis, potem ↓ do półek"
     }
 
     private func shelfMatchesFilter(_ shelf: FilmsHomeShelf) -> Bool {
@@ -52,7 +69,11 @@ struct FilmsHomeView: View {
                 .environmentObject(app)
             }
             .fullScreenCover(item: $presentedCatalog) { src in
-                LatestCdaHdCatalogView(source: src, initialMode: .all)
+                LatestCdaHdCatalogView(source: src, initialMode: presentedCatalogMode)
+                    .environmentObject(app)
+            }
+            .fullScreenCover(item: $presentedBrowse) { ctx in
+                CdaHdBrowseView(context: ctx)
                     .environmentObject(app)
             }
             .fullScreenCover(item: $seriesOpen) { req in
@@ -74,6 +95,11 @@ struct FilmsHomeView: View {
                     serviceFilter = src
                 }
             }
+            .onChange(of: serviceFilter) { _, src in
+                if src == .cdaHd {
+                    Task { await loadCdaHdHomeIfNeeded() }
+                }
+            }
     }
 
 
@@ -84,8 +110,8 @@ struct FilmsHomeView: View {
                     Color.clear.frame(height: 1).id("filmsTop")
 
                     ScreenTitle(
-                        title: "Filmy",
-                        subtitle: "Wybierz serwis, potem ↓ do półek"
+                        title: homeTitle,
+                        subtitle: homeSubtitle
                     )
 
                     if let errorMessage, !shelves.isEmpty {
@@ -124,8 +150,9 @@ struct FilmsHomeView: View {
                                 focus: $focus,
                                 isFirst: index == 0,
                                 isLast: index == visibleShelves.count - 1,
+                                applePlusStyle: isCdaHdMode,
                                 onSelect: { item in Task { await openItem(item) } },
-                                onShowAll: { presentedCatalog = sourceForShelf(shelf) },
+                                onShowAll: { openShelfCollection(shelf) },
                                 onMoveUpFromFirst: {
                                     focus = .service(serviceFilter)
                                 },
@@ -245,6 +272,30 @@ struct FilmsHomeView: View {
         focus = .item(shelfID: shelf.id, itemID: first.id)
     }
 
+    private func loadCdaHdHomeIfNeeded(force: Bool = false) async {
+        if !force, !cdaHdShelves.isEmpty { return }
+        do {
+            let response = try await app.api.fetchCdaHdHome(limit: 22)
+            cdaHdShelves = response.shelves.filter { !$0.items.isEmpty }
+            if focus == nil || focus == .service(.cdaHd) {
+                focusFirstItem(in: cdaHdShelves.first)
+            }
+        } catch {
+            if cdaHdShelves.isEmpty {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func openShelfCollection(_ shelf: FilmsHomeShelf) {
+        if let browse = shelf.browseUrl, !browse.isEmpty {
+            presentedBrowse = CdaHdBrowseContext(title: shelf.title, pageURL: browse)
+            return
+        }
+        presentedCatalogMode = FilmsCatalogMode(rawValue: shelf.catalogMode ?? "all") ?? .all
+        presentedCatalog = sourceForShelf(shelf)
+    }
+
     private func loadHome() async {
         let hadContent = !shelves.isEmpty
         if !hadContent { isLoading = true }
@@ -308,6 +359,7 @@ fileprivate struct FilmsServiceShelf: View {
     var focus: FocusState<FilmsHomeFocus?>.Binding
     var isFirst: Bool
     var isLast: Bool
+    var applePlusStyle: Bool = false
     let onSelect: (SearchResultItem) -> Void
     var onShowAll: (() -> Void)? = nil
     var onMoveUpFromFirst: (() -> Void)? = nil
@@ -316,11 +368,11 @@ fileprivate struct FilmsServiceShelf: View {
     @EnvironmentObject private var app: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: applePlusStyle ? 18 : 14) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(shelf.title)
-                        .font(NostalgieFont.rounded(28, weight: .bold))
+                        .font(NostalgieFont.rounded(applePlusStyle ? 34 : 28, weight: .bold))
                     if let subtitle = shelf.subtitle, !subtitle.isEmpty {
                         Text(subtitle)
                             .font(NostalgieFont.metadata)
@@ -328,10 +380,12 @@ fileprivate struct FilmsServiceShelf: View {
                     }
                 }
                 Spacer(minLength: 8)
-                SourceBadgeView(source: MediaCardCopy.normalizedSourceKey(shelf.source))
+                if !applePlusStyle {
+                    SourceBadgeView(source: MediaCardCopy.normalizedSourceKey(shelf.source))
+                }
                 if let onShowAll {
                     Button(action: onShowAll) {
-                        Label("Wszystkie", systemImage: "square.grid.2x2")
+                        Label(applePlusStyle ? "Zobacz wszystkie" : "Wszystkie", systemImage: "square.grid.2x2")
                     }
                     .buttonStyle(FocusCardButtonStyle())
                     .focusEffectDisabled()
@@ -372,7 +426,7 @@ fileprivate struct FilmsServiceShelf: View {
                                 ) {
                                     onSelect(item)
                                 }
-                                .frame(width: 280)
+                                .frame(width: applePlusStyle ? 300 : 280)
                                 .id(item.id)
                                 .focused(focus, equals: .item(shelfID: shelf.id, itemID: item.id))
                                 .onMoveCommand { direction in
@@ -384,7 +438,7 @@ fileprivate struct FilmsServiceShelf: View {
                         .padding(.vertical, 10)
                     }
                     .fullBleedShelf()
-                    .frame(height: 370)
+                    .frame(height: applePlusStyle ? 400 : 370)
                     .scrollPosition(id: Binding(
                         get: {
                             if case .item(let shelfID, let itemID) = focus.wrappedValue, shelfID == shelf.id {

@@ -336,6 +336,8 @@ struct FilmsHomeShelf: Codable, Identifiable, Hashable {
     let subtitle: String?
     let items: [SearchResultItem]
     let catalogMode: String?
+    let catalogType: String?
+    let browseUrl: String?
     let cached: Bool?
 }
 

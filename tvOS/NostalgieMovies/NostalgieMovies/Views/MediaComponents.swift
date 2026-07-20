@@ -419,7 +419,7 @@ struct MediaCard: View {
                 }
             }
         }
-        .buttonStyle(MediaCardButtonStyle(focusScale: layout == .shelf ? 1.0 : 1.07))
+        .buttonStyle(MediaCardButtonStyle(focusScale: layout == .shelf ? 1.12 : 1.07))
         .focusEffectDisabled()
         .disabled(isLoading)
     }
@@ -450,7 +450,9 @@ struct MediaCard: View {
                 }
                 Spacer(minLength: 0)
                 HStack(alignment: .bottom, spacing: 8) {
-                    SourceBadgeView(source: source)
+                    if layout != .shelf {
+                        SourceBadgeView(source: source)
+                    }
                     Spacer(minLength: 0)
                     if let durationLabel = MediaDurationFormat.label(for: duration) {
                         MediaDurationBadge(text: durationLabel)

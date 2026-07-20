@@ -3730,6 +3730,153 @@ app.get("/api/cda-hd/browse", async (req, res) => {
 
 // POST /api/search  { query, source, limit?, page?, pageSize?, sort?, access? }
 
+
+// In-memory cache for Apple TV CDA-HD home (Apple TV+ style shelves)
+let cdaHdHomeCache = { at: 0, payload: null };
+const CDA_HD_HOME_TTL_MS = 5 * 60 * 1000;
+
+const CDA_HD_HOME_GENRES = [
+  { id: "komedia", title: "Komedia", path: "/gatunki/komedia/" },
+  { id: "akcja", title: "Akcja", path: "/gatunki/akcja/" },
+  { id: "horror", title: "Horror", path: "/gatunki/horror/" },
+  { id: "dramat", title: "Dramat", path: "/gatunki/dramat/" },
+  { id: "thriller", title: "Thriller", path: "/gatunki/thriller/" },
+  { id: "sci-fi", title: "Science fiction", path: "/gatunki/sci-fi/" },
+  { id: "fantasy", title: "Fantasy", path: "/gatunki/fantasy/" },
+  { id: "animacja", title: "Animacja", path: "/gatunki/animacja/" },
+  { id: "familijny", title: "Familijny", path: "/gatunki/familijny/" },
+  { id: "romans", title: "Romans", path: "/gatunki/romans/" },
+  { id: "kryminal", title: "Kryminał", path: "/gatunki/kryminal/" },
+  { id: "przygodowy", title: "Przygodowy", path: "/gatunki/przygodowy/" },
+  { id: "wojenny", title: "Wojenny", path: "/gatunki/wojenny/" },
+  { id: "dokumentalny", title: "Dokumentalny", path: "/gatunki/dokumentalny/" },
+  { id: "biograficzny", title: "Biograficzny", path: "/gatunki/biograficzny/" },
+  { id: "western", title: "Western", path: "/gatunki/western/" },
+];
+
+function cdaHdHomeBase() {
+  return String(process.env.CDA_HD_BASE || "https://cda-hd.cc").replace(/\/$/, "");
+}
+
+function isCdaHdSerialItem(item) {
+  if (!item) return false;
+  if (item.isSerial === true) return true;
+  const url = String(item.url || "");
+  return /\/tvshows\//i.test(url) || /\/episode\//i.test(url);
+}
+
+// GET /api/cda-hd/home — półki jak Apple TV+: Wszystkie / Najnowsze / Popularne / gatunki…
+app.get("/api/cda-hd/home", async (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 22, 10), 36);
+  const now = Date.now();
+  if (
+    cdaHdHomeCache.payload?.shelves?.length &&
+    now - cdaHdHomeCache.at < CDA_HD_HOME_TTL_MS
+  ) {
+    return res.json({ ...cdaHdHomeCache.payload, cached: true });
+  }
+
+  const mk = (id, title, items, meta = {}) => ({
+    id: `cda-hd-${id}`,
+    source: "cda-hd",
+    title,
+    subtitle: null,
+    items: mapSearchThumbnails(items || []).slice(0, limit),
+    ...meta,
+  });
+
+  try {
+    const disk = loadCdaHdDiskCatalog(14 * 24 * 60 * 60 * 1000) || {};
+    let pool = [];
+    if (cdaHdLatestCache.items?.length) pool = [...cdaHdLatestCache.items];
+    else if (Array.isArray(disk.latest) && disk.latest.length) pool = [...disk.latest];
+
+    // Spróbuj dokarmić pool z katalogu (gdy sesja CF żyje) — nie blokuj home dłużej niż ~12s.
+    if (pool.length < 36) {
+      try {
+        const live = await withTimeout(
+          fetchCdaHdCatalog({ mode: "latest", page: 1, pageSize: Math.max(limit, 36) }),
+          12000,
+          "cda-hd-home-pool"
+        );
+        if (live?.items?.length) {
+          const seen = new Set(pool.map((x) => x.url || x.id));
+          for (const item of live.items) {
+            const key = item.url || item.id;
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            pool.push(item);
+          }
+          cdaHdLatestCache = { at: Date.now(), items: mapSearchThumbnails(pool.slice(0, 60)) };
+        }
+      } catch (err) {
+        console.warn("cda-hd home pool:", err?.message || err);
+      }
+    }
+
+    const filmsFromDisk = Array.isArray(disk.films) ? disk.films : [];
+    const seriesFromDisk = Array.isArray(disk.series)
+      ? disk.series
+      : Array.isArray(disk.tvShows)
+        ? disk.tvShows
+        : [];
+    const films = (filmsFromDisk.length ? filmsFromDisk : pool.filter((i) => !isCdaHdSerialItem(i))).slice();
+    const series = (seriesFromDisk.length ? seriesFromDisk : pool.filter((i) => isCdaHdSerialItem(i))).slice();
+
+    const shelves = [
+      mk("all-films", "Wszystkie filmy", films, { catalogMode: "all", catalogType: "film" }),
+      mk("latest", "Najnowsze", orderCdaHdCatalog(pool, "latest"), { catalogMode: "latest" }),
+      mk("popular", "Najpopularniejsze", orderCdaHdCatalog(pool, "most-played"), {
+        catalogMode: "most-played",
+      }),
+      mk("top-rated", "Najlepiej oceniane", orderCdaHdCatalog(pool, "top-rated"), {
+        catalogMode: "top-rated",
+      }),
+      mk("series", "Seriale", series, { catalogMode: "latest", catalogType: "serial" }),
+    ].filter((row) => row.items.length > 0);
+
+    const base = cdaHdHomeBase();
+    const genreResults = await Promise.all(
+      CDA_HD_HOME_GENRES.map(async (genre) => {
+        const browseUrl = `${base}${genre.path}`;
+        try {
+          const data = await withTimeout(
+            fetchCdaHdBrowse(browseUrl, limit, 1),
+            10000,
+            `cda-hd-home-${genre.id}`
+          );
+          const items = mapSearchThumbnails(data?.items || []);
+          if (!items.length) return null;
+          return mk(genre.id, genre.title, items, {
+            browseUrl,
+            catalogMode: "latest",
+          });
+        } catch (err) {
+          console.warn(`cda-hd home genre ${genre.id}:`, err?.message || err);
+          return null;
+        }
+      })
+    );
+
+    for (const row of genreResults) {
+      if (row?.items?.length) shelves.push(row);
+    }
+
+    const payload = {
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      shelves,
+    };
+    if (shelves.length) {
+      cdaHdHomeCache = { at: now, payload };
+    }
+    res.json(payload);
+  } catch (err) {
+    console.error("cda-hd home:", err?.message || err);
+    res.status(500).json({ error: friendlyError(err) });
+  }
+});
+
 // In-memory cache for Apple TV Filmy home shelves
 let filmsHomeCache = { at: 0, payload: null };
 const FILMS_HOME_TTL_MS = 5 * 60 * 1000;

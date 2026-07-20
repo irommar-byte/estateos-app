@@ -329,6 +329,14 @@ final class MoviesAPIClient {
         return try await request("POST", path: "/api/search", body: body)
     }
 
+    func fetchCdaHdHome(limit: Int = 22) async throws -> FilmsHomeResponse {
+        try await request(
+            "GET",
+            path: "/api/cda-hd/home?limit=\(limit)",
+            authorized: true
+        )
+    }
+
     func fetchFilmsHome(limit: Int = 16) async throws -> FilmsHomeResponse {
         try await request(
             "GET",
@@ -445,6 +453,7 @@ final class MoviesAPIClient {
         if path.hasPrefix("/api/info") { return 210 }
         if path.hasPrefix("/api/preview") { return 180 }
         if path.hasPrefix("/api/download") { return 180 }
+        if path.hasPrefix("/api/cda-hd/home") { return 90 }
         if path.hasPrefix("/api/cda-hd/") { return 45 }
         return 30
     }
