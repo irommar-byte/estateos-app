@@ -349,11 +349,23 @@ final class MoviesAPIClient {
     func fetchCdaHdCatalog(
         mode: CdaHdCatalogMode,
         page: Int = 1,
-        pageSize: Int = 20
+        pageSize: Int = 20,
+        type: FilmsCatalogKind = .all
     ) async throws -> CdaHdCatalogResponse {
-        try await request(
+        try await fetchFilmsCatalog(source: .cdaHd, mode: mode, type: type, page: page, pageSize: pageSize)
+    }
+
+    func fetchFilmsCatalog(
+        source: SearchSource,
+        mode: FilmsCatalogMode = .latest,
+        type: FilmsCatalogKind = .all,
+        page: Int = 1,
+        pageSize: Int = 20
+    ) async throws -> FilmsCatalogResponse {
+        let src = source == .all ? "all" : source.rawValue
+        return try await request(
             "GET",
-            path: "/api/cda-hd/catalog?mode=\(mode.rawValue)&page=\(page)&pageSize=\(pageSize)",
+            path: "/api/films/catalog?source=\(src)&mode=\(mode.rawValue)&type=\(type.rawValue)&page=\(page)&pageSize=\(pageSize)",
             authorized: true
         )
     }

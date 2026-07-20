@@ -23,6 +23,7 @@ import {
   searchCdaHd,
   fetchCdaHdLatest,
   fetchCdaHdCatalog,
+  orderCdaHdCatalog,
   loadCdaHdDiskCatalog,
 } from "./cda-hd.js";
 import { getCdaHdSessionInfo, startCdaHdSessionKeeper } from "./cda-hd-fetch.js";
@@ -3464,96 +3465,187 @@ app.get("/api/cda-hd/latest", async (req, res) => {
 });
 
 
-// GET /api/cda-hd/catalog?mode=latest|top-rated&page=1&pageSize=20
-// Cache-first: nigdy nie blokuj Apple TV na FlareSolverr / Cloudflare.
+// Shared film catalog: sort + type filter for Apple TV
+const FILMS_CATALOG_MODES = new Set(["all", "latest", "top-rated", "most-played", "longest"]);
+const FILMS_CATALOG_TYPES = new Set(["all", "film", "serial"]);
+
+function normalizeFilmsCatalogMode(raw) {
+  const m = String(raw || "latest").toLowerCase();
+  if (m === "top" || m === "toprated") return "top-rated";
+  if (m === "popular" || m === "mostplayed" || m === "views") return "most-played";
+  if (m === "duration" || m === "long") return "longest";
+  return FILMS_CATALOG_MODES.has(m) ? m : "latest";
+}
+
+function normalizeFilmsCatalogType(raw) {
+  const t = String(raw || "all").toLowerCase();
+  if (t === "movie" || t === "movies" || t === "film" || t === "filmy") return "film";
+  if (t === "series" || t === "serial" || t === "seriale" || t === "tv") return "serial";
+  return "all";
+}
+
+function isSerialCatalogItem(item) {
+  if (!item) return false;
+  if (item.isSerial === true) return true;
+  const url = String(item.url || "");
+  const detail = String(item.detail || "");
+  return /\/tvshows?\//i.test(url) || /serial/i.test(detail);
+}
+
+function filterCatalogByType(list, type) {
+  const items = Array.isArray(list) ? list : [];
+  if (type === "film") return items.filter((i) => !isSerialCatalogItem(i));
+  if (type === "serial") return items.filter((i) => isSerialCatalogItem(i));
+  return items;
+}
+
+function paginateCatalogList(list, page, pageSize, meta = {}) {
+  const all = Array.isArray(list) ? list : [];
+  const start = (page - 1) * pageSize;
+  return {
+    page,
+    pageSize,
+    totalItems: all.length,
+    hasMore: all.length > start + pageSize,
+    items: mapSearchThumbnails(all.slice(start, start + pageSize)),
+    ...meta,
+  };
+}
+
+function sortFilmsCatalogPool(pool, mode) {
+  // Reuse CDA-HD sorter for all sources (rating/views/duration).
+  const orderedMode = mode === "all" ? "latest" : mode;
+  return orderCdaHdCatalog(pool, orderedMode);
+}
+
+async function resolveFilmsCatalogPool(source) {
+  const src = String(source || "cda-hd").toLowerCase();
+  const disk = loadCdaHdDiskCatalog(14 * 24 * 60 * 60 * 1000);
+
+  if (src === "cda-hd") {
+    if (cdaHdLatestCache.items?.length) return { pool: cdaHdLatestCache.items, cached: true };
+    if (disk?.latest?.length) return { pool: disk.latest, cached: true, disk: true };
+    try {
+      const items = await withTimeout(fetchCdaHdLatest(48), 12000, "catalog-cda-hd");
+      if (items.length) cdaHdLatestCache = { at: Date.now(), items };
+      return { pool: items, cached: false };
+    } catch (err) {
+      console.warn("catalog pool cda-hd:", err?.message || err);
+      return { pool: [], error: String(err?.message || err) };
+    }
+  }
+
+  // Inne serwisy: półki films/home (cache) albo szybkie wyszukiwanie seed.
+  if (filmsHomeCache?.payload?.shelves?.length) {
+    const shelves = filmsHomeCache.payload.shelves.filter((sh) => {
+      const key = String(sh.source || "").toLowerCase();
+      if (src === "all") return key !== "apple-music";
+      if (src === "cda") return key === "cda";
+      if (src === "tvp") return key.includes("tvp");
+      if (src === "youtube") return key.includes("youtube");
+      return key === src || key.includes(src);
+    });
+    const seen = new Set();
+    const pool = [];
+    for (const sh of shelves) {
+      for (const item of sh.items || []) {
+        const id = item.url || item.id;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        pool.push(item);
+      }
+    }
+    if (pool.length) return { pool, cached: true, fromHome: true };
+  }
+
+  const seeds = {
+    cda: "film",
+    tvp: "serial",
+    youtube: "pełny film",
+    all: "film",
+  };
+  const query = seeds[src] || "film";
+  const handlerKey = src === "all" ? null : src;
+  try {
+    if (handlerKey && SEARCH_HANDLERS[handlerKey]) {
+      const part = await withTimeout(
+        SEARCH_HANDLERS[handlerKey](query, 36, null),
+        10000,
+        `catalog-${handlerKey}`
+      );
+      return { pool: enrichSearchResults(part, null, handlerKey), cached: false };
+    }
+    // all: merge quick sources
+    const chunks = await Promise.all(
+      ["cda-hd", "cda", "tvp", "youtube"].map(async (key) => {
+        try {
+          if (key === "cda-hd") {
+            const { pool } = await resolveFilmsCatalogPool("cda-hd");
+            return pool.slice(0, 16);
+          }
+          const fn = SEARCH_HANDLERS[key];
+          if (!fn) return [];
+          return await withTimeout(fn(query, 12, null), 8000, `catalog-${key}`);
+        } catch {
+          return [];
+        }
+      })
+    );
+    const seen = new Set();
+    const pool = [];
+    for (const chunk of chunks.flat()) {
+      const id = chunk.url || chunk.id;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      pool.push(chunk);
+    }
+    return { pool, cached: false };
+  } catch (err) {
+    console.warn("catalog pool", src, err?.message || err);
+    return { pool: [], error: String(err?.message || err) };
+  }
+}
+
+// GET /api/cda-hd/catalog?mode=&type=&page=&pageSize=
 app.get("/api/cda-hd/catalog", async (req, res) => {
-  const mode = String(req.query.mode || "latest").toLowerCase() === "top-rated" ? "top-rated" : "latest";
+  const mode = normalizeFilmsCatalogMode(req.query.mode);
+  const type = normalizeFilmsCatalogType(req.query.type);
   const page = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 20, 1), 24);
   const now = Date.now();
-  const cacheKey = `${mode}|${page}|${pageSize}`;
+  const cacheKey = `cda-hd|${mode}|${type}|${page}|${pageSize}`;
   const cacheHit = cdaHdCatalogCache.entries?.[cacheKey];
-
-  const pageFromList = (list, meta = {}) => {
-    const all = Array.isArray(list) ? list : [];
-    const start = (page - 1) * pageSize;
-    const slice = mapSearchThumbnails(all).slice(start, start + pageSize);
-    return {
-      mode,
-      page,
-      pageSize,
-      totalItems: all.length,
-      hasMore: all.length > start + pageSize,
-      items: slice,
-      ...meta,
-    };
-  };
 
   if (now - cdaHdCatalogCache.at < CDA_HD_LATEST_TTL_MS && cacheHit?.items?.length) {
     return res.json({ ...cacheHit, cached: true });
   }
-
   if (cacheHit?.items?.length) {
     res.json({ ...cacheHit, cached: true, stale: true });
     scheduleCdaHdWarm();
     return;
   }
 
-  // Disk / memory latest — odpowiedź natychmiast, odświeżenie w tle.
-  const disk = loadCdaHdDiskCatalog(14 * 24 * 60 * 60 * 1000);
-  if (mode === "latest") {
-    const pool =
-      (cdaHdLatestCache.items?.length && cdaHdLatestCache.items) ||
-      (disk?.latest?.length && disk.latest) ||
-      [];
-    if (pool.length) {
-      const payload = pageFromList(pool, {
-        cached: true,
-        stale: true,
-        disk: !cdaHdLatestCache.items?.length,
-      });
-      res.json(payload);
-      scheduleCdaHdWarm();
-      return;
-    }
-  } else if (mode === "top-rated") {
-    const pool = disk?.topRated || disk?.["top-rated"] || disk?.latest || [];
-    if (pool.length) {
-      const rated = [...pool].sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0));
-      const payload = pageFromList(rated, { cached: true, stale: true, disk: true });
-      res.json(payload);
-      scheduleCdaHdWarm();
-      return;
-    }
-  }
-
   try {
-    const data = await withTimeout(
-      fetchCdaHdCatalog({ mode, page, pageSize }),
-      12000,
-      "cda-hd-catalog"
-    );
+    const { pool, cached, disk } = await resolveFilmsCatalogPool("cda-hd");
+    const filtered = filterCatalogByType(pool, type);
+    const ordered = sortFilmsCatalogPool(filtered, mode);
     const payload = {
-      mode: data.mode,
-      page: data.page,
-      pageSize: data.pageSize,
-      totalItems: data.totalItems,
-      hasMore: data.hasMore,
-      items: mapSearchThumbnails(data.items),
-      cached: false,
+      mode,
+      type,
+      source: "cda-hd",
+      ...paginateCatalogList(ordered, page, pageSize, {
+        cached: !!cached,
+        stale: !!cached,
+        disk: !!disk,
+      }),
     };
     cdaHdCatalogCache.at = now;
     cdaHdCatalogCache.entries = cdaHdCatalogCache.entries || {};
     cdaHdCatalogCache.entries[cacheKey] = payload;
-    if (mode === "latest" && page === 1 && payload.items.length) {
-      cdaHdLatestCache = { at: now, items: payload.items };
-    }
     res.json(payload);
+    if (!cached) scheduleCdaHdWarm();
   } catch (err) {
     console.error("cda-hd catalog:", err?.message || err);
-    if (cdaHdLatestCache.items?.length && mode === "latest") {
-      return res.json(pageFromList(cdaHdLatestCache.items, { cached: true, stale: true, fallback: true }));
-    }
     res.status(502).json({
       error: err?.message || "Nie udało się pobrać katalogu CDA-HD.",
       session: getCdaHdSessionInfo(),
@@ -3561,8 +3653,39 @@ app.get("/api/cda-hd/catalog", async (req, res) => {
   }
 });
 
+// GET /api/films/catalog?source=cda-hd|cda|tvp|youtube|all&mode=&type=&page=&pageSize=
+app.get("/api/films/catalog", async (req, res) => {
+  const source = String(req.query.source || "cda-hd").toLowerCase();
+  const mode = normalizeFilmsCatalogMode(req.query.mode);
+  const type = normalizeFilmsCatalogType(req.query.type);
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 20, 1), 24);
 
-// GET /api/cda-hd/browse?url=&limit=24 — filmy wg reżysera, aktora, gatunku, roku
+  try {
+    const { pool, cached, disk, fromHome, error } = await resolveFilmsCatalogPool(source);
+    if (!pool.length && error) {
+      return res.status(502).json({ error });
+    }
+    const filtered = filterCatalogByType(pool, type);
+    const ordered = sortFilmsCatalogPool(filtered, mode);
+    res.json({
+      ok: true,
+      source,
+      mode,
+      type,
+      ...paginateCatalogList(ordered, page, pageSize, {
+        cached: !!cached,
+        stale: !!cached,
+        disk: !!disk,
+        fromHome: !!fromHome,
+      }),
+    });
+  } catch (err) {
+    console.error("films/catalog:", err?.message || err);
+    res.status(502).json({ error: friendlyError(err) });
+  }
+});
+
 app.get("/api/cda-hd/browse", async (req, res) => {
   const pageUrl = String(req.query.url || "").trim();
   const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 48);

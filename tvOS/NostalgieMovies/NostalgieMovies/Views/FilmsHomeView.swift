@@ -19,7 +19,7 @@ struct FilmsHomeView: View {
     @State private var serviceFilter: SearchSource = .all
     @State private var seriesInfo: VideoInfoResponse?
     @State private var selectedDetail: MediaSelection?
-    @State private var showCdaHdCatalog = false
+    @State private var presentedCatalog: SearchSource?
     @State private var openingSeries = false
     @State private var didSetInitialFocus = false
     @FocusState private var focus: FilmsHomeFocus?
@@ -60,8 +60,8 @@ struct FilmsHomeView: View {
                         }
                         .environmentObject(app)
                     }
-                    .fullScreenCover(isPresented: $showCdaHdCatalog) {
-                        LatestCdaHdCatalogView()
+                    .fullScreenCover(item: $presentedCatalog) { src in
+                        LatestCdaHdCatalogView(source: src, initialMode: .all)
                             .environmentObject(app)
                     }
             }
@@ -151,7 +151,7 @@ struct FilmsHomeView: View {
                                 isFirst: index == 0,
                                 isLast: index == visibleShelves.count - 1,
                                 onSelect: { item in Task { await openItem(item) } },
-                                onShowAll: shelf.source.contains("cda-hd") ? { showCdaHdCatalog = true } : nil,
+                                onShowAll: { presentedCatalog = sourceForShelf(shelf) },
                                 onMoveUpFromFirst: {
                                     focus = .service(serviceFilter)
                                 },
@@ -282,6 +282,16 @@ struct FilmsHomeView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+
+    private func sourceForShelf(_ shelf: FilmsHomeShelf) -> SearchSource {
+        let key = shelf.source.lowercased()
+        if key.contains("cda-hd") { return .cdaHd }
+        if key == "cda" { return .cda }
+        if key.contains("tvp") { return .tvp }
+        if key.contains("youtube") { return .youtube }
+        return .all
     }
 
     private func openItem(_ item: SearchResultItem) async {

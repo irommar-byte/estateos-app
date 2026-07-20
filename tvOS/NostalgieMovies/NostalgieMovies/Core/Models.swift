@@ -82,6 +82,7 @@ struct SearchResultItem: Codable, Identifiable, Hashable {
     let duration: Double?
     let quality: String?
     let rating: Double?
+    let views: Double?
     let isSerial: Bool?
     let premium: Bool?
     let previewUrl: String?
@@ -270,19 +271,63 @@ struct CdaHdBrowseContext: Identifiable, Hashable {
     let pageURL: String
 }
 
-enum CdaHdCatalogMode: String, CaseIterable, Identifiable {
-    case latest
+enum FilmsCatalogMode: String, CaseIterable, Identifiable {
+    case all = "all"
+    case latest = "latest"
     case topRated = "top-rated"
+    case mostPlayed = "most-played"
+    case longest = "longest"
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
+        case .all: return "Wszystkie"
         case .latest: return "Najnowsze"
         case .topRated: return "Najlepiej oceniane"
+        case .mostPlayed: return "Najwięcej odtwarzane"
+        case .longest: return "Najdłuższe"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .all: return "square.grid.2x2.fill"
+        case .latest: return "clock.fill"
+        case .topRated: return "star.fill"
+        case .mostPlayed: return "play.circle.fill"
+        case .longest: return "hourglass"
         }
     }
 }
+
+/// Alias wsteczny — katalog CDA-HD używa tych samych trybów.
+typealias CdaHdCatalogMode = FilmsCatalogMode
+
+enum FilmsCatalogKind: String, CaseIterable, Identifiable {
+    case all = "all"
+    case film = "film"
+    case serial = "serial"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .all: return "Wszystko"
+        case .film: return "Filmy"
+        case .serial: return "Seriale"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .all: return "rectangle.stack.fill"
+        case .film: return "film"
+        case .serial: return "play.tv.fill"
+        }
+    }
+}
+
 
 struct FilmsHomeShelf: Codable, Identifiable, Hashable {
     let id: String
@@ -301,7 +346,9 @@ struct FilmsHomeResponse: Codable {
 }
 
 struct CdaHdCatalogResponse: Codable {
-    let mode: String
+    let mode: String?
+    let type: String?
+    let source: String?
     let page: Int
     let pageSize: Int
     let totalPages: Int?
@@ -311,6 +358,8 @@ struct CdaHdCatalogResponse: Codable {
     let cached: Bool?
     let stale: Bool?
 }
+
+typealias FilmsCatalogResponse = CdaHdCatalogResponse
 
 struct SeasonInfo: Codable, Identifiable {
     var id: Int { seasonNumber ?? 0 }

@@ -1,14 +1,20 @@
 import SwiftUI
 
 private enum CatalogFocus: Hashable {
-    case mode(CdaHdCatalogMode)
+    case mode(FilmsCatalogMode)
+    case kind(FilmsCatalogKind)
 }
 
+/// Katalog serwisu: sortowanie + Filmy/Seriale (CDA-HD, CDA, TVP, YouTube, Wszystkie).
 struct LatestCdaHdCatalogView: View {
     @EnvironmentObject private var app: AppModel
     @Environment(\.dismiss) private var dismiss
 
-    @State private var mode: CdaHdCatalogMode = .latest
+    var source: SearchSource = .cdaHd
+    var initialMode: FilmsCatalogMode = .latest
+
+    @State private var mode: FilmsCatalogMode = .latest
+    @State private var kind: FilmsCatalogKind = .all
     @State private var page = 1
     @State private var items: [SearchResultItem] = []
     @State private var hasMore = true
@@ -19,6 +25,7 @@ struct LatestCdaHdCatalogView: View {
     @State private var seriesInfo: VideoInfoResponse?
     @State private var openingSeries = false
     @State private var gridColumnCount = 4
+    @State private var didApplyInitial = false
     @FocusState private var localFocus: CatalogFocus?
 
     private let pageSize = 20
@@ -26,34 +33,61 @@ struct LatestCdaHdCatalogView: View {
     private let gridSpacing: CGFloat = 28
     private let columns = [GridItem(.adaptive(minimum: 220, maximum: 260), spacing: 28)]
 
+    private var titleText: String {
+        switch source {
+        case .all: return "Wszystkie serwisy"
+        case .cdaHd: return "CDA-HD"
+        case .cda: return "CDA"
+        case .tvp: return "TVP VOD"
+        case .youtube: return "YouTube"
+        case .appleMusic: return "Muzyka"
+        }
+    }
+
+    private var subtitleText: String {
+        let sort = mode.label
+        let type = kind == .all ? "filmy i seriale" : kind.label.lowercased()
+        return "\(sort) · \(type)"
+    }
+
     var body: some View {
         Group {
             if let series = seriesInfo {
-                SeriesEpisodesView(info: series, backLabel: "Wróć do CDA-HD") {
+                SeriesEpisodesView(info: series, backLabel: "Wróć do katalogu") {
                     seriesInfo = nil
                 }
                 .environmentObject(app)
             } else {
                 catalogContent
-                    .overlay {
-                        if openingSeries {
-                            ZStack {
-                                Color.black.opacity(0.55)
-                                VStack(spacing: 16) {
-                                    ProgressView().scaleEffect(1.4)
-                                    Text("Ładuję odcinki…")
-                                        .font(NostalgieFont.rowTitle)
-                                        .foregroundStyle(.white)
-                                    Text("To może potrwać do ~25 s")
-                                        .font(NostalgieFont.caption)
-                                        .foregroundStyle(.white.opacity(0.7))
-                                }
-                                .padding(28)
-                                .background(NostalgieTheme.card, in: RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
-                            }
-                            .ignoresSafeArea()
-                        }
+                    .overlay { openingOverlay }
+            }
+        }
+        .onAppear {
+            if !didApplyInitial {
+                mode = initialMode
+                didApplyInitial = true
+            }
+        }
+    }
+
+    private var openingOverlay: some View {
+        Group {
+            if openingSeries {
+                ZStack {
+                    Color.black.opacity(0.55)
+                    VStack(spacing: 16) {
+                        ProgressView().scaleEffect(1.4)
+                        Text("Ładuję odcinki…")
+                            .font(NostalgieFont.rowTitle)
+                            .foregroundStyle(.white)
+                        Text("To może potrwać do ~25 s")
+                            .font(NostalgieFont.caption)
+                            .foregroundStyle(.white.opacity(0.7))
                     }
+                    .padding(28)
+                    .background(NostalgieTheme.card, in: RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
+                }
+                .ignoresSafeArea()
             }
         }
     }
@@ -62,7 +96,7 @@ struct LatestCdaHdCatalogView: View {
         ZStack {
             NostalgieAmbientBackground()
 
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Button(action: { dismiss() }) {
                         Label("Wróć", systemImage: "chevron.left")
@@ -71,14 +105,9 @@ struct LatestCdaHdCatalogView: View {
                     Spacer()
                 }
 
-                ScreenTitle(
-                    title: "CDA-HD",
-                    subtitle: mode == .topRated
-                        ? "Najlepiej oceniane filmy i seriale"
-                        : "Najnowsze premiery",
-                    level: .page
-                )
+                ScreenTitle(title: titleText, subtitle: subtitleText, level: .page)
 
+                kindPicker
                 modePicker
 
                 Text("\(items.count) pozycji")
@@ -93,7 +122,7 @@ struct LatestCdaHdCatalogView: View {
                         .foregroundStyle(NostalgieTheme.accent)
                         .font(NostalgieFont.body)
                 } else if items.isEmpty {
-                    Text("Brak pozycji.")
+                    Text("Brak pozycji dla tych filtrów.")
                         .foregroundStyle(.secondary)
                         .font(NostalgieFont.body)
                 } else {
@@ -107,7 +136,7 @@ struct LatestCdaHdCatalogView: View {
                                     subtitle: catalogSubtitle(for: item),
                                     thumbnailURL: item.thumbnail.flatMap(URL.init(string:)),
                                     source: MediaCardCopy.normalizedSourceKey(item.source),
-                                    typeLabel: (item.isSerial == true || item.url.localizedCaseInsensitiveContains("/tvshows/")) ? "SERIAL" : "FILM",
+                                    typeLabel: isSerial(item) ? "SERIAL" : "FILM",
                                     quality: item.quality,
                                     duration: item.duration,
                                     isFavorite: app.isFavorite(item.url)
@@ -142,32 +171,84 @@ struct LatestCdaHdCatalogView: View {
         }
         .ignoresSafeArea()
         .onExitCommand { dismiss() }
-        .task(id: mode) { await reload() }
+        .task(id: "\(source.rawValue)|\(mode.rawValue)|\(kind.rawValue)") { await reload() }
         .fullScreenCover(item: $selectedDetail) { detail in
             MediaDetailView(selection: detail)
                 .environmentObject(app)
         }
     }
 
-    private var modePicker: some View {
-        HStack(spacing: 12) {
-            ForEach(CdaHdCatalogMode.allCases) { option in
-                Button {
-                    guard mode != option else { return }
-                    mode = option
-                } label: {
-                    Label(option.label, systemImage: option == .topRated ? "star.fill" : "clock.fill")
+    private var kindPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Typ")
+                .font(NostalgieFont.caption)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.6)
+            HStack(spacing: 12) {
+                ForEach(FilmsCatalogKind.allCases) { option in
+                    Button {
+                        kind = option
+                    } label: {
+                        Label(option.label, systemImage: option.systemImage)
+                    }
+                    .buttonStyle(ChipButtonStyle(isSelected: kind == option))
+                    .focusEffectDisabled()
+                    .focused($localFocus, equals: .kind(option))
+                    .onMoveCommand { direction in
+                        if direction == .down {
+                            localFocus = .mode(mode)
+                        }
+                    }
                 }
-                .buttonStyle(ChipButtonStyle(isSelected: mode == option))
-                .focused($localFocus, equals: .mode(option))
             }
         }
+    }
+
+    private var modePicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Sortowanie")
+                .font(NostalgieFont.caption)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.6)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(FilmsCatalogMode.allCases) { option in
+                        Button {
+                            mode = option
+                        } label: {
+                            Label(option.label, systemImage: option.systemImage)
+                        }
+                        .buttonStyle(ChipButtonStyle(isSelected: mode == option))
+                        .focusEffectDisabled()
+                        .focused($localFocus, equals: .mode(option))
+                        .onMoveCommand { direction in
+                            if direction == .up {
+                                localFocus = .kind(kind)
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    private func isSerial(_ item: SearchResultItem) -> Bool {
+        item.isSerial == true || item.url.localizedCaseInsensitiveContains("/tvshows/")
     }
 
     private func catalogSubtitle(for item: SearchResultItem) -> String {
         let base = MediaCardCopy.cleanedSubtitle(detail: item.detail, source: item.source)
         if mode == .topRated, let rating = item.rating ?? ratingFromQuality(item.quality) {
             return "★ \(String(format: "%.1f", rating)) · \(base)"
+        }
+        if mode == .longest, let duration = item.duration, duration > 0 {
+            return "\(MediaDurationFormat.label(for: duration) ?? "") · \(base)"
+        }
+        if mode == .mostPlayed, let views = item.views, views > 0 {
+            return "\(Int(views)) odtw. · \(base)"
         }
         return base
     }
@@ -197,7 +278,13 @@ struct LatestCdaHdCatalogView: View {
 
     private func fetchPage(reset: Bool) async {
         do {
-            let response = try await app.api.fetchCdaHdCatalog(mode: mode, page: page, pageSize: pageSize)
+            let response = try await app.api.fetchFilmsCatalog(
+                source: source,
+                mode: mode,
+                type: kind,
+                page: page,
+                pageSize: pageSize
+            )
             if reset {
                 items = response.items
             } else {
@@ -205,14 +292,11 @@ struct LatestCdaHdCatalogView: View {
                 items.append(contentsOf: response.items.filter { !existing.contains($0.id) })
             }
             hasMore = response.hasMore ?? false
-            if response.items.isEmpty {
-                hasMore = false
-            }
+            if response.items.isEmpty { hasMore = false }
         } catch {
-            // Awaryjnie: /latest (szybki cache) zamiast wiecznego spinnera.
-            if reset && mode == .latest {
+            if reset && source == .cdaHd && mode == .latest {
                 if let fallback = try? await app.api.fetchCdaHdLatest(limit: pageSize), !fallback.isEmpty {
-                    items = fallback
+                    items = filterLocally(fallback)
                     hasMore = false
                     errorMessage = nil
                     return
@@ -227,11 +311,17 @@ struct LatestCdaHdCatalogView: View {
         }
     }
 
+    private func filterLocally(_ list: [SearchResultItem]) -> [SearchResultItem] {
+        switch kind {
+        case .all: return list
+        case .film: return list.filter { !isSerial($0) }
+        case .serial: return list.filter { isSerial($0) }
+        }
+    }
+
     private func openItem(_ item: SearchResultItem) async {
         let looksLikeSeries =
-            item.isSerial == true
-            || item.url.localizedCaseInsensitiveContains("/tvshows/")
-            || item.url.localizedCaseInsensitiveContains("/tvshow/")
+            isSerial(item)
             || (item.detail?.localizedCaseInsensitiveContains("serial") == true)
         if looksLikeSeries {
             openingSeries = true
@@ -252,3 +342,6 @@ struct LatestCdaHdCatalogView: View {
         selectedDetail = MediaSelection(from: item)
     }
 }
+
+/// Alias czytelniejszy w FilmsHome.
+typealias FilmsCatalogView = LatestCdaHdCatalogView

@@ -498,18 +498,50 @@ async function fetchCdaHdListingPool(minCount = 20, maxCdaPages = CDA_HD_MAX_SIT
   return interleavePools(films, series);
 }
 
-function orderCdaHdCatalog(pool, mode) {
+export function orderCdaHdCatalog(pool, mode) {
+  const list = Array.isArray(pool) ? [...pool] : [];
+  const byTitle = (a, b) => String(a.title || "").localeCompare(String(b.title || ""), "pl");
+
   if (mode === "top-rated") {
-    return pool
-      .filter((item) => item.rating != null)
+    return list
+      .filter((item) => item.rating != null || item.votes != null)
       .sort((a, b) => {
-        const diff = (b.rating || 0) - (a.rating || 0);
+        const diff = (Number(b.rating) || 0) - (Number(a.rating) || 0);
         if (diff !== 0) return diff;
-        return String(a.title || "").localeCompare(String(b.title || ""), "pl");
+        const vDiff = (Number(b.votes) || Number(b.views) || 0) - (Number(a.votes) || Number(a.views) || 0);
+        if (vDiff !== 0) return vDiff;
+        return byTitle(a, b);
       });
   }
-  // latest: zachowaj przeplatanie film/serial z listingu (nie spychaj seriali na koniec)
-  return [...pool];
+
+  if (mode === "most-played") {
+    return list
+      .slice()
+      .sort((a, b) => {
+        const av = Number(a.views) || Number(a.votes) || 0;
+        const bv = Number(b.views) || Number(b.votes) || 0;
+        if (bv !== av) return bv - av;
+        // bez views — rating jako przybliżenie popularności
+        const ar = Number(a.rating) || 0;
+        const br = Number(b.rating) || 0;
+        if (br !== ar) return br - ar;
+        return byTitle(a, b);
+      });
+  }
+
+  if (mode === "longest") {
+    return list
+      .slice()
+      .sort((a, b) => {
+        const ad = Number(a.duration) || 0;
+        const bd = Number(b.duration) || 0;
+        if (bd !== ad) return bd - ad;
+        return byTitle(a, b);
+      });
+  }
+
+  // all / latest: zachowaj kolejność listingu
+  return list;
 }
 
 export async function fetchCdaHdCatalog({

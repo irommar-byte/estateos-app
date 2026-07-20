@@ -232,6 +232,7 @@ struct FavoritesView: View {
                 duration: item.duration,
                 quality: nil,
                 rating: nil,
+                views: nil,
                 isSerial: item.type == "series",
                 premium: item.detail?.localizedCaseInsensitiveContains("premium") == true ? true : nil,
                 previewUrl: nil,
