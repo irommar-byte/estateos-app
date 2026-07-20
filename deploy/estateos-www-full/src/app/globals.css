@@ -856,6 +856,24 @@ html.light .premium-home-shell {
   color: rgba(255, 255, 255, 0.45) !important;
 }
 
+/* Mobile: hero może rosnąć z treścią (2 karty Home+Cars) — bez przycinania CTA */
+@media (max-width: 767px) {
+  .premium-hero-stage {
+    min-height: 100svh;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: visible;
+  }
+
+  .premium-hero-stage .hero-audience-grid {
+    margin-top: 0.85rem !important;
+  }
+
+  .premium-hero-stage .hero-agency-strip {
+    margin-top: 0.25rem;
+  }
+}
+
 @media (max-height: 860px) {
   .premium-hero-stage .hero-wordmark {
     font-size: clamp(4.25rem, 20vw, 11rem) !important;

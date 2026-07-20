@@ -30,7 +30,7 @@ export default function Home() {
           <MarketPulseBar />
           <HeroDepthEffect />
 
-          <div className="mt-8 sm:mt-12">
+          <div className="relative z-10 mt-10 sm:mt-14 md:mt-16">
             <GlobalStats />
           </div>
 
