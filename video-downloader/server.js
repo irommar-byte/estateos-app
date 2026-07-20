@@ -3532,10 +3532,20 @@ app.get("/api/cda-hd/browse", async (req, res) => {
 
 // POST /api/search  { query, source, limit?, page?, pageSize?, sort?, access? }
 
+// In-memory cache for Apple TV Filmy home shelves
+let filmsHomeCache = { at: 0, payload: null };
+const FILMS_HOME_TTL_MS = 5 * 60 * 1000;
+
 // GET /api/films/home — półki per serwis dla zakładki Filmy (Apple TV)
 app.get("/api/films/home", async (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 16, 8), 24);
-  const browser = null;
+  const now = Date.now();
+  if (
+    filmsHomeCache.payload?.shelves?.length &&
+    now - filmsHomeCache.at < FILMS_HOME_TTL_MS
+  ) {
+    return res.json({ ...filmsHomeCache.payload, cached: true });
+  }
 
   const shelf = (id, source, title, subtitle, items, meta = {}) => ({
     id,
@@ -3546,14 +3556,14 @@ app.get("/api/films/home", async (req, res) => {
     ...meta,
   });
 
-  const safeSearch = async (source, query, ms = 12000) => {
+  const safeSearch = async (source, query, ms = 8000) => {
     const handler = SEARCH_HANDLERS[source];
     if (!handler) return [];
     try {
       return await withTimeout(
         (async () => {
-          const part = await handler(query, limit, browser);
-          return enrichSearchResults(part, browser, source);
+          const part = await handler(query, Math.min(limit, 16), null);
+          return enrichSearchResults(part, null, source);
         })(),
         ms,
         `films-home/${source}`
@@ -3564,16 +3574,28 @@ app.get("/api/films/home", async (req, res) => {
     }
   };
 
+  const cdaHdFromCacheOrDisk = () => {
+    if (cdaHdLatestCache.items?.length) {
+      return { items: cdaHdLatestCache.items, cached: true };
+    }
+    const disk = loadCdaHdDiskCatalog();
+    if (disk?.latest?.length) {
+      const items = mapSearchThumbnails(disk.latest);
+      cdaHdLatestCache = { at: disk.updatedAt || Date.now(), items };
+      return { items, cached: true, disk: true };
+    }
+    return { items: [] };
+  };
+
   const safeCdaHdLatest = async () => {
+    const hit = cdaHdFromCacheOrDisk();
+    if (hit.items.length) return hit;
     try {
-      if (cdaHdLatestCache.items?.length) {
-        return { items: cdaHdLatestCache.items, cached: true };
-      }
-      const disk = loadCdaHdDiskCatalog();
-      if (disk?.latest?.length) {
-        return { items: mapSearchThumbnails(disk.latest), cached: true, disk: true };
-      }
-      const items = mapSearchThumbnails(await fetchCdaHdLatest(Math.max(limit, 20)));
+      const items = await withTimeout(
+        (async () => mapSearchThumbnails(await fetchCdaHdLatest(Math.max(limit, 20))))(),
+        10000,
+        "films-home/cda-hd-latest"
+      );
       if (items.length) cdaHdLatestCache = { at: Date.now(), items };
       return { items, cached: false };
     } catch (err) {
@@ -3584,29 +3606,34 @@ app.get("/api/films/home", async (req, res) => {
 
   const safeCdaHdTop = async () => {
     try {
-      const data = await fetchCdaHdCatalog({ mode: "top-rated", page: 1, pageSize: limit });
+      const disk = loadCdaHdDiskCatalog();
+      const diskTop = disk?.topRated || disk?.["top-rated"] || [];
+      if (diskTop.length) {
+        return { items: mapSearchThumbnails(diskTop), cached: true, disk: true };
+      }
+      const data = await withTimeout(
+        fetchCdaHdCatalog({ mode: "top-rated", page: 1, pageSize: limit }),
+        10000,
+        "films-home/cda-hd-top"
+      );
       return { items: mapSearchThumbnails(data.items || []), cached: false };
     } catch (err) {
       console.warn("films/home cda-hd top:", err?.message || err);
-      const disk = loadCdaHdDiskCatalog();
-      if (disk?.topRated?.length || disk?.["top-rated"]?.length) {
-        const items = mapSearchThumbnails(disk.topRated || disk["top-rated"] || []);
-        return { items, cached: true, disk: true };
-      }
       return { items: [], error: String(err?.message || err) };
     }
   };
 
   try {
-    const [cdaHdLatest, cdaHdTop, cdaItems, tvpItems, ytItems] = await Promise.all([
-      safeCdaHdLatest(),
+    // Najpierw szybki CDA-HD z cache — potem pozostałe źródła z krótkim timeoutem.
+    const cdaHdLatest = await safeCdaHdLatest();
+    const [cdaHdTop, cdaItems, tvpItems, ytItems] = await Promise.all([
       safeCdaHdTop(),
-      safeSearch("cda", "film", 14000),
-      safeSearch("tvp", "serial", 14000),
-      safeSearch("youtube", "pełny film", 14000),
+      safeSearch("cda", "film", 8000),
+      safeSearch("tvp", "serial", 8000),
+      safeSearch("youtube", "pełny film", 8000),
     ]);
 
-    const shelves = [
+    let shelves = [
       shelf("cda-hd-latest", "cda-hd", "CDA-HD", "Najnowsze filmy i seriale", cdaHdLatest.items, {
         catalogMode: "latest",
         cached: !!cdaHdLatest.cached,
@@ -3620,11 +3647,29 @@ app.get("/api/films/home", async (req, res) => {
       shelf("youtube-featured", "youtube", "YouTube", "Filmy", ytItems),
     ].filter((row) => Array.isArray(row.items) && row.items.length > 0);
 
-    res.json({
+    // Awaryjnie: przynajmniej jedna półka CDA-HD z /latest cache.
+    if (!shelves.length) {
+      const fallback = cdaHdFromCacheOrDisk();
+      if (fallback.items.length) {
+        shelves = [
+          shelf("cda-hd-latest", "cda-hd", "CDA-HD", "Najnowsze filmy i seriale", fallback.items, {
+            catalogMode: "latest",
+            cached: true,
+            fallback: true,
+          }),
+        ];
+      }
+    }
+
+    const payload = {
       ok: true,
       generatedAt: new Date().toISOString(),
       shelves,
-    });
+    };
+    if (shelves.length) {
+      filmsHomeCache = { at: now, payload };
+    }
+    res.json(payload);
   } catch (err) {
     console.error("films/home:", err?.message || err);
     res.status(500).json({ error: friendlyError(err) });
