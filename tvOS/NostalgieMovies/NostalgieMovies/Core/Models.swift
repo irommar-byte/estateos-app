@@ -338,6 +338,7 @@ struct FilmsHomeShelf: Codable, Identifiable, Hashable {
     let catalogMode: String?
     let catalogType: String?
     let browseUrl: String?
+    let searchQuery: String?
     let cached: Bool?
 
     func appending(_ more: [SearchResultItem]) -> FilmsHomeShelf {
@@ -353,6 +354,7 @@ struct FilmsHomeShelf: Codable, Identifiable, Hashable {
             catalogMode: catalogMode,
             catalogType: catalogType,
             browseUrl: browseUrl,
+            searchQuery: searchQuery,
             cached: cached
         )
     }
@@ -888,7 +890,7 @@ enum CdaAccessFilter: String, CaseIterable, Identifiable {
     }
 }
 
-enum SearchSource: String, CaseIterable, Identifiable {
+enum SearchSource: String, CaseIterable, Identifiable, Hashable {
     case all = "all"
     case tvp = "tvp"
     case cda = "cda"

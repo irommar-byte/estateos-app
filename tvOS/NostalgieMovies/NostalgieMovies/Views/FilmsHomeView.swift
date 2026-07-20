@@ -15,6 +15,7 @@ struct FilmsHomeView: View {
 
     @State private var shelves: [FilmsHomeShelf] = []
     @State private var cdaHdShelves: [FilmsHomeShelf] = []
+    @State private var serviceHomeShelves: [SearchSource: [FilmsHomeShelf]] = [:]
     @State private var shelfPageByID: [String: Int] = [:]
     @State private var shelfHasMoreByID: [String: Bool] = [:]
     @State private var shelfLoadingMoreIDs: Set<String> = []
@@ -32,21 +33,38 @@ struct FilmsHomeView: View {
     /// Kolejność chipów = kolejność półek (CDA-HD pierwsze).
     private var serviceCases: [SearchSource] { [.all, .cdaHd, .cda, .tvp, .youtube] }
 
+    private var applePlusSources: Set<SearchSource> { [.cdaHd, .cda, .tvp, .youtube] }
+
     private var visibleShelves: [FilmsHomeShelf] {
-        if serviceFilter == .cdaHd {
-            return cdaHdShelves.isEmpty ? shelves.filter { shelfMatchesFilter($0) } : cdaHdShelves
-        }
         if serviceFilter == .all { return shelves }
+        if let dedicated = dedicatedShelves(for: serviceFilter), !dedicated.isEmpty {
+            return dedicated
+        }
         return shelves.filter { shelfMatchesFilter($0) }
     }
 
-    private var isCdaHdMode: Bool { serviceFilter == .cdaHd }
+    private func dedicatedShelves(for source: SearchSource) -> [FilmsHomeShelf]? {
+        if source == .cdaHd {
+            return cdaHdShelves.isEmpty ? serviceHomeShelves[source] : cdaHdShelves
+        }
+        return serviceHomeShelves[source]
+    }
 
-    private var homeTitle: String { isCdaHdMode ? "CDA-HD" : "Filmy" }
+    private var isApplePlusMode: Bool { applePlusSources.contains(serviceFilter) }
+
+    private var homeTitle: String {
+        switch serviceFilter {
+        case .cdaHd: return "CDA-HD"
+        case .cda: return "CDA"
+        case .tvp: return "TVP VOD"
+        case .youtube: return "YouTube"
+        default: return "Filmy"
+        }
+    }
 
     private var homeSubtitle: String {
-        if isCdaHdMode {
-            return "Przesuwaj w prawo · gatunki jak w Apple TV+"
+        if isApplePlusMode {
+            return "Przesuwaj w prawo · półki i gatunki jak w Apple TV+"
         }
         return "Wybierz serwis, potem ↓ do półek"
     }
@@ -99,8 +117,8 @@ struct FilmsHomeView: View {
                 }
             }
             .onChange(of: serviceFilter) { _, src in
-                if src == .cdaHd {
-                    Task { await loadCdaHdHomeIfNeeded() }
+                if applePlusSources.contains(src) {
+                    Task { await loadServiceHomeIfNeeded(src) }
                 }
             }
     }
@@ -153,7 +171,7 @@ struct FilmsHomeView: View {
                                 focus: $focus,
                                 isFirst: index == 0,
                                 isLast: index == visibleShelves.count - 1,
-                                applePlusStyle: isCdaHdMode,
+                                applePlusStyle: isApplePlusMode,
                                 isLoadingMore: shelfLoadingMoreIDs.contains(shelf.id),
                                 onSelect: { item in Task { await openItem(item) } },
                                 onShowAll: { openShelfCollection(shelf) },
@@ -278,21 +296,37 @@ struct FilmsHomeView: View {
     }
 
     private func loadCdaHdHomeIfNeeded(force: Bool = false) async {
-        if !force, !cdaHdShelves.isEmpty { return }
+        await loadServiceHomeIfNeeded(.cdaHd, force: force)
+    }
+
+    private func loadServiceHomeIfNeeded(_ source: SearchSource, force: Bool = false) async {
+        guard applePlusSources.contains(source) else { return }
+        if !force {
+            if source == .cdaHd, !cdaHdShelves.isEmpty { return }
+            if source != .cdaHd, let existing = serviceHomeShelves[source], !existing.isEmpty { return }
+        }
         do {
-            let response = try await app.api.fetchCdaHdHome(limit: 22)
+            let response: FilmsHomeResponse
+            if source == .cdaHd {
+                response = try await app.api.fetchCdaHdHome(limit: 22)
+            } else {
+                response = try await app.api.fetchFilmsServiceHome(source: source, limit: 22)
+            }
             let rows = response.shelves.filter { !$0.items.isEmpty }
-            cdaHdShelves = rows
+            if source == .cdaHd {
+                cdaHdShelves = rows
+            }
+            serviceHomeShelves[source] = rows
             for row in rows {
                 shelfPageByID[row.id] = 1
-                // Gatunki / katalogi mają kolejne strony; startujemy z założeniem hasMore.
                 shelfHasMoreByID[row.id] = true
             }
-            if focus == nil || focus == .service(.cdaHd) {
-                focusFirstItem(in: cdaHdShelves.first)
+            if serviceFilter == source {
+                focusFirstItem(in: rows.first)
             }
         } catch {
-            if cdaHdShelves.isEmpty {
+            let empty = dedicatedShelves(for: source)?.isEmpty ?? true
+            if empty {
                 errorMessage = error.localizedDescription
             }
         }
@@ -301,6 +335,12 @@ struct FilmsHomeView: View {
     private func updateShelfItems(_ shelfID: String, transform: (FilmsHomeShelf) -> FilmsHomeShelf) {
         if let idx = cdaHdShelves.firstIndex(where: { $0.id == shelfID }) {
             cdaHdShelves[idx] = transform(cdaHdShelves[idx])
+        }
+        for source in applePlusSources {
+            guard var rows = serviceHomeShelves[source],
+                  let idx = rows.firstIndex(where: { $0.id == shelfID }) else { continue }
+            rows[idx] = transform(rows[idx])
+            serviceHomeShelves[source] = rows
             return
         }
         if let idx = shelves.firstIndex(where: { $0.id == shelfID }) {
@@ -309,7 +349,11 @@ struct FilmsHomeView: View {
     }
 
     private func currentShelf(id: String) -> FilmsHomeShelf? {
-        cdaHdShelves.first(where: { $0.id == id }) ?? shelves.first(where: { $0.id == id })
+        if let hit = cdaHdShelves.first(where: { $0.id == id }) { return hit }
+        for rows in serviceHomeShelves.values {
+            if let hit = rows.first(where: { $0.id == id }) { return hit }
+        }
+        return shelves.first(where: { $0.id == id })
     }
 
     private func loadMoreItems(for shelf: FilmsHomeShelf) async {
@@ -327,6 +371,15 @@ struct FilmsHomeView: View {
                 let response = try await app.api.fetchCdaHdBrowse(url: browse, page: nextPage, limit: 24)
                 fresh = response.items
                 hasMore = response.hasMore ?? !response.items.isEmpty
+            } else if let query = shelf.searchQuery, !query.isEmpty {
+                let response = try await app.api.search(
+                    query: query,
+                    source: sourceForShelf(shelf),
+                    page: nextPage,
+                    pageSize: 24
+                )
+                fresh = response.results
+                hasMore = response.hasMore ?? (response.results.count >= 24)
             } else {
                 let mode = FilmsCatalogMode(rawValue: shelf.catalogMode ?? "latest") ?? .latest
                 let kind: FilmsCatalogKind
@@ -387,7 +440,7 @@ struct FilmsHomeView: View {
                     shelfHasMoreByID[row.id] = true
                 }
             }
-            Task { await loadCdaHdHomeIfNeeded() }
+            Task { await loadServiceHomeIfNeeded(.cdaHd) }
         } catch {
             errorMessage = error.localizedDescription
         }

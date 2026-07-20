@@ -3935,6 +3935,153 @@ app.get("/api/cda-hd/home", async (req, res) => {
   }
 });
 
+
+// GET /api/films/service-home?source=cda|tvp|youtube — Apple TV+ style shelves per serwis
+let filmsServiceHomeCache = { at: 0, bySource: {} };
+const FILMS_SERVICE_HOME_TTL_MS = 5 * 60 * 1000;
+
+const SERVICE_HOME_GENRES = [
+  { id: "komedia", title: "Komedia", queries: { cda: "komedia", tvp: "komedia", youtube: "komedia pełny film" } },
+  { id: "akcja", title: "Akcja", queries: { cda: "akcja", tvp: "akcja", youtube: "film akcji pełny" } },
+  { id: "horror", title: "Horror", queries: { cda: "horror", tvp: "horror", youtube: "horror film pełny" } },
+  { id: "dramat", title: "Dramat", queries: { cda: "dramat", tvp: "dramat", youtube: "dramat film pełny" } },
+  { id: "thriller", title: "Thriller", queries: { cda: "thriller", tvp: "thriller", youtube: "thriller film pełny" } },
+  { id: "sci-fi", title: "Science fiction", queries: { cda: "sci-fi", tvp: "science fiction", youtube: "sci-fi film pełny" } },
+  { id: "familijny", title: "Familijny", queries: { cda: "familijny", tvp: "familijny", youtube: "film familijny pełny" } },
+  { id: "dokument", title: "Dokument", queries: { cda: "dokument", tvp: "dokument", youtube: "dokument film pełny" } },
+  { id: "animacja", title: "Animacja", queries: { cda: "animacja", tvp: "bajka", youtube: "animacja film pełny" } },
+  { id: "romans", title: "Romans", queries: { cda: "romans", tvp: "romans", youtube: "romans film pełny" } },
+];
+
+app.get("/api/films/service-home", async (req, res) => {
+  const source = String(req.query.source || "").toLowerCase();
+  const limit = Math.min(Math.max(Number(req.query.limit) || 22, 10), 36);
+  if (!["cda", "tvp", "youtube"].includes(source)) {
+    return res.status(400).json({ error: "Podaj source=cda|tvp|youtube." });
+  }
+
+  const now = Date.now();
+  const cached = filmsServiceHomeCache.bySource?.[source];
+  if (cached?.shelves?.length && now - (cached.at || 0) < FILMS_SERVICE_HOME_TTL_MS) {
+    return res.json({ ...cached.payload, cached: true });
+  }
+
+  const mk = (id, title, items, meta = {}) => ({
+    id: `${source}-${id}`,
+    source,
+    title,
+    subtitle: null,
+    items: mapSearchThumbnails(items || []).slice(0, limit),
+    ...meta,
+  });
+
+  const searchShelf = async (id, title, query, ms = 10000, meta = {}) => {
+    const handler = SEARCH_HANDLERS[source];
+    if (!handler || !query) return null;
+    try {
+      const part = await withTimeout(
+        (async () => enrichSearchResults(await handler(query, Math.min(limit, 28), null), null, source))(),
+        ms,
+        `service-home/${source}/${id}`
+      );
+      if (!part?.length) return null;
+      return mk(id, title, part, { searchQuery: query, catalogMode: "latest", ...meta });
+    } catch (err) {
+      console.warn(`service-home ${source}/${id}:`, err?.message || err);
+      return null;
+    }
+  };
+
+  try {
+    const seeds =
+      source === "tvp"
+        ? {
+            all: "film",
+            latest: "premiery",
+            popular: "popularne",
+            films: "film",
+            series: "serial",
+          }
+        : source === "youtube"
+          ? {
+              all: "pełny film",
+              latest: "nowy film 2025 pełny",
+              popular: "najlepsze filmy pełny",
+              films: "pełny film",
+              series: "serial pełny sezon",
+            }
+          : {
+              all: "film",
+              latest: "nowości",
+              popular: "popularne",
+              films: "film",
+              series: "serial",
+            };
+
+    // Try catalog modes first (when pool exists), fall back to search.
+    const catalogShelf = async (id, title, mode, type = "all") => {
+      try {
+        const { pool, cached } = await resolveFilmsCatalogPool(source);
+        const filtered = filterCatalogByType(pool, type);
+        const ordered = sortFilmsCatalogPool(filtered, mode);
+        if (ordered.length >= 8) {
+          return mk(id, title, ordered, {
+            catalogMode: mode,
+            catalogType: type === "all" ? null : type,
+            cached: !!cached,
+          });
+        }
+      } catch (err) {
+        console.warn(`service-home catalog ${source}/${id}:`, err?.message || err);
+      }
+      const q =
+        type === "serial" ? seeds.series : type === "film" ? seeds.films : seeds.all;
+      return searchShelf(id, title, q, 10000, {
+        catalogMode: mode,
+        catalogType: type === "all" ? null : type,
+      });
+    };
+
+    const core = await Promise.all([
+      catalogShelf("all", "Wszystkie", "latest", "all"),
+      catalogShelf("latest", "Najnowsze", "latest", "all"),
+      catalogShelf("popular", "Najpopularniejsze", "most-played", "all"),
+      catalogShelf("top", "Najlepiej oceniane", "top-rated", "all"),
+      catalogShelf("films", "Filmy", "latest", "film"),
+      catalogShelf("series", "Seriale", "latest", "serial"),
+    ]);
+
+    const shelves = core.filter((row) => row?.items?.length);
+
+    const genreRows = await Promise.all(
+      SERVICE_HOME_GENRES.map(async (genre) => {
+        const q = genre.queries[source] || genre.title;
+        return searchShelf(genre.id, genre.title, q, 9000);
+      })
+    );
+    for (const row of genreRows) {
+      if (row?.items?.length) shelves.push(row);
+    }
+
+    // Dedupe empty-ish
+    const payload = {
+      ok: true,
+      source,
+      generatedAt: new Date().toISOString(),
+      shelves,
+    };
+    if (shelves.length) {
+      filmsServiceHomeCache.bySource = filmsServiceHomeCache.bySource || {};
+      filmsServiceHomeCache.bySource[source] = { at: now, payload };
+      filmsServiceHomeCache.at = now;
+    }
+    res.json(payload);
+  } catch (err) {
+    console.error("films/service-home:", err?.message || err);
+    res.status(500).json({ error: friendlyError(err) });
+  }
+});
+
 // In-memory cache for Apple TV Filmy home shelves
 let filmsHomeCache = { at: 0, payload: null };
 const FILMS_HOME_TTL_MS = 5 * 60 * 1000;
