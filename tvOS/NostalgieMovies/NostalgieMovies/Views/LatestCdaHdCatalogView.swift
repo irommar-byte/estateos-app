@@ -24,6 +24,7 @@ struct LatestCdaHdCatalogView: View {
     @State private var selectedDetail: MediaSelection?
     @State private var seriesInfo: VideoInfoResponse?
     @State private var openingSeries = false
+    @State private var seriesAlert: String?
     @State private var gridColumnCount = 4
     @State private var didApplyInitial = false
     @FocusState private var localFocus: CatalogFocus?
@@ -51,23 +52,28 @@ struct LatestCdaHdCatalogView: View {
     }
 
     var body: some View {
-        Group {
-            if let series = seriesInfo {
+        catalogContent
+            .overlay { openingOverlay }
+            .fullScreenCover(item: $seriesInfo) { series in
                 SeriesEpisodesView(info: series, backLabel: "Wróć do katalogu") {
                     seriesInfo = nil
                 }
                 .environmentObject(app)
-            } else {
-                catalogContent
-                    .overlay { openingOverlay }
             }
-        }
-        .onAppear {
-            if !didApplyInitial {
-                mode = initialMode
-                didApplyInitial = true
+            .alert("Nie udało się otworzyć serialu", isPresented: Binding(
+                get: { seriesAlert != nil },
+                set: { if !$0 { seriesAlert = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(seriesAlert ?? "")
             }
-        }
+            .onAppear {
+                if !didApplyInitial {
+                    mode = initialMode
+                    didApplyInitial = true
+                }
+            }
     }
 
     private var openingOverlay: some View {
@@ -80,7 +86,7 @@ struct LatestCdaHdCatalogView: View {
                         Text("Ładuję odcinki…")
                             .font(NostalgieFont.rowTitle)
                             .foregroundStyle(.white)
-                        Text("To może potrwać do ~25 s")
+                        Text("CDA-HD · to może potrwać do ~90 s")
                             .font(NostalgieFont.caption)
                             .foregroundStyle(.white.opacity(0.7))
                     }
@@ -332,10 +338,10 @@ struct LatestCdaHdCatalogView: View {
                     seriesInfo = info
                     return
                 }
-                errorMessage = "Nie znaleziono odcinków — spróbuj ponownie za chwilę."
+                seriesAlert = "Nie znaleziono odcinków — spróbuj ponownie za chwilę."
                 return
             } catch {
-                errorMessage = error.localizedDescription
+                seriesAlert = error.localizedDescription
                 return
             }
         }

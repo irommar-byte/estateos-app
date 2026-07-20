@@ -27,6 +27,7 @@ struct SearchView: View {
     @State private var isLoading = false
     @State private var isLoadingMore = false
     @State private var openingSeries = false
+    @State private var seriesAlert: String?
     @State private var errorMessage: String?
     @State private var seriesInfo: VideoInfoResponse?
     @State private var selectedDetail: MediaSelection?
@@ -40,31 +41,36 @@ struct SearchView: View {
     private let columns = [GridItem(.adaptive(minimum: 300, maximum: 360), spacing: 32)]
 
     var body: some View {
-        Group {
-            if let series = seriesInfo {
+        searchContent
+            .overlay { openingOverlay }
+            .fullScreenCover(item: $selectedDetail) { detail in
+                MediaDetailView(selection: detail) {
+                    Task { await openSeriesFromDetail(detail.url) }
+                }
+                .environmentObject(app)
+            }
+            .fullScreenCover(item: $seriesInfo) { series in
                 SeriesEpisodesView(info: series, backLabel: "Wróć do wyszukiwania") {
                     seriesInfo = nil
                 }
                 .environmentObject(app)
-            } else {
-                searchContent
-                    .overlay { openingOverlay }
-                    .fullScreenCover(item: $selectedDetail) { detail in
-                        MediaDetailView(selection: detail) {
-                            Task { await openSeriesFromDetail(detail.url) }
-                        }
-                        .environmentObject(app)
-                    }
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .task { await app.refreshFavorites() }
-        .onChange(of: requestContentFocus) { _, requested in
-            guard requested else { return }
-            localFocus = .query
-            requestContentFocus = false
-        }
-        .onDisappear { searchTask?.cancel() }
+            .alert("Nie udało się otworzyć serialu", isPresented: Binding(
+                get: { seriesAlert != nil },
+                set: { if !$0 { seriesAlert = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(seriesAlert ?? "")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .task { await app.refreshFavorites() }
+            .onChange(of: requestContentFocus) { _, requested in
+                guard requested else { return }
+                localFocus = .query
+                requestContentFocus = false
+            }
+            .onDisappear { searchTask?.cancel() }
     }
 
     private var openingOverlay: some View {
@@ -504,13 +510,13 @@ struct SearchView: View {
             if let fallbackToDetail {
                 selectedDetail = MediaSelection(from: fallbackToDetail)
             } else {
-                errorMessage = "Nie znaleziono odcinków tego serialu."
+                seriesAlert = "Nie znaleziono odcinków tego serialu."
             }
         } catch {
             if let fallbackToDetail {
                 selectedDetail = MediaSelection(from: fallbackToDetail)
             } else {
-                errorMessage = error.localizedDescription
+                seriesAlert = error.localizedDescription
             }
         }
     }

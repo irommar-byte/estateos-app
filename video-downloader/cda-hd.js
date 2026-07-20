@@ -772,20 +772,32 @@ export function saveCachedCdaHdTvShow(pageUrl, show) {
   writeDiskCatalogCache({ tvShows });
 }
 
-export async function fetchCdaHdTvShow(pageUrl, { allowCache = true } = {}) {
+export async function fetchCdaHdTvShow(pageUrl, { allowCache = true, preferCache = false } = {}) {
+  // Natychmiastowy hit z dysku — Apple TV nie czeka na Cloudflare/FlareSolverr (~30–90 s).
+  if (preferCache) {
+    const cachedFirst = loadCachedCdaHdTvShow(pageUrl, 30 * 24 * 60 * 60 * 1000);
+    if (cachedFirst?.episodes?.length) {
+      setTimeout(() => {
+        fetchCdaHdTvShow(pageUrl, { allowCache: false, preferCache: false }).catch(() => {});
+      }, 50);
+      return cachedFirst;
+    }
+  }
+
   try {
     const { html, finalUrl } = await fetchCdaHdHtml(pageUrl);
-    const show = parseCdaHdTvShow(html, finalUrl);
+    const show = parseCdaHdTvShow(html, finalUrl || pageUrl);
     if (!show.episodes.length) {
       throw new Error(
         "Nie znaleziono odcinków na stronie serialu. Otwórz konkretny odcinek albo wyszukaj ponownie."
       );
     }
+    show.webpageUrl = show.webpageUrl || finalUrl || pageUrl;
     saveCachedCdaHdTvShow(finalUrl || pageUrl, show);
     return show;
   } catch (err) {
     if (allowCache) {
-      const cached = loadCachedCdaHdTvShow(pageUrl);
+      const cached = loadCachedCdaHdTvShow(pageUrl, 30 * 24 * 60 * 60 * 1000);
       if (cached?.episodes?.length) {
         console.warn("cda-hd tvshow cache fallback:", err?.message || err);
         return cached;
@@ -795,15 +807,41 @@ export async function fetchCdaHdTvShow(pageUrl, { allowCache = true } = {}) {
   }
 }
 
+/** Kolejka podgrzewania list odcinków popularnych seriali (bez blokowania requestów). */
+let seriesWarmChain = Promise.resolve();
+let seriesWarmPending = new Set();
+
+export function warmCdaHdTvShows(urls = [], { limit = 8 } = {}) {
+  const list = [...new Set((urls || []).map((u) => String(u || "").trim()).filter(Boolean))].slice(0, limit);
+  for (const url of list) {
+    if (seriesWarmPending.has(url)) continue;
+    if (loadCachedCdaHdTvShow(url, 24 * 60 * 60 * 1000)?.episodes?.length) continue;
+    seriesWarmPending.add(url);
+    seriesWarmChain = seriesWarmChain
+      .then(async () => {
+        try {
+          await fetchCdaHdTvShow(url, { allowCache: true, preferCache: false });
+          console.warn("cda-hd warm ok:", url);
+        } catch (err) {
+          console.warn("cda-hd warm fail:", url, err?.message || err);
+        } finally {
+          seriesWarmPending.delete(url);
+        }
+      })
+      .catch(() => {});
+  }
+}
+
 export function buildCdaHdSeriesInfo(show) {
   const meta = show.meta || null;
+  const webpageUrl = show.webpageUrl || meta?.webpageUrl || "";
   return {
     isPlaylist: true,
     isSeasoned: true,
-    title: show.title,
+    title: show.title || "Serial",
     uploader: meta?.creators?.[0]?.name || meta?.networks?.[0]?.name || "CDA-HD",
     thumbnail: meta?.thumbnail || show.thumbnail,
-    webpageUrl: show.webpageUrl,
+    webpageUrl,
     seasonCount: show.seasonCount,
     episodeCount: show.episodeCount,
     seasons: show.seasons,

@@ -21,6 +21,7 @@ struct FilmsHomeView: View {
     @State private var selectedDetail: MediaSelection?
     @State private var presentedCatalog: SearchSource?
     @State private var openingSeries = false
+    @State private var seriesAlert: String?
     @State private var didSetInitialFocus = false
     @FocusState private var focus: FilmsHomeFocus?
 
@@ -45,40 +46,45 @@ struct FilmsHomeView: View {
     }
 
     var body: some View {
-        Group {
-            if let series = seriesInfo {
+        homeContent
+            .overlay { openingOverlay }
+            .fullScreenCover(item: $selectedDetail) { detail in
+                MediaDetailView(selection: detail) {
+                    Task { await openSeries(url: detail.url) }
+                }
+                .environmentObject(app)
+            }
+            .fullScreenCover(item: $presentedCatalog) { src in
+                LatestCdaHdCatalogView(source: src, initialMode: .all)
+                    .environmentObject(app)
+            }
+            .fullScreenCover(item: $seriesInfo) { series in
                 SeriesEpisodesView(info: series, backLabel: "Wróć do filmów") {
                     seriesInfo = nil
                 }
                 .environmentObject(app)
-            } else {
-                homeContent
-                    .overlay { openingOverlay }
-                    .fullScreenCover(item: $selectedDetail) { detail in
-                        MediaDetailView(selection: detail) {
-                            Task { await openSeries(url: detail.url) }
-                        }
-                        .environmentObject(app)
-                    }
-                    .fullScreenCover(item: $presentedCatalog) { src in
-                        LatestCdaHdCatalogView(source: src, initialMode: .all)
-                            .environmentObject(app)
-                    }
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .task { await loadHome() }
-        .onChange(of: requestContentFocus) { _, requested in
-            guard requested else { return }
-            focus = .service(serviceFilter)
-            requestContentFocus = false
-        }
-        .onChange(of: focus) { _, newFocus in
-            // Focus na chipie serwisu = od razu filtr (bez klika).
-            if case .service(let src) = newFocus, serviceFilter != src {
-                serviceFilter = src
+            .alert("Nie udało się otworzyć serialu", isPresented: Binding(
+                get: { seriesAlert != nil },
+                set: { if !$0 { seriesAlert = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(seriesAlert ?? "")
             }
-        }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .task { await loadHome() }
+            .onChange(of: requestContentFocus) { _, requested in
+                guard requested else { return }
+                focus = .service(serviceFilter)
+                requestContentFocus = false
+            }
+            .onChange(of: focus) { _, newFocus in
+                // Focus na chipie serwisu = od razu filtr (bez klika).
+                if case .service(let src) = newFocus, serviceFilter != src {
+                    serviceFilter = src
+                }
+            }
     }
 
     private var openingOverlay: some View {
@@ -91,7 +97,7 @@ struct FilmsHomeView: View {
                         Text("Ładuję odcinki…")
                             .font(NostalgieFont.rowTitle)
                             .foregroundStyle(.white)
-                        Text("CDA-HD · max ~25 s")
+                        Text("CDA-HD · to może potrwać do ~90 s")
                             .font(NostalgieFont.caption)
                             .foregroundStyle(.white.opacity(0.7))
                     }
@@ -308,7 +314,7 @@ struct FilmsHomeView: View {
 
     private func openSeries(url: String, fallback: SearchResultItem? = nil) async {
         openingSeries = true
-        errorMessage = nil
+        seriesAlert = nil
         defer { openingSeries = false }
         do {
             let info = try await app.api.fetchInfo(url: url)
@@ -316,9 +322,9 @@ struct FilmsHomeView: View {
                 seriesInfo = info
                 return
             }
-            errorMessage = "Nie znaleziono listy odcinków. Spróbuj ponownie za chwilę."
+            seriesAlert = "Nie znaleziono listy odcinków. Spróbuj ponownie za chwilę."
         } catch {
-            errorMessage = error.localizedDescription
+            seriesAlert = error.localizedDescription
         }
     }
 }

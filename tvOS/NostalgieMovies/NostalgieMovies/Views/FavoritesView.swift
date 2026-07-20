@@ -18,6 +18,7 @@ struct FavoritesView: View {
     @State private var selectedMusic: MusicSelection?
     @State private var reloadToken = UUID()
     @State private var openingSeries = false
+    @State private var seriesAlert: String?
     @State private var gridColumnCount = 4
     @FocusState private var localFocus: FavoritesFocus?
 
@@ -34,39 +35,55 @@ struct FavoritesView: View {
     }
 
     var body: some View {
-        Group {
-            if let series = seriesInfo {
+        favoritesList
+            .overlay {
+                if openingSeries {
+                    ZStack {
+                        Color.black.opacity(0.55)
+                        ProgressView("Ładuję odcinki…")
+                            .padding(28)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    }
+                    .ignoresSafeArea()
+                }
+            }
+            .fullScreenCover(item: $selectedDetail) { detail in
+                MediaDetailView(selection: detail) {
+                    Task { await openSeriesFromDetail(detail.url) }
+                }
+                .environmentObject(app)
+            }
+            .fullScreenCover(item: $selectedMusic) { selection in
+                MusicDetailView(
+                    selection: selection,
+                    folders: app.musicFolders
+                )
+                .environmentObject(app)
+            }
+            .fullScreenCover(item: $seriesInfo) { series in
                 SeriesEpisodesView(info: series, backLabel: "Wróć do ulubionych") {
                     seriesInfo = nil
                 }
                 .environmentObject(app)
-            } else {
-                favoritesList
-                    .fullScreenCover(item: $selectedDetail) { detail in
-                        MediaDetailView(selection: detail) {
-                            Task { await openSeriesFromDetail(detail.url) }
-                        }
-                        .environmentObject(app)
-                    }
-                    .fullScreenCover(item: $selectedMusic) { selection in
-                        MusicDetailView(
-                            selection: selection,
-                            folders: app.musicFolders
-                        )
-                        .environmentObject(app)
-                    }
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .task(id: reloadToken) { await load() }
-        .onChange(of: app.session?.token) { _, _ in
-            reloadToken = UUID()
-        }
-        .onChange(of: requestContentFocus) { _, requested in
-            guard requested else { return }
-            focusFavoritesContent()
-            requestContentFocus = false
-        }
+            .alert("Nie udało się otworzyć serialu", isPresented: Binding(
+                get: { seriesAlert != nil },
+                set: { if !$0 { seriesAlert = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(seriesAlert ?? "")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .task(id: reloadToken) { await load() }
+            .onChange(of: app.session?.token) { _, _ in
+                reloadToken = UUID()
+            }
+            .onChange(of: requestContentFocus) { _, requested in
+                guard requested else { return }
+                focusFavoritesContent()
+                requestContentFocus = false
+            }
     }
 
     private var favoritesList: some View {
@@ -121,9 +138,6 @@ struct FavoritesView: View {
                             Task { await load() }
                         }
                     } else {
-                        if openingSeries {
-                            ProgressView("Ładuję odcinki…")
-                        }
                         if !videoFavorites.isEmpty {
                             MusicSectionHeader(
                                 title: "Filmy i seriale",
@@ -203,7 +217,7 @@ struct FavoritesView: View {
             await app.refreshFavorites()
             await app.refreshMusicLibrary()
         } catch {
-            loadError = error.localizedDescription
+            seriesAlert = error.localizedDescription
         }
     }
 
@@ -250,8 +264,10 @@ struct FavoritesView: View {
                     seriesInfo = info
                     return
                 }
+                seriesAlert = "Nie znaleziono odcinków — spróbuj ponownie."
+                return
             } catch {
-                loadError = error.localizedDescription
+                seriesAlert = error.localizedDescription
                 return
             }
         }
@@ -264,9 +280,11 @@ struct FavoritesView: View {
             let info = try await app.api.fetchInfo(url: url)
             if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
                 seriesInfo = info
+            } else {
+                seriesAlert = "Nie znaleziono odcinków — spróbuj ponownie."
             }
         } catch {
-            loadError = error.localizedDescription
+            seriesAlert = error.localizedDescription
         }
     }
 }

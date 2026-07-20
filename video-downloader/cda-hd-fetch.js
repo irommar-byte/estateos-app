@@ -83,9 +83,10 @@ function isValidCdaHdHtml(html, finalUrl = "") {
   if (url && !isAllowedCdaHdResultUrl(url)) return false;
   if (/<title>\s*New Tab/i.test(body)) return false;
   if (isCloudflareChallenge(body, 200)) return false;
+  // FlareSolverr czasem ustawia <title>(1) New Message!</title> — treść strony i tak jest OK.
   return (
     /cda-hd/i.test(body) ||
-    /class="item"|typepost|enlaces|player\.cda-hd|ogladaj\.me|playmogo/i.test(body) ||
+    /class="(?:se-c|item)"|numerando|typepost|enlaces|player\.cda-hd|ogladaj\.me|playmogo|\/episode\//i.test(body) ||
     /property="og:title"/i.test(body)
   );
 }

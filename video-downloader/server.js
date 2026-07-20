@@ -18,6 +18,7 @@ import {
   loadCachedCdaHdTvShow,
   saveCachedCdaHdTvShow,
   buildCdaHdSeriesInfo,
+  warmCdaHdTvShows,
   parseCdaHdMoviePage,
   fetchCdaHdBrowse,
   searchCdaHd,
@@ -502,14 +503,19 @@ async function resolveMediaInfo(url, browser, req = null) {
   let result;
   if (isMirrorHost(url)) {
     if (isCdaHdTvShowUrl(url)) {
+      // Cache-first: od razu lista odcinków; FlareSolverr i tak trwa ~30–90 s.
       try {
-        const show = await withTimeout(fetchCdaHdTvShow(url), 25000, "cda-hd-tvshow");
-        result = buildCdaHdSeriesInfo(show);
+        const show = await withTimeout(
+          fetchCdaHdTvShow(url, { allowCache: true, preferCache: true }),
+          110000,
+          "cda-hd-tvshow"
+        );
+        result = buildCdaHdSeriesInfo({ ...show, webpageUrl: show.webpageUrl || url });
       } catch (err) {
-        const cached = loadCachedCdaHdTvShow(url);
+        const cached = loadCachedCdaHdTvShow(url, 30 * 24 * 60 * 60 * 1000);
         if (cached?.episodes?.length) {
           console.warn("info cda-hd series cache:", err?.message || err);
-          result = buildCdaHdSeriesInfo(cached);
+          result = buildCdaHdSeriesInfo({ ...cached, webpageUrl: cached.webpageUrl || url });
         } else {
           throw err;
         }
@@ -3372,8 +3378,13 @@ async function warmCdaHdCaches() {
     cdaHdCatalogCache.at = now;
     cdaHdCatalogCache.entries = cdaHdCatalogCache.entries || {};
     cdaHdCatalogCache.entries[`latest|1|${pageSize}`] = page1;
-    const seriesCount = items.filter((i) => i.isSerial).length;
-    console.warn(`cda-hd warm: ${items.length} pozycji (seriali: ${seriesCount})`);
+    const series = items.filter((i) => i.isSerial || isCdaHdTvShowUrl(i.url));
+    console.warn(`cda-hd warm: ${items.length} pozycji (seriali: ${series.length})`);
+    // Podgrzej listy odcinków — FlareSolverr ~30–90 s, ale potem /api/info jest natychmiastowe.
+    warmCdaHdTvShows(
+      series.map((i) => i.url),
+      { limit: 10 }
+    );
   } catch (err) {
     console.warn("cda-hd warm:", err?.message || err);
   } finally {
@@ -4595,9 +4606,10 @@ app.post("/api/info", async (req, res) => {
     if (/cda\.pl\/video\//i.test(url)) {
       resolveCdaDualStream(url, 480, browser, req).catch(() => {});
     }
+    const seriesLike = isCdaHdTvShowUrl(url) || /\/tvshows?\//i.test(url);
     const data = await withTimeout(
       resolveMediaInfo(url, browser, req),
-      45000,
+      seriesLike ? 120000 : 45000,
       "info"
     );
     res.json(data);

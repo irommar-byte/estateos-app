@@ -442,7 +442,7 @@ final class MoviesAPIClient {
     /// Dopasowany timeout na wolne endpointy (yt-dlp/Cloudflare potrafią się długo namyślać).
     private func timeoutInterval(forPath path: String) -> TimeInterval {
         if path.hasPrefix("/api/search") { return 40 }
-        if path.hasPrefix("/api/info") { return 50 }
+        if path.hasPrefix("/api/info") { return 120 }
         if path.hasPrefix("/api/cda-hd/") { return 45 }
         return 30
     }
