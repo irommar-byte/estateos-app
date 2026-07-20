@@ -419,7 +419,7 @@ struct MediaCard: View {
                 }
             }
         }
-        .buttonStyle(MediaCardButtonStyle(focusScale: layout == .shelf ? 1.12 : 1.07))
+        .buttonStyle(MediaCardButtonStyle(focusScale: layout == .shelf ? 1.09 : 1.07))
         .focusEffectDisabled()
         .disabled(isLoading)
     }

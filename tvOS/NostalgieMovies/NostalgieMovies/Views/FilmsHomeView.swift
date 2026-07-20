@@ -15,6 +15,9 @@ struct FilmsHomeView: View {
 
     @State private var shelves: [FilmsHomeShelf] = []
     @State private var cdaHdShelves: [FilmsHomeShelf] = []
+    @State private var shelfPageByID: [String: Int] = [:]
+    @State private var shelfHasMoreByID: [String: Bool] = [:]
+    @State private var shelfLoadingMoreIDs: Set<String> = []
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var serviceFilter: SearchSource = .all
@@ -151,8 +154,10 @@ struct FilmsHomeView: View {
                                 isFirst: index == 0,
                                 isLast: index == visibleShelves.count - 1,
                                 applePlusStyle: isCdaHdMode,
+                                isLoadingMore: shelfLoadingMoreIDs.contains(shelf.id),
                                 onSelect: { item in Task { await openItem(item) } },
                                 onShowAll: { openShelfCollection(shelf) },
+                                onLoadMore: { Task { await loadMoreItems(for: shelf) } },
                                 onMoveUpFromFirst: {
                                     focus = .service(serviceFilter)
                                 },
@@ -276,7 +281,13 @@ struct FilmsHomeView: View {
         if !force, !cdaHdShelves.isEmpty { return }
         do {
             let response = try await app.api.fetchCdaHdHome(limit: 22)
-            cdaHdShelves = response.shelves.filter { !$0.items.isEmpty }
+            let rows = response.shelves.filter { !$0.items.isEmpty }
+            cdaHdShelves = rows
+            for row in rows {
+                shelfPageByID[row.id] = 1
+                // Gatunki / katalogi mają kolejne strony; startujemy z założeniem hasMore.
+                shelfHasMoreByID[row.id] = true
+            }
             if focus == nil || focus == .service(.cdaHd) {
                 focusFirstItem(in: cdaHdShelves.first)
             }
@@ -284,6 +295,61 @@ struct FilmsHomeView: View {
             if cdaHdShelves.isEmpty {
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    private func updateShelfItems(_ shelfID: String, transform: (FilmsHomeShelf) -> FilmsHomeShelf) {
+        if let idx = cdaHdShelves.firstIndex(where: { $0.id == shelfID }) {
+            cdaHdShelves[idx] = transform(cdaHdShelves[idx])
+            return
+        }
+        if let idx = shelves.firstIndex(where: { $0.id == shelfID }) {
+            shelves[idx] = transform(shelves[idx])
+        }
+    }
+
+    private func loadMoreItems(for shelf: FilmsHomeShelf) async {
+        guard shelfHasMoreByID[shelf.id] != false else { return }
+        guard !shelfLoadingMoreIDs.contains(shelf.id) else { return }
+        shelfLoadingMoreIDs.insert(shelf.id)
+        defer { shelfLoadingMoreIDs.remove(shelf.id) }
+
+        let nextPage = (shelfPageByID[shelf.id] ?? 1) + 1
+        do {
+            let fresh: [SearchResultItem]
+            let hasMore: Bool
+            if let browse = shelf.browseUrl, !browse.isEmpty {
+                let response = try await app.api.fetchCdaHdBrowse(url: browse, page: nextPage, limit: 22)
+                fresh = response.items
+                hasMore = response.hasMore ?? !response.items.isEmpty
+            } else {
+                let mode = FilmsCatalogMode(rawValue: shelf.catalogMode ?? "latest") ?? .latest
+                let kind: FilmsCatalogKind
+                switch shelf.catalogType {
+                case "film": kind = .film
+                case "serial": kind = .serial
+                default: kind = .all
+                }
+                let response = try await app.api.fetchFilmsCatalog(
+                    source: sourceForShelf(shelf),
+                    mode: mode,
+                    type: kind,
+                    page: nextPage,
+                    pageSize: 22
+                )
+                fresh = response.items
+                hasMore = response.hasMore ?? (response.page < (response.totalPages ?? nextPage))
+            }
+
+            if fresh.isEmpty {
+                shelfHasMoreByID[shelf.id] = false
+                return
+            }
+            shelfPageByID[shelf.id] = nextPage
+            shelfHasMoreByID[shelf.id] = hasMore
+            updateShelfItems(shelf.id) { $0.appending(fresh) }
+        } catch {
+            // Ciche — użytkownik zostaje na aktualnej taśmie; spróbuje przy kolejnym focusie.
         }
     }
 
@@ -360,15 +426,17 @@ fileprivate struct FilmsServiceShelf: View {
     var isFirst: Bool
     var isLast: Bool
     var applePlusStyle: Bool = false
+    var isLoadingMore: Bool = false
     let onSelect: (SearchResultItem) -> Void
     var onShowAll: (() -> Void)? = nil
+    var onLoadMore: (() -> Void)? = nil
     var onMoveUpFromFirst: (() -> Void)? = nil
     var onMoveToShelf: ((MoveCommandDirection) -> Void)? = nil
 
     @EnvironmentObject private var app: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: applePlusStyle ? 18 : 14) {
+        VStack(alignment: .leading, spacing: applePlusStyle ? 22 : 14) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(shelf.title)
@@ -432,27 +500,28 @@ fileprivate struct FilmsServiceShelf: View {
                                 .onMoveCommand { direction in
                                     handleItemMove(index: index, direction: direction)
                                 }
+                                .onChange(of: focus.wrappedValue) { _, newFocus in
+                                    guard case .item(let shelfID, let itemID) = newFocus,
+                                          shelfID == shelf.id,
+                                          itemID == item.id else { return }
+                                    // Dociągaj kolejne, zanim focus dojdzie do samego końca taśmy.
+                                    if index >= max(0, shelf.items.count - 4) {
+                                        onLoadMore?()
+                                    }
+                                }
+                            }
+
+                            if isLoadingMore {
+                                ProgressView()
+                                    .frame(width: 80, height: 180)
                             }
                         }
                         .scrollTargetLayout()
-                        .padding(.vertical, 10)
+                        // Zapas pod scale focus (~1.12), żeby plakat/tytuł nie ucinały się od góry.
+                        .padding(.vertical, applePlusStyle ? 40 : 28)
                     }
                     .fullBleedShelf()
-                    .frame(height: applePlusStyle ? 400 : 370)
-                    .scrollPosition(id: Binding(
-                        get: {
-                            if case .item(let shelfID, let itemID) = focus.wrappedValue, shelfID == shelf.id {
-                                return itemID
-                            }
-                            return nil
-                        },
-                        set: { newID in
-                            if let newID {
-                                focus.wrappedValue = .item(shelfID: shelf.id, itemID: newID)
-                            }
-                        }
-                    ))
-                    .scrollTargetBehavior(.viewAligned)
+                    .frame(height: applePlusStyle ? 480 : 430)
                 }
             }
         }
@@ -479,6 +548,11 @@ fileprivate struct FilmsServiceShelf: View {
             if index + 1 < shelf.items.count {
                 let next = shelf.items[index + 1]
                 focus.wrappedValue = .item(shelfID: shelf.id, itemID: next.id)
+                if index + 1 >= shelf.items.count - 4 {
+                    onLoadMore?()
+                }
+            } else {
+                onLoadMore?()
             }
         default:
             break

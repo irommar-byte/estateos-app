@@ -339,6 +339,23 @@ struct FilmsHomeShelf: Codable, Identifiable, Hashable {
     let catalogType: String?
     let browseUrl: String?
     let cached: Bool?
+
+    func appending(_ more: [SearchResultItem]) -> FilmsHomeShelf {
+        var seen = Set(items.map(\.id))
+        let unique = more.filter { seen.insert($0.id).inserted }
+        guard !unique.isEmpty else { return self }
+        return FilmsHomeShelf(
+            id: id,
+            source: source,
+            title: title,
+            subtitle: subtitle,
+            items: items + unique,
+            catalogMode: catalogMode,
+            catalogType: catalogType,
+            browseUrl: browseUrl,
+            cached: cached
+        )
+    }
 }
 
 struct FilmsHomeResponse: Codable {
