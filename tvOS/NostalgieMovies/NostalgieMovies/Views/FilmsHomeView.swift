@@ -91,6 +91,9 @@ struct FilmsHomeView: View {
                         Text("Ładuję odcinki…")
                             .font(NostalgieFont.rowTitle)
                             .foregroundStyle(.white)
+                        Text("CDA-HD · max ~25 s")
+                            .font(NostalgieFont.caption)
+                            .foregroundStyle(.white.opacity(0.7))
                     }
                     .padding(28)
                     .background(NostalgieTheme.card, in: RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
@@ -110,6 +113,13 @@ struct FilmsHomeView: View {
                         title: "Filmy",
                         subtitle: "Wybierz serwis, potem ↓ do półek"
                     )
+
+                    if let errorMessage, !shelves.isEmpty {
+                        Text(errorMessage)
+                            .font(NostalgieFont.metadata)
+                            .foregroundStyle(.orange)
+                            .padding(.vertical, 4)
+                    }
 
                     servicePicker
                         .id("servicePicker")
@@ -288,6 +298,7 @@ struct FilmsHomeView: View {
 
     private func openSeries(url: String, fallback: SearchResultItem? = nil) async {
         openingSeries = true
+        errorMessage = nil
         defer { openingSeries = false }
         do {
             let info = try await app.api.fetchInfo(url: url)
@@ -295,15 +306,9 @@ struct FilmsHomeView: View {
                 seriesInfo = info
                 return
             }
-            if let fallback {
-                selectedDetail = MediaSelection(from: fallback)
-            }
+            errorMessage = "Nie znaleziono listy odcinków. Spróbuj ponownie za chwilę."
         } catch {
-            if let fallback {
-                selectedDetail = MediaSelection(from: fallback)
-            } else {
-                errorMessage = error.localizedDescription
-            }
+            errorMessage = error.localizedDescription
         }
     }
 }

@@ -15,6 +15,8 @@ import {
   isCdaHdFilmUrl,
   isCdaHdBrowseUrl,
   fetchCdaHdTvShow,
+  loadCachedCdaHdTvShow,
+  saveCachedCdaHdTvShow,
   buildCdaHdSeriesInfo,
   parseCdaHdMoviePage,
   fetchCdaHdBrowse,
@@ -499,7 +501,18 @@ async function resolveMediaInfo(url, browser, req = null) {
   let result;
   if (isMirrorHost(url)) {
     if (isCdaHdTvShowUrl(url)) {
-      result = buildCdaHdSeriesInfo(await fetchCdaHdTvShow(url));
+      try {
+        const show = await withTimeout(fetchCdaHdTvShow(url), 25000, "cda-hd-tvshow");
+        result = buildCdaHdSeriesInfo(show);
+      } catch (err) {
+        const cached = loadCachedCdaHdTvShow(url);
+        if (cached?.episodes?.length) {
+          console.warn("info cda-hd series cache:", err?.message || err);
+          result = buildCdaHdSeriesInfo(cached);
+        } else {
+          throw err;
+        }
+      }
     } else {
       const mirror = await resolveMirrorPage(url);
       if (isCdaHdFilmUrl(mirror.webpageUrl || url)) {
@@ -3452,6 +3465,7 @@ app.get("/api/cda-hd/latest", async (req, res) => {
 
 
 // GET /api/cda-hd/catalog?mode=latest|top-rated&page=1&pageSize=20
+// Cache-first: nigdy nie blokuj Apple TV na FlareSolverr / Cloudflare.
 app.get("/api/cda-hd/catalog", async (req, res) => {
   const mode = String(req.query.mode || "latest").toLowerCase() === "top-rated" ? "top-rated" : "latest";
   const page = Math.max(1, Number(req.query.page) || 1);
@@ -3459,7 +3473,23 @@ app.get("/api/cda-hd/catalog", async (req, res) => {
   const now = Date.now();
   const cacheKey = `${mode}|${page}|${pageSize}`;
   const cacheHit = cdaHdCatalogCache.entries?.[cacheKey];
-  if (now - cdaHdCatalogCache.at < CDA_HD_LATEST_TTL_MS && cacheHit) {
+
+  const pageFromList = (list, meta = {}) => {
+    const all = Array.isArray(list) ? list : [];
+    const start = (page - 1) * pageSize;
+    const slice = mapSearchThumbnails(all).slice(start, start + pageSize);
+    return {
+      mode,
+      page,
+      pageSize,
+      totalItems: all.length,
+      hasMore: all.length > start + pageSize,
+      items: slice,
+      ...meta,
+    };
+  };
+
+  if (now - cdaHdCatalogCache.at < CDA_HD_LATEST_TTL_MS && cacheHit?.items?.length) {
     return res.json({ ...cacheHit, cached: true });
   }
 
@@ -3469,8 +3499,40 @@ app.get("/api/cda-hd/catalog", async (req, res) => {
     return;
   }
 
+  // Disk / memory latest — odpowiedź natychmiast, odświeżenie w tle.
+  const disk = loadCdaHdDiskCatalog(14 * 24 * 60 * 60 * 1000);
+  if (mode === "latest") {
+    const pool =
+      (cdaHdLatestCache.items?.length && cdaHdLatestCache.items) ||
+      (disk?.latest?.length && disk.latest) ||
+      [];
+    if (pool.length) {
+      const payload = pageFromList(pool, {
+        cached: true,
+        stale: true,
+        disk: !cdaHdLatestCache.items?.length,
+      });
+      res.json(payload);
+      scheduleCdaHdWarm();
+      return;
+    }
+  } else if (mode === "top-rated") {
+    const pool = disk?.topRated || disk?.["top-rated"] || disk?.latest || [];
+    if (pool.length) {
+      const rated = [...pool].sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0));
+      const payload = pageFromList(rated, { cached: true, stale: true, disk: true });
+      res.json(payload);
+      scheduleCdaHdWarm();
+      return;
+    }
+  }
+
   try {
-    const data = await fetchCdaHdCatalog({ mode, page, pageSize });
+    const data = await withTimeout(
+      fetchCdaHdCatalog({ mode, page, pageSize }),
+      12000,
+      "cda-hd-catalog"
+    );
     const payload = {
       mode: data.mode,
       page: data.page,
@@ -3489,23 +3551,8 @@ app.get("/api/cda-hd/catalog", async (req, res) => {
     res.json(payload);
   } catch (err) {
     console.error("cda-hd catalog:", err?.message || err);
-    if (cacheHit) {
-      return res.json({ ...cacheHit, cached: true, stale: true });
-    }
-    const disk = loadCdaHdDiskCatalog();
-    if (disk?.latest?.length && mode === "latest" && page === 1) {
-      const items = mapSearchThumbnails(disk.latest).slice(0, pageSize);
-      return res.json({
-        mode,
-        page,
-        pageSize,
-        totalItems: items.length,
-        hasMore: disk.latest.length > pageSize,
-        items,
-        cached: true,
-        stale: true,
-        disk: true,
-      });
+    if (cdaHdLatestCache.items?.length && mode === "latest") {
+      return res.json(pageFromList(cdaHdLatestCache.items, { cached: true, stale: true, fallback: true }));
     }
     res.status(502).json({
       error: err?.message || "Nie udało się pobrać katalogu CDA-HD.",

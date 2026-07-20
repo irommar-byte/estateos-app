@@ -17,6 +17,7 @@ struct LatestCdaHdCatalogView: View {
     @State private var errorMessage: String?
     @State private var selectedDetail: MediaSelection?
     @State private var seriesInfo: VideoInfoResponse?
+    @State private var openingSeries = false
     @State private var gridColumnCount = 4
     @FocusState private var localFocus: CatalogFocus?
 
@@ -34,6 +35,25 @@ struct LatestCdaHdCatalogView: View {
                 .environmentObject(app)
             } else {
                 catalogContent
+                    .overlay {
+                        if openingSeries {
+                            ZStack {
+                                Color.black.opacity(0.55)
+                                VStack(spacing: 16) {
+                                    ProgressView().scaleEffect(1.4)
+                                    Text("Ładuję odcinki…")
+                                        .font(NostalgieFont.rowTitle)
+                                        .foregroundStyle(.white)
+                                    Text("To może potrwać do ~25 s")
+                                        .font(NostalgieFont.caption)
+                                        .foregroundStyle(.white.opacity(0.7))
+                                }
+                                .padding(28)
+                                .background(NostalgieTheme.card, in: RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
+                            }
+                            .ignoresSafeArea()
+                        }
+                    }
             }
         }
     }
@@ -189,6 +209,15 @@ struct LatestCdaHdCatalogView: View {
                 hasMore = false
             }
         } catch {
+            // Awaryjnie: /latest (szybki cache) zamiast wiecznego spinnera.
+            if reset && mode == .latest {
+                if let fallback = try? await app.api.fetchCdaHdLatest(limit: pageSize), !fallback.isEmpty {
+                    items = fallback
+                    hasMore = false
+                    errorMessage = nil
+                    return
+                }
+            }
             if reset {
                 errorMessage = error.localizedDescription
                 items = []
@@ -205,12 +234,16 @@ struct LatestCdaHdCatalogView: View {
             || item.url.localizedCaseInsensitiveContains("/tvshow/")
             || (item.detail?.localizedCaseInsensitiveContains("serial") == true)
         if looksLikeSeries {
+            openingSeries = true
+            defer { openingSeries = false }
             do {
                 let info = try await app.api.fetchInfo(url: item.url)
                 if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
                     seriesInfo = info
                     return
                 }
+                errorMessage = "Nie znaleziono odcinków — spróbuj ponownie za chwilę."
+                return
             } catch {
                 errorMessage = error.localizedDescription
                 return

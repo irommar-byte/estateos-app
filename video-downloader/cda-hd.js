@@ -693,15 +693,74 @@ export function parseCdaHdTvShow(html, pageUrl) {
   };
 }
 
-export async function fetchCdaHdTvShow(pageUrl) {
-  const { html, finalUrl } = await fetchCdaHdHtml(pageUrl);
-  const show = parseCdaHdTvShow(html, finalUrl);
-  if (!show.episodes.length) {
-    throw new Error(
-      "Nie znaleziono odcinków na stronie serialu. Otwórz konkretny odcinek albo wyszukaj ponownie."
-    );
+function seriesCacheKey(pageUrl) {
+  try {
+    const u = new URL(pageUrl);
+    return (u.pathname || pageUrl).replace(/\/+$/, "").toLowerCase();
+  } catch {
+    return String(pageUrl || "").toLowerCase();
   }
-  return show;
+}
+
+export function loadCachedCdaHdTvShow(pageUrl, maxAgeMs = 7 * 24 * 60 * 60 * 1000) {
+  const cache = readDiskCatalogCache();
+  const key = seriesCacheKey(pageUrl);
+  const entry = cache?.tvShows?.[key];
+  if (!entry?.show?.episodes?.length) return null;
+  const age = Date.now() - (Number(entry.at) || 0);
+  if (age > maxAgeMs) return { ...entry.show, _cached: true, _stale: true, _ageMs: age };
+  return { ...entry.show, _cached: true, _stale: false, _ageMs: age };
+}
+
+export function saveCachedCdaHdTvShow(pageUrl, show) {
+  if (!show?.episodes?.length) return;
+  const cache = readDiskCatalogCache() || {};
+  const tvShows = { ...(cache.tvShows || {}) };
+  tvShows[seriesCacheKey(pageUrl)] = {
+    at: Date.now(),
+    show: {
+      title: show.title,
+      thumbnail: show.thumbnail,
+      webpageUrl: show.webpageUrl || pageUrl,
+      seasonCount: show.seasonCount,
+      episodeCount: show.episodeCount,
+      seasons: show.seasons,
+      episodes: show.episodes,
+      meta: show.meta || null,
+    },
+  };
+  // Limit rozmiaru dysku
+  const keys = Object.keys(tvShows);
+  if (keys.length > 80) {
+    keys
+      .sort((a, b) => (tvShows[a].at || 0) - (tvShows[b].at || 0))
+      .slice(0, keys.length - 80)
+      .forEach((k) => delete tvShows[k]);
+  }
+  writeDiskCatalogCache({ tvShows });
+}
+
+export async function fetchCdaHdTvShow(pageUrl, { allowCache = true } = {}) {
+  try {
+    const { html, finalUrl } = await fetchCdaHdHtml(pageUrl);
+    const show = parseCdaHdTvShow(html, finalUrl);
+    if (!show.episodes.length) {
+      throw new Error(
+        "Nie znaleziono odcinków na stronie serialu. Otwórz konkretny odcinek albo wyszukaj ponownie."
+      );
+    }
+    saveCachedCdaHdTvShow(finalUrl || pageUrl, show);
+    return show;
+  } catch (err) {
+    if (allowCache) {
+      const cached = loadCachedCdaHdTvShow(pageUrl);
+      if (cached?.episodes?.length) {
+        console.warn("cda-hd tvshow cache fallback:", err?.message || err);
+        return cached;
+      }
+    }
+    throw err;
+  }
 }
 
 export function buildCdaHdSeriesInfo(show) {
