@@ -584,6 +584,18 @@ export function orderCdaHdCatalog(pool, mode) {
   return list;
 }
 
+/** Pełna posortowana pula (bez slice) — do nieskończonego dociągania półek TV. */
+export async function fetchCdaHdCatalogPool({ mode = "latest", minCount = 60 } = {}) {
+  const target = Math.max(24, Number(minCount) || 60);
+  const sitePages = Math.min(
+    CDA_HD_MAX_SITE_PAGES,
+    Math.max(4, Math.ceil(target / 20) + 2)
+  );
+  const pool = await fetchCdaHdListingPool(target, sitePages);
+  const orderedMode = mode === "all" ? "latest" : mode;
+  return orderCdaHdCatalog(pool, orderedMode);
+}
+
 export async function fetchCdaHdCatalog({
   mode = "latest",
   page = 1,

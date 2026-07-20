@@ -24,6 +24,7 @@ import {
   searchCdaHd,
   fetchCdaHdLatest,
   fetchCdaHdCatalog,
+  fetchCdaHdCatalogPool,
   orderCdaHdCatalog,
   loadCdaHdDiskCatalog,
 } from "./cda-hd.js";
@@ -3633,6 +3634,37 @@ async function resolveFilmsCatalogPool(source) {
   }
 }
 
+async function resolveCdaHdOrderedForPaging({ mode, type, page, pageSize }) {
+  const minNeeded = Math.max(page * pageSize + pageSize, pageSize * 2);
+  let { pool, cached, disk } = await resolveFilmsCatalogPool("cda-hd");
+  let ordered = sortFilmsCatalogPool(filterCatalogByType(pool, type), mode);
+
+  if (ordered.length >= minNeeded) {
+    return { ordered, cached: !!cached, disk: !!disk };
+  }
+
+  try {
+    // Filmy/seriale filtrują pulę — bierzemy zapas z listingu, żeby page 2+ nie była pusta.
+    const growTarget = type === "all" ? minNeeded : Math.min(240, minNeeded * 3);
+    const grown = await withTimeout(
+      fetchCdaHdCatalogPool({ mode, minCount: growTarget }),
+      90_000,
+      "cda-hd-catalog-grow"
+    );
+    ordered = filterCatalogByType(grown, type);
+    if (grown.length) {
+      cdaHdLatestCache = {
+        at: Date.now(),
+        items: mapSearchThumbnails(grown.slice(0, 100)),
+      };
+    }
+    return { ordered, cached: false, disk: false, grown: true };
+  } catch (err) {
+    console.warn("cda-hd catalog grow:", err?.message || err);
+    return { ordered, cached: !!cached, disk: !!disk, growError: String(err?.message || err) };
+  }
+}
+
 // GET /api/cda-hd/catalog?mode=&type=&page=&pageSize=
 app.get("/api/cda-hd/catalog", async (req, res) => {
   const mode = normalizeFilmsCatalogMode(req.query.mode);
@@ -3653,16 +3685,19 @@ app.get("/api/cda-hd/catalog", async (req, res) => {
   }
 
   try {
-    const { pool, cached, disk } = await resolveFilmsCatalogPool("cda-hd");
-    const filtered = filterCatalogByType(pool, type);
-    const ordered = sortFilmsCatalogPool(filtered, mode);
+    const { ordered, cached, disk, grown } = await resolveCdaHdOrderedForPaging({
+      mode,
+      type,
+      page,
+      pageSize,
+    });
     const payload = {
       mode,
       type,
       source: "cda-hd",
       ...paginateCatalogList(ordered, page, pageSize, {
-        cached: !!cached,
-        stale: !!cached,
+        cached: !!cached && !grown,
+        stale: !!cached && !grown,
         disk: !!disk,
       }),
     };
@@ -3689,6 +3724,29 @@ app.get("/api/films/catalog", async (req, res) => {
   const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 20, 1), 24);
 
   try {
+    if (source === "cda-hd") {
+      const { ordered, cached, disk, grown, growError } = await resolveCdaHdOrderedForPaging({
+        mode,
+        type,
+        page,
+        pageSize,
+      });
+      if (!ordered.length && growError) {
+        return res.status(502).json({ error: growError });
+      }
+      return res.json({
+        ok: true,
+        source,
+        mode,
+        type,
+        ...paginateCatalogList(ordered, page, pageSize, {
+          cached: !!cached && !grown,
+          stale: !!cached && !grown,
+          disk: !!disk,
+        }),
+      });
+    }
+
     const { pool, cached, disk, fromHome, error } = await resolveFilmsCatalogPool(source);
     if (!pool.length && error) {
       return res.status(502).json({ error });

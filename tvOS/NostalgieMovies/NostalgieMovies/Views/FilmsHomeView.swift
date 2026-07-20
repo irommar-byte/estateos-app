@@ -308,6 +308,10 @@ struct FilmsHomeView: View {
         }
     }
 
+    private func currentShelf(id: String) -> FilmsHomeShelf? {
+        cdaHdShelves.first(where: { $0.id == id }) ?? shelves.first(where: { $0.id == id })
+    }
+
     private func loadMoreItems(for shelf: FilmsHomeShelf) async {
         guard shelfHasMoreByID[shelf.id] != false else { return }
         guard !shelfLoadingMoreIDs.contains(shelf.id) else { return }
@@ -315,11 +319,12 @@ struct FilmsHomeView: View {
         defer { shelfLoadingMoreIDs.remove(shelf.id) }
 
         let nextPage = (shelfPageByID[shelf.id] ?? 1) + 1
+        let beforeCount = currentShelf(id: shelf.id)?.items.count ?? shelf.items.count
         do {
             let fresh: [SearchResultItem]
             let hasMore: Bool
             if let browse = shelf.browseUrl, !browse.isEmpty {
-                let response = try await app.api.fetchCdaHdBrowse(url: browse, page: nextPage, limit: 22)
+                let response = try await app.api.fetchCdaHdBrowse(url: browse, page: nextPage, limit: 24)
                 fresh = response.items
                 hasMore = response.hasMore ?? !response.items.isEmpty
             } else {
@@ -335,21 +340,27 @@ struct FilmsHomeView: View {
                     mode: mode,
                     type: kind,
                     page: nextPage,
-                    pageSize: 22
+                    pageSize: 24
                 )
                 fresh = response.items
-                hasMore = response.hasMore ?? (response.page < (response.totalPages ?? nextPage))
+                hasMore = response.hasMore ?? (response.items.count >= 24)
             }
 
+            shelfPageByID[shelf.id] = nextPage
             if fresh.isEmpty {
                 shelfHasMoreByID[shelf.id] = false
                 return
             }
-            shelfPageByID[shelf.id] = nextPage
-            shelfHasMoreByID[shelf.id] = hasMore
+
             updateShelfItems(shelf.id) { $0.appending(fresh) }
+            let afterCount = currentShelf(id: shelf.id)?.items.count ?? beforeCount
+            let grew = afterCount > beforeCount
+            shelfHasMoreByID[shelf.id] = grew ? hasMore : (hasMore || nextPage < 8)
+            if !grew && !hasMore {
+                shelfHasMoreByID[shelf.id] = false
+            }
         } catch {
-            // Ciche — użytkownik zostaje na aktualnej taśmie; spróbuje przy kolejnym focusie.
+            // Zostaw hasMore — kolejny focus ponowi (wolny listing CDA-HD).
         }
     }
 
@@ -370,6 +381,13 @@ struct FilmsHomeView: View {
         do {
             let response = try await app.api.fetchFilmsHome(limit: 16)
             shelves = response.shelves
+            for row in response.shelves {
+                if shelfPageByID[row.id] == nil {
+                    shelfPageByID[row.id] = 1
+                    shelfHasMoreByID[row.id] = true
+                }
+            }
+            Task { await loadCdaHdHomeIfNeeded() }
         } catch {
             errorMessage = error.localizedDescription
         }
