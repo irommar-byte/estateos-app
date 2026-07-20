@@ -17,7 +17,7 @@ const FLARESOLVERR_URL = (process.env.FLARESOLVERR_URL || "http://127.0.0.1:8191
 const SESSION_PATH =
   process.env.CDA_HD_SESSION_PATH || path.join(__dirname, "data", "cda-hd-session.json");
 const SESSION_MAX_AGE_MS = Number(process.env.CDA_HD_SESSION_MAX_AGE_MS) || 6 * 60 * 60 * 1000;
-const FLARE_TIMEOUT_MS = Number(process.env.CDA_HD_FLARE_TIMEOUT_MS) || 90_000;
+const FLARE_TIMEOUT_MS = Number(process.env.CDA_HD_FLARE_TIMEOUT_MS) || 120_000;
 
 /** @type {{ cookies: Array<{name:string,value:string,domain?:string}>, userAgent: string, updatedAt: number }} */
 let session = { cookies: [], userAgent: DEFAULT_CDA_HD_UA, updatedAt: 0 };
@@ -241,10 +241,30 @@ async function withSolveLock(fn) {
   }
 }
 
+async function applySolvedSession(solved) {
+  session = {
+    cookies: mergeCookies(session.cookies, solved.cookies || []),
+    userAgent: solved.userAgent || session.userAgent || DEFAULT_CDA_HD_UA,
+    updatedAt: Date.now(),
+  };
+  saveSession();
+}
+
+async function flareSolveOnce(pageUrl) {
+  console.warn("cda-hd: Cloudflare challenge — solve via FlareSolverr", pageUrl);
+  try {
+    return await flareSolverrGet(pageUrl);
+  } catch (err) {
+    console.warn("cda-hd flaresolverr retry:", err?.message || err);
+    await new Promise((r) => setTimeout(r, 2000));
+    return await flareSolverrGet(pageUrl);
+  }
+}
+
 async function refreshSessionViaFlare(pageUrl) {
   return withSolveLock(async () => {
     loadSession();
-    if (session.cookies.length && Date.now() - session.updatedAt < 30_000) {
+    if (session.cookies.length && Date.now() - session.updatedAt < 45_000) {
       const probe = await plainFetchHtml(pageUrl);
       if (
         !isCloudflareChallenge(probe.html, probe.status) &&
@@ -256,21 +276,37 @@ async function refreshSessionViaFlare(pageUrl) {
       }
     }
 
-    console.warn("cda-hd: Cloudflare challenge — solve via FlareSolverr");
-    let solved;
+    // 1) Najpierw clearance na home — potem zwykły fetch docelowej strony (szybciej i stabilniej).
+    const homeUrl = "https://cda-hd.cc/";
+    let homeSolved = null;
     try {
-      solved = await flareSolverrGet(pageUrl);
+      homeSolved = await flareSolveOnce(homeUrl);
+      await applySolvedSession(homeSolved);
+      if (pageUrl.replace(/\/$/, "") !== homeUrl.replace(/\/$/, "")) {
+        const viaCookies = await plainFetchHtml(pageUrl);
+        if (
+          !isCloudflareChallenge(viaCookies.html, viaCookies.status) &&
+          viaCookies.status >= 200 &&
+          viaCookies.status < 400 &&
+          isValidCdaHdHtml(viaCookies.html, viaCookies.finalUrl)
+        ) {
+          console.warn("cda-hd: target OK po clearance home");
+          return viaCookies;
+        }
+      } else if (
+        homeSolved &&
+        !isCloudflareChallenge(homeSolved.html, homeSolved.status) &&
+        isValidCdaHdHtml(homeSolved.html, homeSolved.finalUrl)
+      ) {
+        return homeSolved;
+      }
     } catch (err) {
-      console.warn("cda-hd flaresolverr retry:", err?.message || err);
-      await new Promise((r) => setTimeout(r, 1200));
-      solved = await flareSolverrGet(pageUrl);
+      console.warn("cda-hd home-first:", err?.message || err);
     }
-    session = {
-      cookies: mergeCookies(session.cookies, solved.cookies),
-      userAgent: solved.userAgent || session.userAgent || DEFAULT_CDA_HD_UA,
-      updatedAt: Date.now(),
-    };
-    saveSession();
+
+    // 2) Bezpośredni solve docelowej strony.
+    const solved = await flareSolveOnce(pageUrl);
+    await applySolvedSession(solved);
     return { html: solved.html, finalUrl: solved.finalUrl, status: solved.status };
   });
 }

@@ -13,12 +13,10 @@ struct FavoritesView: View {
     @State private var items: [FavoriteItem] = []
     @State private var isLoading = true
     @State private var loadError: String?
-    @State private var seriesInfo: VideoInfoResponse?
+    @State private var seriesOpen: SeriesOpenRequest?
     @State private var selectedDetail: MediaSelection?
     @State private var selectedMusic: MusicSelection?
     @State private var reloadToken = UUID()
-    @State private var openingSeries = false
-    @State private var seriesAlert: String?
     @State private var gridColumnCount = 4
     @FocusState private var localFocus: FavoritesFocus?
 
@@ -36,20 +34,9 @@ struct FavoritesView: View {
 
     var body: some View {
         favoritesList
-            .overlay {
-                if openingSeries {
-                    ZStack {
-                        Color.black.opacity(0.55)
-                        ProgressView("Ładuję odcinki…")
-                            .padding(28)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    }
-                    .ignoresSafeArea()
-                }
-            }
             .fullScreenCover(item: $selectedDetail) { detail in
                 MediaDetailView(selection: detail) {
-                    Task { await openSeriesFromDetail(detail.url) }
+                    seriesOpen = SeriesOpenRequest(url: detail.url, title: detail.title, thumbnail: detail.thumbnail)
                 }
                 .environmentObject(app)
             }
@@ -60,19 +47,11 @@ struct FavoritesView: View {
                 )
                 .environmentObject(app)
             }
-            .fullScreenCover(item: $seriesInfo) { series in
-                SeriesEpisodesView(info: series, backLabel: "Wróć do ulubionych") {
-                    seriesInfo = nil
+            .fullScreenCover(item: $seriesOpen) { req in
+                SeriesEpisodesLoaderView(request: req, backLabel: "Wróć do ulubionych") {
+                    seriesOpen = nil
                 }
                 .environmentObject(app)
-            }
-            .alert("Nie udało się otworzyć serialu", isPresented: Binding(
-                get: { seriesAlert != nil },
-                set: { if !$0 { seriesAlert = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(seriesAlert ?? "")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .task(id: reloadToken) { await load() }
@@ -217,7 +196,7 @@ struct FavoritesView: View {
             await app.refreshFavorites()
             await app.refreshMusicLibrary()
         } catch {
-            seriesAlert = error.localizedDescription
+            loadError = error.localizedDescription
         }
     }
 
@@ -256,36 +235,15 @@ struct FavoritesView: View {
             )
         )
         if item.type == "series" {
-            openingSeries = true
-            defer { openingSeries = false }
-            do {
-                let info = try await app.api.fetchInfo(url: item.url)
-                if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
-                    seriesInfo = info
-                    return
-                }
-                seriesAlert = "Nie znaleziono odcinków — spróbuj ponownie."
-                return
-            } catch {
-                seriesAlert = error.localizedDescription
-                return
-            }
+            seriesOpen = SeriesOpenRequest(url: item.url, title: item.title, thumbnail: item.thumbnail)
+            return
         }
         selectedDetail = selection
     }
 
-    private func openSeriesFromDetail(_ url: String) async {
+    private func openSeriesFromDetail(_ url: String, title: String = "Serial", thumbnail: String? = nil) {
         selectedDetail = nil
-        do {
-            let info = try await app.api.fetchInfo(url: url)
-            if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
-                seriesInfo = info
-            } else {
-                seriesAlert = "Nie znaleziono odcinków — spróbuj ponownie."
-            }
-        } catch {
-            seriesAlert = error.localizedDescription
-        }
+        seriesOpen = SeriesOpenRequest(url: url, title: title, thumbnail: thumbnail)
     }
 }
 

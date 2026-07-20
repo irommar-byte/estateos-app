@@ -17,11 +17,9 @@ struct FilmsHomeView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var serviceFilter: SearchSource = .all
-    @State private var seriesInfo: VideoInfoResponse?
+    @State private var seriesOpen: SeriesOpenRequest?
     @State private var selectedDetail: MediaSelection?
     @State private var presentedCatalog: SearchSource?
-    @State private var openingSeries = false
-    @State private var seriesAlert: String?
     @State private var didSetInitialFocus = false
     @FocusState private var focus: FilmsHomeFocus?
 
@@ -47,10 +45,9 @@ struct FilmsHomeView: View {
 
     var body: some View {
         homeContent
-            .overlay { openingOverlay }
             .fullScreenCover(item: $selectedDetail) { detail in
                 MediaDetailView(selection: detail) {
-                    Task { await openSeries(url: detail.url) }
+                    openSeries(url: detail.url, title: detail.title, thumbnail: detail.thumbnail)
                 }
                 .environmentObject(app)
             }
@@ -58,19 +55,11 @@ struct FilmsHomeView: View {
                 LatestCdaHdCatalogView(source: src, initialMode: .all)
                     .environmentObject(app)
             }
-            .fullScreenCover(item: $seriesInfo) { series in
-                SeriesEpisodesView(info: series, backLabel: "Wróć do filmów") {
-                    seriesInfo = nil
+            .fullScreenCover(item: $seriesOpen) { req in
+                SeriesEpisodesLoaderView(request: req, backLabel: "Wróć do filmów") {
+                    seriesOpen = nil
                 }
                 .environmentObject(app)
-            }
-            .alert("Nie udało się otworzyć serialu", isPresented: Binding(
-                get: { seriesAlert != nil },
-                set: { if !$0 { seriesAlert = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(seriesAlert ?? "")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .task { await loadHome() }
@@ -87,27 +76,6 @@ struct FilmsHomeView: View {
             }
     }
 
-    private var openingOverlay: some View {
-        Group {
-            if openingSeries {
-                ZStack {
-                    Color.black.opacity(0.55)
-                    VStack(spacing: 16) {
-                        ProgressView().scaleEffect(1.4)
-                        Text("Ładuję odcinki…")
-                            .font(NostalgieFont.rowTitle)
-                            .foregroundStyle(.white)
-                        Text("CDA-HD · to może potrwać do ~90 s")
-                            .font(NostalgieFont.caption)
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
-                    .padding(28)
-                    .background(NostalgieTheme.card, in: RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
-                }
-                .ignoresSafeArea()
-            }
-        }
-    }
 
     private var homeContent: some View {
         ScrollViewReader { proxy in
@@ -306,26 +274,18 @@ struct FilmsHomeView: View {
             || item.url.localizedCaseInsensitiveContains("/tvshows/")
             || item.url.localizedCaseInsensitiveContains("/tvshow/")
         if looksLikeSeries {
-            await openSeries(url: item.url, fallback: item)
+            openSeries(url: item.url, fallback: item)
             return
         }
         selectedDetail = MediaSelection(from: item)
     }
 
-    private func openSeries(url: String, fallback: SearchResultItem? = nil) async {
-        openingSeries = true
-        seriesAlert = nil
-        defer { openingSeries = false }
-        do {
-            let info = try await app.api.fetchInfo(url: url)
-            if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
-                seriesInfo = info
-                return
-            }
-            seriesAlert = "Nie znaleziono listy odcinków. Spróbuj ponownie za chwilę."
-        } catch {
-            seriesAlert = error.localizedDescription
-        }
+    private func openSeries(url: String, title: String = "Serial", thumbnail: String? = nil, fallback: SearchResultItem? = nil) {
+        seriesOpen = SeriesOpenRequest(
+            url: url,
+            title: fallback?.title ?? title,
+            thumbnail: fallback?.thumbnail ?? thumbnail
+        )
     }
 }
 

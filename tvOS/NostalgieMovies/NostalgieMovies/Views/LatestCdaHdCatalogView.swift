@@ -22,10 +22,8 @@ struct LatestCdaHdCatalogView: View {
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
     @State private var selectedDetail: MediaSelection?
-    @State private var seriesInfo: VideoInfoResponse?
-    @State private var openingSeries = false
-    @State private var seriesAlert: String?
-    @State private var gridColumnCount = 4
+    @State private var seriesOpen: SeriesOpenRequest?
+            @State private var gridColumnCount = 4
     @State private var didApplyInitial = false
     @FocusState private var localFocus: CatalogFocus?
 
@@ -53,20 +51,11 @@ struct LatestCdaHdCatalogView: View {
 
     var body: some View {
         catalogContent
-            .overlay { openingOverlay }
-            .fullScreenCover(item: $seriesInfo) { series in
-                SeriesEpisodesView(info: series, backLabel: "Wróć do katalogu") {
-                    seriesInfo = nil
+            .fullScreenCover(item: $seriesOpen) { req in
+                SeriesEpisodesLoaderView(request: req, backLabel: "Wróć do katalogu") {
+                    seriesOpen = nil
                 }
                 .environmentObject(app)
-            }
-            .alert("Nie udało się otworzyć serialu", isPresented: Binding(
-                get: { seriesAlert != nil },
-                set: { if !$0 { seriesAlert = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(seriesAlert ?? "")
             }
             .onAppear {
                 if !didApplyInitial {
@@ -74,28 +63,6 @@ struct LatestCdaHdCatalogView: View {
                     didApplyInitial = true
                 }
             }
-    }
-
-    private var openingOverlay: some View {
-        Group {
-            if openingSeries {
-                ZStack {
-                    Color.black.opacity(0.55)
-                    VStack(spacing: 16) {
-                        ProgressView().scaleEffect(1.4)
-                        Text("Ładuję odcinki…")
-                            .font(NostalgieFont.rowTitle)
-                            .foregroundStyle(.white)
-                        Text("CDA-HD · to może potrwać do ~90 s")
-                            .font(NostalgieFont.caption)
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
-                    .padding(28)
-                    .background(NostalgieTheme.card, in: RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
-                }
-                .ignoresSafeArea()
-            }
-        }
     }
 
     private var catalogContent: some View {
@@ -330,20 +297,12 @@ struct LatestCdaHdCatalogView: View {
             isSerial(item)
             || (item.detail?.localizedCaseInsensitiveContains("serial") == true)
         if looksLikeSeries {
-            openingSeries = true
-            defer { openingSeries = false }
-            do {
-                let info = try await app.api.fetchInfo(url: item.url)
-                if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
-                    seriesInfo = info
-                    return
-                }
-                seriesAlert = "Nie znaleziono odcinków — spróbuj ponownie za chwilę."
-                return
-            } catch {
-                seriesAlert = error.localizedDescription
-                return
-            }
+            seriesOpen = SeriesOpenRequest(
+                url: item.url,
+                title: item.title,
+                thumbnail: item.thumbnail
+            )
+            return
         }
         selectedDetail = MediaSelection(from: item)
     }

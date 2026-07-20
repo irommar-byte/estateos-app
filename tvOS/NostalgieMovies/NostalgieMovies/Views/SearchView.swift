@@ -26,10 +26,8 @@ struct SearchView: View {
     @State private var hasMore = false
     @State private var isLoading = false
     @State private var isLoadingMore = false
-    @State private var openingSeries = false
-    @State private var seriesAlert: String?
     @State private var errorMessage: String?
-    @State private var seriesInfo: VideoInfoResponse?
+    @State private var seriesOpen: SeriesOpenRequest?
     @State private var selectedDetail: MediaSelection?
     @State private var gridColumnCount = 4
     @State private var searchTask: Task<Void, Never>?
@@ -42,26 +40,17 @@ struct SearchView: View {
 
     var body: some View {
         searchContent
-            .overlay { openingOverlay }
             .fullScreenCover(item: $selectedDetail) { detail in
                 MediaDetailView(selection: detail) {
-                    Task { await openSeriesFromDetail(detail.url) }
+                    seriesOpen = SeriesOpenRequest(url: detail.url, title: detail.title, thumbnail: detail.thumbnail)
                 }
                 .environmentObject(app)
             }
-            .fullScreenCover(item: $seriesInfo) { series in
-                SeriesEpisodesView(info: series, backLabel: "Wróć do wyszukiwania") {
-                    seriesInfo = nil
+            .fullScreenCover(item: $seriesOpen) { req in
+                SeriesEpisodesLoaderView(request: req, backLabel: "Wróć do wyszukiwania") {
+                    seriesOpen = nil
                 }
                 .environmentObject(app)
-            }
-            .alert("Nie udało się otworzyć serialu", isPresented: Binding(
-                get: { seriesAlert != nil },
-                set: { if !$0 { seriesAlert = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(seriesAlert ?? "")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .task { await app.refreshFavorites() }
@@ -73,24 +62,6 @@ struct SearchView: View {
             .onDisappear { searchTask?.cancel() }
     }
 
-    private var openingOverlay: some View {
-        Group {
-            if openingSeries {
-                ZStack {
-                    Color.black.opacity(0.55)
-                    VStack(spacing: 16) {
-                        ProgressView().scaleEffect(1.4)
-                        Text("Ładuję odcinki…")
-                            .font(NostalgieFont.rowTitle)
-                            .foregroundStyle(.white)
-                    }
-                    .padding(28)
-                    .background(NostalgieTheme.card, in: RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
-                }
-                .ignoresSafeArea()
-            }
-        }
-    }
 
     private var searchContent: some View {
         ScrollViewReader { scrollProxy in
@@ -487,37 +458,22 @@ struct SearchView: View {
             || item.url.localizedCaseInsensitiveContains("/tvshow/")
             || (item.detail?.localizedCaseInsensitiveContains("serial") == true)
         if looksLikeSeries {
-            await loadSeries(url: item.url, fallbackToDetail: item)
+            loadSeries(url: item.url, fallbackToDetail: item)
             return
         }
         selectedDetail = MediaSelection(from: item)
     }
 
-    private func openSeriesFromDetail(_ url: String) async {
+    private func openSeriesFromDetail(_ url: String, title: String = "Serial", thumbnail: String? = nil) {
         selectedDetail = nil
-        await loadSeries(url: url, fallbackToDetail: nil)
+        seriesOpen = SeriesOpenRequest(url: url, title: title, thumbnail: thumbnail)
     }
 
-    private func loadSeries(url: String, fallbackToDetail: SearchResultItem?) async {
-        openingSeries = true
-        defer { openingSeries = false }
-        do {
-            let info = try await app.api.fetchInfo(url: url)
-            if info.isPlaylist == true, !info.playableEpisodes.isEmpty {
-                seriesInfo = info
-                return
-            }
-            if let fallbackToDetail {
-                selectedDetail = MediaSelection(from: fallbackToDetail)
-            } else {
-                seriesAlert = "Nie znaleziono odcinków tego serialu."
-            }
-        } catch {
-            if let fallbackToDetail {
-                selectedDetail = MediaSelection(from: fallbackToDetail)
-            } else {
-                seriesAlert = error.localizedDescription
-            }
-        }
+    private func loadSeries(url: String, fallbackToDetail: SearchResultItem?) {
+        seriesOpen = SeriesOpenRequest(
+            url: url,
+            title: fallbackToDetail?.title ?? "Serial",
+            thumbnail: fallbackToDetail?.thumbnail
+        )
     }
 }

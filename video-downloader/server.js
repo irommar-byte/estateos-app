@@ -3381,10 +3381,13 @@ async function warmCdaHdCaches() {
     const series = items.filter((i) => i.isSerial || isCdaHdTvShowUrl(i.url));
     console.warn(`cda-hd warm: ${items.length} pozycji (seriali: ${series.length})`);
     // Podgrzej listy odcinków — FlareSolverr ~30–90 s, ale potem /api/info jest natychmiastowe.
-    warmCdaHdTvShows(
-      series.map((i) => i.url),
-      { limit: 10 }
-    );
+    // Mało równoległych Flare — jeden solve naraz, kolejka 3 tytułów.
+    setTimeout(() => {
+      warmCdaHdTvShows(
+        series.map((i) => i.url),
+        { limit: 3 }
+      );
+    }, 15_000);
   } catch (err) {
     console.warn("cda-hd warm:", err?.message || err);
   } finally {
