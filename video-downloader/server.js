@@ -3236,6 +3236,7 @@ async function searchTvp(query, limit = 48) {
       qualities: quality ? [quality] : [],
       source: "tvp",
       detail: item.type === "SERIAL" ? "Serial · TVP VOD" : "TVP VOD",
+      isSerial: item.type === "SERIAL" || /serial/i.test(String(item.type || "")),
     });
   };
 
