@@ -3940,18 +3940,43 @@ app.get("/api/cda-hd/home", async (req, res) => {
 let filmsServiceHomeCache = { at: 0, bySource: {} };
 const FILMS_SERVICE_HOME_TTL_MS = 5 * 60 * 1000;
 
-const SERVICE_HOME_GENRES = [
-  { id: "komedia", title: "Komedia", queries: { cda: "komedia", tvp: "komedia", youtube: "komedia pełny film" } },
-  { id: "akcja", title: "Akcja", queries: { cda: "akcja", tvp: "akcja", youtube: "film akcji pełny" } },
-  { id: "horror", title: "Horror", queries: { cda: "horror", tvp: "horror", youtube: "horror film pełny" } },
-  { id: "dramat", title: "Dramat", queries: { cda: "dramat", tvp: "dramat", youtube: "dramat film pełny" } },
-  { id: "thriller", title: "Thriller", queries: { cda: "thriller", tvp: "thriller", youtube: "thriller film pełny" } },
-  { id: "sci-fi", title: "Science fiction", queries: { cda: "sci-fi", tvp: "science fiction", youtube: "sci-fi film pełny" } },
-  { id: "familijny", title: "Familijny", queries: { cda: "familijny", tvp: "familijny", youtube: "film familijny pełny" } },
-  { id: "dokument", title: "Dokument", queries: { cda: "dokument", tvp: "dokument", youtube: "dokument film pełny" } },
-  { id: "animacja", title: "Animacja", queries: { cda: "animacja", tvp: "bajka", youtube: "animacja film pełny" } },
-  { id: "romans", title: "Romans", queries: { cda: "romans", tvp: "romans", youtube: "romans film pełny" } },
+const SERVICE_HOME_GENRE_FILTERS = [
+  { id: "komedia", title: "Komedia", keys: ["komedi", "comedy", "funny"] },
+  { id: "akcja", title: "Akcja", keys: ["akcj", "action", "mission", "war"] },
+  { id: "horror", title: "Horror", keys: ["horror", "strach", "zombie", "upiór", "upior"] },
+  { id: "dramat", title: "Dramat", keys: ["dramat", "drama"] },
+  { id: "thriller", title: "Thriller", keys: ["thriller", "krymina", "suspense"] },
+  { id: "sci-fi", title: "Science fiction", keys: ["sci-fi", "science", "kosmos", "space", "alien"] },
+  { id: "familijny", title: "Familijny", keys: ["famili", "family", "dzieci", "bajk"] },
+  { id: "dokument", title: "Dokument", keys: ["dokument", "documentary"] },
+  { id: "animacja", title: "Animacja", keys: ["animac", "cartoon", "pixar", "disney"] },
+  { id: "romans", title: "Romans", keys: ["romans", "romance", "miłos", "milos"] },
 ];
+
+const SERVICE_HOME_SEARCH_SEEDS = {
+  cda: ["film", "serial", "komedia", "horror", "akcja"],
+  tvp: ["serial", "film", "teatr", "dokument", "bajka"],
+  youtube: ["pełny film", "serial pełny", "komedia film", "horror film", "film akcji"],
+};
+
+function filterItemsByKeys(items, keys) {
+  const list = Array.isArray(items) ? items : [];
+  const lowerKeys = keys.map((k) => String(k).toLowerCase());
+  return list.filter((item) => {
+    const hay = `${item.title || ""} ${item.detail || ""} ${item.uploader || ""}`.toLowerCase();
+    return lowerKeys.some((k) => hay.includes(k));
+  });
+}
+
+async function mapPoolLimited(items, limit, mapper) {
+  const out = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const chunk = items.slice(i, i + limit);
+    const part = await Promise.all(chunk.map(mapper));
+    out.push(...part);
+  }
+  return out;
+}
 
 app.get("/api/films/service-home", async (req, res) => {
   const source = String(req.query.source || "").toLowerCase();
@@ -3962,7 +3987,7 @@ app.get("/api/films/service-home", async (req, res) => {
 
   const now = Date.now();
   const cached = filmsServiceHomeCache.bySource?.[source];
-  if (cached?.shelves?.length && now - (cached.at || 0) < FILMS_SERVICE_HOME_TTL_MS) {
+  if (cached?.payload?.shelves?.length && now - (cached.at || 0) < FILMS_SERVICE_HOME_TTL_MS) {
     return res.json({ ...cached.payload, cached: true });
   }
 
@@ -3975,95 +4000,126 @@ app.get("/api/films/service-home", async (req, res) => {
     ...meta,
   });
 
-  const searchShelf = async (id, title, query, ms = 10000, meta = {}) => {
+  const searchOnce = async (query, ms = 22000) => {
     const handler = SEARCH_HANDLERS[source];
-    if (!handler || !query) return null;
+    if (!handler || !query) return [];
     try {
-      const part = await withTimeout(
-        (async () => enrichSearchResults(await handler(query, Math.min(limit, 28), null), null, source))(),
+      return await withTimeout(
+        (async () =>
+          enrichSearchResults(await handler(query, Math.min(36, limit + 8), null), null, source))(),
         ms,
-        `service-home/${source}/${id}`
+        `service-home/${source}/${query}`
       );
-      if (!part?.length) return null;
-      return mk(id, title, part, { searchQuery: query, catalogMode: "latest", ...meta });
     } catch (err) {
-      console.warn(`service-home ${source}/${id}:`, err?.message || err);
-      return null;
+      console.warn(`service-home search ${source}/${query}:`, err?.message || err);
+      return [];
     }
   };
 
   try {
-    const seeds =
-      source === "tvp"
-        ? {
-            all: "film",
-            latest: "premiery",
-            popular: "popularne",
-            films: "film",
-            series: "serial",
-          }
-        : source === "youtube"
-          ? {
-              all: "pełny film",
-              latest: "nowy film 2025 pełny",
-              popular: "najlepsze filmy pełny",
-              films: "pełny film",
-              series: "serial pełny sezon",
-            }
-          : {
-              all: "film",
-              latest: "nowości",
-              popular: "popularne",
-              films: "film",
-              series: "serial",
-            };
+    // 1) Pula z katalogu / films-home cache
+    let pool = [];
+    try {
+      const resolved = await resolveFilmsCatalogPool(source);
+      pool = Array.isArray(resolved.pool) ? [...resolved.pool] : [];
+    } catch {}
 
-    // Try catalog modes first (when pool exists), fall back to search.
-    const catalogShelf = async (id, title, mode, type = "all") => {
-      try {
-        const { pool, cached } = await resolveFilmsCatalogPool(source);
-        const filtered = filterCatalogByType(pool, type);
-        const ordered = sortFilmsCatalogPool(filtered, mode);
-        if (ordered.length >= 8) {
-          return mk(id, title, ordered, {
-            catalogMode: mode,
-            catalogType: type === "all" ? null : type,
-            cached: !!cached,
-          });
+    if (!pool.length && filmsHomeCache?.payload?.shelves?.length) {
+      for (const sh of filmsHomeCache.payload.shelves) {
+        if (String(sh.source || "").toLowerCase().includes(source)) {
+          pool.push(...(sh.items || []));
         }
-      } catch (err) {
-        console.warn(`service-home catalog ${source}/${id}:`, err?.message || err);
       }
-      const q =
-        type === "serial" ? seeds.series : type === "film" ? seeds.films : seeds.all;
-      return searchShelf(id, title, q, 10000, {
-        catalogMode: mode,
-        catalogType: type === "all" ? null : type,
-      });
-    };
-
-    const core = await Promise.all([
-      catalogShelf("all", "Wszystkie", "latest", "all"),
-      catalogShelf("latest", "Najnowsze", "latest", "all"),
-      catalogShelf("popular", "Najpopularniejsze", "most-played", "all"),
-      catalogShelf("top", "Najlepiej oceniane", "top-rated", "all"),
-      catalogShelf("films", "Filmy", "latest", "film"),
-      catalogShelf("series", "Seriale", "latest", "serial"),
-    ]);
-
-    const shelves = core.filter((row) => row?.items?.length);
-
-    const genreRows = await Promise.all(
-      SERVICE_HOME_GENRES.map(async (genre) => {
-        const q = genre.queries[source] || genre.title;
-        return searchShelf(genre.id, genre.title, q, 9000);
-      })
-    );
-    for (const row of genreRows) {
-      if (row?.items?.length) shelves.push(row);
     }
 
-    // Dedupe empty-ish
+    // 2) Dokarmianie: max 3 seedy, po kolei (nie 16 równoległych requestów).
+    if (pool.length < 24) {
+      const seeds = SERVICE_HOME_SEARCH_SEEDS[source] || ["film"];
+      for (const q of seeds.slice(0, 3)) {
+        const batch = await searchOnce(q, 24000);
+        const seen = new Set(pool.map((x) => x.url || x.id));
+        for (const item of batch) {
+          const key = item.url || item.id;
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          pool.push(item);
+        }
+        if (pool.length >= 40) break;
+      }
+    }
+
+    const shelves = [];
+    const pushShelf = (row) => {
+      if (row?.items?.length) shelves.push(row);
+    };
+
+    pushShelf(
+      mk("all", "Wszystkie", sortFilmsCatalogPool(pool, "latest"), {
+        catalogMode: "latest",
+        searchQuery: (SERVICE_HOME_SEARCH_SEEDS[source] || ["film"])[0],
+      })
+    );
+    pushShelf(
+      mk("latest", "Najnowsze", sortFilmsCatalogPool(pool, "latest"), {
+        catalogMode: "latest",
+        searchQuery: (SERVICE_HOME_SEARCH_SEEDS[source] || ["film"])[0],
+      })
+    );
+    pushShelf(
+      mk("popular", "Najpopularniejsze", sortFilmsCatalogPool(pool, "most-played"), {
+        catalogMode: "most-played",
+        searchQuery: (SERVICE_HOME_SEARCH_SEEDS[source] || ["film"])[0],
+      })
+    );
+    pushShelf(
+      mk("top", "Najlepiej oceniane", sortFilmsCatalogPool(pool, "top-rated"), {
+        catalogMode: "top-rated",
+        searchQuery: (SERVICE_HOME_SEARCH_SEEDS[source] || ["film"])[0],
+      })
+    );
+    pushShelf(
+      mk("films", "Filmy", filterCatalogByType(pool, "film"), {
+        catalogMode: "latest",
+        catalogType: "film",
+        searchQuery: source === "youtube" ? "pełny film" : "film",
+      })
+    );
+    pushShelf(
+      mk("series", "Seriale", filterCatalogByType(pool, "serial"), {
+        catalogMode: "latest",
+        catalogType: "serial",
+        searchQuery: "serial",
+      })
+    );
+
+    // 3) Gatunki: najpierw filtr puli; brakujące dociągamy max 2 równoległymi searchami.
+    const missingGenres = [];
+    for (const genre of SERVICE_HOME_GENRE_FILTERS) {
+      const filtered = filterItemsByKeys(pool, genre.keys);
+      if (filtered.length >= 6) {
+        pushShelf(
+          mk(genre.id, genre.title, filtered, {
+            catalogMode: "latest",
+            searchQuery: genre.title.toLowerCase(),
+          })
+        );
+      } else {
+        missingGenres.push(genre);
+      }
+    }
+
+    const genreSearches = await mapPoolLimited(missingGenres.slice(0, 6), 2, async (genre) => {
+      const q =
+        source === "youtube" ? `${genre.title.toLowerCase()} film pełny` : genre.title.toLowerCase();
+      const items = await searchOnce(q, 20000);
+      if (!items.length) return null;
+      return mk(genre.id, genre.title, items, {
+        catalogMode: "latest",
+        searchQuery: q,
+      });
+    });
+    for (const row of genreSearches) pushShelf(row);
+
     const payload = {
       ok: true,
       source,
