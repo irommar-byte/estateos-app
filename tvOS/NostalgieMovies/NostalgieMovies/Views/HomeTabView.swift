@@ -4,6 +4,7 @@ struct HomeTabView: View {
     @EnvironmentObject private var app: AppModel
     @State private var tab: Tab = .films
     @FocusState private var focusedTab: Tab?
+    @FocusState private var nowPlayingFocused: Bool
     @Namespace private var primaryTabNamespace
     @State private var deepLinkSeries: VideoInfoResponse?
     @State private var deepLinkDetail: MediaSelection?
@@ -53,14 +54,6 @@ struct HomeTabView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
                 .padding(.horizontal, NostalgieSpacing.screenH)
-            if app.musicPlayback.hasActiveSession,
-               !app.musicPlayback.isPlayerPresented,
-               let controller = app.musicPlayback.controller {
-                MusicNowPlayingBar(controller: controller) {
-                    app.musicPlayback.presentPlayerIfActive()
-                }
-                .padding(.horizontal, NostalgieSpacing.screenH)
-            }
             if app.movieDownloadService.hasActiveBatch {
                 MovieDownloadBatchBanner()
                     .environmentObject(app)
@@ -172,10 +165,17 @@ struct HomeTabView: View {
         }
     }
 
+    private var showsNowPlayingChip: Bool {
+        app.musicPlayback.hasActiveSession
+            && !app.musicPlayback.isPlayerPresented
+            && app.musicPlayback.controller != nil
+    }
+
     private var header: some View {
         ZStack(alignment: .center) {
-            HStack(alignment: .center) {
-                brandMark
+            HStack(alignment: .center, spacing: 16) {
+                headerLeading
+                    .frame(minWidth: 280, maxWidth: 420, alignment: .leading)
                 Spacer(minLength: 12)
                 secondaryTabs
             }
@@ -184,6 +184,28 @@ struct HomeTabView: View {
         }
         .padding(.bottom, 22)
         .focusSection()
+    }
+
+    @ViewBuilder
+    private var headerLeading: some View {
+        if showsNowPlayingChip, let controller = app.musicPlayback.controller {
+            MusicNowPlayingBar(controller: controller, isFocused: nowPlayingFocused) {
+                app.musicPlayback.presentPlayerIfActive()
+            }
+            .focused($nowPlayingFocused)
+            .onMoveCommand { direction in
+                switch direction {
+                case .right:
+                    focusedTab = tab.isPrimaryDestination ? tab : .films
+                case .down:
+                    requestContentFocus(for: tab)
+                default:
+                    break
+                }
+            }
+        } else {
+            brandMark
+        }
     }
 
     private var brandMark: some View {
@@ -235,6 +257,8 @@ struct HomeTabView: View {
         .onMoveCommand { direction in
             if direction == .down {
                 requestContentFocus(for: tab)
+            } else if direction == .left, showsNowPlayingChip {
+                nowPlayingFocused = true
             }
         }
     }
@@ -285,6 +309,13 @@ struct HomeTabView: View {
         .buttonStyle(PrimaryTabButtonStyle(isSelected: isSelected, namespace: primaryTabNamespace))
         .focused($focusedTab, equals: item)
         .accessibilityHint(item.accessibilityHint)
+        .onMoveCommand { direction in
+            if direction == .left, item == .films, showsNowPlayingChip {
+                nowPlayingFocused = true
+            } else if direction == .down {
+                requestContentFocus(for: tab)
+            }
+        }
     }
 
     @ViewBuilder
@@ -319,17 +350,18 @@ struct HomeTabView: View {
 
 private struct MusicNowPlayingBar: View {
     @ObservedObject var controller: MusicPlayerController
+    var isFocused: Bool = false
     let onOpen: () -> Void
 
     var body: some View {
         Button(action: onOpen) {
-            HStack(spacing: 14) {
-                Image(systemName: controller.isPlaying ? "waveform.circle.fill" : "pause.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(NostalgieTheme.accent)
+            HStack(spacing: 12) {
+                NowPlayingEqualizer(isPlaying: controller.isPlaying)
+                    .frame(width: 28, height: 28)
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(controller.currentTrack?.title ?? "Odtwarzanie")
-                        .font(NostalgieFont.rowTitle)
+                        .font(NostalgieFont.rounded(.caption, weight: .semibold))
                         .lineLimit(1)
                     if let artist = controller.currentTrack?.artist, !artist.isEmpty {
                         Text(artist)
@@ -338,17 +370,53 @@ private struct MusicNowPlayingBar: View {
                             .lineLimit(1)
                     }
                 }
-                Spacer()
-                Label("Player", systemImage: "chevron.up.circle.fill")
-                    .font(NostalgieFont.caption)
+                .frame(maxWidth: 220, alignment: .leading)
+
+                Image(systemName: "chevron.up.circle.fill")
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .glassPanel(.panel)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(isFocused ? 0.18 : 0.10))
+            )
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(Color.white.opacity(isFocused ? 0.45 : 0.16), lineWidth: isFocused ? 2 : 1)
+            }
         }
         .buttonStyle(FocusCardButtonStyle())
-        .padding(.bottom, 16)
+        .accessibilityLabel("Otwórz player")
+        .accessibilityHint(controller.currentTrack?.title ?? "Teraz odtwarzane")
+    }
+}
+
+private struct NowPlayingEqualizer: View {
+    var isPlaying: Bool
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: !isPlaying)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            HStack(alignment: .bottom, spacing: 3) {
+                ForEach(0..<4, id: \.self) { index in
+                    Capsule(style: .continuous)
+                        .fill(NostalgieTheme.accent)
+                        .frame(width: 3.5, height: barHeight(index: index, time: t))
+                }
+            }
+            .frame(width: 22, height: 22, alignment: .bottom)
+            .padding(3)
+            .background(Circle().fill(NostalgieTheme.accent.opacity(0.22)))
+        }
+    }
+
+    private func barHeight(index: Int, time: Double) -> CGFloat {
+        guard isPlaying else { return [6, 12, 8, 10][index] }
+        let phase = time * (2.6 + Double(index) * 0.55) + Double(index) * 0.9
+        let wave = (sin(phase) + 1) / 2
+        return 5 + CGFloat(wave) * 14
     }
 }
 
