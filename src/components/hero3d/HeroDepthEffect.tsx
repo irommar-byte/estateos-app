@@ -154,6 +154,7 @@ export default function HeroDepthEffect() {
   const ref = useRef<HTMLElement | null>(null);
   const noiseFilterId = useId().replace(/:/g, "");
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [isCompact, setIsCompact] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
 
   useEffect(() => {
@@ -166,17 +167,42 @@ export default function HeroDepthEffect() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    // Mobile / wąski viewport: karty Home + Cars są jedna pod drugą —
+    // silny parallax szybko zakrywa CTA aut.
+    const mq = window.matchMedia("(max-width: 767px)");
+    const sync = () => setIsCompact(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
     fetch("/api/auth/check", { cache: "no-store", credentials: "include" })
       .then((res) => res.json())
       .then((data) => setLoggedIn(Boolean(data?.loggedIn && data?.user?.id)))
       .catch(() => setLoggedIn(false));
   }, []);
 
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
-  const bgY = useTransform(scrollYProgress, [0, 1], ["0%", reduceMotion ? "5%" : "20%"]);
-  const bgScale = useTransform(scrollYProgress, [0, 1], [1.02, reduceMotion ? 1.03 : 1.13]);
-  const contentY = useTransform(scrollYProgress, [0, 1], ["0%", reduceMotion ? "5%" : "32%"]);
-  const opacityFade = useTransform(scrollYProgress, [0, 0.82, 1], [1, 0.68, 0.22]);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    // Na mobile start parallax dopiero gdy hero jest w połowie — CTA Cars nie znika od razu.
+    offset: isCompact ? ["center start", "end start"] : ["start start", "end start"],
+  });
+  const softMotion = reduceMotion || isCompact;
+  const bgY = useTransform(scrollYProgress, [0, 1], ["0%", softMotion ? "4%" : "14%"]);
+  const bgScale = useTransform(scrollYProgress, [0, 1], [1.02, softMotion ? 1.03 : 1.08]);
+  // Mobile: prawie bez przesuwania contentu — inaczej Cars znika pod warstwą.
+  const contentY = useTransform(
+    scrollYProgress,
+    [0, 1],
+    ["0%", softMotion ? "4%" : "14%"],
+  );
+  const opacityFade = useTransform(
+    scrollYProgress,
+    softMotion ? [0, 0.9, 1] : [0, 0.88, 1],
+    softMotion ? [1, 0.96, 0.82] : [1, 0.84, 0.55],
+  );
   const customEase = [0.16, 1, 0.3, 1] as const;
 
   const trackHomeCta = (event: HomeCtaAnalyticsEvent, ctaId: HomeCtaId) => {
@@ -206,9 +232,10 @@ export default function HeroDepthEffect() {
   return (
     <section
       ref={ref}
-      className="premium-hero-stage relative min-h-[100svh] w-full overflow-hidden bg-[#050505]"
+      className="premium-hero-stage relative min-h-[100svh] w-full overflow-x-hidden bg-[#050505]"
     >
-      <div className="absolute inset-0 h-full w-full overflow-hidden">
+      {/* Tło absolutne — nie przycina treści (treść jest w normalnym flow poniżej). */}
+      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
         <motion.div style={{ y: bgY, scale: bgScale }} className="absolute -inset-[10%] z-0 flex origin-center will-change-transform">
           <div
             style={{ backgroundImage: `url('${HERO_HOME_IMAGE}')` }}
@@ -220,7 +247,7 @@ export default function HeroDepthEffect() {
           />
         </motion.div>
 
-        <div className="pointer-events-none absolute inset-0 z-[6] opacity-[0.04] mix-blend-overlay" aria-hidden>
+        <div className="absolute inset-0 z-[6] opacity-[0.04] mix-blend-overlay">
           <svg className="h-full w-full" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <filter id={`hero-noise-${noiseFilterId}`} x="0" y="0">
@@ -233,8 +260,7 @@ export default function HeroDepthEffect() {
 
         {!reduceMotion && (
           <motion.div
-            aria-hidden
-            className="pointer-events-none absolute -left-[18%] top-[4%] z-[5] h-[86%] w-[76%] rounded-[50%] bg-[radial-gradient(closest-side,rgba(16,185,129,0.2),transparent_72%)] blur-3xl"
+            className="absolute -left-[18%] top-[4%] z-[5] h-[86%] w-[76%] rounded-[50%] bg-[radial-gradient(closest-side,rgba(16,185,129,0.2),transparent_72%)] blur-3xl"
             animate={{ x: ["-4%", "6%", "-2%"], y: ["0%", "5%", "-1%"], opacity: [0.22, 0.42, 0.28] }}
             transition={{ duration: 24, repeat: Infinity, ease: "easeInOut" }}
           />
@@ -242,8 +268,7 @@ export default function HeroDepthEffect() {
 
         {!reduceMotion && (
           <motion.div
-            aria-hidden
-            className="pointer-events-none absolute -right-[12%] bottom-[0%] z-[5] h-[70%] w-[60%] rounded-[50%] bg-[radial-gradient(closest-side,rgba(56,189,248,0.16),transparent_70%)] blur-3xl"
+            className="absolute -right-[12%] bottom-[0%] z-[5] h-[70%] w-[60%] rounded-[50%] bg-[radial-gradient(closest-side,rgba(56,189,248,0.16),transparent_70%)] blur-3xl"
             animate={{ x: ["2%", "-5%", "1%"], y: ["0%", "-4%", "1%"], opacity: [0.14, 0.28, 0.18] }}
             transition={{ duration: 26, repeat: Infinity, ease: "easeInOut", delay: 1.2 }}
           />
@@ -252,19 +277,12 @@ export default function HeroDepthEffect() {
         <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/72 via-black/34 to-[#050505]" />
         <div className="absolute inset-y-0 left-1/2 z-[9] w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
         <div className="absolute inset-0 z-10 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(5,5,5,0.25)_48%,#050505_118%)]" />
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 z-[11] h-[min(12vh,7rem)] bg-gradient-to-b from-black/90 to-transparent"
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-[11] h-[min(22vh,13rem)] bg-gradient-to-t from-[#050505] to-transparent"
-          aria-hidden
-        />
+        <div className="absolute inset-x-0 top-0 z-[11] h-[min(12vh,7rem)] bg-gradient-to-b from-black/90 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 z-[11] h-[min(22vh,13rem)] bg-gradient-to-t from-[#050505] to-transparent" />
 
         {!reduceMotion && (
           <motion.div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 z-[12] opacity-0 sm:opacity-100"
+            className="absolute inset-0 z-[12] opacity-0 sm:opacity-100"
             style={{
               backgroundImage:
                 "linear-gradient(115deg, transparent 42%, rgba(255,255,255,0.045) 50%, transparent 58%)",
@@ -274,124 +292,124 @@ export default function HeroDepthEffect() {
             transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
           />
         )}
+      </div>
 
+      <motion.div
+        style={{ y: contentY }}
+        className="relative z-20 flex w-full items-start justify-center px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-[calc(5.25rem+env(safe-area-inset-top))] text-center sm:pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:pt-[calc(5.75rem+env(safe-area-inset-top))] md:min-h-[100svh] md:pb-[calc(4rem+env(safe-area-inset-bottom))]"
+      >
         <motion.div
-          style={{ y: contentY }}
-          className="relative z-20 flex min-h-[100svh] w-full items-start justify-center overflow-x-hidden px-4 pb-[calc(3rem+env(safe-area-inset-bottom))] pt-[calc(5.25rem+env(safe-area-inset-top))] text-center sm:pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pt-[calc(5.75rem+env(safe-area-inset-top))]"
+          style={{ opacity: opacityFade }}
+          className="flex w-full max-w-6xl shrink-0 flex-col items-center"
         >
-          <motion.div
-            style={{ opacity: opacityFade }}
-            className="flex w-full max-w-6xl shrink-0 flex-col items-center"
+          <motion.p
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: customEase, delay: 0.18 }}
+            className="hero-eyebrow mb-3 shrink-0 text-[10px] font-black uppercase tracking-[0.28em] text-white/80 sm:mb-4 sm:text-xs"
           >
-            <motion.p
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, ease: customEase, delay: 0.18 }}
-              className="hero-eyebrow mb-3 shrink-0 text-[10px] font-black uppercase tracking-[0.28em] text-white/80 sm:mb-4 sm:text-xs"
-            >
-              <span className="text-emerald-400/95">{dict.hero.eyebrowHome}</span>
-              <span className="mx-2 text-white/35">·</span>
-              <span className="text-sky-400/95">{dict.hero.eyebrowCar}</span>
-              <span className="mx-2 text-white/35">·</span>
-              <span>{dict.hero.eyebrowSuffix}</span>
-            </motion.p>
+            <span className="text-emerald-400/95">{dict.hero.eyebrowHome}</span>
+            <span className="mx-2 text-white/35">·</span>
+            <span className="text-sky-400/95">{dict.hero.eyebrowCar}</span>
+            <span className="mx-2 text-white/35">·</span>
+            <span>{dict.hero.eyebrowSuffix}</span>
+          </motion.p>
 
-            <motion.h1
-              initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
-              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-              transition={{ duration: 1.05, ease: customEase, delay: 0.1 }}
-              className="hero-wordmark shrink-0 text-[clamp(5.5rem,28vw,16rem)] font-light leading-[0.8] tracking-[-0.075em] text-white drop-shadow-[0_18px_60px_rgba(0,0,0,0.9)] md:text-[clamp(6.5rem,24vw,18rem)]"
-            >
-              <span className="font-semibold text-emerald-400">E</span>state
-              <span className="font-semibold text-emerald-400">O</span>
-              <span className="font-semibold text-sky-400">S</span>
-              <sup className="ml-1 align-super text-[0.18em] font-black tracking-normal text-white/80">TM</sup>
-            </motion.h1>
+          <motion.h1
+            initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 1.05, ease: customEase, delay: 0.1 }}
+            className="hero-wordmark shrink-0 text-[clamp(3.75rem,22vw,16rem)] font-light leading-[0.8] tracking-[-0.075em] text-white drop-shadow-[0_18px_60px_rgba(0,0,0,0.9)] sm:text-[clamp(5rem,24vw,16rem)] md:text-[clamp(6.5rem,24vw,18rem)]"
+          >
+            <span className="font-semibold text-emerald-400">E</span>state
+            <span className="font-semibold text-emerald-400">O</span>
+            <span className="font-semibold text-sky-400">S</span>
+            <sup className="ml-1 align-super text-[0.18em] font-black tracking-normal text-white/80">TM</sup>
+          </motion.h1>
 
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.85, ease: customEase, delay: 0.24 }}
-              className="mt-3 max-w-2xl px-2 text-sm font-light leading-relaxed text-white/78 sm:mt-4 sm:text-base"
-            >
-              {dict.hero.tagline}
-            </motion.p>
+          <motion.p
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.85, ease: customEase, delay: 0.24 }}
+            className="mt-3 max-w-2xl px-2 text-sm font-light leading-relaxed text-white/78 sm:mt-4 sm:text-base"
+          >
+            {dict.hero.tagline}
+          </motion.p>
 
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.9, ease: customEase, delay: 0.32 }}
-              className="hero-audience-grid mt-5 grid w-full max-w-5xl gap-3 sm:mt-6 md:mt-8 md:grid-cols-2 md:gap-5"
-            >
-              <HeroVerticalCard
-                vertical="home"
-                brand={dict.hero.homeCard.brand}
-                title={dict.hero.homeCard.title}
-                subtitle={dict.hero.homeCard.subtitle}
-                bullets={dict.hero.homeCard.bullets}
-                primaryCta={dict.hero.homeCard.ctaList}
-                secondaryCta={loggedIn ? dict.hero.homeCard.ctaMine : dict.hero.homeCard.ctaBrowse}
-                onPrimary={() => openCta("LIST", homeListRoute)}
-                onSecondary={() => openCta("HOME_CATALOG", homeSecondaryRoute)}
-              />
-              <HeroVerticalCard
-                vertical="car"
-                brand={dict.hero.carCard.brand}
-                title={dict.hero.carCard.title}
-                subtitle={dict.hero.carCard.subtitle}
-                bullets={dict.hero.carCard.bullets}
-                primaryCta={dict.hero.carCard.ctaList}
-                secondaryCta={loggedIn ? dict.hero.carCard.ctaMine : dict.hero.carCard.ctaBrowse}
-                onPrimary={() => openCta("CAR_LIST")}
-                onSecondary={() => openCta("CAR_CATALOG", carSecondaryRoute)}
-              />
-            </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.9, ease: customEase, delay: 0.32 }}
+            className="hero-audience-grid mt-5 grid w-full max-w-5xl gap-3 sm:mt-6 md:mt-8 md:grid-cols-2 md:gap-5"
+          >
+            <HeroVerticalCard
+              vertical="home"
+              brand={dict.hero.homeCard.brand}
+              title={dict.hero.homeCard.title}
+              subtitle={dict.hero.homeCard.subtitle}
+              bullets={dict.hero.homeCard.bullets}
+              primaryCta={dict.hero.homeCard.ctaList}
+              secondaryCta={loggedIn ? dict.hero.homeCard.ctaMine : dict.hero.homeCard.ctaBrowse}
+              onPrimary={() => openCta("LIST", homeListRoute)}
+              onSecondary={() => openCta("HOME_CATALOG", homeSecondaryRoute)}
+            />
+            <HeroVerticalCard
+              vertical="car"
+              brand={dict.hero.carCard.brand}
+              title={dict.hero.carCard.title}
+              subtitle={dict.hero.carCard.subtitle}
+              bullets={dict.hero.carCard.bullets}
+              primaryCta={dict.hero.carCard.ctaList}
+              secondaryCta={loggedIn ? dict.hero.carCard.ctaMine : dict.hero.carCard.ctaBrowse}
+              onPrimary={() => openCta("CAR_LIST")}
+              onSecondary={() => openCta("CAR_CATALOG", carSecondaryRoute)}
+            />
+          </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.85, ease: customEase, delay: 0.46 }}
-              className="mt-4 w-full max-w-5xl md:mt-5"
-            >
-              <HeroAgencyStrip
-                title={dict.hero.agencyStrip.title}
-                subtitle={dict.hero.agencyStrip.subtitle}
-                cta={dict.hero.agencyStrip.cta}
-                onCta={() => {
-                  trackHomeCta("home_cta_click", "AGENCY");
-                  router.push("/cennik?tab=partner");
-                  trackHomeCta("home_cta_flow_opened", "AGENCY");
-                }}
-              />
-            </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.85, ease: customEase, delay: 0.46 }}
+            className="mt-4 w-full max-w-5xl md:mt-5"
+          >
+            <HeroAgencyStrip
+              title={dict.hero.agencyStrip.title}
+              subtitle={dict.hero.agencyStrip.subtitle}
+              cta={dict.hero.agencyStrip.cta}
+              onCta={() => {
+                trackHomeCta("home_cta_click", "AGENCY");
+                router.push("/cennik?tab=partner");
+                trackHomeCta("home_cta_flow_opened", "AGENCY");
+              }}
+            />
+          </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, ease: customEase, delay: 0.58 }}
-              className="hero-app-badges mt-5 md:mt-7"
-            >
-              <AppStoreBadgeLink
-                label={dict.footer.appStore}
-                androidComingSoon
-                androidSoonLabel={dict.homeAppPitch.androidSoon}
-                androidBetaLabel={dict.homeAppPitch.androidBetaLabel}
-                androidBetaBadge={dict.homeAppPitch.androidBetaBadge}
-                showAndroidBetaHint
-                androidBetaHint={dict.homeAppPitch.androidBetaHint}
-              />
-            </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: customEase, delay: 0.58 }}
+            className="hero-app-badges mt-5 md:mt-7"
+          >
+            <AppStoreBadgeLink
+              label={dict.footer.appStore}
+              androidComingSoon
+              androidSoonLabel={dict.homeAppPitch.androidSoon}
+              androidBetaLabel={dict.homeAppPitch.androidBetaLabel}
+              androidBetaBadge={dict.homeAppPitch.androidBetaBadge}
+              showAndroidBetaHint
+              androidBetaHint={dict.homeAppPitch.androidBetaHint}
+            />
           </motion.div>
         </motion.div>
+      </motion.div>
 
-        <div className="pointer-events-none absolute bottom-8 left-1/2 z-30 hidden -translate-x-1/2 flex-col items-center gap-3 text-white/30 sm:flex">
-          <span className="text-[9px] font-black uppercase tracking-[0.28em]">{dict.hero.scroll}</span>
-          <motion.span
-            className="h-12 w-px bg-gradient-to-b from-white/60 to-transparent"
-            animate={reduceMotion ? undefined : { scaleY: [0.35, 1, 0.35], opacity: [0.25, 0.75, 0.25] }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
-          />
-        </div>
+      <div className="pointer-events-none absolute bottom-8 left-1/2 z-30 hidden -translate-x-1/2 flex-col items-center gap-3 text-white/30 sm:flex">
+        <span className="text-[9px] font-black uppercase tracking-[0.28em]">{dict.hero.scroll}</span>
+        <motion.span
+          className="h-12 w-px bg-gradient-to-b from-white/60 to-transparent"
+          animate={reduceMotion ? undefined : { scaleY: [0.35, 1, 0.35], opacity: [0.25, 0.75, 0.25] }}
+          transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+        />
       </div>
     </section>
   );
