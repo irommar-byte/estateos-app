@@ -36,7 +36,7 @@ enum NostalgieSpacing {
     static let section: CGFloat = 14
     static let row: CGFloat = 6
     static let listRow: CGFloat = 6
-    static let scrollBottom: CGFloat = 56
+    static let scrollBottom: CGFloat = 160
     static let grid: CGFloat = 28
 }
 

@@ -114,7 +114,8 @@ struct HomeTabView: View {
                 }
             }
             .id(tab)
-            .transition(.opacity.combined(with: .move(edge: .trailing)).animation(NostalgieTheme.contentSpring))
+            .transition(.opacity)
+            .animation(.easeOut(duration: 0.18), value: tab)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .padding(.top, NostalgieSpacing.screenTop)
@@ -122,11 +123,13 @@ struct HomeTabView: View {
             if focusedTab == nil {
                 focusedTab = tab
             }
-            requestContentFocus(for: tab)
         }
-        .onChange(of: tab) { _, newTab in
-            requestContentFocus(for: newTab)
+        .onChange(of: focusedTab) { _, focused in
+            // Jak na Apple TV: focus na zakładce = od razu przełączenie (bez klika).
+            guard let focused, focused != tab else { return }
+            selectTab(focused)
         }
+
         .onAppear { consumeDeepLinkIfNeeded() }
         .onChange(of: app.pendingMediaURL) { _, _ in consumeDeepLinkIfNeeded() }
         .fullScreenCover(item: $deepLinkSeries) { info in
