@@ -20,7 +20,7 @@ struct SeriesEpisodesLoaderView: View {
     @State private var attempt = 0
     @FocusState private var backFocused: Bool
 
-    private let maxAttempts = 4
+    private let maxAttempts = 3
 
     var body: some View {
         Group {
@@ -93,7 +93,7 @@ struct SeriesEpisodesLoaderView: View {
 
     private var attemptText: String {
         if attempt <= 1 {
-            return "Ładuję odcinki z CDA-HD… to może potrwać do ~90 s"
+            return "Ładuję odcinki z CDA-HD… pierwsze otwarcie może zająć do ~3 min"
         }
         return "Ponawiam pobieranie listy odcinków (\(attempt)/\(maxAttempts))…"
     }

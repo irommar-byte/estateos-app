@@ -507,7 +507,7 @@ async function resolveMediaInfo(url, browser, req = null) {
       try {
         const show = await withTimeout(
           fetchCdaHdTvShow(url, { allowCache: true, preferCache: true }),
-          110000,
+          200000,
           "cda-hd-tvshow"
         );
         result = buildCdaHdSeriesInfo({ ...show, webpageUrl: show.webpageUrl || url });
@@ -3385,9 +3385,9 @@ async function warmCdaHdCaches() {
     setTimeout(() => {
       warmCdaHdTvShows(
         series.map((i) => i.url),
-        { limit: 3 }
+        { limit: 1 }
       );
-    }, 15_000);
+    }, 60_000);
   } catch (err) {
     console.warn("cda-hd warm:", err?.message || err);
   } finally {
@@ -4612,7 +4612,7 @@ app.post("/api/info", async (req, res) => {
     const seriesLike = isCdaHdTvShowUrl(url) || /\/tvshows?\//i.test(url);
     const data = await withTimeout(
       resolveMediaInfo(url, browser, req),
-      seriesLike ? 120000 : 45000,
+      seriesLike ? 210000 : 45000,
       "info"
     );
     res.json(data);

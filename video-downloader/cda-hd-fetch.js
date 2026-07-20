@@ -276,13 +276,15 @@ async function refreshSessionViaFlare(pageUrl) {
       }
     }
 
-    // 1) Najpierw clearance na home — potem zwykły fetch docelowej strony (szybciej i stabilniej).
     const homeUrl = "https://cda-hd.cc/";
-    let homeSolved = null;
+    const targetIsHome = pageUrl.replace(/\/$/, "") === homeUrl.replace(/\/$/, "");
+
+    // Jedno solve na request: jeśli nie ma cookies — home; inaczej od razu target.
+    // Unikamy podwójnego Flare (home+target), które zabija limity ~110s.
     try {
-      homeSolved = await flareSolveOnce(homeUrl);
-      await applySolvedSession(homeSolved);
-      if (pageUrl.replace(/\/$/, "") !== homeUrl.replace(/\/$/, "")) {
+      if (!session.cookies.length && !targetIsHome) {
+        const homeSolved = await flareSolveOnce(homeUrl);
+        await applySolvedSession(homeSolved);
         const viaCookies = await plainFetchHtml(pageUrl);
         if (
           !isCloudflareChallenge(viaCookies.html, viaCookies.status) &&
@@ -293,18 +295,12 @@ async function refreshSessionViaFlare(pageUrl) {
           console.warn("cda-hd: target OK po clearance home");
           return viaCookies;
         }
-      } else if (
-        homeSolved &&
-        !isCloudflareChallenge(homeSolved.html, homeSolved.status) &&
-        isValidCdaHdHtml(homeSolved.html, homeSolved.finalUrl)
-      ) {
-        return homeSolved;
+        // Cookies bywają niewystarczające — jeden solve targetu (bez ponownego home).
       }
     } catch (err) {
       console.warn("cda-hd home-first:", err?.message || err);
     }
 
-    // 2) Bezpośredni solve docelowej strony.
     const solved = await flareSolveOnce(pageUrl);
     await applySolvedSession(solved);
     return { html: solved.html, finalUrl: solved.finalUrl, status: solved.status };
