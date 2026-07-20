@@ -442,11 +442,9 @@ struct MediaDetailView: View {
                 return
             }
 
-            if mediaInfo == nil {
-                await loadMediaInfo()
-            }
+            // Nie czekaj na /api/info — na CDA-HD Cloudflare potrafi zatrzymać play na minutach.
             statusIsError = false
-            statusMessage = "Przygotowuję odtwarzanie…"
+            statusMessage = "Uruchamiam odtwarzanie…"
             let context = try await MediaPlaybackLauncher.startPlayback(
                 api: app.api,
                 url: selection.url,

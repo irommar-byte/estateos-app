@@ -75,6 +75,17 @@ function isAllowedCdaHdResultUrl(url) {
   }
 }
 
+function hasCdaHdPageSignals(html) {
+  const body = String(html || "");
+  return (
+    /property="og:title"/i.test(body) ||
+    /class="(?:se-c|item)"|numerando|typepost|enlaces|player\.cda-hd|ogladaj\.me|playmogo|\/episode\//i.test(
+      body
+    ) ||
+    (/cda-hd/i.test(body) && body.length > 8000)
+  );
+}
+
 function isValidCdaHdHtml(html, finalUrl = "") {
   const body = String(html || "");
   const url = String(finalUrl || "");
@@ -82,30 +93,31 @@ function isValidCdaHdHtml(html, finalUrl = "") {
   if (/^chrome:/i.test(url) || /new-tab-page/i.test(url)) return false;
   if (url && !isAllowedCdaHdResultUrl(url)) return false;
   if (/<title>\s*New Tab/i.test(body)) return false;
-  if (isCloudflareChallenge(body, 200)) return false;
+  // Interstitial bez treści serwisu.
+  if (isCloudflareChallenge(body, 200) && !hasCdaHdPageSignals(body)) return false;
   // FlareSolverr czasem ustawia <title>(1) New Message!</title> — treść strony i tak jest OK.
-  return (
-    /cda-hd/i.test(body) ||
-    /class="(?:se-c|item)"|numerando|typepost|enlaces|player\.cda-hd|ogladaj\.me|playmogo|\/episode\//i.test(body) ||
-    /property="og:title"/i.test(body)
-  );
+  return hasCdaHdPageSignals(body) || /cda-hd/i.test(body);
 }
 
 export function isCloudflareChallenge(html, status = 200) {
+  const text = String(html || "");
   if (status === 403 || status === 503) {
-    const body = String(html || "");
-    if (!body || /Just a moment|cf-browser-verification|challenge-platform|cf-mitigated|Attention Required/i.test(body)) {
+    if (!text || /Just a moment|cf-browser-verification|challenge-platform|cf-mitigated|Attention Required/i.test(text)) {
       return true;
     }
   }
-  const text = String(html || "");
   if (!text) return false;
-  return (
-    /Just a moment\.\.\./i.test(text) ||
-    /cf-browser-verification/i.test(text) ||
-    /cdn-cgi\/challenge-platform/i.test(text) ||
-    (/challenge-platform/i.test(text) && /Enable JavaScript and cookies/i.test(text))
-  );
+  // Klasyczny interstitial Cloudflare — nie mylić z realnymi stronami, które ładują skrypty cdn-cgi.
+  if (/Just a moment\.\.\./i.test(text)) return true;
+  if (/cf-browser-verification/i.test(text)) return true;
+  if (/Attention Required!\s*\|\s*Cloudflare/i.test(text)) return true;
+  if (/Enable JavaScript and cookies/i.test(text) && /challenge-platform|cf-browser/i.test(text) && !hasCdaHdPageSignals(text)) {
+    return true;
+  }
+  if (/cdn-cgi\/challenge-platform/i.test(text) && !hasCdaHdPageSignals(text)) {
+    return true;
+  }
+  return false;
 }
 
 function cookieHeader(cookies) {
@@ -191,13 +203,19 @@ async function flareSolverrGet(pageUrl) {
     const html = String(sol.response || "");
     const status = Number(sol.status) || 0;
     const finalUrl = sol.url || pageUrl;
-    if (isCloudflareChallenge(html, status)) {
+    const challenge = isCloudflareChallenge(html, status);
+    const valid = isValidCdaHdHtml(html, finalUrl);
+    // FlareSolverr bywa zostawia skrypty challenge-platform w DOM już „odblokowanej” strony.
+    if (challenge && !valid) {
       throw new Error("Cloudflare nadal blokuje po FlareSolverr — spróbuj ponownie.");
     }
-    if (!isValidCdaHdHtml(html, finalUrl)) {
+    if (!valid) {
       throw new Error(
         `FlareSolverr zwrócił nieprawidłową stronę (${finalUrl || "brak URL"}). Restart flaresolverr lub spróbuj ponownie.`
       );
+    }
+    if (challenge && valid) {
+      console.warn("cda-hd: FlareSolverr HTML z markerami CF, ale treść strony OK — akceptuję");
     }
     return {
       html,

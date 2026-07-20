@@ -993,6 +993,8 @@ function createStreamProxyPreviewJob({
     name: title || "preview.mp4",
     status: "done",
     progress: 100,
+    ready: true,
+    fullReady: true,
     clients: new Set(),
     playBase: playBaseFromReq(req),
   };
@@ -1636,6 +1638,7 @@ function startHlsMovieDownloadJob({
   const jobDir = path.join(DOWNLOAD_DIR, jobId);
   fs.mkdirSync(jobDir, { recursive: true });
 
+  const displayTitle = String(movieDownload?.title || title || "Pobieranie CDA-HD").slice(0, 200);
   const job = {
     id: jobId,
     purpose: "download",
@@ -1643,9 +1646,10 @@ function startHlsMovieDownloadJob({
     persistent: !!movieDownload,
     userKey: movieDownload?.userKey || null,
     movieUrl: movieDownload?.url || null,
-    movieTitle: movieDownload?.title || title || "",
+    movieTitle: displayTitle,
     movieThumbnail: movieDownload?.thumbnail || "",
     movieSource: movieDownload?.source || "",
+    name: displayTitle,
     status: "starting",
     progress: 0,
     clients: new Set(),

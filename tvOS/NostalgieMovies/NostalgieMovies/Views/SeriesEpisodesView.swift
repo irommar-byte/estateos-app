@@ -171,7 +171,7 @@ struct SeriesEpisodesView: View {
                     VStack(spacing: 16) {
                         ProgressView()
                             .scaleEffect(1.4)
-                        Text("Przygotowuję odcinek…")
+                        Text("Uruchamiam odcinek…")
                             .font(NostalgieFont.rowTitle)
                             .foregroundStyle(.white)
                     }
@@ -601,17 +601,13 @@ struct SeriesEpisodesView: View {
                     return
                 }
 
-                var episodeInfo: VideoInfoResponse?
-                do {
-                    episodeInfo = try await app.api.fetchInfo(url: episode.url)
-                } catch {
-                    episodeInfo = nil
-                }
+                // Nie wołaj /api/info przed play — na CDA-HD to potrafi wisieć na Cloudflare
+                // minutami, a preview i tak resolvuje stream. Jakości bierzemy z info serialu.
                 let context = try await MediaPlaybackLauncher.startPlayback(
                     api: app.api,
                     url: episode.url,
                     title: episode.title,
-                    info: episodeInfo ?? info
+                    info: info
                 )
                 playbackContext = context
                 return

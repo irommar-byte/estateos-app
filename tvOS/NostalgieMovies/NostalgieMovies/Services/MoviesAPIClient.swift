@@ -443,6 +443,8 @@ final class MoviesAPIClient {
     private func timeoutInterval(forPath path: String) -> TimeInterval {
         if path.hasPrefix("/api/search") { return 55 }
         if path.hasPrefix("/api/info") { return 210 }
+        if path.hasPrefix("/api/preview") { return 180 }
+        if path.hasPrefix("/api/download") { return 180 }
         if path.hasPrefix("/api/cda-hd/") { return 45 }
         return 30
     }
