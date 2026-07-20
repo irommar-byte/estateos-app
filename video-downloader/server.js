@@ -4033,10 +4033,15 @@ app.get("/api/films/service-home", async (req, res) => {
     }
 
     // 2) Dokarmianie: max 3 seedy, po kolei (nie 16 równoległych requestów).
-    if (pool.length < 24) {
+    // Cały endpoint ma budżet czasu — TVP bywa wolne/padnięte; lepiej zwrócić częściowe półki.
+    const deadline = Date.now() + (source === "tvp" ? 35_000 : 55_000);
+    const timeLeft = () => Math.max(0, deadline - Date.now());
+    if (pool.length < 24 && timeLeft() > 2500) {
       const seeds = SERVICE_HOME_SEARCH_SEEDS[source] || ["film"];
-      for (const q of seeds.slice(0, 3)) {
-        const batch = await searchOnce(q, 24000);
+      const maxSeeds = source === "tvp" ? 2 : 3;
+      for (const q of seeds.slice(0, maxSeeds)) {
+        if (timeLeft() < 2500) break;
+        const batch = await searchOnce(q, Math.min(22000, timeLeft() - 500));
         const seen = new Set(pool.map((x) => x.url || x.id));
         for (const item of batch) {
           const key = item.url || item.id;
@@ -4045,6 +4050,8 @@ app.get("/api/films/service-home", async (req, res) => {
           pool.push(item);
         }
         if (pool.length >= 40) break;
+        // TVP: jeśli pierwszy seed padł, nie męcz kolejnymi.
+        if (source === "tvp" && !batch.length) break;
       }
     }
 
@@ -4108,17 +4115,21 @@ app.get("/api/films/service-home", async (req, res) => {
       }
     }
 
-    const genreSearches = await mapPoolLimited(missingGenres.slice(0, 6), 2, async (genre) => {
-      const q =
-        source === "youtube" ? `${genre.title.toLowerCase()} film pełny` : genre.title.toLowerCase();
-      const items = await searchOnce(q, 20000);
-      if (!items.length) return null;
-      return mk(genre.id, genre.title, items, {
-        catalogMode: "latest",
-        searchQuery: q,
+    if (missingGenres.length && timeLeft() > 4000) {
+      const genreBudget = source === "tvp" ? 3 : 6;
+      const genreSearches = await mapPoolLimited(missingGenres.slice(0, genreBudget), 2, async (genre) => {
+        if (timeLeft() < 2500) return null;
+        const q =
+          source === "youtube" ? `${genre.title.toLowerCase()} film pełny` : genre.title.toLowerCase();
+        const items = await searchOnce(q, Math.min(16000, timeLeft() - 500));
+        if (!items.length) return null;
+        return mk(genre.id, genre.title, items, {
+          catalogMode: "latest",
+          searchQuery: q,
+        });
       });
-    });
-    for (const row of genreSearches) pushShelf(row);
+      for (const row of genreSearches) pushShelf(row);
+    }
 
     const payload = {
       ok: true,
