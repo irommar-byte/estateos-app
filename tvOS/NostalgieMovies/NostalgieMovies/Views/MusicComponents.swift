@@ -311,6 +311,7 @@ struct MusicTrackRow: View {
     var downloadState: TrackDownloadUIState = .idle
     var isActiveDownload: Bool = false
     var isSelected: Bool? = nil
+    var isNowPlaying: Bool = false
     let action: () -> Void
 
     private var showsDownloadedCheckmark: Bool {
@@ -365,6 +366,10 @@ struct MusicTrackRow: View {
                         .font(NostalgieFont.caption.monospacedDigit())
                         .foregroundStyle(.green)
                         .frame(minWidth: 36, alignment: .trailing)
+                } else if isNowPlaying {
+                    Image(systemName: "waveform")
+                        .font(NostalgieFont.rounded(18))
+                        .foregroundStyle(NostalgieTheme.accent)
                 } else if showsPlayHint {
                     Image(systemName: "play.circle.fill")
                         .font(NostalgieFont.rounded(18))
@@ -388,10 +393,17 @@ struct MusicTrackRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous)
+                .fill(isNowPlaying ? NostalgieTheme.accent.opacity(0.14) : Color.clear)
+        )
         .overlay {
             if isActiveDownload {
                 RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous)
                     .stroke(Color.green.opacity(0.55), lineWidth: 1.5)
+            } else if isNowPlaying {
+                RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous)
+                    .stroke(NostalgieTheme.accent.opacity(0.55), lineWidth: 1.5)
             }
         }
     }

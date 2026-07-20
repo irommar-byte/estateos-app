@@ -71,18 +71,6 @@ struct MusicView: View {
                     }
                 )
                 .environmentObject(app)
-            } else if let folder = activeFolder {
-                MusicFolderView(
-                    folder: folder,
-                    navigationTab: navigationTab,
-                    focusedTab: focusedTab,
-                    startBatchDownloadOnAppear: startBatchDownloadOnFolderOpen,
-                    onBack: {
-                        startBatchDownloadOnFolderOpen = false
-                        activeFolder = nil
-                    }
-                )
-                .environmentObject(app)
             } else {
                 mainContent
             }
@@ -130,6 +118,19 @@ struct MusicView: View {
                     importPlaylistURL = ""
                     startBatchDownloadOnFolderOpen = downloadAfter
                     activeFolder = folder
+                }
+            )
+            .environmentObject(app)
+        }
+        .fullScreenCover(item: $activeFolder) { folder in
+            MusicFolderView(
+                folder: folder,
+                navigationTab: navigationTab,
+                focusedTab: focusedTab,
+                startBatchDownloadOnAppear: startBatchDownloadOnFolderOpen,
+                onBack: {
+                    startBatchDownloadOnFolderOpen = false
+                    activeFolder = nil
                 }
             )
             .environmentObject(app)

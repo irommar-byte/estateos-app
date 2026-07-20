@@ -152,17 +152,18 @@ struct MusicPlayerScreen: View {
                     }
                 )
                 .environmentObject(app)
-            } else if let folder = activeFolder {
-                MusicFolderView(
-                    folder: folder,
-                    navigationTab: .music,
-                    focusedTab: $musicTabFocus,
-                    onBack: { activeFolder = nil }
-                )
-                .environmentObject(app)
             } else {
                 playerContent
             }
+        }
+        .fullScreenCover(item: $activeFolder) { folder in
+            MusicFolderView(
+                folder: folder,
+                navigationTab: .music,
+                focusedTab: $musicTabFocus,
+                onBack: { activeFolder = nil }
+            )
+            .environmentObject(app)
         }
     }
 

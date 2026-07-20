@@ -29,15 +29,15 @@ struct MusicFolderView: View {
     @FocusState private var focusedTrackID: String?
 
     private var pendingDownloadCount: Int {
-        tracks.filter { !isTrackDownloaded($0) }.count
+        uniqueTracks.filter { !isTrackDownloaded($0) }.count
     }
 
     private var allTracksDownloaded: Bool {
-        !tracks.isEmpty && pendingDownloadCount == 0
+        !uniqueTracks.isEmpty && pendingDownloadCount == 0
     }
 
     private var completedDownloadCount: Int {
-        tracks.filter { isTrackDownloaded($0) }.count
+        uniqueTracks.filter { isTrackDownloaded($0) }.count
     }
 
     private var isBatchRunning: Bool {
@@ -51,80 +51,47 @@ struct MusicFolderView: View {
            case .downloading(let pct) = trackDownloadStates[activeDownloadingTrackURL] {
             progress += pct / 100
         }
-        return progress / Double(tracks.count)
+        return progress / Double(max(uniqueTracks.count, 1))
     }
 
     var body: some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: NostalgieSpacing.section) {
-                    header
+        ZStack {
+            NostalgieAmbientBackground()
 
-                    if let syncMessage, !syncMessage.isEmpty {
-                        syncBanner(syncMessage)
-                    }
+            ScrollViewReader { scrollProxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 22) {
+                        playlistHeader
 
-                    if isBatchRunning || showCompleteBanner {
-                        inlineDownloadBanner
-                    }
-
-                    if let batchErrorSummary, !isBatchRunning {
-                        batchErrorBanner(batchErrorSummary)
-                    }
-
-                    if isLoading {
-                        ProgressView("Wczytuję utwory…")
-                    } else if let errorMessage {
-                        EmptyStateView(icon: "exclamationmark.folder", title: "Błąd", message: errorMessage)
-                    } else if tracks.isEmpty {
-                        EmptyStateView(
-                            icon: "music.note.list",
-                            title: "Pusty folder",
-                            message: "Wyszukaj utwór w Apple Music i dodaj go do tego folderu."
-                        )
-                    } else {
-                        LazyVStack(spacing: NostalgieSpacing.listRow) {
-                            ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                                MusicTrackRow(
-                                    index: index + 1,
-                                    title: track.title,
-                                    subtitle: [track.artist, track.album].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
-                                    duration: track.duration,
-                                    showsPlayHint: true,
-                                    isDownloaded: track.isDownloaded,
-                                    downloadState: trackDownloadStates[track.url] ?? .idle,
-                                    isActiveDownload: activeDownloadingTrackURL == track.url
-                                ) {
-                                    selectedTrack = MusicSelection(from: track)
-                                }
-                                .id(track.url)
-                                .focused($focusedTrackID, equals: track.id)
-                                .contextMenu {
-                                    Button("Odtwórz") {
-                                        startFullPlay(track)
-                                    }
-                                    Button("Szczegóły utworu") {
-                                        selectedTrack = MusicSelection(from: track)
-                                    }
-                                    Button("Pobierz MP3") {
-                                        downloadSingleTrack(track)
-                                    }
-                                    .disabled(track.isDownloaded || isBatchRunning)
-                                    Button("Usuń z folderu", role: .destructive) {
-                                        Task { await remove(track) }
-                                    }
-                                }
-                            }
+                        if let syncMessage, !syncMessage.isEmpty {
+                            syncBanner(syncMessage)
                         }
+
+                        if isBatchRunning || showCompleteBanner {
+                            inlineDownloadBanner
+                        }
+
+                        if let batchErrorSummary, !isBatchRunning {
+                            batchErrorBanner(batchErrorSummary)
+                        }
+
+                        playlistTracksSection
+                    }
+                    .padding(.horizontal, NostalgieSpacing.screenH)
+                    .padding(.top, 12)
+                    .padding(.bottom, NostalgieSpacing.scrollBottom)
+                }
+                .onChange(of: activeDownloadingTrackURL) { _, trackURL in
+                    guard let trackURL else { return }
+                    withAnimation(NostalgieTheme.contentSpring) {
+                        scrollProxy.scrollTo(trackURL, anchor: .center)
                     }
                 }
-                .padding(.horizontal, NostalgieSpacing.screenH)
-                .padding(.bottom, NostalgieSpacing.scrollBottom)
-            }
-            .onChange(of: activeDownloadingTrackURL) { _, trackURL in
-                guard let trackURL else { return }
-                withAnimation(NostalgieTheme.contentSpring) {
-                    scrollProxy.scrollTo(trackURL, anchor: .center)
+                .onChange(of: nowPlayingURL) { _, url in
+                    guard let url else { return }
+                    withAnimation(NostalgieTheme.contentSpring) {
+                        scrollProxy.scrollTo(url, anchor: .center)
+                    }
                 }
             }
         }
@@ -136,7 +103,7 @@ struct MusicFolderView: View {
             MusicDetailView(
                 selection: track,
                 folders: app.musicFolders.filter { $0.id != folder.id },
-                contextQueue: tracks.map { MusicPlaybackTrack(from: $0) },
+                contextQueue: uniqueTracks.map { MusicPlaybackTrack(from: $0) },
                 folderName: displayFolder.name
             ) {
                 Task { await load() }
@@ -180,10 +147,25 @@ struct MusicFolderView: View {
         return tracks.first?.thumbnail.flatMap(URL.init(string:))
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private var uniqueTracks: [MusicTrack] {
+        var seen = Set<String>()
+        var out: [MusicTrack] = []
+        for track in tracks {
+            if seen.contains(track.url) { continue }
+            seen.insert(track.url)
+            out.append(track)
+        }
+        return out
+    }
+
+    private var nowPlayingURL: String? {
+        app.musicPlayback.controller?.currentTrack?.url
+    }
+
+    private var playlistHeader: some View {
+        VStack(alignment: .leading, spacing: 18) {
             Button(action: onBack) {
-                Label("Wróć do Muzyki", systemImage: "chevron.left")
+                Label("Wróć", systemImage: "chevron.left")
             }
             .buttonStyle(BackLinkButtonStyle())
             .onMoveCommand { direction in
@@ -192,22 +174,49 @@ struct MusicFolderView: View {
                 }
             }
 
-            HStack(alignment: .center, spacing: 14) {
-                if let folderArtworkURL {
-                    PosterRemoteImage(url: folderArtworkURL)
-                        .scaledToFill()
-                        .frame(width: 72, height: 72)
-                        .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.panel, style: .continuous))
+            HStack(alignment: .top, spacing: 24) {
+                Group {
+                    if let folderArtworkURL {
+                        PosterRemoteImage(url: folderArtworkURL)
+                            .scaledToFill()
+                    } else {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                            Image(systemName: "music.note.list")
+                                .font(.system(size: 44, weight: .light))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
+                .frame(width: 180, height: 180)
+                .clipShape(RoundedRectangle(cornerRadius: NostalgieRadius.card, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 4) {
-                    ScreenTitle(
-                        title: displayFolder.name,
-                        subtitle: playlistSubtitle,
-                        level: .detail
-                    )
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("PLAYLISTA")
+                        .font(NostalgieFont.caption)
+                        .foregroundStyle(.secondary)
+                        .tracking(1.2)
 
-                    HStack(spacing: 8) {
+                    Text(displayFolder.name)
+                        .font(NostalgieFont.pageTitle)
+                        .lineLimit(2)
+
+                    Text(playlistSubtitle)
+                        .font(NostalgieFont.metadata)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 12) {
+                        if !uniqueTracks.isEmpty {
+                            Button {
+                                playPlaylist(from: uniqueTracks[0])
+                            } label: {
+                                Label("Odtwarzaj", systemImage: "play.fill")
+                            }
+                            .buttonStyle(FocusCardButtonStyle())
+                        }
+
                         if canShowRefresh {
                             Button {
                                 Task { await refreshPlaylist() }
@@ -218,7 +227,7 @@ struct MusicFolderView: View {
                             .disabled(isSyncing || isBatchRunning)
                         }
 
-                        if !tracks.isEmpty {
+                        if !uniqueTracks.isEmpty {
                             if isBatchRunning {
                                 Button {
                                     Task { await cancelBatchDownload() }
@@ -238,6 +247,67 @@ struct MusicFolderView: View {
                                     Label("Pobierz wszystkie", systemImage: "arrow.down.circle.fill")
                                 }
                                 .buttonStyle(ChipButtonStyle(isSelected: false))
+                            }
+                        }
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var playlistTracksSection: some View {
+        if isLoading {
+            ProgressView("Wczytuję utwory…")
+                .padding(.top, 20)
+        } else if let errorMessage {
+            EmptyStateView(icon: "exclamationmark.folder", title: "Błąd", message: errorMessage)
+        } else if uniqueTracks.isEmpty {
+            EmptyStateView(
+                icon: "music.note.list",
+                title: "Pusta playlista",
+                message: "Wyszukaj utwór w Apple Music i dodaj go do tej playlisty."
+            )
+        } else {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Utwory")
+                    .font(NostalgieFont.sectionTitle)
+
+                Text("Wybierz piosenkę z listy — zagra od tego miejsca w playliście.")
+                    .font(NostalgieFont.caption)
+                    .foregroundStyle(.secondary)
+
+                LazyVStack(spacing: 10) {
+                    ForEach(Array(uniqueTracks.enumerated()), id: \.element.url) { index, track in
+                        MusicTrackRow(
+                            index: index + 1,
+                            title: track.title,
+                            subtitle: [track.artist, track.album].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
+                            duration: track.duration,
+                            showsPlayHint: true,
+                            isDownloaded: track.isDownloaded,
+                            downloadState: trackDownloadStates[track.url] ?? .idle,
+                            isActiveDownload: activeDownloadingTrackURL == track.url,
+                            isNowPlaying: nowPlayingURL == track.url
+                        ) {
+                            playPlaylist(from: track)
+                        }
+                        .id(track.url)
+                        .focused($focusedTrackID, equals: track.url)
+                        .contextMenu {
+                            Button("Odtwórz od tego utworu") {
+                                playPlaylist(from: track)
+                            }
+                            Button("Szczegóły utworu") {
+                                selectedTrack = MusicSelection(from: track)
+                            }
+                            Button("Pobierz MP3") {
+                                downloadSingleTrack(track)
+                            }
+                            .disabled(track.isDownloaded || isBatchRunning)
+                            Button("Usuń z playlisty", role: .destructive) {
+                                Task { await remove(track) }
                             }
                         }
                     }
@@ -284,7 +354,7 @@ struct MusicFolderView: View {
 
             if isBatchRunning {
                 HStack {
-                    Text("\(completedDownloadCount) z \(tracks.count) utworów")
+                    Text("\(completedDownloadCount) z \(uniqueTracks.count) utworów")
                         .font(NostalgieFont.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -321,7 +391,7 @@ struct MusicFolderView: View {
     }
 
     private var playlistSubtitle: String {
-        let total = tracks.count
+        let total = uniqueTracks.count
         let onServer = displayFolder.serverTrackCount
         let downloaded = completedDownloadCount
         if isBatchRunning {
@@ -381,11 +451,16 @@ struct MusicFolderView: View {
         do {
             let response = try await app.api.fetchFolderTracks(folderId: folder.id)
             currentFolder = response.folder
-            tracks = response.tracks
+            var seen = Set<String>()
+            tracks = response.tracks.filter { track in
+                if seen.contains(track.url) { return false }
+                seen.insert(track.url)
+                return true
+            }
             syncDownloadStatesFromTracks()
             await app.refreshMusicLibrary()
             if focusedTrackID == nil {
-                focusedTrackID = tracks.first?.id
+                focusedTrackID = uniqueTracks.first?.url
             }
             if initialBatchDownload, !tracks.isEmpty, !allTracksDownloaded {
                 didAutoStartBatchDownload = true
@@ -397,17 +472,27 @@ struct MusicFolderView: View {
         }
     }
 
-    private func startFullPlay(_ track: MusicTrack) {
+    private func playPlaylist(from track: MusicTrack) {
         selectedTrack = nil
-        let queue = tracks.map(MusicPlaybackTrack.init(from:))
-        let startIndex = tracks.firstIndex(where: { $0.url == track.url }) ?? 0
+        let queue = uniqueTracks.map(MusicPlaybackTrack.init(from:))
+        guard !queue.isEmpty else { return }
+        let startIndex = uniqueTracks.firstIndex(where: { $0.url == track.url }) ?? 0
         let session = MusicPlaybackSession(
             queue: queue,
             startIndex: startIndex,
             folderId: folder.id,
             folderName: displayFolder.name
         )
-        Task { await app.musicPlayback.play(session: session, app: app) }
+        Task {
+            await app.musicPlayback.play(session: session, app: app)
+            // Zostaw listę playlisty na wierzchu — jak Apple Music: wybór utworu z listy,
+            // a pełny player dostępny z belki „teraz gra”.
+            app.musicPlayback.minimizePlayer()
+        }
+    }
+
+    private func startFullPlay(_ track: MusicTrack) {
+        playPlaylist(from: track)
     }
 
     private func openStream(track: MusicTrack, jobId: String) {
