@@ -403,7 +403,7 @@ final class MoviesAPIClient {
 
     func waitForPreviewReady(
         jobId: String,
-        timeoutSeconds: Int = 90,
+        timeoutSeconds: Int = 120,
         onProgress: ((Int) -> Void)? = nil
     ) async throws {
         let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
@@ -441,7 +441,7 @@ final class MoviesAPIClient {
 
     /// Dopasowany timeout na wolne endpointy (yt-dlp/Cloudflare potrafią się długo namyślać).
     private func timeoutInterval(forPath path: String) -> TimeInterval {
-        if path.hasPrefix("/api/search") { return 40 }
+        if path.hasPrefix("/api/search") { return 55 }
         if path.hasPrefix("/api/info") { return 210 }
         if path.hasPrefix("/api/cda-hd/") { return 45 }
         return 30

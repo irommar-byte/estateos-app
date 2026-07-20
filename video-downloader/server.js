@@ -1273,9 +1273,9 @@ function startCdaStreamingPreview({ jobId, videoUrl, audioUrl, referer, previewH
   const audioFull = path.join(jobDir, "a.full");
   const videoPart = path.join(jobDir, "v.part");
   const audioPart = path.join(jobDir, "a.part");
-  // ~55 MB wideo ≈ kilka–kilkanaście minut 720p — start od razu, pełny plik w tle.
-  const videoPartialEnd = 55 * 1024 * 1024 - 1;
-  const audioPartialEnd = 8 * 1024 * 1024 - 1;
+  // Mały partial → szybki start na Apple TV; pełny plik dociągamy w tle (upgrade).
+  const videoPartialEnd = 10 * 1024 * 1024 - 1;
+  const audioPartialEnd = 2 * 1024 * 1024 - 1;
 
   const job = {
     id: jobId,
@@ -3319,29 +3319,38 @@ const SEARCH_SOURCE_TIMEOUT_MS = {
 const SEARCH_DEFAULT_TIMEOUT_MS = 14000;
 
 async function searchCdaHdWithCacheFallback(query, limit) {
-  const fallback = () => {
+  const q = String(query || "").trim();
+  const fallbackRelevant = () => {
     const disk = loadCdaHdDiskCatalog(7 * 24 * 60 * 60 * 1000);
     const pool = cdaHdLatestCache.items.length
       ? cdaHdLatestCache.items
       : disk?.latest || [];
-    return rankSearchByQuery(pool, query).slice(0, limit);
+    // Tylko trafienia po tytule — NIGDY „najnowsze” jako wyniki wyszukiwania.
+    const ranked = rankSearchByQuery(pool, q);
+    return ranked
+      .filter((item) => {
+        const title = String(item?.title || "").toLowerCase();
+        const needle = q.toLowerCase();
+        if (!needle) return false;
+        if (title.includes(needle)) return true;
+        return needle
+          .split(/\s+/)
+          .filter((t) => t.length > 2)
+          .some((t) => title.includes(t));
+      })
+      .slice(0, limit);
   };
   try {
-    // Keep live scrape short — Cloudflare often stalls; cache must win quickly.
-    return await withTimeout(searchCdaHd(query, limit, 4), 8000, "cda-hd-live");
+    // Flare/cookies: wyszukiwanie bywa 10–40 s; 8 s kończyło się fałszywymi „najnowszymi”.
+    return await withTimeout(searchCdaHd(q, limit, 2), 45000, "cda-hd-live");
   } catch (err) {
-    const filtered = fallback();
+    const filtered = fallbackRelevant();
     if (filtered.length) {
-      console.warn("cda-hd search fallback cache:", err?.message || err);
+      console.warn("cda-hd search fallback cache (relevant only):", err?.message || err);
       return filtered;
     }
-    // Last resort: return unfiltered cache head so Filmy tab is never empty.
-    const disk = loadCdaHdDiskCatalog(7 * 24 * 60 * 60 * 1000);
-    const pool = cdaHdLatestCache.items.length
-      ? cdaHdLatestCache.items
-      : disk?.latest || [];
-    if (pool.length) return pool.slice(0, limit);
-    throw err;
+    console.warn("cda-hd search empty (no relevant cache):", err?.message || err);
+    return [];
   }
 }
 
@@ -4978,6 +4987,7 @@ app.post("/api/preview", async (req, res) => {
     try {
       const dual = await resolveCdaDualStream(previewUrl, previewHeight, cookieBrowser, req);
       if (dual?.videoUrl && dual?.audioUrl) {
+        // Szybki start: partial merge (~10 MB), potem upgrade do pełnego w tle.
         startCdaStreamingPreview({
           jobId,
           videoUrl: dual.videoUrl,

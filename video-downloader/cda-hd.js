@@ -378,26 +378,28 @@ export function saveCdaHdDiskCatalog(items) {
 export function parseCdaHdSearch(html, limit = 12) {
   const results = [];
   const seen = new Set();
-  const itemRe = /<div id="mt-\d+" class="item">([\s\S]*?)<div class="typepost">([^<]*)<\/div>/gi;
-  let m;
-
-  while ((m = itemRe.exec(html)) && results.length < limit) {
-    const block = m[1];
-    const typepost = decodeHtml(m[2]);
-    const urlMatch = block.match(/href="((?:https?:\/\/)?(?:www\.)?cda-hd\.(?:cc|pl|to|online|info)\/[^"]+)"/i) || block.match(/href="(\/(?:film|tvshows?|episode)\/[^"]+)"/i);
+  const starts = [...String(html || "").matchAll(/<div id="mt-\d+" class="item">/gi)];
+  for (let i = 0; i < starts.length && results.length < limit; i += 1) {
+    const start = starts[i].index;
+    const endPos = i + 1 < starts.length ? starts[i + 1].index : start + 8000;
+    const block = html.slice(start, endPos);
+    const typepost = decodeHtml(block.match(/<div class="typepost">([^<]*)<\/div>/i)?.[1] || "");
+    const urlMatch =
+      block.match(/href="((?:https?:\/\/)?(?:www\.)?cda-hd\.(?:cc|pl|to|online|info)\/[^"]+)"/i) ||
+      block.match(/href="(\/(?:film|tvshows?|episode)\/[^"]+)"/i);
     if (!urlMatch) continue;
     const url = absUrl(urlMatch[1]);
-    if (!url || seen.has(url)) continue;
+    if (!url || /\/search\//i.test(url) || /\/feed\//i.test(url) || seen.has(url)) continue;
     seen.add(url);
 
     const title =
-      decodeHtml(block.match(/<span class="tt">([^<]*)<\/span>/i)?.[1] || "") || "Bez tytułu";
+      decodeHtml(block.match(/<span class="tt">([^<]*)<\/span>/i)?.[1] || "") ||
+      decodeHtml(block.match(/alt="([^"]+)"/i)?.[1] || "") ||
+      "Bez tytułu";
     const thumb =
       block.match(/data-src="(https:\/\/image\.tmdb\.org[^"]+)"/i)?.[1] ||
-      block.match(/data-src="(https:\/\/icdn\.cda\.pl[^"]+)"/i)?.[1] ||
-      block.match(/data-src="(https:\/\/s\.tvp\.pl[^"]+)"/i)?.[1] ||
-      block.match(/data-src="(https:\/\/i\.ytimg\.com[^"]+)"/i)?.[1] ||
       block.match(/src="(https:\/\/image\.tmdb\.org[^"]+)"/i)?.[1] ||
+      block.match(/data-src="(https:\/\/icdn\.cda\.pl[^"]+)"/i)?.[1] ||
       block.match(/src="(https:\/\/icdn\.cda\.pl[^"]+)"/i)?.[1] ||
       "";
     const ratingRaw = block.match(/<span class="imdbs">([^<]*)<\/span>/i)?.[1]?.trim() || null;
@@ -419,9 +421,47 @@ export function parseCdaHdSearch(html, limit = 12) {
       isSerial,
     });
   }
-
   return results;
 }
+
+/** WordPress RSS wyników wyszukiwania — stabilniejsze niż HTML (bez wymogu typepost). */
+export function parseCdaHdSearchRss(xml, limit = 48) {
+  const results = [];
+  const seen = new Set();
+  const itemRe = /<item>([\s\S]*?)<\/item>/gi;
+  let m;
+  while ((m = itemRe.exec(String(xml || ""))) && results.length < limit) {
+    const block = m[1];
+    const title =
+      decodeHtml(block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/i)?.[1] || "") ||
+      decodeHtml(block.match(/<title>([^<]*)<\/title>/i)?.[1] || "");
+    const url = absUrl(
+      block.match(/<link>([^<]+)<\/link>/i)?.[1]?.trim() ||
+        block.match(/<guid[^>]*>([^<]+)<\/guid>/i)?.[1]?.trim() ||
+        ""
+    );
+    if (!title || !url || seen.has(url)) continue;
+    if (!/cda-hd\./i.test(url)) continue;
+    seen.add(url);
+    const isSerial = isCdaHdTvShowUrl(url) || /\/tvshows?\//i.test(url) || /post_type=tvshows/i.test(block);
+    results.push({
+      id: url.replace(/\/$/, "").split("/").pop(),
+      title,
+      url,
+      thumbnail: "",
+      uploader: "CDA-HD",
+      duration: 0,
+      rating: null,
+      quality: null,
+      qualities: [],
+      source: "cda-hd",
+      detail: isSerial ? "Serial · CDA-HD" : "Film · CDA-HD",
+      isSerial,
+    });
+  }
+  return results;
+}
+
 
 const CDA_HD_CATALOG_PAGE_SIZE = 20;
 const CDA_HD_MAX_SITE_PAGES = 30;
@@ -582,16 +622,30 @@ export async function fetchCdaHdLatest(limit = 20) {
 }
 
 export async function searchCdaHd(query, limit = 48, page = 1) {
-  const maxPages = Math.max(1, Math.min(Number(page) || 1, 8));
+  const q = String(query || "").trim();
   const target = Math.min(Math.max(Number(limit) || 48, 1), 120);
+  if (!q) return [];
+
+  // 1) RSS — jeden request, poprawne tytuły/linki (WordPress search feed).
+  try {
+    const slug = encodeURIComponent(q).replace(/%20/g, "+");
+    const rssUrl = `${CDA_HD_BASE}/search/${slug}/feed/rss2/`;
+    const { html: rss } = await fetchCdaHdHtml(rssUrl);
+    const fromRss = parseCdaHdSearchRss(rss, target);
+    if (fromRss.length) return fromRss;
+  } catch (err) {
+    console.warn("cda-hd search rss:", err?.message || err);
+  }
+
+  // 2) HTML wyszukiwania (naprawiony parser bez wymogu typepost).
+  const maxPages = Math.max(1, Math.min(Number(page) || 1, 4));
   const all = [];
   const seen = new Set();
-
   for (let p = 1; p <= maxPages && all.length < target; p += 1) {
     const searchUrl =
       p === 1
-        ? `${CDA_HD_BASE}/?s=${encodeURIComponent(query)}`
-        : `${CDA_HD_BASE}/page/${p}/?s=${encodeURIComponent(query)}`;
+        ? `${CDA_HD_BASE}/?s=${encodeURIComponent(q)}`
+        : `${CDA_HD_BASE}/page/${p}/?s=${encodeURIComponent(q)}`;
     let html;
     try {
       ({ html } = await fetchCdaHdHtml(searchUrl));
@@ -606,9 +660,8 @@ export async function searchCdaHd(query, limit = 48, page = 1) {
       all.push(item);
       added += 1;
     }
-    if (!added || batch.length < 8) break;
+    if (!added) break;
   }
-
   return all.slice(0, target);
 }
 
