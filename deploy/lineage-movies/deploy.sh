@@ -140,7 +140,7 @@ set -euo pipefail
 ensure_fs() {
   if ! sudo docker ps -a --format '{{.Names}}' | grep -qx flaresolverr; then
     sudo docker pull ghcr.io/flaresolverr/flaresolverr:latest
-    sudo docker run -d --name flaresolverr --restart unless-stopped       -p 127.0.0.1:8191:8191 -e LOG_LEVEL=info       ghcr.io/flaresolverr/flaresolverr:latest
+    sudo docker run -d --name flaresolverr --restart unless-stopped --shm-size=2g       -p 127.0.0.1:8191:8191 -e LOG_LEVEL=info -e TZ=Europe/Warsaw       ghcr.io/flaresolverr/flaresolverr:latest
   else
     sudo docker start flaresolverr >/dev/null || true
   fi

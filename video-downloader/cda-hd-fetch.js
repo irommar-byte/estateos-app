@@ -333,11 +333,10 @@ export async function fetchCdaHdHtmlResilient(pageUrl) {
         }
         return { html: first.html, finalUrl: first.finalUrl };
       }
-      // Martwa sesja cf_clearance — wyczyść zanim FlareSolverr rozwiąże na nowo.
+      // Nie kasuj cookies na dysku przed Flare — inaczej równoległy request
+      // startuje bez clearance. Nadpiszemy sesję dopiero po udanym solve.
       if (session.cookies.length) {
-        console.warn("cda-hd: sesja Cloudflare nieważna — odświeżam");
-        session = { cookies: [], userAgent: session.userAgent || DEFAULT_CDA_HD_UA, updatedAt: 0 };
-        saveSession();
+        console.warn("cda-hd: sesja Cloudflare nieważna — odświeżam przez FlareSolverr");
       }
     } catch (err) {
       console.warn("cda-hd plain fetch:", err?.message || err);
