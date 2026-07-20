@@ -14,6 +14,11 @@ private enum SeriesFocus: Hashable {
     case episode(String)
 }
 
+private struct PendingEpisodeDownloadBatch: Identifiable {
+    let id = UUID()
+    let episodes: [EpisodeItem]
+}
+
 struct SeriesEpisodesView: View {
     @EnvironmentObject private var app: AppModel
 
@@ -27,8 +32,7 @@ struct SeriesEpisodesView: View {
     @State private var selectedSeasonIndex = 0
     @State private var isSelectionMode = false
     @State private var selectedEpisodeIDs = Set<String>()
-    @State private var showDownloadSheet = false
-    @State private var pendingDownloadEpisodes: [EpisodeItem]?
+    @State private var pendingDownloadBatch: PendingEpisodeDownloadBatch?
     @State private var deletingEpisodeURL: String?
     @State private var browseContext: CdaHdBrowseContext?
     @State private var showCdaDetails = false
@@ -132,18 +136,18 @@ struct SeriesEpisodesView: View {
         .onAppear {
             selectedSeasonIndex = 0
         }
-        .sheet(isPresented: $showDownloadSheet) {
-            if let episodes = pendingDownloadEpisodes {
-                MediaDownloadOptionsSheet(
-                    title: displayTitle,
-                    info: info,
-                    itemCount: episodes.count,
-                    totalDuration: episodesTotalDuration(episodes),
-                    itemsSubtitle: "\(episodes.count) odcinków · wybierz jakość przed pobraniem"
-                ) { format, quality in
-                    startDownloadBatch(episodes: episodes, format: format, quality: quality)
-                }
+        .fullScreenCover(item: $pendingDownloadBatch) { batch in
+            MediaDownloadOptionsSheet(
+                title: displayTitle,
+                info: info,
+                itemCount: batch.episodes.count,
+                totalDuration: episodesTotalDuration(batch.episodes),
+                itemsSubtitle: "\(batch.episodes.count) odc. · wybierz jakość przed pobraniem"
+            ) { format, quality in
+                startDownloadBatch(episodes: batch.episodes, format: format, quality: quality)
+                pendingDownloadBatch = nil
             }
+            .background(Color.black.ignoresSafeArea())
         }
         .fullScreenCover(item: $playbackContext) { context in
             PlayerScreen(context: context)
@@ -507,8 +511,7 @@ struct SeriesEpisodesView: View {
         guard !pending.isEmpty else { return }
         isSelectionMode = false
         selectedEpisodeIDs.removeAll()
-        pendingDownloadEpisodes = pending
-        showDownloadSheet = true
+        pendingDownloadBatch = PendingEpisodeDownloadBatch(episodes: pending)
     }
 
     private func startDownloadBatch(
@@ -516,7 +519,7 @@ struct SeriesEpisodesView: View {
         format: MediaDownloadFormat,
         quality: MediaQualityOption
     ) {
-        pendingDownloadEpisodes = nil
+        pendingDownloadBatch = nil
         let options = info.qualityOptions(for: format)
         let items = episodes.map { episode in
             MovieDownloadQueueItem(

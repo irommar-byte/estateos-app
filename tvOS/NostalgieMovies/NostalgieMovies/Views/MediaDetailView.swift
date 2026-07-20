@@ -8,7 +8,7 @@ struct MediaDetailView: View {
     let onOpenEpisodes: (() -> Void)?
 
     @State private var playbackContext: MediaPlaybackContext?
-    @State private var showDownloadOptions = false
+    @State private var downloadOptionsInfo: VideoInfoResponse?
     @State private var statusMessage: String?
     @State private var statusIsError = false
     @State private var isFavorite: Bool
@@ -108,18 +108,18 @@ struct MediaDetailView: View {
         .fullScreenCover(item: $playbackContext) { context in
             PlayerScreen(context: context)
         }
-        .sheet(isPresented: $showDownloadOptions) {
-            if let mediaInfo {
-                MediaDownloadOptionsSheet(
-                    title: displayTitle,
-                    info: mediaInfo,
-                    itemCount: 1,
-                    totalDuration: displayDuration,
-                    itemsSubtitle: "1 film · wybierz jakość przed pobraniem"
-                ) { format, quality in
-                    startDownload(format: format, quality: quality)
-                }
+        .fullScreenCover(item: $downloadOptionsInfo) { info in
+            MediaDownloadOptionsSheet(
+                title: displayTitle,
+                info: info,
+                itemCount: 1,
+                totalDuration: displayDuration,
+                itemsSubtitle: "1 film · wybierz jakość przed pobraniem"
+            ) { format, quality in
+                startDownload(format: format, quality: quality)
+                downloadOptionsInfo = nil
             }
+            .background(Color.black.ignoresSafeArea())
         }
         .fullScreenCover(item: $browseContext) { context in
             CdaHdBrowseView(context: context)
@@ -390,12 +390,12 @@ struct MediaDetailView: View {
                 }
             } else {
                 toolbarButton(title: "Pobierz", icon: "arrow.down.circle") {
-                    if mediaInfo != nil {
-                        showDownloadOptions = true
+                    if let mediaInfo {
+                        downloadOptionsInfo = mediaInfo
                     } else {
                         Task {
                             await loadMediaInfo()
-                            if mediaInfo != nil { showDownloadOptions = true }
+                            if let mediaInfo { downloadOptionsInfo = mediaInfo }
                         }
                     }
                 }

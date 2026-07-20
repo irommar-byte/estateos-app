@@ -807,6 +807,12 @@ struct MediaDownloadOptionsSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
+                    HStack {
+                        Button("Anuluj") { dismiss() }
+                            .buttonStyle(BackLinkButtonStyle())
+                        Spacer()
+                    }
+
                     VStack(alignment: .leading, spacing: 8) {
                         Text(title)
                             .font(NostalgieFont.sectionTitle)
@@ -881,7 +887,9 @@ struct MediaDownloadOptionsSheet: View {
                 .padding(36)
             }
             .navigationTitle("Pobieranie")
+            .background(Color.black.ignoresSafeArea())
         }
+        .background(Color.black.ignoresSafeArea())
     }
 
     private var startButtonTitle: String {
