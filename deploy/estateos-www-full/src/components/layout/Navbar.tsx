@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Building2,
   Car,
   Home,
   LogIn,
@@ -110,12 +109,8 @@ export default function Navbar() {
     window.location.replace("/login");
   };
 
-  const handleNavClick = (path: string, isMap = false) => {
-    if (isMap) {
-      router.push("/odkryj-mape");
-    } else {
-      router.push(path);
-    }
+  const handleNavClick = (path: string) => {
+    router.push(path);
     setIsOpen(false);
   };
 
@@ -132,28 +127,10 @@ export default function Navbar() {
   const manageLabel = dict.nav.manageCentral;
   const manageLabelShort = dict.nav.manageCentralShort;
 
-  const primaryNavLinks: Array<{
-    path: string;
-    isMap: boolean;
-    short: string;
-    full: string;
-    active?: boolean;
-  }> = [
-    { path: "/odkryj-mape", isMap: true, short: dict.nav.discoverMapShort, full: dict.nav.discoverMap },
-    { path: isCar ? "/cars" : "/oferty", isMap: false, short: dict.nav.marketShort, full: dict.nav.market },
-    {
-      path: "/agencje",
-      isMap: false,
-      short: dict.nav.agencyCatalogShort,
-      full: dict.nav.agencyCatalog,
-      active: pathname === "/agencje",
-    },
-  ];
-
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-[var(--eos-border)] bg-[var(--eos-glass)] font-sans text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl [padding-top:env(safe-area-inset-top)]">
       <div
-        className="relative mx-auto flex h-20 max-w-[1400px] items-center justify-between gap-2 px-4 md:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center lg:gap-3"
+        className="relative mx-auto flex h-20 max-w-[1400px] items-center justify-between gap-2 px-4 md:px-6 lg:gap-3"
         style={{
           paddingLeft: "max(1rem, env(safe-area-inset-left))",
           paddingRight: "max(1rem, env(safe-area-inset-right))",
@@ -210,21 +187,6 @@ export default function Navbar() {
             >
               Car
             </button>
-          </div>
-        </div>
-
-        <div className="hidden justify-center lg:flex">
-          <div className="eos-nav-primary-group flex items-center gap-0.5 overflow-x-auto rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 shadow-[var(--eos-shadow-soft)] [scrollbar-width:none] lg:gap-1 lg:p-1.5 [&::-webkit-scrollbar]:hidden">
-            {primaryNavLinks.map((link) => (
-              <button
-                key={link.path}
-                type="button"
-                onClick={() => handleNavClick(link.path, link.isMap)}
-                className={`eos-nav-link-primary shrink-0 ${link.active ? "eos-nav-link-primary--active" : ""}`}
-              >
-                <NavResponsiveLabel short={link.short} full={link.full} />
-              </button>
-            ))}
           </div>
         </div>
 
@@ -346,14 +308,6 @@ export default function Navbar() {
                     }}
                     variant="primary"
                   />
-                  <MobileNavButton
-                    icon={Home}
-                    label={dict.nav.discoverMap}
-                    onClick={() => handleNavClick("/odkryj-mape", true)}
-                    variant="primary"
-                  />
-                  <MobileNavButton icon={Building2} label={dict.nav.market} onClick={() => handleNavClick("/oferty")} variant="primary" />
-                  <MobileNavButton icon={Building2} label={dict.nav.agencyCatalog} onClick={() => handleNavClick("/agencje")} variant="primary" />
                 </div>
 
                 <div className="h-px bg-[var(--eos-border)]" />
@@ -463,64 +417,8 @@ export default function Navbar() {
           color: var(--eos-muted);
           text-shadow: none;
         }
-        .eos-nav-primary-group {
-          box-shadow:
-            0 10px 28px rgba(0, 0, 0, 0.12),
-            inset 0 1px 0 rgba(255, 255, 255, 0.06);
-        }
-        .eos-nav-link-primary {
-          border-radius: 999px;
-          padding: 0.5rem 0.65rem;
-          color: var(--eos-text);
-          font-size: 10px;
-          font-weight: 800;
-          letter-spacing: 0.08em;
-          line-height: 1.15;
-          text-transform: uppercase;
-          transition:
-            color 0.2s ease,
-            background-color 0.2s ease,
-            box-shadow 0.2s ease,
-            transform 0.2s ease;
-          white-space: nowrap;
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 100%);
-        }
-        @media (min-width: 1280px) {
-          .eos-nav-link-primary {
-            padding: 0.62rem 0.85rem;
-            font-size: 11px;
-            letter-spacing: 0.1em;
-          }
-        }
-        @media (min-width: 1536px) {
-          .eos-nav-link-primary {
-            padding: 0.78rem 1.2rem;
-            font-size: 13px;
-            letter-spacing: 0.14em;
-          }
-        }
-        .eos-nav-link-primary:hover {
-          background: var(--eos-accent-soft);
-          color: var(--eos-accent);
-          box-shadow: 0 6px 18px rgba(16, 185, 129, 0.14);
-          transform: translateY(-1px);
-        }
-        .eos-nav-link-primary--active {
-          background: var(--eos-accent-soft);
-          color: var(--eos-accent);
-          box-shadow: 0 6px 18px rgba(16, 185, 129, 0.14);
-        }
       `}</style>
     </nav>
-  );
-}
-
-function NavResponsiveLabel({ short, full }: { short: string; full: string }) {
-  return (
-    <>
-      <span className="2xl:hidden">{short}</span>
-      <span className="hidden 2xl:inline">{full}</span>
-    </>
   );
 }
 

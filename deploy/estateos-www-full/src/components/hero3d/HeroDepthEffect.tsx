@@ -118,13 +118,17 @@ function HeroVerticalCard({
 function HeroAgencyStrip({
   title,
   subtitle,
-  cta,
-  onCta,
+  agenciesCta,
+  partnerCta,
+  onAgencies,
+  onPartner,
 }: {
   title: string;
   subtitle: string;
-  cta: string;
-  onCta: () => void;
+  agenciesCta: string;
+  partnerCta: string;
+  onAgencies: () => void;
+  onPartner: () => void;
 }) {
   return (
     <div className="hero-agency-strip eos-hero-glass flex flex-col items-start gap-4 rounded-[1.5rem] border border-white/10 px-5 py-4 text-left sm:flex-row sm:items-center sm:justify-between sm:px-6">
@@ -137,13 +141,22 @@ function HeroAgencyStrip({
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-white/65 sm:text-sm">{subtitle}</p>
         </div>
       </div>
-      <button
-        type="button"
-        onClick={onCta}
-        className="premium-hero-cta-secondary shrink-0 rounded-full px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] sm:text-[11px]"
-      >
-        {cta}
-      </button>
+      <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+        <button
+          type="button"
+          onClick={onAgencies}
+          className="premium-hero-cta-secondary w-full rounded-full px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] sm:w-auto sm:text-[11px]"
+        >
+          {agenciesCta}
+        </button>
+        <button
+          type="button"
+          onClick={onPartner}
+          className="premium-hero-cta-secondary w-full rounded-full px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] sm:w-auto sm:text-[11px]"
+        >
+          {partnerCta}
+        </button>
+      </div>
     </div>
   );
 }
@@ -375,8 +388,14 @@ export default function HeroDepthEffect() {
             <HeroAgencyStrip
               title={dict.hero.agencyStrip.title}
               subtitle={dict.hero.agencyStrip.subtitle}
-              cta={dict.hero.agencyStrip.cta}
-              onCta={() => {
+              agenciesCta={dict.hero.agencyStrip.agenciesCta}
+              partnerCta={dict.hero.agencyStrip.cta}
+              onAgencies={() => {
+                trackHomeCta("home_cta_click", "AGENCIES_CATALOG");
+                router.push("/agencje");
+                trackHomeCta("home_cta_flow_opened", "AGENCIES_CATALOG");
+              }}
+              onPartner={() => {
                 trackHomeCta("home_cta_click", "AGENCY");
                 router.push("/cennik?tab=partner");
                 trackHomeCta("home_cta_flow_opened", "AGENCY");

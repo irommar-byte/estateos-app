@@ -1,6 +1,7 @@
 import type { Dictionary } from "./dictionaries";
 import { getAuthDictionary } from "./authDictionary";
 import { getAddOfferDictionary } from "./addOfferDictionary";
+import { getCarsDictionary } from "./carsDictionary";
 
 /** Ukrainian UI — extends English base; CRM extended strings come from getCrmExtended("uk"). */
 export function buildUkDictionary(enBase: Dictionary): Dictionary {
@@ -8,6 +9,7 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
     ...enBase,
     auth: getAuthDictionary("uk"),
     addOffer: getAddOfferDictionary("uk"),
+    cars: getCarsDictionary("uk"),
     meta: {
       title: "EstateOS™ | Преміум нерухомість у світі",
       description:
@@ -37,12 +39,12 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       label: "Тема",
       light: "Світла",
       dark: "Темна",
-      system: "Системна",
+      system: "Авто",
     },
     prefsDock: {
       introTitle: "Налаштування відображення",
       introBody:
-        "Тут змінюється тема (світла/темна), мова (PL / EN / UA) та валюта цін (PLN, EUR або валюта оголошення). Панель ховається сама — відкрийте її знову іконкою шестерні.",
+        "Тут змінюється тема (світла / темна / авто), мова (PL / EN / UA) та валюта цін (PLN, EUR або валюта оголошення). Панель ховається сама — відкрийте її знову іконкою шестерні.",
       showSettings: "Показати налаштування",
       hideSettings: "Сховати налаштування",
     },
@@ -224,17 +226,54 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       sellerPanelLead: "Після створення клієнта додайте оголошення як будь-яку іншу пропозицію в системі.",
     },
     hero: {
-      eyebrow: "Ринок нерухомості · одна платформа",
-      lead: "Розмістіть об'єкт ",
-      leadBold: "без плати за публікацію",
-      leadExtra:
-        ". Переглядайте оголошення на карті, додайте своє або увімкніть Інвестиційний радар — збіги потраплять у ваш акаунт.",
+      eyebrow: "EstateOS™Home і EstateOS™Car · одна платформа",
+      eyebrowHome: "Home",
+      eyebrowCar: "Car",
+      eyebrowSuffix: "одна платформа",
+      lead: "Розмістіть ",
+      leadBold: "нерухомість або авто",
+      leadExtra: " — один акаунт, два каталоги, повний контроль над оголошеннями.",
       ctaMap: "Шукати на карті",
       ctaList: "Додати своє оголошення",
       ctaPrivate: "Для приватних осіб",
       ctaAgency: "Для агентств і посередників",
       exploreMap: "Карта оголошень",
       scroll: "Гортати",
+      tagline: "Продаєте квартиру, будинок чи авто? Опублікуйте одразу — без комісії порталу.",
+      homeCard: {
+        brand: "EstateOS™Home",
+        title: "Нерухомість",
+        subtitle:
+          "Квартири, будинки та ділянки на карті оголошень. Публікація без комісії платформи — з агентством або самостійно.",
+        bullets: [
+          "Розмістіть оголошення без плати за публікацію",
+          "Карта оголошень і Інвестиційний радар на акаунті",
+          "Deal Room і безпечний контакт із покупцями",
+        ],
+        ctaList: "Розмістити нерухомість",
+        ctaBrowse: "Переглянути оголошення",
+        ctaMine: "Мої оголошення",
+      },
+      carCard: {
+        brand: "EstateOS™Car",
+        title: "Автомобілі",
+        subtitle:
+          "Професійний каталог авто — скан свідоцтва, галерея фото та карта локації. Форму можна заповнити без входу.",
+        bullets: [
+          "Додайте авто з фото та сканом свідоцтва",
+          "Публікація без комісії порталу",
+          "Сповіщення про запити на вашому акаунті",
+        ],
+        ctaList: "Розмістити авто",
+        ctaBrowse: "Каталог Cars",
+        ctaMine: "Мої автомобілі",
+      },
+      agencyStrip: {
+        title: "Для офісів і агентств нерухомості",
+        subtitle: "CRM, команда в одній панелі, Concierge та пакети Partner — та сама екосистема, що й для власників.",
+        agenciesCta: "Агентства",
+        cta: "Пакети Partner",
+      },
       privateCard: {
         title: "Для приватних осіб",
         subtitle:

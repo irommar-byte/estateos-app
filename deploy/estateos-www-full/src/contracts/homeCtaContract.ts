@@ -1,4 +1,14 @@
-export type HomeCtaId = 'RADAR' | 'LIST' | 'ACCOUNT' | 'PRO' | 'PRIVATE' | 'AGENCY';
+export type HomeCtaId =
+  | 'RADAR'
+  | 'LIST'
+  | 'ACCOUNT'
+  | 'PRO'
+  | 'PRIVATE'
+  | 'AGENCY'
+  | 'AGENCIES_CATALOG'
+  | 'CAR_LIST'
+  | 'CAR_CATALOG'
+  | 'HOME_CATALOG';
 export type HomeCtaMode = 'APP';
 export type HomeCtaAnalyticsEvent =
   | 'home_cta_click'
@@ -52,6 +62,30 @@ export const HOME_CTA_CONTRACT: Record<HomeCtaId, HomeCtaContractEntry> = {
     mode: 'APP',
     appRoute: 'WebOnly/DlaAgencji',
     webRoute: '/dla-agencji',
+  },
+  AGENCIES_CATALOG: {
+    id: 'AGENCIES_CATALOG',
+    mode: 'APP',
+    appRoute: 'WebOnly/Agencje',
+    webRoute: '/agencje',
+  },
+  CAR_LIST: {
+    id: 'CAR_LIST',
+    mode: 'APP',
+    appRoute: 'WebOnly/CarsDodaj',
+    webRoute: '/cars/dodaj',
+  },
+  CAR_CATALOG: {
+    id: 'CAR_CATALOG',
+    mode: 'APP',
+    appRoute: 'WebOnly/Cars',
+    webRoute: '/cars',
+  },
+  HOME_CATALOG: {
+    id: 'HOME_CATALOG',
+    mode: 'APP',
+    appRoute: 'MainTabs/Oferty',
+    webRoute: '/oferty',
   },
 };
 

@@ -48,6 +48,7 @@ import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { formatDistanceKm, haversineKm } from "@/lib/geo/haversine";
+import { computePriceDiscountPercent } from "@/lib/offerPriceHistoryShared";
 
 type CatalogOffer = {
   id: number;
@@ -100,11 +101,20 @@ function sortByNewest(items: CatalogOffer[]) {
   });
 }
 
+function offerListPricePln(offer: CatalogOffer): number {
+  return Number(offer.previousPrice ?? offer.oldPrice ?? offer.listPricePln ?? 0);
+}
+
+function offerDiscountPercent(offer: CatalogOffer): number | null {
+  const fromApi = Number(offer.priceDiscountPercent);
+  if (Number.isFinite(fromApi) && fromApi > 0) return Math.round(fromApi);
+  const current = Number(offer.pricePln ?? offer.price ?? 0);
+  return computePriceDiscountPercent(offerListPricePln(offer), current);
+}
+
 function isDiscountedOffer(offer: CatalogOffer) {
   if (offer.isDiscounted) return true;
-  const current = Number(offer.pricePln ?? offer.price ?? 0);
-  const prev = Number(offer.previousPrice ?? offer.oldPrice ?? offer.listPricePln ?? 0);
-  return Number.isFinite(current) && Number.isFinite(prev) && prev > current && current > 0;
+  return offerDiscountPercent(offer) != null;
 }
 
 function formatPriceLabel(
@@ -458,11 +468,15 @@ export default function CatalogPage() {
               window.location.href = `/login?redirect=${encodeURIComponent(`/oferta/${offer.id}`)}`;
             }}
           />
-          {offer.isDiscounted && Number(offer.priceDiscountPercent) > 0 ? (
-            <span className="absolute bottom-3 left-3 z-10 rounded-full border border-red-500/40 bg-red-500/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-white">
-              −{offer.priceDiscountPercent}%
-            </span>
-          ) : null}
+          {(() => {
+            const discountPct = offerDiscountPercent(offer);
+            if (discountPct == null || discountPct <= 0) return null;
+            return (
+              <span className="absolute bottom-3 left-3 z-10 rounded-full border border-red-500/40 bg-red-500/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-white">
+                −{discountPct}%
+              </span>
+            );
+          })()}
           {opts?.showDistance && distance != null ? (
             <span className="absolute bottom-3 right-3 z-10 inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] bg-black/55 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur-md">
               <MapPin className="size-3" />
