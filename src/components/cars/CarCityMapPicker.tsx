@@ -91,6 +91,7 @@ export default function CarCityMapPicker({
   const reverseSeqRef = useRef(0);
   const manualQueryRef = useRef(false);
   const initialGeocodeRef = useRef(false);
+  const skipReverseUntilRef = useRef(0);
 
   const [query, setQuery] = useState(city);
   const [suggestions, setSuggestions] = useState<GeocodeFeature[]>([]);
@@ -139,9 +140,12 @@ export default function CarCityMapPicker({
     [applySelection],
   );
 
-  const flyTo = useCallback((lat: number, lng: number, zoom = 12) => {
+  const flyTo = useCallback((lat: number, lng: number, zoom = 12, opts?: { skipReverse?: boolean }) => {
     const map = mapRef.current;
     if (!map) return;
+    if (opts?.skipReverse) {
+      skipReverseUntilRef.current = Date.now() + 700;
+    }
     map.flyTo({ center: [lng, lat], zoom, duration: 450 });
   }, []);
 
@@ -165,6 +169,7 @@ export default function CarCityMapPicker({
       dismissSuggestions();
     });
     map.on("moveend", () => {
+      if (Date.now() < skipReverseUntilRef.current) return;
       const c = map.getCenter();
       void resolveCenter(c.lat, c.lng);
     });
@@ -233,9 +238,18 @@ export default function CarCityMapPicker({
     const coords = feature.center;
     if (!Array.isArray(coords) || coords.length < 2) return;
     const [lng, lat] = coords;
+    const label = String(feature.place_name || feature.text || "").trim();
     dismissSuggestions();
-    flyTo(lat, lng, 12);
-    await resolveCenter(lat, lng);
+    // Zachowaj wybraną etykietę Mapbox — reverse po flyTo potrafił nadpisać np. Warszawę na inną miejscowość.
+    skipReverseUntilRef.current = Date.now() + 700;
+    reverseSeqRef.current += 1;
+    flyTo(lat, lng, 12, { skipReverse: true });
+    applySelection({
+      city: label.split(",")[0]?.trim() || label,
+      cityLat: lat,
+      cityLng: lng,
+      localityCountry: "Polska",
+    });
   };
 
   const applyGpsLocation = () => {
@@ -298,7 +312,10 @@ export default function CarCityMapPicker({
                 <button
                   type="button"
                   className="w-full px-3 py-2 text-left text-sm hover:bg-sky-500/10"
-                  onClick={() => void selectSuggestion(feature)}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    void selectSuggestion(feature);
+                  }}
                 >
                   {feature.place_name || feature.text}
                 </button>

@@ -334,6 +334,8 @@ export default function ClientForm({
   const orbitFrameRef = useRef<number | null>(null);
   const orbitTimeoutRef = useRef<number | null>(null);
   const lastGeocodedAddressRef = useRef<string>("");
+  const geocodeRequestSeqRef = useRef(0);
+  const suppressBlurGeocodeRef = useRef(false);
   const editorRef = useRef<HTMLDivElement>(null);
   const agentCommissionInputRef = useRef<HTMLDivElement>(null);
   const landRegistryInputRef = useRef<HTMLInputElement>(null);
@@ -506,6 +508,7 @@ export default function ClientForm({
   };
 
   const geocodeAddressFromInput = async (force = false, rawQuery?: string) => {
+    if (!force && suppressBlurGeocodeRef.current) return;
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const query = String(rawQuery ?? data.address ?? "").trim();
     if (!token || query.length < 3) return;
@@ -514,6 +517,7 @@ export default function ClientForm({
     const parsed = parseAddressSearchQuery(query);
     const cityHintRaw = parsed.cityPart || data.city;
     const cityHint = isAdministrativeAreaLabel(cityHintRaw) ? parsed.cityPart || "" : cityHintRaw;
+    const requestSeq = ++geocodeRequestSeqRef.current;
 
     if (force && addressSuggestions.length > 0) {
       const feature = pickBestGeocodeFeature(addressSuggestions, query, cityHint);
@@ -532,8 +536,10 @@ export default function ClientForm({
       const res = await fetch(
         mapboxForwardGeocodeUrl(searchText, token, { limit: 8, autocomplete: false, cityHint }),
       );
+      if (requestSeq !== geocodeRequestSeqRef.current) return;
       if (!res.ok) return;
       const geo = await res.json();
+      if (requestSeq !== geocodeRequestSeqRef.current) return;
       const features = Array.isArray(geo?.features) ? geo.features : [];
       const feature = pickBestGeocodeFeature(features, query, cityHint);
       if (!feature) {
@@ -550,7 +556,7 @@ export default function ClientForm({
     } catch {
       // no-op
     } finally {
-      setIsGeocoding(false);
+      if (requestSeq === geocodeRequestSeqRef.current) setIsGeocoding(false);
     }
   };
 
@@ -650,6 +656,11 @@ export default function ClientForm({
   }, [ao.myLocationDenied, ao.myLocationUnsupported, data.address, resolveLocationFromCoordinates]);
 
   const selectAddress = (feature: any, cityOverride?: string) => {
+    suppressBlurGeocodeRef.current = true;
+    geocodeRequestSeqRef.current += 1;
+    window.setTimeout(() => {
+      suppressBlurGeocodeRef.current = false;
+    }, 400);
     const userQuery = String(data.address || "").trim();
     const coords = feature?.center;
     const nextLng = Array.isArray(coords) ? Number(coords[0]) : data.lng;
@@ -1858,16 +1869,15 @@ export default function ClientForm({
                         {addressSuggestions.map((f, i) => (
                           <div
                             key={i}
-                            onClick={() =>
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              const parsed = parseAddressSearchQuery(data.address || "");
                               selectAddress(
                                 f,
-                                data.address.includes(",")
-                                  ? parseAddressSearchQuery(data.address || "").cityPart
-                                  : isAdministrativeAreaLabel(data.city)
-                                    ? ""
-                                    : data.city,
-                              )
-                            }
+                                parsed.cityPart ||
+                                  (isAdministrativeAreaLabel(data.city) ? "" : data.city),
+                              );
+                            }}
                             className="p-4 hover:bg-[#10b981]/20 cursor-pointer text-zinc-300 hover:text-white font-medium transition-colors text-sm leading-snug"
                           >
                             {f.place_name_pl || f.place_name}

@@ -112,6 +112,21 @@ function extractVillageLocalityFromStreet(streetInput: unknown): string {
   return candidate;
 }
 
+/** „Ulica 12 Miasto” bez przecinka — city po numerze budynku. */
+function splitStreetAndCityWithoutComma(trimmed: string): { streetPart: string; cityPart: string } | null {
+  const match = trimmed.match(
+    /^(.+?\s+\d+[a-zA-ZĄąĆćĘęŁłŃńÓóŚśŹźŻż]?(?:\/\d+[a-zA-ZĄąĆćĘęŁłŃńÓóŚśŹźŻż]?)?)\s+([A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż][A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\s\-.]{1,40})$/u,
+  );
+  if (!match) return null;
+  const streetPart = match[1].trim();
+  const cityPart = match[2].replace(/^\d{2}-\d{3}\s+/i, "").trim();
+  if (!streetPart || !cityPart) return null;
+  if (countryIsoFromToken(cityPart)) return null;
+  // Jedno słowo po numerze zwykle to miejscowość („warszawa”, „kraków”); 2–3 też OK („stary kraszew”).
+  if (cityPart.split(/\s+/).length > 3) return null;
+  return { streetPart, cityPart };
+}
+
 /** Rozdziela „ulica nr, miasto” lub „ulica nr, miasto, kraj”. */
 export function parseAddressSearchQuery(raw: string): ParsedAddressQuery {
   const trimmed = String(raw || "").trim();
@@ -121,6 +136,17 @@ export function parseAddressSearchQuery(raw: string): ParsedAddressQuery {
 
   const parts = trimmed.split(",").map((p) => p.trim()).filter(Boolean);
   if (parts.length < 2) {
+    const split = splitStreetAndCityWithoutComma(trimmed);
+    if (split) {
+      const resolvedIso = inferCountryIsoFromCity(split.cityPart) || countryIsoFromToken(trimmed) || null;
+      return {
+        streetPart: split.streetPart,
+        cityPart: split.cityPart,
+        countryPart: "",
+        countryIso: resolvedIso,
+        fullQuery: buildForwardGeocodeSearchText(split.streetPart, split.cityPart, resolvedIso || undefined),
+      };
+    }
     const iso = countryIsoFromToken(trimmed) || inferCountryIsoFromCity(trimmed) || null;
     return {
       streetPart: trimmed,
@@ -192,6 +218,25 @@ function inferCountryIsoFromQuery(query: string, cityHint?: string): string | nu
   return null;
 }
 
+/** Tokeny miasta z zapytania (po przecinku lub po numerze). */
+function cityTokensFromQuery(query: string, cityHint?: string): string[] {
+  const tokens: string[] = [];
+  const push = (value: string) => {
+    const norm = normalizeText(value);
+    if (norm.length >= 3) tokens.push(norm);
+  };
+  const hint = String(cityHint || "").trim();
+  if (hint) push(hint);
+  const parsed = parseAddressSearchQuery(query);
+  if (parsed.cityPart) push(parsed.cityPart);
+  // Fragmenty typu „warsz” z końca wpisu bez pełnego dopasowania parse.
+  const tail = String(query || "")
+    .trim()
+    .match(/\d+[a-zA-Z]?\s+([A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż][A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\-.]{2,})$/u);
+  if (tail?.[1]) push(tail[1]);
+  return [...new Set(tokens)];
+}
+
 /** Wybiera wynik geokodowania najbliższy temu, co wpisał użytkownik. */
 export function pickBestGeocodeFeature(
   features: any[],
@@ -199,17 +244,21 @@ export function pickBestGeocodeFeature(
   cityHint?: string,
 ): any | null {
   if (!features.length) return null;
-  const houseNumber = extractTrailingHouseNumber(query);
+  const parsedQuery = parseAddressSearchQuery(query);
+  const streetForNumber = parsedQuery.streetPart || query;
+  const houseNumber =
+    extractTrailingHouseNumber(streetForNumber) || extractTrailingHouseNumber(query);
   const hasAddressMatch = features.some((feature) => {
     if (!isStreetAddressMapboxFeature(feature)) return false;
     const text = normalizeText(String(feature?.text || ""));
-    const queryStreet = normalizeText(String(query.split(/\s+\d/)[0] || "").trim());
+    const queryStreet = normalizeText(String((parsedQuery.streetPart || query).split(/\s+\d/)[0] || "").trim());
     return Boolean(queryStreet && text && (text === queryStreet || queryStreet.includes(text)));
   });
-  const village = hasAddressMatch ? "" : extractVillageLocalityFromStreet(query);
-  const preferredCity = String(cityHint || village || "").trim();
+  const village = hasAddressMatch ? "" : extractVillageLocalityFromStreet(parsedQuery.streetPart || query);
+  const preferredCity = String(cityHint || parsedQuery.cityPart || village || "").trim();
   const preferredNorm = preferredCity ? normalizeText(preferredCity) : "";
-  const queryNorm = normalizeText(query.split(",")[0] || query);
+  const cityTokens = cityTokensFromQuery(query, preferredCity);
+  const queryNorm = normalizeText(parsedQuery.streetPart || query.split(",")[0] || query);
 
   let best = features[0];
   let bestScore = Number.NEGATIVE_INFINITY;
@@ -218,6 +267,7 @@ export function pickBestGeocodeFeature(
     let score = 0;
     const types = Array.isArray(feature?.place_type) ? feature.place_type : [];
     const text = normalizeText(String(feature?.text || ""));
+    const placeNorm = normalizeText(String(feature?.place_name_pl || feature?.place_name || ""));
     const featureNumber = String(feature?.address || "").trim();
 
     if (types.includes("address")) score += 4;
@@ -226,10 +276,24 @@ export function pickBestGeocodeFeature(
     if (queryNorm && text && queryNorm.includes(text)) score += 6;
     if (queryNorm && text && text.includes(queryNorm.split(/\s+/)[0] || "")) score += 4;
     if (preferredNorm && text === preferredNorm) score += 8;
-    if (preferredNorm && normalizeText(String(feature?.place_name || "")).includes(preferredNorm)) {
+    if (preferredNorm && placeNorm.includes(preferredNorm)) {
       score += 3;
     }
     if (houseNumber && !featureNumber && types.includes("locality")) score += 1;
+
+    // Mocny boost miasta z zapytania („warszawa” / „warsz”) — bez tego wszystkie
+    // „Radzymińska 34” (Warszawa / Białystok / Stary Kraszew) mają ten sam score.
+    let cityHit = false;
+    for (const token of cityTokens) {
+      if (placeNorm.includes(token)) {
+        score += token.length >= 5 ? 20 : 14;
+        cityHit = true;
+        break;
+      }
+    }
+    if (cityTokens.length > 0 && !cityHit) {
+      score -= 18;
+    }
 
     if (score > bestScore) {
       bestScore = score;

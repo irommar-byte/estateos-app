@@ -222,7 +222,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const { dict, locale } = useLocale();
   const { isCar } = useEcosystem();
   const { resolvedTheme } = useTheme();
-  const { preference } = useDisplayCurrency();
+  const { preference, setPreference } = useDisplayCurrency();
   const { formatPinLabel, rate } = useFormatOfferPrice();
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -244,8 +244,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [priceMaxRent, setPriceMaxRent] = useState<number>(50_000);
   const [priceMaxUi, setPriceMaxUi] = useState<number>(50_000_000);
   const [priceMaxRentUi, setPriceMaxRentUi] = useState<number>(50_000);
-  const [priceMaxCar, setPriceMaxCar] = useState<number>(500_000);
-  const [priceMaxCarUi, setPriceMaxCarUi] = useState<number>(500_000);
+  const [priceMaxCar, setPriceMaxCar] = useState<number>(5_000_000);
+  const [priceMaxCarUi, setPriceMaxCarUi] = useState<number>(5_000_000);
 
   const [mapboxToken, setMapboxToken] = useState<string | null>(null);
   const [mapInitError, setMapInitError] = useState<string | null>(null);
@@ -273,9 +273,9 @@ export default function InteractiveMap({ immersive = false }: Props) {
     stepPln: 500,
   };
   const carBounds = {
-    minPln: 5_000,
-    maxPln: 500_000,
-    stepPln: 5_000,
+    minPln: 1_000,
+    maxPln: 5_000_000,
+    stepPln: 1_000,
   };
 
   const saleUiMin = isEurDisplay ? Math.round(saleBounds.minPln / safeRate) : saleBounds.minPln;
@@ -1054,6 +1054,35 @@ export default function InteractiveMap({ immersive = false }: Props) {
           </div>
 
           <div className="mx-1 h-10 w-px bg-[var(--eos-border)]" />
+
+          <div
+            className="flex shrink-0 items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] p-1"
+            role="group"
+            aria-label="Waluta"
+          >
+            <button
+              type="button"
+              onClick={() => setPreference("PLN")}
+              className={`rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
+                !isEurDisplay
+                  ? "bg-white text-black shadow-sm"
+                  : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+              }`}
+            >
+              PLN
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreference("EUR")}
+              className={`rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
+                isEurDisplay
+                  ? "bg-white text-black shadow-sm"
+                  : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+              }`}
+            >
+              EUR
+            </button>
+          </div>
 
             <button
               type="button"
