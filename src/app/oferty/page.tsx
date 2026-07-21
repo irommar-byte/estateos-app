@@ -15,6 +15,7 @@ import {
   Loader2,
   MapPin,
   Navigation,
+  Search,
   Sparkles,
   Store,
   UserRound,
@@ -41,6 +42,7 @@ import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
 import {
   CatalogHeroActionRow,
   CatalogHeroPrimaryLink,
+  CatalogHeroSecondaryButton,
 } from "@/components/catalog/CatalogHeroActions";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import InfiniteHorizontalRail from "@/components/catalog/InfiniteHorizontalRail";
@@ -203,17 +205,7 @@ export default function CatalogPage() {
       locale === "en" ? "Search" : locale === "uk" ? "Пошук" : "Parametry wyszukiwania",
     filtersTitle:
       locale === "en" ? "Find a property" : locale === "uk" ? "Знайдіть нерухомість" : "Znajdź nieruchomość",
-    filterToggle: filtersExpanded
-      ? locale === "en"
-        ? "Hide search parameters"
-        : locale === "uk"
-          ? "Згорнути параметри пошуку"
-          : "Zwiń parametry wyszukiwania"
-      : locale === "en"
-        ? "Show search parameters"
-        : locale === "uk"
-          ? "Розгорнути параметри пошуку"
-          : "Rozwiń parametry wyszukiwania",
+    findCta: locale === "en" ? "Find" : locale === "uk" ? "Знайти" : "Znajdź",
     topOffers: locale === "en" ? "Top listings" : locale === "uk" ? "Топ оголошення" : "Top oferty",
   };
 
@@ -540,65 +532,54 @@ export default function CatalogPage() {
             <CatalogHeroPrimaryLink brand="home" accent={transactionMode} href="/dodaj-oferte">
               Dodaj ogłoszenie
             </CatalogHeroPrimaryLink>
+            <CatalogHeroSecondaryButton
+              onClick={() => setFiltersExpanded((prev) => !prev)}
+              aria-expanded={filtersExpanded}
+            >
+              <Search size={16} aria-hidden />
+              {railTitles.findCta}
+              {filtersExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </CatalogHeroSecondaryButton>
           </CatalogHeroActionRow>
         </CatalogBrandHero>
 
-        {!loading && !error ? (
-          <section className="mt-6 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--eos-border)] px-5 py-4 sm:px-6">
-              <div>
-                <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${accentText}`}>
-                  {railTitles.filtersEyebrow}
-                </p>
-                <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">
-                  {railTitles.filtersTitle}
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setFiltersExpanded((prev) => !prev)}
-                className="inline-flex items-center gap-1 rounded-xl border border-[var(--eos-border)] bg-transparent px-3 py-2 text-[11px] font-semibold text-[var(--eos-muted)] transition hover:border-emerald-400/35 hover:text-emerald-600 dark:hover:text-emerald-300"
-              >
-                {railTitles.filterToggle}
-                {filtersExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
+        {!loading && !error && filtersExpanded ? (
+          <section
+            className={`mt-4 rounded-[1.75rem] border bg-[var(--eos-card)] p-5 shadow-[0_20px_55px_rgba(15,23,42,0.07)] sm:p-6 ${
+              transactionMode === "rent" ? "border-sky-400/20" : "border-emerald-400/20"
+            }`}
+          >
+            <div className="mb-5">
+              <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${accentText}`}>
+                {railTitles.filtersEyebrow}
+              </p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-[var(--eos-text)]">
+                {railTitles.filtersTitle}
+              </h2>
             </div>
-
-            {filtersExpanded ? (
-              <div className="space-y-5 p-5 sm:p-6">
-                <CatalogTransactionToggle
-                  value={transactionMode}
-                  onChange={setTransactionMode}
-                  labels={labels.transactionToggle}
-                  saleCount={saleOffers.length}
-                  rentCount={rentOffers.length}
-                />
-                <CatalogPropertyTypeToggle
-                  value={propertyTypeFilter}
-                  onChange={setPropertyTypeFilter}
-                  counts={propertyTypeCounts}
-                  accent={transactionMode}
-                />
-                <CatalogLocationFilter
-                  offers={transactionOffers}
-                  value={locationFilter}
-                  onChange={setLocationFilter}
-                  labels={labels.locationFilter}
-                  strictCityDistricts={strictCityDistricts}
-                  accent={transactionMode}
-                />
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2 px-5 py-3 sm:px-6">
-                <CatalogTransactionToggle
-                  value={transactionMode}
-                  onChange={setTransactionMode}
-                  labels={labels.transactionToggle}
-                  saleCount={saleOffers.length}
-                  rentCount={rentOffers.length}
-                />
-              </div>
-            )}
+            <div className="space-y-5">
+              <CatalogTransactionToggle
+                value={transactionMode}
+                onChange={setTransactionMode}
+                labels={labels.transactionToggle}
+                saleCount={saleOffers.length}
+                rentCount={rentOffers.length}
+              />
+              <CatalogPropertyTypeToggle
+                value={propertyTypeFilter}
+                onChange={setPropertyTypeFilter}
+                counts={propertyTypeCounts}
+                accent={transactionMode}
+              />
+              <CatalogLocationFilter
+                offers={transactionOffers}
+                value={locationFilter}
+                onChange={setLocationFilter}
+                labels={labels.locationFilter}
+                strictCityDistricts={strictCityDistricts}
+                accent={transactionMode}
+              />
+            </div>
           </section>
         ) : null}
 
