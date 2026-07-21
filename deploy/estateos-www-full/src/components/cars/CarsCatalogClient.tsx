@@ -3,16 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Car, Heart, UserRound } from "lucide-react";
+import { Car, ChevronDown, ChevronUp, Heart, Keyboard, ScanLine, Upload, UserRound } from "lucide-react";
 import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
 import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
 import {
   CatalogHeroActionRow,
-  CatalogHeroPrimaryLink,
+  CatalogHeroSecondaryButton,
 } from "@/components/catalog/CatalogHeroActions";
 import OtomotoImportHeroCard from "@/components/cars/OtomotoImportHeroCard";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
-import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { EstateOsCarListing } from "@/lib/carsCatalog";
 import { isCarFavoriteId, loadCarFavoriteIds } from "@/lib/carFavoritesStorage";
@@ -27,6 +26,7 @@ import { fmtCars, getCarSortOptions } from "@/i18n/carsDictionary";
 import { carAlertWarningClass } from "@/components/cars/carFormStyles";
 
 type CatalogTab = "all" | "favorites" | "mine";
+type AddPath = "scan" | "upload" | "manual" | "otomoto";
 
 type Filters = {
   query: string;
@@ -62,13 +62,7 @@ const filterLabelClass =
 const filterInputClass =
   "w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3.5 py-2.5 text-sm text-[var(--eos-text)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.05)] outline-none transition focus:border-sky-400/55 focus:ring-2 focus:ring-sky-400/20 disabled:cursor-not-allowed disabled:opacity-50";
 
-function FilterField({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
+function FilterField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="grid gap-2">
       <span className={filterLabelClass}>{label}</span>
@@ -81,16 +75,35 @@ function normalizeLabel(value: string) {
   return value.trim().toLowerCase();
 }
 
+function sortByNewest(rows: EstateOsCarListing[]) {
+  return [...rows].sort(
+    (a, b) =>
+      Date.parse(String(b.createdAt || 0)) -
+      Date.parse(String(a.createdAt || 0)),
+  );
+}
+
+function railTitleByType(type: string, cat: ReturnType<typeof useLocale>["dict"]["cars"]["catalog"]) {
+  if (type === "motorcycle") return cat.typeMotorcycle;
+  if (type === "van") return cat.typeVan;
+  if (type === "truck") return cat.typeTruck;
+  return cat.typeCar;
+}
+
 export default function CarsCatalogClient() {
   const { dict, locale } = useLocale();
   const cat = dict.cars.catalog;
   const sortOptions = useMemo(() => getCarSortOptions(locale), [locale]);
+
   const [cars, setCars] = useState<EstateOsCarListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<CatalogTab>("all");
-  const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
+  const [, setFavoriteIds] = useState<number[]>([]);
   const [loggedIn, setLoggedIn] = useState(false);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [addChooserOpen, setAddChooserOpen] = useState(false);
+  const [activeAddPath, setActiveAddPath] = useState<AddPath | null>(null);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   const loadCars = useCallback(async (activeTab: CatalogTab, isLoggedIn: boolean) => {
     setLoading(true);
@@ -114,6 +127,24 @@ export default function CarsCatalogClient() {
   useEffect(() => {
     setFavoriteIds(loadCarFavoriteIds());
   }, [tab]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const profileRes = await fetch("/api/user/profile", { cache: "no-store", credentials: "include" });
+        const profile = await profileRes.json().catch(() => ({}));
+        const isLogged = profileRes.ok && Boolean(profile?.id || profile?.user?.id);
+        if (!cancelled) setLoggedIn(isLogged);
+        if (!cancelled) await loadCars(tab, isLogged);
+      } catch {
+        if (!cancelled) setCars([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, loadCars]);
 
   const makeOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -161,24 +192,6 @@ export default function CarsCatalogClient() {
       .map(([key, label]) => ({ value: key, label }));
   }, [cars, filters.make, filters.model, locale]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const profileRes = await fetch("/api/user/profile", { cache: "no-store", credentials: "include" });
-        const profile = await profileRes.json().catch(() => ({}));
-        const isLoggedIn = profileRes.ok && Boolean(profile?.id || profile?.user?.id);
-        if (!cancelled) setLoggedIn(isLoggedIn);
-        if (!cancelled) await loadCars(tab, isLoggedIn);
-      } catch {
-        if (!cancelled) setCars([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, loadCars]);
-
   const fuelTypes = useMemo(
     () => Array.from(new Set(cars.map((c) => c.fuelType).filter(Boolean))).sort((a, b) => a.localeCompare(b, locale)),
     [cars, locale],
@@ -195,7 +208,10 @@ export default function CarsCatalogClient() {
       if (filters.generation) {
         const carGeneration = String((car as EstateOsCarListing & { generation?: string }).generation || "");
         if (carGeneration && normalizeLabel(carGeneration) !== normalizeLabel(filters.generation)) return false;
-        if (!carGeneration && !normalizeLabel([car.make, car.model, car.title].join(" ")).includes(normalizeLabel(filters.generation))) {
+        if (
+          !carGeneration &&
+          !normalizeLabel([car.make, car.model, car.title].join(" ")).includes(normalizeLabel(filters.generation))
+        ) {
           return false;
         }
       }
@@ -207,6 +223,49 @@ export default function CarsCatalogClient() {
     });
     return sortCarListings(rows, filters.sort);
   }, [cars, filters]);
+
+  const newestCars = useMemo(() => sortByNewest(cars).slice(0, 12), [cars]);
+
+  const featuredCars = useMemo(
+    () =>
+      cars
+        .filter((car) => car.featured)
+        .sort(
+          (a, b) =>
+            Date.parse(String(b.promotedUntil || b.createdAt || 0)) -
+            Date.parse(String(a.promotedUntil || a.createdAt || 0)),
+        ),
+    [cars],
+  );
+
+  const featuredSpotlightItems = useMemo(
+    () =>
+      featuredCars.slice(0, 6).map((car) => ({
+        id: car.id,
+        href: `/cars/${car.id}`,
+        title: car.title,
+        subtitle: `${car.make} · ${car.model} · ${car.year} · ${car.city}`,
+        priceLabel: formatCarPrice(car.pricePln, locale),
+        imageUrl: carImageSrc(car.imageUrl),
+        badge: cat.featuredBadge,
+      })),
+    [featuredCars, cat.featuredBadge, locale],
+  );
+
+  const typeRails = useMemo(() => {
+    const typeOrder = ["motorcycle", "car", "van", "truck"];
+    return typeOrder
+      .map((type) => ({
+        type,
+        title: railTitleByType(type, cat),
+        items: sortByNewest(
+          cars.filter(
+            (car) => String((car as EstateOsCarListing & { vehicleType?: string }).vehicleType || "car") === type,
+          ),
+        ).slice(0, 12),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [cars, cat, locale]);
 
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -252,37 +311,65 @@ export default function CarsCatalogClient() {
         : "text-[var(--eos-muted)] hover:bg-[var(--eos-surface)] hover:text-[var(--eos-text)]"
     }`;
 
-  const spotlightItems = useMemo(
-    () =>
-      cars
-        .filter((car) => car.featured)
-        .sort(
-          (a, b) =>
-            Date.parse(String(b.promotedUntil || b.createdAt || 0)) -
-            Date.parse(String(a.promotedUntil || a.createdAt || 0)),
-        )
-        .map((car) => ({
-          id: car.id,
-          href: `/cars/${car.id}`,
-          title: car.title,
-          subtitle: `${car.make} · ${car.model} · ${car.year} · ${car.city}`,
-          priceLabel: formatCarPrice(car.pricePln, locale),
-          imageUrl: carImageSrc(car.imageUrl),
-          badge: cat.featuredBadge,
-        })),
-    [cars, cat.featuredBadge, locale],
-  );
-
   const statsLabel = !loading
     ? tab === "favorites"
-      ? fmtCars(cat.statsFavorites, { n: filtered.length, total: favoriteIds.length })
+      ? fmtCars(cat.statsFavorites, { n: filtered.length })
       : tab === "mine"
         ? fmtCars(cat.statsMine, { n: filtered.length })
-        : fmtCars(cat.statsAll, { n: cars.length })
-    : null;
+        : fmtCars(cat.statsAll, { n: filtered.length })
+    : cat.resultsLoading;
+
+  const showLoginMineBanner = tab === "mine" && !loggedIn;
+
+  const railCard = (car: EstateOsCarListing) => (
+    <Link
+      key={`rail-${car.id}`}
+      href={`/cars/${car.id}`}
+      className="group w-[280px] shrink-0 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] transition hover:border-sky-400/45 hover:shadow-[0_20px_60px_rgba(14,165,233,0.08)]"
+    >
+      <div className="relative aspect-[16/10]">
+        <Image
+          src={carImageSrc(car.imageUrl)}
+          alt={car.title}
+          fill
+          sizes="280px"
+          className="object-cover transition duration-500 group-hover:scale-[1.03]"
+          unoptimized
+        />
+      </div>
+      <div className="space-y-2 p-4">
+        <p className="text-[11px] font-black uppercase tracking-[0.12em] text-sky-300">
+          {car.make} · {car.model} · {car.year}
+        </p>
+        <h3 className="line-clamp-2 text-base font-semibold">{car.title}</h3>
+        <p className="text-sm text-[var(--eos-muted)]">{car.city} · {formatMileage(car.mileageKm, locale)}</p>
+        <p className="text-base font-bold text-sky-300">{formatCarPrice(car.pricePln, locale)}</p>
+      </div>
+    </Link>
+  );
+
+  const chooserTitle =
+    locale === "en"
+      ? "Choose how you want to add a listing"
+      : locale === "uk"
+        ? "Оберіть спосіб додавання оголошення"
+        : "Wybierz, jak chcesz dodać ogłoszenie";
+
+  const filterToggleLabel =
+    locale === "en"
+      ? filtersExpanded
+        ? "Hide search parameters"
+        : "Show search parameters"
+      : locale === "uk"
+        ? filtersExpanded
+          ? "Згорнути параметри пошуку"
+          : "Розгорнути параметри пошуку"
+        : filtersExpanded
+          ? "Zwiń parametry wyszukiwania"
+          : "Rozwiń parametry wyszukiwania";
 
   return (
-    <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-40 text-[var(--eos-text)] sm:px-6 sm:pt-44">
+    <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-32 text-[var(--eos-text)] sm:px-6">
       <div className="mx-auto max-w-7xl">
         <CatalogBrandHero
           brand="car"
@@ -291,38 +378,135 @@ export default function CarsCatalogClient() {
           stats={statsLabel}
         >
           <CatalogHeroActionRow>
-            <CatalogHeroPrimaryLink brand="car" href="/cars/dodaj">
+            <button
+              type="button"
+              onClick={() => {
+                setAddChooserOpen((prev) => !prev);
+                setActiveAddPath(null);
+              }}
+              className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-500 px-6 py-3.5 text-[13px] font-semibold tracking-[-0.01em] text-white shadow-[0_10px_28px_rgba(14,165,233,0.38)] transition duration-200 ease-out hover:-translate-y-0.5 hover:bg-sky-400 hover:shadow-[0_14px_36px_rgba(14,165,233,0.5)]"
+            >
               {cat.addListing}
-            </CatalogHeroPrimaryLink>
+              {addChooserOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
           </CatalogHeroActionRow>
-          <div className="mt-4 max-w-2xl">
-            <OtomotoImportHeroCard
-              title={cat.otomotoImportTitle}
-              body={cat.otomotoImportBody}
-              placeholder={cat.otomotoImportPlaceholder}
-              cta={cat.otomotoImportCta}
-              loadingLabel={cat.otomotoImportLoading}
-            />
-          </div>
         </CatalogBrandHero>
 
-        {tab === "mine" && !loggedIn && !loading ? (
-          <div className={`mb-6 ${carAlertWarningClass}`}>
+        {addChooserOpen ? (
+          <section className="mt-4 rounded-[1.75rem] border border-sky-400/20 bg-[var(--eos-card)] p-5 shadow-[0_20px_55px_rgba(14,165,233,0.08)] sm:p-6">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">EstateOS™Car</p>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-[var(--eos-text)]">{chooserTitle}</h2>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveAddPath("scan");
+                  window.location.href = "/cars/dodaj?entry=scan";
+                }}
+                className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10"
+              >
+                <ScanLine className="size-5 text-sky-500" />
+                <p className="mt-3 text-sm font-semibold">Zeskanuj kod aparatem</p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">Live skan Aztec z dowodu rejestracyjnego.</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveAddPath("upload");
+                  window.location.href = "/cars/dodaj?entry=upload";
+                }}
+                className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10"
+              >
+                <Upload className="size-5 text-sky-500" />
+                <p className="mt-3 text-sm font-semibold">Dodaj zdjęcie dowodu z kodem</p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wgraj zdjęcie i odczytaj kod Aztec automatycznie.</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveAddPath("manual");
+                  window.location.href = "/cars/dodaj?entry=manual";
+                }}
+                className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10"
+              >
+                <Keyboard className="size-5 text-sky-500" />
+                <p className="mt-3 text-sm font-semibold">Dodaj ręcznie</p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wypełnij formularz samodzielnie od zera.</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveAddPath("otomoto")}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  activeAddPath === "otomoto"
+                    ? "border-sky-400/45 bg-sky-500/10"
+                    : "border-[var(--eos-border)] bg-[var(--eos-surface)] hover:border-sky-400/40 hover:bg-sky-500/10"
+                }`}
+              >
+                <Car className="size-5 text-sky-500" />
+                <p className="mt-3 text-sm font-semibold">Import z Otomoto</p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wklej link i przenieś treść do formularza.</p>
+              </button>
+            </div>
+
+            {activeAddPath === "otomoto" ? (
+              <div className="mt-4">
+                <OtomotoImportHeroCard
+                  title={cat.otomotoImportTitle}
+                  body={cat.otomotoImportBody}
+                  placeholder={cat.otomotoImportPlaceholder}
+                  cta={cat.otomotoImportCta}
+                  loadingLabel={cat.otomotoImportLoading}
+                />
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        {!loading && featuredSpotlightItems.length > 0 ? (
+          <section className="mt-8">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-semibold tracking-tight">{cat.featuredBadge} · 6</h2>
+              <span className="text-xs text-[var(--eos-muted)]">Top oferty</span>
+            </div>
+            <FeaturedSpotlightCarousel items={featuredSpotlightItems} />
+          </section>
+        ) : null}
+
+        {!loading && newestCars.length > 0 ? (
+          <section className="mt-8">
+            <h2 className="mb-3 text-lg font-semibold tracking-tight">Najnowsze</h2>
+            <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
+              {newestCars.map((car) => railCard(car))}
+            </div>
+          </section>
+        ) : null}
+
+        {!loading
+          ? typeRails.map((group) => (
+              <section key={group.type} className="mt-8">
+                <h2 className="mb-3 text-lg font-semibold tracking-tight">{group.title}</h2>
+                <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
+                  {group.items.map((car) => railCard(car))}
+                </div>
+              </section>
+            ))
+          : null}
+
+        {showLoginMineBanner ? (
+          <div className={`mt-8 ${carAlertWarningClass}`}>
             {cat.loginMineBanner}{" "}
-            <Link href="/login" className="font-bold underline underline-offset-2">
+            <Link href="/login?next=/cars" className="font-semibold underline">
               {cat.goLogin}
             </Link>
           </div>
         ) : null}
 
-        {tab === "favorites" && !loading && favoriteIds.length === 0 ? (
-          <div className="mb-6 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-sm text-[var(--eos-muted)]">
-            {cat.favoritesEmpty}
-          </div>
-        ) : null}
-
-        <section className="mb-8 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_22px_70px_rgba(14,165,233,0.08)]">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--eos-border)] bg-gradient-to-r from-sky-500/[0.07] via-transparent to-cyan-500/[0.04] px-5 py-4 sm:px-6">
+        <section className="mt-8 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--eos-border)] px-5 py-4 sm:px-6">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">{cat.filtersEyebrow}</p>
               <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">{cat.filtersTitle}</h2>
@@ -354,6 +538,14 @@ export default function CarsCatalogClient() {
               </div>
               <button
                 type="button"
+                onClick={() => setFiltersExpanded((prev) => !prev)}
+                className="inline-flex items-center gap-1 rounded-xl border border-[var(--eos-border)] bg-transparent px-3 py-2 text-[11px] font-semibold text-[var(--eos-muted)] transition hover:border-sky-400/35 hover:text-sky-600 dark:hover:text-sky-300"
+              >
+                {filterToggleLabel}
+                {filtersExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+              <button
+                type="button"
                 onClick={() => setFilters(EMPTY_FILTERS)}
                 className="rounded-xl border border-[var(--eos-border)] bg-transparent px-3 py-2 text-[11px] font-semibold text-[var(--eos-muted)] transition hover:border-sky-400/35 hover:text-sky-600 dark:hover:text-sky-300"
               >
@@ -362,133 +554,135 @@ export default function CarsCatalogClient() {
             </div>
           </div>
 
-          <div className="grid gap-5 p-5 sm:p-6">
-            <FilterField label={cat.searchLabel}>
-              <input
-                value={filters.query}
-                onChange={(e) => setFilter("query", e.target.value)}
-                placeholder={cat.searchPlaceholder}
-                className={filterInputClass}
-              />
-            </FilterField>
-
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <FilterField label={cat.vehicleTypeFilterLabel}>
-                <select
-                  value={filters.vehicleType}
-                  onChange={(e) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      vehicleType: e.target.value,
-                      makeSlug: "",
-                      make: "",
-                      modelSlug: "",
-                      model: "",
-                      generationSlug: "",
-                      generation: "",
-                    }))
-                  }
-                  className={filterInputClass}
-                >
-                  <option value="">{cat.allVehicleTypes}</option>
-                  <option value="car">{cat.typeCar}</option>
-                  <option value="motorcycle">{cat.typeMotorcycle}</option>
-                  <option value="van">{cat.typeVan}</option>
-                  <option value="truck">{cat.typeTruck}</option>
-                </select>
-              </FilterField>
-
-              <FilterField label={cat.makeLabel}>
-                <select value={filters.makeSlug} onChange={(e) => selectMake(e.target.value)} className={filterInputClass}>
-                  <option value="">{cat.allMakes}</option>
-                  {makeOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </FilterField>
-
-              <FilterField label={cat.modelLabel}>
-                <select
-                  value={filters.modelSlug}
-                  onChange={(e) => selectModel(e.target.value)}
-                  disabled={!filters.makeSlug}
-                  className={filterInputClass}
-                >
-                  <option value="">{filters.makeSlug ? cat.allModels : cat.pickMakeFirst}</option>
-                  {modelOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </FilterField>
-
-              <FilterField label={cat.generationLabel}>
-                <select
-                  value={filters.generationSlug}
-                  onChange={(e) => selectGeneration(e.target.value)}
-                  disabled={!filters.modelSlug}
-                  className={filterInputClass}
-                >
-                  <option value="">{filters.modelSlug ? cat.allGenerations : cat.pickModelFirst}</option>
-                  {generationOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </FilterField>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <FilterField label={cat.fuelLabel}>
-                <select
-                  value={filters.fuelType}
-                  onChange={(e) => setFilter("fuelType", e.target.value)}
-                  className={filterInputClass}
-                >
-                  <option value="">{cat.allFuels}</option>
-                  {fuelTypes.map((fuel) => (
-                    <option key={fuel} value={fuel}>
-                      {fuel}
-                    </option>
-                  ))}
-                </select>
-              </FilterField>
-
-              <FilterField label={cat.sortLabel}>
-                <select
-                  value={filters.sort}
-                  onChange={(e) => setFilter("sort", e.target.value as CarSortKey)}
-                  className={filterInputClass}
-                >
-                  {sortOptions.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </FilterField>
-
-              <FilterField label={cat.maxPriceLabel}>
+          {filtersExpanded ? (
+            <div className="grid gap-5 p-5 sm:p-6">
+              <FilterField label={cat.searchLabel}>
                 <input
-                  type="text"
-                  inputMode="numeric"
-                  value={filters.maxPrice}
-                  onChange={(e) =>
-                    setFilter("maxPrice", e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " "))
-                  }
-                  placeholder={cat.maxPricePlaceholder}
+                  value={filters.query}
+                  onChange={(e) => setFilter("query", e.target.value)}
+                  placeholder={cat.searchPlaceholder}
                   className={filterInputClass}
                 />
               </FilterField>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <FilterField label={cat.vehicleTypeFilterLabel}>
+                  <select
+                    value={filters.vehicleType}
+                    onChange={(e) =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        vehicleType: e.target.value,
+                        makeSlug: "",
+                        make: "",
+                        modelSlug: "",
+                        model: "",
+                        generationSlug: "",
+                        generation: "",
+                      }))
+                    }
+                    className={filterInputClass}
+                  >
+                    <option value="">{cat.allVehicleTypes}</option>
+                    <option value="car">{cat.typeCar}</option>
+                    <option value="motorcycle">{cat.typeMotorcycle}</option>
+                    <option value="van">{cat.typeVan}</option>
+                    <option value="truck">{cat.typeTruck}</option>
+                  </select>
+                </FilterField>
+
+                <FilterField label={cat.makeLabel}>
+                  <select value={filters.makeSlug} onChange={(e) => selectMake(e.target.value)} className={filterInputClass}>
+                    <option value="">{cat.allMakes}</option>
+                    {makeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </FilterField>
+
+                <FilterField label={cat.modelLabel}>
+                  <select
+                    value={filters.modelSlug}
+                    onChange={(e) => selectModel(e.target.value)}
+                    disabled={!filters.makeSlug}
+                    className={filterInputClass}
+                  >
+                    <option value="">{filters.makeSlug ? cat.allModels : cat.pickMakeFirst}</option>
+                    {modelOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </FilterField>
+
+                <FilterField label={cat.generationLabel}>
+                  <select
+                    value={filters.generationSlug}
+                    onChange={(e) => selectGeneration(e.target.value)}
+                    disabled={!filters.modelSlug}
+                    className={filterInputClass}
+                  >
+                    <option value="">{filters.modelSlug ? cat.allGenerations : cat.pickModelFirst}</option>
+                    {generationOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </FilterField>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <FilterField label={cat.fuelLabel}>
+                  <select
+                    value={filters.fuelType}
+                    onChange={(e) => setFilter("fuelType", e.target.value)}
+                    className={filterInputClass}
+                  >
+                    <option value="">{cat.allFuels}</option>
+                    {fuelTypes.map((fuel) => (
+                      <option key={fuel} value={fuel}>
+                        {fuel}
+                      </option>
+                    ))}
+                  </select>
+                </FilterField>
+
+                <FilterField label={cat.sortLabel}>
+                  <select
+                    value={filters.sort}
+                    onChange={(e) => setFilter("sort", e.target.value as CarSortKey)}
+                    className={filterInputClass}
+                  >
+                    {sortOptions.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </FilterField>
+
+                <FilterField label={cat.maxPriceLabel}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={filters.maxPrice}
+                    onChange={(e) =>
+                      setFilter("maxPrice", e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " "))
+                    }
+                    placeholder={cat.maxPricePlaceholder}
+                    className={filterInputClass}
+                  />
+                </FilterField>
+              </div>
             </div>
-          </div>
+          ) : null}
         </section>
 
-        <p className="mb-4 text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">
+        <p className="mb-4 mt-6 text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">
           {loading
             ? dict.cars.common.loading
             : fmtCars(cat.resultsCount, { filtered: filtered.length, total: cars.length })}
