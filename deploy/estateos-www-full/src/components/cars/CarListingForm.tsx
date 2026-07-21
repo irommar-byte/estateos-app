@@ -10,6 +10,7 @@ import CarCityMapPicker from "@/components/cars/CarCityMapPicker";
 import CarFormattedNumberInput from "@/components/cars/CarFormattedNumberInput";
 import CarPhotoGalleryField, { type CarPhotoGalleryFieldHandle } from "@/components/cars/CarPhotoGalleryField";
 import CarPublishAuthGate from "@/components/cars/CarPublishAuthGate";
+import CarPublishSuccessModal from "@/components/cars/CarPublishSuccessModal";
 import CarRegistrationScanGate, {
   highlightClass,
   missingFieldsBanner,
@@ -756,7 +757,12 @@ export default function CarListingForm({
         </CarFormSection>
 
         {error ? <p className={carAlertErrorClass}>{error}</p> : null}
-        {successId ? (
+        <CarPublishSuccessModal
+          carId={successId}
+          open={Boolean(successId) && mode === "create"}
+          onClose={() => setSuccessId(null)}
+        />
+        {successId && mode === "edit" ? (
           <div className={carAlertSuccessClass}>
             <p className="font-semibold">{f.successTitle}</p>
             <p className="mt-1 opacity-90">{f.successBody}</p>

@@ -98,6 +98,8 @@ export type CarsDictionary = {
     saveChanges: string;
     successTitle: string;
     successBody: string;
+    successCongrats: string;
+    successCtaCatalog: string;
     errTitlePrice: string;
     errMapCity: string;
     errFuel: string;
@@ -469,6 +471,8 @@ const pl: CarsDictionary = {
     successTitle: "Ogłoszenie opublikowane i widoczne w katalogu Cars.",
     successBody:
       "Możesz edytować zdjęcia i dane w każdej chwili — powiadomienia o zapytaniach trafią na Twoje konto.",
+    successCongrats: "Gratulacje!",
+    successCtaCatalog: "Wróć do katalogu Cars",
     errTitlePrice: "Uzupełnij tytuł, markę, model, miejscowość i poprawną cenę.",
     errMapCity: "Ustaw miejscowość na mapie — przeciągnij mapę lub wybierz z wyszukiwarki.",
     errFuel: "Wybierz rodzaj paliwa z katalogu.",
@@ -843,6 +847,8 @@ const en: CarsDictionary = {
     saveChanges: "Save changes",
     successTitle: "Listing published and visible in the Cars catalog.",
     successBody: "You can edit photos and details anytime — inquiry notifications go to your account.",
+    successCongrats: "Congratulations!",
+    successCtaCatalog: "Back to Cars catalog",
     errTitlePrice: "Fill in title, make, model, city and a valid price.",
     errMapCity: "Set the city on the map — drag the map or pick from search.",
     errFuel: "Select fuel type from the catalog.",
@@ -1215,6 +1221,8 @@ const uk: CarsDictionary = {
     saveChanges: "Зберегти зміни",
     successTitle: "Оголошення опубліковано та видиме в каталозі Cars.",
     successBody: "Редагуйте фото й дані будь-коли — сповіщення про запити надійдуть на акаунт.",
+    successCongrats: "Вітаємо!",
+    successCtaCatalog: "Повернутися до каталогу Cars",
     errTitlePrice: "Заповніть заголовок, марку, модель, місто та коректну ціну.",
     errMapCity: "Встановіть місто на карті — перетягніть карту або оберіть з пошуку.",
     errFuel: "Оберіть тип палива з каталогу.",
