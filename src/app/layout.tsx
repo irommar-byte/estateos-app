@@ -22,6 +22,7 @@ import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { EcosystemProvider } from "@/contexts/EcosystemContext";
 import EcosystemThemeBridge from "@/components/ecosystem/EcosystemThemeBridge";
 import EcosystemAmbientBackground from "@/components/ecosystem/EcosystemAmbientBackground";
+import EcosystemVerticalTransition from "@/components/ecosystem/EcosystemVerticalTransition";
 import { LOCALE_COOKIE, resolveLocale } from "@/i18n/config";
 const inter = Inter({ subsets: ["latin"] });
 
@@ -109,6 +110,7 @@ export default async function RootLayout({
                     <CampaignAttributionBoundary />
                     <Tracker />
                     <Navbar />
+                    <EcosystemVerticalTransition />
                     <FloatingPreferencesDock />
                     <WebNotificationPrompt />
                     <PresentationFlowOrchestrator />

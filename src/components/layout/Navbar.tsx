@@ -45,11 +45,11 @@ export default function Navbar() {
   const barRef = useRef<HTMLDivElement>(null);
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
-  const switchWidthRef = useRef(132);
+  const switchWidthRef = useRef(168);
   const router = useRouter();
   const pathname = usePathname();
   const { initModeFromUser } = useUserMode();
-  const { vertical, setVertical, isCar } = useEcosystem();
+  const { vertical, isCar, requestVerticalSwitch } = useEcosystem();
   const isOfferShareLanding = pathname?.startsWith("/o/");
   const isAdmin = user?.role === "ADMIN";
 
@@ -140,12 +140,15 @@ export default function Navbar() {
   };
 
   const switchVertical = (next: EcosystemVertical) => {
-    setVertical(next);
-    if (next === "car") {
-      router.push("/cars");
+    if (next === vertical) {
+      if (next === "car" && !pathname?.startsWith("/cars")) {
+        requestVerticalSwitch("car", "/cars");
+      } else if (next === "home" && pathname?.startsWith("/cars")) {
+        requestVerticalSwitch("home", "/oferty");
+      }
       return;
     }
-    router.push("/oferty");
+    requestVerticalSwitch(next, next === "car" ? "/cars" : "/oferty");
   };
 
   const manageLabel = dict.nav.manageCentral;
@@ -207,23 +210,43 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => switchVertical("home")}
-              className={`rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] transition sm:px-3 sm:text-[10px] ${
+              aria-pressed={vertical === "home"}
+              className={`group/home inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] transition sm:px-3 sm:text-[10px] ${
                 vertical === "home"
                   ? "bg-emerald-500/20 text-emerald-400"
                   : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
               }`}
             >
+              <Home
+                className={`size-3.5 transition duration-300 ${
+                  vertical === "home"
+                    ? "scale-110 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.55)]"
+                    : "opacity-70 group-hover/home:scale-105 group-hover/home:opacity-100"
+                }`}
+                strokeWidth={2.25}
+                aria-hidden
+              />
               Home
             </button>
             <button
               type="button"
               onClick={() => switchVertical("car")}
-              className={`rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] transition sm:px-3 sm:text-[10px] ${
+              aria-pressed={vertical === "car"}
+              className={`group/car inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] transition sm:px-3 sm:text-[10px] ${
                 vertical === "car"
                   ? "bg-sky-500/20 text-sky-300"
                   : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
               }`}
             >
+              <Car
+                className={`size-3.5 transition duration-300 ${
+                  vertical === "car"
+                    ? "scale-110 text-sky-300 drop-shadow-[0_0_8px_rgba(56,189,248,0.55)]"
+                    : "opacity-70 group-hover/car:scale-105 group-hover/car:opacity-100"
+                }`}
+                strokeWidth={2.25}
+                aria-hidden
+              />
               Car
             </button>
           </div>
@@ -335,8 +358,8 @@ export default function Navbar() {
                     icon={Home}
                     label="EstateOS™Home"
                     onClick={() => {
-                      setVertical("home");
-                      handleNavClick("/oferty");
+                      requestVerticalSwitch("home", "/oferty");
+                      setIsOpen(false);
                     }}
                     variant="primary"
                   />
@@ -344,8 +367,8 @@ export default function Navbar() {
                     icon={Car}
                     label="EstateOS™Car"
                     onClick={() => {
-                      setVertical("car");
-                      handleNavClick("/cars");
+                      requestVerticalSwitch("car", "/cars");
+                      setIsOpen(false);
                     }}
                     variant="primary"
                   />

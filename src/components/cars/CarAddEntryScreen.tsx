@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, FileSearch, Keyboard, Link2, ScanLine, ShieldCheck, Upload } from "lucide-react";
+import { FileSearch, Keyboard, Link2, ScanLine, ShieldCheck, Upload } from "lucide-react";
 import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
 import OtomotoImportHeroCard from "@/components/cars/OtomotoImportHeroCard";
 import AppleStyleSwitch from "@/components/ui/AppleStyleSwitch";
@@ -13,7 +13,7 @@ type CarAddEntryScreenProps = {
   onChoose: (method: CarAddEntryMethod) => void;
 };
 
-type DocMode = "scan" | "upload" | "capture";
+type DocMode = "scan" | "upload";
 
 export default function CarAddEntryScreen({ onChoose }: CarAddEntryScreenProps) {
   const { dict } = useLocale();
@@ -34,12 +34,6 @@ export default function CarAddEntryScreen({ onChoose }: CarAddEntryScreenProps) 
       icon: Upload,
       title: c.docModeUploadTitle,
       description: c.docModeUploadDescription,
-    },
-    {
-      id: "capture",
-      icon: Camera,
-      title: c.docModeCaptureTitle,
-      description: c.docModeCaptureDescription,
     },
   ];
 

@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, Loader2, ScanLine, Upload } from "lucide-react";
+import { CheckCircle2, FolderOpen, Loader2, ScanLine, Upload } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { CarsDictionary } from "@/i18n/carsDictionary";
 import type { CarFormState } from "@/components/cars/CarListingForm";
 import type { CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
 import {
+  freezeVideoPreview,
   requestCameraStream,
   startAztecVideoScan,
   type AztecScanPhase,
@@ -28,18 +29,32 @@ const MISSING_LABEL_KEYS: Record<CarListingMissingFieldKey, keyof CarsDictionary
   images: "missingImages",
 };
 
+const FILE_ACCEPT = "image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif";
+
 export function missingFieldsBanner(missing: CarListingMissingFieldKey[], scan: CarsDictionary["scan"]) {
   if (!missing.length) return null;
   const labels = missing.map((key) => scan[MISSING_LABEL_KEYS[key]]).join(", ");
   return `${scan.missingBannerPrefix} ${labels}.`;
 }
-export default function CarRegistrationScanGate({ open, onSkip, onPrefill, preferUpload = false }: CarRegistrationScanGateProps) {
+
+export default function CarRegistrationScanGate({
+  open,
+  onSkip,
+  onPrefill,
+  preferUpload = false,
+}: CarRegistrationScanGateProps) {
   const { dict, locale } = useLocale();
   const s = dict.cars.scan;
   const noFileSelectedLabel =
     locale === "en" ? "No image selected." : locale === "uk" ? "Фото не вибрано." : "Nie wybrano zdjęcia.";
   const retryUploadLabel =
     locale === "en" ? "Choose again" : locale === "uk" ? "Обрати знову" : "Wybierz ponownie";
+  const pickFromGalleryLabel =
+    locale === "en"
+      ? "Choose photo from files"
+      : locale === "uk"
+        ? "Обрати фото з файлів"
+        : "Wybierz zdjęcie z plików";
   const phaseCopy: Record<AztecScanPhase, string> = {
     starting: s.phaseStarting,
     position: s.phasePosition,
@@ -51,6 +66,7 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
+  const [frameLocked, setFrameLocked] = useState(false);
   const [phase, setPhase] = useState<AztecScanPhase>("starting");
   const [awaitingUploadPicker, setAwaitingUploadPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -60,12 +76,15 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
   const stopScanRef = useRef<(() => void) | null>(null);
   const successTimerRef = useRef<number | null>(null);
   const decodePayloadRef = useRef<(payload: string) => void>(() => {});
+  const lockedRef = useRef(false);
 
   const stopCamera = useCallback(() => {
     sessionRef.current += 1;
+    lockedRef.current = false;
     stopScanRef.current?.();
     stopScanRef.current = null;
     setCameraReady(false);
+    setFrameLocked(false);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -77,6 +96,12 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
       window.clearTimeout(successTimerRef.current);
       successTimerRef.current = null;
     }
+  }, []);
+
+  const lockPreview = useCallback(() => {
+    lockedRef.current = true;
+    setFrameLocked(true);
+    freezeVideoPreview(videoRef.current, streamRef.current);
   }, []);
 
   const applyResponse = async (response: Response) => {
@@ -91,20 +116,26 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
     onPrefill(prefill, missingFields);
   };
 
-  const beginScanning = useCallback((video: HTMLVideoElement) => {
-    stopScanRef.current?.();
-    stopScanRef.current = startAztecVideoScan({
-      video,
-      onPhase: setPhase,
-      onPayload: (payload) => decodePayloadRef.current(payload),
-    });
-  }, []);
+  const beginScanning = useCallback(
+    (video: HTMLVideoElement) => {
+      if (lockedRef.current) return;
+      stopScanRef.current?.();
+      stopScanRef.current = startAztecVideoScan({
+        video,
+        onPhase: setPhase,
+        onLockFrame: lockPreview,
+        onPayload: (payload) => decodePayloadRef.current(payload),
+      });
+    },
+    [lockPreview],
+  );
 
   const decodeAztecPayload = useCallback(
     async (aztecPayload: string) => {
       setLoading(true);
       setError(null);
       setPhase("decoding");
+      lockPreview();
       try {
         const response = await fetch("/api/cars/decode-registration", {
           method: "POST",
@@ -112,24 +143,38 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
           credentials: "include",
           body: JSON.stringify({ aztecPayload }),
         });
-        await applyResponse(response);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof data?.error === "string" ? data.error : s.errReadDoc);
+        }
+        const prefill = (data?.prefill || {}) as Partial<CarFormState>;
+        const missingFields = Array.isArray(data?.missingFields)
+          ? (data.missingFields as CarListingMissingFieldKey[])
+          : [];
         setPhase("success");
-        successTimerRef.current = window.setTimeout(() => {
-          stopCamera();
-        }, 700);
+        await new Promise<void>((resolve) => {
+          successTimerRef.current = window.setTimeout(() => resolve(), 900);
+        });
+        onPrefill(prefill, missingFields);
+        stopCamera();
       } catch (decodeError) {
+        lockedRef.current = false;
+        setFrameLocked(false);
         setPhase("searching");
-        setError(
-          decodeError instanceof Error
-            ? decodeError.message
-            : s.errAztec,
-        );
-        if (videoRef.current && streamRef.current) beginScanning(videoRef.current);
+        setError(decodeError instanceof Error ? decodeError.message : s.errAztec);
+        // Re-enable tracks and resume scanning after a failed decode.
+        streamRef.current?.getVideoTracks().forEach((track) => {
+          track.enabled = true;
+        });
+        if (videoRef.current && streamRef.current) {
+          void videoRef.current.play().catch(() => {});
+          beginScanning(videoRef.current);
+        }
       } finally {
         setLoading(false);
       }
     },
-    [beginScanning, onPrefill, stopCamera],
+    [beginScanning, lockPreview, onPrefill, s.errAztec, s.errReadDoc, stopCamera],
   );
 
   decodePayloadRef.current = (payload: string) => {
@@ -138,12 +183,15 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
 
   const openUploadPicker = useCallback(() => {
     setAwaitingUploadPicker(true);
-    window.setTimeout(() => fileInputRef.current?.click(), 80);
+    setError(null);
+    // User gesture → immediate click is more reliable than a delayed one on iOS.
+    fileInputRef.current?.click();
   }, []);
 
   const decodeImageFile = async (file: File) => {
     setLoading(true);
     setError(null);
+    setPhase("decoding");
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -155,11 +203,8 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
       await applyResponse(response);
       stopCamera();
     } catch (decodeError) {
-      setError(
-        decodeError instanceof Error
-          ? decodeError.message
-          : s.errAztec,
-      );
+      setError(decodeError instanceof Error ? decodeError.message : s.errAztec);
+      setPhase("position");
     } finally {
       setLoading(false);
     }
@@ -198,6 +243,8 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
 
   const startCamera = useCallback(async () => {
     const session = sessionRef.current;
+    lockedRef.current = false;
+    setFrameLocked(false);
     setError(null);
     setPhase("starting");
     setCameraReady(false);
@@ -214,13 +261,14 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
       setError(cameraError instanceof Error ? cameraError.message : s.errCamera);
       setPhase("position");
     }
-  }, [attachStreamToVideo]);
+  }, [attachStreamToVideo, s.errCamera]);
 
   useEffect(() => {
     if (!open) {
       stopCamera();
       setPhase("starting");
       setError(null);
+      setAwaitingUploadPicker(false);
       return;
     }
 
@@ -228,8 +276,10 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
       setPhase("position");
       setCameraReady(false);
       setError(null);
-      openUploadPicker();
+      // Defer one tick so the hidden input is mounted.
+      const id = window.setTimeout(() => openUploadPicker(), 0);
       return () => {
+        window.clearTimeout(id);
         stopCamera();
         setAwaitingUploadPicker(false);
       };
@@ -244,7 +294,7 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
 
   if (!open) return null;
 
-  const scanning = cameraReady && phase !== "success";
+  const scanning = cameraReady && !frameLocked && phase !== "success" && phase !== "decoding";
   const phaseLabel = phaseCopy[phase];
 
   return (
@@ -256,19 +306,23 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
         <div className="shrink-0 border-b border-[var(--eos-border)] px-5 py-3 sm:px-6 sm:py-4">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-sky-500">EstateOS™Car</p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)] sm:text-xl">{s.title}</h2>
-          <p className="mt-1 text-xs text-[var(--eos-muted)]">{s.subtitle}</p>
+          <p className="mt-1 text-xs text-[var(--eos-muted)]">{preferUpload ? pickFromGalleryLabel : s.subtitle}</p>
         </div>
 
         <div className="relative h-[min(42dvh,360px)] shrink-0 bg-[var(--eos-bg-elevated)] sm:h-[min(46dvh,400px)]">
-          <video
-            ref={videoRef}
-            className="absolute inset-0 h-full w-full object-contain"
-            muted
-            playsInline
-            autoPlay
-          />
+          {!preferUpload ? (
+            <video
+              ref={videoRef}
+              className={`absolute inset-0 h-full w-full object-contain transition-[filter] duration-300 ${
+                frameLocked ? "brightness-[0.92] contrast-[1.05]" : ""
+              }`}
+              muted
+              playsInline
+              autoPlay
+            />
+          ) : null}
 
-          {!cameraReady ? (
+          {preferUpload || !cameraReady ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black px-6 text-center">
               {error ? (
                 <>
@@ -290,21 +344,39 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
                 </>
               ) : (
                 <>
-                  {awaitingUploadPicker ? <Upload className="size-8 text-sky-300" /> : <Loader2 className="size-8 animate-spin text-sky-300" />}
-                  <p className="text-sm text-white/85">{awaitingUploadPicker ? s.uploadInstead : s.phaseStarting}</p>
-                  <p className="text-xs text-white/55">{awaitingUploadPicker ? s.subtitle : s.cameraDesktopHint}</p>
+                  {preferUpload || awaitingUploadPicker ? (
+                    <FolderOpen className="size-8 text-sky-300" />
+                  ) : (
+                    <Loader2 className="size-8 animate-spin text-sky-300" />
+                  )}
+                  <p className="text-sm text-white/85">
+                    {preferUpload || awaitingUploadPicker ? pickFromGalleryLabel : s.phaseStarting}
+                  </p>
+                  <p className="text-xs text-white/55">
+                    {preferUpload ? s.uploadInstead : s.cameraDesktopHint}
+                  </p>
+                  {preferUpload ? (
+                    <button
+                      type="button"
+                      onClick={openUploadPicker}
+                      className="mt-2 inline-flex items-center gap-2 rounded-full border border-sky-400/40 bg-sky-500/15 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-sky-200"
+                    >
+                      <Upload className="size-3.5" />
+                      {pickFromGalleryLabel}
+                    </button>
+                  ) : null}
                 </>
               )}
             </div>
           ) : (
             <>
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/65" />
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-end px-[7%] py-[10%]">
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-[12%]">
                 <div
-                  className={`relative aspect-square w-[46%] max-w-[240px] rounded-2xl border-2 transition-all duration-300 ${
+                  className={`relative aspect-square w-full max-w-[260px] rounded-2xl border-2 transition-all duration-300 ${
                     phase === "hold"
-                      ? "border-amber-400 shadow-[0_0_40px_rgba(251,191,36,0.55)]"
-                      : phase === "success"
+                      ? "border-amber-400 shadow-[0_0_40px_rgba(251,191,36,0.55)] scale-[1.02]"
+                      : phase === "success" || frameLocked
                         ? "border-emerald-400 shadow-[0_0_40px_rgba(52,211,153,0.55)]"
                         : "border-sky-300/90 shadow-[0_0_28px_rgba(56,189,248,0.35)]"
                   }`}
@@ -315,6 +387,16 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
                   <span className="absolute -bottom-1 -right-1 size-5 border-b-2 border-r-2 border-current text-sky-300" />
                   {scanning ? (
                     <div className="absolute inset-x-2 top-1/2 h-0.5 -translate-y-1/2 animate-pulse bg-gradient-to-r from-transparent via-sky-300 to-transparent" />
+                  ) : null}
+                  {frameLocked && phase !== "success" ? (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/35">
+                      <Loader2 className="size-8 animate-spin text-sky-200" />
+                    </div>
+                  ) : null}
+                  {phase === "success" ? (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-emerald-500/20">
+                      <CheckCircle2 className="size-10 text-emerald-300" />
+                    </div>
                   ) : null}
                 </div>
               </div>
@@ -336,19 +418,21 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
         </div>
 
         <div className="shrink-0 space-y-2 border-t border-[var(--eos-border)] px-5 py-3 sm:px-6 sm:py-4">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] disabled:opacity-60"
-          >
-            <Upload className="size-3.5" />
-            {loading ? s.decoding : s.uploadInstead}
-          </button>
+          {!preferUpload ? (
+            <button
+              type="button"
+              onClick={openUploadPicker}
+              disabled={loading || frameLocked}
+              className="flex w-full items-center justify-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] disabled:opacity-60"
+            >
+              <Upload className="size-3.5" />
+              {loading ? s.decoding : s.uploadInstead}
+            </button>
+          ) : null}
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*"
+            accept={FILE_ACCEPT}
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
