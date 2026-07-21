@@ -34,8 +34,12 @@ export function missingFieldsBanner(missing: CarListingMissingFieldKey[], scan: 
   return `${scan.missingBannerPrefix} ${labels}.`;
 }
 export default function CarRegistrationScanGate({ open, onSkip, onPrefill, preferUpload = false }: CarRegistrationScanGateProps) {
-  const { dict } = useLocale();
+  const { dict, locale } = useLocale();
   const s = dict.cars.scan;
+  const noFileSelectedLabel =
+    locale === "en" ? "No image selected." : locale === "uk" ? "Фото не вибрано." : "Nie wybrano zdjęcia.";
+  const retryUploadLabel =
+    locale === "en" ? "Choose again" : locale === "uk" ? "Обрати знову" : "Wybierz ponownie";
   const phaseCopy: Record<AztecScanPhase, string> = {
     starting: s.phaseStarting,
     position: s.phasePosition,
@@ -132,6 +136,11 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
     void decodeAztecPayload(payload);
   };
 
+  const openUploadPicker = useCallback(() => {
+    setAwaitingUploadPicker(true);
+    window.setTimeout(() => fileInputRef.current?.click(), 80);
+  }, []);
+
   const decodeImageFile = async (file: File) => {
     setLoading(true);
     setError(null);
@@ -218,8 +227,8 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
     if (preferUpload) {
       setPhase("position");
       setCameraReady(false);
-      setAwaitingUploadPicker(true);
-      window.setTimeout(() => fileInputRef.current?.click(), 120);
+      setError(null);
+      openUploadPicker();
       return () => {
         stopCamera();
         setAwaitingUploadPicker(false);
@@ -231,7 +240,7 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
     return () => {
       stopCamera();
     };
-  }, [open, preferUpload, startCamera, stopCamera]);
+  }, [open, preferUpload, startCamera, stopCamera, openUploadPicker]);
 
   if (!open) return null;
 
@@ -266,10 +275,17 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
                   <p className="text-sm text-red-300">{error}</p>
                   <button
                     type="button"
-                    onClick={() => void startCamera()}
+                    onClick={() => {
+                      if (preferUpload) {
+                        setError(null);
+                        openUploadPicker();
+                        return;
+                      }
+                      void startCamera();
+                    }}
                     className="rounded-full border border-sky-400/40 bg-sky-500/15 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-sky-200"
                   >
-                    {s.retry}
+                    {preferUpload ? retryUploadLabel : s.retry}
                   </button>
                 </>
               ) : (
@@ -337,7 +353,11 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
             onChange={(event) => {
               const file = event.target.files?.[0];
               setAwaitingUploadPicker(false);
-              if (file) void decodeImageFile(file);
+              if (file) {
+                void decodeImageFile(file);
+              } else if (preferUpload) {
+                setError(noFileSelectedLabel);
+              }
               if (fileInputRef.current) fileInputRef.current.value = "";
             }}
           />
