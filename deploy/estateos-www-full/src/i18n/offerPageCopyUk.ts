@@ -3,10 +3,6 @@ import type { OfferPageCopy } from "@/content/offerPageCopy";
 /** Ukrainian copy for the public offer page — mirrors PL/EN structure. */
 export const UK: OfferPageCopy = {
   backToMap: "← Повернутися до карти",
-  favoriteAdd: "Обране",
-  favoriteRemove: "В обраному",
-  favoriteAriaAdd: "Додати до обраного",
-  favoriteAriaRemove: "Прибрати з обраного",
   offerId: "ID оголошення",
   views: "Перегляди",
   listedSince: "Додано",
@@ -89,6 +85,10 @@ export const UK: OfferPageCopy = {
   commissionAmount: "Сума комісії",
   commissionCompany: "Компанія-оператор",
   openCompanyProfile: "Відкрити візитівку",
+  contactSeller: "Зв'язатися з продавцем",
+  agentPhotoAlt: "Фото агента",
+  companyLogoAlt: "Логотип компанії",
+  agentRoleLabel: "Агент",
   negotiatorsOne: "1 особа подала пропозицію",
   negotiatorsMany: (n) => `${n} осіб подали пропозиції`,
   contactDisabled: "Контакт вимкнено",
