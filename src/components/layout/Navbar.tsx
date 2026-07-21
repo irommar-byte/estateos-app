@@ -50,13 +50,15 @@ type MobileChrome = {
 };
 
 const SWITCH_WIDTH: Record<SwitchDensity, number> = {
-  full: 172,
-  compact: 138,
-  mini: 108,
+  full: 168,
+  compact: 132,
+  mini: 104,
 };
-const MOBILE_ICON_SLOT = 46;
-const HAMBURGER_SLOT = 48;
-const CENTER_CLEARANCE = 20;
+/** Wallet chip shows "EOS 162" — much wider than icon-only buttons. */
+const WALLET_SLOT = 92;
+const ICON_SLOT = 44;
+const HAMBURGER_SLOT = 46;
+const SIDE_GAP = 8;
 
 export default function Navbar() {
   const { dict, locale } = useLocale();
@@ -150,13 +152,15 @@ export default function Navbar() {
 
       let picked = candidates[candidates.length - 1]!;
       for (const candidate of candidates) {
-        const icons =
-          Number(candidate.chrome.messages) +
-          Number(candidate.chrome.wallet) +
-          Number(candidate.chrome.bell);
-        const rightW = HAMBURGER_SLOT + icons * MOBILE_ICON_SLOT;
-        const available = barW - leftW - rightW - CENTER_CLEARANCE;
-        if (available >= SWITCH_WIDTH[candidate.density]) {
+        const rightW =
+          HAMBURGER_SLOT +
+          (candidate.chrome.wallet ? WALLET_SLOT : 0) +
+          (candidate.chrome.messages ? ICON_SLOT : 0) +
+          (candidate.chrome.bell ? ICON_SLOT : 0) +
+          SIDE_GAP;
+        // Center column gets whatever remains between left and right.
+        const centerW = barW - leftW - rightW - SIDE_GAP * 2;
+        if (centerW >= SWITCH_WIDTH[candidate.density]) {
           picked = candidate;
           break;
         }
@@ -241,7 +245,7 @@ export default function Navbar() {
     <nav className="fixed top-0 z-50 w-full border-b border-[var(--eos-border)] bg-[var(--eos-glass)] font-sans text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl [padding-top:env(safe-area-inset-top)]">
       <div
         ref={barRef}
-        className="relative mx-auto flex h-20 max-w-[1400px] items-center justify-between gap-2 px-3 sm:px-4 md:px-6"
+        className="relative mx-auto grid h-20 max-w-[1400px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 px-3 sm:gap-2 sm:px-4 md:px-6"
         style={{
           paddingLeft: "max(0.75rem, env(safe-area-inset-left))",
           paddingRight: "max(0.75rem, env(safe-area-inset-right))",
@@ -276,9 +280,9 @@ export default function Navbar() {
           </button>
         </div>
 
-        <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 flex -translate-x-1/2 items-center">
+        <div className="relative z-30 flex min-w-0 items-center justify-center overflow-hidden px-0.5">
           <div
-            className={`pointer-events-auto flex items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] shadow-[var(--eos-shadow-soft)] ${
+            className={`flex shrink-0 items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] shadow-[var(--eos-shadow-soft)] ${
               switchDensity === "mini" ? "p-0.5" : "p-0.5 sm:p-1"
             }`}
           >
