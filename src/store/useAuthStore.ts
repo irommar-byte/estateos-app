@@ -357,6 +357,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           email: loginEmail,
           firstFreePublicationUsed: readUserFirstFreePublicationUsed(grantUser),
         });
+        try {
+          const { restoreRadarSessionFromServer } = await import('../utils/radarSessionRestore');
+          await restoreRadarSessionFromServer({
+            userId: Number(grantUser.id),
+            token: get().token,
+            setRadarActive: get().setRadarActive,
+          });
+        } catch (e) {
+          if (__DEV__) console.warn('[auth] radar restore after login', e);
+        }
       }
       return true;
     } catch (err: any) {
@@ -574,6 +584,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       void persistLocalEmailVerified(prevUser.id, false);
     }
     void stopRadarLiveActivity().catch(() => undefined);
+    try {
+      const { clearRadarCommittedState } = await import('../utils/radarCommittedStorage');
+      await clearRadarCommittedState();
+    } catch {
+      // noop
+    }
     try {
       await AsyncStorage.multiRemove([
         'mobile_token',
@@ -1016,6 +1032,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
         await get().refreshUser();
         await get().refreshAgencyMembership();
+        const uid = Number(get().user?.id || 0);
+        if (uid > 0) {
+          try {
+            const { restoreRadarSessionFromServer } = await import('../utils/radarSessionRestore');
+            await restoreRadarSessionFromServer({
+              userId: uid,
+              token: get().token,
+              setRadarActive: get().setRadarActive,
+            });
+          } catch (e) {
+            if (__DEV__) console.warn('[auth] radar restore after session', e);
+          }
+        }
       }
     } catch (e) {
       if (__DEV__) console.warn('Restore session error', e);

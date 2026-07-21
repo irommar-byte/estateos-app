@@ -41,3 +41,11 @@ export async function saveRadarCommittedState(state: RadarCommittedState): Promi
     // noop
   }
 }
+
+export async function clearRadarCommittedState(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // noop
+  }
+}

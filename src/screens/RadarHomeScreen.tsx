@@ -1123,7 +1123,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     );
   }, [user, isRadarActive]);
 
-  /** Jedno źródło prawdy — lokalna kalibracja ma pierwszeństwo nad API do ręcznej zmiany. */
+  /** Jedno źródło prawdy po stronie serwera (jak WWW) — API wygrywa z lokalnym cache. */
   const radarPreferencesHydratedRef = useRef(false);
   useEffect(() => {
     radarPreferencesHydratedRef.current = false;
@@ -1134,53 +1134,56 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     if (radarPreferencesHydratedRef.current) return;
     let cancelled = false;
     void (async () => {
+      const applyRestored = (filters: typeof defaultRadarFilters, mapBounds: typeof radarMapBounds | null) => {
+        setRadarFilters(filters);
+        void setRadarActive(!!filters.pushNotifications);
+        if (mapBounds) {
+          setRadarMapBounds(mapBounds);
+          setMapUsesRadarFilters(true);
+          setAreaSummary(`${filters.city || 'Obszar'} · ${mapBounds.radiusKm} km`);
+        } else if (!isRadarFactoryDefaults(filters)) {
+          setMapUsesRadarFilters(true);
+          setAreaSummary(filters.city || '');
+        }
+      };
+
+      if (token) {
+        try {
+          const { restoreRadarSessionFromServer } = await import('../utils/radarSessionRestore');
+          const restored = await restoreRadarSessionFromServer({
+            userId,
+            token,
+            defaults: defaultRadarFilters,
+            setRadarActive,
+          });
+          if (cancelled) return;
+          if (restored) {
+            applyRestored(restored.filters, restored.mapBounds);
+            radarPreferencesHydratedRef.current = true;
+            return;
+          }
+        } catch (e) {
+          if (__DEV__) console.warn('[radar] hydrate from API failed', e);
+        }
+      }
+
       const committed = await loadRadarCommittedState(userId);
       if (cancelled) return;
       if (committed) {
-        setRadarFilters((prev) => ({
+        const filters = {
           ...committed.filters,
-          pushNotifications: prev.pushNotifications,
-        }));
-        if (committed.mapBounds) {
-          setRadarMapBounds(committed.mapBounds);
-          setMapUsesRadarFilters(true);
-          setAreaSummary(committed.areaSummary || `${committed.filters.city || 'Obszar'} · ${committed.mapBounds.radiusKm} km`);
-        } else if (!isRadarFactoryDefaults(committed.filters)) {
-          setMapUsesRadarFilters(true);
-          setAreaSummary(committed.areaSummary || '');
-        }
-        if (token) {
-          const dto = buildCanonicalRadarPreferencesDto({
-            userId,
-            filters: committed.filters,
-            mapContext: mapContextForCanonicalDto(committed.filters, committed.mapBounds),
-          });
-          void postRadarPreferencesToBackend({ apiUrl: API_URL, token, dto });
-        }
+          pushNotifications: committed.filters.pushNotifications !== false,
+        };
+        applyRestored(filters, committed.mapBounds);
         radarPreferencesHydratedRef.current = true;
         return;
-      }
-      const pref = await fetchRadarPreferenceForUser(API_URL, userId, token);
-      if (cancelled || !pref) {
-        radarPreferencesHydratedRef.current = true;
-        return;
-      }
-      const { filters, mapBounds } = radarFiltersFromApiPreference(pref, defaultRadarFilters);
-      setRadarFilters((prev) => ({
-        ...filters,
-        pushNotifications: prev.pushNotifications,
-      }));
-      if (mapBounds) {
-        setRadarMapBounds(mapBounds);
-        setMapUsesRadarFilters(true);
-        setAreaSummary(`${filters.city || 'Obszar'} · ${mapBounds.radiusKm} km`);
       }
       radarPreferencesHydratedRef.current = true;
     })();
     return () => {
       cancelled = true;
     };
-  }, [user?.id, token]);
+  }, [user?.id, token, setRadarActive]);
   /** Po kalibracji / zaznaczeniu obszaru filtry radaru (cena, skala %, krąg mapy) mają wpływać na listę i mapę. */
   const [mapUsesRadarFilters, setMapUsesRadarFilters] = useState(false);
   /** Środek i promień zaznaczone na mapie — przy 100% skali tylko oferty wewnątrz tego kręgu. */
@@ -3635,7 +3638,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     await setRadarActive(filtersToApply.pushNotifications);
     await syncRadarPreferencesToBackend(filtersToApply);
     if (filtersToApply.pushNotifications && token) {
-      void registerPushNotifications(token, { showPrompt: true });
+      const pushOk = await registerPushNotifications(token, { showPrompt: true });
+      if (!pushOk) {
+        Alert.alert(
+          'Powiadomienia radaru',
+          'Radar został zapisany, ale nie udało się zarejestrować powiadomień push na tym urządzeniu. Włącz powiadomienia w ustawieniach iPhone’a, potem otwórz ponownie Zakupy / Radar albo „Przywróć zakupy” nie jest potrzebne — wystarczy ponownie zapisać kalibrację.',
+        );
+      }
     }
       const ownerId = Number(user?.id || 0);
       if (ownerId > 0) {

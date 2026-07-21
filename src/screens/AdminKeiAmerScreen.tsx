@@ -559,11 +559,29 @@ export default function AdminKeiAmerScreen() {
     setExportVisible(true);
   }, [setExportVisible]);
 
+  /** Y kart postępu w ScrollView — bieżąca oferta w kadrze, bez skoku na koniec listy. */
+  const exportCardOffsetsRef = useRef<Record<string, number>>({});
+  const activeExportIndex = useMemo(
+    () => exportItems.findIndex((item) => item.status === 'active'),
+    [exportItems],
+  );
+
   useEffect(() => {
-    if (exportVisible) {
-      requestAnimationFrame(() => exportScrollRef.current?.scrollToEnd({ animated: true }));
-    }
-  }, [exportVisible, exportItems, exportMessage]);
+    if (!exportVisible || activeExportIndex < 0) return;
+    const item = exportItems[activeExportIndex];
+    if (!item) return;
+    const key = `${item.portalUrl}-${item.index}`;
+    const scrollToActive = () => {
+      const y = exportCardOffsetsRef.current[key];
+      if (typeof y !== 'number') return;
+      exportScrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+    };
+    requestAnimationFrame(scrollToActive);
+    const t = setTimeout(scrollToActive, 80);
+    return () => clearTimeout(t);
+    // Tylko zmiana aktywnej pozycji / otwarcie modala — nie przy każdym % zdjęcia.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- exportItems[activeExportIndex]
+  }, [exportVisible, activeExportIndex]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
@@ -1003,7 +1021,13 @@ export default function AdminKeiAmerScreen() {
             <Text style={[styles.percentLabel, { color: colors.text }]}>{overallPercent}%</Text>
 
             {exportItems.map((item) => (
-              <View key={`${item.portalUrl}-${item.index}`} style={[styles.progressCard, { backgroundColor: colors.card }]}>
+              <View
+                key={`${item.portalUrl}-${item.index}`}
+                style={[styles.progressCard, { backgroundColor: colors.card }]}
+                onLayout={(e) => {
+                  exportCardOffsetsRef.current[`${item.portalUrl}-${item.index}`] = e.nativeEvent.layout.y;
+                }}
+              >
                 <View style={styles.progressCardHeader}>
                   <Text style={[styles.progressAddress, { color: colors.text }]} numberOfLines={2}>
                     {item.address || item.portalUrl}

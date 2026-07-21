@@ -1,5 +1,5 @@
 import type { OtodomImportDraft } from '@/lib/otodomImport';
-import { normalizeImportPortalUrl, sanitizeImportYearBuilt } from '@/lib/otodomImport';
+import { normalizeImportPortalUrl, sanitizeImportHeating, sanitizeImportYearBuilt } from '@/lib/otodomImport';
 import { assertOtodomImportDraftReady } from '@/lib/importDraftValidate';
 import { resolveOtodomImportLocationFields } from '@/lib/location/resolveOfferLocationFromCoordinates';
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
@@ -34,6 +34,7 @@ const IMPORT_MARKER_PREFIXES: Record<OtodomImportDraft['source'], string> = {
 };
 const IMAGE_FETCH_TIMEOUT_MS = 25_000;
 const MAX_IMPORT_IMAGES = MAX_IMAGES_PER_OFFER;
+const IMAGE_UPLOAD_CONCURRENCY = 2;
 
 function mapConditionCode(code: string | null): string {
   const value = String(code ?? '').trim().toLowerCase();
@@ -156,7 +157,7 @@ export async function draftToOfferCreateBody(
     hasParking: featureIncludes(features, ['garaż', 'parking', 'miejsce parking']),
     hasGarden: featureIncludes(features, ['ogród', 'ogródek']),
     isFurnished: featureIncludes(features, ['meble', 'umeblow']),
-    heating: draft.heating,
+    heating: sanitizeImportHeating(draft.heating, draft.heatingCode),
     status: 'PENDING',
     images: '[]',
     ...(options?.agentCommissionPercent != null
@@ -258,59 +259,72 @@ export async function importOtodomImagesForOffer(params: {
   const floorPlanRemoteUrl = floorPlanIdx != null ? allUrls[floorPlanIdx] : null;
   const totalSteps = galleryUrls.length + (floorPlanRemoteUrl ? 1 : 0);
 
+  const uploadGalleryImage = async (remoteUrl: string, galleryIndex: number, step: number) => {
+    params.onProgress?.({
+      phase: 'download',
+      index: step,
+      total: totalSteps,
+      label: `Pobieranie zdjęcia ${step}/${totalSteps}`,
+      asFloorPlan: false,
+    });
+
+    const file = await downloadRemoteImage(remoteUrl, params.source);
+    if (!file) {
+      failed += 1;
+      return null;
+    }
+
+    let processedBuffer: Buffer;
+    try {
+      processedBuffer = await processOtodomImportImageBuffer(file.buffer, galleryIndex);
+    } catch {
+      processedBuffer = file.buffer;
+    }
+
+    params.onProgress?.({
+      phase: 'upload_gallery',
+      index: step,
+      total: totalSteps,
+      label: `Zapisywanie zdjęcia ${step}/${totalSteps}`,
+      asFloorPlan: false,
+    });
+
+    const saved = await saveOfferGalleryOrFloorplan({
+      offerId: params.offerId,
+      ownerUserId: params.ownerUserId,
+      fileBuffer: processedBuffer,
+      mimeTypeDeclared: 'image/jpeg',
+      originalFileName: 'otodom-import.jpg',
+      isFloorPlan: false,
+      byteLengthInput: processedBuffer.length,
+      tileWatermark: false,
+    });
+
+    if (!saved.ok) {
+      failed += 1;
+      return null;
+    }
+
+    uploaded += 1;
+    return saved.url;
+  };
+
   await acquireOfferUploadLock(params.offerId);
   try {
     let step = 0;
-    for (let index = 0; index < galleryUrls.length; index += 1) {
-      step += 1;
-      const remoteUrl = galleryUrls[index];
-      params.onProgress?.({
-        phase: 'download',
-        index: step,
-        total: totalSteps,
-        label: `Pobieranie zdjęcia ${step}/${totalSteps}`,
-        asFloorPlan: false,
-      });
-
-      const file = await downloadRemoteImage(remoteUrl, params.source);
-      if (!file) {
-        failed += 1;
-        continue;
+    for (let offset = 0; offset < galleryUrls.length; offset += IMAGE_UPLOAD_CONCURRENCY) {
+      const chunk = galleryUrls.slice(offset, offset + IMAGE_UPLOAD_CONCURRENCY);
+      const chunkResults = await Promise.all(
+        chunk.map(async (remoteUrl, chunkIndex) => {
+          const galleryIndex = offset + chunkIndex;
+          step += 1;
+          const currentStep = step;
+          return uploadGalleryImage(remoteUrl, galleryIndex, currentStep);
+        }),
+      );
+      for (const url of chunkResults) {
+        if (url) urls.push(url);
       }
-
-      let processedBuffer: Buffer;
-      try {
-        processedBuffer = await processOtodomImportImageBuffer(file.buffer, index);
-      } catch {
-        processedBuffer = file.buffer;
-      }
-
-      params.onProgress?.({
-        phase: 'upload_gallery',
-        index: step,
-        total: totalSteps,
-        label: `Zapisywanie zdjęcia ${step}/${totalSteps}`,
-        asFloorPlan: false,
-      });
-
-      const saved = await saveOfferGalleryOrFloorplan({
-        offerId: params.offerId,
-        ownerUserId: params.ownerUserId,
-        fileBuffer: processedBuffer,
-        mimeTypeDeclared: 'image/jpeg',
-        originalFileName: 'otodom-import.jpg',
-        isFloorPlan: false,
-        byteLengthInput: processedBuffer.length,
-        tileWatermark: false,
-      });
-
-      if (!saved.ok) {
-        failed += 1;
-        continue;
-      }
-
-      uploaded += 1;
-      urls.push(saved.url);
     }
 
     if (floorPlanRemoteUrl) {
@@ -385,6 +399,8 @@ export async function createOfferFromOtodomDraft(
     agentVoice?: boolean;
     /** Zachowaj tytuł i opis z portalu bez AI (zaproszenia właścicieli). */
     preserveOriginalCopy?: boolean;
+    /** Pomiń automatyczne wykrywanie rzutu (oszczędza ~25s przy imporcie mobilnym). */
+    skipAutoFloorPlanProbe?: boolean;
   },
 ) {
   const existing = await findExistingImportedOffer(draft);
@@ -429,94 +445,112 @@ export async function createOfferFromOtodomDraft(
     { rewrittenByAi: presentation.rewrittenByAi },
   );
   const body = await draftToOfferCreateBody(draft, ownerUserId, presentation, options);
-  const offer = await createOffer(body);
-  const offerId = Number((offer as { id?: number }).id);
-  if (!Number.isFinite(offerId)) {
-    throw new Error('Nie udało się odczytać ID nowej oferty.');
-  }
+  let offerId: number | null = null;
+  let publicationReserved = false;
 
-  await upsertImportedOfferPrivateSnapshot({
-    offerId,
-    userId: ownerUserId,
-    draft,
-  });
+  try {
+    const offer = await createOffer(body);
+    offerId = Number((offer as { id?: number }).id);
+    if (!Number.isFinite(offerId)) {
+      throw new Error('Nie udało się odczytać ID nowej oferty.');
+    }
 
-  let floorPlanImageIndex: number | null = null;
-  if (options?.floorPlanImageIndex !== undefined) {
-    floorPlanImageIndex = options.floorPlanImageIndex;
-  } else if (options?.lastImageFloorPlan === false) {
-    floorPlanImageIndex = null;
-  } else if (options?.lastImageFloorPlan === true && draft.imageUrls.length > 0) {
-    floorPlanImageIndex = draft.imageUrls.length - 1;
-  } else if (options?.lastImageFloorPlan === undefined && draft.imageUrls.length > 0) {
-    let lastImageBuffer: Buffer | null = null;
-    const lastUrl = draft.imageUrls[draft.imageUrls.length - 1];
-    const lastFile = await downloadRemoteImage(lastUrl, draft.source);
-    lastImageBuffer = lastFile?.buffer ?? null;
-    const autoLast = await resolveLastImageIsFloorPlan(draft, undefined, lastImageBuffer);
-    floorPlanImageIndex = autoLast ? draft.imageUrls.length - 1 : null;
-  }
+    await upsertImportedOfferPrivateSnapshot({
+      offerId,
+      userId: ownerUserId,
+      draft,
+    });
 
-  const imageResult = await importOtodomImagesForOffer({
-    offerId,
-    ownerUserId: ownerUserId,
-    imageUrls: draft.imageUrls,
-    source: draft.source,
-    maxImages: options?.maxImportImages,
-    floorPlanImageIndex,
-    onProgress: options?.onImageProgress,
-  });
+    let floorPlanImageIndex: number | null = null;
+    if (options?.floorPlanImageIndex !== undefined) {
+      floorPlanImageIndex = options.floorPlanImageIndex;
+    } else if (options?.lastImageFloorPlan === false) {
+      floorPlanImageIndex = null;
+    } else if (options?.lastImageFloorPlan === true && draft.imageUrls.length > 0) {
+      floorPlanImageIndex = draft.imageUrls.length - 1;
+    } else if (
+      options?.lastImageFloorPlan === undefined &&
+      !options?.skipAutoFloorPlanProbe &&
+      draft.imageUrls.length > 0
+    ) {
+      let lastImageBuffer: Buffer | null = null;
+      const lastUrl = draft.imageUrls[draft.imageUrls.length - 1];
+      const lastFile = await downloadRemoteImage(lastUrl, draft.source);
+      lastImageBuffer = lastFile?.buffer ?? null;
+      const autoLast = await resolveLastImageIsFloorPlan(draft, undefined, lastImageBuffer);
+      floorPlanImageIndex = autoLast ? draft.imageUrls.length - 1 : null;
+    }
 
-  const refreshed = await prisma.offer.findUnique({
-    where: { id: offerId },
-    select: { id: true, title: true, status: true, city: true, district: true, images: true },
-  });
+    const imageResult = await importOtodomImagesForOffer({
+      offerId,
+      ownerUserId: ownerUserId,
+      imageUrls: draft.imageUrls,
+      source: draft.source,
+      maxImages: options?.maxImportImages,
+      floorPlanImageIndex,
+      onProgress: options?.onImageProgress,
+    });
 
-  if (publication && typeof publication === 'object') {
-    const redemption = publicationInputToRedemption(publication as OtodomPublicationInput);
-    if (redemption) {
-      try {
-        await consumeAndReserveImportPublication({
+    const refreshed = await prisma.offer.findUnique({
+      where: { id: offerId },
+      select: { id: true, title: true, status: true, city: true, district: true, images: true },
+    });
+
+    if (publication && typeof publication === 'object') {
+      const redemption = publicationInputToRedemption(publication as OtodomPublicationInput);
+      if (redemption) {
+        try {
+          await consumeAndReserveImportPublication({
+            offerId,
+            userId: ownerUserId,
+            redemption,
+          });
+          const pending = await readPendingPublication(offerId);
+          if (!pending?.kind) {
+            throw new Error('IMPORT_PUBLICATION_RESERVE_FAILED');
+          }
+          publicationReserved = true;
+        } catch (error) {
+          await deleteOfferAfterImportPaymentFailure(offerId);
+          offerId = null;
+          if (error instanceof ImportPublicationError) {
+            if (error.code === 'PUBLICATION_REQUIRES_PLUS') {
+              throw new Error('NO_PLUS_CREDIT_AVAILABLE');
+            }
+            throw new Error(error.message);
+          }
+          if (error instanceof Error && error.message === 'IMPORT_PUBLICATION_RESERVE_FAILED') {
+            throw new Error('Nie udało się zarezerwować publikacji po imporcie. Spróbuj ponownie.');
+          }
+          throw error;
+        }
+      } else {
+        const recovered = await tryRecoverImportOfferPendingPublication({
           offerId,
           userId: ownerUserId,
-          redemption,
         });
-        const pending = await readPendingPublication(offerId);
-        if (!pending?.kind) {
-          throw new Error('IMPORT_PUBLICATION_RESERVE_FAILED');
+        if (!recovered) {
+          await deleteOfferAfterImportPaymentFailure(offerId);
+          offerId = null;
+          throw new Error('Wybierz metodę publikacji (kupon lub kredyt Pakiet Plus) przed importem.');
         }
-      } catch (error) {
-        await deleteOfferAfterImportPaymentFailure(offerId);
-        if (error instanceof ImportPublicationError) {
-          if (error.code === 'PUBLICATION_REQUIRES_PLUS') {
-            throw new Error('NO_PLUS_CREDIT_AVAILABLE');
-          }
-          throw new Error(error.message);
-        }
-        if (error instanceof Error && error.message === 'IMPORT_PUBLICATION_RESERVE_FAILED') {
-          throw new Error('Nie udało się zarezerwować publikacji po imporcie. Spróbuj ponownie.');
-        }
-        throw error;
-      }
-    } else {
-      const recovered = await tryRecoverImportOfferPendingPublication({
-        offerId,
-        userId: ownerUserId,
-      });
-      if (!recovered) {
-        await deleteOfferAfterImportPaymentFailure(offerId);
-        throw new Error('Wybierz metodę publikacji (kupon lub kredyt Pakiet Plus) przed importem.');
+        publicationReserved = true;
       }
     }
-  }
 
-  return {
-    ok: true as const,
-    offer: refreshed,
-    offerId,
-    images: imageResult,
-    presentation,
-    editUrl: `/edytuj-oferte/${offerId}`,
-    publicUrl: `/oferta/${offerId}`,
-  };
+    return {
+      ok: true as const,
+      offer: refreshed,
+      offerId,
+      images: imageResult,
+      presentation,
+      editUrl: `/edytuj-oferte/${offerId}`,
+      publicUrl: `/oferta/${offerId}`,
+    };
+  } catch (error) {
+    if (offerId && !publicationReserved) {
+      await deleteOfferAfterImportPaymentFailure(offerId).catch(() => undefined);
+    }
+    throw error;
+  }
 }

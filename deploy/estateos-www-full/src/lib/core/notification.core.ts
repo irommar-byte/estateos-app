@@ -90,13 +90,18 @@ export async function sendNotification(params: SendNotificationParams) {
 
     console.log(`🚀 PUSH SENT: ${notification.id}`);
   } catch (e: any) {
-    console.error('❌ PUSH ERROR:', e?.message || e);
+    const msg = String(e?.message || e || 'UNKNOWN');
+    if (msg.includes('NO_ACTIVE_DEVICES')) {
+      console.warn(`⚠️ PUSH SKIP (no devices) notification=${notification.id} user=${userId}`);
+    } else {
+      console.error('❌ PUSH ERROR:', msg);
+    }
 
     await prisma.notification.update({
       where: { id: notification.id },
       data: {
         status: 'FAILED',
-        failureReason: e?.message || 'UNKNOWN',
+        failureReason: msg,
         failedAt: new Date(),
       },
     });
