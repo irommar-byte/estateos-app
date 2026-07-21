@@ -5,15 +5,13 @@ export type AztecScanPhase = "starting" | "position" | "searching" | "hold" | "d
 export type StartAztecVideoScanOptions = {
   video: HTMLVideoElement;
   onPhase: (phase: AztecScanPhase) => void;
-  /** Called once after a stable decode — scanning is already stopped. */
-  onPayload: (payload: string) => void;
   /** Freeze the live preview (pause video + disable tracks) before processing. */
   onLockFrame?: () => void;
   /**
-   * Server-side decode of a JPEG frame (same path as photo upload).
-   * Return Aztec payload text on success, or null/empty on miss.
+   * Called once a sharp still was taken from the camera.
+   * Should run the same decode path as "upload photo".
    */
-  decodeFrameOnServer: (blob: Blob) => Promise<string | null>;
+  onPhotoCaptured: (file: File) => void | Promise<void>;
 };
 
 /** Pause preview so the last decoded frame stays on screen. */
@@ -34,7 +32,7 @@ export function freezeVideoPreview(video: HTMLVideoElement | null, stream: Media
   });
 }
 
-function canvasToJpegBlob(canvas: HTMLCanvasElement, quality = 0.92): Promise<Blob | null> {
+function canvasToJpegBlob(canvas: HTMLCanvasElement, quality = 0.95): Promise<Blob | null> {
   return new Promise((resolve) => {
     try {
       canvas.toBlob((blob) => resolve(blob), "image/jpeg", quality);
@@ -44,60 +42,94 @@ function canvasToJpegBlob(canvas: HTMLCanvasElement, quality = 0.92): Promise<Bl
   });
 }
 
-/** Capture full frame + center crops that match the on-screen scan frame. */
-function captureFrameBlobs(video: HTMLVideoElement): Promise<Blob[]> {
+/** Laplacian-ish variance on a downscaled grayscale crop — higher = sharper. */
+function estimateSharpness(video: HTMLVideoElement): number {
   const vw = video.videoWidth || 0;
   const vh = video.videoHeight || 0;
-  if (vw < 40 || vh < 40) return Promise.resolve([]);
+  if (vw < 40 || vh < 40) return 0;
 
-  const full = document.createElement("canvas");
-  const maxSide = 1400;
+  const sample = document.createElement("canvas");
+  const side = Math.min(220, Math.floor(Math.min(vw, vh) * 0.55));
+  sample.width = side;
+  sample.height = side;
+  const ctx = sample.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return 0;
+
+  const sx = Math.floor((vw - Math.min(vw, vh) * 0.72) / 2);
+  const sy = Math.floor((vh - Math.min(vw, vh) * 0.72) / 2);
+  const sSide = Math.floor(Math.min(vw, vh) * 0.72);
+  ctx.drawImage(video, sx, sy, sSide, sSide, 0, 0, side, side);
+
+  const { data } = ctx.getImageData(0, 0, side, side);
+  const gray = new Float32Array(side * side);
+  for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+    gray[p] = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+  }
+
+  let sum = 0;
+  let sumSq = 0;
+  let n = 0;
+  for (let y = 1; y < side - 1; y += 1) {
+    for (let x = 1; x < side - 1; x += 1) {
+      const i = y * side + x;
+      const lap =
+        -4 * gray[i] +
+        gray[i - 1] +
+        gray[i + 1] +
+        gray[i - side] +
+        gray[i + side];
+      sum += lap;
+      sumSq += lap * lap;
+      n += 1;
+    }
+  }
+  if (n < 10) return 0;
+  const mean = sum / n;
+  return sumSq / n - mean * mean;
+}
+
+/** High-quality still as if the user took a photo for upload. */
+async function takePhotoFromVideo(video: HTMLVideoElement): Promise<File | null> {
+  const vw = video.videoWidth || 0;
+  const vh = video.videoHeight || 0;
+  if (vw < 40 || vh < 40) return null;
+
+  const canvas = document.createElement("canvas");
+  const maxSide = 2000;
   const scale = Math.min(1, maxSide / Math.max(vw, vh));
-  full.width = Math.max(1, Math.round(vw * scale));
-  full.height = Math.max(1, Math.round(vh * scale));
-  const fullCtx = full.getContext("2d");
-  if (!fullCtx) return Promise.resolve([]);
-  fullCtx.drawImage(video, 0, 0, full.width, full.height);
+  canvas.width = Math.max(1, Math.round(vw * scale));
+  canvas.height = Math.max(1, Math.round(vh * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  const canvases: HTMLCanvasElement[] = [full];
-
-  const addCrop = (ratio: number, maxOut: number) => {
-    const side = Math.floor(Math.min(full.width, full.height) * ratio);
-    if (side < 140) return;
-    const sx = Math.floor((full.width - side) / 2);
-    const sy = Math.floor((full.height - side) / 2);
-    const crop = document.createElement("canvas");
-    crop.width = Math.min(maxOut, side);
-    crop.height = crop.width;
-    const ctx = crop.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(full, sx, sy, side, side, 0, 0, crop.width, crop.height);
-    canvases.push(crop);
-  };
-
-  addCrop(0.72, 960);
-  addCrop(0.9, 1100);
-
-  return Promise.all(canvases.map((c) => canvasToJpegBlob(c, 0.9))).then(
-    (blobs) => blobs.filter((b): b is Blob => Boolean(b && b.size > 800)),
-  );
+  const blob = await canvasToJpegBlob(canvas, 0.95);
+  if (!blob || blob.size < 2000) return null;
+  return new File([blob], `aztec-live-${Date.now()}.jpg`, { type: "image/jpeg" });
 }
 
 /**
- * Live Aztec scan without browser ZXing (Safari-safe).
- * Samples video frames and decodes them with the same server path as photo upload.
+ * Live scan: when the frame looks sharp (clear code), auto-take a photo and
+ * decode it with the exact same pipeline as "upload photo".
+ * Also retries periodically even on softer focus so Mac webcams still work.
  */
 export function startAztecVideoScan({
   video,
   onPhase,
-  onPayload,
   onLockFrame,
-  decodeFrameOnServer,
+  onPhotoCaptured,
 }: StartAztecVideoScanOptions) {
   let stopped = false;
   let captured = false;
   let inFlight = false;
+  let sharpStreak = 0;
+  let lastAttemptAt = 0;
   let timer: number | null = null;
+
+  // Empirically: blurry webcam ~20–80, readable Aztec document usually >120.
+  const SHARP_MIN = 95;
+  const SHARP_STREAK_NEEDED = 2;
+  const FORCE_ATTEMPT_MS = 1600;
 
   const stop = () => {
     stopped = true;
@@ -107,68 +139,74 @@ export function startAztecVideoScan({
     }
   };
 
-  const commitPayload = (payload: string) => {
-    if (captured || stopped) return;
-    const text = payload.trim();
-    if (!text) return;
-    captured = true;
-    onPhase("hold");
-    stop();
-    onLockFrame?.();
-    onPhase("decoding");
-    onPayload(text);
-  };
-
-  const tick = async () => {
+  const snapAndDecode = async () => {
     if (stopped || captured || inFlight) return;
-    if (video.readyState < 2) {
-      onPhase("searching");
-      return;
-    }
-    // Keep scanning even if briefly paused after focus changes.
-    if (video.ended) return;
-
     inFlight = true;
-    onPhase("searching");
+    lastAttemptAt = Date.now();
     try {
-      if (video.paused) {
-        try {
-          await video.play();
-        } catch {
-          /* ignore */
-        }
-      }
-
-      const blobs = await captureFrameBlobs(video);
-      if (!blobs.length || stopped || captured) {
+      const file = await takePhotoFromVideo(video);
+      if (!file || stopped || captured) {
         onPhase("searching");
         return;
       }
 
-      // Prefer center crop first (index 1), then full, then wider crop.
-      const ordered = [blobs[1], blobs[0], blobs[2]].filter(Boolean) as Blob[];
-      onPhase("hold");
-
-      for (const blob of ordered) {
-        if (stopped || captured) return;
-        const payload = await decodeFrameOnServer(blob);
-        if (payload?.trim()) {
-          commitPayload(payload.trim());
-          return;
-        }
-      }
-      onPhase("searching");
+      // Hand off still photo to the same pipeline as gallery upload.
+      captured = true;
+      stop();
+      onLockFrame?.();
+      onPhase("decoding");
+      await onPhotoCaptured(file);
+      // On failure the gate resumes a new scanning session itself.
     } catch {
-      if (!stopped && !captured) onPhase("searching");
+      captured = false;
+      sharpStreak = 0;
+      if (!stopped) onPhase("searching");
     } finally {
       inFlight = false;
+    }
+  };
+
+  const tick = async () => {
+    if (stopped || captured || inFlight) return;
+    if (video.readyState < 2 || video.ended) {
+      onPhase("searching");
+      return;
+    }
+
+    try {
+      if (video.paused) {
+        await video.play().catch(() => undefined);
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const now = Date.now();
+    const sharpness = estimateSharpness(video);
+    const isSharp = sharpness >= SHARP_MIN;
+
+    if (isSharp) {
+      sharpStreak += 1;
+      onPhase("hold");
+      if (sharpStreak >= SHARP_STREAK_NEEDED) {
+        await snapAndDecode();
+      }
+      return;
+    }
+
+    sharpStreak = 0;
+    onPhase("searching");
+    // Fallback: keep trying full photos like upload, even if focus is soft.
+    if (now - lastAttemptAt >= FORCE_ATTEMPT_MS) {
+      onPhase("hold");
+      await snapAndDecode();
     }
   };
 
   onPhase("searching");
   timer = window.setInterval(() => {
     void tick();
-  }, 1100);
+  }, 400);
   void tick();
 
   return stop;
