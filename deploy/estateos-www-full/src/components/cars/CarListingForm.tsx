@@ -603,7 +603,7 @@ export default function CarListingForm({
       {mode === "create" ? (
         <CarRegistrationScanGate
           open={scanGateOpen}
-          preferUpload={entryMethod === "upload"}
+          preferUpload={entryMethod === "upload" || entryMethod === "capture"}
           onSkip={() => setScanGateOpen(false)}
           onPrefill={applyRegistrationPrefill}
         />

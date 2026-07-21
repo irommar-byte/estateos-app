@@ -545,6 +545,20 @@ export default function CarsCatalogClient() {
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <button
                 type="button"
+                onClick={() => setActiveAddPath("otomoto")}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  activeAddPath === "otomoto"
+                    ? "border-sky-400/45 bg-sky-500/10"
+                    : "border-[var(--eos-border)] bg-[var(--eos-surface)] hover:border-sky-400/40 hover:bg-sky-500/10"
+                }`}
+              >
+                <Car className="size-5 text-sky-500" />
+                <p className="mt-3 text-sm font-semibold">Import z Otomoto</p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wklej link i przenieś treść do formularza.</p>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => {
                   setActiveAddPath("scan");
                   window.location.href = "/cars/dodaj?entry=scan";
@@ -566,7 +580,7 @@ export default function CarsCatalogClient() {
               >
                 <Upload className="size-5 text-sky-500" />
                 <p className="mt-3 text-sm font-semibold">Dodaj zdjęcie dowodu z kodem</p>
-                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wgraj zdjęcie i odczytaj kod Aztec automatycznie.</p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wybierz zdjęcie z plików i odczytaj kod Aztec.</p>
               </button>
 
               <button
@@ -580,20 +594,6 @@ export default function CarsCatalogClient() {
                 <Keyboard className="size-5 text-sky-500" />
                 <p className="mt-3 text-sm font-semibold">Dodaj ręcznie</p>
                 <p className="mt-1 text-xs text-[var(--eos-muted)]">Wypełnij formularz samodzielnie od zera.</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveAddPath("otomoto")}
-                className={`rounded-2xl border p-4 text-left transition ${
-                  activeAddPath === "otomoto"
-                    ? "border-sky-400/45 bg-sky-500/10"
-                    : "border-[var(--eos-border)] bg-[var(--eos-surface)] hover:border-sky-400/40 hover:bg-sky-500/10"
-                }`}
-              >
-                <Car className="size-5 text-sky-500" />
-                <p className="mt-3 text-sm font-semibold">Import z Otomoto</p>
-                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wklej link i przenieś treść do formularza.</p>
               </button>
             </div>
 

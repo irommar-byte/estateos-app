@@ -1,3 +1,5 @@
+"use client";
+
 import { BrowserMultiFormatReader } from "@zxing/library/esm/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 
@@ -7,27 +9,49 @@ function buildAztecReader() {
   const hints = new Map<DecodeHintType, unknown>();
   hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.AZTEC]);
   hints.set(DecodeHintType.TRY_HARDER, true);
-  return new BrowserMultiFormatReader(hints, 180);
+  return new BrowserMultiFormatReader(hints, 160);
 }
 
 export type StartAztecVideoScanOptions = {
   video: HTMLVideoElement;
   onPhase: (phase: AztecScanPhase) => void;
+  /** Called once after a stable decode — scanning is already stopped. */
   onPayload: (payload: string) => void;
+  /** Freeze the live preview (pause video + disable tracks) before processing. */
+  onLockFrame?: () => void;
   stableHitsRequired?: number;
 };
+
+/** Pause preview so the last decoded frame stays on screen. */
+export function freezeVideoPreview(video: HTMLVideoElement | null, stream: MediaStream | null) {
+  if (video) {
+    try {
+      video.pause();
+    } catch {
+      /* ignore */
+    }
+  }
+  stream?.getVideoTracks().forEach((track) => {
+    try {
+      track.enabled = false;
+    } catch {
+      /* ignore */
+    }
+  });
+}
 
 export function startAztecVideoScan({
   video,
   onPhase,
   onPayload,
+  onLockFrame,
   stableHitsRequired = 2,
 }: StartAztecVideoScanOptions) {
   const reader = buildAztecReader();
   let stopped = false;
   let lastPayload = "";
   let stableHits = 0;
-  let decodeInFlight = false;
+  let captured = false;
 
   const stop = () => {
     stopped = true;
@@ -38,8 +62,18 @@ export function startAztecVideoScan({
     }
   };
 
+  const commitPayload = (payload: string) => {
+    if (captured || stopped) return;
+    captured = true;
+    onPhase("hold");
+    stop();
+    onLockFrame?.();
+    onPhase("decoding");
+    onPayload(payload);
+  };
+
   const handleResult = (result: { getText: () => string } | undefined) => {
-    if (stopped || decodeInFlight) return;
+    if (stopped || captured) return;
 
     const payload = result?.getText()?.trim() || "";
     if (!payload) {
@@ -59,17 +93,14 @@ export function startAztecVideoScan({
       return;
     }
 
-    decodeInFlight = true;
-    onPhase("decoding");
-    stop();
-    onPayload(payload);
+    commitPayload(payload);
   };
 
   onPhase("searching");
 
   void reader
     .decodeFromVideoElementContinuously(video, (result, error) => {
-      if (stopped || decodeInFlight) return;
+      if (stopped || captured) return;
       if (error) {
         if (stableHits > 0) {
           stableHits = 0;
@@ -81,7 +112,7 @@ export function startAztecVideoScan({
       handleResult(result);
     })
     .catch(() => {
-      if (!stopped) onPhase("position");
+      if (!stopped && !captured) onPhase("position");
     });
 
   return stop;
@@ -114,12 +145,11 @@ function scoreVideoInput(device: MediaDeviceInfo): number {
 async function pickPreferredVideoDeviceId(): Promise<{ deviceId: string; localOnly: boolean } | null> {
   if (!navigator.mediaDevices?.enumerateDevices) return null;
 
-  // Permissions / labels: a short probe unlocks device labels on desktop browsers.
   let probe: MediaStream | null = null;
   try {
     probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
   } catch {
-    // continue — enumerate may still return unlabeled devices
+    // continue
   }
 
   try {
@@ -190,7 +220,6 @@ export async function requestCameraStream(): Promise<MediaStream> {
     try {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       const label = stream.getVideoTracks()[0]?.label || "";
-      // Prefer laptop/webcam over Continuity Camera when a local device exists.
       if (preferred?.localOnly && preferredDeviceId && isContinuityOrPhoneCamera(label)) {
         try {
           const localOnly = await navigator.mediaDevices.getUserMedia({
@@ -200,7 +229,7 @@ export async function requestCameraStream(): Promise<MediaStream> {
           stream.getTracks().forEach((track) => track.stop());
           return localOnly;
         } catch {
-          // keep original stream if forced local reopen fails
+          // keep original stream
         }
       }
       return stream;

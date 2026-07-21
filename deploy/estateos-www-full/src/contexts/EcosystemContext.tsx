@@ -1,13 +1,30 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { usePathname } from "next/navigation";
 
 export type EcosystemVertical = "home" | "car";
 
+export type EcosystemSwitchRequest = {
+  to: EcosystemVertical;
+  href: string;
+  from: EcosystemVertical;
+};
+
 type EcosystemContextValue = {
   vertical: EcosystemVertical;
   setVertical: (next: EcosystemVertical) => void;
+  requestVerticalSwitch: (to: EcosystemVertical, href: string) => void;
+  clearVerticalSwitch: () => void;
+  pendingSwitch: EcosystemSwitchRequest | null;
   isHome: boolean;
   isCar: boolean;
 };
@@ -21,6 +38,7 @@ function inferVerticalFromPath(pathname: string): EcosystemVertical {
 
 export function EcosystemProvider({ children }: { children: ReactNode }) {
   const [vertical, setVerticalState] = useState<EcosystemVertical>("home");
+  const [pendingSwitch, setPendingSwitch] = useState<EcosystemSwitchRequest | null>(null);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -40,6 +58,24 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const requestVerticalSwitch = useCallback(
+    (to: EcosystemVertical, href: string) => {
+      setVerticalState((from) => {
+        if (from === to) {
+          setPendingSwitch({ from, to, href });
+          return from;
+        }
+        setPendingSwitch({ from, to, href });
+        return from;
+      });
+    },
+    [],
+  );
+
+  const clearVerticalSwitch = useCallback(() => {
+    setPendingSwitch(null);
+  }, []);
+
   useEffect(() => {
     if (!pathname) return;
     const inferred = inferVerticalFromPath(pathname);
@@ -50,10 +86,13 @@ export function EcosystemProvider({ children }: { children: ReactNode }) {
     () => ({
       vertical,
       setVertical,
+      requestVerticalSwitch,
+      clearVerticalSwitch,
+      pendingSwitch,
       isHome: vertical === "home",
       isCar: vertical === "car",
     }),
-    [vertical, setVertical],
+    [vertical, setVertical, requestVerticalSwitch, clearVerticalSwitch, pendingSwitch],
   );
 
   return <EcosystemContext.Provider value={value}>{children}</EcosystemContext.Provider>;
@@ -65,6 +104,9 @@ export function useEcosystem() {
     return {
       vertical: "home" as EcosystemVertical,
       setVertical: () => {},
+      requestVerticalSwitch: () => {},
+      clearVerticalSwitch: () => {},
+      pendingSwitch: null,
       isHome: true,
       isCar: false,
     };

@@ -540,7 +540,7 @@ const pl: CarsDictionary = {
   },
   scan: {
     title: "Skan dowodu rejestracyjnego",
-    subtitle: "Ustaw kod Aztec w ramce po prawej stronie tyłu dowodu.",
+    subtitle: "Ustaw kod Aztec w ramce na środku — tył dowodu.",
     skip: "Wypełnię ręcznie",
     uploadInstead: "Wgraj zdjęcie zamiast aparatu",
     decoding: "Odczytywanie…",
@@ -913,7 +913,7 @@ const en: CarsDictionary = {
   },
   scan: {
     title: "Scan registration document",
-    subtitle: "Place the Aztec code in the frame on the right side of the card back.",
+    subtitle: "Place the Aztec code in the center frame — card back.",
     skip: "Fill manually",
     uploadInstead: "Upload photo instead of camera",
     decoding: "Decoding…",
@@ -1285,7 +1285,7 @@ const uk: CarsDictionary = {
   },
   scan: {
     title: "Скан свідоцтва реєстрації",
-    subtitle: "Розмістіть код Aztec у рамці праворуч на звороті свідоцтва.",
+    subtitle: "Розмістіть код Aztec у рамці по центру — зворот свідоцтва.",
     skip: "Заповню вручну",
     uploadInstead: "Завантажити фото замість камери",
     decoding: "Зчитування…",

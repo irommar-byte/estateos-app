@@ -21,6 +21,8 @@ import { UserModeProvider } from "@/contexts/UserModeContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { EcosystemProvider } from "@/contexts/EcosystemContext";
 import EcosystemThemeBridge from "@/components/ecosystem/EcosystemThemeBridge";
+import EcosystemAmbientBackground from "@/components/ecosystem/EcosystemAmbientBackground";
+import EcosystemVerticalTransition from "@/components/ecosystem/EcosystemVerticalTransition";
 import { LOCALE_COOKIE, resolveLocale } from "@/i18n/config";
 const inter = Inter({ subsets: ["latin"] });
 
@@ -90,7 +92,7 @@ export default async function RootLayout({
   const locale = resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value);
 
   return (
-    <html suppressHydrationWarning lang={locale} className="dark" data-theme="dark">
+    <html suppressHydrationWarning lang={locale}>
       <body suppressHydrationWarning className={inter.className}>
         <EstateOsStructuredData />
         <ThemeInitScript />
@@ -102,15 +104,17 @@ export default async function RootLayout({
                 <UserModeProvider>
                   <EcosystemProvider>
                     <EcosystemThemeBridge />
+                    <EcosystemAmbientBackground />
                     <FavoritesProvider>
                     <SkipToContent />
                     <CampaignAttributionBoundary />
                     <Tracker />
                     <Navbar />
+                    <EcosystemVerticalTransition />
                     <FloatingPreferencesDock />
                     <WebNotificationPrompt />
                     <PresentationFlowOrchestrator />
-                    <div id="main-content" tabIndex={-1} className="outline-none">
+                    <div id="main-content" tabIndex={-1} className="relative z-10 outline-none">
                       {children}
                     </div>
                     </FavoritesProvider>
