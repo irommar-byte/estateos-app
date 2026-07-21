@@ -75,7 +75,6 @@ export default function CarRegistrationScanGate({
   const sessionRef = useRef(0);
   const stopScanRef = useRef<(() => void) | null>(null);
   const successTimerRef = useRef<number | null>(null);
-  const decodePayloadRef = useRef<(payload: string) => void>(() => {});
   const lockedRef = useRef(false);
 
   const stopCamera = useCallback(() => {
@@ -104,35 +103,8 @@ export default function CarRegistrationScanGate({
     freezeVideoPreview(videoRef.current, streamRef.current);
   }, []);
 
-  const applyResponse = async (response: Response) => {
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(typeof data?.error === "string" ? data.error : s.errReadDoc);
-    }
-    const prefill = (data?.prefill || {}) as Partial<CarFormState>;
-    const missingFields = Array.isArray(data?.missingFields)
-      ? (data.missingFields as CarListingMissingFieldKey[])
-      : [];
-    onPrefill(prefill, missingFields);
-  };
 
-  const decodeFrameOnServer = useCallback(async (blob: Blob) => {
-    try {
-      const formData = new FormData();
-      formData.append("file", blob, "live-frame.jpg");
-      const response = await fetch("/api/cars/decode-registration", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) return null;
-      const payload = String(data?.aztecPayload || "").trim();
-      return payload || null;
-    } catch {
-      return null;
-    }
-  }, []);
+  const decodeLivePhotoRef = useRef<(file: File) => Promise<void>>(async () => {});
 
   const beginScanning = useCallback(
     (video: HTMLVideoElement) => {
@@ -142,63 +114,15 @@ export default function CarRegistrationScanGate({
         video,
         onPhase: setPhase,
         onLockFrame: lockPreview,
-        onPayload: (payload) => decodePayloadRef.current(payload),
-        decodeFrameOnServer,
+        onPhotoCaptured: async (file) => {
+          await decodeLivePhotoRef.current(file);
+        },
       });
     },
-    [decodeFrameOnServer, lockPreview],
+    [lockPreview],
   );
 
-  const decodeAztecPayload = useCallback(
-    async (aztecPayload: string) => {
-      setLoading(true);
-      setError(null);
-      setPhase("decoding");
-      lockPreview();
-      try {
-        const response = await fetch("/api/cars/decode-registration", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ aztecPayload }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(typeof data?.error === "string" ? data.error : s.errReadDoc);
-        }
-        const prefill = (data?.prefill || {}) as Partial<CarFormState>;
-        const missingFields = Array.isArray(data?.missingFields)
-          ? (data.missingFields as CarListingMissingFieldKey[])
-          : [];
-        setPhase("success");
-        await new Promise<void>((resolve) => {
-          successTimerRef.current = window.setTimeout(() => resolve(), 900);
-        });
-        onPrefill(prefill, missingFields);
-        stopCamera();
-      } catch (decodeError) {
-        lockedRef.current = false;
-        setFrameLocked(false);
-        setPhase("searching");
-        setError(decodeError instanceof Error ? decodeError.message : s.errAztec);
-        // Re-enable tracks and resume scanning after a failed decode.
-        streamRef.current?.getVideoTracks().forEach((track) => {
-          track.enabled = true;
-        });
-        if (videoRef.current && streamRef.current) {
-          void videoRef.current.play().catch(() => {});
-          beginScanning(videoRef.current);
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [beginScanning, lockPreview, onPrefill, s.errAztec, s.errReadDoc, stopCamera],
-  );
 
-  decodePayloadRef.current = (payload: string) => {
-    void decodeAztecPayload(payload);
-  };
 
   const openUploadPicker = useCallback(() => {
     setAwaitingUploadPicker(true);
@@ -207,7 +131,7 @@ export default function CarRegistrationScanGate({
     fileInputRef.current?.click();
   }, []);
 
-  const decodeImageFile = async (file: File) => {
+  const decodeImageFile = async (file: File, opts?: { fromLive?: boolean }) => {
     setLoading(true);
     setError(null);
     setPhase("decoding");
@@ -219,15 +143,45 @@ export default function CarRegistrationScanGate({
         body: formData,
         credentials: "include",
       });
-      await applyResponse(response);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof data?.error === "string" ? data.error : s.errReadDoc);
+      }
+      const prefill = (data?.prefill || {}) as Partial<CarFormState>;
+      const missingFields = Array.isArray(data?.missingFields)
+        ? (data.missingFields as CarListingMissingFieldKey[])
+        : [];
+      setPhase("success");
+      await new Promise<void>((resolve) => {
+        successTimerRef.current = window.setTimeout(() => resolve(), 700);
+      });
+      onPrefill(prefill, missingFields);
       stopCamera();
     } catch (decodeError) {
       setError(decodeError instanceof Error ? decodeError.message : s.errAztec);
-      setPhase("position");
+      if (opts?.fromLive) {
+        lockedRef.current = false;
+        setFrameLocked(false);
+        setPhase("searching");
+        streamRef.current?.getVideoTracks().forEach((track) => {
+          track.enabled = true;
+        });
+        if (videoRef.current && streamRef.current) {
+          void videoRef.current.play().catch(() => {});
+          beginScanning(videoRef.current);
+        }
+      } else {
+        setPhase("position");
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  decodeLivePhotoRef.current = async (file: File) => {
+    await decodeImageFile(file, { fromLive: true });
+  };
+
 
   const attachStreamToVideo = useCallback(
     async (media: MediaStream, session: number) => {
