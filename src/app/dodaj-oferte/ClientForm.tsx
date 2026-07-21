@@ -176,10 +176,6 @@ function buildDescriptionDraftFromForm(
     lat: data.lat,
     lng: data.lng,
     isExactLocation: data.locationType !== "approximate",
-    priceCurrency: data.priceCurrency,
-    price: data.price,
-    adminFee: data.rentAdminFee,
-    deposit: data.deposit,
     area: data.area,
     plotArea: data.plotArea,
     rooms: data.rooms,
@@ -187,7 +183,11 @@ function buildDescriptionDraftFromForm(
     yearBuilt: data.buildYear,
     heating: data.heating,
     isFurnished: data.furnished === "yes" || data.furnished === true,
-    agentCommissionPercent: data.agentCommissionPercent,
+    existingDescription: String(data.description || "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+    userNotes: String((data as any).aiNotes || (data as any).sellerNotes || (data as any).notes || "").trim(),
     hasBalcony: amenityPatch.hasBalcony,
     hasParking: amenityPatch.hasParking,
     hasStorage: amenityPatch.hasStorage,

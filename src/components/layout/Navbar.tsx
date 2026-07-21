@@ -75,7 +75,23 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const { initModeFromUser } = useUserMode();
-  const { vertical, isCar, requestVerticalSwitch } = useEcosystem();
+  const { vertical, navHighlight, setNavHighlight, setVertical, isCar, requestVerticalSwitch } = useEcosystem();
+  const highlightHome = navHighlight === "home";
+  const highlightCar = navHighlight === "car";
+  const brandIsCar = highlightCar;
+
+  // Homepage: neither Home nor Car highlighted until scroll past the hero.
+  useEffect(() => {
+    if (pathname !== "/") return;
+    const onScroll = () => {
+      if (window.scrollY < Math.max(220, window.innerHeight * 0.45)) return;
+      if (navHighlight != null) return;
+      setNavHighlight("home");
+      setVertical("home");
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [pathname, navHighlight, setNavHighlight, setVertical]);
   const isOfferShareLanding = pathname?.startsWith("/o/");
   const isAdmin = user?.role === "ADMIN";
   const loggedIn = Boolean(user);
@@ -212,7 +228,12 @@ export default function Navbar() {
   };
 
   const switchVertical = (next: EcosystemVertical) => {
-    if (next === vertical) {
+    if (pathname === "/" && next === "home") {
+      setNavHighlight("home");
+      setVertical("home");
+      return;
+    }
+    if (next === vertical && navHighlight === next) {
       if (next === "car" && !pathname?.startsWith("/cars")) {
         requestVerticalSwitch("car", "/cars");
       } else if (next === "home" && pathname?.startsWith("/cars")) {
@@ -260,21 +281,21 @@ export default function Navbar() {
           >
             <span
               className={`eos-nav-mark flex size-9 items-center justify-center rounded-full border bg-[var(--eos-surface)] text-[10px] font-black sm:size-11 sm:text-xs ${
-                isCar ? "border-sky-400/35 text-sky-300" : "border-[var(--eos-border)]"
+                brandIsCar ? "border-sky-400/35 text-sky-300" : "border-[var(--eos-border)]"
               }`}
             >
               EOS
             </span>
             <span className="eos-nav-wordmark hidden xl:block">
               <span className="eos-nav-wordmark-body">
-                <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>E</span>state
-                <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>OS</span>
+                <span className={`eos-nav-wordmark-accent ${brandIsCar ? "text-sky-300" : highlightHome ? "text-emerald-500" : ""}`}>E</span>state
+                <span className={`eos-nav-wordmark-accent ${brandIsCar ? "text-sky-300" : highlightHome ? "text-emerald-500" : ""}`}>OS</span>
                 <sup className="eos-nav-wordmark-tm">TM</sup>
-                {isCar ? (
+                {brandIsCar ? (
                   <span className="ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-sky-300">Car</span>
-                ) : (
+                ) : highlightHome ? (
                   <span className="ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-500">Home</span>
-                )}
+                ) : null}
               </span>
             </span>
           </button>
@@ -289,16 +310,16 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => switchVertical("home")}
-              aria-pressed={vertical === "home"}
+              aria-pressed={highlightHome}
               className={`group/home inline-flex items-center gap-1 rounded-full font-black uppercase tracking-[0.1em] transition ${switchPad} ${switchText} ${
-                vertical === "home"
+                highlightHome
                   ? "bg-emerald-500/20 text-emerald-400"
                   : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
               }`}
             >
               <Home
                 className={`${switchIcon} transition duration-300 ${
-                  vertical === "home"
+                  highlightHome
                     ? "scale-110 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.55)]"
                     : "opacity-70 group-hover/home:scale-105 group-hover/home:opacity-100"
                 }`}
@@ -310,16 +331,16 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => switchVertical("car")}
-              aria-pressed={vertical === "car"}
+              aria-pressed={highlightCar}
               className={`group/car inline-flex items-center gap-1 rounded-full font-black uppercase tracking-[0.1em] transition ${switchPad} ${switchText} ${
-                vertical === "car"
+                highlightCar
                   ? "bg-sky-500/20 text-sky-300"
                   : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
               }`}
             >
               <Car
                 className={`${switchIcon} transition duration-300 ${
-                  vertical === "car"
+                  highlightCar
                     ? "scale-110 text-sky-300 drop-shadow-[0_0_8px_rgba(56,189,248,0.55)]"
                     : "opacity-70 group-hover/car:scale-105 group-hover/car:opacity-100"
                 }`}

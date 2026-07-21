@@ -15,11 +15,9 @@ export type ListingDescriptionDraftInput = {
   lat?: number | null;
   lng?: number | null;
   isExactLocation?: boolean;
-  priceCurrency?: string;
-  price?: string;
-  adminFee?: string;
-  deposit?: string;
   area?: string;
+  existingDescription?: string;
+  userNotes?: string;
   plotArea?: string;
   rooms?: string;
   floor?: string;
@@ -33,7 +31,6 @@ export type ListingDescriptionDraftInput = {
   hasGarden?: boolean;
   isTwoLevel?: boolean;
   isFurnished?: boolean;
-  agentCommissionPercent?: string;
 };
 
 type NeighborhoodContext = {
@@ -169,10 +166,6 @@ function buildDraftFacts(draft: ListingDescriptionDraftInput): Record<string, un
       coordinates: draft.lat && draft.lng ? { lat: draft.lat, lng: draft.lng } : null,
       locationPrecision: draft.isExactLocation === false ? 'approximate_circle' : 'exact_pin',
     },
-    price: parseNum(draft.price),
-    priceCurrency: String(draft.priceCurrency || 'PLN').trim(),
-    adminFee: parseNum(draft.adminFee),
-    deposit: parseNum(draft.deposit),
     areaSqm: parseNum(draft.area),
     plotAreaSqm: parseNum(draft.plotArea),
     rooms: parseNum(draft.rooms),
@@ -181,7 +174,8 @@ function buildDraftFacts(draft: ListingDescriptionDraftInput): Record<string, un
     yearBuilt: String(draft.yearBuilt ?? '').trim() || null,
     heating: String(draft.heating ?? '').trim() || null,
     amenities,
-    agentCommissionPercent: String(draft.agentCommissionPercent ?? '').trim() || null,
+    existingDescription: String(draft.existingDescription || '').trim() || null,
+    userNotes: String(draft.userNotes || '').trim() || null,
   };
 }
 
@@ -215,6 +209,8 @@ ZASADY:
 - Nie powtarzaj tytułu oferty w pierwszym zdaniu dosłownie.
 - Długość: ok. 900–1600 znaków (4–7 akapitów).
 - Bez emoji, bez nagłówków CAPS, bez list punktowanych parametrów.
+- Jeśli podano existingDescription lub userNotes — wykorzystaj je jako bazę (przepisz / rozwiń / ujednolić styl). Nie ignoruj faktów z notatek.
+- NIGDY nie podawaj ceny, czynszu, kaucji, prowizji ani kwot w zł/€ — cena jest poza opisem.
 - Zakończ krótkim zaproszeniem do kontaktu/prezentacji.`;
 }
 

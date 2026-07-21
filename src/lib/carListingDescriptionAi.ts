@@ -16,10 +16,13 @@ export type CarDescriptionDraftInput = {
   engineCapacity?: string;
   trimVersion?: string;
   doorCount?: string | number | null;
-  pricePln?: string | number;
   city?: string;
   localityCountry?: string;
   title?: string;
+  /** Existing / imported listing text to rewrite or expand. */
+  existingDescription?: string;
+  /** Extra seller notes for the model. */
+  userNotes?: string;
 };
 
 function resolveLocale(raw: unknown): "pl" | "en" | "uk" {
@@ -46,9 +49,11 @@ ${localeInstructions(locale)}
 
 ZASADY:
 - Opis ma być atrakcyjny i wiarygodny: stan, użytkowanie, charakterystyka, wyposażenie — NIE sucha lista parametrów.
+- Jeśli podano existingDescription lub userNotes — wykorzystaj je jako bazę (przepisz / rozwiń / ujednolić styl). Nie ignoruj faktów z notatek sprzedawcy.
 - Parametry z JSON wpleć naturalnie (1–2 zdania), reszta to narracja sprzedażowa.
-- Nie wymyślaj historii serwisowej, wypadków, gwarancji ani wyposażenia, jeśli nie wynika to z danych.
+- Nie wymyślaj historii serwisowej, wypadków, gwarancji ani wyposażenia, jeśli nie wynika to z danych lub notatek.
 - Nie podawaj VIN ani numeru rejestracyjnego.
+- NIGDY nie podawaj ceny, kwoty w zł/€ ani „do negocjacji” z liczbą — cena jest poza opisem.
 - Długość: ok. 700–1400 znaków (3–6 akapitów).
 - Bez emoji, bez nagłówków CAPS, bez list punktowanych parametrów.
 - Zakończ krótkim zaproszeniem do kontaktu / oględzin.`;
@@ -86,17 +91,18 @@ export async function generateCarListingDescriptionWithGpt(
     engineCapacity: draft.engineCapacity || null,
     trimVersion: draft.trimVersion || null,
     doorCount: draft.doorCount || null,
-    pricePln: draft.pricePln || null,
     city: draft.city || null,
     localityCountry: draft.localityCountry || null,
     title: draft.title || null,
+    existingDescription: String(draft.existingDescription || "").trim() || null,
+    userNotes: String(draft.userNotes || "").trim() || null,
   };
 
   const { text, model: usedModel } = await callOpenAiText({
     apiKey,
     model,
     system: buildSystemPrompt(locale),
-    user: `Wygeneruj opis ogłoszenia Cars na podstawie danych:\n\n${JSON.stringify(facts, null, 2)}\n\nJęzyk wyjściowy: ${locale}.`,
+    user: `Wygeneruj opis ogłoszenia Cars na podstawie danych (bez ceny):\n\n${JSON.stringify(facts, null, 2)}\n\nJęzyk wyjściowy: ${locale}.`,
     maxOutputTokens: 900,
     logPrefix: "car-listing-description-ai",
   });

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { AlertCircle, Camera, Loader2, Lock, Sparkles, UserPlus, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, Camera, CheckCircle2, Loader2, Lock, Sparkles, UserPlus, X } from "lucide-react";
 import PhoneCountryInput from "@/components/auth/PhoneCountryInput";
 import EosCheckbox from "@/components/ui/EosCheckbox";
 import { normalizePhoneE164 } from "@/lib/phoneE164";
@@ -104,6 +104,70 @@ export default function PublishAuthGate({
   const [otpPending, setOtpPending] = useState(false);
   const [progressStep, setProgressStep] = useState<string | null>(null);
   const [progressLog, setProgressLog] = useState<string[]>([]);
+  type FieldStatus = "idle" | "checking" | "available" | "taken";
+  const [emailStatus, setEmailStatus] = useState<FieldStatus>("idle");
+  const [phoneStatus, setPhoneStatus] = useState<FieldStatus>("idle");
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [phoneFocused, setPhoneFocused] = useState(false);
+  const emailTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const phoneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const checkExists = useCallback(async (field: "email" | "phone", value: string) => {
+    if (!value.trim()) return false;
+    const body =
+      field === "email" ? { field: "email", value } : { field: "phone", phone: value, contactPhone: value };
+    const res = await fetch("/api/auth/check-exists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    return !!data.exists;
+  }, []);
+
+  useEffect(() => {
+    if (emailTimer.current) clearTimeout(emailTimer.current);
+    if (emailFocused) return;
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !trimmed.includes("@")) {
+      setEmailStatus("idle");
+      return;
+    }
+    setEmailStatus("checking");
+    emailTimer.current = setTimeout(async () => {
+      try {
+        const exists = await checkExists("email", trimmed);
+        setEmailStatus(exists ? "taken" : "available");
+      } catch {
+        setEmailStatus("idle");
+      }
+    }, 450);
+    return () => {
+      if (emailTimer.current) clearTimeout(emailTimer.current);
+    };
+  }, [email, emailFocused, checkExists]);
+
+  useEffect(() => {
+    if (phoneTimer.current) clearTimeout(phoneTimer.current);
+    if (phoneFocused) return;
+    const e164 = normalizePhoneE164(phoneE164);
+    if (!e164) {
+      setPhoneStatus("idle");
+      return;
+    }
+    setPhoneStatus("checking");
+    phoneTimer.current = setTimeout(async () => {
+      try {
+        const exists = await checkExists("phone", e164);
+        setPhoneStatus(exists ? "taken" : "available");
+      } catch {
+        setPhoneStatus("idle");
+      }
+    }, 450);
+    return () => {
+      if (phoneTimer.current) clearTimeout(phoneTimer.current);
+    };
+  }, [phoneE164, phoneFocused, checkExists]);
 
   const reportProgress = (step: string) => {
     setProgressStep(step);
@@ -163,6 +227,14 @@ export default function PublishAuthGate({
     }
     if (!acceptTerms) {
       setError("Zaakceptuj regulamin, aby kontynuować.");
+      return;
+    }
+    if (emailStatus === "taken") {
+      setError("Ten e-mail jest już zajęty — zaloguj się lub użyj innego.");
+      return;
+    }
+    if (phoneStatus === "taken") {
+      setError("Ten numer telefonu jest już zajęty — zaloguj się lub użyj innego.");
       return;
     }
 
@@ -376,11 +448,54 @@ export default function PublishAuthGate({
               </div>
               <label className="grid gap-1">
                 <span className={labelClass}>E-mail</span>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={fieldClass} required />
+                <div className="relative">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onFocus={() => setEmailFocused(true)}
+                    onBlur={() => setEmailFocused(false)}
+                    className={`${fieldClass} pr-10 ${
+                      !emailFocused && emailStatus === "taken"
+                        ? "!border-red-500/60"
+                        : !emailFocused && emailStatus === "available"
+                          ? "!border-emerald-500/60"
+                          : ""
+                    }`}
+                    required
+                  />
+                  {!emailFocused && emailStatus === "checking" ? (
+                    <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-[var(--eos-muted)]" />
+                  ) : null}
+                  {!emailFocused && emailStatus === "available" ? (
+                    <CheckCircle2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-emerald-500" />
+                  ) : null}
+                  {!emailFocused && emailStatus === "taken" ? (
+                    <X className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-red-500" />
+                  ) : null}
+                </div>
+                {!emailFocused && emailStatus === "taken" ? (
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-red-500">E-mail zajęty</span>
+                ) : null}
+                {!emailFocused && emailStatus === "available" ? (
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">E-mail wolny</span>
+                ) : null}
               </label>
               <label className="grid gap-1">
                 <span className={labelClass}>Telefon</span>
-                <PhoneCountryInput valueE164={phoneE164} onChangeE164={setPhoneE164} hideLabel />
+                <PhoneCountryInput
+                  valueE164={phoneE164}
+                  onChangeE164={setPhoneE164}
+                  hideLabel
+                  status={phoneFocused ? "idle" : phoneStatus}
+                  onFocusChange={setPhoneFocused}
+                />
+                {!phoneFocused && phoneStatus === "taken" ? (
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-red-500">Telefon zajęty</span>
+                ) : null}
+                {!phoneFocused && phoneStatus === "available" ? (
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Telefon wolny</span>
+                ) : null}
               </label>
               <div className="grid gap-2.5 sm:grid-cols-2">
                 <label className="grid gap-1">
@@ -468,7 +583,11 @@ export default function PublishAuthGate({
           <button
             type="submit"
             form="auth-gate-form"
-            disabled={loading || (otpPending && otpCode.length !== 6)}
+            disabled={
+              loading ||
+              (otpPending && otpCode.length !== 6) ||
+              (tab === "register" && (emailStatus === "taken" || phoneStatus === "taken"))
+            }
             className={`flex w-full items-center justify-center gap-2 rounded-full border px-5 py-3 text-xs font-black uppercase tracking-[0.12em] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55 ${styles.button}`}
           >
             {loading ? <Loader2 size={16} className="animate-spin" /> : null}
