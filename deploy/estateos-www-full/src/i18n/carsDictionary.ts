@@ -49,6 +49,7 @@ export type CarsDictionary = {
     methodCaptureDescription: string;
     methodManualTitle: string;
     methodManualDescription: string;
+    methodManualBadge: string;
     methodOtomotoTitle: string;
     methodOtomotoDescription: string;
     methodOtomotoBadge: string;
@@ -81,6 +82,10 @@ export type CarsDictionary = {
     titlePlaceholder: string;
     descriptionLabel: string;
     descriptionPlaceholder: string;
+    aiAssistantBtn: string;
+    aiGenerating: string;
+    aiMissingPrefix: string;
+    aiGenFailed: string;
     offerEyebrow: string;
     offerTitle: string;
     offerDescription: string;
@@ -409,6 +414,7 @@ const pl: CarsDictionary = {
     methodManualTitle: "Wypełnię ręcznie",
     methodManualDescription:
       "Nie masz dowodu pod ręką? Przejdź do formularza i wpisz dane samodzielnie w swoim tempie.",
+    methodManualBadge: "Formularz",
     methodOtomotoTitle: "Import z Otomoto",
     methodOtomotoDescription:
       "Masz już ogłoszenie na Otomoto? Wklej link — przeniesiemy zdjęcia, opis i specyfikację do formularza.",
@@ -439,11 +445,16 @@ const pl: CarsDictionary = {
     otomotoCheckForm: "Sprawdź formularz i uzupełnij brakujące pola przed publikacją.",
     contentEyebrow: "Treść ogłoszenia",
     contentTitle: "Tytuł i opis",
-    contentDescription: "Krótki, konkretny tytuł i opis stanu auta zwiększają zaufanie kupujących.",
+    contentDescription:
+      "Na końcu dodaj tytuł i opis. Asystent AI napisze opis automatycznie, gdy uzupełnisz dane pojazdu, cenę, lokalizację i zdjęcia.",
     titleLabel: "Tytuł ogłoszenia",
     titlePlaceholder: "np. BMW X5 xDrive30d M Sport",
     descriptionLabel: "Opis",
     descriptionPlaceholder: "Opisz stan auta, historię serwisową, wyposażenie...",
+    aiAssistantBtn: "Asystent AI",
+    aiGenerating: "Generowanie opisu…",
+    aiMissingPrefix: "Uzupełnij brakujące dane przed generowaniem opisu:",
+    aiGenFailed: "Nie udało się wygenerować opisu AI. Spróbuj ponownie za chwilę.",
     offerEyebrow: "Oferta",
     offerTitle: "Cena i przebieg",
     offerDescription: "Podaj aktualny przebieg i cenę sprzedaży w PLN.",
@@ -777,6 +788,7 @@ const en: CarsDictionary = {
     methodCaptureDescription: "Capture the back of the card with your phone or webcam — instant decode.",
     methodManualTitle: "Fill in manually",
     methodManualDescription: "No document handy? Go to the form and enter details at your own pace.",
+    methodManualBadge: "Form",
     methodOtomotoTitle: "Import from Otomoto",
     methodOtomotoDescription:
       "Already listed on Otomoto? Paste the link — we'll move photos, description and specs into the form.",
@@ -807,11 +819,16 @@ const en: CarsDictionary = {
     otomotoCheckForm: "Review the form and fill any missing fields before publishing.",
     contentEyebrow: "Listing content",
     contentTitle: "Title and description",
-    contentDescription: "A clear title and honest description build buyer trust.",
+    contentDescription:
+      "Add the title and description at the end. The AI assistant writes the description once vehicle details, price, location and photos are complete.",
     titleLabel: "Listing title",
     titlePlaceholder: "e.g. BMW X5 xDrive30d M Sport",
     descriptionLabel: "Description",
     descriptionPlaceholder: "Describe condition, service history, equipment...",
+    aiAssistantBtn: "AI assistant",
+    aiGenerating: "Generating description…",
+    aiMissingPrefix: "Fill in the missing fields before generating a description:",
+    aiGenFailed: "Could not generate the AI description. Please try again in a moment.",
     offerEyebrow: "Offer",
     offerTitle: "Price and mileage",
     offerDescription: "Enter current mileage and sale price in PLN.",
@@ -1142,6 +1159,7 @@ const uk: CarsDictionary = {
     methodCaptureDescription: "Зробіть фото задньої сторони свідоцтва — код зчитається одразу.",
     methodManualTitle: "Заповню вручну",
     methodManualDescription: "Немає свідоцтва? Перейдіть до форми та введіть дані у своєму темпі.",
+    methodManualBadge: "Форма",
     methodOtomotoTitle: "Імпорт з Otomoto",
     methodOtomotoDescription:
       "Вже є оголошення на Otomoto? Вставте посилання — перенесемо фото, опис і специфікацію у форму.",
@@ -1172,11 +1190,16 @@ const uk: CarsDictionary = {
     otomotoCheckForm: "Перевірте форму та доповніть відсутні поля перед публікацією.",
     contentEyebrow: "Зміст оголошення",
     contentTitle: "Заголовок і опис",
-    contentDescription: "Короткий заголовок і чесний опис підвищують довіру покупців.",
+    contentDescription:
+      "Заголовок і опис додайте в кінці. AI-асистент напише опис автоматично, коли заповните дані авто, ціну, локацію та фото.",
     titleLabel: "Заголовок оголошення",
     titlePlaceholder: "напр. BMW X5 xDrive30d M Sport",
     descriptionLabel: "Опис",
     descriptionPlaceholder: "Опишіть стан, сервісну історію, комплектацію...",
+    aiAssistantBtn: "AI-асистент",
+    aiGenerating: "Генерація опису…",
+    aiMissingPrefix: "Заповніть відсутні дані перед генерацією опису:",
+    aiGenFailed: "Не вдалося згенерувати опис AI. Спробуйте ще раз за хвилину.",
     offerEyebrow: "Пропозиція",
     offerTitle: "Ціна і пробіг",
     offerDescription: "Вкажіть актуальний пробіг і ціну продажу в PLN.",

@@ -104,7 +104,7 @@ export default function AddCarPageClient() {
   if (phase === "entry") {
     return (
       <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-36 text-[var(--eos-text)] sm:px-6">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-6xl">
           <CarAddEntryScreen onChoose={handleChoose} />
           <p className="mt-6 text-center text-xs text-[var(--eos-muted)]">
             {c.entry.hasAccount}{" "}
