@@ -43,6 +43,7 @@ import {
   CatalogHeroPrimaryLink,
 } from "@/components/catalog/CatalogHeroActions";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
+import InfiniteHorizontalRail from "@/components/catalog/InfiniteHorizontalRail";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useUserLocation } from "@/hooks/useUserLocation";
@@ -366,17 +367,16 @@ export default function CatalogPage() {
     [browseOffers],
   );
 
-  const newestOffers = useMemo(() => sortByNewest(browseOffers).slice(0, 12), [browseOffers]);
+  const newestOffers = useMemo(() => sortByNewest(browseOffers), [browseOffers]);
   const discountedOffers = useMemo(
-    () => sortByNewest(browseOffers.filter(isDiscountedOffer)).slice(0, 12),
+    () => sortByNewest(browseOffers.filter(isDiscountedOffer)),
     [browseOffers],
   );
   const nearestOffers = useMemo(() => {
     if (!location) return [];
     return [...browseOffers]
       .filter((o) => distanceByOfferId.has(o.id))
-      .sort((a, b) => (distanceByOfferId.get(a.id)! - distanceByOfferId.get(b.id)!))
-      .slice(0, 12);
+      .sort((a, b) => (distanceByOfferId.get(a.id)! - distanceByOfferId.get(b.id)!));
   }, [browseOffers, distanceByOfferId, location]);
 
   const typeRails = useMemo(() => {
@@ -391,7 +391,7 @@ export default function CatalogPage() {
         type,
         title,
         icon: meta.icon,
-        items: sortByNewest(source).slice(0, 12),
+        items: sortByNewest(source),
       };
     }).filter((rail) => rail.items.length > 0);
   }, [locale, locationFilteredOffers, propertyTypeFilter]);
@@ -420,7 +420,6 @@ export default function CatalogPage() {
     const distance = distanceByOfferId.get(offer.id);
     return (
       <Link
-        key={`rail-${offer.id}`}
         href={`/oferta/${offer.id}`}
         className={`group w-[280px] shrink-0 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] transition ${accentBorderHover}`}
       >
@@ -626,17 +625,21 @@ export default function CatalogPage() {
 
             {newestOffers.length > 0 ? (
               <RailSection title={railTitles.newest} icon={Sparkles}>
-                <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
-                  {newestOffers.map((offer) => railCard(offer))}
-                </div>
+                <InfiniteHorizontalRail
+                  items={newestOffers}
+                  getKey={(offer) => offer.id}
+                  renderItem={(offer) => railCard(offer)}
+                />
               </RailSection>
             ) : null}
 
             <RailSection title={nearestCopy.title} icon={Navigation}>
               {location && nearestOffers.length > 0 ? (
-                <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
-                  {nearestOffers.map((offer) => railCard(offer, { showDistance: true }))}
-                </div>
+                <InfiniteHorizontalRail
+                  items={nearestOffers}
+                  getKey={(offer) => offer.id}
+                  renderItem={(offer) => railCard(offer, { showDistance: true })}
+                />
               ) : (
                 <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6">
                   <p className="text-sm text-[var(--eos-muted)]">
@@ -659,17 +662,21 @@ export default function CatalogPage() {
 
             {discountedOffers.length > 0 ? (
               <RailSection title={railTitles.discounted} icon={BadgePercent}>
-                <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
-                  {discountedOffers.map((offer) => railCard(offer))}
-                </div>
+                <InfiniteHorizontalRail
+                  items={discountedOffers}
+                  getKey={(offer) => offer.id}
+                  renderItem={(offer) => railCard(offer)}
+                />
               </RailSection>
             ) : null}
 
             {typeRails.map((rail) => (
               <RailSection key={rail.type} title={rail.title} icon={rail.icon}>
-                <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
-                  {rail.items.map((offer) => railCard(offer))}
-                </div>
+                <InfiniteHorizontalRail
+                  items={rail.items}
+                  getKey={(offer) => offer.id}
+                  renderItem={(offer) => railCard(offer)}
+                />
               </RailSection>
             ))}
 
