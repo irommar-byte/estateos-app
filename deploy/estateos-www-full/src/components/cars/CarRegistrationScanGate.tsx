@@ -48,6 +48,7 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
   const [error, setError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [phase, setPhase] = useState<AztecScanPhase>("starting");
+  const [awaitingUploadPicker, setAwaitingUploadPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -217,12 +218,15 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
     if (preferUpload) {
       setPhase("position");
       setCameraReady(false);
+      setAwaitingUploadPicker(true);
       window.setTimeout(() => fileInputRef.current?.click(), 120);
       return () => {
         stopCamera();
+        setAwaitingUploadPicker(false);
       };
     }
 
+    setAwaitingUploadPicker(false);
     void startCamera();
     return () => {
       stopCamera();
@@ -270,9 +274,9 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
                 </>
               ) : (
                 <>
-                  <Loader2 className="size-8 animate-spin text-sky-300" />
-                  <p className="text-sm text-white/85">{s.phaseStarting}</p>
-                  <p className="text-xs text-white/55">{s.cameraDesktopHint}</p>
+                  {awaitingUploadPicker ? <Upload className="size-8 text-sky-300" /> : <Loader2 className="size-8 animate-spin text-sky-300" />}
+                  <p className="text-sm text-white/85">{awaitingUploadPicker ? s.uploadInstead : s.phaseStarting}</p>
+                  <p className="text-xs text-white/55">{awaitingUploadPicker ? s.subtitle : s.cameraDesktopHint}</p>
                 </>
               )}
             </div>
@@ -332,6 +336,7 @@ export default function CarRegistrationScanGate({ open, onSkip, onPrefill, prefe
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
+              setAwaitingUploadPicker(false);
               if (file) void decodeImageFile(file);
               if (fileInputRef.current) fileInputRef.current.value = "";
             }}
