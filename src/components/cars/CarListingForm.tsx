@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { Loader2, Sparkles } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { CarsDictionary } from "@/i18n/carsDictionary";
 import CarCatalogFields from "@/components/cars/CarCatalogFields";
@@ -41,6 +42,7 @@ import {
   normalizeVehicleType,
   type VehicleType,
 } from "@/lib/vehicleTypes";
+import type { AuthGateContext } from "@/components/auth/PublishAuthGate";
 
 function scanGateForEntryMethod(method?: CarAddEntryMethod) {
   return method === "scan" || method === "capture" || method === "upload";
@@ -225,6 +227,35 @@ function validateForm(form: CarFormState, imageCount: number, f: CarsDictionary[
   return null;
 }
 
+type AiMissingField = { key: string; label: string };
+
+function listMissingFieldsForAiDescription(
+  form: CarFormState,
+  imageCount: number,
+  dict: CarsDictionary,
+): AiMissingField[] {
+  const cf = dict.catalogFields;
+  const f = dict.form;
+  const map = dict.map;
+  const photos = dict.photos;
+  const missing: AiMissingField[] = [];
+
+  if (!form.make.trim()) missing.push({ key: "make", label: cf.makeLabel });
+  if (!form.model.trim()) missing.push({ key: "model", label: cf.modelLabel });
+  if (!form.year.trim() || !Number(form.year)) missing.push({ key: "year", label: cf.yearLabel });
+  if (!form.fuelType.trim()) missing.push({ key: "fuelType", label: cf.fuelLabel });
+  if (!form.mileageKm.trim() || !Number.isFinite(Number(form.mileageKm)) || Number(form.mileageKm) < 0) {
+    missing.push({ key: "mileageKm", label: f.mileageLabel });
+  }
+  if (!form.pricePln.trim() || Number(form.pricePln) <= 0) missing.push({ key: "pricePln", label: f.priceLabel });
+  if (!form.city.trim() || form.cityLat == null || form.cityLng == null) {
+    missing.push({ key: "city", label: map.cityLabel });
+  }
+  if (imageCount <= 0) missing.push({ key: "images", label: photos.title });
+
+  return missing;
+}
+
 export default function CarListingForm({
   mode,
   initialValues,
@@ -232,7 +263,7 @@ export default function CarListingForm({
   onSuccess,
   entryMethod,
 }: CarListingFormProps) {
-  const { dict } = useLocale();
+  const { dict, locale } = useLocale();
   const c = dict.cars;
   const f = c.form;
   const [form, setForm] = useState<CarFormState>(initialValues || initialCarForm);
@@ -242,13 +273,17 @@ export default function CarListingForm({
   const [successId, setSuccessId] = useState<number | null>(null);
   const [scanGateOpen, setScanGateOpen] = useState(mode === "create" && scanGateForEntryMethod(entryMethod));
   const [authGateOpen, setAuthGateOpen] = useState(false);
+  const [authGateContext, setAuthGateContext] = useState<AuthGateContext>("publish");
   const [highlightKeys, setHighlightKeys] = useState<CarListingMissingFieldKey[]>([]);
   const [scanNotice, setScanNotice] = useState<string | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
   const [draftReady, setDraftReady] = useState(mode !== "create");
   const [fillingFromDocs, setFillingFromDocs] = useState(false);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [aiMissingNotice, setAiMissingNotice] = useState<string | null>(null);
   const photoGalleryRef = useRef<CarPhotoGalleryFieldHandle>(null);
   const draftTimerRef = useRef<number | null>(null);
+  const pendingAiAfterAuthRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/auth/check", { cache: "no-store", credentials: "include" })
@@ -477,6 +512,8 @@ export default function CarListingForm({
     }
 
     if (!loggedIn && mode === "create") {
+      pendingAiAfterAuthRef.current = false;
+      setAuthGateContext("publish");
       setAuthGateOpen(true);
       return;
     }
@@ -489,6 +526,74 @@ export default function CarListingForm({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const runGenerateAiDescription = async () => {
+    setIsGeneratingAI(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/cars/description/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          locale,
+          vehicleType: form.vehicleType,
+          make: form.make,
+          model: form.model,
+          year: form.year,
+          mileageKm: form.mileageKm,
+          fuelType: form.fuelType,
+          transmission: form.transmission,
+          bodyType: form.bodyType,
+          exteriorColor: form.exteriorColor,
+          generation: form.generation,
+          enginePower: form.enginePower,
+          engineCapacity: form.engineCapacity,
+          trimVersion: form.trimVersion,
+          doorCount: form.doorCount || form.doorCountSlug,
+          pricePln: form.pricePln,
+          city: form.city,
+          localityCountry: form.localityCountry,
+          title: form.title,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        pendingAiAfterAuthRef.current = true;
+        setAuthGateContext("ai_description");
+        setAuthGateOpen(true);
+        return;
+      }
+      if (!response.ok || !payload?.success || !String(payload?.description || "").trim()) {
+        throw new Error(String(payload?.error || f.aiGenFailed));
+      }
+      setField("description", String(payload.description).trim());
+      setAiMissingNotice(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : f.aiGenFailed);
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const handleGenerateAI = async () => {
+    setAiMissingNotice(null);
+    const imageCount = photoGalleryRef.current?.totalCount() ?? form.images.length;
+    const missing = listMissingFieldsForAiDescription(form, imageCount, c);
+    if (missing.length) {
+      setAiMissingNotice(`${f.aiMissingPrefix} ${missing.map((item) => item.label).join(", ")}.`);
+      return;
+    }
+
+    if (!loggedIn) {
+      pendingAiAfterAuthRef.current = true;
+      setAuthGateContext("ai_description");
+      setAuthGateOpen(true);
+      return;
+    }
+
+    await runGenerateAiDescription();
   };
 
   const isHighlighted = (key: CarListingMissingFieldKey) => highlightKeys.includes(key);
@@ -506,8 +611,24 @@ export default function CarListingForm({
 
       <CarPublishAuthGate
         open={authGateOpen}
-        onClose={() => setAuthGateOpen(false)}
-        onAuthenticated={publishListing}
+        context={authGateContext}
+        onClose={() => {
+          pendingAiAfterAuthRef.current = false;
+          setAuthGateOpen(false);
+          setAuthGateContext("publish");
+        }}
+        onAuthenticated={async (report) => {
+          setLoggedIn(true);
+          if (pendingAiAfterAuthRef.current || authGateContext === "ai_description") {
+            pendingAiAfterAuthRef.current = false;
+            setAuthGateOpen(false);
+            setAuthGateContext("publish");
+            report("Generuję opis AI…");
+            await runGenerateAiDescription();
+            return;
+          }
+          await publishListing(report);
+        }}
       />
 
       <form onSubmit={handleSubmit} className="grid gap-6 pb-28">
@@ -535,27 +656,6 @@ export default function CarListingForm({
         />
 
         <CarCatalogFields form={form} setForm={setForm} />
-
-        <CarFormSection eyebrow={f.contentEyebrow} title={f.contentTitle} description={f.contentDescription}>
-          <CarFormField label={f.titleLabel}>
-            <input
-              value={form.title}
-              onChange={(e) => setField("title", e.target.value)}
-              className={`${carFieldInputClass} ${highlightClass(isHighlighted("title"))}`}
-              placeholder={f.titlePlaceholder}
-              required
-            />
-          </CarFormField>
-
-          <CarFormField label={f.descriptionLabel}>
-            <textarea
-              value={form.description}
-              onChange={(e) => setField("description", e.target.value)}
-              className={`min-h-[140px] resize-y ${carFieldInputClass} ${highlightClass(isHighlighted("description"))}`}
-              placeholder={f.descriptionPlaceholder}
-            />
-          </CarFormField>
-        </CarFormSection>
 
         <CarFormSection eyebrow={f.offerEyebrow} title={f.offerTitle} description={f.offerDescription}>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -618,6 +718,42 @@ export default function CarListingForm({
             });
           }}
         />
+
+        <CarFormSection eyebrow={f.contentEyebrow} title={f.contentTitle} description={f.contentDescription}>
+          <CarFormField label={f.titleLabel}>
+            <input
+              value={form.title}
+              onChange={(e) => setField("title", e.target.value)}
+              className={`${carFieldInputClass} ${highlightClass(isHighlighted("title"))}`}
+              placeholder={f.titlePlaceholder}
+              required
+            />
+          </CarFormField>
+
+          <div className="grid gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <label className="text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
+                {f.descriptionLabel}
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleGenerateAI()}
+                disabled={isGeneratingAI || uploading || submitting}
+                className="inline-flex items-center gap-2 rounded-xl border border-sky-400/45 bg-gradient-to-r from-sky-500/15 to-cyan-500/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-sky-700 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-300"
+              >
+                {isGeneratingAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                {isGeneratingAI ? f.aiGenerating : f.aiAssistantBtn}
+              </button>
+            </div>
+            <textarea
+              value={form.description}
+              onChange={(e) => setField("description", e.target.value)}
+              className={`min-h-[160px] resize-y ${carFieldInputClass} ${highlightClass(isHighlighted("description"))}`}
+              placeholder={f.descriptionPlaceholder}
+            />
+            {aiMissingNotice ? <p className={carAlertWarningClass}>{aiMissingNotice}</p> : null}
+          </div>
+        </CarFormSection>
 
         {error ? <p className={carAlertErrorClass}>{error}</p> : null}
         {successId ? (

@@ -87,12 +87,85 @@ export function startAztecVideoScan({
   return stop;
 }
 
+function isContinuityOrPhoneCamera(label: string): boolean {
+  const value = label.toLowerCase();
+  return (
+    value.includes("iphone") ||
+    value.includes("ipad") ||
+    value.includes("continuity") ||
+    value.includes("kontynuacja") ||
+    /\bios\b/.test(value)
+  );
+}
+
+function scoreVideoInput(device: MediaDeviceInfo): number {
+  const label = String(device.label || "").toLowerCase();
+  let score = 0;
+
+  if (isContinuityOrPhoneCamera(label)) score -= 100;
+  if (label.includes("facetime") || label.includes("built-in") || label.includes("integrated")) score += 40;
+  if (label.includes("webcam") || label.includes("usb") || label.includes("hd")) score += 20;
+  if (label.includes("back") || label.includes("rear") || label.includes("environment")) score += 10;
+  if (!label.trim()) score -= 5;
+
+  return score;
+}
+
+async function pickPreferredVideoDeviceId(): Promise<{ deviceId: string; localOnly: boolean } | null> {
+  if (!navigator.mediaDevices?.enumerateDevices) return null;
+
+  // Permissions / labels: a short probe unlocks device labels on desktop browsers.
+  let probe: MediaStream | null = null;
+  try {
+    probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+  } catch {
+    // continue — enumerate may still return unlabeled devices
+  }
+
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter((device) => device.kind === "videoinput" && device.deviceId);
+    if (!cameras.length) return null;
+
+    const localCameras = cameras.filter((device) => !isContinuityOrPhoneCamera(device.label || ""));
+    const pool = localCameras.length ? localCameras : cameras;
+    const ranked = [...pool].sort((a, b) => scoreVideoInput(b) - scoreVideoInput(a));
+    const best = ranked[0];
+    if (!best?.deviceId) return null;
+    return { deviceId: best.deviceId, localOnly: localCameras.length > 0 };
+  } finally {
+    probe?.getTracks().forEach((track) => track.stop());
+  }
+}
+
 export async function requestCameraStream(): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error("Przeglądarka nie obsługuje aparatu. Wgraj zdjęcie dowodu.");
   }
 
-  const attempts: MediaStreamConstraints[] = [
+  const preferred = await pickPreferredVideoDeviceId();
+  const preferredDeviceId = preferred?.deviceId || null;
+
+  const attempts: MediaStreamConstraints[] = [];
+  if (preferredDeviceId) {
+    attempts.push({
+      video: {
+        deviceId: { exact: preferredDeviceId },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+      audio: false,
+    });
+    attempts.push({
+      video: {
+        deviceId: { ideal: preferredDeviceId },
+        width: { ideal: 1280 },
+      },
+      audio: false,
+    });
+  }
+
+  attempts.push(
     {
       video: {
         facingMode: { ideal: "environment" },
@@ -110,12 +183,27 @@ export async function requestCameraStream(): Promise<MediaStream> {
     },
     { video: { facingMode: "user", width: { ideal: 1280 } }, audio: false },
     { video: true, audio: false },
-  ];
+  );
 
   let lastError: unknown = null;
   for (const constraints of attempts) {
     try {
-      return await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const label = stream.getVideoTracks()[0]?.label || "";
+      // Prefer laptop/webcam over Continuity Camera when a local device exists.
+      if (preferred?.localOnly && preferredDeviceId && isContinuityOrPhoneCamera(label)) {
+        try {
+          const localOnly = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: preferredDeviceId }, width: { ideal: 1280 } },
+            audio: false,
+          });
+          stream.getTracks().forEach((track) => track.stop());
+          return localOnly;
+        } catch {
+          // keep original stream if forced local reopen fails
+        }
+      }
+      return stream;
     } catch (error) {
       lastError = error;
     }
