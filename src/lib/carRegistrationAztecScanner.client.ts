@@ -7,8 +7,10 @@ export type StartAztecVideoScanOptions = {
   onPhase: (phase: AztecScanPhase) => void;
   /** Freeze the live preview (pause video + disable tracks) before processing. */
   onLockFrame?: () => void;
+  /** Countdown seconds left (10…1), then null when capturing. */
+  onCountdown?: (secondsLeft: number | null) => void;
   /**
-   * Called once a sharp still was taken from the camera.
+   * Called once a still was taken from the camera after countdown.
    * Should run the same decode path as "upload photo".
    */
   onPhotoCaptured: (file: File) => void | Promise<void>;
@@ -42,52 +44,6 @@ function canvasToJpegBlob(canvas: HTMLCanvasElement, quality = 0.95): Promise<Bl
   });
 }
 
-/** Laplacian-ish variance on a downscaled grayscale crop — higher = sharper. */
-function estimateSharpness(video: HTMLVideoElement): number {
-  const vw = video.videoWidth || 0;
-  const vh = video.videoHeight || 0;
-  if (vw < 40 || vh < 40) return 0;
-
-  const sample = document.createElement("canvas");
-  const side = Math.min(220, Math.floor(Math.min(vw, vh) * 0.55));
-  sample.width = side;
-  sample.height = side;
-  const ctx = sample.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return 0;
-
-  const sx = Math.floor((vw - Math.min(vw, vh) * 0.72) / 2);
-  const sy = Math.floor((vh - Math.min(vw, vh) * 0.72) / 2);
-  const sSide = Math.floor(Math.min(vw, vh) * 0.72);
-  ctx.drawImage(video, sx, sy, sSide, sSide, 0, 0, side, side);
-
-  const { data } = ctx.getImageData(0, 0, side, side);
-  const gray = new Float32Array(side * side);
-  for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
-    gray[p] = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-  }
-
-  let sum = 0;
-  let sumSq = 0;
-  let n = 0;
-  for (let y = 1; y < side - 1; y += 1) {
-    for (let x = 1; x < side - 1; x += 1) {
-      const i = y * side + x;
-      const lap =
-        -4 * gray[i] +
-        gray[i - 1] +
-        gray[i + 1] +
-        gray[i - side] +
-        gray[i + side];
-      sum += lap;
-      sumSq += lap * lap;
-      n += 1;
-    }
-  }
-  if (n < 10) return 0;
-  const mean = sum / n;
-  return sumSq / n - mean * mean;
-}
-
 /** High-quality still as if the user took a photo for upload. */
 async function takePhotoFromVideo(video: HTMLVideoElement): Promise<File | null> {
   const vw = video.videoWidth || 0;
@@ -109,27 +65,21 @@ async function takePhotoFromVideo(video: HTMLVideoElement): Promise<File | null>
 }
 
 /**
- * Live scan: when the frame looks sharp (clear code), auto-take a photo and
- * decode it with the exact same pipeline as "upload photo".
- * Also retries periodically even on softer focus so Mac webcams still work.
+ * Live scan: give the user 10 seconds to place a clear Aztec code in the frame,
+ * then take one photo and decode it with the same pipeline as "upload photo".
  */
 export function startAztecVideoScan({
   video,
   onPhase,
   onLockFrame,
+  onCountdown,
   onPhotoCaptured,
 }: StartAztecVideoScanOptions) {
   let stopped = false;
   let captured = false;
   let inFlight = false;
-  let sharpStreak = 0;
-  let lastAttemptAt = 0;
+  let secondsLeft = 10;
   let timer: number | null = null;
-
-  // Empirically: blurry webcam ~20–80, readable Aztec document usually >120.
-  const SHARP_MIN = 95;
-  const SHARP_STREAK_NEEDED = 2;
-  const FORCE_ATTEMPT_MS = 1600;
 
   const stop = () => {
     stopped = true;
@@ -139,18 +89,28 @@ export function startAztecVideoScan({
     }
   };
 
+  const keepVideoPlaying = async () => {
+    try {
+      if (video.paused) {
+        await video.play().catch(() => undefined);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
   const snapAndDecode = async () => {
     if (stopped || captured || inFlight) return;
     inFlight = true;
-    lastAttemptAt = Date.now();
+    onCountdown?.(null);
     try {
+      await keepVideoPlaying();
       const file = await takePhotoFromVideo(video);
       if (!file || stopped || captured) {
-        onPhase("searching");
+        onPhase("position");
         return;
       }
 
-      // Hand off still photo to the same pipeline as gallery upload.
       captured = true;
       stop();
       onLockFrame?.();
@@ -159,55 +119,32 @@ export function startAztecVideoScan({
       // On failure the gate resumes a new scanning session itself.
     } catch {
       captured = false;
-      sharpStreak = 0;
-      if (!stopped) onPhase("searching");
+      if (!stopped) onPhase("position");
     } finally {
       inFlight = false;
     }
   };
 
-  const tick = async () => {
+  const tickCountdown = () => {
     if (stopped || captured || inFlight) return;
-    if (video.readyState < 2 || video.ended) {
-      onPhase("searching");
+    void keepVideoPlaying();
+
+    secondsLeft -= 1;
+    if (secondsLeft > 0) {
+      onPhase(secondsLeft <= 3 ? "hold" : "position");
+      onCountdown?.(secondsLeft);
       return;
     }
 
-    try {
-      if (video.paused) {
-        await video.play().catch(() => undefined);
-      }
-    } catch {
-      /* ignore */
-    }
-
-    const now = Date.now();
-    const sharpness = estimateSharpness(video);
-    const isSharp = sharpness >= SHARP_MIN;
-
-    if (isSharp) {
-      sharpStreak += 1;
-      onPhase("hold");
-      if (sharpStreak >= SHARP_STREAK_NEEDED) {
-        await snapAndDecode();
-      }
-      return;
-    }
-
-    sharpStreak = 0;
-    onPhase("searching");
-    // Fallback: keep trying full photos like upload, even if focus is soft.
-    if (now - lastAttemptAt >= FORCE_ATTEMPT_MS) {
-      onPhase("hold");
-      await snapAndDecode();
-    }
+    onPhase("hold");
+    void snapAndDecode();
   };
 
-  onPhase("searching");
+  onPhase("position");
+  onCountdown?.(10);
   timer = window.setInterval(() => {
-    void tick();
-  }, 400);
-  void tick();
+    tickCountdown();
+  }, 1000);
 
   return stop;
 }

@@ -181,6 +181,8 @@ export type CarsDictionary = {
     phaseHold: string;
     phaseDecoding: string;
     phaseSuccess: string;
+    countdownPrompt: string;
+    countdownHint: string;
     missingTitle: string;
     missingDescription: string;
     missingMileage: string;
@@ -555,9 +557,11 @@ const pl: CarsDictionary = {
     phaseStarting: "Uruchamiam aparat…",
     phasePosition: "Ustaw tył dowodu — kod Aztec po prawej w ramce",
     phaseSearching: "Szukam kodu Aztec…",
-    phaseHold: "Wyraźny kadr — robię zdjęcie…",
+    phaseHold: "Robię zdjęcie…",
     phaseDecoding: "Analizuję zdjęcie jak z galerii…",
     phaseSuccess: "Gotowe!",
+    countdownPrompt: "Ustaw wyraźny kod w ramce",
+    countdownHint: "Odliczanie do zdjęcia — ustaw kod Aztec ostro w ramce.",
     missingTitle: "tytuł",
     missingDescription: "opis",
     missingMileage: "przebieg",
@@ -566,7 +570,7 @@ const pl: CarsDictionary = {
     missingImages: "zdjęcia",
     missingBannerPrefix: "Uzupełnij jeszcze:",
     retry: "Spróbuj ponownie",
-    autoScanHint: "Ustaw kod ostro w ramce — zrobimy zdjęcie i odczytamy jak z galerii.",
+    autoScanHint: "Po odliczeniu robimy zdjęcie i odczytujemy jak z galerii.",
     cameraDesktopHint: "Na komputerze wybierz kamerę w pasku adresu Safari/Chrome.",
   },
   photos: {
@@ -930,9 +934,11 @@ const en: CarsDictionary = {
     phaseStarting: "Starting camera…",
     phasePosition: "Frame the card back — Aztec code on the right",
     phaseSearching: "Looking for Aztec code…",
-    phaseHold: "Clear frame — taking a photo…",
+    phaseHold: "Taking a photo…",
     phaseDecoding: "Analyzing photo like a gallery upload…",
     phaseSuccess: "Done!",
+    countdownPrompt: "Place a clear code in the frame",
+    countdownHint: "Countdown to photo — keep the Aztec code sharp in the frame.",
     missingTitle: "title",
     missingDescription: "description",
     missingMileage: "mileage",
@@ -941,7 +947,7 @@ const en: CarsDictionary = {
     missingImages: "photos",
     missingBannerPrefix: "Still needed:",
     retry: "Try again",
-    autoScanHint: "Keep the code sharp in the frame — we take a photo and read it like an upload.",
+    autoScanHint: "After the countdown we take a photo and read it like an upload.",
     cameraDesktopHint: "On desktop, allow camera access in the browser address bar.",
   },
   photos: {
@@ -1304,9 +1310,11 @@ const uk: CarsDictionary = {
     phaseStarting: "Запуск камери…",
     phasePosition: "Наведіть зад свідоцтва — код Aztec праворуч у рамці",
     phaseSearching: "Шукаю код Aztec…",
-    phaseHold: "Чіткий кадр — роблю фото…",
+    phaseHold: "Роблю фото…",
     phaseDecoding: "Аналізую фото як із галереї…",
     phaseSuccess: "Готово!",
+    countdownPrompt: "Поставте чіткий код у рамку",
+    countdownHint: "Відлік до фото — тримайте код Aztec чітко в рамці.",
     missingTitle: "заголовок",
     missingDescription: "опис",
     missingMileage: "пробіг",
@@ -1315,7 +1323,7 @@ const uk: CarsDictionary = {
     missingImages: "фото",
     missingBannerPrefix: "Ще потрібно:",
     retry: "Спробувати знову",
-    autoScanHint: "Тримайте код чітко в рамці — зробимо фото і зчитаємо як із галереї.",
+    autoScanHint: "Після відліку зробимо фото і зчитаємо як із галереї.",
     cameraDesktopHint: "На комп'ютері дозвольте камеру в адресному рядку браузера.",
   },
   photos: {
