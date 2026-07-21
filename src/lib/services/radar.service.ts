@@ -65,6 +65,17 @@ export const radarService = {
       }
 
       console.log(`[RADAR] 🟢 FINAL MATCH user ${userId} score=${score}`);
+
+      const activeDeviceCount = await prisma.device.count({
+        where: { userId, isActive: true },
+      });
+      if (activeDeviceCount < 1) {
+        console.warn(
+          `[RADAR] ⏭ SKIP push user ${userId} — NO_ACTIVE_DEVICES (prefs push on, brak Device)`,
+        );
+        continue;
+      }
+
       matchCount += 1;
 
       sendTasks.push(
