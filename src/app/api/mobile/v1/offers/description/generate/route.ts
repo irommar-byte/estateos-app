@@ -24,7 +24,8 @@ export async function POST(req: Request) {
     String(body.propertyType || '').trim() ||
     String(body.city || '').trim() ||
     parseNum(body.area) ||
-    parseNum(body.price);
+    String(body.existingDescription || "").trim() ||
+    String(body.userNotes || "").trim();
 
   if (!hasBasics) {
     return NextResponse.json(
