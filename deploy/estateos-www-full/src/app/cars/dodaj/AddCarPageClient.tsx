@@ -1,10 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { useLocale } from "@/contexts/LocaleContext";
 import CarAddEntryScreen, { type CarAddEntryMethod } from "@/components/cars/CarAddEntryScreen";
-import CarListingForm from "@/components/cars/CarListingForm";
+
+const CarListingForm = dynamic(() => import("@/components/cars/CarListingForm"), {
+  ssr: false,
+  loading: () => (
+    <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-36 text-[var(--eos-text)] sm:px-6">
+      <div className="mx-auto max-w-4xl text-sm text-[var(--eos-muted)]">…</div>
+    </main>
+  ),
+});
 import { OTOMOTO_IMPORT_STORAGE_KEY } from "@/lib/otomotoCarImport";
 import { clearCarListingDraft, draftHasContent } from "@/lib/carListingDraft";
 
