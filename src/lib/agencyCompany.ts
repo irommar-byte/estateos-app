@@ -78,6 +78,39 @@ export async function getUserAgencyMembership(userId: number) {
   });
 }
 
+/** Logo firmy i osobne zdjęcie agenta (bez podmiany logo → awatar). */
+export async function getAgencyPublicBranding(userId: number): Promise<{
+  companyLogoUrl: string | null;
+  agentPhotoUrl: string | null;
+}> {
+  const membership = await prisma.agencyCompanyMember.findUnique({
+    where: { userId },
+    select: {
+      profilePhotoUrl: true,
+      user: { select: { image: true, companyLogoUrl: true } },
+      company: { select: { logoUrl: true, name: true } },
+    },
+  });
+  if (membership) {
+    return {
+      companyLogoUrl:
+        resolveProfileMediaUrl(membership.company.logoUrl) ||
+        resolveProfileMediaUrl(membership.user.companyLogoUrl),
+      agentPhotoUrl:
+        resolveProfileMediaUrl(membership.profilePhotoUrl) ||
+        resolveProfileMediaUrl(membership.user.image),
+    };
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { image: true, companyLogoUrl: true },
+  });
+  return {
+    companyLogoUrl: resolveProfileMediaUrl(user?.companyLogoUrl),
+    agentPhotoUrl: resolveProfileMediaUrl(user?.image),
+  };
+}
+
 /** Zdjęcie widoczne na profilu — upload kierownika w zespole ma pierwszeństwo. */
 export async function getUserDisplayAvatar(userId: number): Promise<string | null> {
   const membership = await prisma.agencyCompanyMember.findUnique({

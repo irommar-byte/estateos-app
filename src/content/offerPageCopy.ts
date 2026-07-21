@@ -84,6 +84,10 @@ export type OfferPageCopy = {
   commissionAmount: string;
   commissionCompany: string;
   openCompanyProfile: string;
+  contactSeller: string;
+  agentPhotoAlt: string;
+  companyLogoAlt: string;
+  agentRoleLabel: string;
   negotiatorsOne: string;
   negotiatorsMany: (n: number) => string;
   contactDisabled: string;
@@ -243,6 +247,10 @@ const PL: OfferPageCopy = {
   commissionAmount: "Kwota prowizji",
   commissionCompany: "Firma obsługująca",
   openCompanyProfile: "Otwórz wizytówkę",
+  contactSeller: "Skontaktuj się ze sprzedawcą",
+  agentPhotoAlt: "Zdjęcie agenta",
+  companyLogoAlt: "Logo firmy",
+  agentRoleLabel: "Agent",
   negotiatorsOne: "1 osoba złożyła ofertę",
   negotiatorsMany: (n) => `${n} osoby złożyły ofertę`,
   contactDisabled: "Kontakt wyłączony",
@@ -402,6 +410,10 @@ const EN: OfferPageCopy = {
   commissionAmount: "Commission amount",
   commissionCompany: "Handling company",
   openCompanyProfile: "Open profile card",
+  contactSeller: "Contact the seller",
+  agentPhotoAlt: "Agent photo",
+  companyLogoAlt: "Company logo",
+  agentRoleLabel: "Agent",
   negotiatorsOne: "1 person submitted an offer",
   negotiatorsMany: (n) => `${n} people submitted offers`,
   contactDisabled: "Contact disabled",

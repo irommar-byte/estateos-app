@@ -13,6 +13,7 @@ type Props = {
   currentUserId?: number | string | null;
   variant?: "dark" | "light" | "offer";
   className?: string;
+  label?: string;
 };
 
 export default function ProfileWriteMessageButton({
@@ -21,6 +22,7 @@ export default function ProfileWriteMessageButton({
   currentUserId,
   variant = "dark",
   className = "",
+  label,
 }: Props) {
   const router = useRouter();
   const { locale } = useLocale();
@@ -69,7 +71,7 @@ export default function ProfileWriteMessageButton({
       ) : (
         <MessageCircle className="size-4" strokeWidth={2.2} aria-hidden />
       )}
-      {copy.writeMessage}
+      {label || copy.writeMessage}
     </button>
   );
 }
