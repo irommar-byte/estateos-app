@@ -68,6 +68,7 @@ export default function CarRegistrationScanGate({
   const [cameraReady, setCameraReady] = useState(false);
   const [frameLocked, setFrameLocked] = useState(false);
   const [phase, setPhase] = useState<AztecScanPhase>("starting");
+  const [countdown, setCountdown] = useState<number | null>(null);
   const [awaitingUploadPicker, setAwaitingUploadPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -84,6 +85,7 @@ export default function CarRegistrationScanGate({
     stopScanRef.current = null;
     setCameraReady(false);
     setFrameLocked(false);
+    setCountdown(null);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -110,10 +112,12 @@ export default function CarRegistrationScanGate({
     (video: HTMLVideoElement) => {
       if (lockedRef.current) return;
       stopScanRef.current?.();
+      setCountdown(10);
       stopScanRef.current = startAztecVideoScan({
         video,
         onPhase: setPhase,
         onLockFrame: lockPreview,
+        onCountdown: setCountdown,
         onPhotoCaptured: async (file) => {
           await decodeLivePhotoRef.current(file);
         },
@@ -162,7 +166,8 @@ export default function CarRegistrationScanGate({
       if (opts?.fromLive) {
         lockedRef.current = false;
         setFrameLocked(false);
-        setPhase("searching");
+        setCountdown(null);
+        setPhase("position");
         streamRef.current?.getVideoTracks().forEach((track) => {
           track.enabled = true;
         });
@@ -268,7 +273,10 @@ export default function CarRegistrationScanGate({
   if (!open) return null;
 
   const scanning = cameraReady && !frameLocked && phase !== "success" && phase !== "decoding";
-  const phaseLabel = phaseCopy[phase];
+  const phaseLabel =
+    countdown != null
+      ? `${s.countdownPrompt} — ${countdown}`
+      : phaseCopy[phase];
 
   return (
     <div
@@ -347,7 +355,7 @@ export default function CarRegistrationScanGate({
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-[12%]">
                 <div
                   className={`relative aspect-square w-full max-w-[260px] rounded-2xl border-2 transition-all duration-300 ${
-                    phase === "hold"
+                    countdown != null || phase === "hold"
                       ? "border-amber-400 shadow-[0_0_40px_rgba(251,191,36,0.55)] scale-[1.02]"
                       : phase === "success" || frameLocked
                         ? "border-emerald-400 shadow-[0_0_40px_rgba(52,211,153,0.55)]"
@@ -358,8 +366,18 @@ export default function CarRegistrationScanGate({
                   <span className="absolute -right-1 -top-1 size-5 border-r-2 border-t-2 border-current text-sky-300" />
                   <span className="absolute -bottom-1 -left-1 size-5 border-b-2 border-l-2 border-current text-sky-300" />
                   <span className="absolute -bottom-1 -right-1 size-5 border-b-2 border-r-2 border-current text-sky-300" />
-                  {scanning ? (
+                  {scanning && countdown == null ? (
                     <div className="absolute inset-x-2 top-1/2 h-0.5 -translate-y-1/2 animate-pulse bg-gradient-to-r from-transparent via-sky-300 to-transparent" />
+                  ) : null}
+                  {countdown != null && !frameLocked && phase !== "success" ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-2xl bg-black/40 px-3 text-center">
+                      <span className="text-5xl font-black tabular-nums tracking-tight text-white drop-shadow-lg sm:text-6xl">
+                        {countdown}
+                      </span>
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-200">
+                        {s.countdownPrompt}
+                      </span>
+                    </div>
                   ) : null}
                   {frameLocked && phase !== "success" ? (
                     <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/35">
@@ -384,7 +402,9 @@ export default function CarRegistrationScanGate({
                   )}
                   <span>{phaseLabel}</span>
                 </div>
-                <p className="text-center text-[11px] text-white/70">{s.autoScanHint}</p>
+                <p className="text-center text-[11px] text-white/70">
+                  {countdown != null ? s.countdownHint : s.autoScanHint}
+                </p>
               </div>
             </>
           )}
