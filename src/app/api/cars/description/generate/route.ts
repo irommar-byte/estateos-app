@@ -25,14 +25,13 @@ export async function POST(req: Request) {
   const hasBasics =
     String(body.make || "").trim() &&
     String(body.model || "").trim() &&
-    String(body.city || "").trim() &&
-    Number(String(body.pricePln ?? "").replace(/\s/g, "").replace(",", ".")) > 0;
+    String(body.city || "").trim();
 
   if (!hasBasics) {
     return NextResponse.json(
       {
         success: false,
-        error: "Uzupełnij markę, model, miejscowość i cenę przed generowaniem opisu.",
+        error: "Uzupełnij markę, model i miejscowość przed generowaniem opisu.",
       },
       { status: 400 },
     );
