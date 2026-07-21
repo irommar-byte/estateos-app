@@ -1,7 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import type { SummarySection } from "@/lib/addOfferSummary";
 import { ImageIcon, MapPin, Sparkles } from "lucide-react";
+
+const NeighborhoodMapPreview = dynamic(() => import("@/components/map/NeighborhoodMapPreview"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[240px] items-center justify-center rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] text-sm text-[var(--eos-muted)]">
+      Ładowanie mapy…
+    </div>
+  ),
+});
 
 type AddOfferPublishSummaryProps = {
   heading: string;
@@ -12,6 +22,16 @@ type AddOfferPublishSummaryProps = {
   isRent: boolean;
   locationHeading: string;
   locationLine: string;
+  countryHeading: string;
+  countryFlag: string;
+  countryLabel: string;
+  mapLat: number | null;
+  mapLng: number | null;
+  mapExact: boolean;
+  mapStreet?: string;
+  mapCity?: string;
+  mapDistrict?: string;
+  mapCaption: string;
   paramsHeading: string;
   badges: { label: string; value: string }[];
   amenitiesHeading: string;
@@ -39,17 +59,9 @@ function InfoBadge({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SectionCard({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function SectionCard({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className={`relative overflow-hidden rounded-[1.85rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 shadow-[var(--eos-shadow-soft)] sm:p-6 ${className}`}
-    >
+    <div className="relative overflow-hidden rounded-[1.85rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 shadow-[var(--eos-shadow-soft)] sm:p-6">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
       {children}
     </div>
@@ -66,6 +78,16 @@ export default function AddOfferPublishSummary({
   isRent,
   locationHeading,
   locationLine,
+  countryHeading,
+  countryFlag,
+  countryLabel,
+  mapLat,
+  mapLng,
+  mapExact,
+  mapStreet,
+  mapCity,
+  mapDistrict,
+  mapCaption,
   paramsHeading,
   badges,
   amenitiesHeading,
@@ -82,6 +104,9 @@ export default function AddOfferPublishSummary({
   descriptionText,
   detailSections,
 }: AddOfferPublishSummaryProps) {
+  const hasCoords =
+    mapLat != null && mapLng != null && Number.isFinite(mapLat) && Number.isFinite(mapLng);
+
   return (
     <div className="mb-6 space-y-4">
       <div className="flex items-center gap-2 px-1">
@@ -153,19 +178,53 @@ export default function AddOfferPublishSummary({
 
         <div className="my-5 h-px bg-gradient-to-r from-transparent via-[var(--eos-border)] to-transparent" />
 
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
-            <MapPin className="h-4 w-4" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
-              {locationHeading}
-            </p>
-            <p className="mt-1 text-base font-bold leading-snug text-[var(--eos-text)]">
-              {locationLine || "—"}
-            </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
+              <MapPin className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
+                {locationHeading}
+              </p>
+              <p className="mt-1 text-base font-bold leading-snug text-[var(--eos-text)]">
+                {locationLine || "—"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/50 px-3.5 py-3">
+            <span className="text-3xl leading-none" aria-hidden>
+              {countryFlag || "🏳️"}
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
+                {countryHeading}
+              </p>
+              <p className="mt-1 text-base font-bold leading-snug text-[var(--eos-text)]">
+                {countryLabel || "—"}
+              </p>
+            </div>
           </div>
         </div>
+
+        {hasCoords ? (
+          <div className="mt-5">
+            <NeighborhoodMapPreview
+              lat={Number(mapLat)}
+              lng={Number(mapLng)}
+              street={mapStreet}
+              city={mapCity}
+              district={mapDistrict}
+              showPin={mapExact}
+              locked
+              variant="offer"
+              showExternalLinks={false}
+              sectionLabel="Podgląd na mapie"
+              footerCaption={mapCaption}
+            />
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard>

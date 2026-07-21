@@ -20,6 +20,8 @@ type Props = {
   sectionLabel?: string;
   footerCaption?: string;
   showExternalLinks?: boolean;
+  /** Tylko podgląd — bez pan/zoom/drag, z animacją orbity. */
+  locked?: boolean;
 };
 
 function add3dBuildingsLayer(map: mapboxgl.Map) {
@@ -80,6 +82,7 @@ export default function NeighborhoodMapPreview({
   sectionLabel,
   footerCaption,
   showExternalLinks = true,
+  locked = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -139,11 +142,14 @@ export default function NeighborhoodMapPreview({
         pitch: showPin ? 62 : 52,
         bearing: showPin ? -28 : -18,
         antialias: true,
-        attributionControl: true,
+        attributionControl: !locked,
+        interactive: !locked,
       });
 
       mapRef.current = map;
-      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
+      if (!locked) {
+        map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
+      }
 
       map.on("style.load", () => {
         map.setFog({
@@ -218,7 +224,7 @@ export default function NeighborhoodMapPreview({
       cancelAnimationFrame(innerRaf);
       teardown();
     };
-  }, [lat, lng, showPin, isOffer]);
+  }, [lat, lng, showPin, isOffer, locked]);
 
   const labelClass = isOffer
     ? "text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-1 flex items-center gap-2"
@@ -280,7 +286,10 @@ export default function NeighborhoodMapPreview({
               {mapError}
             </div>
           ) : null}
-          <div ref={containerRef} className={`absolute inset-0 w-full h-full ${isOffer ? "min-h-[280px] md:min-h-[320px]" : "min-h-[320px] md:min-h-[380px]"}`} />
+          <div
+            ref={containerRef}
+            className={`absolute inset-0 w-full h-full ${isOffer ? "min-h-[280px] md:min-h-[320px]" : "min-h-[320px] md:min-h-[380px]"} ${locked ? "pointer-events-none" : ""}`}
+          />
           <div className={gradientClass} />
           <p className={footerClass}>{footerCaption || defaultFooter}</p>
         </div>

@@ -1708,7 +1708,11 @@ export default function ClientForm({
           stepOf={ao.stepOf}
           canProceedHint={ao.stepperCanProceed}
           completeStepHint={ao.stepperCompleteStep}
-          canAdvanceCurrent={canAdvanceStep(currentStep) || currentStep === totalSteps}
+          canAdvanceCurrent={
+            currentStep === totalSteps
+              ? canPublish && !stepNavItems.some((item) => stepNeedsFix(item.step))
+              : canAdvanceStep(currentStep)
+          }
           isStepDone={isStepDone}
           stepNeedsFix={stepNeedsFix}
           onSelectStep={setCurrentStep}
@@ -2486,6 +2490,20 @@ export default function ClientForm({
                 isRent={data.transactionType === "RENT"}
                 locationHeading={ao.sumLocation}
                 locationLine={locationDisplayLine}
+                countryHeading={ao.countryLabel}
+                countryFlag={localityCountryFlag}
+                countryLabel={localityCountryLabel}
+                mapLat={typeof data.lat === "number" ? data.lat : data.lat != null ? Number(data.lat) : null}
+                mapLng={typeof data.lng === "number" ? data.lng : data.lng != null ? Number(data.lng) : null}
+                mapExact={data.locationType === "exact"}
+                mapStreet={String(data.street || data.address || "").trim() || undefined}
+                mapCity={String(data.city || "").trim() || undefined}
+                mapDistrict={String(data.district || "").trim() || undefined}
+                mapCaption={
+                  data.locationType === "exact"
+                    ? ao.sumLocExact
+                    : ao.sumLocApprox
+                }
                 paramsHeading={ao.sumParams}
                 badges={[
                   { label: ao.sumRowPropertyType || "Typ", value: propertyTypeLabel || "" },
