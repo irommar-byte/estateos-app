@@ -35,7 +35,7 @@ import {
 import { resolvePersistedLocalityFieldsAsync } from '@/lib/offerLocalityCountry';
 import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
 import { getOfferMarketListingMeta } from '@/lib/offerPublication';
-import { getUserDisplayAvatar } from '@/lib/agencyCompany';
+import { getAgencyPublicBranding, getUserDisplayAvatar } from '@/lib/agencyCompany';
 import {
   presentingAgentAsOfferUser,
   resolvePresentingAgent,
@@ -255,16 +255,27 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         : offerUser;
 
     const sellerUserId = presentingAgent?.userId ?? Number((offerUser as { id?: number })?.id ?? offerRow.userId);
+    const branding =
+      sellerUserId > 0 ? await getAgencyPublicBranding(sellerUserId) : { companyLogoUrl: null, agentPhotoUrl: null };
     const userWithAvatar =
       sellerUserId > 0 && enrichedUserFinal
         ? await (async () => {
-            const displayImage = await getUserDisplayAvatar(sellerUserId);
-            if (!displayImage) return enrichedUserFinal;
+            const displayImage =
+              branding.agentPhotoUrl || (await getUserDisplayAvatar(sellerUserId));
+            if (!displayImage) {
+              return {
+                ...enrichedUserFinal,
+                companyLogoUrl: branding.companyLogoUrl,
+                agentPhotoUrl: branding.agentPhotoUrl,
+              };
+            }
             return {
               ...enrichedUserFinal,
               image: displayImage,
               avatar: displayImage,
               displayAvatarUrl: displayImage,
+              companyLogoUrl: branding.companyLogoUrl,
+              agentPhotoUrl: branding.agentPhotoUrl || displayImage,
             };
           })()
         : enrichedUserFinal;
@@ -276,6 +287,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       sellerDisplayName,
       sellerPersonName,
       servicingCompanyName,
+      servicingCompanyLogoUrl: branding.companyLogoUrl,
+      agentPhotoUrl: branding.agentPhotoUrl || presentingAgent?.image || null,
       isPresentedByAgent,
       presentingAgent: presentingAgent
         ? {
@@ -286,7 +299,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             displayName: presentingAgent.displayName,
             phone: presentingAgent.phone,
             email: presentingAgent.email,
-            image: presentingAgent.image,
+            image: branding.agentPhotoUrl || presentingAgent.image,
           }
         : null,
       propertyTypeLabel: formatOfferPropertyType((legalOffer as { propertyType?: unknown }).propertyType, 'pl'),

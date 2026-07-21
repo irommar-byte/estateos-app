@@ -3,10 +3,6 @@ import { UK } from "@/i18n/offerPageCopyUk";
 
 export type OfferPageCopy = {
   backToMap: string;
-  favoriteAdd: string;
-  favoriteRemove: string;
-  favoriteAriaAdd: string;
-  favoriteAriaRemove: string;
   offerId: string;
   views: string;
   listedSince: string;
@@ -88,6 +84,10 @@ export type OfferPageCopy = {
   commissionAmount: string;
   commissionCompany: string;
   openCompanyProfile: string;
+  contactSeller: string;
+  agentPhotoAlt: string;
+  companyLogoAlt: string;
+  agentRoleLabel: string;
   negotiatorsOne: string;
   negotiatorsMany: (n: number) => string;
   contactDisabled: string;
@@ -164,10 +164,6 @@ export type OfferPageCopy = {
 
 const PL: OfferPageCopy = {
   backToMap: "← Powrót do mapy",
-  favoriteAdd: "Ulubione",
-  favoriteRemove: "W ulubionych",
-  favoriteAriaAdd: "Dodaj do ulubionych",
-  favoriteAriaRemove: "Usuń z ulubionych",
   offerId: "ID Oferty",
   views: "Odsłony",
   listedSince: "Dodano",
@@ -251,6 +247,10 @@ const PL: OfferPageCopy = {
   commissionAmount: "Kwota prowizji",
   commissionCompany: "Firma obsługująca",
   openCompanyProfile: "Otwórz wizytówkę",
+  contactSeller: "Skontaktuj się ze sprzedawcą",
+  agentPhotoAlt: "Zdjęcie agenta",
+  companyLogoAlt: "Logo firmy",
+  agentRoleLabel: "Agent",
   negotiatorsOne: "1 osoba złożyła ofertę",
   negotiatorsMany: (n) => `${n} osoby złożyły ofertę`,
   contactDisabled: "Kontakt wyłączony",
@@ -328,10 +328,6 @@ const PL: OfferPageCopy = {
 
 const EN: OfferPageCopy = {
   backToMap: "← Back to map",
-  favoriteAdd: "Save",
-  favoriteRemove: "Saved",
-  favoriteAriaAdd: "Add to favorites",
-  favoriteAriaRemove: "Remove from favorites",
   offerId: "Listing ID",
   views: "Views",
   listedSince: "Listed",
@@ -414,6 +410,10 @@ const EN: OfferPageCopy = {
   commissionAmount: "Commission amount",
   commissionCompany: "Handling company",
   openCompanyProfile: "Open profile card",
+  contactSeller: "Contact the seller",
+  agentPhotoAlt: "Agent photo",
+  companyLogoAlt: "Company logo",
+  agentRoleLabel: "Agent",
   negotiatorsOne: "1 person submitted an offer",
   negotiatorsMany: (n) => `${n} people submitted offers`,
   contactDisabled: "Contact disabled",

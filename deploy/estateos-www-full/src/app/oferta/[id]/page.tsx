@@ -79,8 +79,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const isDiscounted = Boolean((offer as { isDiscounted?: boolean }).isDiscounted);
   const discountPercent = Number((offer as { priceDiscountPercent?: number }).priceDiscountPercent) || 0;
   const listPricePln = Number((offer as { listPricePln?: number }).listPricePln ?? (offer as { previousPrice?: number }).previousPrice ?? 0);
-  const favoriteLabels = { add: t.favoriteAdd, remove: t.favoriteRemove };
-  const favoriteAria = { add: t.favoriteAriaAdd, remove: t.favoriteAriaRemove };
+  const favoriteLabels =
+    locale === 'en'
+      ? { add: 'Save', remove: 'Saved' }
+      : { add: 'Ulubione', remove: 'W ulubionych' };
 
   const tx = String(offer.transactionType || "sale").toLowerCase();
   const isRent = tx.includes("rent") || tx.includes("wynajem");
@@ -506,6 +508,16 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   ].filter((p) => p.value);
   const servicingCompanyName = resolveServicingCompanyName(offer?.user, offer?.agencyName);
   const agentPersonName = resolveSellerPersonName(offer?.user);
+  const servicingCompanyLogoUrl = String(
+    offer?.servicingCompanyLogoUrl || offer?.user?.companyLogoUrl || "",
+  ).trim() || null;
+  const agentPhotoUrl = String(
+    offer?.agentPhotoUrl ||
+      offer?.presentingAgent?.image ||
+      offer?.user?.agentPhotoUrl ||
+      sellerAvatar ||
+      "",
+  ).trim() || null;
   const showServicingCompanyBlock =
     isAgentOrAgencySeller(offer?.user) && Boolean(servicingCompanyName || agentPersonName);
   const showCommissionSection =
@@ -596,8 +608,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 size={22}
                 labelAdd={favoriteLabels.add}
                 labelRemove={favoriteLabels.remove}
-                ariaLabelAdd={favoriteAria.add}
-                ariaLabelRemove={favoriteAria.remove}
                 className="shrink-0"
                 onRequireAuth={() => {
                   window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
@@ -1115,25 +1125,77 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       </div>
                     ) : null}
                     {showServicingCompanyBlock ? (
-                      <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{t.commissionCompany}</p>
-                        {servicingCompanyName ? (
-                          <p className="mt-2 text-base font-bold leading-snug text-[var(--eos-text)] sm:text-lg">
-                            {servicingCompanyName}
-                          </p>
+                      <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 sm:p-5">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">
+                          {t.commissionCompany}
+                        </p>
+
+                        <div className="mt-4 flex flex-col items-center text-center">
+                          <div className="flex size-20 items-center justify-center overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)] sm:size-24">
+                            {servicingCompanyLogoUrl ? (
+                              <img
+                                src={servicingCompanyLogoUrl}
+                                alt={t.companyLogoAlt}
+                                className="h-full w-full object-contain p-2"
+                              />
+                            ) : (
+                              <Briefcase className={`size-8 ${themeColors.textActive}`} aria-hidden />
+                            )}
+                          </div>
+                          {servicingCompanyName ? (
+                            <p className="mt-3 text-base font-bold leading-snug text-[var(--eos-text)] sm:text-lg">
+                              {servicingCompanyName}
+                            </p>
+                          ) : null}
+                        </div>
+
+                        {(agentPhotoUrl || agentPersonName) ? (
+                          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-3">
+                            <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
+                              {agentPhotoUrl ? (
+                                <img
+                                  src={agentPhotoUrl}
+                                  alt={t.agentPhotoAlt}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <span className="text-lg" aria-hidden>
+                                  👤
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0 text-left">
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">
+                                {t.agentRoleLabel}
+                              </p>
+                              {agentPersonName ? (
+                                <p className="truncate text-sm font-semibold text-[var(--eos-text)]">
+                                  {agentPersonName}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
                         ) : null}
-                        {agentPersonName ? (
-                          <p className={`text-sm font-medium text-[var(--eos-muted)] ${servicingCompanyName ? "mt-1" : "mt-2"}`}>
-                            {agentPersonName}
-                          </p>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
-                          className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--eos-text)] transition-colors hover:text-emerald-400"
-                        >
-                          {t.openCompanyProfile}
-                        </button>
+
+                        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
+                            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[var(--eos-text)] transition-colors hover:text-emerald-400"
+                          >
+                            {t.openCompanyProfile}
+                          </button>
+                          {!isOwner && canContactSeller && (offer?.user?.id || offer?.userId) ? (
+                            <ProfileWriteMessageButton
+                              peerUserId={Number(offer?.user?.id || offer?.userId)}
+                              peerName={sellerLabel}
+                              currentUserId={currentUser?.id}
+                              variant="light"
+                              label={t.contactSeller}
+                              className="!min-h-0 flex-1 !px-3 !py-2.5"
+                            />
+                          ) : null}
+                        </div>
                       </div>
                     ) : null}
                     {agentCommissionLine && !agentCommissionInfo?.isZero ? (
