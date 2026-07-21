@@ -3,11 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  Bell,
   Car,
+  Coins,
   Home,
   LogIn,
   LogOut,
   Menu,
+  MessageCircle,
   Shield,
   User,
   X,
@@ -21,6 +24,7 @@ import PremiumModeToggle from "@/components/ui/PremiumModeToggle";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useUserMode } from "@/contexts/UserModeContext";
 import { useEcosystem, type EcosystemVertical } from "@/contexts/EcosystemContext";
+import { useNavUnreadBadge } from "@/hooks/useNavUnreadBadge";
 
 type CurrentUser = {
   id?: string | number;
@@ -37,21 +41,51 @@ type CurrentUser = {
   };
 };
 
+type SwitchDensity = "full" | "compact" | "mini";
+
+type MobileChrome = {
+  messages: boolean;
+  wallet: boolean;
+  bell: boolean;
+};
+
+const SWITCH_WIDTH: Record<SwitchDensity, number> = {
+  full: 172,
+  compact: 138,
+  mini: 108,
+};
+const MOBILE_ICON_SLOT = 46;
+const HAMBURGER_SLOT = 48;
+const CENTER_CLEARANCE = 20;
+
 export default function Navbar() {
-  const { dict } = useLocale();
+  const { dict, locale } = useLocale();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [isOpen, setIsOpen] = useState(false);
-  const [showVerticalSwitch, setShowVerticalSwitch] = useState(true);
+  const [switchDensity, setSwitchDensity] = useState<SwitchDensity>("full");
+  const [mobileChrome, setMobileChrome] = useState<MobileChrome>({
+    messages: true,
+    wallet: true,
+    bell: true,
+  });
   const barRef = useRef<HTMLDivElement>(null);
   const leftRef = useRef<HTMLDivElement>(null);
-  const rightRef = useRef<HTMLDivElement>(null);
-  const switchWidthRef = useRef(168);
   const router = useRouter();
   const pathname = usePathname();
   const { initModeFromUser } = useUserMode();
   const { vertical, isCar, requestVerticalSwitch } = useEcosystem();
   const isOfferShareLanding = pathname?.startsWith("/o/");
   const isAdmin = user?.role === "ADMIN";
+  const loggedIn = Boolean(user);
+  const unread = useNavUnreadBadge(loggedIn);
+  const hamburgerBadge =
+    unread.total > 0 ? (unread.total > 99 ? "99+" : String(unread.total)) : null;
+  const messagesLabel =
+    locale === "en" ? "Messages" : locale === "uk" ? "Повідомлення" : "Wiadomości";
+  const notificationsLabel =
+    locale === "en" ? "Notifications" : locale === "uk" ? "Сповіщення" : "Powiadomienia";
+  const creditsLabel =
+    locale === "en" ? "EOS credits" : locale === "uk" ? "Кредити EOS" : "Kredyty EOS";
 
   useEffect(() => {
     setIsOpen(false);
@@ -88,21 +122,55 @@ export default function Navbar() {
   useEffect(() => {
     const bar = barRef.current;
     const left = leftRef.current;
-    const right = rightRef.current;
-    if (!bar || !left || !right) return;
+    if (!bar || !left) return;
 
     const measure = () => {
-      const available = bar.clientWidth - left.offsetWidth - right.offsetWidth;
-      setShowVerticalSwitch(available >= switchWidthRef.current + 24);
+      const barW = bar.clientWidth;
+      const leftW = left.offsetWidth;
+      if (barW >= 1024) {
+        setMobileChrome({ messages: true, wallet: true, bell: true });
+        setSwitchDensity("full");
+        return;
+      }
+
+      const candidates: Array<{ chrome: MobileChrome; density: SwitchDensity }> = loggedIn
+        ? [
+            { chrome: { messages: true, wallet: true, bell: true }, density: "full" },
+            { chrome: { messages: false, wallet: true, bell: true }, density: "full" },
+            { chrome: { messages: false, wallet: false, bell: true }, density: "full" },
+            { chrome: { messages: false, wallet: false, bell: false }, density: "full" },
+            { chrome: { messages: false, wallet: false, bell: false }, density: "compact" },
+            { chrome: { messages: false, wallet: false, bell: false }, density: "mini" },
+          ]
+        : [
+            { chrome: { messages: false, wallet: false, bell: false }, density: "full" },
+            { chrome: { messages: false, wallet: false, bell: false }, density: "compact" },
+            { chrome: { messages: false, wallet: false, bell: false }, density: "mini" },
+          ];
+
+      let picked = candidates[candidates.length - 1]!;
+      for (const candidate of candidates) {
+        const icons =
+          Number(candidate.chrome.messages) +
+          Number(candidate.chrome.wallet) +
+          Number(candidate.chrome.bell);
+        const rightW = HAMBURGER_SLOT + icons * MOBILE_ICON_SLOT;
+        const available = barW - leftW - rightW - CENTER_CLEARANCE;
+        if (available >= SWITCH_WIDTH[candidate.density]) {
+          picked = candidate;
+          break;
+        }
+      }
+      setMobileChrome(picked.chrome);
+      setSwitchDensity(picked.density);
     };
 
     const ro = new ResizeObserver(() => window.requestAnimationFrame(measure));
     ro.observe(bar);
     ro.observe(left);
-    ro.observe(right);
     measure();
     return () => ro.disconnect();
-  }, [user, isAdmin]);
+  }, [loggedIn, isAdmin]);
 
   if (isOfferShareLanding) return null;
 
@@ -153,15 +221,30 @@ export default function Navbar() {
 
   const manageLabel = dict.nav.manageCentral;
   const manageLabelShort = dict.nav.manageCentralShort;
+  const switchPad =
+    switchDensity === "mini"
+      ? "px-1.5 py-1"
+      : switchDensity === "compact"
+        ? "px-2 py-1.5"
+        : "px-2.5 py-1.5 sm:px-3";
+  const switchText =
+    switchDensity === "mini"
+      ? "text-[8px]"
+      : switchDensity === "compact"
+        ? "text-[9px]"
+        : "text-[9px] sm:text-[10px]";
+  const switchIcon = switchDensity === "mini" ? "size-3" : "size-3.5";
+  const showCollapsedShortcuts =
+    loggedIn && (!mobileChrome.messages || !mobileChrome.wallet || !mobileChrome.bell);
 
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-[var(--eos-border)] bg-[var(--eos-glass)] font-sans text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl [padding-top:env(safe-area-inset-top)]">
       <div
         ref={barRef}
-        className="relative mx-auto flex h-20 max-w-[1400px] items-center justify-between gap-2 px-4 md:px-6"
+        className="relative mx-auto flex h-20 max-w-[1400px] items-center justify-between gap-2 px-3 sm:px-4 md:px-6"
         style={{
-          paddingLeft: "max(1rem, env(safe-area-inset-left))",
-          paddingRight: "max(1rem, env(safe-area-inset-right))",
+          paddingLeft: "max(0.75rem, env(safe-area-inset-left))",
+          paddingRight: "max(0.75rem, env(safe-area-inset-right))",
         }}
       >
         <div ref={leftRef} className="relative z-20 flex min-w-0 items-center gap-2 sm:gap-3">
@@ -172,13 +255,13 @@ export default function Navbar() {
             aria-label="EstateOS home"
           >
             <span
-              className={`eos-nav-mark flex size-10 items-center justify-center rounded-full border bg-[var(--eos-surface)] text-[11px] font-black sm:size-11 sm:text-xs ${
+              className={`eos-nav-mark flex size-9 items-center justify-center rounded-full border bg-[var(--eos-surface)] text-[10px] font-black sm:size-11 sm:text-xs ${
                 isCar ? "border-sky-400/35 text-sky-300" : "border-[var(--eos-border)]"
               }`}
             >
               EOS
             </span>
-            <span className="eos-nav-wordmark hidden lg:block">
+            <span className="eos-nav-wordmark hidden xl:block">
               <span className="eos-nav-wordmark-body">
                 <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>E</span>state
                 <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>OS</span>
@@ -193,32 +276,24 @@ export default function Navbar() {
           </button>
         </div>
 
-        <div
-          className={`pointer-events-none absolute inset-y-0 left-1/2 z-30 flex -translate-x-1/2 items-center ${
-            showVerticalSwitch ? "" : "hidden"
-          }`}
-        >
+        <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 flex -translate-x-1/2 items-center">
           <div
-            ref={(node) => {
-              if (node) {
-                const w = node.offsetWidth;
-                if (w > 0) switchWidthRef.current = w;
-              }
-            }}
-            className="pointer-events-auto flex items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-0.5 shadow-[var(--eos-shadow-soft)] sm:p-1"
+            className={`pointer-events-auto flex items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] shadow-[var(--eos-shadow-soft)] ${
+              switchDensity === "mini" ? "p-0.5" : "p-0.5 sm:p-1"
+            }`}
           >
             <button
               type="button"
               onClick={() => switchVertical("home")}
               aria-pressed={vertical === "home"}
-              className={`group/home inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] transition sm:px-3 sm:text-[10px] ${
+              className={`group/home inline-flex items-center gap-1 rounded-full font-black uppercase tracking-[0.1em] transition ${switchPad} ${switchText} ${
                 vertical === "home"
                   ? "bg-emerald-500/20 text-emerald-400"
                   : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
               }`}
             >
               <Home
-                className={`size-3.5 transition duration-300 ${
+                className={`${switchIcon} transition duration-300 ${
                   vertical === "home"
                     ? "scale-110 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.55)]"
                     : "opacity-70 group-hover/home:scale-105 group-hover/home:opacity-100"
@@ -232,14 +307,14 @@ export default function Navbar() {
               type="button"
               onClick={() => switchVertical("car")}
               aria-pressed={vertical === "car"}
-              className={`group/car inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] transition sm:px-3 sm:text-[10px] ${
+              className={`group/car inline-flex items-center gap-1 rounded-full font-black uppercase tracking-[0.1em] transition ${switchPad} ${switchText} ${
                 vertical === "car"
                   ? "bg-sky-500/20 text-sky-300"
                   : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
               }`}
             >
               <Car
-                className={`size-3.5 transition duration-300 ${
+                className={`${switchIcon} transition duration-300 ${
                   vertical === "car"
                     ? "scale-110 text-sky-300 drop-shadow-[0_0_8px_rgba(56,189,248,0.55)]"
                     : "opacity-70 group-hover/car:scale-105 group-hover/car:opacity-100"
@@ -252,7 +327,7 @@ export default function Navbar() {
           </div>
         </div>
 
-        <div ref={rightRef} className="relative z-20 flex min-w-0 items-center justify-end gap-1 sm:gap-1.5">
+        <div className="relative z-20 flex min-w-0 items-center justify-end gap-1 sm:gap-1.5">
           <div className="hidden min-w-0 items-center justify-end gap-1 lg:flex lg:gap-1.5 2xl:gap-2">
             {user && (
               <>
@@ -299,22 +374,23 @@ export default function Navbar() {
             )}
           </div>
 
-          <div className="flex shrink-0 items-center justify-end gap-1.5 lg:hidden">
-            {user && (
-              <>
-                <PublicationWalletNavButton />
-                <ContactMessagesNavButton />
-                <NotificationCenter />
-              </>
-            )}
+          <div className="flex shrink-0 items-center justify-end gap-1 lg:hidden">
+            {user && mobileChrome.wallet ? <PublicationWalletNavButton /> : null}
+            {user && mobileChrome.messages ? <ContactMessagesNavButton /> : null}
+            {user && mobileChrome.bell ? <NotificationCenter /> : null}
             <button
               type="button"
               onClick={() => setIsOpen((open) => !open)}
-              className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2.5 text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] transition-colors hover:text-[var(--eos-accent)]"
+              className="relative rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2.5 text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] transition-colors hover:text-[var(--eos-accent)]"
               aria-label={isOpen ? "Close menu" : "Open menu"}
               aria-expanded={isOpen}
             >
               {isOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+              {hamburgerBadge && !isOpen ? (
+                <span className="absolute -right-1 -top-1 flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white shadow-[0_0_12px_rgba(239,68,68,0.55)]">
+                  {hamburgerBadge}
+                </span>
+              ) : null}
             </button>
           </div>
         </div>
@@ -373,6 +449,47 @@ export default function Navbar() {
                     variant="primary"
                   />
                 </div>
+
+                {showCollapsedShortcuts ? (
+                  <>
+                    <div className="h-px bg-[var(--eos-border)]" />
+                    <div className="grid gap-2">
+                      {!mobileChrome.messages ? (
+                        <MobileNavButton
+                          icon={MessageCircle}
+                          label={`${messagesLabel}${
+                            unread.messages > 0 ? ` (${unread.messages > 99 ? "99+" : unread.messages})` : ""
+                          }`}
+                          onClick={() => handleNavClick("/moje-konto/wiadomosci")}
+                          variant="primary"
+                        />
+                      ) : null}
+                      {!mobileChrome.wallet ? (
+                        <div className="flex items-center justify-between gap-3 rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-3">
+                          <span className="inline-flex items-center gap-3 text-sm font-black uppercase tracking-[0.14em]">
+                            <Coins className="size-5 text-amber-500" aria-hidden />
+                            {creditsLabel}
+                          </span>
+                          <PublicationWalletNavButton />
+                        </div>
+                      ) : null}
+                      {!mobileChrome.bell ? (
+                        <div className="flex items-center justify-between gap-3 rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-3">
+                          <span className="inline-flex items-center gap-3 text-sm font-black uppercase tracking-[0.14em]">
+                            <Bell className="size-5 text-[var(--eos-accent)]" aria-hidden />
+                            {notificationsLabel}
+                            {unread.notifications > 0 ? (
+                              <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-black text-white">
+                                {unread.notifications > 99 ? "99+" : unread.notifications}
+                              </span>
+                            ) : null}
+                          </span>
+                          <NotificationCenter />
+                        </div>
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
 
                 <div className="h-px bg-[var(--eos-border)]" />
 
