@@ -627,7 +627,7 @@ export default function CatalogPage() {
                 />
               ) : (
                 <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6">
-                  <p className="text-sm text-[var(--eos-muted)]">{labels.favoritesEmpty}</p>
+                  <p className="text-sm text-[var(--eos-muted)]">{dict.crm.favoritesEmpty}</p>
                 </div>
               )}
             </RailSection>
