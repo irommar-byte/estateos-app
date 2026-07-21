@@ -12,6 +12,7 @@ import {
 } from "@/components/catalog/CatalogHeroActions";
 import OtomotoImportHeroCard from "@/components/cars/OtomotoImportHeroCard";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
+import InfiniteHorizontalRail from "@/components/catalog/InfiniteHorizontalRail";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { EstateOsCarListing } from "@/lib/carsCatalog";
 import { isCarFavoriteId, loadCarFavoriteIds } from "@/lib/carFavoritesStorage";
@@ -224,7 +225,7 @@ export default function CarsCatalogClient() {
     return sortCarListings(rows, filters.sort);
   }, [cars, filters]);
 
-  const newestCars = useMemo(() => sortByNewest(cars).slice(0, 12), [cars]);
+  const newestCars = useMemo(() => sortByNewest(cars), [cars]);
 
   const featuredCars = useMemo(
     () =>
@@ -262,7 +263,7 @@ export default function CarsCatalogClient() {
           cars.filter(
             (car) => String((car as EstateOsCarListing & { vehicleType?: string }).vehicleType || "car") === type,
           ),
-        ).slice(0, 12),
+        ),
       }))
       .filter((group) => group.items.length > 0);
   }, [cars, cat, locale]);
@@ -323,7 +324,6 @@ export default function CarsCatalogClient() {
 
   const railCard = (car: EstateOsCarListing) => (
     <Link
-      key={`rail-${car.id}`}
       href={`/cars/${car.id}`}
       className="group w-[280px] shrink-0 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] transition hover:border-sky-400/45 hover:shadow-[0_20px_60px_rgba(14,165,233,0.08)]"
     >
@@ -479,9 +479,11 @@ export default function CarsCatalogClient() {
         {!loading && newestCars.length > 0 ? (
           <section className="mt-8">
             <h2 className="mb-3 text-lg font-semibold tracking-tight">Najnowsze</h2>
-            <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
-              {newestCars.map((car) => railCard(car))}
-            </div>
+            <InfiniteHorizontalRail
+              items={newestCars}
+              getKey={(car) => car.id}
+              renderItem={(car) => railCard(car)}
+            />
           </section>
         ) : null}
 
@@ -489,9 +491,11 @@ export default function CarsCatalogClient() {
           ? typeRails.map((group) => (
               <section key={group.type} className="mt-8">
                 <h2 className="mb-3 text-lg font-semibold tracking-tight">{group.title}</h2>
-                <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
-                  {group.items.map((car) => railCard(car))}
-                </div>
+                <InfiniteHorizontalRail
+                  items={group.items}
+                  getKey={(car) => car.id}
+                  renderItem={(car) => railCard(car)}
+                />
               </section>
             ))
           : null}
