@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Car, ChevronDown, ChevronUp, Heart, Keyboard, ScanLine, Upload, UserRound } from "lucide-react";
+import { Car, ChevronDown, ChevronUp, Heart, Keyboard, ScanLine, Search, Upload, UserRound } from "lucide-react";
 import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
 import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
 import {
@@ -355,18 +355,7 @@ export default function CarsCatalogClient() {
         ? "Оберіть спосіб додавання оголошення"
         : "Wybierz, jak chcesz dodać ogłoszenie";
 
-  const filterToggleLabel =
-    locale === "en"
-      ? filtersExpanded
-        ? "Hide search parameters"
-        : "Show search parameters"
-      : locale === "uk"
-        ? filtersExpanded
-          ? "Згорнути параметри пошуку"
-          : "Розгорнути параметри пошуку"
-        : filtersExpanded
-          ? "Zwiń parametry wyszukiwania"
-          : "Rozwiń parametry wyszukiwania";
+  const findLabel = cat.findListing;
 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-32 text-[var(--eos-text)] sm:px-6">
@@ -383,171 +372,35 @@ export default function CarsCatalogClient() {
               onClick={() => {
                 setAddChooserOpen((prev) => !prev);
                 setActiveAddPath(null);
+                setFiltersExpanded(false);
               }}
               className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-500 px-6 py-3.5 text-[13px] font-semibold tracking-[-0.01em] text-white shadow-[0_10px_28px_rgba(14,165,233,0.38)] transition duration-200 ease-out hover:-translate-y-0.5 hover:bg-sky-400 hover:shadow-[0_14px_36px_rgba(14,165,233,0.5)]"
             >
               {cat.addListing}
               {addChooserOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
+            <CatalogHeroSecondaryButton
+              onClick={() => {
+                setFiltersExpanded((prev) => !prev);
+                setAddChooserOpen(false);
+                setActiveAddPath(null);
+              }}
+              aria-expanded={filtersExpanded}
+            >
+              <Search size={16} aria-hidden />
+              {findLabel}
+              {filtersExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </CatalogHeroSecondaryButton>
           </CatalogHeroActionRow>
         </CatalogBrandHero>
 
-        {addChooserOpen ? (
+        {filtersExpanded ? (
           <section className="mt-4 rounded-[1.75rem] border border-sky-400/20 bg-[var(--eos-card)] p-5 shadow-[0_20px_55px_rgba(14,165,233,0.08)] sm:p-6">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">EstateOS™Car</p>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-[var(--eos-text)]">{chooserTitle}</h2>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveAddPath("scan");
-                  window.location.href = "/cars/dodaj?entry=scan";
-                }}
-                className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10"
-              >
-                <ScanLine className="size-5 text-sky-500" />
-                <p className="mt-3 text-sm font-semibold">Zeskanuj kod aparatem</p>
-                <p className="mt-1 text-xs text-[var(--eos-muted)]">Live skan Aztec z dowodu rejestracyjnego.</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveAddPath("upload");
-                  window.location.href = "/cars/dodaj?entry=upload";
-                }}
-                className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10"
-              >
-                <Upload className="size-5 text-sky-500" />
-                <p className="mt-3 text-sm font-semibold">Dodaj zdjęcie dowodu z kodem</p>
-                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wgraj zdjęcie i odczytaj kod Aztec automatycznie.</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveAddPath("manual");
-                  window.location.href = "/cars/dodaj?entry=manual";
-                }}
-                className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10"
-              >
-                <Keyboard className="size-5 text-sky-500" />
-                <p className="mt-3 text-sm font-semibold">Dodaj ręcznie</p>
-                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wypełnij formularz samodzielnie od zera.</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveAddPath("otomoto")}
-                className={`rounded-2xl border p-4 text-left transition ${
-                  activeAddPath === "otomoto"
-                    ? "border-sky-400/45 bg-sky-500/10"
-                    : "border-[var(--eos-border)] bg-[var(--eos-surface)] hover:border-sky-400/40 hover:bg-sky-500/10"
-                }`}
-              >
-                <Car className="size-5 text-sky-500" />
-                <p className="mt-3 text-sm font-semibold">Import z Otomoto</p>
-                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wklej link i przenieś treść do formularza.</p>
-              </button>
-            </div>
-
-            {activeAddPath === "otomoto" ? (
-              <div className="mt-4">
-                <OtomotoImportHeroCard
-                  title={cat.otomotoImportTitle}
-                  body={cat.otomotoImportBody}
-                  placeholder={cat.otomotoImportPlaceholder}
-                  cta={cat.otomotoImportCta}
-                  loadingLabel={cat.otomotoImportLoading}
-                />
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">{cat.filtersEyebrow}</p>
+                <h2 className="mt-1 text-xl font-semibold tracking-tight text-[var(--eos-text)]">{cat.filtersTitle}</h2>
               </div>
-            ) : null}
-          </section>
-        ) : null}
-
-        {!loading && featuredSpotlightItems.length > 0 ? (
-          <section className="mt-8">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold tracking-tight">{cat.featuredBadge} · 6</h2>
-              <span className="text-xs text-[var(--eos-muted)]">Top oferty</span>
-            </div>
-            <FeaturedSpotlightCarousel items={featuredSpotlightItems} />
-          </section>
-        ) : null}
-
-        {!loading && newestCars.length > 0 ? (
-          <section className="mt-8">
-            <h2 className="mb-3 text-lg font-semibold tracking-tight">Najnowsze</h2>
-            <InfiniteHorizontalRail
-              items={newestCars}
-              getKey={(car) => car.id}
-              renderItem={(car) => railCard(car)}
-            />
-          </section>
-        ) : null}
-
-        {!loading
-          ? typeRails.map((group) => (
-              <section key={group.type} className="mt-8">
-                <h2 className="mb-3 text-lg font-semibold tracking-tight">{group.title}</h2>
-                <InfiniteHorizontalRail
-                  items={group.items}
-                  getKey={(car) => car.id}
-                  renderItem={(car) => railCard(car)}
-                />
-              </section>
-            ))
-          : null}
-
-        {showLoginMineBanner ? (
-          <div className={`mt-8 ${carAlertWarningClass}`}>
-            {cat.loginMineBanner}{" "}
-            <Link href="/login?next=/cars" className="font-semibold underline">
-              {cat.goLogin}
-            </Link>
-          </div>
-        ) : null}
-
-        <section className="mt-8 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--eos-border)] px-5 py-4 sm:px-6">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">{cat.filtersEyebrow}</p>
-              <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">{cat.filtersTitle}</h2>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div
-                className="inline-flex items-center gap-0.5 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/80 p-1"
-                role="tablist"
-                aria-label={cat.filtersTitle}
-              >
-                <button type="button" role="tab" aria-selected={tab === "all"} onClick={() => setTab("all")} className={catalogScopeClass(tab === "all")}>
-                  <Car size={13} aria-hidden />
-                  {cat.tabAll}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === "favorites"}
-                  onClick={() => setTab("favorites")}
-                  className={catalogScopeClass(tab === "favorites")}
-                >
-                  <Heart size={13} className={tab === "favorites" ? "fill-current" : ""} aria-hidden />
-                  {cat.tabFavorites}
-                </button>
-                <button type="button" role="tab" aria-selected={tab === "mine"} onClick={() => setTab("mine")} className={catalogScopeClass(tab === "mine")}>
-                  <UserRound size={13} aria-hidden />
-                  {cat.tabMine}
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={() => setFiltersExpanded((prev) => !prev)}
-                className="inline-flex items-center gap-1 rounded-xl border border-[var(--eos-border)] bg-transparent px-3 py-2 text-[11px] font-semibold text-[var(--eos-muted)] transition hover:border-sky-400/35 hover:text-sky-600 dark:hover:text-sky-300"
-              >
-                {filterToggleLabel}
-                {filtersExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
               <button
                 type="button"
                 onClick={() => setFilters(EMPTY_FILTERS)}
@@ -556,10 +409,8 @@ export default function CarsCatalogClient() {
                 {cat.clearFilters}
               </button>
             </div>
-          </div>
 
-          {filtersExpanded ? (
-            <div className="grid gap-5 p-5 sm:p-6">
+            <div className="grid gap-5">
               <FilterField label={cat.searchLabel}>
                 <input
                   value={filters.query}
@@ -683,7 +534,153 @@ export default function CarsCatalogClient() {
                 </FilterField>
               </div>
             </div>
-          ) : null}
+          </section>
+        ) : null}
+
+        {addChooserOpen ? (
+          <section className="mt-4 rounded-[1.75rem] border border-sky-400/20 bg-[var(--eos-card)] p-5 shadow-[0_20px_55px_rgba(14,165,233,0.08)] sm:p-6">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-500">EstateOS™Car</p>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-[var(--eos-text)]">{chooserTitle}</h2>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveAddPath("scan");
+                  window.location.href = "/cars/dodaj?entry=scan";
+                }}
+                className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10"
+              >
+                <ScanLine className="size-5 text-sky-500" />
+                <p className="mt-3 text-sm font-semibold">Zeskanuj kod aparatem</p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">Live skan Aztec z dowodu rejestracyjnego.</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveAddPath("upload");
+                  window.location.href = "/cars/dodaj?entry=upload";
+                }}
+                className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10"
+              >
+                <Upload className="size-5 text-sky-500" />
+                <p className="mt-3 text-sm font-semibold">Dodaj zdjęcie dowodu z kodem</p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wgraj zdjęcie i odczytaj kod Aztec automatycznie.</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveAddPath("manual");
+                  window.location.href = "/cars/dodaj?entry=manual";
+                }}
+                className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 text-left transition hover:border-sky-400/40 hover:bg-sky-500/10"
+              >
+                <Keyboard className="size-5 text-sky-500" />
+                <p className="mt-3 text-sm font-semibold">Dodaj ręcznie</p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wypełnij formularz samodzielnie od zera.</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveAddPath("otomoto")}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  activeAddPath === "otomoto"
+                    ? "border-sky-400/45 bg-sky-500/10"
+                    : "border-[var(--eos-border)] bg-[var(--eos-surface)] hover:border-sky-400/40 hover:bg-sky-500/10"
+                }`}
+              >
+                <Car className="size-5 text-sky-500" />
+                <p className="mt-3 text-sm font-semibold">Import z Otomoto</p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">Wklej link i przenieś treść do formularza.</p>
+              </button>
+            </div>
+
+            {activeAddPath === "otomoto" ? (
+              <div className="mt-4">
+                <OtomotoImportHeroCard
+                  title={cat.otomotoImportTitle}
+                  body={cat.otomotoImportBody}
+                  placeholder={cat.otomotoImportPlaceholder}
+                  cta={cat.otomotoImportCta}
+                  loadingLabel={cat.otomotoImportLoading}
+                />
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        {!loading && featuredSpotlightItems.length > 0 ? (
+          <section className="mt-8">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-semibold tracking-tight">{cat.featuredBadge} · 6</h2>
+              <span className="text-xs text-[var(--eos-muted)]">Top oferty</span>
+            </div>
+            <FeaturedSpotlightCarousel items={featuredSpotlightItems} />
+          </section>
+        ) : null}
+
+        {!loading && newestCars.length > 0 ? (
+          <section className="mt-8">
+            <h2 className="mb-3 text-lg font-semibold tracking-tight">Najnowsze</h2>
+            <InfiniteHorizontalRail
+              items={newestCars}
+              getKey={(car) => car.id}
+              renderItem={(car) => railCard(car)}
+            />
+          </section>
+        ) : null}
+
+        {!loading
+          ? typeRails.map((group) => (
+              <section key={group.type} className="mt-8">
+                <h2 className="mb-3 text-lg font-semibold tracking-tight">{group.title}</h2>
+                <InfiniteHorizontalRail
+                  items={group.items}
+                  getKey={(car) => car.id}
+                  renderItem={(car) => railCard(car)}
+                />
+              </section>
+            ))
+          : null}
+
+        {showLoginMineBanner ? (
+          <div className={`mt-8 ${carAlertWarningClass}`}>
+            {cat.loginMineBanner}{" "}
+            <Link href="/login?next=/cars" className="font-semibold underline">
+              {cat.goLogin}
+            </Link>
+          </div>
+        ) : null}
+
+        <section className="mt-8 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6">
+            <div
+              className="inline-flex items-center gap-0.5 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/80 p-1"
+              role="tablist"
+              aria-label={cat.filtersTitle}
+            >
+              <button type="button" role="tab" aria-selected={tab === "all"} onClick={() => setTab("all")} className={catalogScopeClass(tab === "all")}>
+                <Car size={13} aria-hidden />
+                {cat.tabAll}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "favorites"}
+                onClick={() => setTab("favorites")}
+                className={catalogScopeClass(tab === "favorites")}
+              >
+                <Heart size={13} className={tab === "favorites" ? "fill-current" : ""} aria-hidden />
+                {cat.tabFavorites}
+              </button>
+              <button type="button" role="tab" aria-selected={tab === "mine"} onClick={() => setTab("mine")} className={catalogScopeClass(tab === "mine")}>
+                <UserRound size={13} aria-hidden />
+                {cat.tabMine}
+              </button>
+            </div>
+          </div>
         </section>
 
         <p className="mb-4 mt-6 text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">

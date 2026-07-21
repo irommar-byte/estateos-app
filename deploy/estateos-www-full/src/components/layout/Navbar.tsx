@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Car,
@@ -41,11 +41,17 @@ export default function Navbar() {
   const { dict } = useLocale();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [showVerticalSwitch, setShowVerticalSwitch] = useState(true);
+  const barRef = useRef<HTMLDivElement>(null);
+  const leftRef = useRef<HTMLDivElement>(null);
+  const rightRef = useRef<HTMLDivElement>(null);
+  const switchWidthRef = useRef(132);
   const router = useRouter();
   const pathname = usePathname();
   const { initModeFromUser } = useUserMode();
   const { vertical, setVertical, isCar } = useEcosystem();
   const isOfferShareLanding = pathname?.startsWith("/o/");
+  const isAdmin = user?.role === "ADMIN";
 
   useEffect(() => {
     setIsOpen(false);
@@ -78,6 +84,25 @@ export default function Navbar() {
       cancelled = true;
     };
   }, [pathname, initModeFromUser]);
+
+  useEffect(() => {
+    const bar = barRef.current;
+    const left = leftRef.current;
+    const right = rightRef.current;
+    if (!bar || !left || !right) return;
+
+    const measure = () => {
+      const available = bar.clientWidth - left.offsetWidth - right.offsetWidth;
+      setShowVerticalSwitch(available >= switchWidthRef.current + 24);
+    };
+
+    const ro = new ResizeObserver(() => window.requestAnimationFrame(measure));
+    ro.observe(bar);
+    ro.observe(left);
+    ro.observe(right);
+    measure();
+    return () => ro.disconnect();
+  }, [user, isAdmin]);
 
   if (isOfferShareLanding) return null;
 
@@ -123,20 +148,20 @@ export default function Navbar() {
     router.push("/oferty");
   };
 
-  const isAdmin = user?.role === "ADMIN";
   const manageLabel = dict.nav.manageCentral;
   const manageLabelShort = dict.nav.manageCentralShort;
 
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-[var(--eos-border)] bg-[var(--eos-glass)] font-sans text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl [padding-top:env(safe-area-inset-top)]">
       <div
-        className="relative mx-auto flex h-20 max-w-[1400px] items-center justify-between gap-2 px-4 md:px-6 lg:gap-3"
+        ref={barRef}
+        className="relative mx-auto flex h-20 max-w-[1400px] items-center justify-between gap-2 px-4 md:px-6"
         style={{
           paddingLeft: "max(1rem, env(safe-area-inset-left))",
           paddingRight: "max(1rem, env(safe-area-inset-right))",
         }}
       >
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <div ref={leftRef} className="relative z-20 flex min-w-0 items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => router.push("/")}
@@ -150,7 +175,7 @@ export default function Navbar() {
             >
               EOS
             </span>
-            <span className="eos-nav-wordmark hidden md:block">
+            <span className="eos-nav-wordmark hidden lg:block">
               <span className="eos-nav-wordmark-body">
                 <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>E</span>state
                 <span className={`eos-nav-wordmark-accent ${isCar ? "text-sky-300" : ""}`}>OS</span>
@@ -163,12 +188,26 @@ export default function Navbar() {
               </span>
             </span>
           </button>
+        </div>
 
-          <div className="hidden items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 lg:flex">
+        <div
+          className={`pointer-events-none absolute inset-y-0 left-1/2 z-30 flex -translate-x-1/2 items-center ${
+            showVerticalSwitch ? "" : "hidden"
+          }`}
+        >
+          <div
+            ref={(node) => {
+              if (node) {
+                const w = node.offsetWidth;
+                if (w > 0) switchWidthRef.current = w;
+              }
+            }}
+            className="pointer-events-auto flex items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-0.5 shadow-[var(--eos-shadow-soft)] sm:p-1"
+          >
             <button
               type="button"
               onClick={() => switchVertical("home")}
-              className={`rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] transition xl:px-3 xl:text-[10px] ${
+              className={`rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] transition sm:px-3 sm:text-[10px] ${
                 vertical === "home"
                   ? "bg-emerald-500/20 text-emerald-400"
                   : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
@@ -179,7 +218,7 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => switchVertical("car")}
-              className={`rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] transition xl:px-3 xl:text-[10px] ${
+              className={`rounded-full px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] transition sm:px-3 sm:text-[10px] ${
                 vertical === "car"
                   ? "bg-sky-500/20 text-sky-300"
                   : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
@@ -190,69 +229,71 @@ export default function Navbar() {
           </div>
         </div>
 
-        <div className="relative z-20 hidden min-w-0 items-center justify-end gap-1 lg:flex lg:gap-1.5 2xl:gap-2">
-          {user && (
-            <>
-              <div className="hidden 2xl:block">
-                <PremiumModeToggle currentUser={user} />
-              </div>
-              <PublicationWalletNavButton />
-              <ContactMessagesNavButton />
-              <NotificationCenter />
-            </>
-          )}
+        <div ref={rightRef} className="relative z-20 flex min-w-0 items-center justify-end gap-1 sm:gap-1.5">
+          <div className="hidden min-w-0 items-center justify-end gap-1 lg:flex lg:gap-1.5 2xl:gap-2">
+            {user && (
+              <>
+                <div className="hidden 2xl:block">
+                  <PremiumModeToggle currentUser={user} />
+                </div>
+                <PublicationWalletNavButton />
+                <ContactMessagesNavButton />
+                <NotificationCenter />
+              </>
+            )}
 
-          {user ? (
-            <div className="ml-0.5 flex min-w-0 items-center gap-1 2xl:gap-2">
-              <NavbarProfileChip user={user} />
-              {isAdmin && (
+            {user ? (
+              <div className="ml-0.5 flex min-w-0 items-center gap-1 2xl:gap-2">
+                <NavbarProfileChip user={user} />
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/centrala")}
+                    className="eos-nav-admin shrink-0 rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black lg:px-3 2xl:px-5 2xl:py-2.5 2xl:text-[10px] 2xl:tracking-[0.18em]"
+                  >
+                    <span className="2xl:hidden">{manageLabelShort}</span>
+                    <span className="hidden 2xl:inline">{manageLabel}</span>
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => router.push("/centrala")}
-                  className="eos-nav-admin shrink-0 rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black lg:px-3 2xl:px-5 2xl:py-2.5 2xl:text-[10px] 2xl:tracking-[0.18em]"
+                  onClick={handleLogout}
+                  className="rounded-full p-2 text-[var(--eos-muted)] transition-colors hover:bg-red-500/10 hover:text-red-500"
+                  aria-label={dict.nav.logout}
                 >
-                  <span className="2xl:hidden">{manageLabelShort}</span>
-                  <span className="hidden 2xl:inline">{manageLabel}</span>
+                  <LogOut className="size-5" />
                 </button>
-              )}
+              </div>
+            ) : (
               <button
                 type="button"
-                onClick={handleLogout}
-                className="rounded-full p-2 text-[var(--eos-muted)] transition-colors hover:bg-red-500/10 hover:text-red-500"
-                aria-label={dict.nav.logout}
+                onClick={() => router.push("/login")}
+                className="inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-text)] transition-all hover:border-[var(--eos-accent)]/40 hover:text-[var(--eos-accent)] 2xl:px-5 2xl:py-2.5 2xl:text-[10px] 2xl:tracking-[0.18em]"
               >
-                <LogOut className="size-5" />
+                {dict.nav.login}
+                <LogIn className="size-4" />
               </button>
-            </div>
-          ) : (
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-center justify-end gap-1.5 lg:hidden">
+            {user && (
+              <>
+                <PublicationWalletNavButton />
+                <ContactMessagesNavButton />
+                <NotificationCenter />
+              </>
+            )}
             <button
               type="button"
-              onClick={() => router.push("/login")}
-              className="inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-text)] transition-all hover:border-[var(--eos-accent)]/40 hover:text-[var(--eos-accent)] 2xl:px-5 2xl:py-2.5 2xl:text-[10px] 2xl:tracking-[0.18em]"
+              onClick={() => setIsOpen((open) => !open)}
+              className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2.5 text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] transition-colors hover:text-[var(--eos-accent)]"
+              aria-label={isOpen ? "Close menu" : "Open menu"}
+              aria-expanded={isOpen}
             >
-              {dict.nav.login}
-              <LogIn className="size-4" />
+              {isOpen ? <X className="size-5" /> : <Menu className="size-5" />}
             </button>
-          )}
-        </div>
-
-        <div className="relative z-20 flex shrink-0 items-center justify-end gap-1.5 lg:hidden">
-          {user && (
-            <>
-              <PublicationWalletNavButton />
-              <ContactMessagesNavButton />
-              <NotificationCenter />
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => setIsOpen((open) => !open)}
-            className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2.5 text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] transition-colors hover:text-[var(--eos-accent)]"
-            aria-label={isOpen ? "Close menu" : "Open menu"}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? <X className="size-5" /> : <Menu className="size-5" />}
-          </button>
+          </div>
         </div>
       </div>
 
