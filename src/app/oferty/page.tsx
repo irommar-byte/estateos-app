@@ -1,23 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
   ArrowRight,
-  Loader2,
-  Building2,
-  KeyRound,
-  Sparkles,
   BadgePercent,
+  Building2,
+  ChevronDown,
+  ChevronUp,
   Gem,
-  LayoutGrid,
+  Home,
+  LandPlot,
+  Loader2,
   MapPin,
   Navigation,
+  Sparkles,
+  Store,
   UserRound,
-  Gavel,
-  SlidersHorizontal,
 } from "lucide-react";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import { normalizeTransactionType } from "@/lib/transactionType";
@@ -27,7 +27,6 @@ import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadg
 import OfferNewBadge from "@/components/offer/OfferNewBadge";
 import OfferTransactionBadge from "@/components/offer/OfferTransactionBadge";
 import { isOfferNew } from "@/lib/offerNewBadge";
-import CatalogAuctionCard from "@/components/catalog/CatalogAuctionCard";
 import CatalogTransactionToggle, {
   type CatalogTransactionMode,
 } from "@/components/catalog/CatalogTransactionToggle";
@@ -48,7 +47,6 @@ import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { formatDistanceKm, haversineKm } from "@/lib/geo/haversine";
-import type { AuctionEventRecord } from "@/lib/auctionTypes";
 
 type CatalogOffer = {
   id: number;
@@ -79,75 +77,33 @@ type CatalogOffer = {
   priceDiscountPercent?: number | null;
 };
 
-type GallerySection =
-  | "all"
-  | "nearest"
-  | "sale"
-  | "rent"
-  | "newest"
-  | "discounted"
-  | "featured"
-  | "mine"
-  | "auction";
+type PropertyRailKey = "FLAT" | "HOUSE" | "PLOT" | "COMMERCIAL";
 
-const SECTION_ORDER: GallerySection[] = ["newest", "nearest", "discounted", "featured", "mine"];
+const PROPERTY_RAIL_ORDER: PropertyRailKey[] = ["FLAT", "HOUSE", "PLOT", "COMMERCIAL"];
 
-type CatalogGridDensity = 1 | 2 | 4;
+const PROPERTY_RAIL_META: Record<
+  PropertyRailKey,
+  { icon: typeof Home; pl: string; en: string; uk: string }
+> = {
+  FLAT: { icon: Home, pl: "Mieszkania", en: "Apartments", uk: "Квартири" },
+  HOUSE: { icon: Building2, pl: "Domy", en: "Houses", uk: "Будинки" },
+  PLOT: { icon: LandPlot, pl: "Działki", en: "Plots", uk: "Ділянки" },
+  COMMERCIAL: { icon: Store, pl: "Lokale", en: "Commercial", uk: "Комерція" },
+};
 
-const CATALOG_GRID_STORAGE_KEY = "estateos-catalog-grid-density";
-const CATALOG_GRID_OPTIONS: CatalogGridDensity[] = [1, 2, 4];
-
-function catalogGridStyles(density: CatalogGridDensity) {
-  if (density === 4) {
-    return {
-      gridClass: "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4",
-      imageMb: "mb-2",
-      imageRounded: "rounded-lg md:rounded-xl",
-      titleClass: "text-xs sm:text-sm font-bold tracking-tight line-clamp-2",
-      metaClass: "mt-0.5 text-[9px] sm:text-[10px] font-medium uppercase tracking-[0.1em]",
-      priceClass: "text-xs sm:text-sm font-bold tabular-nums",
-      discoverClass: "mt-1 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.14em]",
-      imageSizes: "(max-width: 640px) 50vw, (max-width: 1280px) 33vw, 25vw",
-    };
-  }
-  if (density === 1) {
-    return {
-      gridClass: "grid grid-cols-1 gap-7 md:gap-8 max-w-3xl mx-auto",
-      imageMb: "mb-4",
-      imageRounded: "rounded-2xl md:rounded-[1.75rem]",
-      titleClass: "text-xl md:text-2xl font-bold tracking-tight line-clamp-2",
-      metaClass: "mt-1.5 text-[11px] font-medium uppercase tracking-[0.12em]",
-      priceClass: "text-lg md:text-xl font-bold tabular-nums",
-      discoverClass: "mt-2 text-[10px] font-black uppercase tracking-[0.16em]",
-      imageSizes: "(max-width: 768px) 100vw, 768px",
-    };
-  }
-  return {
-    gridClass: "grid grid-cols-1 sm:grid-cols-2 gap-5 md:gap-6 lg:gap-7",
-    imageMb: "mb-3",
-    imageRounded: "rounded-xl md:rounded-2xl",
-    titleClass: "text-base md:text-lg font-bold tracking-tight line-clamp-2",
-    metaClass: "mt-1 text-[10px] md:text-[11px] font-medium uppercase tracking-[0.12em]",
-    priceClass: "text-base md:text-lg font-bold tabular-nums",
-    discoverClass: "mt-1.5 text-[10px] font-black uppercase tracking-[0.16em]",
-    imageSizes: "(max-width: 768px) 100vw, 50vw",
-  };
+function sortByNewest(items: CatalogOffer[]) {
+  return [...items].sort((a, b) => {
+    const ta = a.createdAt ? Date.parse(a.createdAt) : Number(a.id) * 1000;
+    const tb = b.createdAt ? Date.parse(b.createdAt) : Number(b.id) * 1000;
+    return tb - ta;
+  });
 }
 
-function gridDensityLabel(density: CatalogGridDensity, locale: string): string {
-  if (locale === "pl") {
-    if (density === 1) return "Duże karty";
-    if (density === 4) return "4 w rzędzie";
-    return "2 obok siebie";
-  }
-  if (locale === "uk") {
-    if (density === 1) return "Великі";
-    if (density === 4) return "4 в ряд";
-    return "2 поруч";
-  }
-  if (density === 1) return "Large cards";
-  if (density === 4) return "4 per row";
-  return "2 per row";
+function isDiscountedOffer(offer: CatalogOffer) {
+  if (offer.isDiscounted) return true;
+  const current = Number(offer.pricePln ?? offer.price ?? 0);
+  const prev = Number(offer.previousPrice ?? offer.oldPrice ?? offer.listPricePln ?? 0);
+  return Number.isFinite(current) && Number.isFinite(prev) && prev > current && current > 0;
 }
 
 function formatPriceLabel(
@@ -175,18 +131,6 @@ function formatLocationLabel(offer: CatalogOffer, countryDefault: string): strin
   return parts.length ? parts.join(" · ") : countryDefault;
 }
 
-const sectionIcons: Record<GallerySection, typeof LayoutGrid> = {
-  all: LayoutGrid,
-  nearest: Navigation,
-  sale: Building2,
-  rent: KeyRound,
-  newest: Sparkles,
-  discounted: BadgePercent,
-  featured: Gem,
-  mine: UserRound,
-  auction: Gavel,
-};
-
 export default function CatalogPage() {
   const { dict, locale } = useLocale();
   const labels = dict.catalog;
@@ -194,17 +138,12 @@ export default function CatalogPage() {
   const { formatOffer } = useFormatOfferPrice();
   const [offers, setOffers] = useState<CatalogOffer[]>([]);
   const [myOffers, setMyOffers] = useState<CatalogOffer[]>([]);
-  const [auctionEvents, setAuctionEvents] = useState<AuctionEventRecord[]>([]);
   const [loggedIn, setLoggedIn] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMine, setLoadingMine] = useState(false);
   const [archivingId, setArchivingId] = useState<number | null>(null);
-  const [loadingAuction, setLoadingAuction] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<GallerySection>("newest");
   const [transactionMode, setTransactionMode] = useState<CatalogTransactionMode>("sale");
-  const [gridDensity, setGridDensity] = useState<CatalogGridDensity>(2);
   const [locationFilter, setLocationFilter] = useState<CatalogLocationFilterValue>({
     countryCode: null,
     city: null,
@@ -212,51 +151,60 @@ export default function CatalogPage() {
   });
   const [propertyTypeFilter, setPropertyTypeFilter] = useState<CatalogPropertyTypeFilter>("ALL");
   const [strictCityDistricts, setStrictCityDistricts] = useState<Record<string, string[]>>({});
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const { location, denied, pending, request } = useUserLocation();
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(CATALOG_GRID_STORAGE_KEY);
-      if (raw === "1" || raw === "2" || raw === "4") {
-        setGridDensity(Number(raw) as CatalogGridDensity);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(CATALOG_GRID_STORAGE_KEY, String(gridDensity));
-    } catch {
-      // ignore
-    }
-  }, [gridDensity]);
-
-  const cardStyles = catalogGridStyles(gridDensity);
-  const gridDensityIndex = CATALOG_GRID_OPTIONS.indexOf(gridDensity);
+  const accent = transactionMode;
+  const accentText = accent === "rent" ? "text-sky-500" : "text-emerald-500";
+  const accentBorderHover =
+    accent === "rent"
+      ? "hover:border-sky-400/45 hover:shadow-[0_20px_60px_rgba(14,165,233,0.08)]"
+      : "hover:border-emerald-400/45 hover:shadow-[0_20px_60px_rgba(16,185,129,0.08)]";
+  const accentPrice = accent === "rent" ? "text-sky-600 dark:text-sky-300" : "text-emerald-600 dark:text-emerald-300";
 
   const nearestCopy =
     locale === "pl"
       ? {
-          title: "Najbliższe nieruchomości",
-          lead: "Posortowane według odległości od Twojej lokalizacji.",
+          title: "Najbliższe",
           enable: "Udostępnij lokalizację",
           denied: "Brak dostępu do lokalizacji — włącz ją w przeglądarce, aby zobaczyć odległości.",
         }
       : locale === "uk"
         ? {
-            title: "Найближчі об'єкти",
-            lead: "Відсортовано за відстанню від вашої локації.",
+            title: "Найближчі",
             enable: "Надати локацію",
             denied: "Немає доступу до локації — увімкніть її в браузері.",
           }
         : {
-            title: "Nearest properties",
-            lead: "Sorted by distance from your location.",
+            title: "Nearest",
             enable: "Share location",
             denied: "Location denied — enable it in the browser to see distances.",
           };
+
+  const railTitles = {
+    featured:
+      locale === "en" ? "Featured" : locale === "uk" ? "Рекомендовані" : "Wyróżnione",
+    newest: locale === "en" ? "Newest" : locale === "uk" ? "Найновіші" : "Najnowsze",
+    discounted:
+      locale === "en" ? "Discounted" : locale === "uk" ? "Зі знижкою" : "Przecenione",
+    mine: locale === "en" ? "My listings" : locale === "uk" ? "Мої" : "Moje",
+    filtersEyebrow:
+      locale === "en" ? "Search" : locale === "uk" ? "Пошук" : "Parametry wyszukiwania",
+    filtersTitle:
+      locale === "en" ? "Find a property" : locale === "uk" ? "Знайдіть нерухомість" : "Znajdź nieruchomość",
+    filterToggle: filtersExpanded
+      ? locale === "en"
+        ? "Hide search parameters"
+        : locale === "uk"
+          ? "Згорнути параметри пошуку"
+          : "Zwiń parametry wyszukiwania"
+      : locale === "en"
+        ? "Show search parameters"
+        : locale === "uk"
+          ? "Розгорнути параметри пошуку"
+          : "Rozwiń parametry wyszukiwania",
+    topOffers: locale === "en" ? "Top listings" : locale === "uk" ? "Топ оголошення" : "Top oferty",
+  };
 
   const loadMine = useCallback(async () => {
     setLoadingMine(true);
@@ -296,33 +244,15 @@ export default function CatalogPage() {
     }
   }, []);
 
-  const loadAuctions = useCallback(async () => {
-    setLoadingAuction(true);
-    try {
-      const res = await fetch(`/api/auction/live?t=${Date.now()}`, {
-        cache: "no-store",
-        credentials: "include",
-      });
-      const data = await res.json();
-      setAuctionEvents(Array.isArray(data?.events) ? data.events : []);
-    } catch {
-      setAuctionEvents([]);
-    } finally {
-      setLoadingAuction(false);
-    }
-  }, []);
-
   const loadAuth = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/check", { cache: "no-store", credentials: "include" });
       const data = await res.json();
       const isLoggedIn = Boolean(data?.loggedIn && data?.user?.id);
       setLoggedIn(isLoggedIn);
-      setCurrentUserId(isLoggedIn ? Number(data.user.id) : null);
       if (isLoggedIn) void loadMine();
     } catch {
       setLoggedIn(false);
-      setCurrentUserId(null);
     }
   }, [loadMine]);
 
@@ -358,8 +288,7 @@ export default function CatalogPage() {
   useEffect(() => {
     void load();
     void loadAuth();
-    void loadAuctions();
-  }, [load, loadAuth, loadAuctions]);
+  }, [load, loadAuth]);
 
   useEffect(() => {
     let cancelled = false;
@@ -377,16 +306,6 @@ export default function CatalogPage() {
       cancelled = true;
     };
   }, []);
-
-  const handleSectionChange = useCallback(
-    (section: GallerySection) => {
-      setActiveSection(section);
-      if (section === "nearest" && !location && !denied) {
-        void request();
-      }
-    },
-    [denied, location, request],
-  );
 
   const saleOffers = useMemo(
     () => offers.filter((o) => normalizeTransactionType(o.transactionType) === "sale"),
@@ -418,127 +337,176 @@ export default function CatalogPage() {
     return counts;
   }, [transactionOffers]);
 
-  const propertyFilteredOffers = useMemo(() => {
+  const browseOffers = useMemo(() => {
     if (propertyTypeFilter === "ALL") return locationFilteredOffers;
     return locationFilteredOffers.filter(
       (offer) => String(offer.propertyType || "").toUpperCase() === propertyTypeFilter,
     );
   }, [locationFilteredOffers, propertyTypeFilter]);
 
-  useEffect(() => {
-    if (activeSection === "mine" && loggedIn) void loadMine();
-  }, [activeSection, loggedIn, loadMine]);
-
-  const sortedByNewest = [...propertyFilteredOffers].sort((a, b) => {
-    const ta = a.createdAt ? Date.parse(a.createdAt) : Number(a.id) * 1000;
-    const tb = b.createdAt ? Date.parse(b.createdAt) : Number(b.id) * 1000;
-    return tb - ta;
-  });
-
-  const discountedOffers = propertyFilteredOffers.filter((offer) => {
-    if (offer.isDiscounted) return true;
-    const current = Number(offer.pricePln ?? offer.price ?? 0);
-    const prev = Number(offer.previousPrice ?? offer.oldPrice ?? offer.listPricePln ?? 0);
-    return Number.isFinite(current) && Number.isFinite(prev) && prev > current && current > 0;
-  });
-
-  const distanceByOfferId = new Map<number, number>();
-  if (location) {
-    for (const offer of propertyFilteredOffers) {
+  const distanceByOfferId = useMemo(() => {
+    const map = new Map<number, number>();
+    if (!location) return map;
+    for (const offer of browseOffers) {
       const lat = Number(offer.lat);
       const lng = Number(offer.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      distanceByOfferId.set(offer.id, haversineKm(location.latitude, location.longitude, lat, lng));
+      map.set(offer.id, haversineKm(location.latitude, location.longitude, lat, lng));
     }
-  }
+    return map;
+  }, [browseOffers, location]);
 
-  const nearestOffers = location
-    ? [...propertyFilteredOffers]
-        .filter((o) => distanceByOfferId.has(o.id))
-        .sort((a, b) => (distanceByOfferId.get(a.id)! - distanceByOfferId.get(b.id)!))
-    : [];
+  const featuredOffers = useMemo(
+    () =>
+      sortByNewest(browseOffers.filter((offer) => offer.featured)).sort(
+        (a, b) =>
+          Date.parse(String(b.promotedUntil || b.createdAt || 0)) -
+          Date.parse(String(a.promotedUntil || a.createdAt || 0)),
+      ),
+    [browseOffers],
+  );
 
-  const geolocatedCount = propertyFilteredOffers.filter((o) => {
-    const lat = Number(o.lat);
-    const lng = Number(o.lng);
-    return Number.isFinite(lat) && Number.isFinite(lng);
-  }).length;
+  const newestOffers = useMemo(() => sortByNewest(browseOffers).slice(0, 12), [browseOffers]);
+  const discountedOffers = useMemo(
+    () => sortByNewest(browseOffers.filter(isDiscountedOffer)).slice(0, 12),
+    [browseOffers],
+  );
+  const nearestOffers = useMemo(() => {
+    if (!location) return [];
+    return [...browseOffers]
+      .filter((o) => distanceByOfferId.has(o.id))
+      .sort((a, b) => (distanceByOfferId.get(a.id)! - distanceByOfferId.get(b.id)!))
+      .slice(0, 12);
+  }, [browseOffers, distanceByOfferId, location]);
 
-  const paidFeaturedOffers = propertyFilteredOffers
-    .filter((offer) => offer.featured)
-    .sort((a, b) => Date.parse(String(b.promotedUntil || b.createdAt || 0)) - Date.parse(String(a.promotedUntil || a.createdAt || 0)));
-
-  const featuredOffers = paidFeaturedOffers;
+  const typeRails = useMemo(() => {
+    return PROPERTY_RAIL_ORDER.map((type) => {
+      const meta = PROPERTY_RAIL_META[type];
+      const title = locale === "en" ? meta.en : locale === "uk" ? meta.uk : meta.pl;
+      const source =
+        propertyTypeFilter === "ALL" || propertyTypeFilter === type
+          ? locationFilteredOffers.filter((o) => String(o.propertyType || "").toUpperCase() === type)
+          : [];
+      return {
+        type,
+        title,
+        icon: meta.icon,
+        items: sortByNewest(source).slice(0, 12),
+      };
+    }).filter((rail) => rail.items.length > 0);
+  }, [locale, locationFilteredOffers, propertyTypeFilter]);
 
   const filteredMyOffers = useMemo(
-    () =>
-      myOffers.filter((o) => normalizeTransactionType(o.transactionType) === transactionMode),
+    () => myOffers.filter((o) => normalizeTransactionType(o.transactionType) === transactionMode),
     [myOffers, transactionMode],
   );
 
-  const sectionCounts: Record<GallerySection, number> = {
-    all: propertyFilteredOffers.length,
-    nearest: location ? nearestOffers.length : geolocatedCount,
-    sale: saleOffers.length,
-    rent: rentOffers.length,
-    newest: sortedByNewest.length,
-    discounted: discountedOffers.length,
-    featured: featuredOffers.length,
-    mine: filteredMyOffers.length,
-    auction: auctionEvents.length,
-  };
-
-  const offersInSection = (() => {
-    switch (activeSection) {
-      case "mine":
-        return filteredMyOffers;
-      case "nearest":
-        return nearestOffers;
-      case "newest":
-        return sortedByNewest;
-      case "discounted":
-        return discountedOffers;
-      case "featured":
-        return featuredOffers;
-      default:
-        return sortedByNewest;
-    }
-  })();
-
-  const resultLabel = labels.resultSummary.replace("{n}", String(offersInSection.length));
-
-  const sectionLoading = activeSection === "mine" && loadingMine;
-
-  const sectionLead =
-    activeSection === "mine"
-      ? labels.mineLead
-      : activeSection === "featured"
-        ? "Tylko ogłoszenia z aktywnym, opłaconym wyróżnieniem (1 kredyt / 7 dni)."
-        : null;
-
-  const sectionAccentClass =
-    transactionMode === "rent"
-      ? "border-sky-500/40 bg-sky-500/10 shadow-[0_0_20px_rgba(59,130,246,0.12)]"
-      : "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_20px_rgba(16,185,129,0.12)]";
-  const sectionAccentIcon = transactionMode === "rent" ? "text-sky-500" : "text-emerald-500";
-  const sectionAccentCount =
-    transactionMode === "rent"
-      ? "bg-sky-500/20 text-sky-600 dark:text-sky-300"
-      : "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300";
-
   const spotlightItems = useMemo(
     () =>
-      paidFeaturedOffers.map((offer) => ({
+      featuredOffers.slice(0, 6).map((offer) => ({
         id: offer.id,
         href: `/oferta/${offer.id}`,
-        title:
-          offer.title?.trim() || labels.offerTitleFallback.replace("{id}", String(offer.id)),
+        title: offer.title?.trim() || labels.offerTitleFallback.replace("{id}", String(offer.id)),
         subtitle: formatLocationLabel(offer, labels.countryDefault),
         priceLabel: formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth),
         imageUrl: offer.imageUrl || "/fallback-luxury.svg",
-        badge: "Wyróżnione",
+        badge: railTitles.featured,
       })),
-    [paidFeaturedOffers, labels, formatOffer, dict.homePremium.pricePerMonth],
+    [featuredOffers, labels, formatOffer, dict.homePremium.pricePerMonth, railTitles.featured],
+  );
+
+  const railCard = (offer: CatalogOffer, opts?: { showDistance?: boolean }) => {
+    const showNewBadge = isOfferNew(offer.createdAt);
+    const distance = distanceByOfferId.get(offer.id);
+    return (
+      <Link
+        key={`rail-${offer.id}`}
+        href={`/oferta/${offer.id}`}
+        className={`group w-[280px] shrink-0 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] transition ${accentBorderHover}`}
+      >
+        <div className="relative aspect-[16/10]">
+          <Image
+            src={offer.imageUrl || "/fallback-luxury.svg"}
+            alt={offer.title?.trim() || labels.offerImageAlt.replace("{id}", String(offer.id))}
+            fill
+            sizes="280px"
+            className="object-cover transition duration-500 group-hover:scale-[1.03]"
+            unoptimized
+          />
+          <OfferTransactionBadge
+            transactionType={offer.transactionType}
+            size="sm"
+            className="absolute left-3 top-3 z-10"
+          />
+          {showNewBadge ? (
+            <OfferNewBadge createdAt={offer.createdAt} size="sm" className="absolute left-3 top-10 z-10" />
+          ) : null}
+          {offer.isLegalSafeVerified === true ? (
+            <LegalVerifiedShieldBadge
+              variant="card"
+              active
+              label={offerCopy.legalVerifiedKw}
+              sublabel={offerCopy.legalVerifiedKwSublabel}
+              className={`absolute left-3 z-10 ${showNewBadge ? "top-[4.75rem]" : "top-10"}`}
+            />
+          ) : null}
+          <OfferFavoriteButton
+            offerId={offer.id}
+            variant="icon"
+            size={18}
+            className="absolute right-3 top-3 z-20"
+            onRequireAuth={() => {
+              window.location.href = `/login?redirect=${encodeURIComponent(`/oferta/${offer.id}`)}`;
+            }}
+          />
+          {offer.isDiscounted && Number(offer.priceDiscountPercent) > 0 ? (
+            <span className="absolute bottom-3 left-3 z-10 rounded-full border border-red-500/40 bg-red-500/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-white">
+              −{offer.priceDiscountPercent}%
+            </span>
+          ) : null}
+          {opts?.showDistance && distance != null ? (
+            <span className="absolute bottom-3 right-3 z-10 inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] bg-black/55 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur-md">
+              <MapPin className="size-3" />
+              {formatDistanceKm(distance, locale)}
+            </span>
+          ) : null}
+        </div>
+        <div className="space-y-2 p-4">
+          <p className={`text-[11px] font-black uppercase tracking-[0.12em] ${accentText}`}>
+            {formatAreaLabel(offer)} · {formatLocationLabel(offer, labels.countryDefault)}
+          </p>
+          <h3 className="line-clamp-2 text-base font-semibold text-[var(--eos-text)]">
+            {offer.title?.trim() || labels.offerTitleFallback.replace("{id}", String(offer.id))}
+          </h3>
+          <p className={`text-base font-bold tabular-nums ${accentPrice}`}>
+            {formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth)}
+          </p>
+        </div>
+      </Link>
+    );
+  };
+
+  const RailSection = ({
+    title,
+    icon: Icon,
+    children,
+    trailing,
+  }: {
+    title: string;
+    icon?: typeof Sparkles;
+    children: ReactNode;
+    trailing?: React.ReactNode;
+  }) => (
+    <section className="mt-8">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-[var(--eos-text)]">
+          {Icon ? <Icon className={`size-4 ${accentText}`} aria-hidden /> : null}
+          {title}
+        </h2>
+        {trailing}
+      </div>
+      {children}
+    </section>
   );
 
   return (
@@ -548,51 +516,67 @@ export default function CatalogPage() {
       }`}
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-          <CatalogBrandHero
-            brand="home"
-            accent={transactionMode}
-            title={`${labels.title} ${labels.subtitle}`}
-            description={labels.lead}
-            stats={
-              !loading && !error
-                ? `${propertyFilteredOffers.length} aktywnych ogłoszeń w katalogu`
-                : null
-            }
-          >
-            <CatalogHeroActionRow>
-              <CatalogHeroPrimaryLink brand="home" accent={transactionMode} href="/dodaj-oferte">
-                Dodaj ogłoszenie
-              </CatalogHeroPrimaryLink>
-            </CatalogHeroActionRow>
-          </CatalogBrandHero>
-          {denied ? (
-            <p className="-mt-4 mb-6 text-xs text-[var(--eos-muted)]">{nearestCopy.denied}</p>
-          ) : null}
-        </motion.div>
+        <CatalogBrandHero
+          brand="home"
+          accent={transactionMode}
+          title={`${labels.title} ${labels.subtitle}`}
+          description={labels.lead}
+          stats={!loading && !error ? `${browseOffers.length} aktywnych ogłoszeń w katalogu` : null}
+        >
+          <CatalogHeroActionRow>
+            <CatalogHeroPrimaryLink brand="home" accent={transactionMode} href="/dodaj-oferte">
+              Dodaj ogłoszenie
+            </CatalogHeroPrimaryLink>
+          </CatalogHeroActionRow>
+        </CatalogBrandHero>
 
         {!loading && !error ? (
-          <section className="mb-8 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_22px_70px_rgba(16,185,129,0.06)]">
-            <div
-              className={`flex flex-wrap items-center justify-between gap-3 border-b border-[var(--eos-border)] px-5 py-4 sm:px-6 ${
-                transactionMode === "rent"
-                  ? "bg-gradient-to-r from-sky-500/[0.07] via-transparent to-cyan-500/[0.04]"
-                  : "bg-gradient-to-r from-emerald-500/[0.07] via-transparent to-emerald-500/[0.03]"
-              }`}
-            >
+          <section className="mt-6 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--eos-border)] px-5 py-4 sm:px-6">
               <div>
-                <p
-                  className={`text-[10px] font-black uppercase tracking-[0.2em] ${
-                    transactionMode === "rent" ? "text-sky-500" : "text-emerald-500"
-                  }`}
-                >
-                  Parametry wyszukiwania
+                <p className={`text-[10px] font-black uppercase tracking-[0.2em] ${accentText}`}>
+                  {railTitles.filtersEyebrow}
                 </p>
-                <h2 className="mt-1 text-lg font-semibold tracking-tight">Znajdź nieruchomość</h2>
+                <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">
+                  {railTitles.filtersTitle}
+                </h2>
               </div>
+              <button
+                type="button"
+                onClick={() => setFiltersExpanded((prev) => !prev)}
+                className="inline-flex items-center gap-1 rounded-xl border border-[var(--eos-border)] bg-transparent px-3 py-2 text-[11px] font-semibold text-[var(--eos-muted)] transition hover:border-emerald-400/35 hover:text-emerald-600 dark:hover:text-emerald-300"
+              >
+                {railTitles.filterToggle}
+                {filtersExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
             </div>
-            <div className="space-y-5 p-5 sm:p-6">
-              <div>
+
+            {filtersExpanded ? (
+              <div className="space-y-5 p-5 sm:p-6">
+                <CatalogTransactionToggle
+                  value={transactionMode}
+                  onChange={setTransactionMode}
+                  labels={labels.transactionToggle}
+                  saleCount={saleOffers.length}
+                  rentCount={rentOffers.length}
+                />
+                <CatalogPropertyTypeToggle
+                  value={propertyTypeFilter}
+                  onChange={setPropertyTypeFilter}
+                  counts={propertyTypeCounts}
+                  accent={transactionMode}
+                />
+                <CatalogLocationFilter
+                  offers={transactionOffers}
+                  value={locationFilter}
+                  onChange={setLocationFilter}
+                  labels={labels.locationFilter}
+                  strictCityDistricts={strictCityDistricts}
+                  accent={transactionMode}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 px-5 py-3 sm:px-6">
                 <CatalogTransactionToggle
                   value={transactionMode}
                   onChange={setTransactionMode}
@@ -601,419 +585,189 @@ export default function CatalogPage() {
                   rentCount={rentOffers.length}
                 />
               </div>
-              <CatalogPropertyTypeToggle
-                value={propertyTypeFilter}
-                onChange={setPropertyTypeFilter}
-                counts={propertyTypeCounts}
-                accent={transactionMode}
-              />
-              <CatalogLocationFilter
-                offers={transactionOffers}
-                value={locationFilter}
-                onChange={setLocationFilter}
-                labels={labels.locationFilter}
-                strictCityDistricts={strictCityDistricts}
-                accent={transactionMode}
-              />
-            </div>
+            )}
           </section>
         ) : null}
 
-        {!loading && !error && activeSection !== "mine" && spotlightItems.length > 0 ? (
-          <div className="mt-6 md:mt-8">
-            <FeaturedSpotlightCarousel
-              items={spotlightItems}
-              accent="home"
-              title="Oferty wyróżnione"
-              lead="Premiumowa ekspozycja — rotacja co 30 sekund."
-            />
-          </div>
-        ) : null}
-
-        {!loading && !error && (
-          <motion.nav
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 }}
-            className="mt-8 md:mt-10"
-            aria-label={labels.title}
+        {loading ? (
+          <div
+            className="flex flex-col items-center justify-center gap-4 py-32 text-[var(--eos-muted)]"
+            role="status"
+            aria-live="polite"
           >
-              <div className="flex flex-wrap gap-2 pb-1">
-                {SECTION_ORDER.map((section) => {
-                  const Icon = sectionIcons[section];
-                  const active = activeSection === section;
-                  const count = sectionCounts[section];
-                  return (
-                    <button
-                      key={section}
-                      type="button"
-                      onClick={() => handleSectionChange(section)}
-                      className={`flex shrink-0 items-center gap-2.5 rounded-xl px-4 py-3 text-left transition-all duration-200 border ${
-                        active
-                          ? `${sectionAccentClass} text-[var(--eos-text)]`
-                          : "border-transparent bg-transparent text-[var(--eos-muted)] hover:bg-[var(--eos-card)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)]"
-                      }`}
-                    >
-                      <Icon
-                        className={`h-4 w-4 shrink-0 ${active ? sectionAccentIcon : "text-[var(--eos-subtle)]"}`}
-                        strokeWidth={2.25}
-                      />
-                      <span className="text-[11px] font-black uppercase tracking-[0.1em] leading-snug whitespace-nowrap">
-                        {labels.sections[section]}
-                      </span>
-                      <span
-                        className={`min-w-[1.75rem] rounded-md px-1.5 py-0.5 text-center text-[10px] font-bold tabular-nums ${
-                          active ? sectionAccentCount : "bg-[var(--eos-border)]/80 text-[var(--eos-subtle)]"
-                        }`}
-                      >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--eos-subtle)]">
-                  {resultLabel}
-                  <span className="mx-2 text-[var(--eos-border)]">·</span>
-                  <span className="text-[var(--eos-muted)]">{labels.sections[activeSection]}</span>
-                </p>
-                <label className="flex items-center gap-2.5 shrink-0 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)]/60 px-3 py-2">
-                  <SlidersHorizontal className="size-3.5 text-[var(--eos-subtle)]" aria-hidden />
-                  <input
-                    type="range"
-                    min={0}
-                    max={2}
-                    step={1}
-                    value={gridDensityIndex >= 0 ? gridDensityIndex : 1}
-                    onChange={(e) => {
-                      const idx = Number(e.target.value);
-                      setGridDensity(CATALOG_GRID_OPTIONS[idx] ?? 2);
-                    }}
-                    className="w-24 sm:w-28 accent-emerald-500"
-                    aria-label={gridDensityLabel(gridDensity, locale)}
-                  />
-                  <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--eos-muted)] whitespace-nowrap min-w-[5.5rem]">
-                    {gridDensityLabel(gridDensity, locale)}
-                  </span>
-                </label>
-              </div>
-              {sectionLead ? (
-                <p className="mt-3 max-w-3xl text-sm leading-relaxed text-[var(--eos-muted)]">{sectionLead}</p>
-              ) : null}
-            </motion.nav>
-        )}
+            <Loader2 className="h-9 w-9 animate-spin text-emerald-500/85" aria-hidden />
+            <p className="text-xs font-semibold uppercase tracking-[0.35em]">{labels.loading}</p>
+          </div>
+        ) : error ? (
+          <div
+            className="mx-auto mt-10 max-w-lg rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-10 text-center"
+            role="alert"
+          >
+            <p className="mb-8 text-sm leading-relaxed text-[var(--eos-muted)]">{error}</p>
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-8 py-3 text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400 transition hover:bg-emerald-500/20"
+            >
+              {labels.retry}
+            </button>
+          </div>
+        ) : (
+          <>
+            {spotlightItems.length > 0 ? (
+              <RailSection
+                title={`${railTitles.featured} · 6`}
+                icon={Gem}
+                trailing={<span className="text-xs text-[var(--eos-muted)]">{railTitles.topOffers}</span>}
+              >
+                <FeaturedSpotlightCarousel items={spotlightItems} accent="home" />
+              </RailSection>
+            ) : null}
 
-        <AnimatePresence mode="wait">
-          {loading ? (
-            <motion.div
-              key="loading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex flex-col items-center justify-center gap-4 py-32 text-[var(--eos-muted)]"
-              role="status"
-              aria-live="polite"
-            >
-              <Loader2 className="h-9 w-9 animate-spin text-emerald-500/85" aria-hidden />
-              <p className="text-xs font-semibold uppercase tracking-[0.35em]">{labels.loading}</p>
-            </motion.div>
-          ) : error ? (
-            <motion.div
-              key="error"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="mx-auto max-w-lg rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-10 text-center"
-              role="alert"
-            >
-              <p className="mb-8 text-sm leading-relaxed text-[var(--eos-muted)]">{error}</p>
-              <button
-                type="button"
-                onClick={() => void load()}
-                className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-8 py-3 text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400 transition hover:bg-emerald-500/20"
-              >
-                {labels.retry}
-              </button>
-            </motion.div>
-          ) : sectionLoading ? (
-            <motion.div
-              key="section-loading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex flex-col items-center justify-center gap-4 py-32 text-[var(--eos-muted)]"
-            >
-              <Loader2 className="h-9 w-9 animate-spin text-emerald-500/85" />
-              <p className="text-xs font-semibold uppercase tracking-[0.35em]">{labels.loading}</p>
-            </motion.div>
-          ) : activeSection === "mine" && !loggedIn ? (
-            <motion.div
-              key="mine-login"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="py-24 text-center"
-            >
-              <p className="mx-auto max-w-md text-sm leading-relaxed text-[var(--eos-muted)]">{labels.mineRequiresLogin}</p>
-              <Link
-                href={`/login?redirect=${encodeURIComponent("/oferty")}`}
-                className="mt-6 inline-flex rounded-full border border-emerald-500/35 bg-emerald-500/10 px-6 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600 transition hover:bg-emerald-500/15 dark:text-emerald-400"
-              >
-                {labels.mineLoginCta}
-              </Link>
-            </motion.div>
-          ) : activeSection === "auction" ? (
-            auctionEvents.length === 0 ? (
-              <motion.div key="auction-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-24 text-center">
-                <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">{labels.empty}</p>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="auction-grid"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.25 }}
-                className={cardStyles.gridClass}
-              >
-                {auctionEvents.map((event, i) => (
-                  <CatalogAuctionCard
-                    key={event.id}
-                    event={event}
-                    locale={locale}
-                    index={i}
-                    currentUserId={currentUserId}
-                    onRequireAuth={() => {
-                      window.location.href = `/login?redirect=${encodeURIComponent("/oferty")}`;
-                    }}
-                    onEventUpdated={(updated) => {
-                      setAuctionEvents((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
-                    }}
-                  />
-                ))}
-              </motion.div>
-            )
-          ) : offersInSection.length === 0 ? (
-            <motion.div
-              key="empty"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="py-24 text-center"
-            >
-              {activeSection === "nearest" && !location ? (
-                <>
-                  <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-                    {labels.nearestRequiresLocation}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={request}
-                    disabled={pending}
-                    className="mt-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600 transition hover:bg-emerald-500/15 dark:text-emerald-400"
-                  >
-                    {pending ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
-                    {nearestCopy.enable}
-                  </button>
-                </>
-              ) : activeSection === "featured" ? (
-                <>
-                  <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-                    Brak opłaconych wyróżnień w tym widoku
-                  </p>
-                  <p className="mx-auto mt-4 max-w-md text-sm normal-case leading-relaxed text-[var(--eos-muted)]">
-                    Wyróżnienie premium to osobna płatna ekspozycja — nie mylić z odznaką partnera PRO.
-                    Wyróżnij swoje ogłoszenie w zakładce Moje lub w Moje konto → Ogłoszenia.
-                  </p>
-                </>
+            {newestOffers.length > 0 ? (
+              <RailSection title={railTitles.newest} icon={Sparkles}>
+                <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
+                  {newestOffers.map((offer) => railCard(offer))}
+                </div>
+              </RailSection>
+            ) : null}
+
+            <RailSection title={nearestCopy.title} icon={Navigation}>
+              {location && nearestOffers.length > 0 ? (
+                <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
+                  {nearestOffers.map((offer) => railCard(offer, { showDistance: true }))}
+                </div>
               ) : (
-                <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">{labels.empty}</p>
-              )}
-            </motion.div>
-          ) : activeSection === "mine" ? (
-            <motion.div
-              key="mine-list"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.25 }}
-              className="grid grid-cols-1 gap-4"
-            >
-              {offersInSection.map((offer) => (
-                <article
-                  key={offer.id}
-                  className="flex flex-col gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 sm:flex-row sm:items-center"
-                >
-                  <Link href={`/oferta/${offer.id}`} className="relative aspect-[4/3] w-full shrink-0 overflow-hidden rounded-xl border border-[var(--eos-border)] sm:w-48">
-                    <Image
-                      src={offer.imageUrl || "/fallback-luxury.svg"}
-                      alt={offer.title || `Oferta ${offer.id}`}
-                      fill
-                      sizes="192px"
-                      className="object-cover"
-                      unoptimized
-                    />
-                  </Link>
-                  <div className="min-w-0 flex-1">
-                    <Link href={`/oferta/${offer.id}`} className="block group">
-                      <h2 className="text-lg font-bold tracking-tight text-[var(--eos-text)] group-hover:text-emerald-500">
-                        {offer.title?.trim() || labels.offerTitleFallback.replace("{id}", String(offer.id))}
-                      </h2>
-                      <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--eos-muted)]">
-                        {formatAreaLabel(offer)} · {formatLocationLabel(offer, labels.countryDefault)}
-                      </p>
-                      <p className="mt-2 text-base font-bold tabular-nums">
-                        {formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth)}
-                      </p>
-                      {offer.featured ? (
-                        <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-500">
-                          Wyróżnione do {offer.promotedUntil ? new Date(offer.promotedUntil).toLocaleDateString("pl-PL") : "—"}
-                        </p>
-                      ) : null}
-                    </Link>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Link
-                        href={`/edytuj-oferte/${offer.id}`}
-                        className="rounded-full border border-emerald-400/35 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-500"
-                      >
-                        Edytuj
-                      </Link>
-                      <PromoteListingButton
-                        endpoint={`/api/offers/${offer.id}/promote`}
-                        onPromoted={() => void loadMine()}
-                        disabled={Boolean(offer.featured)}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void archiveOffer(offer.id)}
-                        disabled={archivingId === offer.id}
-                        className="rounded-full border border-red-400/35 bg-red-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-400 disabled:opacity-60"
-                      >
-                        {archivingId === offer.id ? "Kończenie..." : "Zakończ"}
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </motion.div>
-          ) : (
-            <motion.div
-              key={activeSection}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.25 }}
-              className={cardStyles.gridClass}
-            >
-              {offersInSection.map((offer, i) => {
-                const showNewBadge = isOfferNew(offer.createdAt);
-                return (
-                <Link href={`/oferta/${offer.id}`} key={offer.id} className="block group">
-                  <motion.article
-                    initial={{ opacity: 0, y: 24 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, margin: "-80px" }}
-                    transition={{ delay: Math.min(i * 0.05, 0.35), duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                  >
-                    <div
-                      className={`relative ${cardStyles.imageMb} aspect-[4/3] w-full overflow-hidden ${cardStyles.imageRounded} border border-[var(--eos-border)] bg-[var(--eos-card)]`}
+                <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6">
+                  <p className="text-sm text-[var(--eos-muted)]">
+                    {denied ? nearestCopy.denied : labels.nearestRequiresLocation}
+                  </p>
+                  {!denied ? (
+                    <button
+                      type="button"
+                      onClick={() => void request()}
+                      disabled={pending}
+                      className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600 transition hover:bg-emerald-500/15 dark:text-emerald-400"
                     >
-                      <OfferTransactionBadge
-                        transactionType={offer.transactionType}
-                        size="sm"
-                        className="absolute left-3 top-3 z-10"
-                      />
-                      {showNewBadge ? (
-                        <OfferNewBadge
-                          createdAt={offer.createdAt}
-                          size="sm"
-                          className="absolute left-3 top-10 z-10"
-                        />
-                      ) : null}
-                      {offer.isLegalSafeVerified === true ? (
-                        <LegalVerifiedShieldBadge
-                          variant="card"
-                          active
-                          label={offerCopy.legalVerifiedKw}
-                          sublabel={offerCopy.legalVerifiedKwSublabel}
-                          className={`absolute left-3 z-10 ${showNewBadge ? "top-[4.75rem]" : "top-10"}`}
-                        />
-                      ) : null}
-                      <OfferFavoriteButton
-                        offerId={offer.id}
-                        variant="icon"
-                        size={20}
-                        className="absolute right-3 top-3 z-20"
-                        onRequireAuth={() => {
-                          window.location.href = `/login?redirect=${encodeURIComponent(`/oferta/${offer.id}`)}`;
-                        }}
-                      />
-                      {offer.isDiscounted && Number(offer.priceDiscountPercent) > 0 ? (
-                        <span className="absolute bottom-3 left-3 z-10 rounded-full border border-red-500/40 bg-red-500/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-white">
-                          −{offer.priceDiscountPercent}%
-                        </span>
-                      ) : null}
-                      {distanceByOfferId.has(offer.id) ? (
-                        <span className="absolute bottom-3 right-3 z-10 inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] bg-black/55 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur-md">
-                          <MapPin className="size-3" />
-                          {formatDistanceKm(distanceByOfferId.get(offer.id)!, locale)}
-                        </span>
-                      ) : null}
-                      {offer.imageUrl ? (
-                        <Image
-                          src={offer.imageUrl}
-                          alt={
-                            offer.title?.trim() ||
-                            labels.offerImageAlt.replace("{id}", String(offer.id))
-                          }
-                          fill
-                          sizes={cardStyles.imageSizes}
-                          className="object-cover transition duration-700 ease-out group-hover:scale-[1.03]"
-                          unoptimized
-                          priority={i < 2}
-                        />
-                      ) : (
-                        <div className="absolute inset-0 bg-gradient-to-br from-[var(--eos-border)] to-[var(--eos-bg)]" aria-hidden />
-                      )}
-                    </div>
+                      {pending ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
+                      {nearestCopy.enable}
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </RailSection>
 
-                    <div className="flex items-end justify-between gap-4 px-0.5">
-                      <div className="min-w-0">
-                        <h2
-                          className={`${cardStyles.titleClass} text-[var(--eos-text)] transition-colors ${
-                            transactionMode === "rent"
-                              ? "group-hover:text-sky-600 dark:group-hover:text-sky-400"
-                              : "group-hover:text-emerald-600 dark:group-hover:text-emerald-400"
-                          }`}
-                        >
-                          {offer.title?.trim() ||
-                            labels.offerTitleFallback.replace("{id}", String(offer.id))}
-                        </h2>
-                        <p className={`${cardStyles.metaClass} text-[var(--eos-muted)]`}>
-                          {formatAreaLabel(offer)} · {formatLocationLabel(offer, labels.countryDefault)}
-                        </p>
+            {discountedOffers.length > 0 ? (
+              <RailSection title={railTitles.discounted} icon={BadgePercent}>
+                <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
+                  {discountedOffers.map((offer) => railCard(offer))}
+                </div>
+              </RailSection>
+            ) : null}
+
+            {typeRails.map((rail) => (
+              <RailSection key={rail.type} title={rail.title} icon={rail.icon}>
+                <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
+                  {rail.items.map((offer) => railCard(offer))}
+                </div>
+              </RailSection>
+            ))}
+
+            <RailSection title={railTitles.mine} icon={UserRound}>
+              {!loggedIn ? (
+                <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6 text-center sm:text-left">
+                  <p className="text-sm leading-relaxed text-[var(--eos-muted)]">{labels.mineRequiresLogin}</p>
+                  <Link
+                    href={`/login?redirect=${encodeURIComponent("/oferty")}`}
+                    className="mt-4 inline-flex rounded-full border border-emerald-500/35 bg-emerald-500/10 px-6 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600 transition hover:bg-emerald-500/15 dark:text-emerald-400"
+                  >
+                    {labels.mineLoginCta}
+                  </Link>
+                </div>
+              ) : loadingMine ? (
+                <div className="flex items-center gap-3 py-8 text-[var(--eos-muted)]">
+                  <Loader2 className="size-5 animate-spin text-emerald-500/85" />
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em]">{labels.loading}</span>
+                </div>
+              ) : filteredMyOffers.length === 0 ? (
+                <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6">
+                  <p className="text-sm text-[var(--eos-muted)]">{labels.empty}</p>
+                  <Link
+                    href="/dodaj-oferte"
+                    className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-600 dark:text-emerald-400"
+                  >
+                    Dodaj ogłoszenie <ArrowRight size={14} />
+                  </Link>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {filteredMyOffers.map((offer) => (
+                    <article
+                      key={offer.id}
+                      className="flex flex-col gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 sm:flex-row sm:items-center"
+                    >
+                      <Link
+                        href={`/oferta/${offer.id}`}
+                        className="relative aspect-[4/3] w-full shrink-0 overflow-hidden rounded-xl border border-[var(--eos-border)] sm:w-48"
+                      >
+                        <Image
+                          src={offer.imageUrl || "/fallback-luxury.svg"}
+                          alt={offer.title || `Oferta ${offer.id}`}
+                          fill
+                          sizes="192px"
+                          className="object-cover"
+                          unoptimized
+                        />
+                      </Link>
+                      <div className="min-w-0 flex-1">
+                        <Link href={`/oferta/${offer.id}`} className="block group">
+                          <h3 className="text-lg font-bold tracking-tight text-[var(--eos-text)] group-hover:text-emerald-500">
+                            {offer.title?.trim() || labels.offerTitleFallback.replace("{id}", String(offer.id))}
+                          </h3>
+                          <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--eos-muted)]">
+                            {formatAreaLabel(offer)} · {formatLocationLabel(offer, labels.countryDefault)}
+                          </p>
+                          <p className="mt-2 text-base font-bold tabular-nums">
+                            {formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth)}
+                          </p>
+                          {offer.featured ? (
+                            <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-500">
+                              Wyróżnione do{" "}
+                              {offer.promotedUntil
+                                ? new Date(offer.promotedUntil).toLocaleDateString("pl-PL")
+                                : "—"}
+                            </p>
+                          ) : null}
+                        </Link>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Link
+                            href={`/edytuj-oferte/${offer.id}`}
+                            className="rounded-full border border-emerald-400/35 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-500"
+                          >
+                            Edytuj
+                          </Link>
+                          <PromoteListingButton
+                            endpoint={`/api/offers/${offer.id}/promote`}
+                            onPromoted={() => void loadMine()}
+                            disabled={Boolean(offer.featured)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void archiveOffer(offer.id)}
+                            disabled={archivingId === offer.id}
+                            className="rounded-full border border-red-400/35 bg-red-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-400 disabled:opacity-60"
+                          >
+                            {archivingId === offer.id ? "Kończenie..." : "Zakończ"}
+                          </button>
+                        </div>
                       </div>
-                      <div className="shrink-0 text-right">
-                        <p className={`${cardStyles.priceClass} text-[var(--eos-text)]`}>
-                          {formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth)}
-                        </p>
-                        <span
-                          className={`${cardStyles.discoverClass} inline-flex items-center gap-1 text-[var(--eos-subtle)] transition-colors ${
-                            transactionMode === "rent"
-                              ? "group-hover:text-sky-600 dark:group-hover:text-sky-400"
-                              : "group-hover:text-emerald-600 dark:group-hover:text-emerald-400"
-                          }`}
-                        >
-                          {labels.discover}
-                          <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
-                        </span>
-                      </div>
-                    </div>
-                  </motion.article>
-                </Link>
-              );
-              })}
-            </motion.div>
-          )}
-        </AnimatePresence>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </RailSection>
+          </>
+        )}
       </div>
     </main>
   );
