@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { ExternalLink, MapPin } from "lucide-react";
-import { useLocale } from "@/contexts/LocaleContext";
-import { getMapPreviewDictionary } from "@/i18n/mapPreviewDictionary";
 
 type Props = {
   lat: number;
@@ -22,6 +20,8 @@ type Props = {
   sectionLabel?: string;
   footerCaption?: string;
   showExternalLinks?: boolean;
+  /** Tylko podgląd — bez pan/zoom/drag, z animacją orbity. */
+  locked?: boolean;
 };
 
 function add3dBuildingsLayer(map: mapboxgl.Map) {
@@ -82,26 +82,27 @@ export default function NeighborhoodMapPreview({
   sectionLabel,
   footerCaption,
   showExternalLinks = true,
+  locked = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const orbitFrameRef = useRef<number | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
-  const { locale } = useLocale();
-  const mapCopy = getMapPreviewDictionary(locale);
 
   const isOffer = variant === "offer";
   const locationLine = [street, district, city].filter(Boolean).join(", ");
   const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}&z=${showPin ? 18 : 15}`;
   const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
-  const defaultLabel = showPin ? mapCopy.sectionExact : mapCopy.sectionArea;
-  const defaultFooter = showPin ? mapCopy.footerPin : mapCopy.footerArea;
+  const defaultLabel = showPin ? "Podgląd lokalizacji (Mapbox)" : "Okolica nieruchomości";
+  const defaultFooter = showPin
+    ? "Widok satelitarny z modelem 3D budynków i pinezką w miejscu wskazanym przez OtoDom."
+    : "Widok okolicy bez dokładnej pinezki — pokazuje charakter rejonu, nie precyzyjny adres.";
 
   useEffect(() => {
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim();
     if (!token) {
-      setMapError(mapCopy.mapTokenMissing);
+      setMapError("Brak NEXT_PUBLIC_MAPBOX_TOKEN — mapa podglądowa niedostępna.");
       return;
     }
 
@@ -141,11 +142,14 @@ export default function NeighborhoodMapPreview({
         pitch: showPin ? 62 : 52,
         bearing: showPin ? -28 : -18,
         antialias: true,
-        attributionControl: true,
+        attributionControl: !locked,
+        interactive: !locked,
       });
 
       mapRef.current = map;
-      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
+      if (!locked) {
+        map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
+      }
 
       map.on("style.load", () => {
         map.setFog({
@@ -220,7 +224,7 @@ export default function NeighborhoodMapPreview({
       cancelAnimationFrame(innerRaf);
       teardown();
     };
-  }, [lat, lng, showPin, isOffer]);
+  }, [lat, lng, showPin, isOffer, locked]);
 
   const labelClass = isOffer
     ? "text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-1 flex items-center gap-2"
@@ -282,7 +286,10 @@ export default function NeighborhoodMapPreview({
               {mapError}
             </div>
           ) : null}
-          <div ref={containerRef} className={`absolute inset-0 w-full h-full ${isOffer ? "min-h-[280px] md:min-h-[320px]" : "min-h-[320px] md:min-h-[380px]"}`} />
+          <div
+            ref={containerRef}
+            className={`absolute inset-0 w-full h-full ${isOffer ? "min-h-[280px] md:min-h-[320px]" : "min-h-[320px] md:min-h-[380px]"} ${locked ? "pointer-events-none" : ""}`}
+          />
           <div className={gradientClass} />
           <p className={footerClass}>{footerCaption || defaultFooter}</p>
         </div>
