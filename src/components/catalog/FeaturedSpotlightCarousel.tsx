@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Crown, Sparkles } from "lucide-react";
+import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
+import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
 
 export type SpotlightItem = {
   id: number | string;
@@ -23,6 +25,7 @@ type FeaturedSpotlightCarouselProps = {
   accent?: "home" | "car";
   rotateMs?: number;
   pageSize?: number;
+  onCarFavoriteChange?: (ids: number[]) => void;
 };
 
 const FALLBACK = "/fallback-luxury.svg";
@@ -40,6 +43,7 @@ export default function FeaturedSpotlightCarousel({
   accent = "home",
   rotateMs = 30_000,
   pageSize = 6,
+  onCarFavoriteChange,
 }: FeaturedSpotlightCarouselProps) {
   const pages = useMemo(() => chunk(items, pageSize), [items, pageSize]);
   const [page, setPage] = useState(0);
@@ -118,6 +122,24 @@ export default function FeaturedSpotlightCarousel({
                   <Sparkles className="size-3" />
                   {item.badge || "Wyróżnione"}
                 </span>
+                {isCar ? (
+                  <div className="absolute right-3 top-3 z-20">
+                    <CarFavoriteButton
+                      carId={Number(item.id)}
+                      onChange={(ids) => onCarFavoriteChange?.(ids)}
+                    />
+                  </div>
+                ) : (
+                  <OfferFavoriteButton
+                    offerId={item.id}
+                    variant="icon"
+                    size={18}
+                    className="absolute right-3 top-3 z-20"
+                    onRequireAuth={() => {
+                      window.location.href = `/login?redirect=${encodeURIComponent(item.href)}`;
+                    }}
+                  />
+                )}
               </div>
               <div className="space-y-1 p-4">
                 <p className="line-clamp-2 text-base font-semibold tracking-tight text-[var(--eos-text)]">{item.title}</p>
