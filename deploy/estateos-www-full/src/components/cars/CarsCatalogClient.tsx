@@ -3,7 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Car, ChevronDown, ChevronUp, Heart, Keyboard, ScanLine, Search, Upload, UserRound } from "lucide-react";
+import {
+  Car,
+  ChevronDown,
+  ChevronUp,
+  Heart,
+  Keyboard,
+  Loader2,
+  ScanLine,
+  Search,
+  Upload,
+  UserRound,
+} from "lucide-react";
 import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
 import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
 import {
@@ -13,6 +24,7 @@ import {
 import OtomotoImportHeroCard from "@/components/cars/OtomotoImportHeroCard";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import InfiniteHorizontalRail from "@/components/catalog/InfiniteHorizontalRail";
+import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { EstateOsCarListing } from "@/lib/carsCatalog";
 import { isCarFavoriteId, loadCarFavoriteIds } from "@/lib/carFavoritesStorage";
@@ -24,9 +36,7 @@ import {
   type CarSortKey,
 } from "@/lib/carsPresentation";
 import { fmtCars, getCarSortOptions } from "@/i18n/carsDictionary";
-import { carAlertWarningClass } from "@/components/cars/carFormStyles";
 
-type CatalogTab = "all" | "favorites" | "mine";
 type AddPath = "scan" | "upload" | "manual" | "otomoto";
 
 type Filters = {
@@ -97,27 +107,23 @@ export default function CarsCatalogClient() {
   const sortOptions = useMemo(() => getCarSortOptions(locale), [locale]);
 
   const [cars, setCars] = useState<EstateOsCarListing[]>([]);
+  const [myCars, setMyCars] = useState<EstateOsCarListing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<CatalogTab>("all");
-  const [, setFavoriteIds] = useState<number[]>([]);
+  const [loadingMine, setLoadingMine] = useState(false);
+  const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [addChooserOpen, setAddChooserOpen] = useState(false);
   const [activeAddPath, setActiveAddPath] = useState<AddPath | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
-  const loadCars = useCallback(async (activeTab: CatalogTab, isLoggedIn: boolean) => {
+  const loadCars = useCallback(async () => {
     setLoading(true);
     try {
-      const endpoint = activeTab === "mine" && isLoggedIn ? "/api/cars?scope=mine" : "/api/cars";
-      const res = await fetch(endpoint, { cache: "no-store", credentials: "include" });
+      const res = await fetch("/api/cars", { cache: "no-store", credentials: "include" });
       const data = (await res.json()) as EstateOsCarListing[];
-      let rows = Array.isArray(data) ? data : [];
-      if (activeTab === "favorites") {
-        const ids = loadCarFavoriteIds();
-        rows = rows.filter((car) => isCarFavoriteId(car.id, ids));
-      }
-      setCars(rows);
+      setCars(Array.isArray(data) ? data : []);
     } catch {
       setCars([]);
     } finally {
@@ -125,9 +131,51 @@ export default function CarsCatalogClient() {
     }
   }, []);
 
+  const loadMine = useCallback(async () => {
+    setLoadingMine(true);
+    try {
+      const res = await fetch("/api/cars?scope=mine", { cache: "no-store", credentials: "include" });
+      if (res.status === 401) {
+        setMyCars([]);
+        return;
+      }
+      const data = (await res.json()) as EstateOsCarListing[];
+      setMyCars(Array.isArray(data) ? data : []);
+    } catch {
+      setMyCars([]);
+    } finally {
+      setLoadingMine(false);
+    }
+  }, []);
+
+  const deleteMineCar = useCallback(
+    async (carId: number) => {
+      if (!window.confirm(dict.cars.owner.confirmDelete)) return;
+      setDeletingId(carId);
+      try {
+        const response = await fetch(`/api/cars/${carId}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          alert(typeof data?.error === "string" ? data.error : dict.cars.owner.deleteFailed);
+          return;
+        }
+        setMyCars((prev) => prev.filter((car) => car.id !== carId));
+        setCars((prev) => prev.filter((car) => car.id !== carId));
+      } catch {
+        alert(dict.cars.owner.deleteNetworkError);
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [dict.cars.owner.confirmDelete, dict.cars.owner.deleteFailed, dict.cars.owner.deleteNetworkError],
+  );
+
   useEffect(() => {
     setFavoriteIds(loadCarFavoriteIds());
-  }, [tab]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,16 +184,22 @@ export default function CarsCatalogClient() {
         const profileRes = await fetch("/api/user/profile", { cache: "no-store", credentials: "include" });
         const profile = await profileRes.json().catch(() => ({}));
         const isLogged = profileRes.ok && Boolean(profile?.id || profile?.user?.id);
-        if (!cancelled) setLoggedIn(isLogged);
-        if (!cancelled) await loadCars(tab, isLogged);
+        if (cancelled) return;
+        setLoggedIn(isLogged);
+        await loadCars();
+        if (isLogged) await loadMine();
+        else setMyCars([]);
       } catch {
-        if (!cancelled) setCars([]);
+        if (!cancelled) {
+          setCars([]);
+          setMyCars([]);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [tab, loadCars]);
+  }, [loadCars, loadMine]);
 
   const makeOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -305,22 +359,14 @@ export default function CarsCatalogClient() {
     }));
   };
 
-  const catalogScopeClass = (active: boolean) =>
-    `inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-semibold tracking-[-0.01em] transition ${
-      active
-        ? "bg-sky-500/15 text-sky-700 ring-1 ring-sky-400/35 dark:text-sky-300"
-        : "text-[var(--eos-muted)] hover:bg-[var(--eos-surface)] hover:text-[var(--eos-text)]"
-    }`;
+  const favoriteCars = useMemo(
+    () => sortByNewest(cars.filter((car) => isCarFavoriteId(car.id, favoriteIds))),
+    [cars, favoriteIds],
+  );
 
   const statsLabel = !loading
-    ? tab === "favorites"
-      ? fmtCars(cat.statsFavorites, { n: filtered.length })
-      : tab === "mine"
-        ? fmtCars(cat.statsMine, { n: filtered.length })
-        : fmtCars(cat.statsAll, { n: filtered.length })
+    ? fmtCars(cat.statsAll, { n: cars.length })
     : cat.resultsLoading;
-
-  const showLoginMineBanner = tab === "mine" && !loggedIn;
 
   const railCard = (car: EstateOsCarListing) => (
     <Link
@@ -611,6 +657,26 @@ export default function CarsCatalogClient() {
           </section>
         ) : null}
 
+        {!loading ? (
+          <section className="mt-8">
+            <div className="mb-3 flex items-center gap-2">
+              <Heart className="size-4 text-sky-500" aria-hidden />
+              <h2 className="text-lg font-semibold tracking-tight">{cat.tabFavorites}</h2>
+            </div>
+            {favoriteCars.length > 0 ? (
+              <InfiniteHorizontalRail
+                items={favoriteCars}
+                getKey={(car) => car.id}
+                renderItem={(car) => railCard(car)}
+              />
+            ) : (
+              <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6">
+                <p className="text-sm text-[var(--eos-muted)]">{cat.favoritesEmpty}</p>
+              </div>
+            )}
+          </section>
+        ) : null}
+
         {!loading && featuredSpotlightItems.length > 0 ? (
           <section className="mt-8">
             <div className="mb-3 flex items-center justify-between">
@@ -645,43 +711,105 @@ export default function CarsCatalogClient() {
             ))
           : null}
 
-        {showLoginMineBanner ? (
-          <div className={`mt-8 ${carAlertWarningClass}`}>
-            {cat.loginMineBanner}{" "}
-            <Link href="/login?next=/cars" className="font-semibold underline">
-              {cat.goLogin}
-            </Link>
-          </div>
-        ) : null}
-
-        <section className="mt-8 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_20px_60px_rgba(15,23,42,0.07)]">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6">
-            <div
-              className="inline-flex items-center gap-0.5 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/80 p-1"
-              role="tablist"
-              aria-label={cat.filtersTitle}
-            >
-              <button type="button" role="tab" aria-selected={tab === "all"} onClick={() => setTab("all")} className={catalogScopeClass(tab === "all")}>
-                <Car size={13} aria-hidden />
-                {cat.tabAll}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "favorites"}
-                onClick={() => setTab("favorites")}
-                className={catalogScopeClass(tab === "favorites")}
-              >
-                <Heart size={13} className={tab === "favorites" ? "fill-current" : ""} aria-hidden />
-                {cat.tabFavorites}
-              </button>
-              <button type="button" role="tab" aria-selected={tab === "mine"} onClick={() => setTab("mine")} className={catalogScopeClass(tab === "mine")}>
-                <UserRound size={13} aria-hidden />
-                {cat.tabMine}
-              </button>
+        {!loading ? (
+          <section className="mt-8">
+            <div className="mb-3 flex items-center gap-2">
+              <UserRound className="size-4 text-sky-500" aria-hidden />
+              <h2 className="text-lg font-semibold tracking-tight">{cat.tabMine}</h2>
             </div>
-          </div>
-        </section>
+            {!loggedIn ? (
+              <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6 text-center sm:text-left">
+                <p className="text-sm leading-relaxed text-[var(--eos-muted)]">{cat.loginMineBanner}</p>
+                <Link
+                  href="/login?next=/cars"
+                  className="mt-4 inline-flex rounded-full border border-sky-500/35 bg-sky-500/10 px-6 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-sky-600 transition hover:bg-sky-500/15 dark:text-sky-300"
+                >
+                  {cat.goLogin}
+                </Link>
+              </div>
+            ) : loadingMine ? (
+              <div className="flex items-center gap-3 py-8 text-[var(--eos-muted)]">
+                <Loader2 className="size-5 animate-spin text-sky-500/85" />
+                <span className="text-xs font-semibold uppercase tracking-[0.2em]">{dict.cars.common.loading}</span>
+              </div>
+            ) : myCars.length === 0 ? (
+              <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6">
+                <p className="text-sm text-[var(--eos-muted)]">{cat.noResults}</p>
+                <Link
+                  href="/cars/dodaj"
+                  className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-sky-600 dark:text-sky-300"
+                >
+                  {cat.addListing} <span aria-hidden>→</span>
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {myCars.map((car) => (
+                  <article
+                    key={car.id}
+                    className="flex flex-col gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 sm:flex-row sm:items-center"
+                  >
+                    <Link
+                      href={`/cars/${car.id}`}
+                      className="relative aspect-[4/3] w-full shrink-0 overflow-hidden rounded-xl border border-[var(--eos-border)] sm:w-48"
+                    >
+                      <Image
+                        src={carImageSrc(car.imageUrl)}
+                        alt={car.title}
+                        fill
+                        sizes="192px"
+                        className="object-cover"
+                        unoptimized
+                      />
+                    </Link>
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/cars/${car.id}`} className="block group">
+                        <h3 className="text-lg font-bold tracking-tight text-[var(--eos-text)] group-hover:text-sky-500">
+                          {car.title}
+                        </h3>
+                        <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--eos-muted)]">
+                          {car.make} · {car.model} · {car.year} · {car.city}
+                        </p>
+                        <p className="mt-2 text-base font-bold tabular-nums text-sky-600 dark:text-sky-300">
+                          {formatCarPrice(car.pricePln, locale)}
+                        </p>
+                        {car.featured ? (
+                          <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-500">
+                            Wyróżnione do{" "}
+                            {car.promotedUntil
+                              ? new Date(car.promotedUntil).toLocaleDateString("pl-PL")
+                              : "—"}
+                          </p>
+                        ) : null}
+                      </Link>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Link
+                          href={`/cars/${car.id}/edytuj`}
+                          className="rounded-full border border-sky-400/35 bg-sky-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-sky-600 dark:text-sky-300"
+                        >
+                          {dict.cars.owner.edit}
+                        </Link>
+                        <PromoteListingButton
+                          endpoint={`/api/cars/${car.id}/promote`}
+                          onPromoted={() => void loadMine()}
+                          disabled={Boolean(car.featured)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void deleteMineCar(car.id)}
+                          disabled={deletingId === car.id}
+                          className="rounded-full border border-red-400/35 bg-red-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-400 disabled:opacity-60"
+                        >
+                          {deletingId === car.id ? dict.cars.owner.deleting : dict.cars.owner.delete}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
 
         <p className="mb-4 mt-6 text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">
           {loading
@@ -724,9 +852,6 @@ export default function CarsCatalogClient() {
                       carId={car.id}
                       onChange={(ids) => {
                         setFavoriteIds(ids);
-                        if (tab === "favorites") {
-                          setCars((prev) => prev.filter((row) => isCarFavoriteId(row.id, ids)));
-                        }
                       }}
                     />
                   </div>

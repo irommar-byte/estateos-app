@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronUp,
   Gem,
+  Heart,
   Home,
   LandPlot,
   Loader2,
@@ -47,6 +48,7 @@ import {
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import InfiniteHorizontalRail from "@/components/catalog/InfiniteHorizontalRail";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
+import { useFavorites } from "@/hooks/useFavorites";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { formatDistanceKm, haversineKm } from "@/lib/geo/haversine";
@@ -149,6 +151,7 @@ export default function CatalogPage() {
   const labels = dict.catalog;
   const offerCopy = getOfferPageCopy(locale);
   const { formatOffer } = useFormatOfferPrice();
+  const { favoriteOffers: favoriteOfferRecords } = useFavorites();
   const [offers, setOffers] = useState<CatalogOffer[]>([]);
   const [myOffers, setMyOffers] = useState<CatalogOffer[]>([]);
   const [loggedIn, setLoggedIn] = useState(false);
@@ -195,6 +198,7 @@ export default function CatalogPage() {
           };
 
   const railTitles = {
+    favorites: locale === "en" ? "Favorites" : locale === "uk" ? "Обране" : "Ulubione",
     featured:
       locale === "en" ? "Featured" : locale === "uk" ? "Рекомендовані" : "Wyróżnione",
     newest: locale === "en" ? "Newest" : locale === "uk" ? "Найновіші" : "Najnowsze",
@@ -370,6 +374,12 @@ export default function CatalogPage() {
   );
 
   const newestOffers = useMemo(() => sortByNewest(browseOffers), [browseOffers]);
+  const favoriteOffers = useMemo(() => {
+    const rows = (favoriteOfferRecords as CatalogOffer[]).filter(
+      (offer) => normalizeTransactionType(offer.transactionType) === transactionMode,
+    );
+    return sortByNewest(rows);
+  }, [favoriteOfferRecords, transactionMode]);
   const discountedOffers = useMemo(
     () => sortByNewest(browseOffers.filter(isDiscountedOffer)),
     [browseOffers],
@@ -608,6 +618,20 @@ export default function CatalogPage() {
           </div>
         ) : (
           <>
+            <RailSection title={railTitles.favorites} icon={Heart}>
+              {favoriteOffers.length > 0 ? (
+                <InfiniteHorizontalRail
+                  items={favoriteOffers}
+                  getKey={(offer) => offer.id}
+                  renderItem={(offer) => railCard(offer)}
+                />
+              ) : (
+                <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6">
+                  <p className="text-sm text-[var(--eos-muted)]">{dict.crm.favoritesEmpty}</p>
+                </div>
+              )}
+            </RailSection>
+
             {spotlightItems.length > 0 ? (
               <RailSection
                 title={`${railTitles.featured} · 6`}
