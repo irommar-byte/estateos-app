@@ -553,10 +553,11 @@ export default function CarListingForm({
           engineCapacity: form.engineCapacity,
           trimVersion: form.trimVersion,
           doorCount: form.doorCount || form.doorCountSlug,
-          pricePln: form.pricePln,
           city: form.city,
           localityCountry: form.localityCountry,
           title: form.title,
+          existingDescription: form.description,
+          userNotes: "",
         }),
       });
       const payload = await response.json().catch(() => ({}));

@@ -378,6 +378,11 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
     map: {
       forSale: "На продаж",
       forRent: "В оренду",
+      marketHome: "Нерухомість",
+      marketCar: "Авто",
+      carsCars: "Автомобілі",
+      carsMotorcycles: "Мотоцикли",
+      openFullMap: "Відкрити повну карту",
       market: "Ринок",
       allMarkets: "Усі ринки",
       type: "Тип",

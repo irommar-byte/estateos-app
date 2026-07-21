@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Hand, Lock, LocateFixed, MousePointer2, Move, ZoomIn } from "lucide-react";
+import { Hand, Lock, LocateFixed, Maximize2, MousePointer2, Move, ZoomIn } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useLocale } from "@/contexts/LocaleContext";
+import { useEcosystem } from "@/contexts/EcosystemContext";
 import { numberFormatLocale } from "@/i18n/config";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
@@ -199,8 +200,27 @@ function distributeOverlappingPins(offers: any[]) {
   return out;
 }
 
+function normalizeCarForMap(car: any) {
+  const lat = Number(car?.cityLat ?? car?.lat);
+  const lng = Number(car?.cityLng ?? car?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const pricePln = Number(car?.pricePln || 0);
+  return {
+    ...car,
+    id: Number(car.id),
+    lat,
+    lng,
+    price: pricePln,
+    pricePln,
+    transactionType: "sale",
+    mapKind: "car" as const,
+    vehicleType: String(car?.vehicleType || "car").trim() || "car",
+  };
+}
+
 export default function InteractiveMap({ immersive = false }: Props) {
   const { dict, locale } = useLocale();
+  const { isCar } = useEcosystem();
   const { resolvedTheme } = useTheme();
   const { preference } = useDisplayCurrency();
   const { formatPinLabel, rate } = useFormatOfferPrice();
@@ -217,11 +237,15 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [allOffers, setAllOffers] = useState<any[]>([]);
   const [filteredOffers, setFilteredOffers] = useState<any[]>([]);
   
+  const [mapMarket, setMapMarket] = useState<"home" | "car">(isCar ? "car" : "home");
+  const [vehicleKind, setVehicleKind] = useState<"car" | "motorcycle">("car");
   const [transactionMode, setTransactionMode] = useState<"sale" | "rent">("sale");
   const [priceMax, setPriceMax] = useState<number>(50_000_000);
   const [priceMaxRent, setPriceMaxRent] = useState<number>(50_000);
   const [priceMaxUi, setPriceMaxUi] = useState<number>(50_000_000);
   const [priceMaxRentUi, setPriceMaxRentUi] = useState<number>(50_000);
+  const [priceMaxCar, setPriceMaxCar] = useState<number>(500_000);
+  const [priceMaxCarUi, setPriceMaxCarUi] = useState<number>(500_000);
 
   const [mapboxToken, setMapboxToken] = useState<string | null>(null);
   const [mapInitError, setMapInitError] = useState<string | null>(null);
@@ -248,6 +272,11 @@ export default function InteractiveMap({ immersive = false }: Props) {
     maxPln: 100_000,
     stepPln: 500,
   };
+  const carBounds = {
+    minPln: 5_000,
+    maxPln: 500_000,
+    stepPln: 5_000,
+  };
 
   const saleUiMin = isEurDisplay ? Math.round(saleBounds.minPln / safeRate) : saleBounds.minPln;
   const saleUiMax = isEurDisplay ? Math.round(saleBounds.maxPln / safeRate) : saleBounds.maxPln;
@@ -260,6 +289,12 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const rentUiStep = Math.max(
     1,
     isEurDisplay ? Math.round(rentBounds.stepPln / safeRate) : rentBounds.stepPln,
+  );
+  const carUiMin = isEurDisplay ? Math.round(carBounds.minPln / safeRate) : carBounds.minPln;
+  const carUiMax = isEurDisplay ? Math.round(carBounds.maxPln / safeRate) : carBounds.maxPln;
+  const carUiStep = Math.max(
+    1,
+    isEurDisplay ? Math.round(carBounds.stepPln / safeRate) : carBounds.stepPln,
   );
 
   useEffect(() => {
@@ -294,6 +329,10 @@ export default function InteractiveMap({ immersive = false }: Props) {
       essential: true,
     });
   }, []);
+
+  useEffect(() => {
+    setMapMarket(isCar ? "car" : "home");
+  }, [isCar]);
 
   useEffect(() => {
     fetch("/api/user/profile", { credentials: "include" })
@@ -332,20 +371,42 @@ export default function InteractiveMap({ immersive = false }: Props) {
   }, [locale]);
 
   useEffect(() => {
-    fetch(`/api/offers?t=${Date.now()}`, { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data) => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        if (mapMarket === "car") {
+          const res = await fetch(`/api/cars?t=${Date.now()}`, { cache: "no-store" });
+          const data = await res.json().catch(() => []);
+          const raw = Array.isArray(data) ? data : Array.isArray(data?.cars) ? data.cars : [];
+          const list = raw.map(normalizeCarForMap).filter(Boolean);
+          if (!cancelled) setAllOffers(list);
+          return;
+        }
+        const res = await fetch(`/api/offers?t=${Date.now()}`, { cache: "no-store" });
+        const data = await res.json();
         const list = Array.isArray(data) ? data : [];
+        if (cancelled) return;
         setAllOffers(list);
         if (list.length > 0) {
           setTransactionMode(transactionModeFromOffers(list));
         }
-      })
-      .catch(() => setAllOffers([]));
-  }, []);
+      } catch {
+        if (!cancelled) setAllOffers([]);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [mapMarket]);
 
   useEffect(() => {
     const result = allOffers.filter((o) => {
+      if (mapMarket === "car") {
+        const kind = String(o.vehicleType || "car");
+        if (kind !== vehicleKind) return false;
+        return getOfferFilterPrice(o) <= priceMaxCar;
+      }
       if (normalizeTransactionType(o.transactionType) !== transactionMode) {
         return false;
       }
@@ -354,25 +415,28 @@ export default function InteractiveMap({ immersive = false }: Props) {
       return price <= priceMax;
     });
     setFilteredOffers(result);
-  }, [transactionMode, priceMax, priceMaxRent, allOffers]);
+  }, [mapMarket, vehicleKind, transactionMode, priceMax, priceMaxRent, priceMaxCar, allOffers]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setPriceMax(isEurDisplay ? Math.round(priceMaxUi * safeRate) : priceMaxUi);
       setPriceMaxRent(isEurDisplay ? Math.round(priceMaxRentUi * safeRate) : priceMaxRentUi);
+      setPriceMaxCar(isEurDisplay ? Math.round(priceMaxCarUi * safeRate) : priceMaxCarUi);
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [priceMaxUi, priceMaxRentUi, isEurDisplay, safeRate]);
+  }, [priceMaxUi, priceMaxRentUi, priceMaxCarUi, isEurDisplay, safeRate]);
 
   useEffect(() => {
     if (isEurDisplay) {
       setPriceMaxUi(Math.round(priceMax / safeRate));
       setPriceMaxRentUi(Math.round(priceMaxRent / safeRate));
+      setPriceMaxCarUi(Math.round(priceMaxCar / safeRate));
       return;
     }
     setPriceMaxUi(priceMax);
     setPriceMaxRentUi(priceMaxRent);
-  }, [isEurDisplay, priceMax, priceMaxRent, safeRate]);
+    setPriceMaxCarUi(priceMaxCar);
+  }, [isEurDisplay, priceMax, priceMaxRent, priceMaxCar, safeRate]);
 
   const updateMarkers = useCallback(() => {
     if (!map.current) return;
@@ -382,7 +446,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
     const offerById = new Map(filteredOffers.map((offer) => [String(offer.id), offer]));
     const distributed = distributeOverlappingPins(filteredOffers);
     const newMarkers: Record<string, boolean> = {};
-    const accent = clusterAccentHex(transactionMode);
+    const accent = mapMarket === "car" ? "#0ea5e9" : clusterAccentHex(transactionMode);
 
     const rendered = mapInstance.queryRenderedFeatures({
       layers: [CLUSTER_LAYER_ID, UNCLUSTER_LAYER_ID],
@@ -431,7 +495,10 @@ export default function InteractiveMap({ immersive = false }: Props) {
         outerEl.className = "z-30 relative";
         const innerEl = document.createElement("div");
         const tx = normalizeTransactionType(offer.transactionType);
-        innerEl.className = offerPinColorClasses(offer.transactionType);
+        innerEl.className =
+          mapMarket === "car" || offer.mapKind === "car"
+            ? `${OFFER_PIN_BASE} bg-sky-500/85 text-white border-sky-300/45 hover:bg-sky-400 hover:scale-110 shadow-[0_10px_30px_rgba(14,165,233,0.35)]`
+            : offerPinColorClasses(offer.transactionType);
         innerEl.innerText = formatPinLabel(offer, tx === "rent");
           innerEl.onclick = (e) => {
             e.stopPropagation();
@@ -440,7 +507,9 @@ export default function InteractiveMap({ immersive = false }: Props) {
             triggerTeaser?: () => void;
           };
           if (win.isLoggedIn) {
-            window.location.href = `/oferta/${offer.id}`;
+            window.location.href = mapMarket === "car" || offer.mapKind === "car"
+              ? `/cars/${offer.id}`
+              : `/oferta/${offer.id}`;
           } else {
             win.triggerTeaser?.();
           }
@@ -466,8 +535,11 @@ export default function InteractiveMap({ immersive = false }: Props) {
         const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
         if (pinEl) {
           const tx = normalizeTransactionType(offer.transactionType);
-          pinEl.className = offerPinColorClasses(offer.transactionType);
-          pinEl.innerText = formatPinLabel(offer, tx === "rent");
+          pinEl.className =
+            mapMarket === "car" || offer.mapKind === "car"
+              ? `${OFFER_PIN_BASE} bg-sky-500/85 text-white border-sky-300/45 hover:bg-sky-400 hover:scale-110 shadow-[0_10px_30px_rgba(14,165,233,0.35)]`
+              : offerPinColorClasses(offer.transactionType);
+          pinEl.innerText = formatPinLabel(offer, mapMarket === "car" ? false : tx === "rent");
           pinEl.onmouseenter = () => {
             if (sliderChangingRef.current) return;
             focusPin(Number(offer.id), coords);
@@ -495,7 +567,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
         delete markersRef.current[id];
       }
     }
-  }, [filteredOffers, focusPin, formatPinLabel, transactionMode]);
+  }, [filteredOffers, focusPin, formatPinLabel, transactionMode, mapMarket]);
 
   useEffect(() => {
     updateMarkersRef.current = updateMarkers;
@@ -721,8 +793,19 @@ export default function InteractiveMap({ immersive = false }: Props) {
     ((priceMaxUi - saleUiMin) / Math.max(1, saleUiMax - saleUiMin)) * 100;
   const rentSliderPct =
     ((priceMaxRentUi - rentUiMin) / Math.max(1, rentUiMax - rentUiMin)) * 100;
-  const sliderAccent = transactionMode === "rent" ? "#3b82f6" : "#10b981";
-  const sliderPct = transactionMode === "rent" ? rentSliderPct : saleSliderPct;
+  const carSliderPct =
+    ((priceMaxCarUi - carUiMin) / Math.max(1, carUiMax - carUiMin)) * 100;
+  const sliderAccent =
+    mapMarket === "car" ? "#0ea5e9" : transactionMode === "rent" ? "#3b82f6" : "#10b981";
+  const sliderPct =
+    mapMarket === "car" ? carSliderPct : transactionMode === "rent" ? rentSliderPct : saleSliderPct;
+  const activeMaxLabel =
+    mapMarket === "car"
+      ? dict.map.maxPriceLabel
+      : transactionMode === "rent"
+        ? dict.map.maxRentLabel
+        : dict.map.maxPriceLabel;
+  const activeMaxUi = mapMarket === "car" ? priceMaxCarUi : transactionMode === "rent" ? priceMaxRentUi : priceMaxUi;
 
   return (
     <div
@@ -779,13 +862,24 @@ export default function InteractiveMap({ immersive = false }: Props) {
         <ZoomIn className={`h-3.5 w-3.5 ${activeHoverPinId ? "text-emerald-400" : "text-[var(--eos-muted)]"}`} />
         <span>{activeHoverPinId ? dict.map.hoverZoomActive : dict.map.hoverZoomHint}</span>
       </div>
-      <button
-        type="button"
-        onClick={() => setShowMapGuide(true)}
-        className="absolute bottom-16 right-4 z-20 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)] sm:right-6"
-      >
-        {dict.map.guideButton}
-      </button>
+      <div className="absolute bottom-16 right-4 z-20 flex flex-col items-end gap-2 sm:right-6">
+        {!immersive ? (
+          <Link
+            href="/odkryj-mape"
+            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-[var(--eos-text)] transition-colors hover:border-emerald-400/40 hover:text-emerald-400"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+            {dict.map.openFullMap}
+          </Link>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setShowMapGuide(true)}
+          className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
+        >
+          {dict.map.guideButton}
+        </button>
+      </div>
 
       {mapInitError && (
         <div className="absolute inset-0 z-[5] flex items-center justify-center bg-[var(--eos-bg)]/95 p-6 text-center">
@@ -805,65 +899,136 @@ export default function InteractiveMap({ immersive = false }: Props) {
         <div className="interactive-map-controls flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-1.5 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl">
           <button
             type="button"
-            onClick={() => setTransactionMode("sale")}
-            className={`relative flex min-w-[120px] items-center justify-center rounded-full px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
-              transactionMode === "sale"
-                ? "text-black"
-                : "text-emerald-500/50 hover:text-emerald-400"
+            onClick={() => setMapMarket("home")}
+            className={`relative flex min-w-[110px] items-center justify-center rounded-full px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.16em] transition-all ${
+              mapMarket === "home" ? "text-black" : "text-emerald-500/50 hover:text-emerald-400"
             }`}
           >
-            {transactionMode === "sale" && (
+            {mapMarket === "home" && (
               <motion.div
-                layoutId="txTab"
+                layoutId="marketTab"
                 className="absolute inset-0 z-0 rounded-full bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
               />
             )}
-            <span className="relative z-10">{dict.map.forSale}</span>
+            <span className="relative z-10">{dict.map.marketHome}</span>
           </button>
-                          <button
-                            type="button"
-            onClick={() => setTransactionMode("rent")}
-            className={`relative flex min-w-[120px] items-center justify-center rounded-full px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
-              transactionMode === "rent"
-                ? "text-white"
-                : "text-blue-500/50 hover:text-blue-400"
+          <button
+            type="button"
+            onClick={() => setMapMarket("car")}
+            className={`relative flex min-w-[110px] items-center justify-center rounded-full px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.16em] transition-all ${
+              mapMarket === "car" ? "text-black" : "text-sky-500/50 hover:text-sky-400"
             }`}
           >
-            {transactionMode === "rent" && (
+            {mapMarket === "car" && (
               <motion.div
-                layoutId="txTab"
-                className="absolute inset-0 z-0 rounded-full bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.4)]"
+                layoutId="marketTab"
+                className="absolute inset-0 z-0 rounded-full bg-sky-500 shadow-[0_0_20px_rgba(14,165,233,0.4)]"
               />
             )}
-            <span className="relative z-10">{dict.map.forRent}</span>
-                    </button>
-                </div>
+            <span className="relative z-10">{dict.map.marketCar}</span>
+          </button>
+        </div>
+
+        <div className="interactive-map-controls flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-1.5 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl">
+          {mapMarket === "car" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setVehicleKind("car")}
+                className={`relative flex min-w-[120px] items-center justify-center rounded-full px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
+                  vehicleKind === "car" ? "text-black" : "text-sky-500/50 hover:text-sky-400"
+                }`}
+              >
+                {vehicleKind === "car" && (
+                  <motion.div
+                    layoutId="txTab"
+                    className="absolute inset-0 z-0 rounded-full bg-sky-500 shadow-[0_0_20px_rgba(14,165,233,0.4)]"
+                  />
+                )}
+                <span className="relative z-10">{dict.map.carsCars}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setVehicleKind("motorcycle")}
+                className={`relative flex min-w-[120px] items-center justify-center rounded-full px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
+                  vehicleKind === "motorcycle" ? "text-black" : "text-sky-500/50 hover:text-sky-400"
+                }`}
+              >
+                {vehicleKind === "motorcycle" && (
+                  <motion.div
+                    layoutId="txTab"
+                    className="absolute inset-0 z-0 rounded-full bg-sky-500 shadow-[0_0_20px_rgba(14,165,233,0.4)]"
+                  />
+                )}
+                <span className="relative z-10">{dict.map.carsMotorcycles}</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setTransactionMode("sale")}
+                className={`relative flex min-w-[120px] items-center justify-center rounded-full px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
+                  transactionMode === "sale"
+                    ? "text-black"
+                    : "text-emerald-500/50 hover:text-emerald-400"
+                }`}
+              >
+                {transactionMode === "sale" && (
+                  <motion.div
+                    layoutId="txTab"
+                    className="absolute inset-0 z-0 rounded-full bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+                  />
+                )}
+                <span className="relative z-10">{dict.map.forSale}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTransactionMode("rent")}
+                className={`relative flex min-w-[120px] items-center justify-center rounded-full px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
+                  transactionMode === "rent"
+                    ? "text-white"
+                    : "text-blue-500/50 hover:text-blue-400"
+                }`}
+              >
+                {transactionMode === "rent" && (
+                  <motion.div
+                    layoutId="txTab"
+                    className="absolute inset-0 z-0 rounded-full bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.4)]"
+                  />
+                )}
+                <span className="relative z-10">{dict.map.forRent}</span>
+              </button>
+            </>
+          )}
+        </div>
 
         <div className="interactive-map-controls flex w-full items-center gap-4 rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl sm:p-5">
           <div className="flex flex-1 flex-col gap-3">
             <div className="flex items-center justify-between px-1">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">
-                {maxPriceLabel}
+                {activeMaxLabel}
               </span>
               <span className="text-xs font-black tracking-wider text-[var(--eos-text)]">
                 {new Intl.NumberFormat(priceLocale, {
                   style: "currency",
                   currency: isEurDisplay ? "EUR" : "PLN",
                   maximumFractionDigits: 0,
-                }).format(transactionMode === "rent" ? priceMaxRentUi : priceMaxUi)}
+                }).format(activeMaxUi)}
               </span>
             </div>
             <input
               type="range"
-              min={transactionMode === "rent" ? rentUiMin : saleUiMin}
-              max={transactionMode === "rent" ? rentUiMax : saleUiMax}
-              step={transactionMode === "rent" ? rentUiStep : saleUiStep}
-              value={transactionMode === "rent" ? priceMaxRentUi : priceMaxUi}
-              onChange={(e) =>
-                transactionMode === "rent"
-                  ? setPriceMaxRentUi(Number(e.target.value))
-                  : setPriceMaxUi(Number(e.target.value))
-              }
+              min={mapMarket === "car" ? carUiMin : transactionMode === "rent" ? rentUiMin : saleUiMin}
+              max={mapMarket === "car" ? carUiMax : transactionMode === "rent" ? rentUiMax : saleUiMax}
+              step={mapMarket === "car" ? carUiStep : transactionMode === "rent" ? rentUiStep : saleUiStep}
+              value={activeMaxUi}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                if (mapMarket === "car") setPriceMaxCarUi(value);
+                else if (transactionMode === "rent") setPriceMaxRentUi(value);
+                else setPriceMaxUi(value);
+              }}
               onMouseDown={() => {
                 sliderChangingRef.current = true;
                 hoverFocusActiveRef.current = false;
@@ -880,7 +1045,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
                 sliderChangingRef.current = false;
                 lastInteractionAtRef.current = Date.now();
               }}
-              aria-label={maxPriceLabel}
+              aria-label={activeMaxLabel}
               className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/10 outline-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_15px_rgba(255,255,255,0.5)]"
               style={{
                 background: `linear-gradient(to right, ${sliderAccent} 0%, ${sliderAccent} ${sliderPct}%, rgba(255,255,255,0.1) ${sliderPct}%, rgba(255,255,255,0.1) 100%)`,

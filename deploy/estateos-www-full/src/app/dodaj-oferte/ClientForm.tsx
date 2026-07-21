@@ -15,7 +15,10 @@ import { Home,
   Navigation, Bold, Italic, Underline, Heading, AlignLeft, ShieldCheck, LocateFixed
 } from "lucide-react";
 
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import ProPhotoSessionDialog from '@/components/photoSession/ProPhotoSessionDialog';
+import PublishAuthGate from '@/components/auth/PublishAuthGate';
+import ContactVerificationPanel from '@/components/ContactVerificationPanel';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -84,6 +87,14 @@ import {
 import { isAgentOrAgencySeller } from "@/lib/sellerDisplay";
 import AddOfferDocVerificationPanel from "@/components/offer/AddOfferDocVerificationPanel";
 import { normalizeLandRegistryInput, isValidLandRegistryNumber } from "@/lib/landRegistryInput";
+import {
+  ADD_OFFER_DRAFT_KEY,
+  ADD_OFFER_DRAFT_VERSION,
+  clearAddOfferDraft,
+  patchAddOfferDraft,
+  readAddOfferDraft,
+  resolvePendingOfferForPublish,
+} from "@/lib/addOfferDraft";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -97,8 +108,10 @@ const labelPremium =
   "eos-label mb-2.5 ml-0.5 flex min-w-0 w-full flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12px] font-semibold uppercase tracking-[0.055em] leading-snug md:text-[13px]";
 const glassPanel =
   "rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/95 p-8 shadow-2xl backdrop-blur-xl transition-all duration-500 md:p-10 relative overflow-x-clip overflow-y-visible";
-const ADD_OFFER_DRAFT_VERSION = 1;
-const ADD_OFFER_DRAFT_KEY = "estateos_add_offer_draft";
+
+function isPolishLocality(countryCode: unknown) {
+  return String(countryCode || "PL").trim().toUpperCase() === "PL";
+}
 
 type FormFieldTarget = "landRegistryNumber" | "agentCommissionPercent" | null;
 
@@ -163,10 +176,6 @@ function buildDescriptionDraftFromForm(
     lat: data.lat,
     lng: data.lng,
     isExactLocation: data.locationType !== "approximate",
-    priceCurrency: data.priceCurrency,
-    price: data.price,
-    adminFee: data.rentAdminFee,
-    deposit: data.deposit,
     area: data.area,
     plotArea: data.plotArea,
     rooms: data.rooms,
@@ -174,7 +183,11 @@ function buildDescriptionDraftFromForm(
     yearBuilt: data.buildYear,
     heating: data.heating,
     isFurnished: data.furnished === "yes" || data.furnished === true,
-    agentCommissionPercent: data.agentCommissionPercent,
+    existingDescription: String(data.description || "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+    userNotes: String((data as any).aiNotes || (data as any).sellerNotes || (data as any).notes || "").trim(),
     hasBalcony: amenityPatch.hasBalcony,
     hasParking: amenityPatch.hasParking,
     hasStorage: amenityPatch.hasStorage,
@@ -309,6 +322,10 @@ export default function ClientForm({
   const [emailStatus, setEmailStatus] = useState('idle');
   const [phoneStatus, setPhoneStatus] = useState('idle');
   const [currentStep, setCurrentStep] = useState(1);
+  const [activeUser, setActiveUser] = useState(initialUser);
+  const [authGateOpen, setAuthGateOpen] = useState(false);
+  const isLoggedIn = Boolean(activeUser?.isLoggedIn);
+  const [photoSessionOpen, setPhotoSessionOpen] = useState(false);
   const [locationCatalog, setLocationCatalog] = useState<DistrictCatalogResponse>({ strictCities: [], strictCityDistricts: {} });
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -322,6 +339,8 @@ export default function ClientForm({
   const landRegistryInputRef = useRef<HTMLInputElement>(null);
   const draftHydratedRef = useRef(false);
   const draftSaveTimerRef = useRef<number | null>(null);
+  const plusResumeStartedRef = useRef(false);
+  const submitOfferRef = useRef<(redemption: PublicationRedemption) => Promise<void>>(async () => {});
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
   const strictCities = locationCatalog.strictCities || [];
@@ -346,7 +365,7 @@ export default function ClientForm({
         images?: string[];
         floorPlan?: string | null;
       };
-      if (!parsed || parsed.version !== ADD_OFFER_DRAFT_VERSION) {
+      if (!parsed || (parsed.version !== 1 && parsed.version !== ADD_OFFER_DRAFT_VERSION)) {
         draftHydratedRef.current = true;
         return;
       }
@@ -390,12 +409,12 @@ export default function ClientForm({
 
 
   const isAgencyAdvertiser = useMemo(() => {
-    if (initialUser?.isLoggedIn) return isAgentOrAgencySeller(initialUser);
+    if (isLoggedIn) return isAgentOrAgencySeller(initialUser);
     return data.advertiserType === "agency";
   }, [initialUser, data.advertiserType]);
 
   useEffect(() => {
-    if (!initialUser?.isLoggedIn) return;
+    if (!isLoggedIn) return;
     const role = String(initialUser.role || "").toUpperCase();
     const company = String(initialUser.companyName || "").trim();
     if (role !== "AGENT" && !company) return;
@@ -404,7 +423,7 @@ export default function ClientForm({
       advertiserType: "agency",
       agencyName: company || prev.agencyName || "",
     }));
-  }, [initialUser?.isLoggedIn, initialUser?.role, initialUser?.companyName]);
+  }, [isLoggedIn, initialUser?.role, initialUser?.companyName]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !draftHydratedRef.current) return;
@@ -413,16 +432,14 @@ export default function ClientForm({
       try {
         const persistableImages = imagesList.filter((img) => typeof img === "string" && !img.startsWith("blob:"));
         const persistableFloorPlan = floorPlan && !floorPlan.startsWith("blob:") ? floorPlan : null;
-        window.localStorage.setItem(
-          ADD_OFFER_DRAFT_KEY,
-          JSON.stringify({
-            version: ADD_OFFER_DRAFT_VERSION,
-            data,
-            currentStep,
-            images: persistableImages,
-            floorPlan: persistableFloorPlan,
-          }),
-        );
+        const existingDraft = readAddOfferDraft();
+        patchAddOfferDraft({
+          data,
+          currentStep,
+          images: persistableImages,
+          floorPlan: persistableFloorPlan,
+          pendingOfferId: existingDraft?.pendingOfferId ?? null,
+        });
       } catch {
         // ignore storage errors
       }
@@ -1060,14 +1077,61 @@ export default function ClientForm({
     return () => window.clearTimeout(id);
   }, [currentStep, data.lat, data.lng]);
 
+  const publishAfterAuth = async () => {
+    const checkRes = await fetch("/api/auth/check", { cache: "no-store", credentials: "include" });
+    const check = await checkRes.json().catch(() => ({}));
+    if (!check?.loggedIn || !check?.user?.id) {
+      throw new Error("Logowanie nie powiodło się — spróbuj ponownie.");
+    }
+
+    setActiveUser({
+      isLoggedIn: true,
+      id: check.user.id,
+      name: check.user.name,
+      email: check.user.email,
+      phone: check.user.phone,
+      role: check.user.role,
+      isEmailVerified: check.user.isEmailVerified,
+      isVerifiedPhone: check.user.isVerifiedPhone,
+    });
+
+    const walletRes = await fetch(`/api/user/publication-wallet?locale=${locale}`, { cache: "no-store", credentials: "include" });
+    const walletData = await walletRes.json().catch(() => ({}));
+    if (!walletRes.ok || !walletData?.success) {
+      throw new Error(String(walletData?.error || walletData?.message || ao.walletFetchFailed));
+    }
+
+    const coupons = Array.isArray(walletData.publicationCoupons)
+      ? walletData.publicationCoupons
+      : Array.isArray(walletData.coupons)
+        ? walletData.coupons
+        : [];
+    const selection = defaultPublicationSelection({
+      couponIds: coupons.map((c: PublicationCouponOption) => c.id),
+      hasPlusCredit: Boolean(walletData.hasPlusCredit),
+    });
+
+    setAuthGateOpen(false);
+    const resolved = publicationSelectionToRedemption(selection);
+    if ("action" in resolved && resolved.action === "buy_plus") {
+      await handlePlusPayment();
+      return;
+    }
+    await submitOfferWithRedemption(resolved as PublicationRedemption);
+  };
+
   const handleSubmit = async () => {
     if (isSubmitting) return;
-    if (initialUser?.isLoggedIn && !publishContactOk) {
+    if (isLoggedIn && !publishContactOk) {
       setActionModal('verify');
       return;
     }
     if (!canPublish) return;
-    if (initialUser?.isLoggedIn) {
+    if (!isLoggedIn) {
+      setAuthGateOpen(true);
+      return;
+    }
+    if (isLoggedIn) {
       if (!publicationSelection) {
         setServerErrorMessage(ao.selectPublicationMethod);
         setActionModal('error');
@@ -1079,95 +1143,12 @@ export default function ClientForm({
         return;
       }
       await submitOfferWithRedemption(resolved as PublicationRedemption);
-      return;
-    }
-    setIsSubmitting(true);
-    setUploadProgress(ao.progressSendingOffer);
-    try {
-      const { payload } = buildOfferPayload();
-      if (!applyAgentCommissionToPayload(payload)) return;
-
-      setUploadProgress(ao.progressCreatingOffer);
-      const response = await fetch('/api/offers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      const responseData = await response.json().catch(() => ({}));
-      if (response.ok) {
-        const createdOfferId = responseData?.offer?.id || responseData?.id;
-
-        if (createdOfferId) {
-          const uploadableImages = finalImages.filter((img) => filesMap[img]);
-          for (let i = 0; i < uploadableImages.length; i++) {
-            const blobKey = uploadableImages[i];
-            const file = filesMap[blobKey];
-            if (!file) continue;
-            setUploadProgress(
-              ao.progressUploadingPhoto
-                .replace("{current}", String(i + 1))
-                .replace("{total}", String(uploadableImages.length)),
-            );
-            const formData = new FormData();
-            formData.append('offerId', String(createdOfferId));
-            formData.append('file', file);
-            const uploadRes = await fetch('/api/upload', {
-              method: 'POST',
-              body: formData,
-              credentials: 'include',
-            });
-            if (!uploadRes.ok) {
-              throw new Error(ao.photoUploadFailed.replace("{n}", String(i + 1)));
-            }
-          }
-
-          if (floorPlanFile) {
-            setUploadProgress(ao.progressUploadingFloorPlan);
-            const fpFormData = new FormData();
-            fpFormData.append('offerId', String(createdOfferId));
-            fpFormData.append('file', floorPlanFile);
-            fpFormData.append('isFloorPlan', 'true');
-            const fpRes = await fetch('/api/upload', {
-              method: 'POST',
-              body: fpFormData,
-              credentials: 'include',
-            });
-            if (!fpRes.ok) throw new Error(ao.floorPlanUploadError);
-          }
-        }
-        if (!responseData.requiresVerification && typeof window !== "undefined") {
-          window.localStorage.removeItem(ADD_OFFER_DRAFT_KEY);
-        }
-        setActionModal(responseData.requiresVerification ? 'otp' : 'success');
-      } else if (responseData.errorCode === 'AUTH_REQUIRED' && responseData.redirect) {
-        window.location.href = String(responseData.redirect);
-      } else if (
-        responseData.errorCode === 'PHONE_VERIFICATION_REQUIRED' ||
-        responseData.errorCode === 'EMAIL_VERIFICATION_REQUIRED'
-      ) {
-        setServerErrorMessage(responseData.message || responseData.error);
-        setErrorFieldTarget(null);
-        setActionModal('verify');
-      } else {
-        const serverMessage = responseData.error || responseData.message || ao.serverRejected;
-        setServerErrorMessage(serverMessage);
-        setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
-        setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
-      }
-    } catch (_error) {
-      setServerErrorMessage(ao.apiConnectionError);
-      setErrorFieldTarget(null);
-      setActionModal('error');
-    } finally {
-      setIsSubmitting(false);
-      setUploadProgress('');
     }
   };
 
   const [isProcessingPlus, setIsProcessingPlus] = useState(false);
   const handlePlusPayment = async () => {
-    if (initialUser?.isLoggedIn && !publishContactOk) {
+    if (isLoggedIn && !publishContactOk) {
       setActionModal('verify');
       return;
     }
@@ -1194,28 +1175,63 @@ export default function ClientForm({
     setIsSubmitting(true);
     setUploadProgress(ao.progressCreatingOffer);
     try {
+      const draft = readAddOfferDraft();
+      const resume = await resolvePendingOfferForPublish(draft?.pendingOfferId);
+      if (resume.mode === "already_submitted") {
+        clearAddOfferDraft();
+        setActionModal("success");
+        return;
+      }
+
       const { payload } = buildOfferPayload();
+      if (!isPolishLocality(data.localityCountryCode)) {
+        payload.apartmentNumber = "";
+        payload.landRegistryNumber = "";
+      }
       if (!applyAgentCommissionToPayload(payload)) return;
-      const createRes = await fetch('/api/offers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      const createData = await createRes.json().catch(() => ({}));
-      if (!createRes.ok) {
-        const serverMessage = createData.error || createData.message || ao.createOfferFailed;
-        setServerErrorMessage(serverMessage);
-        setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
-        setActionModal("error");
-        return;
+
+      let offerId = resume.mode === "reuse" ? resume.offerId : null;
+
+      if (offerId) {
+        const updateRes = await fetch(`/api/offers/${offerId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+        const updateData = await updateRes.json().catch(() => ({}));
+        if (!updateRes.ok) {
+          const serverMessage = updateData.error || updateData.message || ao.createOfferFailed;
+          setServerErrorMessage(serverMessage);
+          setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
+          setActionModal("error");
+          return;
+        }
+      } else {
+        const createRes = await fetch('/api/offers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+        const createData = await createRes.json().catch(() => ({}));
+        if (!createRes.ok) {
+          const serverMessage = createData.error || createData.message || ao.createOfferFailed;
+          setServerErrorMessage(serverMessage);
+          setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
+          setActionModal("error");
+          return;
+        }
+        offerId = Number(createData?.offer?.id || createData?.id);
+        if (!Number.isFinite(offerId) || offerId <= 0) {
+          setServerErrorMessage(ao.createOfferNoId);
+          setActionModal('error');
+          return;
+        }
+        patchAddOfferDraft({ pendingOfferId: offerId });
       }
-      const createdOfferId = Number(createData?.offer?.id || createData?.id);
-      if (!Number.isFinite(createdOfferId) || createdOfferId <= 0) {
-        setServerErrorMessage(ao.createOfferNoId);
-        setActionModal('error');
-        return;
-      }
+
+      const createdOfferId = offerId as number;
       const uploadableImages = finalImages.filter((img) => filesMap[img]);
       for (let i = 0; i < uploadableImages.length; i++) {
         const blobKey = uploadableImages[i];
@@ -1257,17 +1273,17 @@ export default function ClientForm({
       });
       const activationData = await activationRes.json().catch(() => ({}));
       if (!activationRes.ok) {
+        patchAddOfferDraft({ pendingOfferId: createdOfferId });
         if (activationData?.errorCode === 'PUBLICATION_REQUIRES_PLUS') {
           setServerErrorMessage(activationData?.message || ao.plusPackageRequired);
+          setActionModal('limit');
         } else {
           setServerErrorMessage(activationData?.error || activationData?.message || ao.activationFailed);
+          setActionModal('error');
         }
-        setActionModal('error');
         return;
       }
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem(ADD_OFFER_DRAFT_KEY);
-      }
+      clearAddOfferDraft();
       setActionModal('success');
     } catch {
       setServerErrorMessage(ao.apiConnectionError);
@@ -1277,6 +1293,7 @@ export default function ClientForm({
       setUploadProgress('');
     }
   };
+  submitOfferRef.current = submitOfferWithRedemption;
 
   // --- Żelazna Walidacja Kroków ---
   const isTypeSelected = !!data.propertyType;
@@ -1301,10 +1318,14 @@ export default function ClientForm({
   const localityCountryLabel = data.localityCountryCode
     ? countryLabelForLocale(String(data.localityCountryCode), countryDisplayLocale)
     : String(data.localityCountry || countryLabelForLocale("PL", countryDisplayLocale)).trim();
+  const isPolishOfferLocation = isPolishLocality(data.localityCountryCode);
   const districtRequirementMet = isStrictCityForm ? !!data.district : true;
   const normalizedLandRegistryNumber = normalizeLandRegistryInput(String(data.landRegistryNumber || ""));
   const hasLandRegistryInput = normalizedLandRegistryNumber.length > 0;
-  const landRegistryValid = !hasLandRegistryInput || isValidLandRegistryNumber(normalizedLandRegistryNumber);
+  const landRegistryValid =
+    !isPolishOfferLocation ||
+    !hasLandRegistryInput ||
+    isValidLandRegistryNumber(normalizedLandRegistryNumber);
   const isLocationDone =
     !!data.lat &&
     !!data.lng &&
@@ -1334,7 +1355,7 @@ export default function ClientForm({
   const descriptionText = String(data.description || '').replace(/<[^>]*>/g, '').trim();
   const isMediaDone = isTechDone && imagesList.length > 0 && String(data.title || '').trim().length >= 10 && descriptionText.length >= 10;
   
-  const isContactDone = initialUser?.isLoggedIn ? true : (
+  const isContactDone = isLoggedIn ? true : (
     !!data.email && emailStatus === 'available' &&
     !!data.contactPhone && phoneStatus === 'available' &&
     !!data.contactName && !!data.password && data.password.length >= 6 &&
@@ -1342,8 +1363,8 @@ export default function ClientForm({
   );
 
   const publishContactOk =
-    !initialUser?.isLoggedIn ||
-    (Boolean(initialUser?.isEmailVerified) && Boolean(initialUser?.isVerifiedPhone));
+    !isLoggedIn ||
+    (Boolean(activeUser?.isEmailVerified) && Boolean(activeUser?.isVerifiedPhone));
 
   const canPublish =
     isTypeSelected &&
@@ -1351,22 +1372,19 @@ export default function ClientForm({
     isFinanceDone &&
     isTechDone &&
     isMediaDone &&
-    isContactDone &&
-    publishContactOk &&
-    (!initialUser?.isLoggedIn || Boolean(publicationSelection));
-  const totalSteps = initialUser?.isLoggedIn ? 5 : 6;
+    (isLoggedIn ? publishContactOk && Boolean(publicationSelection) : true);
+  const totalSteps = 5;
   const isStep1Done = isTypeSelected && (data.propertyType === 'PLOT' || !!data.condition);
   const isStep2Done = isLocationDone;
   const isStep3Done = isTechDone;
   const isStep4Done = isMediaDone;
-  const isStep5Done = initialUser?.isLoggedIn ? true : isContactDone;
+  const isStep5Done = isLoggedIn ? Boolean(publicationSelection) && publishContactOk : isMediaDone;
 
   const canAdvanceStep = (step: number) => {
     if (step === 1) return isStep1Done;
     if (step === 2) return isStep2Done;
     if (step === 3) return isStep3Done;
     if (step === 4) return isStep4Done;
-    if (step === 5) return isStep5Done;
     return true;
   };
 
@@ -1375,7 +1393,6 @@ export default function ClientForm({
     if (step === 2) return isStep2Done;
     if (step === 3) return isStep3Done;
     if (step === 4) return isStep4Done;
-    if (step === 5 && !initialUser?.isLoggedIn) return isStep5Done;
     if (step === totalSteps) return canPublish;
     return true;
   };
@@ -1391,13 +1408,10 @@ export default function ClientForm({
       { step: 2, label: ao.stepNavShort2 },
       { step: 3, label: ao.stepNavShort3 },
       { step: 4, label: ao.stepNavShort4 },
+      { step: totalSteps, label: ao.stepNavPublish },
     ];
-    if (!initialUser?.isLoggedIn) {
-      items.push({ step: 5, label: ao.stepNavShort5 });
-    }
-    items.push({ step: totalSteps, label: ao.stepNavPublish });
     return items;
-  }, [ao.stepNavShort1, ao.stepNavShort2, ao.stepNavShort3, ao.stepNavShort4, ao.stepNavShort5, ao.stepNavPublish, initialUser?.isLoggedIn, totalSteps]);
+  }, [ao.stepNavShort1, ao.stepNavShort2, ao.stepNavShort3, ao.stepNavShort4, ao.stepNavPublish, totalSteps]);
 
   const focusFieldTarget = (target: FormFieldTarget) => {
     if (!target) return;
@@ -1454,7 +1468,7 @@ export default function ClientForm({
     const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
     const payload: Record<string, unknown> = {
       ...data,
-      userId: initialUser?.id,
+      userId: activeUser?.id,
       transactionType: data.transactionType,
       propertyType: data.propertyType,
       condition: dbCondition,
@@ -1544,7 +1558,7 @@ export default function ClientForm({
 
   const nextStep = () => {
     if (!canAdvanceStep(currentStep)) return;
-    if (initialUser?.isLoggedIn) {
+    if (isLoggedIn) {
       setCurrentStep((prev) => Math.min(5, prev + 1));
       return;
     }
@@ -1574,18 +1588,65 @@ export default function ClientForm({
   );
 
   useEffect(() => {
-    if (!initialUser?.isLoggedIn || currentStep !== totalSteps) return;
+    if (!isLoggedIn || currentStep !== totalSteps) return;
     loadPublicationWallet().catch(() => {
       // panel pokaże błąd ładowania
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialUser?.isLoggedIn, currentStep, totalSteps]);
+  }, [isLoggedIn, currentStep, totalSteps]);
+
+  useEffect(() => {
+    if (isPolishOfferLocation) return;
+    if (!data.apartmentNumber && !data.landRegistryNumber) return;
+    setData((prev: any) => ({
+      ...prev,
+      apartmentNumber: "",
+      landRegistryNumber: "",
+    }));
+  }, [isPolishOfferLocation, data.apartmentNumber, data.landRegistryNumber]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isLoggedIn || !draftHydratedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("plus") !== "success" || plusResumeStartedRef.current) return;
+    plusResumeStartedRef.current = true;
+    params.delete("plus");
+    const nextUrl = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
+    window.history.replaceState({}, "", nextUrl);
+
+    void (async () => {
+      try {
+        const walletRes = await fetch(`/api/user/publication-wallet?locale=${locale}`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const walletData = await walletRes.json().catch(() => ({}));
+        if (!walletRes.ok || !walletData?.success) return;
+        const coupons = Array.isArray(walletData.publicationCoupons)
+          ? walletData.publicationCoupons
+          : Array.isArray(walletData.coupons)
+            ? walletData.coupons
+            : [];
+        const selection = defaultPublicationSelection({
+          couponIds: coupons.map((c: PublicationCouponOption) => c.id),
+          hasPlusCredit: Boolean(walletData.hasPlusCredit),
+        });
+        if (selection === "buy_plus") return;
+        const resolved = publicationSelectionToRedemption(selection);
+        if ("action" in resolved) return;
+        setPublicationSelection(selection);
+        await submitOfferRef.current(resolved as PublicationRedemption);
+      } catch {
+        // użytkownik może opublikować ręcznie
+      }
+    })();
+  }, [isLoggedIn, locale]);
 
   const publishButtonLabel = useMemo(() => {
-    if (!initialUser?.isLoggedIn) return ao.publishFinishGuest;
+    if (!isLoggedIn) return ao.publishFinishGuest;
     if (!publicationSelection) return ao.publishSelectMethod;
     return publicationSelectionLabel(publicationSelection, locale).toUpperCase();
-  }, [initialUser?.isLoggedIn, publicationSelection, ao.publishFinishGuest, ao.publishSelectMethod, locale]);
+  }, [isLoggedIn, publicationSelection, ao.publishFinishGuest, ao.publishSelectMethod, locale]);
 
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] pt-28 pb-32 px-4 md:px-6 lg:px-8 font-sans overflow-x-hidden relative selection:bg-emerald-500/30">
@@ -1942,21 +2003,23 @@ export default function ClientForm({
                 </div>
               </div>
 
-              <AddOfferDocVerificationPanel
-                ao={ao}
-                inputPremium={inputPremium}
-                labelPremium={labelPremium}
-                propertyType={data.propertyType}
-                apartmentNumber={String(data.apartmentNumber || "")}
-                landRegistryNumber={String(data.landRegistryNumber || "")}
-                landRegistryValid={landRegistryValid}
-                hasLandRegistryInput={hasLandRegistryInput}
-                onApartmentChange={(value) => updateData({ apartmentNumber: value })}
-                onLandRegistryChange={(value) =>
-                  updateData({ landRegistryNumber: normalizeLandRegistryInput(value) })
-                }
-                landRegistryInputRef={landRegistryInputRef}
-              />
+              {isPolishOfferLocation ? (
+                <AddOfferDocVerificationPanel
+                  ao={ao}
+                  inputPremium={inputPremium}
+                  labelPremium={labelPremium}
+                  propertyType={data.propertyType}
+                  apartmentNumber={String(data.apartmentNumber || "")}
+                  landRegistryNumber={String(data.landRegistryNumber || "")}
+                  landRegistryValid={landRegistryValid}
+                  hasLandRegistryInput={hasLandRegistryInput}
+                  onApartmentChange={(value) => updateData({ apartmentNumber: value })}
+                  onLandRegistryChange={(value) =>
+                    updateData({ landRegistryNumber: normalizeLandRegistryInput(value) })
+                  }
+                  landRegistryInputRef={landRegistryInputRef}
+                />
+              ) : null}
             </section>
 
             {/* KROK 3: PARAMETRY I FINANSE */}
@@ -2186,6 +2249,25 @@ export default function ClientForm({
                 ) : null}
               </div>
 
+              <div className="mb-10 rounded-[2rem] border border-[#10b981]/40 bg-gradient-to-br from-[#10b981]/15 to-emerald-950/20 p-6 shadow-[0_0_40px_rgba(16,185,129,0.12)]">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">EstateOS Studio</p>
+                    <h3 className="mt-2 text-xl font-black uppercase tracking-wide text-white">Profesjonalna sesja zdjęciowa</h3>
+                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-400">
+                      Zamów sesję ze zdjęciami i kompleksową ofertą — negocjuj termin online, tak jak w aplikacji mobilnej.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoSessionOpen(true)}
+                    className="shrink-0 rounded-full bg-[#10b981] px-6 py-4 text-[11px] font-black uppercase tracking-widest text-black shadow-[0_0_24px_rgba(16,185,129,0.35)] transition hover:scale-[1.02]"
+                  >
+                    Zamów sesję
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                 <div className="lg:col-span-2">
                   <div className="flex items-center justify-between mb-4">
@@ -2329,8 +2411,8 @@ export default function ClientForm({
               </div>
             </section>
 
-            {/* KROK 5: DANE KONTAKTOWE */}
-            {!initialUser?.isLoggedIn && (
+            {/* KROK 5: DANE KONTAKTOWE — przeniesione do modala rejestracji przy publikacji */}
+            {false && !isLoggedIn && (
               <section className={`${glassPanel} ${currentStep === 5 ? '' : 'hidden'} ring-1 ring-white/5 ${isMediaDone ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
                 <div className="flex items-center gap-5 mb-10">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isContactDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
@@ -2485,7 +2567,7 @@ export default function ClientForm({
                 ))}
               </div>
 
-              {initialUser?.isLoggedIn ? (
+              {isLoggedIn ? (
                 <PublicationWalletPanel
                   selectable
                   selection={publicationSelection ?? undefined}
@@ -2508,7 +2590,7 @@ export default function ClientForm({
                 />
               ) : null}
 
-              {initialUser?.isLoggedIn && !publishContactOk ? (
+              {isLoggedIn && !publishContactOk ? (
                 <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-left">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 mb-2">{ao.acctVerifyTitle}</p>
                   <p className="text-sm text-white/70 mb-4 leading-relaxed">
@@ -2593,14 +2675,55 @@ export default function ClientForm({
       {/* 1. STANDARDOWE OKNA (BŁĄD, LIMIT, SUKCES ZWYKŁY) */}
       <AnimatePresence>
         {actionModal === "verify" && (
-          <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-10 max-w-lg w-full text-center shadow-2xl relative">
-              <button onClick={() => setActionModal("none")} className="absolute top-6 right-6 text-zinc-500 hover:text-white"><X size={24} /></button>
-              <ShieldCheck className="mx-auto mb-6 text-emerald-400" size={48} />
-              <h2 className="text-2xl font-black text-white mb-3">{ao.modalVerifyTitle}</h2>
-              <p className="text-zinc-400 mb-8 leading-relaxed">{serverErrorMessage || ao.modalVerifyDefault}</p>
-              <a href="/moje-konto/weryfikacja" className="block w-full py-4 bg-emerald-500 text-black font-black uppercase tracking-widest rounded-2xl mb-3 hover:bg-emerald-400 transition-colors">{ao.modalVerifyBtn}</a>
-              <button onClick={() => setActionModal("none")} className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold hover:text-white">{ao.modalClose}</button>
+          <div className="fixed inset-0 z-[999999] flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="relative flex max-h-[min(100dvh,820px)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_28px_90px_rgba(0,0,0,0.35)] sm:max-h-[min(92dvh,820px)] sm:rounded-3xl"
+            >
+              <button
+                onClick={() => setActionModal("none")}
+                className="absolute right-4 top-4 z-10 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2 text-[var(--eos-muted)] transition hover:text-[var(--eos-text)]"
+                aria-label={ao.modalClose}
+              >
+                <X size={18} />
+              </button>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pt-12 sm:p-6 sm:pt-14">
+                {serverErrorMessage ? (
+                  <p className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+                    {serverErrorMessage}
+                  </p>
+                ) : null}
+                <ContactVerificationPanel
+                  compact
+                  initial={{
+                    email: activeUser?.email,
+                    phone: activeUser?.phone,
+                    isEmailVerified: activeUser?.isEmailVerified,
+                    isVerifiedPhone: activeUser?.isVerifiedPhone,
+                  }}
+                  onUpdated={async () => {
+                    const checkRes = await fetch("/api/auth/check", { cache: "no-store", credentials: "include" });
+                    const check = await checkRes.json().catch(() => ({}));
+                    if (check?.loggedIn && check?.user) {
+                      setActiveUser({
+                        isLoggedIn: true,
+                        id: check.user.id,
+                        name: check.user.name,
+                        email: check.user.email,
+                        phone: check.user.phone,
+                        role: check.user.role,
+                        isEmailVerified: check.user.isEmailVerified,
+                        isVerifiedPhone: check.user.isVerifiedPhone,
+                      });
+                      if (check.user.isEmailVerified && check.user.isVerifiedPhone) {
+                        setActionModal("none");
+                        setServerErrorMessage("");
+                      }
+                    }
+                  }}
+                />
+              </div>
             </motion.div>
           </div>
         )}
@@ -2616,7 +2739,15 @@ export default function ClientForm({
                   <p className="text-zinc-400 mb-8 leading-relaxed">
                     {ao.modalSuccessBody}
                   </p>
-                  <button onClick={() => { window.location.href = '/moje-konto/crm'; }} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-[#10b981] hover:text-black font-black uppercase tracking-widest rounded-2xl transition-all duration-300">{ao.modalSuccessPanel}</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.href = "/moje-konto/crm?tab=my_offers";
+                    }}
+                    className="w-full rounded-2xl border border-emerald-400/45 bg-gradient-to-b from-emerald-400 to-emerald-600 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-[0_12px_32px_rgba(16,185,129,0.22)] transition hover:brightness-105"
+                  >
+                    {ao.modalSuccessPanel}
+                  </button>
                 </>
               )}
 
@@ -2834,6 +2965,29 @@ export default function ClientForm({
           </AnimatePresence>
         </div>
       )}
+
+      <PublishAuthGate
+        open={authGateOpen}
+        brand="home"
+        onClose={() => setAuthGateOpen(false)}
+        onAuthenticated={async (report) => {
+          report("Publikuję ofertę nieruchomości…");
+          await publishAfterAuth();
+        }}
+      />
+
+      <ProPhotoSessionDialog
+        open={photoSessionOpen}
+        onClose={() => setPhotoSessionOpen(false)}
+        draft={{
+          propertyLabel: [data.title, data.city, data.district, data.address]
+            .map((x) => String(x || '').trim())
+            .filter(Boolean)
+            .join(' · ') || undefined,
+          propertyType: data.propertyType || undefined,
+          transactionType: data.transactionType || undefined,
+        }}
+      />
 
     </main>
   );

@@ -269,6 +269,11 @@ export type Dictionary = {
   map: {
     forSale: string;
     forRent: string;
+    marketHome: string;
+    marketCar: string;
+    carsCars: string;
+    carsMotorcycles: string;
+    openFullMap: string;
     market: string;
     allMarkets: string;
     type: string;
@@ -980,6 +985,11 @@ const pl: Dictionary = {
   map: {
     forSale: "Na sprzedaż",
     forRent: "Na wynajem",
+    marketHome: "Nieruchomości",
+    marketCar: "Auta",
+    carsCars: "Samochody",
+    carsMotorcycles: "Motocykle",
+    openFullMap: "Otwórz pełną mapę",
     market: "Rynek",
     allMarkets: "Wszystkie rynki",
     type: "Typ",
@@ -1714,6 +1724,11 @@ const en: Dictionary = {
   map: {
     forSale: "For sale",
     forRent: "For lease",
+    marketHome: "Homes",
+    marketCar: "Cars",
+    carsCars: "Cars",
+    carsMotorcycles: "Motorcycles",
+    openFullMap: "Open full map",
     market: "Market",
     allMarkets: "All markets",
     type: "Type",
