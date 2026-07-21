@@ -10,6 +10,8 @@ import {
   Heart,
   Keyboard,
   Loader2,
+  MapPin,
+  Navigation,
   ScanLine,
   Search,
   Upload,
@@ -36,8 +38,19 @@ import {
   type CarSortKey,
 } from "@/lib/carsPresentation";
 import { fmtCars, getCarSortOptions } from "@/i18n/carsDictionary";
+import { useUserLocation } from "@/hooks/useUserLocation";
+import { formatDistanceKm, haversineKm } from "@/lib/geo/haversine";
 
 type AddPath = "scan" | "upload" | "manual" | "otomoto";
+
+type CatalogCar = EstateOsCarListing & {
+  cityLat?: number | null;
+  cityLng?: number | null;
+  vehicleType?: string;
+  generation?: string;
+  featured?: boolean;
+  promotedUntil?: string | null;
+};
 
 type Filters = {
   query: string;
@@ -105,6 +118,32 @@ export default function CarsCatalogClient() {
   const { dict, locale } = useLocale();
   const cat = dict.cars.catalog;
   const sortOptions = useMemo(() => getCarSortOptions(locale), [locale]);
+  const { location, denied, pending, request } = useUserLocation();
+
+  const nearestCopy =
+    locale === "pl"
+      ? {
+          title: "Najbliższe",
+          enable: "Udostępnij lokalizację",
+          denied: "Brak dostępu do lokalizacji — włącz ją w przeglądarce, aby zobaczyć odległości.",
+          needs: "Udostępnij lokalizację, aby posortować oferty według odległości.",
+          empty: "Brak samochodów z lokalizacją w pobliżu.",
+        }
+      : locale === "uk"
+        ? {
+            title: "Найближчі",
+            enable: "Надати локацію",
+            denied: "Немає доступу до локації — увімкніть її в браузері.",
+            needs: "Надайте локацію, щоб відсортувати оголошення за відстанню.",
+            empty: "Немає авто з локацією поруч.",
+          }
+        : {
+            title: "Nearest",
+            enable: "Share location",
+            denied: "Location denied — enable it in the browser to see distances.",
+            needs: "Share your location to sort listings by distance.",
+            empty: "No cars with location nearby.",
+          };
 
   const [cars, setCars] = useState<EstateOsCarListing[]>([]);
   const [myCars, setMyCars] = useState<EstateOsCarListing[]>([]);
@@ -281,6 +320,25 @@ export default function CarsCatalogClient() {
 
   const newestCars = useMemo(() => sortByNewest(cars), [cars]);
 
+  const distanceByCarId = useMemo(() => {
+    const map = new Map<number, number>();
+    if (!location) return map;
+    for (const car of cars as CatalogCar[]) {
+      const lat = Number(car.cityLat);
+      const lng = Number(car.cityLng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      map.set(car.id, haversineKm(location.latitude, location.longitude, lat, lng));
+    }
+    return map;
+  }, [cars, location]);
+
+  const nearestCars = useMemo(() => {
+    if (!location) return [] as CatalogCar[];
+    return [...(cars as CatalogCar[])]
+      .filter((car) => distanceByCarId.has(car.id))
+      .sort((a, b) => (distanceByCarId.get(a.id)! - distanceByCarId.get(b.id)!));
+  }, [cars, distanceByCarId, location]);
+
   const featuredCars = useMemo(
     () =>
       cars
@@ -368,34 +426,43 @@ export default function CarsCatalogClient() {
     ? fmtCars(cat.statsAll, { n: cars.length })
     : cat.resultsLoading;
 
-  const railCard = (car: EstateOsCarListing) => (
-    <Link
-      href={`/cars/${car.id}`}
-      className="group w-[280px] shrink-0 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] transition hover:border-sky-400/45 hover:shadow-[0_20px_60px_rgba(14,165,233,0.08)]"
-    >
-      <div className="relative aspect-[16/10]">
-        <Image
-          src={carImageSrc(car.imageUrl)}
-          alt={car.title}
-          fill
-          sizes="280px"
-          className="object-cover transition duration-500 group-hover:scale-[1.03]"
-          unoptimized
-        />
-        <div className="absolute right-3 top-3 z-20">
-          <CarFavoriteButton carId={car.id} onChange={(ids) => setFavoriteIds(ids)} />
+  const railCard = (car: EstateOsCarListing, opts?: { showDistance?: boolean }) => {
+    const distance = distanceByCarId.get(car.id);
+    return (
+      <Link
+        href={`/cars/${car.id}`}
+        className="group w-[280px] shrink-0 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] transition hover:border-sky-400/45 hover:shadow-[0_20px_60px_rgba(14,165,233,0.08)]"
+      >
+        <div className="relative aspect-[16/10]">
+          <Image
+            src={carImageSrc(car.imageUrl)}
+            alt={car.title}
+            fill
+            sizes="280px"
+            className="object-cover transition duration-500 group-hover:scale-[1.03]"
+            unoptimized
+          />
+          <div className="absolute right-3 top-3 z-20">
+            <CarFavoriteButton carId={car.id} onChange={(ids) => setFavoriteIds(ids)} />
+          </div>
+          {opts?.showDistance && distance != null ? (
+            <span className="absolute bottom-3 left-3 z-10 inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] bg-black/55 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur-md">
+              <MapPin className="size-3" />
+              {formatDistanceKm(distance, locale)}
+            </span>
+          ) : null}
         </div>
-      </div>
-      <div className="space-y-2 p-4">
-        <p className="text-[11px] font-black uppercase tracking-[0.12em] text-sky-300">
-          {car.make} · {car.model} · {car.year}
-        </p>
-        <h3 className="line-clamp-2 text-base font-semibold">{car.title}</h3>
-        <p className="text-sm text-[var(--eos-muted)]">{car.city} · {formatMileage(car.mileageKm, locale)}</p>
-        <p className="text-base font-bold text-sky-300">{formatCarPrice(car.pricePln, locale)}</p>
-      </div>
-    </Link>
-  );
+        <div className="space-y-2 p-4">
+          <p className="text-[11px] font-black uppercase tracking-[0.12em] text-sky-300">
+            {car.make} · {car.model} · {car.year}
+          </p>
+          <h3 className="line-clamp-2 text-base font-semibold">{car.title}</h3>
+          <p className="text-sm text-[var(--eos-muted)]">{car.city} · {formatMileage(car.mileageKm, locale)}</p>
+          <p className="text-base font-bold text-sky-300">{formatCarPrice(car.pricePln, locale)}</p>
+        </div>
+      </Link>
+    );
+  };
 
   const chooserTitle =
     locale === "en"
@@ -698,6 +765,43 @@ export default function CarsCatalogClient() {
               getKey={(car) => car.id}
               renderItem={(car) => railCard(car)}
             />
+          </section>
+        ) : null}
+
+        {!loading ? (
+          <section className="mt-8">
+            <div className="mb-3 flex items-center gap-2">
+              <Navigation className="size-4 text-sky-500" aria-hidden />
+              <h2 className="text-lg font-semibold tracking-tight">{nearestCopy.title}</h2>
+            </div>
+            {location && nearestCars.length > 0 ? (
+              <InfiniteHorizontalRail
+                items={nearestCars}
+                getKey={(car) => car.id}
+                renderItem={(car) => railCard(car, { showDistance: true })}
+              />
+            ) : location && nearestCars.length === 0 ? (
+              <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6">
+                <p className="text-sm text-[var(--eos-muted)]">{nearestCopy.empty}</p>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 py-6">
+                <p className="text-sm text-[var(--eos-muted)]">
+                  {denied ? nearestCopy.denied : nearestCopy.needs}
+                </p>
+                {!denied ? (
+                  <button
+                    type="button"
+                    onClick={() => void request()}
+                    disabled={pending}
+                    className="mt-4 inline-flex items-center gap-2 rounded-full border border-sky-500/35 bg-sky-500/10 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-sky-600 transition hover:bg-sky-500/15 dark:text-sky-300"
+                  >
+                    {pending ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
+                    {nearestCopy.enable}
+                  </button>
+                ) : null}
+              </div>
+            )}
           </section>
         ) : null}
 

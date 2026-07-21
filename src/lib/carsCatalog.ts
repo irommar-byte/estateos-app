@@ -11,6 +11,8 @@ export type EstateOsCarListing = {
   vehicleType?: string;
   pricePln: number;
   city: string;
+  cityLat?: number | null;
+  cityLng?: number | null;
   imageUrl: string;
   createdAt: string;
   promotedUntil?: string | null;
