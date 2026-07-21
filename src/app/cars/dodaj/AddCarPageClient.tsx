@@ -19,8 +19,16 @@ export default function AddCarPageClient() {
     if (typeof window === "undefined") return;
     try {
       const params = new URLSearchParams(window.location.search);
+      const entry = params.get("entry");
       const fromOtomoto = params.get("from") === "otomoto";
       const raw = sessionStorage.getItem(OTOMOTO_IMPORT_STORAGE_KEY);
+
+      if (entry === "scan" || entry === "upload" || entry === "capture" || entry === "manual") {
+        setEntryMethod(entry);
+        setPhase("form");
+        return;
+      }
+
       if (fromOtomoto || raw) {
         setEntryMethod("otomoto");
         setPhase("form");
