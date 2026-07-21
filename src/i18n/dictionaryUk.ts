@@ -271,6 +271,7 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       agencyStrip: {
         title: "Для офісів і агентств нерухомості",
         subtitle: "CRM, команда в одній панелі, Concierge та пакети Partner — та сама екосистема, що й для власників.",
+        agenciesCta: "Агентства",
         cta: "Пакети Partner",
       },
       privateCard: {

@@ -19,13 +19,16 @@ type InfiniteHorizontalRailProps<T> = {
   getKey: (item: T, index: number) => string | number;
   pageSize?: number;
   className?: string;
-  /** When true (default), after the last unique item the rail continues from the start. */
+  /**
+   * When true, after the last unique item the rail recycles from the start.
+   * Default false — only unique items; stop when everything is shown.
+   */
   loop?: boolean;
 };
 
 /**
  * Horizontal Apple-TV-style rail that appends the next page when the user
- * scrolls near the end. With `loop`, the tape keeps going by recycling items.
+ * scrolls near the end. Does not duplicate items unless `loop` is enabled.
  */
 export default function InfiniteHorizontalRail<T>({
   items,
@@ -33,7 +36,7 @@ export default function InfiniteHorizontalRail<T>({
   getKey,
   pageSize = DEFAULT_PAGE_SIZE,
   className = "",
-  loop = true,
+  loop = false,
 }: InfiniteHorizontalRailProps<T>) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -68,7 +71,8 @@ export default function InfiniteHorizontalRail<T>({
     loadingMoreRef.current = true;
     setVisibleCount((prev) => {
       if (!loop && prev >= items.length) return prev;
-      return prev + pageSize;
+      const next = prev + pageSize;
+      return loop ? next : Math.min(next, items.length);
     });
     window.setTimeout(() => {
       loadingMoreRef.current = false;

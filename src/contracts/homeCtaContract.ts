@@ -5,6 +5,7 @@ export type HomeCtaId =
   | 'PRO'
   | 'PRIVATE'
   | 'AGENCY'
+  | 'AGENCIES_CATALOG'
   | 'CAR_LIST'
   | 'CAR_CATALOG'
   | 'HOME_CATALOG';
@@ -61,6 +62,12 @@ export const HOME_CTA_CONTRACT: Record<HomeCtaId, HomeCtaContractEntry> = {
     mode: 'APP',
     appRoute: 'WebOnly/DlaAgencji',
     webRoute: '/dla-agencji',
+  },
+  AGENCIES_CATALOG: {
+    id: 'AGENCIES_CATALOG',
+    mode: 'APP',
+    appRoute: 'WebOnly/Agencje',
+    webRoute: '/agencje',
   },
   CAR_LIST: {
     id: 'CAR_LIST',

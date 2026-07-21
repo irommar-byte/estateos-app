@@ -130,6 +130,7 @@ export type Dictionary = {
     agencyStrip: {
       title: string;
       subtitle: string;
+      agenciesCta: string;
       cta: string;
     };
     privateCard: {
@@ -758,6 +759,7 @@ const pl: Dictionary = {
     agencyStrip: {
       title: "Dla biur i agencji nieruchomości",
       subtitle: "CRM, zespół w jednym panelu, Concierge i pakiety Partner — ten sam ekosystem co dla właścicieli.",
+      agenciesCta: "Agencje",
       cta: "Zobacz pakiety Partner",
     },
     privateCard: {
@@ -1491,6 +1493,7 @@ const en: Dictionary = {
     agencyStrip: {
       title: "For real estate agencies & offices",
       subtitle: "CRM, team panel, Concierge and Partner plans — the same ecosystem as for private owners.",
+      agenciesCta: "Agencies",
       cta: "See Partner plans",
     },
     privateCard: {
