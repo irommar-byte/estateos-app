@@ -64,6 +64,22 @@ export default function AddOfferStepper({ currentStep, draft, theme, navigation,
         </Text>
       </View>
 
+      <View
+        style={[
+          styles.progressTrack,
+          { backgroundColor: theme.glass === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)' },
+        ]}
+      >
+        <View
+          style={[
+            styles.progressFill,
+            {
+              width: `${Math.max(0, Math.min(100, ((currentStep - 1) / Math.max(1, ADD_OFFER_TOTAL_STEPS - 1)) * 100))}%`,
+            },
+          ]}
+        />
+      </View>
+
       <View style={styles.stepperRow}>
         {Array.from({ length: ADD_OFFER_TOTAL_STEPS }).map((_, index) => {
           const step = index + 1;
@@ -84,7 +100,9 @@ export default function AddOfferStepper({ currentStep, draft, theme, navigation,
                   },
                 ]}
               >
-                <Text style={[styles.dotText, { color: isActive || isDone ? '#fff' : theme.subtitle }]}>{step}</Text>
+                <Text style={[styles.dotText, { color: isActive || isDone ? '#fff' : theme.subtitle }]}>
+                  {isDone && !isActive ? '✓' : step}
+                </Text>
               </Pressable>
 
               {step < ADD_OFFER_TOTAL_STEPS && (
@@ -115,6 +133,17 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   title: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
   hint: { fontSize: 11, fontWeight: '700' },
+  progressTrack: {
+    height: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginBottom: 14,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#34C759',
+  },
   stepperRow: { flexDirection: 'row', alignItems: 'center' },
   dot: {
     width: 28,

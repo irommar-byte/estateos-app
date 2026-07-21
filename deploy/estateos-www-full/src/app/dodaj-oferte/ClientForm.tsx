@@ -16,7 +16,9 @@ import { Home,
 } from "lucide-react";
 
 import ProPhotoSessionDialog from '@/components/photoSession/ProPhotoSessionDialog';
-import PublishAuthGate from '@/components/auth/PublishAuthGate';
+import PublishAuthGate, { type AuthGateContext } from '@/components/auth/PublishAuthGate';
+import AddOfferStepProgress from '@/components/offers/AddOfferStepProgress';
+import AddOfferPublishSummary from '@/components/offers/AddOfferPublishSummary';
 import ContactVerificationPanel from '@/components/ContactVerificationPanel';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
@@ -324,6 +326,8 @@ export default function ClientForm({
   const [currentStep, setCurrentStep] = useState(1);
   const [activeUser, setActiveUser] = useState(initialUser);
   const [authGateOpen, setAuthGateOpen] = useState(false);
+  const [authGateContext, setAuthGateContext] = useState<AuthGateContext>("publish");
+  const pendingAiAfterAuthRef = useRef(false);
   const isLoggedIn = Boolean(activeUser?.isLoggedIn);
   const [photoSessionOpen, setPhotoSessionOpen] = useState(false);
   const [locationCatalog, setLocationCatalog] = useState<DistrictCatalogResponse>({ strictCities: [], strictCityDistricts: {} });
@@ -785,7 +789,7 @@ export default function ClientForm({
     document.execCommand(command, false);
   };
 
-  const handleGenerateAI = async () => {
+  const runGenerateAI = async () => {
     const hasBasics =
       String(data.propertyType || "").trim() ||
       String(data.city || "").trim() ||
@@ -805,6 +809,12 @@ export default function ClientForm({
         body: JSON.stringify(buildDescriptionDraftFromForm(data, locale, AMENITIES)),
       });
       const payload = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        pendingAiAfterAuthRef.current = true;
+        setAuthGateContext("ai_description");
+        setAuthGateOpen(true);
+        return;
+      }
       if (!res.ok || !payload?.success || !String(payload?.description || "").trim()) {
         throw new Error(String(payload?.error || ao.aiGenFailed));
       }
@@ -816,6 +826,16 @@ export default function ClientForm({
     } finally {
       setIsGeneratingAI(false);
     }
+  };
+
+  const handleGenerateAI = async () => {
+    if (!isLoggedIn) {
+      pendingAiAfterAuthRef.current = true;
+      setAuthGateContext("ai_description");
+      setAuthGateOpen(true);
+      return;
+    }
+    await runGenerateAI();
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1139,6 +1159,8 @@ export default function ClientForm({
     }
     if (!canPublish) return;
     if (!isLoggedIn) {
+      pendingAiAfterAuthRef.current = false;
+      setAuthGateContext("publish");
       setAuthGateOpen(true);
       return;
     }
@@ -1678,56 +1700,19 @@ export default function ClientForm({
           </h1>
         </div>
 
-        <div className="sticky top-[calc(var(--eos-nav-height)+0.5rem)] z-40 mb-8 rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/95 px-4 py-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl md:px-5">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <span className="text-[10px] font-black uppercase tracking-[0.22em] text-[var(--eos-muted)]">
-              {ao.stepLabel} {currentStep} {ao.stepOf} {totalSteps}
-            </span>
-            <span className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-500">
-              {Math.round((currentStep / totalSteps) * 100)}%
-            </span>
-          </div>
-          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {stepNavItems.map((item) => {
-              const active = currentStep === item.step;
-              const done = isStepDone(item.step);
-              const needsFix = stepNeedsFix(item.step);
-              return (
-                <button
-                  key={item.step}
-                  type="button"
-                  onClick={() => setCurrentStep(item.step)}
-                  title={item.label}
-                  className={`min-w-[7.5rem] shrink-0 rounded-2xl border px-3 py-2.5 text-left transition-all ${
-                    active
-                      ? "border-emerald-500/60 bg-emerald-500/10 shadow-[0_0_18px_rgba(16,185,129,0.12)]"
-                      : needsFix
-                        ? "border-red-500/45 bg-red-500/10"
-                        : done
-                          ? "border-emerald-500/25 bg-emerald-500/5"
-                          : "border-[var(--eos-border)] bg-[var(--eos-input)] hover:border-[var(--eos-border-strong)]"
-                  }`}
-                >
-                  <span className="block text-[9px] font-black uppercase tracking-[0.14em] text-[var(--eos-subtle)]">
-                    {ao.stepLabel} {item.step}
-                  </span>
-                  <span className="mt-0.5 block text-[11px] font-bold leading-snug text-[var(--eos-text)]">
-                    {item.label}
-                  </span>
-                  {needsFix ? (
-                    <span className="mt-1 block text-[9px] font-black uppercase tracking-[0.08em] text-red-500">
-                      {ao.stepNavFixNeeded}
-                    </span>
-                  ) : done ? (
-                    <span className="mt-1 block text-[9px] font-bold uppercase tracking-[0.08em] text-emerald-600 dark:text-emerald-400">
-                      OK
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <AddOfferStepProgress
+          currentStep={currentStep}
+          totalSteps={totalSteps}
+          items={stepNavItems}
+          stepLabel={ao.stepLabel}
+          stepOf={ao.stepOf}
+          canProceedHint={ao.stepperCanProceed}
+          completeStepHint={ao.stepperCompleteStep}
+          canAdvanceCurrent={canAdvanceStep(currentStep) || currentStep === totalSteps}
+          isStepDone={isStepDone}
+          stepNeedsFix={stepNeedsFix}
+          onSelectStep={setCurrentStep}
+        />
 
         {/* NOWY PRZEŁĄCZNIK KUPNO / WYNAJEM */}
         <div className={`flex justify-center mb-12 ${currentStep === 1 ? '' : 'hidden'}`}>
@@ -2482,100 +2467,62 @@ export default function ClientForm({
 
             {/* FINAŁOWY PRZYCISK APPLE LUXURY */}
             <div className={`pt-8 pb-24 relative z-50 ${currentStep === totalSteps ? '' : 'hidden'}`}>
-              <div className="mb-6 rounded-[2rem] border border-white/10 bg-white/[0.03] p-5 md:p-6">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300 mb-3">
-                  {ao.publishSummaryHeading}
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs mb-3">
-                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">{ao.sumTitle}</p>
-                    <p className="text-white font-semibold">{String(data.title || '').trim() || '-'}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">{ao.sumTypeTransaction}</p>
-                    <p className="text-white font-semibold">
-                      {propertyTypeLabel || '—'} / {data.transactionType === 'RENT' ? ao.rent : ao.sell}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">{ao.sumPriceArea}</p>
-                    <p className="text-white font-semibold">
-                      {String(data.price || '').trim() ? `${String(data.price).trim()} ${data.priceCurrency || 'PLN'}` : '-'}
-                      {" · "}
-                      {String(data.area || '').trim() ? `${String(data.area).trim()} m²` : '-'}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">{ao.sumLocation}</p>
-                    <p className="text-white font-semibold">{locationDisplayLine}</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs mb-3">
-                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">{ao.sumParams}</p>
-                    <p className="text-white/80">
-                      {ao.sumRooms}: {data.rooms || '-'} · {ao.sumFloor}: {data.floor || '-'} · {ao.sumYear}: {data.buildYear || '-'}
-                    </p>
-                    <p className="text-white/60 mt-1">
-                      {ao.sumHeating}: {data.heating || '-'} · {ao.sumFurnished}: {data.isFurnished === true ? ao.yes.toLowerCase() : data.isFurnished === false ? ao.no.toLowerCase() : '-'}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">
-                      {isAgencyAdvertiser ? ao.sumCostsCommission : ao.sumRent}
-                    </p>
-                    <p className="text-white/80">
-                      {ao.sumRent}: {String(data.rent || '').trim() ? `${String(data.rent).trim()} PLN` : '-'}
-                    </p>
-                    {isAgencyAdvertiser ? (
-                      <p className="text-white/60 mt-1">
-                        {ao.sumCommission}: {String(data.agentCommissionPercent || '').trim() ? `${String(data.agentCommissionPercent).trim()}%` : ao.sumCommissionZero}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                  <p className="text-white/40 uppercase tracking-wider text-[10px] mb-2">{ao.sumAmenitiesMedia}</p>
-                  <p className="text-white/80 mb-2">
-                    {Array.isArray(data.amenities) && data.amenities.length > 0 ? data.amenities.join(', ') : ao.sumNoAmenities}
-                  </p>
-                  {finalImages.length > 0 ? (
-                    <div className="mb-2 text-[10px] uppercase tracking-wider text-white/45">
-                      {ao.sumPhotos}: {finalImages.length} · {ao.sumFloorPlan}: {finalFloorPlan ? '1' : '0'}
-                    </div>
-                  ) : null}
-                  <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-                    {finalImages.length > 0 ? finalImages.map((img, idx) => (
-                      <img key={`${img}-${idx}`} src={img} alt={ao.sumPhotoPreviewAlt.replace("{n}", String(idx + 1))} className="h-14 w-14 rounded-lg object-cover border border-white/15" />
-                    )) : (
-                      <div className="col-span-full rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-[11px] font-semibold text-red-500">
-                        {ao.sumNoPhotos}
-                      </div>
-                    )}
-                    {finalFloorPlan ? (
-                      <img src={finalFloorPlan} alt={ao.sumFloorPreviewAlt} className="h-14 w-14 rounded-lg object-cover border border-emerald-500/30" />
-                    ) : null}
-                  </div>
-                </div>
-
-                {summarySections.map((section) => (
-                  <div key={section.title} className="mt-3 rounded-xl border border-white/10 bg-black/25 p-4">
-                    <p className="text-white/40 uppercase tracking-[0.18em] text-[10px] font-black mb-3">
-                      {section.title}
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
-                      {section.rows.map((row) => (
-                        <div key={`${section.title}-${row.label}`} className="rounded-lg border border-white/10 bg-black/30 px-3 py-2.5">
-                          <p className="text-white/45 text-[10px] font-semibold tracking-wide">{row.label}</p>
-                          <p className="text-white/90 break-words mt-1 leading-relaxed">{row.value}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <AddOfferPublishSummary
+                heading={ao.publishSummaryHeading}
+                title={String(data.title || "").trim()}
+                priceLine={
+                  String(data.price || "").trim()
+                    ? `${Number(String(data.price).replace(/\s/g, "").replace(",", ".") || 0).toLocaleString(locale === "en" ? "en-GB" : "pl-PL")} ${data.priceCurrency || "PLN"}`
+                    : "—"
+                }
+                priceSubLine={
+                  String(data.area || "").trim() && String(data.price || "").trim()
+                    ? `${Math.round(Number(String(data.price).replace(/\s/g, "").replace(",", ".") || 0) / Math.max(1, Number(String(data.area).replace(",", ".") || 1))).toLocaleString(locale === "en" ? "en-GB" : "pl-PL")} ${data.priceCurrency || "PLN"} / m²`
+                    : String(data.area || "").trim()
+                      ? `${String(data.area).trim()} m²`
+                      : undefined
+                }
+                transactionLabel={data.transactionType === "RENT" ? ao.rent : ao.sell}
+                isRent={data.transactionType === "RENT"}
+                locationHeading={ao.sumLocation}
+                locationLine={locationDisplayLine}
+                paramsHeading={ao.sumParams}
+                badges={[
+                  { label: ao.sumRowPropertyType || "Typ", value: propertyTypeLabel || "" },
+                  { label: ao.sumRowArea || "Metraż", value: String(data.area || "").trim() ? `${String(data.area).trim()} m²` : "" },
+                  { label: ao.sumRooms, value: data.rooms ? String(data.rooms) : "" },
+                  { label: ao.sumFloor, value: data.floor != null && data.floor !== "" ? String(data.floor) : "" },
+                  { label: ao.sumYear, value: data.buildYear ? String(data.buildYear) : "" },
+                  {
+                    label: ao.sumRent,
+                    value: String(data.rent || "").trim() ? `${String(data.rent).trim()} PLN` : "",
+                  },
+                  { label: ao.sumHeating, value: String(data.heating || "").trim() },
+                  {
+                    label: ao.sumFurnished,
+                    value:
+                      data.isFurnished === true
+                        ? ao.yes
+                        : data.isFurnished === false
+                          ? ao.no
+                          : "",
+                  },
+                  { label: ao.conditionLabel, value: conditionLabel || "" },
+                ]}
+                amenitiesHeading={ao.sumSecAmenities || ao.sumAmenitiesMedia}
+                amenities={Array.isArray(data.amenities) ? data.amenities.filter(Boolean) : []}
+                noAmenities={ao.sumNoAmenities}
+                mediaHeading={ao.sumAmenitiesMedia}
+                mediaLine={`${ao.sumPhotos}: ${finalImages.length} · ${ao.sumFloorPlan}: ${finalFloorPlan ? "1" : "0"}`}
+                images={finalImages}
+                floorPlan={finalFloorPlan}
+                noPhotos={ao.sumNoPhotos}
+                photoAlt={(n) => ao.sumPhotoPreviewAlt.replace("{n}", String(n))}
+                floorPlanAlt={ao.sumFloorPreviewAlt}
+                descriptionHeading={ao.sumSecOffer || "Opis"}
+                descriptionText={descriptionText}
+                detailSections={summarySections.filter((s) => s.title !== ao.sumSecOffer && s.title !== ao.sumSecAmenities)}
+              />
 
               {isLoggedIn ? (
                 <PublicationWalletPanel
@@ -2979,8 +2926,35 @@ export default function ClientForm({
       <PublishAuthGate
         open={authGateOpen}
         brand="home"
-        onClose={() => setAuthGateOpen(false)}
+        context={authGateContext}
+        onClose={() => {
+          pendingAiAfterAuthRef.current = false;
+          setAuthGateOpen(false);
+        }}
         onAuthenticated={async (report) => {
+          if (pendingAiAfterAuthRef.current || authGateContext === "ai_description") {
+            pendingAiAfterAuthRef.current = false;
+            report("Generuję opis AI…");
+            setAuthGateOpen(false);
+            // Odśwież sesję po auth
+            const check = await fetch("/api/auth/check", { credentials: "include", cache: "no-store" })
+              .then((r) => r.json())
+              .catch(() => ({}));
+            if (check?.loggedIn && check?.user?.id) {
+              setActiveUser({
+                isLoggedIn: true,
+                id: check.user.id,
+                name: check.user.name,
+                email: check.user.email,
+                phone: check.user.phone,
+                role: check.user.role,
+                isEmailVerified: check.user.isEmailVerified,
+                isVerifiedPhone: check.user.isVerifiedPhone,
+              });
+            }
+            await runGenerateAI();
+            return;
+          }
           report("Publikuję ofertę nieruchomości…");
           await publishAfterAuth();
         }}

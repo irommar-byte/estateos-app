@@ -7,7 +7,7 @@ export const OFFER_AMENITY_DEFS = [
   { id: "garden", dictKey: "amenityGarden" as const, field: "hasGarden" as const },
   { id: "duplex", dictKey: "amenityDuplex" as const, field: "isDuplex" as const },
   { id: "elevator", dictKey: "amenityElevator" as const, field: "hasElevator" as const },
-  { id: "ac", dictKey: "amenityAc" as const, field: "hasAirConditioning" as const },
+  // Klimatyzacja usunięta z UI — synchronicznie z aplikacją (brak w AddOffer / EditOffer).
 ] as const;
 
 export type OfferAmenityId = (typeof OFFER_AMENITY_DEFS)[number]["id"];

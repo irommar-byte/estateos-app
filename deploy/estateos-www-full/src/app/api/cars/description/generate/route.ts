@@ -12,7 +12,13 @@ import {
 export async function POST(req: Request) {
   const userId = await resolveWebUserId(req);
   if (!userId) {
-    return NextResponse.json({ success: false, error: "UNAUTHORIZED" }, { status: 401 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Generator opisów AI jest dostępny dla zalogowanych użytkowników. Zarejestruj się lub zaloguj.",
+      },
+      { status: 401 },
+    );
   }
 
   let body: CarDescriptionDraftInput;

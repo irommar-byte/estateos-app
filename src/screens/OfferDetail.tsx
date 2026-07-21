@@ -660,7 +660,6 @@ export default function OfferDetail({ route, navigation }: any) {
   if (isTrue(offer?.hasGarden)) activeAmenities.push(t('offer.shared.amenities.garden'));
   if (isTrue(offer?.isTwoLevel)) activeAmenities.push(t('offer.shared.amenities.twoLevel'));
   if (isTrue(offer?.petsAllowed)) activeAmenities.push(t('offer.shared.amenities.petsAllowed'));
-  if (isTrue(offer?.airConditioning)) activeAmenities.push(t('offer.shared.amenities.airConditioning'));
   const heatingLabel = formatOfferHeatingLabel(offer?.heating, t);
   const furnishedLabel = isTrue(offer?.isFurnished) ? t('offer.shared.furnished.yes') : t('offer.shared.furnished.no');
   const adminFeeNumber = Number(String(offer?.adminFee ?? '').replace(/[^\d.,-]/g, '').replace(',', '.'));
