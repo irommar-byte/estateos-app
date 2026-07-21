@@ -3,7 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Car, ChevronDown, ChevronUp, Heart, Keyboard, ScanLine, Search, Upload, UserRound } from "lucide-react";
+import {
+  Car,
+  ChevronDown,
+  ChevronUp,
+  Heart,
+  Keyboard,
+  Loader2,
+  ScanLine,
+  Search,
+  Upload,
+  UserRound,
+} from "lucide-react";
 import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
 import CatalogBrandHero from "@/components/catalog/CatalogBrandHero";
 import {
@@ -13,6 +24,7 @@ import {
 import OtomotoImportHeroCard from "@/components/cars/OtomotoImportHeroCard";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import InfiniteHorizontalRail from "@/components/catalog/InfiniteHorizontalRail";
+import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { EstateOsCarListing } from "@/lib/carsCatalog";
 import { isCarFavoriteId, loadCarFavoriteIds } from "@/lib/carFavoritesStorage";
@@ -24,9 +36,7 @@ import {
   type CarSortKey,
 } from "@/lib/carsPresentation";
 import { fmtCars, getCarSortOptions } from "@/i18n/carsDictionary";
-import { carAlertWarningClass } from "@/components/cars/carFormStyles";
 
-type CatalogTab = "all" | "favorites" | "mine";
 type AddPath = "scan" | "upload" | "manual" | "otomoto";
 
 type Filters = {
@@ -97,27 +107,23 @@ export default function CarsCatalogClient() {
   const sortOptions = useMemo(() => getCarSortOptions(locale), [locale]);
 
   const [cars, setCars] = useState<EstateOsCarListing[]>([]);
+  const [myCars, setMyCars] = useState<EstateOsCarListing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<CatalogTab>("all");
-  const [, setFavoriteIds] = useState<number[]>([]);
+  const [loadingMine, setLoadingMine] = useState(false);
+  const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [addChooserOpen, setAddChooserOpen] = useState(false);
   const [activeAddPath, setActiveAddPath] = useState<AddPath | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
-  const loadCars = useCallback(async (activeTab: CatalogTab, isLoggedIn: boolean) => {
+  const loadCars = useCallback(async () => {
     setLoading(true);
     try {
-      const endpoint = activeTab === "mine" && isLoggedIn ? "/api/cars?scope=mine" : "/api/cars";
-      const res = await fetch(endpoint, { cache: "no-store", credentials: "include" });
+      const res = await fetch("/api/cars", { cache: "no-store", credentials: "include" });
       const data = (await res.json()) as EstateOsCarListing[];
-      let rows = Array.isArray(data) ? data : [];
-      if (activeTab === "favorites") {
-        const ids = loadCarFavoriteIds();
-        rows = rows.filter((car) => isCarFavoriteId(car.id, ids));
-      }
-      setCars(rows);
+      setCars(Array.isArray(data) ? data : []);
     } catch {
       setCars([]);
     } finally {
@@ -125,9 +131,51 @@ export default function CarsCatalogClient() {
     }
   }, []);
 
+  const loadMine = useCallback(async () => {
+    setLoadingMine(true);
+    try {
+      const res = await fetch("/api/cars?scope=mine", { cache: "no-store", credentials: "include" });
+      if (res.status === 401) {
+        setMyCars([]);
+        return;
+      }
+      const data = (await res.json()) as EstateOsCarListing[];
+      setMyCars(Array.isArray(data) ? data : []);
+    } catch {
+      setMyCars([]);
+    } finally {
+      setLoadingMine(false);
+    }
+  }, []);
+
+  const deleteMineCar = useCallback(
+    async (carId: number) => {
+      if (!window.confirm(dict.cars.owner.confirmDelete)) return;
+      setDeletingId(carId);
+      try {
+        const response = await fetch(`/api/cars/${carId}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          alert(typeof data?.error === "string" ? data.error : dict.cars.owner.deleteFailed);
+          return;
+        }
+        setMyCars((prev) => prev.filter((car) => car.id !== carId));
+        setCars((prev) => prev.filter((car) => car.id !== carId));
+      } catch {
+        alert(dict.cars.owner.deleteNetworkError);
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [dict.cars.owner.confirmDelete, dict.cars.owner.deleteFailed, dict.cars.owner.deleteNetworkError],
+  );
+
   useEffect(() => {
     setFavoriteIds(loadCarFavoriteIds());
-  }, [tab]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,16 +184,22 @@ export default function CarsCatalogClient() {
         const profileRes = await fetch("/api/user/profile", { cache: "no-store", credentials: "include" });
         const profile = await profileRes.json().catch(() => ({}));
         const isLogged = profileRes.ok && Boolean(profile?.id || profile?.user?.id);
-        if (!cancelled) setLoggedIn(isLogged);
-        if (!cancelled) await loadCars(tab, isLogged);
+        if (cancelled) return;
+        setLoggedIn(isLogged);
+        await loadCars();
+        if (isLogged) await loadMine();
+        else setMyCars([]);
       } catch {
-        if (!cancelled) setCars([]);
+        if (!cancelled) {
+          setCars([]);
+          setMyCars([]);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [tab, loadCars]);
+  }, [loadCars, loadMine]);
 
   const makeOptions = useMemo(() => {
     const map = new Map<string, string>();
