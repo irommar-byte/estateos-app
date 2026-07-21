@@ -9,7 +9,7 @@ function buildAztecReader() {
   const hints = new Map<DecodeHintType, unknown>();
   hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.AZTEC]);
   hints.set(DecodeHintType.TRY_HARDER, true);
-  return new BrowserMultiFormatReader(hints, 160);
+  return new BrowserMultiFormatReader(hints, 250);
 }
 
 export type StartAztecVideoScanOptions = {
@@ -19,7 +19,11 @@ export type StartAztecVideoScanOptions = {
   onPayload: (payload: string) => void;
   /** Freeze the live preview (pause video + disable tracks) before processing. */
   onLockFrame?: () => void;
-  stableHitsRequired?: number;
+  /**
+   * Optional server-side decode of a JPEG frame (same path as photo upload).
+   * Return Aztec payload text on success, or null/empty on miss.
+   */
+  decodeFrameOnServer?: (blob: Blob) => Promise<string | null>;
 };
 
 /** Pause preview so the last decoded frame stays on screen. */
@@ -40,21 +44,100 @@ export function freezeVideoPreview(video: HTMLVideoElement | null, stream: Media
   });
 }
 
+function canvasToJpegBlob(canvas: HTMLCanvasElement, quality = 0.92): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), "image/jpeg", quality);
+  });
+}
+
+function drawVideoVariants(video: HTMLVideoElement): HTMLCanvasElement[] {
+  const vw = video.videoWidth || 0;
+  const vh = video.videoHeight || 0;
+  if (vw < 40 || vh < 40) return [];
+
+  const out: HTMLCanvasElement[] = [];
+
+  const full = document.createElement("canvas");
+  const maxSide = 1280;
+  const scale = Math.min(1, maxSide / Math.max(vw, vh));
+  full.width = Math.max(1, Math.round(vw * scale));
+  full.height = Math.max(1, Math.round(vh * scale));
+  const fullCtx = full.getContext("2d", { willReadFrequently: true });
+  if (!fullCtx) return [];
+  fullCtx.drawImage(video, 0, 0, full.width, full.height);
+  out.push(full);
+
+  // Center square crop — matches the on-screen scan frame.
+  const side = Math.floor(Math.min(full.width, full.height) * 0.72);
+  const sx = Math.floor((full.width - side) / 2);
+  const sy = Math.floor((full.height - side) / 2);
+  if (side >= 120) {
+    const crop = document.createElement("canvas");
+    crop.width = Math.min(900, side);
+    crop.height = crop.width;
+    const cropCtx = crop.getContext("2d", { willReadFrequently: true });
+    if (cropCtx) {
+      cropCtx.drawImage(full, sx, sy, side, side, 0, 0, crop.width, crop.height);
+      out.push(crop);
+    }
+  }
+
+  // Slightly larger center region (helps when code is near frame edge).
+  const side2 = Math.floor(Math.min(full.width, full.height) * 0.88);
+  const sx2 = Math.floor((full.width - side2) / 2);
+  const sy2 = Math.floor((full.height - side2) / 2);
+  if (side2 >= 120 && side2 !== side) {
+    const crop2 = document.createElement("canvas");
+    crop2.width = Math.min(1000, side2);
+    crop2.height = crop2.width;
+    const crop2Ctx = crop2.getContext("2d", { willReadFrequently: true });
+    if (crop2Ctx) {
+      crop2Ctx.drawImage(full, sx2, sy2, side2, side2, 0, 0, crop2.width, crop2.height);
+      out.push(crop2);
+    }
+  }
+
+  return out;
+}
+
+function tryDecodeLocal(reader: BrowserMultiFormatReader, canvases: HTMLCanvasElement[]): string | null {
+  for (const canvas of canvases) {
+    try {
+      const result = reader.decodeFromCanvas(canvas);
+      const text = result?.getText()?.trim();
+      if (text) return text;
+    } catch {
+      /* no code in this variant */
+    }
+  }
+  return null;
+}
+
+/**
+ * Live Aztec scan: grab frames from an already-playing video element,
+ * try local ZXing, then fall back to the same server decoder used by photo upload.
+ */
 export function startAztecVideoScan({
   video,
   onPhase,
   onPayload,
   onLockFrame,
-  stableHitsRequired = 2,
+  decodeFrameOnServer,
 }: StartAztecVideoScanOptions) {
   const reader = buildAztecReader();
   let stopped = false;
-  let lastPayload = "";
-  let stableHits = 0;
   let captured = false;
+  let inFlight = false;
+  let lastServerAt = 0;
+  let consecutiveLocalHits = 0;
+  let lastLocalPayload = "";
+  let raf = 0;
+  let timer: number | null = null;
 
   const stop = () => {
     stopped = true;
+    if (raf) cancelAnimationFrame(raf);
+    if (timer != null) window.clearInterval(timer);
     try {
       reader.reset();
     } catch {
@@ -64,56 +147,83 @@ export function startAztecVideoScan({
 
   const commitPayload = (payload: string) => {
     if (captured || stopped) return;
+    const text = payload.trim();
+    if (!text) return;
     captured = true;
     onPhase("hold");
     stop();
     onLockFrame?.();
     onPhase("decoding");
-    onPayload(payload);
+    onPayload(text);
   };
 
-  const handleResult = (result: { getText: () => string } | undefined) => {
-    if (stopped || captured) return;
-
-    const payload = result?.getText()?.trim() || "";
-    if (!payload) {
+  const tick = async () => {
+    if (stopped || captured || inFlight) return;
+    if (video.readyState < 2 || video.paused || video.ended) {
       onPhase("searching");
       return;
     }
 
-    if (payload === lastPayload) {
-      stableHits += 1;
-    } else {
-      lastPayload = payload;
-      stableHits = 1;
-    }
-
-    if (stableHits < stableHitsRequired) {
-      onPhase("hold");
-      return;
-    }
-
-    commitPayload(payload);
-  };
-
-  onPhase("searching");
-
-  void reader
-    .decodeFromVideoElementContinuously(video, (result, error) => {
-      if (stopped || captured) return;
-      if (error) {
-        if (stableHits > 0) {
-          stableHits = 0;
-          lastPayload = "";
-        }
+    inFlight = true;
+    try {
+      const canvases = drawVideoVariants(video);
+      if (!canvases.length) {
         onPhase("searching");
         return;
       }
-      handleResult(result);
-    })
-    .catch(() => {
-      if (!stopped && !captured) onPhase("position");
-    });
+
+      const local = tryDecodeLocal(reader, canvases);
+      if (local) {
+        if (local === lastLocalPayload) consecutiveLocalHits += 1;
+        else {
+          lastLocalPayload = local;
+          consecutiveLocalHits = 1;
+        }
+        // One solid local hit is enough — previous continuous decoder kept resetting on misses.
+        if (consecutiveLocalHits >= 1) {
+          commitPayload(local);
+          return;
+        }
+        onPhase("hold");
+        return;
+      }
+
+      consecutiveLocalHits = 0;
+      lastLocalPayload = "";
+      onPhase("searching");
+
+      if (!decodeFrameOnServer) return;
+      const now = Date.now();
+      if (now - lastServerAt < 1400) return;
+      lastServerAt = now;
+
+      // Prefer center crop for server (matches UI frame + upload success path).
+      const preferred = canvases[1] || canvases[0];
+      if (!preferred) return;
+      const blob = await canvasToJpegBlob(preferred, 0.9);
+      if (!blob || stopped || captured) return;
+
+      onPhase("hold");
+      const payload = await decodeFrameOnServer(blob);
+      if (stopped || captured) return;
+      if (payload?.trim()) {
+        commitPayload(payload.trim());
+        return;
+      }
+      onPhase("searching");
+    } catch {
+      if (!stopped && !captured) onPhase("searching");
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  onPhase("searching");
+  // Interval is more reliable than depending solely on ZXing's continuous callback.
+  timer = window.setInterval(() => {
+    void tick();
+  }, 450);
+  void tick();
 
   return stop;
 }

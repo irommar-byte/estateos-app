@@ -116,6 +116,24 @@ export default function CarRegistrationScanGate({
     onPrefill(prefill, missingFields);
   };
 
+  const decodeFrameOnServer = useCallback(async (blob: Blob) => {
+    try {
+      const formData = new FormData();
+      formData.append("file", blob, "live-frame.jpg");
+      const response = await fetch("/api/cars/decode-registration", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return null;
+      const payload = String(data?.aztecPayload || "").trim();
+      return payload || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const beginScanning = useCallback(
     (video: HTMLVideoElement) => {
       if (lockedRef.current) return;
@@ -125,9 +143,10 @@ export default function CarRegistrationScanGate({
         onPhase: setPhase,
         onLockFrame: lockPreview,
         onPayload: (payload) => decodePayloadRef.current(payload),
+        decodeFrameOnServer,
       });
     },
-    [lockPreview],
+    [decodeFrameOnServer, lockPreview],
   );
 
   const decodeAztecPayload = useCallback(

@@ -11,7 +11,7 @@ import { getWebFormData } from "@/lib/requestFormData";
 
 const rateByIp = new Map<string, { count: number; resetAt: number }>();
 const WINDOW_MS = 60_000;
-const MAX_PER_WINDOW = 45;
+const MAX_PER_WINDOW = 90;
 
 function checkRateLimit(ip: string) {
   const now = Date.now();
@@ -66,6 +66,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
+      aztecPayload,
       parsed,
       prefill,
       missingFields,
