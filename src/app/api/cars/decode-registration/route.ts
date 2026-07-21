@@ -11,7 +11,7 @@ import { getWebFormData } from "@/lib/requestFormData";
 
 const rateByIp = new Map<string, { count: number; resetAt: number }>();
 const WINDOW_MS = 60_000;
-const MAX_PER_WINDOW = 30;
+const MAX_PER_WINDOW = 45;
 
 function checkRateLimit(ip: string) {
   const now = Date.now();
@@ -26,9 +26,18 @@ function checkRateLimit(ip: string) {
 }
 
 export async function POST(req: Request) {
-  const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "unknown";
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json({ error: "Zbyt wiele prób odczytu dowodu." }, { status: 429 });
+  const forwarded = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim();
+  const realIp = req.headers.get("x-real-ip")?.trim() || "";
+  const cfIp = req.headers.get("cf-connecting-ip")?.trim() || "";
+  const baseIp = cfIp || forwarded || realIp || "unknown";
+  const ua = (req.headers.get("user-agent") || "na").slice(0, 120);
+  const rateKey = baseIp === "unknown" ? `${baseIp}:${ua}` : baseIp;
+
+  if (!checkRateLimit(rateKey)) {
+    return NextResponse.json(
+      { error: "Zbyt wiele prób odczytu dowodu. Odczekaj chwilę i spróbuj ponownie." },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
   }
 
   try {
