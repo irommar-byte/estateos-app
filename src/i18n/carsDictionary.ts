@@ -229,6 +229,7 @@ export type CarsDictionary = {
     statsMine: string;
     statsAll: string;
     addListing: string;
+    findListing: string;
     otomotoImportTitle: string;
     otomotoImportBody: string;
     otomotoImportPlaceholder: string;
@@ -604,6 +605,7 @@ const pl: CarsDictionary = {
     statsMine: "{n} Twoich ogłoszeń",
     statsAll: "{n} aktywnych ogłoszeń w katalogu",
     addListing: "Dodaj ogłoszenie",
+    findListing: "Znajdź",
     otomotoImportTitle: "Masz ogłoszenie na Otomoto?",
     otomotoImportBody:
       "Wklej link — w jeden moment przeniesiesz zdjęcia, opis i całą specyfikację do formularza EstateOS™Car.",
@@ -975,6 +977,7 @@ const en: CarsDictionary = {
     statsMine: "{n} of your listings",
     statsAll: "{n} active listings in catalog",
     addListing: "Add listing",
+    findListing: "Find",
     otomotoImportTitle: "Already listed on Otomoto?",
     otomotoImportBody:
       "Paste the link — move photos, description and full specs into the EstateOS™Car form in one step.",
@@ -1346,6 +1349,7 @@ const uk: CarsDictionary = {
     statsMine: "{n} ваших оголошень",
     statsAll: "{n} активних оголошень у каталозі",
     addListing: "Додати оголошення",
+    findListing: "Знайти",
     otomotoImportTitle: "Маєте оголошення на Otomoto?",
     otomotoImportBody:
       "Вставте посилання — за мить перенесете фото, опис і всю специфікацію у форму EstateOS™Car.",
