@@ -382,6 +382,9 @@ export default function CarsCatalogClient() {
           className="object-cover transition duration-500 group-hover:scale-[1.03]"
           unoptimized
         />
+        <div className="absolute right-3 top-3 z-20">
+          <CarFavoriteButton carId={car.id} onChange={(ids) => setFavoriteIds(ids)} />
+        </div>
       </div>
       <div className="space-y-2 p-4">
         <p className="text-[11px] font-black uppercase tracking-[0.12em] text-sky-300">
@@ -683,7 +686,7 @@ export default function CarsCatalogClient() {
               <h2 className="text-lg font-semibold tracking-tight">{cat.featuredBadge} · 6</h2>
               <span className="text-xs text-[var(--eos-muted)]">Top oferty</span>
             </div>
-            <FeaturedSpotlightCarousel items={featuredSpotlightItems} />
+            <FeaturedSpotlightCarousel items={featuredSpotlightItems} accent="car" onCarFavoriteChange={setFavoriteIds} />
           </section>
         ) : null}
 
