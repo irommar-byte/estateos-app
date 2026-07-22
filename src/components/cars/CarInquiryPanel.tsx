@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { dispatchContactUnreadRefresh } from "@/lib/contactServiceWeb";
 import { formatCarPrice } from "@/lib/carsPresentation";
+import { formatDisplayPhone, toTelHref } from "@/lib/carContactPhone";
 import { useLocale } from "@/contexts/LocaleContext";
 import { carAlertErrorClass, carAlertInfoClass } from "@/components/cars/carFormStyles";
 import { fmtCars } from "@/i18n/carsDictionary";
@@ -20,6 +21,7 @@ type CarInquiryPanelProps = {
   city: string;
   sellerUserId: number | null;
   currentUserId?: number | null;
+  sellerPhone?: string | null;
 };
 
 export default function CarInquiryPanel({
@@ -32,10 +34,13 @@ export default function CarInquiryPanel({
   city,
   sellerUserId,
   currentUserId,
+  sellerPhone = null,
 }: CarInquiryPanelProps) {
   const router = useRouter();
   const { dict, locale } = useLocale();
   const i = dict.cars.inquiry;
+  const callHref = sellerPhone ? toTelHref(sellerPhone) : "";
+  const displayPhone = sellerPhone ? formatDisplayPhone(sellerPhone) : "";
 
   const viewingOptions = useMemo(
     () => [i.viewingAsap, i.viewingWeek, i.viewingNextWeek, i.viewingQuestionOnly],
@@ -119,6 +124,18 @@ export default function CarInquiryPanel({
         <p className="text-xs font-black uppercase tracking-[0.16em] text-sky-600 dark:text-sky-300">{i.title}</p>
         <p className="mt-2 text-sm text-[var(--eos-muted)]">{summary}</p>
       </div>
+
+      {callHref ? (
+        <a
+          href={callHref}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-emerald-400/45 bg-gradient-to-b from-emerald-400/30 to-emerald-500/10 px-4 py-3.5 text-xs font-black uppercase tracking-[0.14em] text-emerald-900 shadow-[0_12px_32px_rgba(16,185,129,0.2)] transition hover:from-emerald-400/40 hover:to-emerald-500/15 dark:text-emerald-100"
+        >
+          <Phone className="size-4" aria-hidden />
+          {i.callSeller}
+          {displayPhone ? <span className="font-semibold normal-case tracking-normal opacity-80">· {displayPhone}</span> : null}
+        </a>
+      ) : null}
+      {callHref ? <p className="text-center text-[11px] text-[var(--eos-muted)]">{i.callSellerHint}</p> : null}
 
       <label className="grid gap-1.5 text-sm">
         <span className="flex items-center gap-2 text-[var(--eos-muted)]">

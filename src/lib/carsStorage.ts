@@ -32,6 +32,8 @@ export type CarListingRecord = {
   firstRegistrationDate: string;
   insuranceValidUntil: string;
   restrictVehicleDocs: boolean;
+  /** Gdy true — na stronie oferty widać przycisk „Zadzwoń” z numerem sprzedającego. */
+  showContactPhone: boolean;
   promotedUntil: string | null;
   createdAt: string;
   updatedAt: string;
@@ -150,6 +152,7 @@ function mapRow(row: any): CarListingRecord {
     firstRegistrationDate: toStringValue(row.firstRegistrationDate),
     insuranceValidUntil: toStringValue(row.insuranceValidUntil),
     restrictVehicleDocs: Boolean(Number(row.restrictVehicleDocs || 0)),
+    showContactPhone: Boolean(Number(row.showContactPhone || 0)),
     promotedUntil: row.promotedUntil ? new Date(row.promotedUntil).toISOString() : null,
     createdAt: new Date(row.createdAt).toISOString(),
     updatedAt: new Date(row.updatedAt).toISOString(),
@@ -172,6 +175,7 @@ const ALLOWED_CAR_LISTING_COLUMNS = new Set([
   "firstRegistrationDate",
   "insuranceValidUntil",
   "restrictVehicleDocs",
+  "showContactPhone",
   "promotedUntil",
   "exteriorColor",
   "vehicleType",
@@ -212,6 +216,7 @@ export async function ensureCarsStorage() {
   await ensureCarListingColumn("firstRegistrationDate", "VARCHAR(20) NULL");
   await ensureCarListingColumn("insuranceValidUntil", "VARCHAR(20) NULL");
   await ensureCarListingColumn("restrictVehicleDocs", "TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureCarListingColumn("showContactPhone", "TINYINT(1) NOT NULL DEFAULT 0");
   await ensureCarListingColumn("promotedUntil", "DATETIME(3) NULL");
   await ensureCarListingColumn("exteriorColor", "VARCHAR(80) NULL");
   await ensureCarListingColumn("vehicleType", "VARCHAR(32) NULL DEFAULT 'car'");
@@ -276,6 +281,7 @@ export async function createCarListing(input: {
   firstRegistrationDate?: string;
   insuranceValidUntil?: string;
   restrictVehicleDocs?: boolean;
+  showContactPhone?: boolean;
 }): Promise<CarListingRecord> {
   await ensureCarsStorage();
   const imageList = Array.isArray(input.images)
@@ -289,8 +295,8 @@ export async function createCarListing(input: {
       (userId, title, make, model, year, mileageKm, fuelType, transmission, bodyType, vehicleType, exteriorColor,
        generation, enginePower, engineCapacity, trimVersion, doorCount, pricePln, city,
        imageUrl, images, description, cityLat, cityLng, localityCountry, vin, registrationNumber,
-       firstRegistrationDate, insuranceValidUntil, restrictVehicleDocs)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       firstRegistrationDate, insuranceValidUntil, restrictVehicleDocs, showContactPhone)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     input.userId,
     input.title,
@@ -321,6 +327,7 @@ export async function createCarListing(input: {
     input.firstRegistrationDate ?? "",
     input.insuranceValidUntil ?? "",
     input.restrictVehicleDocs ? 1 : 0,
+    input.showContactPhone ? 1 : 0,
   );
 
   const created = await prisma.$queryRawUnsafe<any[]>(
@@ -358,6 +365,7 @@ export type CarListingUpdateInput = {
   firstRegistrationDate?: string;
   insuranceValidUntil?: string;
   restrictVehicleDocs?: boolean;
+  showContactPhone?: boolean;
 };
 
 export async function updateCarListing(
@@ -383,7 +391,7 @@ export async function updateCarListing(
           trimVersion = ?, doorCount = ?, pricePln = ?, city = ?, imageUrl = ?, images = ?,
           description = ?, cityLat = ?, cityLng = ?, localityCountry = ?, vin = ?,
           registrationNumber = ?, firstRegistrationDate = ?, insuranceValidUntil = ?,
-          restrictVehicleDocs = ?,
+          restrictVehicleDocs = ?, showContactPhone = ?,
           updatedAt = CURRENT_TIMESTAMP(3)
       WHERE id = ? AND userId = ?
     `,
@@ -415,6 +423,7 @@ export async function updateCarListing(
     String(input.firstRegistrationDate ?? "").trim() || existing.firstRegistrationDate,
     String(input.insuranceValidUntil ?? "").trim() || existing.insuranceValidUntil,
     input.restrictVehicleDocs == null ? (existing.restrictVehicleDocs ? 1 : 0) : input.restrictVehicleDocs ? 1 : 0,
+    input.showContactPhone == null ? (existing.showContactPhone ? 1 : 0) : input.showContactPhone ? 1 : 0,
     id,
     userId,
   );
