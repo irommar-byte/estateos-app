@@ -10,6 +10,7 @@ import {
   howToListJsonLd,
   webPageJsonLd,
 } from '@/lib/seo/freeListingContent';
+import { freeListingOpenGraph, freeListingTwitter } from '@/lib/freeListingOgMetadata';
 
 const TITLE = 'Wystaw nieruchomość za darmo — mieszkanie, dom, działka';
 const DESCRIPTION =
@@ -19,19 +20,24 @@ export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
   keywords: [...FREE_LISTING_KEYWORDS],
-  openGraph: {
-    title: `${TITLE} | EstateOS™Home`,
-    description: DESCRIPTION,
-    url: FREE_LISTING_URLS.home,
-    siteName: 'EstateOS™Home',
-    locale: 'pl_PL',
-    type: 'website',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: `${TITLE} | EstateOS™Home`,
-    description: DESCRIPTION,
-  },
+  openGraph: freeListingOpenGraph(
+    {
+      title: `${TITLE} | EstateOS™Home`,
+      description: DESCRIPTION,
+      url: FREE_LISTING_URLS.home,
+      siteName: 'EstateOS™Home',
+      locale: 'pl_PL',
+      type: 'website',
+    },
+    'home',
+  ),
+  twitter: freeListingTwitter(
+    {
+      title: `${TITLE} | EstateOS™Home`,
+      description: DESCRIPTION,
+    },
+    'home',
+  ),
   alternates: { canonical: FREE_LISTING_URLS.home },
   robots: { index: true, follow: true },
 };
