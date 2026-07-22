@@ -9,6 +9,7 @@ type PromoteListingButtonProps = {
   successLabel?: string;
   onPromoted?: () => void;
   className?: string;
+  buttonClassName?: string;
   disabled?: boolean;
 };
 
@@ -18,6 +19,7 @@ export default function PromoteListingButton({
   successLabel = "Wyróżniono",
   onPromoted,
   className = "",
+  buttonClassName = "",
   disabled = false,
 }: PromoteListingButtonProps) {
   const [loading, setLoading] = useState(false);
@@ -44,13 +46,16 @@ export default function PromoteListingButton({
     }
   };
 
+  const defaultButtonClass =
+    "inline-flex items-center gap-1.5 rounded-full border border-amber-500/45 bg-amber-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-amber-900 disabled:opacity-60 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-400";
+
   return (
     <div className={className}>
       <button
         type="button"
         onClick={() => void promote()}
         disabled={loading || disabled || done}
-        className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/45 bg-amber-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-amber-900 disabled:opacity-60 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-400"
+        className={buttonClassName || defaultButtonClass}
       >
         {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Crown className="size-3.5" />}
         {done ? successLabel : label}

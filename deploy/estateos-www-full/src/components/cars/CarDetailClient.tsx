@@ -2,18 +2,20 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Calendar, Fuel, Gauge, MapPin, Settings2, Car as CarIcon, Cog, Palette } from "lucide-react";
+import { Calendar, Fuel, Gauge, MapPin, Phone, Settings2, Car as CarIcon, Cog, Palette } from "lucide-react";
 import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
 import CarInquiryPanel from "@/components/cars/CarInquiryPanel";
 import CarOwnerActions from "@/components/cars/CarOwnerActions";
 import CarVehicleChecksClient from "@/components/cars/CarVehicleChecksClient";
 import { useLocale } from "@/contexts/LocaleContext";
+import { formatDisplayPhone, toTelHref } from "@/lib/carContactPhone";
 import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
 import type { CarListingRecord } from "@/lib/carsStorage";
 
 type CarDetailClientProps = {
   car: CarListingRecord;
   currentUserId: number | null;
+  sellerPhone?: string | null;
 };
 
 function SpecItem({ icon: Icon, label, value }: { icon: typeof Fuel; label: string; value: string }) {
@@ -28,10 +30,12 @@ function SpecItem({ icon: Icon, label, value }: { icon: typeof Fuel; label: stri
   );
 }
 
-export default function CarDetailClient({ car, currentUserId }: CarDetailClientProps) {
+export default function CarDetailClient({ car, currentUserId, sellerPhone = null }: CarDetailClientProps) {
   const { dict, locale } = useLocale();
   const d = dict.cars.detail;
   const imageSrc = carImageSrc(car.imageUrl);
+  const callHref = sellerPhone ? toTelHref(sellerPhone) : "";
+  const displayPhone = sellerPhone ? formatDisplayPhone(sellerPhone) : "";
 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-32 text-[var(--eos-text)] sm:px-6">
@@ -72,17 +76,42 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
               <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--eos-border)] pb-5">
                 <div>
                   <p className="text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">{d.price}</p>
-                  <p className="mt-1 text-3xl font-bold text-sky-600 dark:text-sky-300 sm:text-4xl">{formatCarPrice(car.pricePln, locale)}</p>
+                  <p className="mt-1 text-3xl font-bold text-sky-600 dark:text-sky-300 sm:text-4xl">
+                    {formatCarPrice(car.pricePln, locale)}
+                  </p>
                 </div>
-                {car.userId ? (
-                  <Link
-                    href={`/profil/${car.userId}`}
-                    className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-[var(--eos-text)] hover:border-sky-400/40"
-                  >
-                    {d.sellerProfile}
-                  </Link>
-                ) : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  {callHref ? (
+                    <a
+                      href={callHref}
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-400/40 bg-gradient-to-b from-emerald-400/25 to-emerald-500/10 px-5 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-emerald-800 shadow-[0_10px_28px_rgba(16,185,129,0.18)] transition hover:from-emerald-400/35 hover:to-emerald-500/15 dark:text-emerald-200"
+                    >
+                      <Phone className="size-3.5" aria-hidden />
+                      {d.callCta}
+                    </a>
+                  ) : null}
+                  {car.userId ? (
+                    <Link
+                      href={`/profil/${car.userId}`}
+                      className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-[var(--eos-text)] hover:border-sky-400/40"
+                    >
+                      {d.sellerProfile}
+                    </Link>
+                  ) : null}
+                </div>
               </div>
+
+              {callHref && displayPhone ? (
+                <p className="text-sm text-[var(--eos-muted)]">
+                  {d.callHint}{" "}
+                  <a
+                    href={callHref}
+                    className="font-semibold text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+                  >
+                    {displayPhone}
+                  </a>
+                </p>
+              ) : null}
 
               <CarOwnerActions carId={car.id} ownerUserId={car.userId} currentUserId={currentUserId} />
 
@@ -97,7 +126,9 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
                   {car.exteriorColor ? <SpecItem icon={Palette} label={d.color} value={car.exteriorColor} /> : null}
                   {car.generation ? <SpecItem icon={Calendar} label={d.generation} value={car.generation} /> : null}
                   {car.enginePower ? <SpecItem icon={Cog} label={d.power} value={car.enginePower} /> : null}
-                  {car.engineCapacity ? <SpecItem icon={Cog} label={d.capacity} value={`${car.engineCapacity} cm³`} /> : null}
+                  {car.engineCapacity ? (
+                    <SpecItem icon={Cog} label={d.capacity} value={`${car.engineCapacity} cm³`} />
+                  ) : null}
                   {car.trimVersion ? <SpecItem icon={CarIcon} label={d.trim} value={car.trimVersion} /> : null}
                   {car.doorCount ? <SpecItem icon={CarIcon} label={d.doors} value={String(car.doorCount)} /> : null}
                   <SpecItem icon={MapPin} label={d.city} value={car.city} />
@@ -105,13 +136,15 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
               </div>
 
               {car.description?.trim() ? (
-              <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-5">
-                <p className="text-sm font-semibold text-[var(--eos-text)]">{d.description}</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--eos-muted)]">{car.description.trim()}</p>
-              </div>
-            ) : null}
+                <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-5">
+                  <p className="text-sm font-semibold text-[var(--eos-text)]">{d.description}</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--eos-muted)]">
+                    {car.description.trim()}
+                  </p>
+                </div>
+              ) : null}
 
-            <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-5">
+              <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-5">
                 <p className="text-sm font-semibold text-[var(--eos-text)]">{d.aboutListing}</p>
                 <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{d.aboutBody}</p>
               </div>
@@ -138,6 +171,7 @@ export default function CarDetailClient({ car, currentUserId }: CarDetailClientP
                 city={car.city}
                 sellerUserId={car.userId}
                 currentUserId={currentUserId}
+                sellerPhone={sellerPhone}
               />
             </aside>
           </div>

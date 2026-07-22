@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import CarDetailClient from "@/components/cars/CarDetailClient";
 import { formatCarPrice } from "@/lib/carsPresentation";
 import { findCarById } from "@/lib/carsStorage";
+import { resolveCarPublicContactPhone } from "@/lib/carContactPhone";
+import { sanitizeCarListingForViewer } from "@/lib/carVehicleDocPrivacy";
 import { getAuthedUserIdFromRequest } from "@/lib/sessionAuth";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -21,5 +23,7 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
   if (!car) notFound();
 
   const currentUserId = await getAuthedUserIdFromRequest();
-  return <CarDetailClient car={car} currentUserId={currentUserId} />;
+  const publicCar = sanitizeCarListingForViewer(car);
+  const sellerPhone = await resolveCarPublicContactPhone(car);
+  return <CarDetailClient car={publicCar} currentUserId={currentUserId} sellerPhone={sellerPhone} />;
 }

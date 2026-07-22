@@ -16,6 +16,7 @@ import CarRegistrationScanGate, {
   missingFieldsBanner,
 } from "@/components/cars/CarRegistrationScanGate";
 import CarVehicleDocsFields, { type CarVehicleDocsFormState } from "@/components/cars/CarVehicleDocsFields";
+import AppleStyleSwitch from "@/components/ui/AppleStyleSwitch";
 import {
   CarFormField,
   CarFormSection,
@@ -80,6 +81,7 @@ function formFromOtomotoPrefill(prefill: OtomotoCarImportPrefill): CarFormState 
     firstRegistrationDate: prefill.firstRegistrationDate || "",
     insuranceValidUntil: "",
     restrictVehicleDocs: true,
+    showContactPhone: false,
     makeSlug: "",
     modelSlug: "",
     fuelSlug: "",
@@ -125,6 +127,7 @@ export type CarFormState = CarVehicleDocsFormState & {
   localityCountry: string;
   imageUrl: string;
   images: string[];
+  showContactPhone: boolean;
 };
 
 export const initialCarForm: CarFormState = {
@@ -165,6 +168,7 @@ export const initialCarForm: CarFormState = {
   firstRegistrationDate: "",
   insuranceValidUntil: "",
   restrictVehicleDocs: false,
+  showContactPhone: false,
 };
 
 type CarListingFormProps = {
@@ -208,6 +212,7 @@ function toPayload(form: CarFormState, images: string[]) {
     firstRegistrationDate: form.firstRegistrationDate.trim(),
     insuranceValidUntil: form.insuranceValidUntil.trim(),
     restrictVehicleDocs: Boolean(form.restrictVehicleDocs),
+    showContactPhone: Boolean(form.showContactPhone),
   };
 }
 
@@ -701,6 +706,21 @@ export default function CarListingForm({
             });
           }}
         />
+
+        <CarFormSection
+          eyebrow={f.contactEyebrow}
+          title={f.contactTitle}
+          description={f.contactDescription}
+        >
+          <AppleStyleSwitch
+            id="show-contact-phone"
+            accent="sky"
+            checked={form.showContactPhone}
+            onChange={(showContactPhone) => setForm((prev) => ({ ...prev, showContactPhone }))}
+            label={f.showContactPhoneLabel}
+            description={f.showContactPhoneDescription}
+          />
+        </CarFormSection>
 
         <CarPhotoGalleryField
           ref={photoGalleryRef}

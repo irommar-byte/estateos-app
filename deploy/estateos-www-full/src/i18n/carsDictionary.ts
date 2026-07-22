@@ -104,6 +104,11 @@ export type CarsDictionary = {
     errMapCity: string;
     errFuel: string;
     errPhotos: string;
+    contactEyebrow: string;
+    contactTitle: string;
+    contactDescription: string;
+    showContactPhoneLabel: string;
+    showContactPhoneDescription: string;
   };
   catalogFields: {
     eyebrow: string;
@@ -296,6 +301,8 @@ export type CarsDictionary = {
     generation: string;
     trim: string;
     version: string;
+    callCta: string;
+    callHint: string;
   };
   inquiry: {
     title: string;
@@ -303,6 +310,8 @@ export type CarsDictionary = {
     nameLabel: string;
     phoneLabel: string;
     phoneOptional: string;
+    callSeller: string;
+    callSellerHint: string;
     viewingLabel: string;
     viewingAsap: string;
     viewingWeek: string;
@@ -479,6 +488,13 @@ const pl: CarsDictionary = {
     errMapCity: "Ustaw miejscowość na mapie — przeciągnij mapę lub wybierz z wyszukiwarki.",
     errFuel: "Wybierz rodzaj paliwa z katalogu.",
     errPhotos: "Dodaj co najmniej jedno zdjęcie auta.",
+    contactEyebrow: "Kontakt",
+    contactTitle: "Telefon na ofercie",
+    contactDescription:
+      "Opcjonalnie pokaż numer z profilu konta na stronie ogłoszenia — kupujący zadzwoni jednym kliknięciem.",
+    showContactPhoneLabel: "Pokaż mój numer telefonu na ofercie",
+    showContactPhoneDescription:
+      "Na stronie ogłoszenia pojawi się przycisk „Zadzwoń”. Numer bierzesz z profilu konta — możesz go zmienić w ustawieniach.",
   },
   catalogFields: {
     eyebrow: "Katalog pojazdu",
@@ -678,6 +694,8 @@ const pl: CarsDictionary = {
     generation: "Generacja",
     trim: "Wersja",
     version: "Wersja",
+    callCta: "Zadzwoń",
+    callHint: "Sprzedający udostępnił numer telefonu.",
   },
   inquiry: {
     title: "Zapytaj o auto",
@@ -685,6 +703,8 @@ const pl: CarsDictionary = {
     nameLabel: "Imię i nazwisko",
     phoneLabel: "Telefon",
     phoneOptional: "opcjonalnie",
+    callSeller: "Zadzwoń",
+    callSellerHint: "Połączenie bezpośrednio ze sprzedającym",
     viewingLabel: "Preferowany termin oględzin",
     viewingAsap: "Jak najszybciej",
     viewingWeek: "W tym tygodniu",
@@ -857,6 +877,13 @@ const en: CarsDictionary = {
     errMapCity: "Set the city on the map — drag the map or pick from search.",
     errFuel: "Select fuel type from the catalog.",
     errPhotos: "Add at least one photo of the car.",
+    contactEyebrow: "Contact",
+    contactTitle: "Phone on listing",
+    contactDescription:
+      "Optionally show your account phone number on the listing page — buyers can call in one tap.",
+    showContactPhoneLabel: "Show my phone number on the listing",
+    showContactPhoneDescription:
+      "A “Call” button appears on the listing page. The number comes from your account profile — update it in settings anytime.",
   },
   catalogFields: {
     eyebrow: "Vehicle catalog",
@@ -1054,6 +1081,8 @@ const en: CarsDictionary = {
     generation: "Generation",
     trim: "Trim",
     version: "Version",
+    callCta: "Call",
+    callHint: "The seller shared a phone number.",
   },
   inquiry: {
     title: "Inquire about this car",
@@ -1061,6 +1090,8 @@ const en: CarsDictionary = {
     nameLabel: "Full name",
     phoneLabel: "Phone",
     phoneOptional: "optional",
+    callSeller: "Call",
+    callSellerHint: "Call the seller directly",
     viewingLabel: "Preferred viewing time",
     viewingAsap: "As soon as possible",
     viewingWeek: "This week",
@@ -1233,6 +1264,13 @@ const uk: CarsDictionary = {
     errMapCity: "Встановіть місто на карті — перетягніть карту або оберіть з пошуку.",
     errFuel: "Оберіть тип палива з каталогу.",
     errPhotos: "Додайте щонайменше одне фото авто.",
+    contactEyebrow: "Контакт",
+    contactTitle: "Телефон в оголошенні",
+    contactDescription:
+      "За бажанням покажіть номер з профілю акаунта на сторінці оголошення — покупець зателефонує одним натиском.",
+    showContactPhoneLabel: "Показати мій номер телефону в оголошенні",
+    showContactPhoneDescription:
+      "На сторінці з'явиться кнопка «Зателефонувати». Номер береться з профілю акаунта — змінити можна в налаштуваннях.",
   },
   catalogFields: {
     eyebrow: "Каталог авто",
@@ -1430,6 +1468,8 @@ const uk: CarsDictionary = {
     generation: "Покоління",
     trim: "Комплектація",
     version: "Версія",
+    callCta: "Зателефонувати",
+    callHint: "Продавець поділився номером телефону.",
   },
   inquiry: {
     title: "Запит про авто",
@@ -1437,6 +1477,8 @@ const uk: CarsDictionary = {
     nameLabel: "Ім'я та прізвище",
     phoneLabel: "Телефон",
     phoneOptional: "необов'язково",
+    callSeller: "Зателефонувати",
+    callSellerHint: "Дзвінок безпосередньо продавцю",
     viewingLabel: "Бажаний час огляду",
     viewingAsap: "Якомога швидше",
     viewingWeek: "Цього тижня",

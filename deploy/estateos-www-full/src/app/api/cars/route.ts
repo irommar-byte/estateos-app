@@ -119,6 +119,7 @@ function validateBody(raw: Record<string, unknown>): CarListingUpdateInput & { u
     firstRegistrationDate: String(raw?.firstRegistrationDate || "").trim(),
     insuranceValidUntil: String(raw?.insuranceValidUntil || "").trim(),
     restrictVehicleDocs: Boolean(raw?.restrictVehicleDocs),
+    showContactPhone: Boolean(raw?.showContactPhone),
   };
 }
 
