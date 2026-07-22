@@ -242,19 +242,20 @@ export default function ContactVerificationPanel({ initial, compact = false, onU
             {!phoneOk && profile.phone ? (
               <div className="space-y-3">
                 <button type="button" onClick={sendSms} disabled={busy !== null} className={ghostBtnClass}>
-                  {busy === "sms-send" ? <Loader2 className="mx-auto animate-spin" size={16} /> : "Wyślij kod SMS (4 cyfry)"}
+                  {busy === "sms-send" ? <Loader2 className="mx-auto animate-spin" size={16} /> : "Wyślij kod SMS (6 cyfr)"}
                 </button>
                 <input
                   value={smsCode}
-                  onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                  placeholder="0000"
+                  onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="000000"
                   inputMode="numeric"
+                  autoComplete="one-time-code"
                   className={`${fieldClass} tracking-[0.5em]`}
                 />
                 <button
                   type="button"
                   onClick={confirmSms}
-                  disabled={busy !== null || smsCode.length !== 4}
+                  disabled={busy !== null || smsCode.length !== 6}
                   className={primaryBtnClass}
                 >
                   {busy === "sms-confirm" ? <Loader2 className="mx-auto animate-spin" size={16} /> : "Potwierdź telefon"}
