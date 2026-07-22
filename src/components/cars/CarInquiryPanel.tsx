@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { dispatchContactUnreadRefresh } from "@/lib/contactServiceWeb";
 import { formatCarPrice } from "@/lib/carsPresentation";
-import { formatDisplayPhone, toTelHref } from "@/lib/carContactPhone";
+import { formatDisplayPhone, toTelHref } from "@/lib/carContactPhoneShared";
 import { useLocale } from "@/contexts/LocaleContext";
 import { carAlertErrorClass, carAlertInfoClass } from "@/components/cars/carFormStyles";
 import { fmtCars } from "@/i18n/carsDictionary";
