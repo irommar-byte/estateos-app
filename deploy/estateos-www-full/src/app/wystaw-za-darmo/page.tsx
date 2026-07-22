@@ -10,6 +10,8 @@ import {
   howToListJsonLd,
   webPageJsonLd,
 } from '@/lib/seo/freeListingContent';
+import { freeListingOpenGraph, freeListingTwitter } from '@/lib/freeListingOgMetadata';
+
 const TITLE = 'Wystaw za darmo mieszkanie, dom lub samochód';
 const DESCRIPTION =
   'Portal EstateOS™ — wystaw nieruchomość lub samochód na sprzedaż za darmo. Mieszkanie, dom, działka i auto w jednym koncie. Bez prowizji portalowej za publikację.';
@@ -18,19 +20,18 @@ export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
   keywords: [...FREE_LISTING_KEYWORDS],
-  openGraph: {
+  openGraph: freeListingOpenGraph({
     title: `${TITLE} | EstateOS™`,
     description: DESCRIPTION,
     url: FREE_LISTING_URLS.hub,
     siteName: 'EstateOS™',
     locale: 'pl_PL',
     type: 'website',
-  },
-  twitter: {
-    card: 'summary_large_image',
+  }),
+  twitter: freeListingTwitter({
     title: `${TITLE} | EstateOS™`,
     description: DESCRIPTION,
-  },
+  }),
   alternates: { canonical: FREE_LISTING_URLS.hub },
   robots: { index: true, follow: true },
 };

@@ -57,12 +57,22 @@ export const metadata: Metadata = {
     siteName: "EstateOS™",
     title: "EstateOS™ — wystaw nieruchomość lub auto za darmo",
     description: ESTATEOS_TAGLINE_PL,
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        type: "image/png",
+        alt: "EstateOS™ — wystaw nieruchomość lub auto za darmo",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "EstateOS™ — wystaw nieruchomość lub auto za darmo",
     description:
       "Portal ogłoszeń: mieszkanie, dom i samochód za darmo. Mapa, weryfikacja, aplikacja mobilna.",
+    images: ["/opengraph-image"],
   },
   robots: { index: true, follow: true },
   icons: {

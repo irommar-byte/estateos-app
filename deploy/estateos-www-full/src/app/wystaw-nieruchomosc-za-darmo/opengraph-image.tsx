@@ -1,11 +1,11 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
-export const alt = "EstateOS™ — wystaw nieruchomość lub auto za darmo";
+export const alt = "EstateOS™Home — wystaw nieruchomość za darmo";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-export default function OpenGraphImage() {
+export default function FreeHomeOpenGraphImage() {
   return new ImageResponse(
     (
       <div
@@ -25,7 +25,7 @@ export default function OpenGraphImage() {
             position: "absolute",
             inset: 0,
             background:
-              "radial-gradient(circle at 30% 20%, rgba(16,185,129,0.28), transparent 50%)",
+              "radial-gradient(circle at 30% 22%, rgba(16,185,129,0.3), transparent 52%)",
           }}
         />
         <div
@@ -56,32 +56,33 @@ export default function OpenGraphImage() {
             marginBottom: 16,
           }}
         >
-          EstateOS™
+          EstateOS™Home
         </p>
         <p
           style={{
-            fontSize: 64,
+            fontSize: 52,
             fontWeight: 800,
             letterSpacing: "-0.04em",
             color: "white",
             margin: 0,
             textAlign: "center",
+            lineHeight: 1.08,
+            maxWidth: 1000,
           }}
         >
-          <span style={{ color: "#10b981" }}>E</span>state
-          <span style={{ color: "#10b981" }}>OS</span>
+          Wystaw nieruchomość za darmo
         </p>
         <p
           style={{
-            marginTop: 24,
-            fontSize: 28,
-            color: "rgba(255,255,255,0.72)",
-            maxWidth: 820,
+            marginTop: 22,
+            fontSize: 26,
+            color: "rgba(255,255,255,0.7)",
+            maxWidth: 880,
             textAlign: "center",
             lineHeight: 1.35,
           }}
         >
-          Wystaw mieszkanie, dom lub samochód za darmo
+          Mieszkanie · dom · działka — publikacja bez prowizji portalowej
         </p>
       </div>
     ),
