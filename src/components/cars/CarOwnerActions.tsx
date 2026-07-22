@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Loader2, Pencil, Trash2 } from "lucide-react";
+import EosButton from "@/components/ui/EosButton";
 import { useLocale } from "@/contexts/LocaleContext";
 import { carAlertErrorClass } from "@/components/cars/carFormStyles";
 
@@ -48,21 +50,15 @@ export default function CarOwnerActions({ carId, ownerUserId, currentUserId }: C
 
   return (
     <>
-      <div className="flex flex-wrap gap-3">
-        <Link
-          href={`/cars/${carId}/edytuj`}
-          className="rounded-full border border-sky-400/40 bg-sky-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-sky-700 dark:text-sky-300"
-        >
+      <div className="flex flex-wrap gap-2.5">
+        <EosButton href={`/cars/${carId}/edytuj`} variant="car" size="sm">
+          <Pencil className="size-3.5" aria-hidden />
           {o.edit}
-        </Link>
-        <button
-          type="button"
-          onClick={() => setConfirmOpen(true)}
-          disabled={deleting}
-          className="rounded-full border border-red-400/35 bg-red-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-700 disabled:opacity-60 dark:text-red-300"
-        >
+        </EosButton>
+        <EosButton type="button" variant="danger" size="sm" onClick={() => setConfirmOpen(true)} disabled={deleting}>
+          {deleting ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Trash2 className="size-3.5" aria-hidden />}
           {deleting ? o.deleting : o.delete}
-        </button>
+        </EosButton>
         {error ? <p className={`w-full ${carAlertErrorClass}`}>{error}</p> : null}
       </div>
 
@@ -70,23 +66,14 @@ export default function CarOwnerActions({ carId, ownerUserId, currentUserId }: C
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[var(--eos-bg)]/80 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-2xl">
             <p className="text-sm leading-relaxed text-[var(--eos-text)]">{o.confirmDelete}</p>
-            <div className="mt-6 flex flex-wrap justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setConfirmOpen(false)}
-                disabled={deleting}
-                className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)]"
-              >
+            <div className="mt-6 flex flex-wrap justify-end gap-2.5">
+              <EosButton type="button" variant="secondary" size="sm" onClick={() => setConfirmOpen(false)} disabled={deleting}>
                 {dict.cars.common.cancel}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleDelete()}
-                disabled={deleting}
-                className="rounded-full border border-red-400/45 bg-red-500/15 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-red-700 dark:text-red-300"
-              >
+              </EosButton>
+              <EosButton type="button" variant="danger" size="sm" onClick={() => void handleDelete()} disabled={deleting}>
+                {deleting ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : null}
                 {deleting ? o.deleting : o.delete}
-              </button>
+              </EosButton>
             </div>
           </div>
         </div>

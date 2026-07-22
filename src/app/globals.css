@@ -2754,3 +2754,320 @@ html.light .eos-modal-panel {
   border-color: var(--po-input-border) !important;
 }
 
+/* ─── EOS Button System (global, light + dark) ───────────────────────────── */
+.eos-btn {
+  --eos-btn-bg: #111111;
+  --eos-btn-bg-hover: #000000;
+  --eos-btn-fg: #ffffff;
+  --eos-btn-border: transparent;
+  --eos-btn-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 1px 2px rgba(0, 0, 0, 0.12),
+    0 8px 20px rgba(0, 0, 0, 0.14);
+  --eos-btn-shadow-hover:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 2px 4px rgba(0, 0, 0, 0.14),
+    0 14px 32px rgba(0, 0, 0, 0.2);
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.7rem 1.35rem;
+  border-radius: 9999px;
+  border: 1px solid var(--eos-btn-border);
+  background: var(--eos-btn-bg);
+  color: var(--eos-btn-fg);
+  box-shadow: var(--eos-btn-shadow);
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    filter 180ms ease;
+}
+
+.eos-btn:hover {
+  background: var(--eos-btn-bg-hover);
+  box-shadow: var(--eos-btn-shadow-hover);
+  transform: translateY(-1px);
+  color: var(--eos-btn-fg);
+  text-decoration: none;
+}
+
+.eos-btn:active {
+  transform: translateY(0) scale(0.985);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 1px 2px rgba(0, 0, 0, 0.16);
+}
+
+.eos-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    var(--eos-btn-shadow-hover),
+    0 0 0 3px color-mix(in srgb, var(--eos-accent) 35%, transparent);
+}
+
+.eos-btn:disabled,
+.eos-btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.eos-btn--sm {
+  min-height: 2.35rem;
+  padding: 0.5rem 1.05rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.09em;
+}
+
+.eos-btn--lg {
+  min-height: 3.15rem;
+  padding: 0.85rem 1.6rem;
+  font-size: 0.78rem;
+}
+
+.eos-btn--block {
+  width: 100%;
+}
+
+/* Primary — Apple-like filled contrast */
+.eos-btn--primary {
+  --eos-btn-bg: #111111;
+  --eos-btn-bg-hover: #000000;
+  --eos-btn-fg: #ffffff;
+}
+
+html.light .eos-btn--primary {
+  --eos-btn-bg: #111827;
+  --eos-btn-bg-hover: #030712;
+  --eos-btn-fg: #ffffff;
+}
+
+html:not(.light) .eos-btn--primary {
+  --eos-btn-bg: #f5f5f7;
+  --eos-btn-bg-hover: #ffffff;
+  --eos-btn-fg: #0a0a0a;
+  --eos-btn-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 8px 22px rgba(0, 0, 0, 0.35);
+  --eos-btn-shadow-hover:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 14px 34px rgba(0, 0, 0, 0.45);
+}
+
+/* Secondary — glass / outline */
+.eos-btn--secondary {
+  --eos-btn-bg: rgba(255, 255, 255, 0.06);
+  --eos-btn-bg-hover: rgba(255, 255, 255, 0.12);
+  --eos-btn-fg: var(--eos-text);
+  --eos-btn-border: rgba(255, 255, 255, 0.18);
+  --eos-btn-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 6px 18px rgba(0, 0, 0, 0.22);
+  --eos-btn-shadow-hover:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 12px 28px rgba(0, 0, 0, 0.32);
+}
+
+html.light .eos-btn--secondary {
+  --eos-btn-bg: #ffffff;
+  --eos-btn-bg-hover: #f8fafc;
+  --eos-btn-fg: #111827;
+  --eos-btn-border: rgba(15, 23, 42, 0.14);
+  --eos-btn-shadow:
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 20px rgba(15, 23, 42, 0.06);
+  --eos-btn-shadow-hover:
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 2px 4px rgba(15, 23, 42, 0.05),
+    0 14px 30px rgba(15, 23, 42, 0.1);
+}
+
+/* Soft — quiet tinted action */
+.eos-btn--soft {
+  --eos-btn-bg: rgba(255, 255, 255, 0.08);
+  --eos-btn-bg-hover: rgba(255, 255, 255, 0.14);
+  --eos-btn-fg: var(--eos-text);
+  --eos-btn-border: rgba(255, 255, 255, 0.12);
+  --eos-btn-shadow: none;
+  --eos-btn-shadow-hover: 0 8px 22px rgba(0, 0, 0, 0.25);
+}
+
+html.light .eos-btn--soft {
+  --eos-btn-bg: rgba(15, 23, 42, 0.04);
+  --eos-btn-bg-hover: rgba(15, 23, 42, 0.07);
+  --eos-btn-fg: #111827;
+  --eos-btn-border: rgba(15, 23, 42, 0.1);
+  --eos-btn-shadow-hover: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+/* Ghost */
+.eos-btn--ghost {
+  --eos-btn-bg: transparent;
+  --eos-btn-bg-hover: rgba(255, 255, 255, 0.08);
+  --eos-btn-fg: var(--eos-muted);
+  --eos-btn-border: transparent;
+  --eos-btn-shadow: none;
+  --eos-btn-shadow-hover: none;
+}
+
+html.light .eos-btn--ghost {
+  --eos-btn-bg-hover: rgba(15, 23, 42, 0.05);
+  --eos-btn-fg: rgba(17, 24, 39, 0.72);
+}
+
+.eos-btn--ghost:hover {
+  --eos-btn-fg: var(--eos-text);
+}
+
+/* Home brand — solid emerald, white label */
+.eos-btn--home {
+  --eos-btn-bg: #059669;
+  --eos-btn-bg-hover: #047857;
+  --eos-btn-fg: #ffffff;
+  --eos-btn-border: rgba(4, 120, 87, 0.35);
+  --eos-btn-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 8px 22px rgba(5, 150, 105, 0.28);
+  --eos-btn-shadow-hover:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 14px 32px rgba(5, 150, 105, 0.36);
+}
+
+html:not(.light) .eos-btn--home {
+  --eos-btn-bg: #10b981;
+  --eos-btn-bg-hover: #34d399;
+  --eos-btn-fg: #042f1e;
+}
+
+/* Car brand — solid sky, white label */
+.eos-btn--car {
+  --eos-btn-bg: #0284c7;
+  --eos-btn-bg-hover: #0369a1;
+  --eos-btn-fg: #ffffff;
+  --eos-btn-border: rgba(3, 105, 161, 0.35);
+  --eos-btn-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 8px 22px rgba(2, 132, 199, 0.28);
+  --eos-btn-shadow-hover:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 14px 32px rgba(2, 132, 199, 0.36);
+}
+
+html:not(.light) .eos-btn--car {
+  --eos-btn-bg: #0ea5e9;
+  --eos-btn-bg-hover: #38bdf8;
+  --eos-btn-fg: #082f49;
+}
+
+/* Call — solid deep green, white text (always readable) */
+.eos-btn--call {
+  --eos-btn-bg: #047857;
+  --eos-btn-bg-hover: #065f46;
+  --eos-btn-fg: #ffffff;
+  --eos-btn-border: rgba(6, 95, 70, 0.4);
+  --eos-btn-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.2) inset,
+    0 8px 22px rgba(4, 120, 87, 0.3);
+  --eos-btn-shadow-hover:
+    0 1px 0 rgba(255, 255, 255, 0.26) inset,
+    0 14px 34px rgba(4, 120, 87, 0.4);
+}
+
+html:not(.light) .eos-btn--call {
+  --eos-btn-bg: #059669;
+  --eos-btn-bg-hover: #10b981;
+  --eos-btn-fg: #ffffff;
+}
+
+/* Promote */
+.eos-btn--promote {
+  --eos-btn-bg: #b45309;
+  --eos-btn-bg-hover: #92400e;
+  --eos-btn-fg: #ffffff;
+  --eos-btn-border: rgba(146, 64, 14, 0.35);
+  --eos-btn-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.2) inset,
+    0 8px 22px rgba(180, 83, 9, 0.28);
+  --eos-btn-shadow-hover:
+    0 1px 0 rgba(255, 255, 255, 0.26) inset,
+    0 14px 32px rgba(180, 83, 9, 0.36);
+}
+
+html:not(.light) .eos-btn--promote {
+  --eos-btn-bg: #f59e0b;
+  --eos-btn-bg-hover: #fbbf24;
+  --eos-btn-fg: #451a03;
+}
+
+/* Danger */
+.eos-btn--danger {
+  --eos-btn-bg: #e11d48;
+  --eos-btn-bg-hover: #be123c;
+  --eos-btn-fg: #ffffff;
+  --eos-btn-border: rgba(190, 18, 60, 0.35);
+  --eos-btn-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 8px 22px rgba(225, 29, 72, 0.28);
+  --eos-btn-shadow-hover:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 14px 32px rgba(225, 29, 72, 0.36);
+}
+
+html:not(.light) .eos-btn--danger {
+  --eos-btn-bg: #f43f5e;
+  --eos-btn-bg-hover: #fb7185;
+  --eos-btn-fg: #4c0519;
+}
+
+/* Segment / tab pair helper */
+.eos-btn-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem;
+  border-radius: 9999px;
+  border: 1px solid var(--eos-border);
+  background: color-mix(in srgb, var(--eos-card) 88%, transparent);
+  box-shadow: var(--eos-shadow-soft);
+}
+
+.eos-btn-seg .eos-btn {
+  min-height: 2.5rem;
+  box-shadow: none;
+}
+
+.eos-btn-seg .eos-btn:not(.eos-btn--home):not(.eos-btn--car):not(.eos-btn--primary) {
+  background: transparent;
+  border-color: transparent;
+  color: var(--eos-muted);
+}
+
+.eos-btn-seg .eos-btn:not(.eos-btn--home):not(.eos-btn--car):not(.eos-btn--primary):hover {
+  background: color-mix(in srgb, var(--eos-text) 6%, transparent);
+  color: var(--eos-text);
+  transform: none;
+  box-shadow: none;
+}
+
+

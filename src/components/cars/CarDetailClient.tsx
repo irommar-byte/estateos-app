@@ -7,6 +7,8 @@ import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
 import CarInquiryPanel from "@/components/cars/CarInquiryPanel";
 import CarOwnerActions from "@/components/cars/CarOwnerActions";
 import CarVehicleChecksClient from "@/components/cars/CarVehicleChecksClient";
+import EosButton from "@/components/ui/EosButton";
+import { eosBtn } from "@/components/ui/eosButtonStyles";
 import { useLocale } from "@/contexts/LocaleContext";
 import { formatDisplayPhone, toTelHref } from "@/lib/carContactPhoneShared";
 import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
@@ -80,23 +82,17 @@ export default function CarDetailClient({ car, currentUserId, sellerPhone = null
                     {formatCarPrice(car.pricePln, locale)}
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2.5">
                   {callHref ? (
-                    <a
-                      href={callHref}
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-400/40 bg-gradient-to-b from-emerald-400/25 to-emerald-500/10 px-5 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-emerald-800 shadow-[0_10px_28px_rgba(16,185,129,0.18)] transition hover:from-emerald-400/35 hover:to-emerald-500/15 dark:text-emerald-200"
-                    >
+                    <a href={callHref} className={eosBtn("call", { size: "sm" })}>
                       <Phone className="size-3.5" aria-hidden />
                       {d.callCta}
                     </a>
                   ) : null}
                   {car.userId ? (
-                    <Link
-                      href={`/profil/${car.userId}`}
-                      className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-[var(--eos-text)] hover:border-sky-400/40"
-                    >
+                    <EosButton href={`/profil/${car.userId}`} variant="secondary" size="sm">
                       {d.sellerProfile}
-                    </Link>
+                    </EosButton>
                   ) : null}
                 </div>
               </div>
