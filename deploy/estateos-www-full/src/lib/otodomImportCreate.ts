@@ -24,6 +24,7 @@ import {
   saveOfferGalleryOrFloorplan,
   sniffImageMimeFromMagic,
 } from '@/lib/upload/offerMediaUpload';
+import { upgradeListingImageUrl } from '@/lib/listingImageUrlUpgrade';
 import { resolveLastImageIsFloorPlan } from '@/lib/otodomImportFloorPlan';
 import { prisma } from '@/lib/prisma';
 
@@ -172,8 +173,9 @@ async function downloadRemoteImage(
 ): Promise<{ buffer: Buffer; mime: string } | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
+  const fetchUrl = upgradeListingImageUrl(url);
   try {
-    const response = await fetch(url, {
+    const response = await fetch(fetchUrl, {
       signal: controller.signal,
       headers: {
         Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
@@ -189,7 +191,34 @@ async function downloadRemoteImage(
       },
       cache: 'no-store',
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      if (fetchUrl === url) return null;
+      const fallback = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+          'Accept-Language': 'pl-PL,pl;q=0.9',
+          Referer:
+            source === 'OLX'
+              ? 'https://www.olx.pl/'
+              : source === 'NIERUCHOMOSCI_ONLINE'
+                ? 'https://www.nieruchomosci-online.pl/'
+                : 'https://www.otodom.pl/',
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        },
+        cache: 'no-store',
+      });
+      if (!fallback.ok) return null;
+      const buffer = Buffer.from(await fallback.arrayBuffer());
+      if (!buffer.length || buffer.length > MAX_OFFER_FILE_BYTES) return null;
+      let mime =
+        fallback.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() || '';
+      const sniffed = sniffImageMimeFromMagic(buffer);
+      if (sniffed) mime = sniffed;
+      if (!mime.startsWith('image/')) return null;
+      return { buffer, mime };
+    }
 
     const buffer = Buffer.from(await response.arrayBuffer());
     if (!buffer.length || buffer.length > MAX_OFFER_FILE_BYTES) return null;

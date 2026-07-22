@@ -9,6 +9,7 @@ import {
   type VehicleType,
 } from "@/lib/vehicleTypes";
 import { listMissingListingFields, type CarListingMissingFieldKey } from "@/lib/polishRegistrationDocument.shared";
+import { upgradeListingImageUrls } from "@/lib/listingImageUrlUpgrade";
 
 const FETCH_TIMEOUT_MS = 40_000;
 const MAX_IMPORT_IMAGES = 24;
@@ -243,8 +244,12 @@ function extractImageUrls(advert: Record<string, unknown>): string[] {
   const urls: string[] = [];
   for (const photo of photos) {
     const row = asRecord(photo);
-    const url = String(row.url || row.id || "").split(";")[0].trim();
-    if (url.startsWith("http") && !urls.includes(url)) urls.push(url);
+    const candidates = [row.uri, row.original, row.full, row.large, row.url, row.id]
+      .map((item) => String(item || "").trim())
+      .filter((item) => item.startsWith("http"));
+    const picked = candidates[0];
+    if (!picked) continue;
+    if (!urls.includes(picked)) urls.push(picked);
     if (urls.length >= MAX_IMPORT_IMAGES) break;
   }
   return urls;
@@ -268,7 +273,7 @@ export function parseOtomotoAdvert(advert: Record<string, unknown>, sourceUrl: s
   const city = String(location.city || "").trim();
   const latRaw = Number(map.latitude);
   const lngRaw = Number(map.longitude);
-  const images = extractImageUrls(advert);
+  const images = upgradeListingImageUrls(extractImageUrls(advert));
 
   const gearboxRaw = params.gearbox || "";
   const transmission = gearboxLabelToTransmission(gearboxRaw || "Automatyczna");

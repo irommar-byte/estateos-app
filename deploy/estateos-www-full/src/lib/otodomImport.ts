@@ -1,5 +1,6 @@
 import { canonicalizeCity, canonicalizeDistrict, isStrictCity, pickDistrictFromPlaceName } from '@/lib/location/locationCatalog';
 import { locationNamesEquivalent } from '@/lib/location/locationNameMatch';
+import { upgradeListingImageUrls } from '@/lib/listingImageUrlUpgrade';
 import { inferCityFromImportSlug, inferCityFromLocationHints } from '@/lib/portalImportEnrich';
 
 const OTODOM_HOST = 'otodom.pl';
@@ -80,6 +81,81 @@ function decodeImportHtmlText(html: string): string {
     .replace(/&sup2;|&#178;/gi, '²')
     .replace(/&amp;/gi, '&')
     .replace(/\s+/g, ' ');
+}
+
+/** Czytelny tekst z fragmentu HTML listy portali (bez tagów i śmieci z anchorów). */
+function plainImportListText(html: string): string {
+  return stripHtml(decodeImportHtmlText(html)).replace(/\s+/g, ' ').trim();
+}
+
+const IMPORT_HEATING_CANONICAL = [
+  'Miejskie',
+  'Gazowe',
+  'Elektryczne',
+  'Pompa Ciepła',
+  'Węglowe/Pellet',
+  'Inne',
+] as const;
+
+type ImportHeatingCanonical = (typeof IMPORT_HEATING_CANONICAL)[number];
+
+/** Normalizuje ogrzewanie ze wszystkich portali do kanonicznych etykiet aplikacji. */
+export function sanitizeImportHeating(
+  raw: string | null | undefined,
+  code?: string | null,
+): ImportHeatingCanonical | null {
+  const plain = plainImportListText(String(raw || ''));
+  const codeToken = String(code || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+
+  const fromCode: Record<string, ImportHeatingCanonical> = {
+    city: 'Miejskie',
+    district: 'Miejskie',
+    municipal: 'Miejskie',
+    central: 'Miejskie',
+    central_heating: 'Miejskie',
+    gas: 'Gazowe',
+    electric: 'Elektryczne',
+    electrical: 'Elektryczne',
+    heat_pump: 'Pompa Ciepła',
+    heatpump: 'Pompa Ciepła',
+    coal: 'Węglowe/Pellet',
+    pellet: 'Węglowe/Pellet',
+    coal_pellet: 'Węglowe/Pellet',
+    other: 'Inne',
+    none: 'Inne',
+  };
+  if (codeToken && fromCode[codeToken]) return fromCode[codeToken];
+
+  const probe = plain.toLowerCase();
+  if (!probe) return null;
+  if (/miejsk|ciepłoci|mco|co\s+miejsk|centraln/i.test(probe)) return 'Miejskie';
+  if (/gaz|gazow/i.test(probe)) return 'Gazowe';
+  if (/elektryczn/i.test(probe)) return 'Elektryczne';
+  if (/pomp/i.test(probe)) return 'Pompa Ciepła';
+  if (/węg|weg|pellet|ekogroszek|kotł/i.test(probe)) return 'Węglowe/Pellet';
+  if (/komink|piecek|piece/i.test(probe)) return 'Inne';
+  if (/<a\s|href\s*=|https?:\/\//i.test(plain)) return null;
+  if (plain.length > 48) return null;
+
+  const exact = IMPORT_HEATING_CANONICAL.find(
+    (label) => label.toLowerCase() === probe || label.toLowerCase().replace(/\s+/g, '_') === codeToken,
+  );
+  if (exact) return exact;
+
+  if (/[a-ząćęłńóśźż]/i.test(plain) && plain.length >= 3) return 'Inne';
+  return null;
+}
+
+export function normalizeImportDraftHeating(draft: OtodomImportDraft): OtodomImportDraft {
+  const heating = sanitizeImportHeating(draft.heating, draft.heatingCode);
+  return {
+    ...draft,
+    heating,
+    heatingCode: heating ? heating.toLowerCase().replace(/\s+/g, '_') : null,
+  };
 }
 
 function parseNumber(raw: unknown): number | null {
@@ -242,8 +318,7 @@ function enrichImportFieldsFromText(input: {
     plain.match(/(?:typ|rodzaj)\s+ogrzewania[:\s]+([^.\n;]+)/i);
   let heating = heatingMatch ? heatingMatch[1].trim() : null;
   if (heating) {
-    heating = heating.replace(/\s{2,}/g, ' ').slice(0, 80);
-    if (heating.length < 3) heating = null;
+    heating = sanitizeImportHeating(heating);
   }
 
   const adminFee =
@@ -571,13 +646,16 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
   }
 
   const images = Array.isArray(ad.images) ? ad.images : [];
-  const imageUrls = images
-    .map((image) => {
-      if (!image || typeof image !== 'object') return null;
-      const row = image as Record<string, unknown>;
-      return String(row.large ?? row.medium ?? row.small ?? '').trim() || null;
-    })
-    .filter((value): value is string => Boolean(value));
+  const imageUrls = upgradeListingImageUrls(
+    images
+      .map((image) => {
+        if (!image || typeof image !== 'object') return null;
+        const row = image as Record<string, unknown>;
+        // Prefer largest available Otodom variant
+        return String(row.large ?? row.medium ?? row.small ?? '').trim() || null;
+      })
+      .filter((value): value is string => Boolean(value)),
+  );
 
   const agencyRaw = (ad.agency ?? null) as Record<string, unknown> | null;
   const phones = Array.isArray(agencyRaw?.phones) ? agencyRaw?.phones : [];
@@ -619,8 +697,14 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     yearBuilt,
     condition: chars.get('construction_status')?.label ?? null,
     conditionCode: chars.get('construction_status')?.value ?? null,
-    heating: chars.get('heating')?.label ?? null,
-    heatingCode: chars.get('heating')?.value ?? null,
+    heating: sanitizeImportHeating(chars.get('heating')?.label ?? null, chars.get('heating')?.value ?? null),
+    heatingCode: (() => {
+      const normalized = sanitizeImportHeating(
+        chars.get('heating')?.label ?? null,
+        chars.get('heating')?.value ?? null,
+      );
+      return normalized ? normalized.toLowerCase().replace(/\s+/g, '_') : null;
+    })(),
     buildingType: chars.get('building_type')?.label ?? null,
     city,
     district,
@@ -702,9 +786,11 @@ export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     };
   }
 
-  const images = Array.isArray(ad.photos)
-    ? ad.photos.map((photo) => String(photo ?? '').trim()).filter((value) => Boolean(value))
-    : [];
+  const images = upgradeListingImageUrls(
+    Array.isArray(ad.photos)
+      ? ad.photos.map((photo) => String(photo ?? '').trim()).filter((value) => Boolean(value))
+      : [],
+  );
 
   const title = capitalizeImportTitle(String(ad.title ?? '').trim());
   const descriptionHtml = String(ad.description ?? '');
@@ -726,8 +812,9 @@ export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     parseOlxParamNumber(params, ['buildyear', 'build_year', 'construction_year', 'year_built'], ['rok budowy']) ??
     textHints.yearBuilt;
   const sanitizedYearBuilt = sanitizeImportYearBuilt(yearBuilt);
-  const heating =
+  const heatingRaw =
     parseOlxParamText(params, ['heating', 'heating_type'], ['ogrzewanie']) ?? textHints.heating;
+  const heating = sanitizeImportHeating(heatingRaw, map('heating')?.value ?? map('heating_type')?.value ?? null);
   const adminFee =
     parseOlxParamNumber(params, ['rent', 'czynsz', 'admin_fee', 'monthly_rent', 'fee'], ['czynsz', 'opłat administr']) ??
     textHints.adminFee;
@@ -759,7 +846,7 @@ export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     condition: map('market')?.label ?? null,
     conditionCode: map('market')?.value ?? null,
     heating,
-    heatingCode: map('heating')?.value ?? (heating ? heating.toLowerCase().replace(/\s+/g, '_') : null),
+    heatingCode: heating ? heating.toLowerCase().replace(/\s+/g, '_') : null,
     buildingType: map('builttype')?.label ?? map('building_type')?.label ?? null,
     city,
     district,
@@ -809,7 +896,7 @@ function extractNierOnlineListValue(html: string, label: string): string {
   );
   const match = html.match(re);
   if (!match?.[1]) return '';
-  return decodeImportHtmlText(match[1]).replace(/\s+/g, ' ').trim();
+  return plainImportListText(match[1]);
 }
 
 function parseNierOnlineAdminFee(html: string): number | null {
@@ -820,6 +907,138 @@ function parseNierOnlineAdminFee(html: string): number | null {
   }
   const amount = parseNumber(czynszText.replace(/[^\d\s.,]/g, ' '));
   return amount;
+}
+
+const NIER_ONLINE_STOCK_PHOTO_FILENAMES = new Set([
+  'mieszkanie-lublin-sprzedaz.jpg',
+  'mieszkanie-przy-lesie.jpg',
+  'mieszkanie-blok-mieszkalny-sprzedaz.jpg',
+  'mieszkanie-blok-mieszkalny-przy-lesie.jpg',
+  'mieszkanie-blok-mieszkalny-lublin.jpg',
+]);
+
+type NierOnlinePhotosPayload = {
+  x?: string[];
+  l?: string[];
+  m?: string[];
+  c?: { url?: string; alt?: string; p?: number }[];
+};
+
+function isNierOnlineStockPhoto(url: string, alt = ''): boolean {
+  const file = String(url).split('/').pop()?.toLowerCase() || '';
+  if (NIER_ONLINE_STOCK_PHOTO_FILENAMES.has(file)) return true;
+  if (/mieszkanie\s+(lublin\s+sprzedaż|przy\s+lesie|blok\s+mieszkalny)/i.test(String(alt || ''))) return true;
+  return false;
+}
+
+function extractNierOnlinePhotosJson(html: string): NierOnlinePhotosPayload | null {
+  const marker = html.match(/photos\s*:\s*\{/i);
+  if (!marker || marker.index == null) return null;
+  const start = html.indexOf('{', marker.index);
+  if (start < 0) return null;
+
+  let depth = 0;
+  for (let i = start; i < html.length; i += 1) {
+    const ch = html[i];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          return JSON.parse(html.slice(start, i + 1)) as NierOnlinePhotosPayload;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function nierOnlinePhotoHashBase(hash: string): string {
+  return String(hash || '').replace(/[xlcms]$/i, '');
+}
+
+function dedupeNierOnlineCdnUrls(urls: string[]): string[] {
+  const sizeRank: Record<string, number> = { x: 3, l: 2, m: 1, c: 0 };
+  const byBase = new Map<string, { url: string; rank: number }>();
+
+  for (const rawUrl of urls) {
+    const url = String(rawUrl || '').trim().replace(/\\\//g, '/');
+    if (!url) continue;
+    const match = url.match(/\/([a-z0-9]+)\/([^/?#]+)$/i);
+    if (!match) continue;
+    const hash = match[1];
+    const file = match[2].toLowerCase();
+    if (isNierOnlineStockPhoto(url)) continue;
+
+    const base = nierOnlinePhotoHashBase(hash);
+    const suffix = hash.slice(-1).toLowerCase();
+    const rank = sizeRank[suffix] ?? 1;
+    const prev = byBase.get(base);
+    if (!prev || rank > prev.rank) {
+      byBase.set(base, { url, rank });
+    }
+  }
+
+  return [...byBase.values()].map((entry) => entry.url);
+}
+
+function pickNierOnlineImageUrls(html: string, photos: NierOnlinePhotosPayload | null): string[] {
+  if (photos) {
+    const cMeta = Array.isArray(photos.c) ? photos.c : [];
+    for (const size of ['x', 'l', 'm'] as const) {
+      const list = photos[size];
+      if (!Array.isArray(list) || !list.length) continue;
+      const filtered = list
+        .map((url, idx) => String(url || '').trim().replace(/\\\//g, '/'))
+        .filter((url, idx) => url && !isNierOnlineStockPhoto(url, String(cMeta[idx]?.alt || '')));
+      if (filtered.length) return Array.from(new Set(filtered));
+    }
+
+    const fromC = cMeta
+      .map((item) => String(item?.url || '').trim().replace(/\\\//g, '/'))
+      .filter((url, idx) => url && !isNierOnlineStockPhoto(url, String(cMeta[idx]?.alt || '')));
+    if (fromC.length) return Array.from(new Set(fromC));
+  }
+
+  const htmlWithUnescapedSlashes = html.replace(/\\\//g, '/');
+  const scraped = Array.from(
+    new Set(
+      (htmlWithUnescapedSlashes.match(/https?:\/\/i\.st-nieruchomosci-online\.pl\/[^\s"'<>)]*\.(?:jpe?g|png|webp)/gi) || [])
+        .map((url) => String(url).trim())
+        .filter(Boolean),
+    ),
+  );
+  const deduped = dedupeNierOnlineCdnUrls(scraped);
+  if (deduped.length) return deduped;
+
+  const imageFromOg =
+    html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] || '';
+  return imageFromOg && !isNierOnlineStockPhoto(imageFromOg) ? [imageFromOg] : [];
+}
+
+function parseNierOnlineAreaFromJsonLd(html: string): number | null {
+  const scripts = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+  for (const script of scripts) {
+    try {
+      const data = JSON.parse(script[1] || '');
+      const nodes = Array.isArray(data) ? data : [data];
+      for (const node of nodes) {
+        if (String(node?.['@type'] || '').toLowerCase() !== 'apartment') continue;
+        const props = Array.isArray(node.additionalProperty) ? node.additionalProperty : [];
+        for (const prop of props) {
+          const name = String(prop?.name || '').toLowerCase();
+          if (!/floor size|powierzchnia|living area|area/i.test(name)) continue;
+          const value = parseNumber(String(prop?.value || '').match(/([\d\s.,]+)\s*m/i)?.[1]);
+          if (value != null && value >= 10) return value;
+        }
+      }
+    } catch {
+      // ignore malformed JSON-LD
+    }
+  }
+  return null;
 }
 
 function parseNierOnlineArea(
@@ -843,8 +1062,14 @@ function parseNierOnlineArea(
     fromList('Powierzchnia całkowita') ??
     fromList('Powierzchnia mieszkania');
 
+  const areaFromJsonLd = parseNierOnlineAreaFromJsonLd(html);
+  const areaFromTitle = parseNumber(
+    decodeImportHtmlText(title).match(/([\d]{1,3}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
+  );
   const areaFromLabel = parseNumber(
-    normalizedHtml.match(/powierzchni[aey]?\s*(?:użytkowa|mieszkania|całkowita)?[:\s]*([\d\s.,]+)\s*m(?:2|²|kw)/i)?.[1],
+    normalizedHtml.match(
+      /powierzchnia\s+(?:użytkowa|mieszkania|całkowita|całkowitej)\b[:\s]*([\d\s.,]+)\s*m(?:2|²|kw)/i,
+    )?.[1],
   );
   const areaFromTable = parseNumber(
     normalizedHtml.match(/\|\s*([\d\s.,]{1,12})\s*m(?:2|²|kw)\s*\|/i)?.[1],
@@ -852,23 +1077,17 @@ function parseNierOnlineArea(
   const areaFromRange = parseNumber(
     normalizedHtml.match(/metra(?:że|ze)\s*(?:od)?\s*([\d\s.,]+)\s*(?:do\s*[\d\s.,]+)?\s*m(?:2|²|kw)/i)?.[1],
   );
-  const areaFromAny = parseNumber(
-    normalizedHtml.match(/([\d]{1,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
-  );
-  const areaFromTitle = parseNumber(
-    decodeImportHtmlText(title).match(/([\d]{1,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
-  );
   const areaFromDescription = parseNumber(
-    decodeImportHtmlText(descriptionText).match(/([\d]{1,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
+    decodeImportHtmlText(descriptionText).match(/([\d]{1,3}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1],
   );
 
   return (
     areaFromStructured ??
+    areaFromJsonLd ??
+    areaFromTitle ??
     areaFromLabel ??
     areaFromTable ??
     areaFromRange ??
-    areaFromAny ??
-    areaFromTitle ??
     areaFromDescription
   );
 }
@@ -911,15 +1130,15 @@ function parseNierOnlineHeating(html: string): string | null {
   const media = extractNierOnlineListValue(html, 'Media');
   if (!media) {
     const block = html.match(/<strong>\s*Media:\s*<\/strong>[\s\S]*?ogrzewanie\s*:\s*([^<,;]+)/i);
-    return block?.[1] ? decodeImportHtmlText(block[1]).trim() : null;
+    return sanitizeImportHeating(block?.[1] ? plainImportListText(block[1]) : null);
   }
   const labeled = media.match(/ogrzewanie\s*:\s*([^,;]+)/i);
-  if (labeled?.[1]) return labeled[1].trim();
-  if (/miejsk/i.test(media)) return 'miejskie';
-  if (/gaz/i.test(media)) return 'gazowe';
-  if (/elektryczn/i.test(media)) return 'elektryczne';
-  if (/komink/i.test(media)) return 'kominkowe';
-  return media.length <= 80 ? media : null;
+  if (labeled?.[1]) return sanitizeImportHeating(labeled[1]);
+  if (/miejsk/i.test(media)) return 'Miejskie';
+  if (/gaz/i.test(media)) return 'Gazowe';
+  if (/elektryczn/i.test(media)) return 'Elektryczne';
+  if (/komink/i.test(media)) return 'Inne';
+  return sanitizeImportHeating(media.length <= 80 ? media : null);
 }
 
 function parseNierOnlineLocation(html: string): { locationText: string; street: string | null; districtHint: string } {
@@ -1052,35 +1271,8 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
     ? pickDistrictFromPlaceName(city, [locationText, districtHint, title, descriptionText].filter(Boolean).join(' ')) ||
       canonicalizeDistrict(city, districtHint)
     : '';
-  const htmlWithUnescapedSlashes = html.replace(/\\\//g, '/');
-  const photosJsonMatch = html.match(/photos:\s*(\{[\s\S]*?\})\s*,\s*adType\s*:/i);
-  let photosPreferred: string[] = [];
-  if (photosJsonMatch?.[1]) {
-    try {
-      const parsed = JSON.parse(photosJsonMatch[1]) as { l?: string[]; x?: string[]; m?: string[] };
-      photosPreferred = Array.isArray(parsed.l) && parsed.l.length
-        ? parsed.l
-        : Array.isArray(parsed.x) && parsed.x.length
-          ? parsed.x
-          : Array.isArray(parsed.m)
-            ? parsed.m
-            : [];
-    } catch {
-      photosPreferred = [];
-    }
-  }
-  const imageFromOg = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] || '';
-  const imageFromCdn = Array.from(
-    new Set(
-      (htmlWithUnescapedSlashes.match(/https?:\/\/i\.st-nieruchomosci-online\.pl\/[^\s"'<>)]*\.(?:jpe?g|png|webp)/gi) || [])
-        .map((url) => String(url).trim())
-        .filter(Boolean)
-    )
-  );
-  const imageUrls =
-    photosPreferred.length > 0
-      ? Array.from(new Set(photosPreferred.filter(Boolean)))
-      : Array.from(new Set([imageFromOg, ...imageFromCdn].filter(Boolean)));
+  const photosPayload = extractNierOnlinePhotosJson(html);
+  const imageUrls = upgradeListingImageUrls(pickNierOnlineImageUrls(html, photosPayload));
 
   const adTypeToken =
     html.match(/adTypeName:\s*"([^"]+)"/i)?.[1] ||

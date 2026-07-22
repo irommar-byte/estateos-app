@@ -1,17 +1,15 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
-import { Calendar, Fuel, Gauge, MapPin, Phone, Settings2, Car as CarIcon, Cog, Palette } from "lucide-react";
+import { Calendar, Fuel, Gauge, MapPin, Settings2, Car as CarIcon, Cog, Palette } from "lucide-react";
 import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
+import CarDetailGallery from "@/components/cars/CarDetailGallery";
 import CarInquiryPanel from "@/components/cars/CarInquiryPanel";
 import CarOwnerActions from "@/components/cars/CarOwnerActions";
 import CarVehicleChecksClient from "@/components/cars/CarVehicleChecksClient";
 import EosButton from "@/components/ui/EosButton";
-import { eosBtn } from "@/components/ui/eosButtonStyles";
 import { useLocale } from "@/contexts/LocaleContext";
-import { formatDisplayPhone, toTelHref } from "@/lib/carContactPhoneShared";
-import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
+import { formatCarPrice, formatMileage } from "@/lib/carsPresentation";
 import type { CarListingRecord } from "@/lib/carsStorage";
 
 type CarDetailClientProps = {
@@ -35,9 +33,6 @@ function SpecItem({ icon: Icon, label, value }: { icon: typeof Fuel; label: stri
 export default function CarDetailClient({ car, currentUserId, sellerPhone = null }: CarDetailClientProps) {
   const { dict, locale } = useLocale();
   const d = dict.cars.detail;
-  const imageSrc = carImageSrc(car.imageUrl);
-  const callHref = sellerPhone ? toTelHref(sellerPhone) : "";
-  const displayPhone = sellerPhone ? formatDisplayPhone(sellerPhone) : "";
 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-32 text-[var(--eos-text)] sm:px-6">
@@ -46,34 +41,35 @@ export default function CarDetailClient({ car, currentUserId, sellerPhone = null
           {d.backToCatalog}
         </Link>
 
-        <section className="overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]">
-          <div className="relative aspect-[16/8]">
-            <Image src={imageSrc} alt={car.title} fill className="object-cover" priority unoptimized />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-            <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
-              <CarFavoriteButton carId={car.id} />
-            </div>
-            <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-300">
-                {car.make} · {car.model} · {car.year}
-              </p>
-              <h1 className="mt-2 max-w-4xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                {car.title}
-              </h1>
-              <p className="mt-3 flex flex-wrap items-center gap-3 text-sm text-white/80">
-                <span className="inline-flex items-center gap-1.5">
-                  <MapPin className="size-4" aria-hidden />
-                  {car.city}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Gauge className="size-4" aria-hidden />
-                  {formatMileage(car.mileageKm, locale)}
-                </span>
-              </p>
-            </div>
-          </div>
+        <section className="overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3 sm:p-4">
+          <CarDetailGallery
+            title={car.title}
+            imageUrl={car.imageUrl}
+            imagesJson={car.images}
+            overlay={<CarFavoriteButton carId={car.id} />}
+            caption={
+              <div className="pointer-events-none absolute bottom-0 left-0 right-0 p-6 sm:p-8">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-300">
+                  {car.make} · {car.model} · {car.year}
+                </p>
+                <h1 className="mt-2 max-w-4xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                  {car.title}
+                </h1>
+                <p className="mt-3 flex flex-wrap items-center gap-3 text-sm text-white/80">
+                  <span className="inline-flex items-center gap-1.5">
+                    <MapPin className="size-4" aria-hidden />
+                    {car.city}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Gauge className="size-4" aria-hidden />
+                    {formatMileage(car.mileageKm, locale)}
+                  </span>
+                </p>
+              </div>
+            }
+          />
 
-          <div className="grid gap-8 p-6 lg:grid-cols-[1.35fr_1fr] lg:p-8">
+          <div className="grid gap-8 p-3 pt-6 lg:grid-cols-[1.35fr_1fr] lg:p-5 lg:pt-8">
             <div className="space-y-6">
               <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--eos-border)] pb-5">
                 <div>
@@ -82,32 +78,12 @@ export default function CarDetailClient({ car, currentUserId, sellerPhone = null
                     {formatCarPrice(car.pricePln, locale)}
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2.5">
-                  {callHref ? (
-                    <a href={callHref} className={eosBtn("call", { size: "sm" })}>
-                      <Phone className="size-3.5" aria-hidden />
-                      {d.callCta}
-                    </a>
-                  ) : null}
-                  {car.userId ? (
-                    <EosButton href={`/profil/${car.userId}`} variant="secondary" size="sm">
-                      {d.sellerProfile}
-                    </EosButton>
-                  ) : null}
-                </div>
+                {car.userId ? (
+                  <EosButton href={`/profil/${car.userId}`} variant="secondary" size="sm">
+                    {d.sellerProfile}
+                  </EosButton>
+                ) : null}
               </div>
-
-              {callHref && displayPhone ? (
-                <p className="text-sm text-[var(--eos-muted)]">
-                  {d.callHint}{" "}
-                  <a
-                    href={callHref}
-                    className="font-semibold text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
-                  >
-                    {displayPhone}
-                  </a>
-                </p>
-              ) : null}
 
               <CarOwnerActions carId={car.id} ownerUserId={car.userId} currentUserId={currentUserId} />
 

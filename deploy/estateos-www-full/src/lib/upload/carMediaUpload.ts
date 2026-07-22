@@ -8,7 +8,7 @@ export const CAR_UPLOAD_BASE_FS =
 
 export const CAR_UPLOAD_PUBLIC_PREFIX = '/uploads/cars';
 
-export const MAX_CAR_IMAGE_BYTES = 8 * 1024 * 1024;
+export const MAX_CAR_IMAGE_BYTES = 12 * 1024 * 1024;
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
@@ -58,7 +58,11 @@ export async function saveCarListingImage(params: {
   let outputBuffer = params.buffer;
   let ext = '.webp';
   try {
-    const processed = await processOfferImageWebp(params.buffer, '.jpg', { tileWatermark: true });
+    const processed = await processOfferImageWebp(params.buffer, '.jpg', {
+      tileWatermark: true,
+      quality: 90,
+      maxEdge: 2800,
+    });
     outputBuffer = processed.buffer;
     ext = processed.ext;
   } catch {
