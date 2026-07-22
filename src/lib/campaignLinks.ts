@@ -51,6 +51,26 @@ export function buildCarsCampaignUrl(
   return `${base}?${params.toString()}`;
 }
 
+export function buildFreeListingCampaignUrl(
+  channel: CampaignChannel,
+  target: 'hub' | 'home' | 'car' = 'hub',
+  campaign = 'free-list-2026',
+): string {
+  const path =
+    target === 'home'
+      ? '/wystaw-nieruchomosc-za-darmo'
+      : target === 'car'
+        ? '/cars/start'
+        : '/wystaw-za-darmo';
+  const params = new URLSearchParams({
+    utm_source: channel,
+    utm_medium: channel === 'google' ? 'cpc' : 'social',
+    utm_campaign: campaign,
+    utm_content: target,
+  });
+  return `${ESTATEOS_SITE_URL}${path}?${params.toString()}`;
+}
+
 /** Gotowe linki do wklejenia w posty i reklamy. */
 export const CAMPAIGN_LINK_PRESETS = {
   linkedinAgency: buildCampaignUrl('linkedin', 'agency'),
@@ -69,6 +89,16 @@ export const CAMPAIGN_LINK_PRESETS = {
   carsFacebook: buildCarsCampaignUrl('facebook', 'add'),
   carsInstagram: buildCarsCampaignUrl('instagram', 'add'),
   carsEmail: buildCarsCampaignUrl('email', 'add'),
+  freeListingHub: `${ESTATEOS_SITE_URL}/wystaw-za-darmo`,
+  freeListingPress: `${ESTATEOS_SITE_URL}/dla-prasy/wystaw-za-darmo`,
+  freeListingGoogle: buildFreeListingCampaignUrl('google', 'hub'),
+  freeListingFacebook: buildFreeListingCampaignUrl('facebook', 'hub'),
+  freeListingLinkedIn: buildFreeListingCampaignUrl('linkedin', 'hub'),
+  freeListingInstagram: buildFreeListingCampaignUrl('instagram', 'hub'),
+  freeHomeGoogle: buildFreeListingCampaignUrl('google', 'home'),
+  freeCarGoogle: buildFreeListingCampaignUrl('google', 'car'),
+  freeHomeFacebook: buildFreeListingCampaignUrl('facebook', 'home'),
+  freeCarFacebook: buildFreeListingCampaignUrl('facebook', 'car'),
   appStore: 'https://apps.apple.com/app/id6762899098',
   playStore: 'https://play.google.com/store/apps/details?id=pl.estateos.mobile',
 } as const;

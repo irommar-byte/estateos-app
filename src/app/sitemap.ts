@@ -16,6 +16,7 @@ const STATIC_PATHS: { path: string; priority: number; changeFrequency: 'daily' |
   { path: '/cars', priority: 0.85, changeFrequency: 'daily' },
   { path: '/cennik', priority: 0.8, changeFrequency: 'monthly' },
   { path: '/dla-agencji', priority: 0.75, changeFrequency: 'weekly' },
+  { path: '/dla-prasy/wystaw-za-darmo', priority: 0.7, changeFrequency: 'monthly' },
   { path: '/dla-prasy', priority: 0.6, changeFrequency: 'monthly' },
   { path: '/dla-prasy/samochody', priority: 0.65, changeFrequency: 'monthly' },
   { path: '/dolacz', priority: 0.7, changeFrequency: 'weekly' },

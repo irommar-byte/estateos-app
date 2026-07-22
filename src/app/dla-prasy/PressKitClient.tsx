@@ -73,6 +73,14 @@ export default function PressKitClient() {
           Gotowe teksty, linki kampanii i fakty o produkcie. Kopiuj i wklejaj na LinkedIn, Facebook, w mailach
           do agencji lub w zapytaniach prasowych.
         </p>
+        <p className="mt-3 text-sm">
+          <Link
+            href="/dla-prasy/wystaw-za-darmo"
+            className="font-semibold text-emerald-600 hover:underline dark:text-emerald-400"
+          >
+            → Kampania „wystaw / sprzedaj za darmo” (posty + Google Ads)
+          </Link>
+        </p>
 
         <section className="mt-10 space-y-4">
           <h2 className="text-lg font-semibold">Oficjalne linki</h2>
