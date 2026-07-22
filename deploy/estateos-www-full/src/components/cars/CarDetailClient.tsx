@@ -8,7 +8,7 @@ import CarInquiryPanel from "@/components/cars/CarInquiryPanel";
 import CarOwnerActions from "@/components/cars/CarOwnerActions";
 import CarVehicleChecksClient from "@/components/cars/CarVehicleChecksClient";
 import { useLocale } from "@/contexts/LocaleContext";
-import { formatDisplayPhone, toTelHref } from "@/lib/carContactPhone";
+import { formatDisplayPhone, toTelHref } from "@/lib/carContactPhoneShared";
 import { carImageSrc, formatCarPrice, formatMileage } from "@/lib/carsPresentation";
 import type { CarListingRecord } from "@/lib/carsStorage";
 
