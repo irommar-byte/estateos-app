@@ -231,6 +231,8 @@ export type Dictionary = {
     priceOnRequest: string;
     pricePerMonth: string;
     livePulseActive: string;
+    livePulseActiveHome: string;
+    livePulseActiveCars: string;
     searchPlaceholder: string;
     searchSale: string;
     searchRent: string;
@@ -241,8 +243,11 @@ export type Dictionary = {
     searchTypePlot: string;
     searchButton: string;
     advancedFilters: string;
+    statsSectionTitle: string;
     statsActiveOffers: string;
+    statsActiveCars: string;
     statsNewOffers24h: string;
+    statsNewCars24h: string;
     statsMarketCities: string;
     statsRegisteredMembers: string;
     galleryEyebrow: string;
@@ -250,6 +255,12 @@ export type Dictionary = {
     galleryTitleHighlight: string;
     gallerySubtitle: string;
     galleryViewAll: string;
+    carsGalleryEyebrow: string;
+    carsGalleryTitle: string;
+    carsGalleryTitleHighlight: string;
+    carsGallerySubtitle: string;
+    carsGalleryViewAll: string;
+    carsFeaturedBadge: string;
     galleryPriceLabel: string;
     galleryAreaLabel: string;
     galleryRoomsLabel: string;
@@ -943,6 +954,8 @@ const pl: Dictionary = {
     priceOnRequest: "Cena na zapytanie",
     pricePerMonth: "/ mc",
     livePulseActive: "Aktywnych Ofert",
+    livePulseActiveHome: "nieruchomości",
+    livePulseActiveCars: "aut",
     searchPlaceholder: "Wpisz miasto lub dzielnicę...",
     searchSale: "Na sprzedaż",
     searchRent: "Na wynajem",
@@ -953,15 +966,24 @@ const pl: Dictionary = {
     searchTypePlot: "Działki",
     searchButton: "Szukaj",
     advancedFilters: "Filtry zaawansowane",
-    statsActiveOffers: "Zweryfikowanych Ofert",
-    statsNewOffers24h: "Nowych w 24h",
+    statsSectionTitle: "Rynek Home i Car w tym samym tempie",
+    statsActiveOffers: "Nieruchomości na rynku",
+    statsActiveCars: "Auta na rynku",
+    statsNewOffers24h: "Nowe nieruchomości · 24h",
+    statsNewCars24h: "Nowe auta · 24h",
     statsMarketCities: "Obsługiwanych Miast",
     statsRegisteredMembers: "Zaufanych Klientów",
-    galleryEyebrow: "Aktywny rynek",
-    galleryTitle: "Najnowsze",
-    galleryTitleHighlight: "ogłoszenia",
-    gallerySubtitle: "Świeże oferty z ostatnich 24 godzin — sprzedaż i wynajem, ten sam katalog co na mapie.",
-    galleryViewAll: "Zobacz całą kolekcję",
+    galleryEyebrow: "EstateOS™ Home",
+    galleryTitle: "Wyróżnione",
+    galleryTitleHighlight: "nieruchomości",
+    gallerySubtitle: "Promowane oferty Home — nie najnowsze, tylko wyróżnione na rynku.",
+    galleryViewAll: "Katalog nieruchomości",
+    carsGalleryEyebrow: "EstateOS™ Car",
+    carsGalleryTitle: "Wyróżnione",
+    carsGalleryTitleHighlight: "auta",
+    carsGallerySubtitle: "Promowane ogłoszenia Car — ten sam poziom ekspozycji co przy nieruchomościach.",
+    carsGalleryViewAll: "Katalog Cars",
+    carsFeaturedBadge: "Wyróżnione",
     galleryPriceLabel: "Cena",
     galleryAreaLabel: "Powierzchnia",
     galleryRoomsLabel: "pokoje",
@@ -1682,6 +1704,8 @@ const en: Dictionary = {
     priceOnRequest: "Price on Request",
     pricePerMonth: "/ mo",
     livePulseActive: "Active Listings",
+    livePulseActiveHome: "homes",
+    livePulseActiveCars: "cars",
     searchPlaceholder: "City or neighborhood...",
     searchSale: "For Sale",
     searchRent: "For Rent",
@@ -1692,15 +1716,24 @@ const en: Dictionary = {
     searchTypePlot: "Land / Plots",
     searchButton: "Search",
     advancedFilters: "Advanced filters",
-    statsActiveOffers: "Verified Listings",
-    statsNewOffers24h: "New in 24h",
+    statsSectionTitle: "Home and Car markets, side by side",
+    statsActiveOffers: "Homes on market",
+    statsActiveCars: "Cars on market",
+    statsNewOffers24h: "New homes · 24h",
+    statsNewCars24h: "New cars · 24h",
     statsMarketCities: "Cities Covered",
     statsRegisteredMembers: "Trusted Members",
-    galleryEyebrow: "Active market",
-    galleryTitle: "Latest",
-    galleryTitleHighlight: "listings",
-    gallerySubtitle: "Fresh listings from the last 24 hours — sale and rent, the same catalog as on the map.",
-    galleryViewAll: "View full catalog",
+    galleryEyebrow: "EstateOS™ Home",
+    galleryTitle: "Featured",
+    galleryTitleHighlight: "homes",
+    gallerySubtitle: "Promoted Home listings — featured only, not the newest feed.",
+    galleryViewAll: "Browse homes",
+    carsGalleryEyebrow: "EstateOS™ Car",
+    carsGalleryTitle: "Featured",
+    carsGalleryTitleHighlight: "cars",
+    carsGallerySubtitle: "Promoted Car listings — the same spotlight treatment as homes.",
+    carsGalleryViewAll: "Browse cars",
+    carsFeaturedBadge: "Featured",
     galleryPriceLabel: "Price",
     galleryAreaLabel: "Area",
     galleryRoomsLabel: "rooms",

@@ -7,7 +7,7 @@ import { ArrowUpRight, Briefcase, MapPin } from "lucide-react";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 import OfferNewBadge from "@/components/offer/OfferNewBadge";
-import { isOfferNew, sortOffersByNewest } from "@/lib/offerNewBadge";
+import { isOfferNew } from "@/lib/offerNewBadge";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
@@ -27,6 +27,7 @@ type Offer = {
   transactionType?: string | null;
   isLegalSafeVerified?: boolean | null;
   createdAt?: string | null;
+  featured?: boolean | null;
   badges?: {
     isPartner?: boolean;
     isInvestorPro?: boolean;
@@ -34,6 +35,7 @@ type Offer = {
 };
 
 const FALLBACK_IMAGE = "/fallback-luxury.svg";
+const MAX_FEATURED = 6;
 
 const ACTIVE_DEAL_STATUSES = new Set([
   "INITIATED",
@@ -75,7 +77,10 @@ export default function FeaturedGallery() {
       .then((res) => res.json())
       .then((json) => {
         if (!cancelled && Array.isArray(json)) {
-          setOffers(sortOffersByNewest(json).slice(0, 6));
+          const featuredOnly = json
+            .filter((offer: Offer) => offer?.featured === true)
+            .slice(0, MAX_FEATURED);
+          setOffers(featuredOnly);
         }
       })
       .catch(() => {
@@ -112,7 +117,7 @@ export default function FeaturedGallery() {
     };
   }, []);
 
-  const featured = useMemo(() => offers.slice(0, 6), [offers]);
+  const featured = useMemo(() => offers.slice(0, MAX_FEATURED), [offers]);
 
   if (!featured.length) {
     return null;

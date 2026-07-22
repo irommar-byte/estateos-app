@@ -21,7 +21,7 @@ export type EcosystemSwitchRequest = {
 
 type EcosystemContextValue = {
   vertical: EcosystemVertical;
-  /** Which Home/Car pill is highlighted — null on homepage until scroll/click. */
+  /** Which Home/Car pill is highlighted — null on homepage until the user clicks one. */
   navHighlight: EcosystemVertical | null;
   setVertical: (next: EcosystemVertical) => void;
   setNavHighlight: (next: EcosystemVertical | null) => void;
