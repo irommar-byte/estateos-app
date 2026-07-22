@@ -1,5 +1,6 @@
 import { canonicalizeCity, canonicalizeDistrict, isStrictCity, pickDistrictFromPlaceName } from '@/lib/location/locationCatalog';
 import { locationNamesEquivalent } from '@/lib/location/locationNameMatch';
+import { upgradeListingImageUrls } from '@/lib/listingImageUrlUpgrade';
 import { inferCityFromImportSlug, inferCityFromLocationHints } from '@/lib/portalImportEnrich';
 
 const OTODOM_HOST = 'otodom.pl';
@@ -645,13 +646,16 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
   }
 
   const images = Array.isArray(ad.images) ? ad.images : [];
-  const imageUrls = images
-    .map((image) => {
-      if (!image || typeof image !== 'object') return null;
-      const row = image as Record<string, unknown>;
-      return String(row.large ?? row.medium ?? row.small ?? '').trim() || null;
-    })
-    .filter((value): value is string => Boolean(value));
+  const imageUrls = upgradeListingImageUrls(
+    images
+      .map((image) => {
+        if (!image || typeof image !== 'object') return null;
+        const row = image as Record<string, unknown>;
+        // Prefer largest available Otodom variant
+        return String(row.large ?? row.medium ?? row.small ?? '').trim() || null;
+      })
+      .filter((value): value is string => Boolean(value)),
+  );
 
   const agencyRaw = (ad.agency ?? null) as Record<string, unknown> | null;
   const phones = Array.isArray(agencyRaw?.phones) ? agencyRaw?.phones : [];
@@ -782,9 +786,11 @@ export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     };
   }
 
-  const images = Array.isArray(ad.photos)
-    ? ad.photos.map((photo) => String(photo ?? '').trim()).filter((value) => Boolean(value))
-    : [];
+  const images = upgradeListingImageUrls(
+    Array.isArray(ad.photos)
+      ? ad.photos.map((photo) => String(photo ?? '').trim()).filter((value) => Boolean(value))
+      : [],
+  );
 
   const title = capitalizeImportTitle(String(ad.title ?? '').trim());
   const descriptionHtml = String(ad.description ?? '');
@@ -1266,7 +1272,7 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
       canonicalizeDistrict(city, districtHint)
     : '';
   const photosPayload = extractNierOnlinePhotosJson(html);
-  const imageUrls = pickNierOnlineImageUrls(html, photosPayload);
+  const imageUrls = upgradeListingImageUrls(pickNierOnlineImageUrls(html, photosPayload));
 
   const adTypeToken =
     html.match(/adTypeName:\s*"([^"]+)"/i)?.[1] ||

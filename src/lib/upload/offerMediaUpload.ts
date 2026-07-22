@@ -81,9 +81,11 @@ export function isValidImageMagic(buffer: Buffer, mime: string): boolean {
 export async function processOfferImageWebp(
   buffer: Buffer,
   fallbackExt: string,
-  options?: { tileWatermark?: boolean },
+  options?: { tileWatermark?: boolean; quality?: number; maxEdge?: number },
 ): Promise<{ buffer: Buffer; ext: string }> {
   const tileWatermark = options?.tileWatermark !== false;
+  const quality = Math.min(95, Math.max(70, Number(options?.quality) || 82));
+  const maxEdge = Math.min(4000, Math.max(1200, Number(options?.maxEdge) || 2200));
   try {
     const sharp = (await import('sharp')).default;
     let image = sharp(buffer).rotate();
@@ -93,7 +95,6 @@ export async function processOfferImageWebp(
     // ograniczamy dłuższy bok, żeby nie marnować limitu 20 MB na kilka gigantycznych kadrów.
     const width = Number(metadata.width || 0);
     const height = Number(metadata.height || 0);
-    const maxEdge = 2200;
     if (width > 0 && height > 0 && (width > maxEdge || height > maxEdge)) {
       image = image.resize({
         width: width >= height ? maxEdge : undefined,
@@ -128,8 +129,8 @@ export async function processOfferImageWebp(
 
     const finalBuffer = await image
       .webp({
-        quality: 82,
-        effort: 6,
+        quality,
+        effort: 5,
       })
       .toBuffer();
     return { buffer: finalBuffer, ext: '.webp' };
