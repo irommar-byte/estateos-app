@@ -9,6 +9,7 @@ import { formatCarPrice } from "@/lib/carsPresentation";
 import { formatDisplayPhone, toTelHref } from "@/lib/carContactPhoneShared";
 import { useLocale } from "@/contexts/LocaleContext";
 import { carAlertErrorClass, carAlertInfoClass } from "@/components/cars/carFormStyles";
+import { eosBtn } from "@/components/ui/eosButtonStyles";
 import { fmtCars } from "@/i18n/carsDictionary";
 
 type CarInquiryPanelProps = {
@@ -126,16 +127,18 @@ export default function CarInquiryPanel({
       </div>
 
       {callHref ? (
-        <a
-          href={callHref}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-emerald-400/45 bg-gradient-to-b from-emerald-400/30 to-emerald-500/10 px-4 py-3.5 text-xs font-black uppercase tracking-[0.14em] text-emerald-900 shadow-[0_12px_32px_rgba(16,185,129,0.2)] transition hover:from-emerald-400/40 hover:to-emerald-500/15 dark:text-emerald-100"
-        >
-          <Phone className="size-4" aria-hidden />
-          {i.callSeller}
-          {displayPhone ? <span className="font-semibold normal-case tracking-normal opacity-80">· {displayPhone}</span> : null}
-        </a>
+        <p className="text-[11px] leading-relaxed text-[var(--eos-muted)]">
+          {i.callSellerHint}
+          {displayPhone ? (
+            <>
+              {" "}
+              <a href={callHref} className="font-semibold text-[var(--eos-text)] underline-offset-2 hover:underline">
+                {displayPhone}
+              </a>
+            </>
+          ) : null}
+        </p>
       ) : null}
-      {callHref ? <p className="text-center text-[11px] text-[var(--eos-muted)]">{i.callSellerHint}</p> : null}
 
       <label className="grid gap-1.5 text-sm">
         <span className="flex items-center gap-2 text-[var(--eos-muted)]">
@@ -186,14 +189,18 @@ export default function CarInquiryPanel({
 
       {error ? <p className={carAlertErrorClass}>{error}</p> : null}
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-sky-400/40 bg-sky-500/15 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-sky-800 transition hover:bg-sky-500/25 disabled:opacity-60 dark:text-sky-200"
-      >
-        {submitting ? <Loader2 className="size-4 animate-spin" /> : <MessageCircle className="size-4" />}
-        {submitting ? i.submitting : i.submit}
-      </button>
+      <div className={`grid gap-2.5 ${callHref ? "sm:grid-cols-2" : ""}`}>
+        {callHref ? (
+          <a href={callHref} className={eosBtn("call", { block: true })}>
+            <Phone className="size-4" aria-hidden />
+            {i.callSeller}
+          </a>
+        ) : null}
+        <button type="submit" disabled={submitting} className={eosBtn("car", { block: true })}>
+          {submitting ? <Loader2 className="size-4 animate-spin" /> : <MessageCircle className="size-4" />}
+          {submitting ? i.submitting : i.submit}
+        </button>
+      </div>
 
       <p className="text-[11px] leading-relaxed text-[var(--eos-muted)]">{i.footerNote}</p>
     </form>

@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Car, Crown, Home, Loader2, Pencil, Sparkles } from "lucide-react";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
+import EosButton from "@/components/ui/EosButton";
+import { eosBtn } from "@/components/ui/eosButtonStyles";
 
 type HomeListing = {
   id: number;
@@ -38,23 +40,6 @@ function formatPrice(price: number | null | undefined) {
   if (!price || !Number.isFinite(Number(price))) return "Cena na zapytanie";
   return `${new Intl.NumberFormat("pl-PL").format(Number(price))} PLN`;
 }
-
-const actionBtnBase =
-  "inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.14em] transition duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55";
-
-function editBtnClass(brand: "home" | "car") {
-  if (brand === "home") {
-    return `${actionBtnBase} border border-emerald-300/70 bg-gradient-to-b from-emerald-100 to-emerald-50 text-emerald-800 shadow-[0_8px_22px_rgba(16,185,129,0.16),inset_0_1px_0_rgba(255,255,255,0.85)] hover:from-emerald-50 hover:to-emerald-100/80 dark:border-emerald-400/35 dark:from-emerald-500/25 dark:to-emerald-500/10 dark:text-emerald-200 dark:shadow-[0_10px_28px_rgba(16,185,129,0.18)]`;
-  }
-  return `${actionBtnBase} border border-sky-300/70 bg-gradient-to-b from-sky-100 to-sky-50 text-sky-900 shadow-[0_8px_22px_rgba(14,165,233,0.16),inset_0_1px_0_rgba(255,255,255,0.85)] hover:from-sky-50 hover:to-sky-100/80 dark:border-sky-400/40 dark:from-sky-500/25 dark:to-sky-500/10 dark:text-sky-100 dark:shadow-[0_10px_28px_rgba(14,165,233,0.2)]`;
-}
-
-function dangerBtnClass() {
-  return `${actionBtnBase} border border-rose-300/70 bg-gradient-to-b from-rose-100 to-rose-50 text-rose-800 shadow-[0_8px_20px_rgba(244,63,94,0.12),inset_0_1px_0_rgba(255,255,255,0.8)] hover:from-rose-50 hover:to-rose-100/90 dark:border-rose-400/35 dark:from-rose-500/20 dark:to-rose-500/8 dark:text-rose-200`;
-}
-
-const promoteBtnClass =
-  "inline-flex items-center gap-2 rounded-full border border-black/8 bg-gradient-to-b from-white to-neutral-50 px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.14em] text-neutral-800 shadow-[0_8px_22px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] transition duration-200 hover:border-amber-400/50 hover:from-amber-50 hover:to-white hover:text-amber-950 active:scale-[0.98] disabled:opacity-55 dark:border-white/10 dark:from-white/[0.08] dark:to-white/[0.02] dark:text-amber-100 dark:shadow-[0_10px_28px_rgba(0,0,0,0.25)] dark:hover:border-amber-400/40";
 
 export default function AccountListingsPage() {
   const searchParams = useSearchParams();
@@ -146,26 +131,11 @@ export default function AccountListingsPage() {
     }
   };
 
-  const verticalTabClass = (active: boolean, brand: "home" | "car") => {
-    if (brand === "home") {
-      return `inline-flex items-center gap-2.5 rounded-full border px-6 py-3 text-[11px] font-black uppercase tracking-[0.16em] transition duration-200 ${
-        active
-          ? "border-emerald-300/80 bg-gradient-to-b from-emerald-100 to-emerald-50 text-emerald-900 shadow-[0_12px_32px_rgba(16,185,129,0.18),inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-emerald-400/45 dark:from-emerald-500/25 dark:to-emerald-500/10 dark:text-emerald-100"
-          : "border-black/8 bg-white/80 text-neutral-500 shadow-[0_4px_16px_rgba(15,23,42,0.04)] hover:border-emerald-300/50 hover:text-emerald-800 dark:border-white/10 dark:bg-white/[0.04] dark:text-[var(--eos-muted)] dark:hover:border-emerald-400/30 dark:hover:text-[var(--eos-text)]"
-      }`;
-    }
-    return `inline-flex items-center gap-2.5 rounded-full border px-6 py-3 text-[11px] font-black uppercase tracking-[0.16em] transition duration-200 ${
-      active
-        ? "border-sky-300/80 bg-gradient-to-b from-sky-100 to-sky-50 text-sky-950 shadow-[0_12px_32px_rgba(14,165,233,0.2),inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-sky-400/45 dark:from-sky-500/25 dark:to-sky-500/10 dark:text-sky-100"
-        : "border-black/8 bg-white/80 text-neutral-500 shadow-[0_4px_16px_rgba(15,23,42,0.04)] hover:border-sky-300/50 hover:text-sky-900 dark:border-white/10 dark:bg-white/[0.04] dark:text-[var(--eos-muted)] dark:hover:border-sky-400/30 dark:hover:text-[var(--eos-text)]"
-    }`;
-  };
-
   const listingCardClass = (brand: "home" | "car") =>
-    `group relative overflow-hidden rounded-[1.75rem] border bg-[var(--eos-card)] p-6 shadow-[0_18px_50px_rgba(15,23,42,0.06)] transition duration-300 sm:p-7 ${
+    `group relative overflow-hidden rounded-[1.75rem] border bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)] transition duration-300 sm:p-7 ${
       brand === "home"
-        ? "border-black/[0.06] hover:border-emerald-300/50 hover:shadow-[0_22px_60px_rgba(16,185,129,0.12)] dark:border-white/10 dark:hover:border-emerald-400/35"
-        : "border-black/[0.06] hover:border-sky-300/50 hover:shadow-[0_22px_60px_rgba(14,165,233,0.12)] dark:border-white/10 dark:hover:border-sky-400/35"
+        ? "border-[var(--eos-border)] hover:border-emerald-400/45"
+        : "border-[var(--eos-border)] hover:border-sky-400/45"
     }`;
 
   return (
@@ -178,48 +148,22 @@ export default function AccountListingsPage() {
             Jedno konto EstateOS i dwa brandy operacyjne: EstateOS™Home oraz EstateOS™Car.
           </p>
           <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
-            <Link
-              href="/moje-konto/crm?tab=my_offers"
-              className="inline-flex rounded-full border border-emerald-400/45 bg-emerald-500/15 px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600 dark:text-emerald-300"
-            >
+            <EosButton href="/moje-konto/crm?tab=my_offers" variant="home" size="sm">
               Panel zarządzania
-            </Link>
-            <Link
-              href="/moje-konto/sesje-zdjeciowe"
-              className="inline-flex rounded-full border border-emerald-400/35 bg-emerald-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-300"
-            >
+            </EosButton>
+            <EosButton href="/moje-konto/sesje-zdjeciowe" variant="secondary" size="sm">
               Sesje zdjęciowe EstateOS Studio
-            </Link>
-            <Link
-              href="/moje-konto/wiadomosci"
-              className="inline-flex rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em]"
-            >
+            </EosButton>
+            <EosButton href="/moje-konto/wiadomosci" variant="secondary" size="sm">
               Wiadomości
-            </Link>
+            </EosButton>
           </div>
         </header>
 
-        <section
-          className={`relative mb-8 overflow-hidden rounded-[2rem] border p-7 text-center sm:p-10 ${
-            vertical === "car"
-              ? "border-sky-200/80 bg-gradient-to-b from-white to-sky-50/40 shadow-[0_24px_70px_rgba(14,165,233,0.1)] dark:border-sky-400/25 dark:from-[var(--eos-card)] dark:to-[var(--eos-card)] dark:shadow-[0_22px_70px_rgba(14,165,233,0.1)]"
-              : "border-emerald-200/80 bg-gradient-to-b from-white to-emerald-50/40 shadow-[0_24px_70px_rgba(16,185,129,0.1)] dark:border-emerald-400/20 dark:from-[var(--eos-card)] dark:to-[var(--eos-card)] dark:shadow-[0_22px_70px_rgba(16,185,129,0.08)]"
-          }`}
-        >
-          <div
-            className={`pointer-events-none absolute -right-20 -top-20 size-64 rounded-full blur-3xl ${
-              vertical === "car" ? "bg-sky-500/12" : "bg-emerald-500/10"
-            }`}
-          />
-          <div
-            className={`pointer-events-none absolute -bottom-16 -left-16 size-48 rounded-full blur-3xl ${
-              vertical === "car" ? "bg-cyan-500/8" : "bg-emerald-500/6"
-            }`}
-          />
-
+        <section className="relative mb-8 overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-7 text-center shadow-[var(--eos-shadow-soft)] sm:p-10">
           <p
             className={`text-xs font-black uppercase tracking-[0.22em] ${
-              vertical === "car" ? "text-sky-500" : "text-emerald-500"
+              vertical === "car" ? "text-sky-600 dark:text-sky-400" : "text-emerald-600 dark:text-emerald-400"
             }`}
           >
             {vertical === "car" ? "EstateOS™Car" : "EstateOS™Home"}
@@ -233,23 +177,27 @@ export default function AccountListingsPage() {
               : "Zarządzaj ofertami Home, promuj ogłoszenia i odpowiadaj na zapytania z jednego konta."}
           </p>
 
-          <div className="relative mx-auto mt-8 flex max-w-xl flex-wrap items-center justify-center gap-3">
-            <button type="button" onClick={() => setVertical("home")} className={verticalTabClass(vertical === "home", "home")}>
+          <div className="eos-btn-seg relative mx-auto mt-8">
+            <button
+              type="button"
+              onClick={() => setVertical("home")}
+              className={eosBtn(vertical === "home" ? "home" : "ghost", { size: "sm" })}
+            >
               <Home size={15} strokeWidth={2.25} />
               EstateOS™Home ({homeListings.length})
             </button>
-            <button type="button" onClick={() => setVertical("car")} className={verticalTabClass(vertical === "car", "car")}>
+            <button
+              type="button"
+              onClick={() => setVertical("car")}
+              className={eosBtn(vertical === "car" ? "car" : "ghost", { size: "sm" })}
+            >
               <Car size={15} strokeWidth={2.25} />
               EstateOS™Car ({carListings.length})
             </button>
           </div>
 
           {!loading ? (
-            <p
-              className={`mt-6 inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] ${
-                vertical === "car" ? "text-sky-600 dark:text-sky-300" : "text-emerald-600 dark:text-emerald-300"
-              }`}
-            >
+            <p className="mt-6 inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
               <Sparkles className="size-3.5 opacity-70" aria-hidden />
               {activeItems.length}{" "}
               {activeItems.length === 1 ? "aktywne ogłoszenie" : activeItems.length < 5 ? "aktywne ogłoszenia" : "aktywnych ogłoszeń"}
@@ -260,30 +208,24 @@ export default function AccountListingsPage() {
         {loading ? (
           <p className="text-center text-xs uppercase tracking-[0.2em] text-[var(--eos-muted)]">Ładowanie ogłoszeń...</p>
         ) : activeItems.length === 0 ? (
-          <div
-            className={`mx-auto max-w-2xl rounded-[1.75rem] border p-10 text-center shadow-[0_18px_50px_rgba(15,23,42,0.05)] ${
-              vertical === "car"
-                ? "border-sky-200/70 bg-gradient-to-b from-sky-50/80 to-white dark:border-sky-400/20 dark:from-sky-500/[0.06] dark:to-transparent"
-                : "border-emerald-200/70 bg-gradient-to-b from-emerald-50/80 to-white dark:border-emerald-400/20 dark:from-emerald-500/[0.05] dark:to-transparent"
-            }`}
-          >
+          <div className="mx-auto max-w-2xl rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-10 text-center shadow-[var(--eos-shadow-soft)]">
             <p className="text-sm text-[var(--eos-muted)]">
               {vertical === "home"
                 ? "Nie masz jeszcze aktywnych ogłoszeń nieruchomości."
                 : "Nie masz jeszcze ogłoszeń samochodowych."}
             </p>
-            <div className="mt-6">
-              <Link
+            <div className="mt-6 flex justify-center">
+              <EosButton
                 href={vertical === "home" ? "/dodaj-oferte" : "/cars/dodaj"}
-                className={vertical === "home" ? editBtnClass("home") : editBtnClass("car")}
+                variant={vertical === "home" ? "home" : "car"}
               >
                 {vertical === "home" ? "Dodaj ofertę Home" : "Dodaj ofertę Car"}
-              </Link>
+              </EosButton>
             </div>
             {vertical === "car" ? (
               <Link
                 href="/cars"
-                className="mt-5 inline-block text-xs font-semibold text-sky-500 underline underline-offset-2 hover:text-sky-400"
+                className="mt-5 inline-block text-xs font-semibold text-sky-600 underline underline-offset-2 hover:text-sky-500 dark:text-sky-400"
               >
                 Przejdź do katalogu Cars
               </Link>
@@ -294,12 +236,8 @@ export default function AccountListingsPage() {
             {vertical === "home"
               ? (homeListings as HomeListing[]).map((offer) => (
                   <article key={`home-${offer.id}`} className={listingCardClass("home")}>
-                    <div
-                      className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/40 to-transparent"
-                      aria-hidden
-                    />
                     <Link href={`/oferta/${offer.id}`} className="block">
-                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-300">
+                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400">
                         EstateOS™Home
                       </p>
                       <h2 className="mt-3 text-xl font-semibold tracking-tight text-[var(--eos-text)] sm:text-2xl">
@@ -317,37 +255,33 @@ export default function AccountListingsPage() {
                         </p>
                       ) : null}
                     </Link>
-                    <div className="mt-6 flex flex-wrap gap-2.5 border-t border-black/[0.05] pt-5 dark:border-white/10">
-                      <Link href={`/edytuj-oferte/${offer.id}`} className={editBtnClass("home")}>
+                    <div className="mt-6 flex flex-wrap gap-2.5 border-t border-[var(--eos-border)] pt-5">
+                      <EosButton href={`/edytuj-oferte/${offer.id}`} variant="home" size="sm">
                         <Pencil className="size-3.5" aria-hidden />
                         Edytuj
-                      </Link>
+                      </EosButton>
                       <PromoteListingButton
                         endpoint={`/api/offers/${offer.id}/promote`}
                         onPromoted={() => void loadHomeListings()}
                         disabled={Boolean(offer.featured)}
-                        buttonClassName={promoteBtnClass}
                       />
-                      <button
+                      <EosButton
                         type="button"
+                        variant="danger"
+                        size="sm"
                         onClick={() => void handleArchiveHome(offer.id)}
                         disabled={archivingHomeId === offer.id}
-                        className={dangerBtnClass()}
                       >
                         {archivingHomeId === offer.id ? <Loader2 className="size-3.5 animate-spin" /> : null}
                         {archivingHomeId === offer.id ? "Kończenie..." : "Zakończ"}
-                      </button>
+                      </EosButton>
                     </div>
                   </article>
                 ))
               : (carListings as CarListing[]).map((car) => (
                   <article key={`car-${car.id}`} className={listingCardClass("car")}>
-                    <div
-                      className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-400/40 to-transparent"
-                      aria-hidden
-                    />
                     <Link href={`/cars/${car.id}`} className="block">
-                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-sky-600 dark:text-sky-300">
+                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-sky-600 dark:text-sky-400">
                         EstateOS™Car
                       </p>
                       <h2 className="mt-3 text-xl font-semibold tracking-tight text-[var(--eos-text)] sm:text-2xl">
@@ -365,26 +299,26 @@ export default function AccountListingsPage() {
                         </p>
                       ) : null}
                     </Link>
-                    <div className="mt-6 flex flex-wrap gap-2.5 border-t border-black/[0.05] pt-5 dark:border-white/10">
-                      <Link href={`/cars/${car.id}/edytuj`} className={editBtnClass("car")}>
+                    <div className="mt-6 flex flex-wrap gap-2.5 border-t border-[var(--eos-border)] pt-5">
+                      <EosButton href={`/cars/${car.id}/edytuj`} variant="car" size="sm">
                         <Pencil className="size-3.5" aria-hidden />
                         Edytuj
-                      </Link>
+                      </EosButton>
                       <PromoteListingButton
                         endpoint={`/api/cars/${car.id}/promote`}
                         onPromoted={() => void loadCarListings()}
                         disabled={Boolean(car.featured)}
-                        buttonClassName={promoteBtnClass}
                       />
-                      <button
+                      <EosButton
                         type="button"
+                        variant="danger"
+                        size="sm"
                         onClick={() => handleDeleteCar(car.id)}
                         disabled={deletingCarId === car.id}
-                        className={dangerBtnClass()}
                       >
                         {deletingCarId === car.id ? <Loader2 className="size-3.5 animate-spin" /> : null}
                         {deletingCarId === car.id ? "Usuwanie..." : "Usuń"}
-                      </button>
+                      </EosButton>
                     </div>
                   </article>
                 ))}

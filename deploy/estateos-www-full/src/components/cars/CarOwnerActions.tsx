@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Loader2, Pencil, Trash2 } from "lucide-react";
+import EosButton from "@/components/ui/EosButton";
 import { useLocale } from "@/contexts/LocaleContext";
-import { getCarsDictionary } from "@/i18n/carsDictionary";
+import { carAlertErrorClass } from "@/components/cars/carFormStyles";
 
 type CarOwnerActionsProps = {
   carId: number;
@@ -13,16 +15,16 @@ type CarOwnerActionsProps = {
 };
 
 export default function CarOwnerActions({ carId, ownerUserId, currentUserId }: CarOwnerActionsProps) {
-  const { locale } = useLocale();
-  const d = getCarsDictionary(locale);
   const router = useRouter();
+  const { dict } = useLocale();
+  const o = dict.cars.owner;
   const [deleting, setDeleting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!currentUserId || !ownerUserId || currentUserId !== ownerUserId) return null;
 
   const handleDelete = async () => {
-    if (!window.confirm(d.ownerDeleteConfirm)) return;
     setDeleting(true);
     setError(null);
     try {
@@ -32,35 +34,50 @@ export default function CarOwnerActions({ carId, ownerUserId, currentUserId }: C
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(typeof data?.error === "string" ? data.error : d.ownerDeleteError);
+        setError(typeof data?.error === "string" ? data.error : o.deleteFailed);
         setDeleting(false);
+        setConfirmOpen(false);
         return;
       }
-      router.push("/moje-konto/ogloszenia");
+      router.push("/moje-konto/ogloszenia?vertical=car");
       router.refresh();
     } catch {
-      setError(d.ownerNetworkError);
+      setError(o.deleteNetworkError);
       setDeleting(false);
+      setConfirmOpen(false);
     }
   };
 
   return (
-    <div className="flex flex-wrap gap-3">
-      <Link
-        href={`/cars/${carId}/edytuj`}
-        className="rounded-full border border-sky-400/40 bg-sky-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-sky-300"
-      >
-        {d.ownerEdit}
-      </Link>
-      <button
-        type="button"
-        onClick={handleDelete}
-        disabled={deleting}
-        className="rounded-full border border-red-400/35 bg-red-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-red-300 disabled:opacity-60"
-      >
-        {deleting ? d.ownerDeleting : d.ownerDelete}
-      </button>
-      {error ? <p className="w-full text-sm text-red-400">{error}</p> : null}
-    </div>
+    <>
+      <div className="flex flex-wrap gap-2.5">
+        <EosButton href={`/cars/${carId}/edytuj`} variant="car" size="sm">
+          <Pencil className="size-3.5" aria-hidden />
+          {o.edit}
+        </EosButton>
+        <EosButton type="button" variant="danger" size="sm" onClick={() => setConfirmOpen(true)} disabled={deleting}>
+          {deleting ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Trash2 className="size-3.5" aria-hidden />}
+          {deleting ? o.deleting : o.delete}
+        </EosButton>
+        {error ? <p className={`w-full ${carAlertErrorClass}`}>{error}</p> : null}
+      </div>
+
+      {confirmOpen ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[var(--eos-bg)]/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-2xl">
+            <p className="text-sm leading-relaxed text-[var(--eos-text)]">{o.confirmDelete}</p>
+            <div className="mt-6 flex flex-wrap justify-end gap-2.5">
+              <EosButton type="button" variant="secondary" size="sm" onClick={() => setConfirmOpen(false)} disabled={deleting}>
+                {dict.cars.common.cancel}
+              </EosButton>
+              <EosButton type="button" variant="danger" size="sm" onClick={() => void handleDelete()} disabled={deleting}>
+                {deleting ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : null}
+                {deleting ? o.deleting : o.delete}
+              </EosButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
