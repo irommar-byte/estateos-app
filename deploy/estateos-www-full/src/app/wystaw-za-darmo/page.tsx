@@ -204,6 +204,11 @@ export default function WystawZaDarmoPage() {
               </Link>
             </li>
             <li>
+              <Link href="/dla-prasy/wystaw-za-darmo" className="hover:underline">
+                Gotowe posty i Google Ads
+              </Link>
+            </li>
+            <li>
               <Link href="/sprzedaj-za-darmo" className="hover:underline">
                 Sprzedaj za darmo
               </Link>
