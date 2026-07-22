@@ -30,7 +30,19 @@ export default function Footer() {
               />
             </div>
           </div>
-          <div className="flex flex-wrap justify-center gap-6 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 sm:gap-8">
+          <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40 sm:gap-x-8">
+            <Link href="/wystaw-za-darmo" className="transition-colors hover:text-emerald-400">
+              Wystaw za darmo
+            </Link>
+            <Link href="/wystaw-nieruchomosc-za-darmo" className="transition-colors hover:text-emerald-400">
+              Nieruchomość
+            </Link>
+            <Link href="/cars/start" className="transition-colors hover:text-sky-400">
+              Samochód
+            </Link>
+            <Link href="/cennik" className="transition-colors hover:text-white">
+              Cennik
+            </Link>
             <Link href="/regulamin" className="transition-colors hover:text-white">
               {dict.footer.terms}
             </Link>

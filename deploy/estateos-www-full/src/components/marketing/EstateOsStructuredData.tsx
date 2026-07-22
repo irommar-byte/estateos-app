@@ -6,8 +6,9 @@ import {
   ESTATEOS_LEGAL_NAME,
   ESTATEOS_PUBLIC_URLS,
   ESTATEOS_SITE_URL,
-  ESTATEOS_TAGLINE_EN,
+  ESTATEOS_TAGLINE_PL,
 } from '@/lib/estateOsPublicFacts';
+import { FREE_LISTING_URLS } from '@/lib/seo/freeListingContent';
 
 export default function EstateOsStructuredData() {
   const organization = {
@@ -17,7 +18,7 @@ export default function EstateOsStructuredData() {
     legalName: ESTATEOS_LEGAL_NAME,
     url: ESTATEOS_SITE_URL,
     logo: `${ESTATEOS_SITE_URL}/icon.svg`,
-    description: ESTATEOS_TAGLINE_EN,
+    description: ESTATEOS_TAGLINE_PL,
     sameAs: [ESTATEOS_PUBLIC_URLS.appStore, ESTATEOS_PUBLIC_URLS.playStore],
   };
 
@@ -26,12 +27,31 @@ export default function EstateOsStructuredData() {
     '@type': 'WebSite',
     name: 'EstateOS™',
     url: ESTATEOS_SITE_URL,
-    description: ESTATEOS_TAGLINE_EN,
+    description:
+      'Wystaw mieszkanie, dom lub samochód za darmo. Portal ogłoszeń EstateOS™ — mapa, katalog i aplikacja.',
     inLanguage: ['pl', 'en', 'uk'],
     potentialAction: {
       '@type': 'SearchAction',
       target: `${ESTATEOS_SITE_URL}/oferty?q={search_term_string}`,
       'query-input': 'required name=search_term_string',
+    },
+  };
+
+  const freeListingService = {
+    '@context': 'https://schema.org',
+    '@type': 'Service',
+    name: 'Wystaw ogłoszenie za darmo',
+    serviceType: 'Portal ogłoszeń nieruchomości i samochodów',
+    provider: { '@type': 'Organization', name: ESTATEOS_LEGAL_NAME, url: ESTATEOS_SITE_URL },
+    areaServed: { '@type': 'Country', name: 'Poland' },
+    url: FREE_LISTING_URLS.hub,
+    description:
+      'Bezpłatna publikacja ogłoszeń: mieszkanie, dom, działka i samochód na sprzedaż lub wynajem.',
+    offers: {
+      '@type': 'Offer',
+      price: '0',
+      priceCurrency: 'PLN',
+      description: 'Podstawowa publikacja ogłoszenia za darmo',
     },
   };
 
@@ -55,7 +75,7 @@ export default function EstateOsStructuredData() {
     url: ESTATEOS_PLAY_STORE_URL,
   };
 
-  const payload = [organization, website, iosApp, androidApp];
+  const payload = [organization, website, freeListingService, iosApp, androidApp];
 
   return (
     <script
