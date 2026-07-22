@@ -7,10 +7,29 @@ import { computeListingLimits, isPlusCreditActive } from '@/lib/offerListingLimi
 import { shapeMobileUser } from '@/lib/mobileUserShape';
 import { isAgentOrAgencySeller } from '@/lib/sellerDisplay';
 import { sellerClientToListingPrefill } from '@/lib/offerAgencyManagement';
+import type { Metadata } from 'next';
+import { ESTATEOS_SITE_URL } from '@/lib/estateOsPublicFacts';
+import { FREE_LISTING_KEYWORDS } from '@/lib/seo/freeListingContent';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
+
+export const metadata: Metadata = {
+  title: 'Dodaj ofertę — wystaw nieruchomość za darmo',
+  description:
+    'Wystaw mieszkanie, dom lub działkę za darmo na EstateOS™. Formularz publikacji ogłoszenia nieruchomości bez prowizji portalowej.',
+  keywords: [...FREE_LISTING_KEYWORDS],
+  openGraph: {
+    title: 'Wystaw nieruchomość za darmo | EstateOS™',
+    description: 'Dodaj ofertę mieszkania lub domu — publikacja podstawowa za darmo.',
+    url: `${ESTATEOS_SITE_URL}/dodaj-oferte`,
+    locale: 'pl_PL',
+    type: 'website',
+  },
+  alternates: { canonical: `${ESTATEOS_SITE_URL}/dodaj-oferte` },
+  robots: { index: true, follow: true },
+};
 
 const guestUser = { isLoggedIn: false as const };
 

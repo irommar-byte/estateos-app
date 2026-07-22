@@ -9,18 +9,21 @@ import {
   CatalogHeroSecondaryLink,
 } from '@/components/catalog/CatalogHeroActions';
 import OtomotoImportHeroCard from '@/components/cars/OtomotoImportHeroCard';
+import SeoFaqSection from '@/components/seo/SeoFaqSection';
 import { CAMPAIGN_LINK_PRESETS } from '@/lib/campaignLinks';
 import { carsOpenGraph, carsTwitter } from '@/lib/carsOgMetadata';
 import { ESTATEOS_PUBLIC_URLS } from '@/lib/estateOsPublicFacts';
+import { FREE_LISTING_CAR_FAQ, FREE_LISTING_KEYWORDS } from '@/lib/seo/freeListingContent';
 
 export const metadata: Metadata = {
   title: 'Wystaw auto na sprzedaż za darmo',
   description:
-    'Zastrzeż VIN i rejestrację — kupujący i tak sprawdzi historię pojazdu i OC. Wystaw auto za darmo w EstateOS™Car.',
+    'Wystaw samochód na sprzedaż za darmo w EstateOS™Car. Portal ogłoszeń aut — zdjęcia, mapa, skan dowodu. Zastrzeż VIN; kupujący sprawdzi historię i OC.',
+  keywords: [...FREE_LISTING_KEYWORDS],
   openGraph: carsOpenGraph({
     title: 'EstateOS™Car — wystaw auto za darmo',
     description:
-      'Zastrzeż dane wrażliwe — kupujący sprawdzi historię i OC bez ujawniania pełnego VIN. Wystawienie za darmo.',
+      'Sprzedaj samochód za darmo. Zastrzeż VIN — kupujący sprawdzi historię i OC. Jedno konto z nieruchomościami.',
     url: ESTATEOS_PUBLIC_URLS.carsStart,
     siteName: 'EstateOS™Car',
     locale: 'pl_PL',
@@ -29,7 +32,7 @@ export const metadata: Metadata = {
   twitter: carsTwitter({
     title: 'EstateOS™Car — wystaw auto za darmo',
     description:
-      'Zastrzeż dane wrażliwe — kupujący sprawdzi historię i OC bez ujawniania pełnego VIN. Wystawienie za darmo.',
+      'Sprzedaj samochód za darmo. Zastrzeż VIN — kupujący sprawdzi historię i OC. Jedno konto z nieruchomościami.',
   }),
   alternates: { canonical: ESTATEOS_PUBLIC_URLS.carsStart },
 };
@@ -58,9 +61,9 @@ export default function CarsStartCampaignPage() {
       <div className="relative mx-auto max-w-5xl">
         <CatalogBrandHero
           brand="car"
-          title="Sprzedajesz auto? Wystaw ogłoszenie w EstateOS™Car"
-          description="Profesjonalny katalog samochodów w tym samym koncie co nieruchomości. Bez prowizji portalowej — zdjęcia, mapa, skan dowodu i kontakt z kupującymi."
-          stats="Kampania sprzedaży pojazdów — udostępnij link znajomym i w social media"
+          title="Wystaw samochód na sprzedaż za darmo"
+          description="Portal EstateOS™Car — ogłoszenie auta bez prowizji portalowej. Profesjonalny katalog w tym samym koncie co nieruchomości: zdjęcia, mapa, skan dowodu i kontakt z kupującymi."
+          stats="Sprzedaj auto za darmo — udostępnij link znajomym i w social media"
         >
           <CatalogHeroActionRow>
             <CatalogHeroPrimaryLink brand="car" href="/cars/dodaj">
@@ -121,6 +124,24 @@ export default function CarsStartCampaignPage() {
             <CatalogHeroSecondaryLink href="/kampania">Plan kampanii</CatalogHeroSecondaryLink>
           </div>
         </section>
+
+        <SeoFaqSection
+          title="Samochód za darmo — FAQ"
+          intro="Gdzie wystawić auto na sprzedaż za darmo i jak przenieść ogłoszenie z Otomoto."
+          items={FREE_LISTING_CAR_FAQ}
+          accentClassName="text-sky-500"
+        />
+
+        <p className="mt-8 text-center text-sm text-[var(--eos-muted)]">
+          Sprzedajesz też mieszkanie?{' '}
+          <Link href="/wystaw-nieruchomosc-za-darmo" className="font-semibold text-emerald-600 hover:underline dark:text-emerald-400">
+            Wystaw nieruchomość za darmo
+          </Link>
+          {' · '}
+          <Link href="/wystaw-za-darmo" className="hover:underline">
+            Hub: wystaw za darmo
+          </Link>
+        </p>
 
         <section className="mt-10 rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 sm:p-8">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">

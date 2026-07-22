@@ -6,31 +6,32 @@ import { CAMPAIGN_LINK_PRESETS } from '@/lib/campaignLinks';
 import { ESTATEOS_PUBLIC_URLS, ESTATEOS_TAGLINE_PL } from '@/lib/estateOsPublicFacts';
 
 export const metadata: Metadata = {
-  title: 'Start — EstateOS™',
+  title: 'Start — wystaw nieruchomość lub auto za darmo',
   description:
-    'Poznaj EstateOS™: mapa nieruchomości, aplikacja mobilna i CRM dla agencji. Wybierz ścieżkę i dołącz w kilka minut.',
+    'Zacznij na EstateOS™: wystaw mieszkanie, dom lub samochód za darmo, zaimportuj ogłoszenie albo dołącz jako agencja. Mapa, aplikacja i CRM.',
   openGraph: {
-    title: 'EstateOS™ — platforma nieruchomości nowej generacji',
+    title: 'EstateOS™ — wystaw za darmo mieszkanie, dom lub auto',
     description: ESTATEOS_TAGLINE_PL,
     url: ESTATEOS_PUBLIC_URLS.start,
+    locale: 'pl_PL',
   },
   alternates: { canonical: ESTATEOS_PUBLIC_URLS.start },
 };
 
 const CARDS = [
   {
+    href: '/wystaw-za-darmo',
+    icon: Home,
+    title: 'Wystaw za darmo — Home lub Car',
+    body: 'Mieszkanie, dom albo samochód: podstawowa publikacja bez prowizji portalowej.',
+    cta: 'Wystaw za darmo',
+  },
+  {
     href: ESTATEOS_PUBLIC_URLS.agencies,
     icon: Building2,
     title: 'Jestem agentem / agencją',
     body: 'CRM, import z OtoDom i OLX, udostępnianie ofert z podglądem, wizyty i Radar klientów.',
     cta: 'Dla agencji',
-  },
-  {
-    href: ESTATEOS_PUBLIC_URLS.private,
-    icon: Home,
-    title: 'Szukam lub sprzedaję mieszkanie',
-    body: 'Mapa ofert, Radar dopasowań, ulubione i bezpieczny kontakt z właścicielami oraz agentami.',
-    cta: 'Dla osób prywatnych',
   },
   {
     href: ESTATEOS_PUBLIC_URLS.join,
@@ -48,8 +49,8 @@ export default function StartCampaignPage() {
       <div className="relative mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:py-16">
         <p className="text-[10px] font-black uppercase tracking-[0.32em] text-emerald-400">EstateOS™</p>
         <h1 className="mt-4 text-4xl font-light tracking-tight sm:text-5xl lg:text-6xl">
-          Rynek nieruchomości.
-          <span className="block font-semibold text-emerald-400">Jedna platforma. Mapa + app + CRM.</span>
+          Wystaw za darmo.
+          <span className="block font-semibold text-emerald-400">Mieszkanie, dom lub samochód.</span>
         </h1>
         <p className="mt-6 max-w-2xl text-base leading-relaxed text-white/75 sm:text-lg">{ESTATEOS_TAGLINE_PL}</p>
 

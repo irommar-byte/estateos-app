@@ -24,30 +24,26 @@ import EcosystemThemeBridge from "@/components/ecosystem/EcosystemThemeBridge";
 import EcosystemAmbientBackground from "@/components/ecosystem/EcosystemAmbientBackground";
 import EcosystemVerticalTransition from "@/components/ecosystem/EcosystemVerticalTransition";
 import { LOCALE_COOKIE, resolveLocale } from "@/i18n/config";
+import { ESTATEOS_SITE_URL, ESTATEOS_TAGLINE_PL } from "@/lib/estateOsPublicFacts";
+import { FREE_LISTING_KEYWORDS } from "@/lib/seo/freeListingContent";
 const inter = Inter({ subsets: ["latin"] });
 
-const SITE_URL = "https://estateos.pl";
-
 export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
+  metadataBase: new URL(ESTATEOS_SITE_URL),
   title: {
-    default: "EstateOS™ | Global Premium Real Estate",
+    default: "EstateOS™ — wystaw nieruchomość lub auto za darmo",
     template: "%s | EstateOS™",
   },
   description:
-    "Discover, list, and close premium properties worldwide. 3D map, Intelligent Radar, verification, and Passkey.",
+    "Wystaw mieszkanie, dom lub samochód na sprzedaż za darmo. Portal EstateOS™ — mapa, katalog, weryfikacja i aplikacja. Bez prowizji portalowej za publikację.",
   keywords: [
+    ...FREE_LISTING_KEYWORDS,
     "nieruchomości",
-    "EstateOS",
     "estateos.pl",
     "CRM agencja nieruchomości",
     "platforma nieruchomości Polska",
     "aplikacja nieruchomości",
-    "premium real estate",
-    "global property",
-    "luxury homes",
-    "property map",
-    "intelligent radar",
+    "mapa nieruchomości",
   ],
   applicationName: "EstateOS",
   authors: [{ name: "EstateOS" }],
@@ -56,18 +52,17 @@ export const metadata: Metadata = {
   formatDetection: { email: false, address: false, telephone: false },
   openGraph: {
     type: "website",
-    locale: "en_US",
-    url: SITE_URL,
+    locale: "pl_PL",
+    url: ESTATEOS_SITE_URL,
     siteName: "EstateOS™",
-    title: "EstateOS™ | Global Premium Real Estate",
-    description:
-      "Discover, list, and close premium properties worldwide. Live market pulse, verified listings, Intelligent Radar.",
+    title: "EstateOS™ — wystaw nieruchomość lub auto za darmo",
+    description: ESTATEOS_TAGLINE_PL,
   },
   twitter: {
     card: "summary_large_image",
-    title: "EstateOS™ | Global Premium Real Estate",
+    title: "EstateOS™ — wystaw nieruchomość lub auto za darmo",
     description:
-      "Discover, list, and close premium properties worldwide. Live market pulse & Intelligent Radar.",
+      "Portal ogłoszeń: mieszkanie, dom i samochód za darmo. Mapa, weryfikacja, aplikacja mobilna.",
   },
   robots: { index: true, follow: true },
   icons: {
@@ -80,7 +75,7 @@ export const metadata: Metadata = {
     shortcut: ["/favicon.ico"],
     apple: [{ url: "/apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
   },
-  alternates: { canonical: SITE_URL },
+  alternates: { canonical: ESTATEOS_SITE_URL },
 };
 
 export default async function RootLayout({
