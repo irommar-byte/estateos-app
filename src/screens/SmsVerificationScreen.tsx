@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, Platform, KeyboardAvoidingView, ActivityIndicator, Animated, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, Platform, KeyboardAvoidingView, ActivityIndicator, useColorScheme } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,6 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore, persistLocalPhoneVerified } from '../store/useAuthStore';
 import { API_URL } from '../config/network';
+
+const OTP_LENGTH = 6;
 
 export default function SmsVerificationScreen({ route }: any) {
   const navigation = useNavigation<any>();
@@ -24,18 +26,18 @@ export default function SmsVerificationScreen({ route }: any) {
   const textColor = isDark ? '#ffffff' : '#1d1d1f';
   const subColor = isDark ? '#86868b' : '#86868b';
   
-  const [code, setCode] = useState(['', '', '', '']);
+  const [code, setCode] = useState<string[]>(() => Array(OTP_LENGTH).fill(''));
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   
-  // Anti-Spam States
   const [resendTimer, setResendTimer] = useState(0); 
   const [smsCount, setSmsCount] = useState(0);
   const [isBlocked, setIsBlocked] = useState(false);
 
-  const inputRefs = [useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null)];
+  const inputRefs = useRef(
+    Array.from({ length: OTP_LENGTH }, () => React.createRef<TextInput>()),
+  ).current;
 
-  // 1. INICJALIZACJA PAMIĘCI ANTY-SPAMOWEJ
   useEffect(() => {
     const initSpamControl = async () => {
       if (!user?.id) return;
@@ -54,7 +56,7 @@ export default function SmsVerificationScreen({ route }: any) {
         if (timePassed < 3600) {
           setResendTimer(3600 - timePassed);
         } else {
-          setIsBlocked(true); // Limit wyczerpany
+          setIsBlocked(true);
         }
         setSmsCount(2);
       } else if (currentCount === 1) {
@@ -65,14 +67,12 @@ export default function SmsVerificationScreen({ route }: any) {
         }
         setSmsCount(1);
       } else {
-        // Pierwsze wejście - wysyłamy od razu i dajemy 5 min blokady
         triggerSmsSend(1);
       }
     };
     initSpamControl();
   }, []);
 
-  // 2. ODLICZANIE CZASU
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (resendTimer > 0) {
@@ -80,13 +80,11 @@ export default function SmsVerificationScreen({ route }: any) {
         setResendTimer((prev) => prev - 1);
       }, 1000);
     } else if (resendTimer === 0 && smsCount >= 2) {
-       // Jeśli minęła godzina blokady 2 SMSa, permanentnie blokujemy na "Kontakt z adminem"
        setIsBlocked(true);
     }
     return () => clearInterval(interval);
   }, [resendTimer, smsCount]);
 
-  // 3. AUTO-WERYFIKACJA PO UZUPEŁNIENIU 4 CYFR
   useEffect(() => {
     if (code.every(c => c.length === 1) && !loading) {
       handleVerify(code.join(''));
@@ -97,7 +95,7 @@ export default function SmsVerificationScreen({ route }: any) {
     if (newCount > 2) return;
 
     setSmsCount(newCount);
-    const timerValue = newCount === 1 ? 300 : 3600; // 5 minut dla 1, godzina dla 2
+    const timerValue = newCount === 1 ? 300 : 3600;
     setResendTimer(timerValue);
 
     const now = Math.floor(Date.now() / 1000);
@@ -121,21 +119,32 @@ export default function SmsVerificationScreen({ route }: any) {
 
   const handleType = (text: string, index: number) => {
     setErrorMsg('');
-    
-    // MAGIA AUTO-UZUPEŁNIANIA Z iOS/ANDROID: Jeśli system wklei cały 4-cyfrowy kod naraz
-    if (text.length === 4) {
-      const splitCode = text.split('');
+    const digits = text.replace(/[^0-9]/g, '');
+
+    // Auto-fill z SMS (iOS/Android) — cały 6-cyfrowy kod naraz
+    if (digits.length >= OTP_LENGTH) {
+      const splitCode = digits.slice(0, OTP_LENGTH).split('');
       setCode(splitCode);
-      inputRefs[3].current?.focus();
+      inputRefs[OTP_LENGTH - 1].current?.focus();
       return;
     }
 
-    // Normalne wpisywanie pojedynczej cyfry
+    if (digits.length > 1) {
+      const next = [...code];
+      for (let i = 0; i < digits.length && index + i < OTP_LENGTH; i += 1) {
+        next[index + i] = digits[i]!;
+      }
+      setCode(next);
+      const focusAt = Math.min(index + digits.length, OTP_LENGTH - 1);
+      inputRefs[focusAt].current?.focus();
+      return;
+    }
+
     const newCode = [...code];
-    newCode[index] = text.replace(/[^0-9]/g, '');
+    newCode[index] = digits;
     setCode(newCode);
     
-    if (text && index < 3) {
+    if (digits && index < OTP_LENGTH - 1) {
       inputRefs[index + 1].current?.focus();
     }
   };
@@ -168,8 +177,6 @@ export default function SmsVerificationScreen({ route }: any) {
       if (res.ok && data.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-        // Trwały lokalny ślad — jeśli backend nie zwróci `phoneVerified` w `/me`,
-        // apka i tak utrzyma status między sesjami.
         if (user?.id != null) await persistLocalPhoneVerified(user.id, true);
 
         const updatedUser = { ...user, isVerified: true, isVerifiedPhone: true };
@@ -184,7 +191,7 @@ export default function SmsVerificationScreen({ route }: any) {
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         setErrorMsg(data.message || 'Nieprawidłowy kod');
-        setCode(['', '', '', '']);
+        setCode(Array(OTP_LENGTH).fill(''));
         inputRefs[0].current?.focus();
       }
     } catch (e) {
@@ -225,7 +232,7 @@ export default function SmsVerificationScreen({ route }: any) {
         </View>
         <Text style={[styles.title, { color: textColor }]}>Wprowadź kod</Text>
         <Text style={[styles.subtitle, { color: subColor }]}>
-          Wysłaliśmy 4-cyfrowy kod na Twój numer: {"\n"}
+          Wysłaliśmy 6-cyfrowy kod na Twój numer: {"\n"}
           <Text style={{ fontWeight: '700', color: textColor }}>{user?.phone || 'Twój numer'}</Text>
         </Text>
 
@@ -240,13 +247,13 @@ export default function SmsVerificationScreen({ route }: any) {
                 digit && !hasError ? styles.otpBoxFilled : null
               ]}
               keyboardType="number-pad"
-              maxLength={4} // Zwiększone dla wklejania całości naraz
+              maxLength={idx === 0 ? OTP_LENGTH : 1}
               value={digit}
               onChangeText={(t) => handleType(t, idx)}
               onKeyPress={(e) => handleKeyPress(e, idx)}
               selectionColor="#10b981"
-              textContentType="oneTimeCode" // Wymuszenie klawiatury z SMS dla iOS
-              autoComplete="sms-otp" // Wymuszenie podpowiedzi z SMS dla Android
+              textContentType="oneTimeCode"
+              autoComplete="sms-otp"
             />
           ))}
         </View>
@@ -296,8 +303,8 @@ const styles = StyleSheet.create({
   iconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(16, 185, 129, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   title: { fontSize: 26, fontWeight: '800', marginBottom: 10, letterSpacing: 0.5 },
   subtitle: { fontSize: 15, lineHeight: 22, textAlign: 'center', marginBottom: 40, paddingHorizontal: 10 },
-  otpContainer: { flexDirection: 'row', gap: 15, marginBottom: 15 },
-  otpBox: { width: 60, height: 70, borderRadius: 16, borderWidth: 1.5, fontSize: 28, fontWeight: '700', textAlign: 'center' },
+  otpContainer: { flexDirection: 'row', gap: 6, marginBottom: 15, justifyContent: 'center', width: '100%', maxWidth: 360 },
+  otpBox: { flex: 1, minWidth: 40, maxWidth: 52, height: 56, borderRadius: 12, borderWidth: 1.5, fontSize: 20, fontWeight: '700', textAlign: 'center' },
   otpBoxFilled: { shadowColor: '#10b981', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 5 },
   errorText: { color: '#ef4444', fontSize: 14, fontWeight: '600', marginBottom: 25 },
   verifyBtn: { width: '100%', backgroundColor: '#10b981', padding: 18, borderRadius: 20, alignItems: 'center', shadowColor: '#10b981', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 15, elevation: 5, marginBottom: 25 },
