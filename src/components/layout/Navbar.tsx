@@ -75,23 +75,11 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const { initModeFromUser } = useUserMode();
-  const { vertical, navHighlight, setNavHighlight, setVertical, isCar, requestVerticalSwitch } = useEcosystem();
+  const { navHighlight, requestVerticalSwitch } = useEcosystem();
   const highlightHome = navHighlight === "home";
   const highlightCar = navHighlight === "car";
   const brandIsCar = highlightCar;
 
-  // Homepage: neither Home nor Car highlighted until scroll past the hero.
-  useEffect(() => {
-    if (pathname !== "/") return;
-    const onScroll = () => {
-      if (window.scrollY < Math.max(220, window.innerHeight * 0.45)) return;
-      if (navHighlight != null) return;
-      setNavHighlight("home");
-      setVertical("home");
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [pathname, navHighlight, setNavHighlight, setVertical]);
   const isOfferShareLanding = pathname?.startsWith("/o/");
   const isAdmin = user?.role === "ADMIN";
   const loggedIn = Boolean(user);
@@ -228,20 +216,12 @@ export default function Navbar() {
   };
 
   const switchVertical = (next: EcosystemVertical) => {
-    if (pathname === "/" && next === "home") {
-      setNavHighlight("home");
-      setVertical("home");
-      return;
-    }
-    if (next === vertical && navHighlight === next) {
-      if (next === "car" && !pathname?.startsWith("/cars")) {
-        requestVerticalSwitch("car", "/cars");
-      } else if (next === "home" && pathname?.startsWith("/cars")) {
-        requestVerticalSwitch("home", "/oferty");
-      }
-      return;
-    }
-    requestVerticalSwitch(next, next === "car" ? "/cars" : "/oferty");
+    const href = next === "car" ? "/cars" : "/oferty";
+    const alreadyOnTarget =
+      next === "car" ? Boolean(pathname?.startsWith("/cars")) : Boolean(pathname?.startsWith("/oferty"));
+    // Homepage keeps both pills idle until click; click always opens the catalog.
+    if (navHighlight === next && alreadyOnTarget) return;
+    requestVerticalSwitch(next, href);
   };
 
   const manageLabel = dict.nav.manageCentral;

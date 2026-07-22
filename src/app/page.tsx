@@ -6,6 +6,7 @@ import CinematicLoader from "@/components/ui/CinematicLoader";
 import SmoothScroll from "@/components/layout/SmoothScroll";
 import GlobalStats from "@/components/home/GlobalStats";
 import FeaturedGallery from "@/components/home/FeaturedGallery";
+import FeaturedCarsGallery from "@/components/home/FeaturedCarsGallery";
 import MarketPulseBar from "@/components/home/MarketPulseBar";
 import RadarLiveCounter from "@/components/home/RadarLiveCounter";
 import Footer from "@/components/layout/Footer";
@@ -35,6 +36,7 @@ export default function Home() {
           </div>
 
           <FeaturedGallery />
+          <FeaturedCarsGallery />
           <RadarLiveCounter />
 
           <div
