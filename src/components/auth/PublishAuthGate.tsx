@@ -1,7 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, Camera, CheckCircle2, Loader2, Lock, Sparkles, UserPlus, X } from "lucide-react";
+import {
+  AlertCircle,
+  Camera,
+  CheckCircle2,
+  Loader2,
+  Lock,
+  Mail,
+  Phone,
+  ShieldCheck,
+  Sparkles,
+  UserPlus,
+  X,
+} from "lucide-react";
 import PhoneCountryInput from "@/components/auth/PhoneCountryInput";
 import EosCheckbox from "@/components/ui/EosCheckbox";
 import { normalizePhoneE164 } from "@/lib/phoneE164";
@@ -9,6 +21,9 @@ import { normalizePhoneE164 } from "@/lib/phoneE164";
 type AuthTab = "register" | "login";
 type PublishBrand = "home" | "car";
 export type AuthGateContext = "publish" | "photo_session" | "ai_description";
+type GatePhase = "auth" | "verify_contact";
+type FieldStatus = "idle" | "checking" | "available" | "taken";
+type VerifyBusy = "email-send" | "email-confirm" | "sms-send" | "sms-confirm" | null;
 
 type PublishAuthGateProps = {
   brand: PublishBrand;
@@ -48,9 +63,10 @@ const contextCopy: Record<
 > = {
   publish: {
     title: "Ostatni krok — konto do publikacji",
-    subtitle: "Szybka rejestracja lub logowanie. Dane ogłoszenia zostaną zapisane — po zalogowaniu od razu opublikujesz.",
-    registerCta: "Zarejestruj i opublikuj ogłoszenie",
-    loginCta: "Zaloguj i opublikuj ogłoszenie",
+    subtitle:
+      "Załóż konto lub zaloguj się. Ogłoszenie zostanie zapisane — przed publikacją szybko potwierdzisz e-mail i telefon.",
+    registerCta: "Załóż konto i kontynuuj",
+    loginCta: "Zaloguj i kontynuuj",
     otpCta: "Potwierdź i opublikuj",
   },
   photo_session: {
@@ -77,6 +93,28 @@ function ContextIcon({ context, className }: { context: AuthGateContext; classNa
   return <UserPlus className={className} aria-hidden />;
 }
 
+async function fetchContactFlags(): Promise<{
+  email: string;
+  phone: string;
+  emailOk: boolean;
+  phoneOk: boolean;
+} | null> {
+  try {
+    const res = await fetch("/api/user/profile", { cache: "no-store", credentials: "include" });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    const u = data.user || data;
+    return {
+      email: String(u.email || "").trim(),
+      phone: String(u.phone || "").trim(),
+      emailOk: Boolean(u.isEmailVerified ?? u.emailVerified),
+      phoneOk: Boolean(u.isVerifiedPhone ?? u.phoneVerified),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function PublishAuthGate({
   brand,
   context = "publish",
@@ -86,7 +124,10 @@ export default function PublishAuthGate({
 }: PublishAuthGateProps) {
   const styles = brandCopy[brand];
   const copy = contextCopy[context];
+  const requiresContactVerify = context === "publish";
+
   const [tab, setTab] = useState<AuthTab>("register");
+  const [phase, setPhase] = useState<GatePhase>("auth");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,13 +145,42 @@ export default function PublishAuthGate({
   const [otpPending, setOtpPending] = useState(false);
   const [progressStep, setProgressStep] = useState<string | null>(null);
   const [progressLog, setProgressLog] = useState<string[]>([]);
-  type FieldStatus = "idle" | "checking" | "available" | "taken";
+
   const [emailStatus, setEmailStatus] = useState<FieldStatus>("idle");
   const [phoneStatus, setPhoneStatus] = useState<FieldStatus>("idle");
   const [emailFocused, setEmailFocused] = useState(false);
   const [phoneFocused, setPhoneFocused] = useState(false);
   const emailTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const phoneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [verifyEmail, setVerifyEmail] = useState("");
+  const [verifyPhone, setVerifyPhone] = useState("");
+  const [emailOk, setEmailOk] = useState(false);
+  const [phoneOk, setPhoneOk] = useState(false);
+  const [emailCode, setEmailCode] = useState("");
+  const [smsCode, setSmsCode] = useState("");
+  const [verifyBusy, setVerifyBusy] = useState<VerifyBusy>(null);
+  const [verifyHint, setVerifyHint] = useState<string | null>(null);
+  const autoSendDoneRef = useRef(false);
+
+  const resetGate = useCallback(() => {
+    setPhase("auth");
+    setOtpPending(false);
+    setError(null);
+    setProgressStep(null);
+    setProgressLog([]);
+    setEmailCode("");
+    setSmsCode("");
+    setVerifyBusy(null);
+    setVerifyHint(null);
+    setEmailOk(false);
+    setPhoneOk(false);
+    autoSendDoneRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    if (!open) resetGate();
+  }, [open, resetGate]);
 
   const checkExists = useCallback(async (field: "email" | "phone", value: string) => {
     if (!value.trim()) return false;
@@ -127,7 +197,7 @@ export default function PublishAuthGate({
 
   useEffect(() => {
     if (emailTimer.current) clearTimeout(emailTimer.current);
-    if (emailFocused) return;
+    if (emailFocused || phase !== "auth") return;
     const trimmed = email.trim().toLowerCase();
     if (!trimmed || !trimmed.includes("@")) {
       setEmailStatus("idle");
@@ -145,11 +215,11 @@ export default function PublishAuthGate({
     return () => {
       if (emailTimer.current) clearTimeout(emailTimer.current);
     };
-  }, [email, emailFocused, checkExists]);
+  }, [email, emailFocused, checkExists, phase]);
 
   useEffect(() => {
     if (phoneTimer.current) clearTimeout(phoneTimer.current);
-    if (phoneFocused) return;
+    if (phoneFocused || phase !== "auth") return;
     const e164 = normalizePhoneE164(phoneE164);
     if (!e164) {
       setPhoneStatus("idle");
@@ -167,26 +237,37 @@ export default function PublishAuthGate({
     return () => {
       if (phoneTimer.current) clearTimeout(phoneTimer.current);
     };
-  }, [phoneE164, phoneFocused, checkExists]);
+  }, [phoneE164, phoneFocused, checkExists, phase]);
 
   const reportProgress = (step: string) => {
     setProgressStep(step);
     setProgressLog((prev) => (prev[prev.length - 1] === step ? prev : [...prev.slice(-4), step]));
   };
 
-  if (!open) return null;
+  const enterVerifyPhase = async (fallbackEmail?: string, fallbackPhone?: string) => {
+    const flags = await fetchContactFlags();
+    const nextEmail = flags?.email || fallbackEmail || email.trim().toLowerCase();
+    const nextPhone = flags?.phone || fallbackPhone || normalizePhoneE164(phoneE164) || "";
+    setVerifyEmail(nextEmail);
+    setVerifyPhone(nextPhone);
+    setEmailOk(Boolean(flags?.emailOk));
+    setPhoneOk(Boolean(flags?.phoneOk));
+    setPhase("verify_contact");
+    setLoading(false);
+    setProgressStep(null);
+    setError(null);
 
-  const fieldClass = `w-full rounded-xl border-2 border-slate-300/90 bg-[var(--eos-input,#f3f3f1)] px-3 py-2.5 text-sm text-[var(--eos-text)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] outline-none transition placeholder:text-[var(--eos-muted)] focus:ring-2 dark:border-white/25 dark:bg-[var(--eos-input,#1e1e22)] ${styles.ring}`;
-  const labelClass = "text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]";
+    if (flags?.emailOk && flags?.phoneOk) {
+      await finishAuth();
+    }
+  };
 
   const finishAuth = async () => {
     setLoading(true);
     setError(null);
     try {
       reportProgress(
-        context === "publish"
-          ? "Konto gotowe — publikuję ogłoszenie…"
-          : "Konto gotowe — kontynuuję…",
+        context === "publish" ? "Konto gotowe — publikuję ogłoszenie…" : "Konto gotowe — kontynuuję…",
       );
       await onAuthenticated(reportProgress);
       reportProgress("Gotowe.");
@@ -195,6 +276,127 @@ export default function PublishAuthGate({
       setProgressStep(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const continueAfterAuth = async (fallbackEmail?: string, fallbackPhone?: string) => {
+    if (!requiresContactVerify) {
+      await finishAuth();
+      return;
+    }
+    reportProgress("Sprawdzam weryfikację kontaktu…");
+    await enterVerifyPhase(fallbackEmail, fallbackPhone);
+  };
+
+  // Auto-send codes once when entering verify (gentle, one shot).
+  useEffect(() => {
+    if (!open || phase !== "verify_contact" || autoSendDoneRef.current) return;
+    if (emailOk && phoneOk) return;
+    autoSendDoneRef.current = true;
+
+    void (async () => {
+      const jobs: Promise<void>[] = [];
+      if (!emailOk && verifyEmail) {
+        jobs.push(
+          fetch("/api/user/me/email-verify/send", { method: "POST", credentials: "include" }).then(async (res) => {
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(String(data.error || "Nie udało się wysłać kodu e-mail."));
+            }
+          }),
+        );
+      }
+      if (!phoneOk && verifyPhone) {
+        jobs.push(
+          fetch("/api/user/me/sms/send", { method: "POST", credentials: "include" }).then(async (res) => {
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(String(data.error || "Nie udało się wysłać SMS."));
+            }
+          }),
+        );
+      }
+      if (!jobs.length) return;
+      try {
+        await Promise.all(jobs);
+        setVerifyHint("Wysłaliśmy kody na e-mail i telefon — wpisz je poniżej.");
+      } catch (e) {
+        setVerifyHint(e instanceof Error ? e.message : "Nie udało się wysłać wszystkich kodów — spróbuj ponownie.");
+      }
+    })();
+  }, [open, phase, emailOk, phoneOk, verifyEmail, verifyPhone]);
+
+  const sendEmailCode = async () => {
+    setVerifyBusy("email-send");
+    setError(null);
+    try {
+      const res = await fetch("/api/user/me/email-verify/send", { method: "POST", credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.error || "Nie udało się wysłać kodu."));
+      setVerifyHint("Kod wysłany na e-mail.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Błąd wysyłki e-mail.");
+    } finally {
+      setVerifyBusy(null);
+    }
+  };
+
+  const confirmEmail = async () => {
+    setVerifyBusy("email-confirm");
+    setError(null);
+    try {
+      const res = await fetch("/api/user/me/email-verify/confirm", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: emailCode.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.error || "Nieprawidłowy kod e-mail."));
+      setEmailCode("");
+      setEmailOk(true);
+      setVerifyHint("E-mail potwierdzony.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Błąd weryfikacji e-mail.");
+    } finally {
+      setVerifyBusy(null);
+    }
+  };
+
+  const sendSmsCode = async () => {
+    setVerifyBusy("sms-send");
+    setError(null);
+    try {
+      const res = await fetch("/api/user/me/sms/send", { method: "POST", credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.error || "Nie udało się wysłać SMS."));
+      setVerifyHint("Kod SMS wysłany.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Błąd SMS.");
+    } finally {
+      setVerifyBusy(null);
+    }
+  };
+
+  const confirmSms = async () => {
+    setVerifyBusy("sms-confirm");
+    setError(null);
+    try {
+      const res = await fetch("/api/user/me/sms/verify", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: smsCode.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.error || "Nieprawidłowy kod SMS."));
+      setSmsCode("");
+      setPhoneOk(true);
+      setVerifyHint("Telefon potwierdzony.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Błąd weryfikacji telefonu.");
+    } finally {
+      setVerifyBusy(null);
     }
   };
 
@@ -263,8 +465,8 @@ export default function PublishAuthGate({
         setProgressStep(null);
         return;
       }
-      reportProgress("Konto utworzone — loguję sesję…");
-      await finishAuth();
+      reportProgress("Konto utworzone.");
+      await continueAfterAuth(trimmedEmail, e164);
     } catch {
       setError("Błąd połączenia podczas rejestracji.");
       setLoading(false);
@@ -288,7 +490,7 @@ export default function PublishAuthGate({
       const data = await res.json();
 
       if (res.ok && data.success) {
-        await finishAuth();
+        await continueAfterAuth();
         return;
       }
 
@@ -341,7 +543,7 @@ export default function PublishAuthGate({
       const dataLogin = await resLogin.json();
 
       if (dataLogin.success) {
-        await finishAuth();
+        await continueAfterAuth();
         return;
       }
 
@@ -355,13 +557,46 @@ export default function PublishAuthGate({
     }
   };
 
+  const handlePublishAfterVerify = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!emailOk || !phoneOk) {
+      setError("Potwierdź e-mail i telefon, żeby opublikować.");
+      return;
+    }
+    await finishAuth();
+  };
+
+  if (!open) return null;
+
+  const fieldClass = `w-full rounded-xl border-2 border-slate-300/90 bg-[var(--eos-input,#f3f3f1)] px-3 py-2.5 text-sm text-[var(--eos-text)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] outline-none transition placeholder:text-[var(--eos-muted)] focus:ring-2 dark:border-white/25 dark:bg-[var(--eos-input,#1e1e22)] ${styles.ring}`;
+  const labelClass = "text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]";
+  const codeFieldClass = `${fieldClass} text-center text-xl font-black tracking-[0.35em]`;
+  const ghostBtn =
+    "w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-text)] transition hover:border-emerald-400/40 disabled:opacity-50";
+
   const tabClass = (active: boolean) =>
     `flex-1 rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] transition ${
       active ? styles.tabActive : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
     }`;
 
+  const bothVerified = emailOk && phoneOk;
   const submitLabel =
-    tab === "register" ? copy.registerCta : otpPending ? copy.otpCta : copy.loginCta;
+    phase === "verify_contact"
+      ? bothVerified
+        ? "Opublikuj ogłoszenie"
+        : "Potwierdź kontakt, by opublikować"
+      : tab === "register"
+        ? copy.registerCta
+        : otpPending
+          ? copy.otpCta
+          : copy.loginCta;
+
+  const formId =
+    phase === "verify_contact"
+      ? "auth-gate-verify-form"
+      : otpPending
+        ? "auth-gate-form"
+        : "auth-gate-form";
 
   return (
     <div
@@ -375,7 +610,7 @@ export default function PublishAuthGate({
         <button
           type="button"
           onClick={onClose}
-          disabled={loading}
+          disabled={loading || verifyBusy !== null}
           className="absolute right-3 top-3 z-20 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2 text-[var(--eos-muted)] transition hover:text-[var(--eos-text)] disabled:opacity-50"
           aria-label="Zamknij"
         >
@@ -385,47 +620,57 @@ export default function PublishAuthGate({
         <div className={`shrink-0 border-b border-[var(--eos-border)] bg-gradient-to-br px-5 pb-4 pt-5 sm:px-6 ${styles.gradient}`}>
           <div className="flex items-start gap-3 pr-10">
             <div className={`flex size-10 shrink-0 items-center justify-center rounded-2xl ${styles.iconBg}`}>
-              <ContextIcon context={context} className={`size-5 ${styles.accent}`} />
+              {phase === "verify_contact" ? (
+                <ShieldCheck className={`size-5 ${styles.accent}`} aria-hidden />
+              ) : (
+                <ContextIcon context={context} className={`size-5 ${styles.accent}`} />
+              )}
             </div>
             <div>
               <p className={`text-[10px] font-black uppercase tracking-[0.22em] ${styles.accent}`}>{styles.label}</p>
               <h2 id="publish-auth-title" className="mt-1 text-lg font-semibold tracking-tight sm:text-xl">
-                {copy.title}
+                {phase === "verify_contact" ? "Potwierdź kontakt" : copy.title}
               </h2>
-              <p className="mt-1.5 text-[13px] leading-snug text-[var(--eos-muted)]">{copy.subtitle}</p>
+              <p className="mt-1.5 text-[13px] leading-snug text-[var(--eos-muted)]">
+                {phase === "verify_contact"
+                  ? "Dwa krótkie kody — i ogłoszenie może iść na żywo. Dzięki temu kupujący dotrą do Ciebie bez problemów."
+                  : copy.subtitle}
+              </p>
             </div>
           </div>
         </div>
 
         <div className="px-5 py-3.5 sm:px-6">
-          <div className="mb-3.5 inline-flex w-full rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1">
-            <button
-              type="button"
-              onClick={() => {
-                setTab("register");
-                setOtpPending(false);
-              }}
-              className={tabClass(tab === "register")}
-            >
-              <span className="inline-flex items-center justify-center gap-1.5">
-                <UserPlus size={12} />
-                Załóż konto
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setTab("login");
-                setOtpPending(false);
-              }}
-              className={tabClass(tab === "login")}
-            >
-              <span className="inline-flex items-center justify-center gap-1.5">
-                <Lock size={12} />
-                Mam konto
-              </span>
-            </button>
-          </div>
+          {phase === "auth" ? (
+            <div className="mb-3.5 inline-flex w-full rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setTab("register");
+                  setOtpPending(false);
+                }}
+                className={tabClass(tab === "register")}
+              >
+                <span className="inline-flex items-center justify-center gap-1.5">
+                  <UserPlus size={12} />
+                  Załóż konto
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTab("login");
+                  setOtpPending(false);
+                }}
+                className={tabClass(tab === "login")}
+              >
+                <span className="inline-flex items-center justify-center gap-1.5">
+                  <Lock size={12} />
+                  Mam konto
+                </span>
+              </button>
+            </div>
+          ) : null}
 
           {error ? (
             <div className="mb-3 flex items-center gap-2 rounded-xl border border-red-400/35 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-700 dark:text-red-300">
@@ -434,7 +679,95 @@ export default function PublishAuthGate({
             </div>
           ) : null}
 
-          {tab === "register" ? (
+          {phase === "verify_contact" ? (
+            <form id="auth-gate-verify-form" onSubmit={handlePublishAfterVerify} className="grid gap-3">
+              {verifyHint ? (
+                <p className="rounded-xl border border-emerald-400/25 bg-emerald-500/[0.08] px-3 py-2 text-[12px] font-medium text-emerald-800 dark:text-emerald-200">
+                  {verifyHint}
+                </p>
+              ) : null}
+
+              <div
+                className={`rounded-2xl border p-4 ${
+                  emailOk ? "border-emerald-400/35 bg-emerald-500/[0.06]" : "border-[var(--eos-border)] bg-[var(--eos-surface)]/50"
+                }`}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Mail size={16} className={emailOk ? "text-emerald-500" : "text-[var(--eos-muted)]"} />
+                    <span className="text-[10px] font-black uppercase tracking-[0.14em]">E-mail</span>
+                  </div>
+                  {emailOk ? <CheckCircle2 size={16} className="text-emerald-500" /> : null}
+                </div>
+                <p className="mb-3 truncate text-sm text-[var(--eos-muted)]">{verifyEmail || "—"}</p>
+                {!emailOk ? (
+                  <div className="grid gap-2">
+                    <button type="button" onClick={sendEmailCode} disabled={verifyBusy !== null} className={ghostBtn}>
+                      {verifyBusy === "email-send" ? <Loader2 className="mx-auto animate-spin" size={14} /> : "Wyślij kod ponownie"}
+                    </button>
+                    <input
+                      value={emailCode}
+                      onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="000000"
+                      inputMode="numeric"
+                      className={codeFieldClass}
+                      aria-label="Kod e-mail"
+                    />
+                    <button
+                      type="button"
+                      onClick={confirmEmail}
+                      disabled={verifyBusy !== null || emailCode.length !== 6}
+                      className={`rounded-xl border px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] disabled:opacity-50 ${styles.button}`}
+                    >
+                      {verifyBusy === "email-confirm" ? <Loader2 className="mx-auto animate-spin" size={14} /> : "Potwierdź e-mail"}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">Potwierdzony</p>
+                )}
+              </div>
+
+              <div
+                className={`rounded-2xl border p-4 ${
+                  phoneOk ? "border-emerald-400/35 bg-emerald-500/[0.06]" : "border-[var(--eos-border)] bg-[var(--eos-surface)]/50"
+                }`}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Phone size={16} className={phoneOk ? "text-emerald-500" : "text-[var(--eos-muted)]"} />
+                    <span className="text-[10px] font-black uppercase tracking-[0.14em]">Telefon</span>
+                  </div>
+                  {phoneOk ? <CheckCircle2 size={16} className="text-emerald-500" /> : null}
+                </div>
+                <p className="mb-3 text-sm text-[var(--eos-muted)]">{verifyPhone || "—"}</p>
+                {!phoneOk ? (
+                  <div className="grid gap-2">
+                    <button type="button" onClick={sendSmsCode} disabled={verifyBusy !== null || !verifyPhone} className={ghostBtn}>
+                      {verifyBusy === "sms-send" ? <Loader2 className="mx-auto animate-spin" size={14} /> : "Wyślij SMS ponownie"}
+                    </button>
+                    <input
+                      value={smsCode}
+                      onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="000000"
+                      inputMode="numeric"
+                      className={codeFieldClass}
+                      aria-label="Kod SMS"
+                    />
+                    <button
+                      type="button"
+                      onClick={confirmSms}
+                      disabled={verifyBusy !== null || smsCode.length !== 6}
+                      className={`rounded-xl border px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] disabled:opacity-50 ${styles.button}`}
+                    >
+                      {verifyBusy === "sms-confirm" ? <Loader2 className="mx-auto animate-spin" size={14} /> : "Potwierdź telefon"}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">Potwierdzony</p>
+                )}
+              </div>
+            </form>
+          ) : tab === "register" ? (
             <form id="auth-gate-form" onSubmit={handleRegister} className="grid gap-2.5">
               <div className="grid gap-2.5 sm:grid-cols-2">
                 <label className="grid gap-1">
@@ -477,8 +810,10 @@ export default function PublishAuthGate({
                 {!emailFocused && emailStatus === "taken" ? (
                   <span className="text-[10px] font-bold uppercase tracking-widest text-red-500">E-mail zajęty</span>
                 ) : null}
-                {!emailFocused && emailStatus === "available" ? (
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">E-mail wolny</span>
+                {!emailFocused && emailStatus === "available" && requiresContactVerify ? (
+                  <span className="text-[10px] font-medium text-emerald-700/90 dark:text-emerald-300/90">
+                    E-mail wolny — po założeniu konta wyślemy krótki kod potwierdzający
+                  </span>
                 ) : null}
               </label>
               <label className="grid gap-1">
@@ -493,8 +828,10 @@ export default function PublishAuthGate({
                 {!phoneFocused && phoneStatus === "taken" ? (
                   <span className="text-[10px] font-bold uppercase tracking-widest text-red-500">Telefon zajęty</span>
                 ) : null}
-                {!phoneFocused && phoneStatus === "available" ? (
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Telefon wolny</span>
+                {!phoneFocused && phoneStatus === "available" && requiresContactVerify ? (
+                  <span className="text-[10px] font-medium text-emerald-700/90 dark:text-emerald-300/90">
+                    Numer wolny — potwierdzisz go SMS-em przed publikacją
+                  </span>
                 ) : null}
               </label>
               <div className="grid gap-2.5 sm:grid-cols-2">
@@ -582,17 +919,24 @@ export default function PublishAuthGate({
           ) : null}
           <button
             type="submit"
-            form="auth-gate-form"
+            form={formId}
             disabled={
               loading ||
-              (otpPending && otpCode.length !== 6) ||
-              (tab === "register" && (emailStatus === "taken" || phoneStatus === "taken"))
+              verifyBusy !== null ||
+              (phase === "verify_contact" && !bothVerified) ||
+              (phase === "auth" && otpPending && otpCode.length !== 6) ||
+              (phase === "auth" && tab === "register" && (emailStatus === "taken" || phoneStatus === "taken"))
             }
             className={`flex w-full items-center justify-center gap-2 rounded-full border px-5 py-3 text-xs font-black uppercase tracking-[0.12em] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55 ${styles.button}`}
           >
             {loading ? <Loader2 size={16} className="animate-spin" /> : null}
             {loading && progressStep ? "Trwa publikacja…" : submitLabel}
           </button>
+          {phase === "verify_contact" && !bothVerified ? (
+            <p className="mt-2 text-center text-[11px] text-[var(--eos-muted)]">
+              To zajmie chwilę — potem nie musisz szukać weryfikacji w ustawieniach.
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
