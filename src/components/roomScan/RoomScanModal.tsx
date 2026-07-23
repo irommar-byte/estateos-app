@@ -5,6 +5,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -82,7 +83,7 @@ function RoomScanModalBody({
   ScanStatus,
 }: BodyProps) {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height: windowH } = useWindowDimensions();
   const previewRef = useRef<View>(null);
   const svgCaptureRef = useRef<Svg>(null);
   const scanStartedRef = useRef(false);
@@ -276,8 +277,9 @@ function RoomScanModalBody({
   };
 
   const artboardW = Math.min(width - 32, 520);
-  const artboardH = Math.round(artboardW * 1.15);
+  const artboardH = Math.min(Math.round(artboardW * 0.92), Math.round(windowH * 0.42));
   const showPreviewModal = visible && (phase === 'preview' || phase === 'processing');
+  const detectedObjects = meta?.objects || [];
 
   return (
     <Modal
@@ -287,54 +289,86 @@ function RoomScanModalBody({
       onRequestClose={handleClose}
     >
       {phase === 'preview' && meta ? (
-        <View style={[styles.previewRoot, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
-          <Pressable onPress={handleClose} hitSlop={12} style={styles.previewClose}>
-            <Ionicons name="close" size={22} color="#94a3b8" />
-          </Pressable>
-
-          <Text style={styles.previewTitle}>{t('addOffer.step5.roomScan.previewTitle')}</Text>
-          <Text style={styles.previewSubtitle}>{t('addOffer.step5.roomScan.previewSubtitle')}</Text>
-
-          <View style={styles.previewCard} ref={previewRef} collapsable={false}>
-            <FloorPlanScanArtboard
-              ref={svgCaptureRef}
-              walls={walls}
-              meta={meta}
-              width={artboardW}
-              height={artboardH}
-            />
+        <View style={[styles.previewRoot, { paddingTop: insets.top + 8 }]}>
+          <View style={styles.previewHeader}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={styles.previewTitle}>{t('addOffer.step5.roomScan.previewTitle')}</Text>
+              <Text style={styles.previewSubtitle}>{t('addOffer.step5.roomScan.previewSubtitle')}</Text>
+            </View>
+            <Pressable onPress={handleClose} hitSlop={12} style={styles.previewClose}>
+              <Ionicons name="close" size={22} color="#64748b" />
+            </Pressable>
           </View>
 
-          <View style={styles.statsRow}>
-            <View style={styles.statPill}>
-              <Text style={styles.statLabel}>{t('addOffer.step5.roomScan.rooms')}</Text>
-              <Text style={styles.statValue}>{meta.roomCount}</Text>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.previewCard} ref={previewRef} collapsable={false}>
+              <FloorPlanScanArtboard
+                ref={svgCaptureRef}
+                walls={walls}
+                meta={meta}
+                width={artboardW}
+                height={artboardH}
+              />
             </View>
-            {meta.totalAreaSqM ? (
+
+            <View style={styles.statsRow}>
               <View style={styles.statPill}>
-                <Text style={styles.statLabel}>{t('addOffer.step5.roomScan.area')}</Text>
-                <Text style={styles.statValue}>{meta.totalAreaSqM} m²</Text>
+                <Text style={styles.statLabel}>{t('addOffer.step5.roomScan.rooms')}</Text>
+                <Text style={styles.statValue}>{meta.roomCount}</Text>
+              </View>
+              {meta.totalAreaSqM ? (
+                <View style={styles.statPill}>
+                  <Text style={styles.statLabel}>{t('addOffer.step5.roomScan.area')}</Text>
+                  <Text style={styles.statValue}>{meta.totalAreaSqM} m²</Text>
+                </View>
+              ) : null}
+              {meta.ceilingHeightM ? (
+                <View style={styles.statPill}>
+                  <Text style={styles.statLabel}>{t('addOffer.step5.roomScan.ceiling')}</Text>
+                  <Text style={styles.statValue}>{meta.ceilingHeightM.toFixed(2)} m</Text>
+                </View>
+              ) : null}
+              <View style={styles.statPill}>
+                <Text style={styles.statLabel}>3D</Text>
+                <Text style={styles.statValue}>{t('addOffer.step5.roomScan.ready')}</Text>
+              </View>
+            </View>
+
+            {detectedObjects.length > 0 ? (
+              <View style={styles.objectsBlock}>
+                <Text style={styles.objectsTitle}>{t('addOffer.step5.roomScan.detectedObjects')}</Text>
+                <View style={styles.objectsWrap}>
+                  {detectedObjects.map((obj) => (
+                    <View key={obj.id} style={styles.objectChip}>
+                      <Text style={styles.objectChipText}>{obj.label}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
             ) : null}
-            <View style={styles.statPill}>
-              <Text style={styles.statLabel}>3D</Text>
-              <Text style={styles.statValue}>{t('addOffer.step5.roomScan.ready')}</Text>
-            </View>
-          </View>
 
-          {error ? <Text style={styles.previewError}>{error}</Text> : null}
+            {error ? <Text style={styles.previewError}>{error}</Text> : null}
+            <View style={{ height: 12 }} />
+          </ScrollView>
 
-          <View style={styles.previewActions}>
-            {usdzUri ? (
-              <Pressable onPress={openWalkthrough3d} style={styles.walkthroughBtnWide} disabled={busy}>
-                <Ionicons name="cube-outline" size={18} color="#38bdf8" />
-                <Text style={styles.walkthroughBtnText}>{t('addOffer.step5.roomScan.open3d')}</Text>
+          <View style={[styles.previewActions, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            <View style={styles.actionsRow}>
+              {usdzUri ? (
+                <Pressable onPress={openWalkthrough3d} style={[styles.secondaryHalf, styles.walkthroughBtn]} disabled={busy}>
+                  <Ionicons name="cube-outline" size={17} color="#0284c7" />
+                  <Text style={styles.walkthroughBtnText}>{t('addOffer.step5.roomScan.open3d')}</Text>
+                </Pressable>
+              ) : null}
+              <Pressable onPress={sharePreviewPdf} style={styles.secondaryHalf} disabled={busy}>
+                <Ionicons name="document-text-outline" size={16} color="#334155" />
+                <Text style={styles.secondaryBtnText}>{t('addOffer.step5.roomScan.exportPdf')}</Text>
               </Pressable>
-            ) : null}
-            <Pressable onPress={sharePreviewPdf} style={styles.pdfBtnWide} disabled={busy}>
-              <Ionicons name="document-text-outline" size={16} color="#e2e8f0" />
-              <Text style={styles.secondaryBtnText}>{t('addOffer.step5.roomScan.exportPdf')}</Text>
-            </Pressable>
+            </View>
             <Pressable
               onPress={() => {
                 setError(null);
@@ -342,13 +376,13 @@ function RoomScanModalBody({
                 scanStartedRef.current = false;
                 setPhase('scan');
               }}
-              style={styles.secondaryBtnWide}
+              style={styles.rescanBtn}
             >
-              <Text style={styles.secondaryBtnText}>{t('addOffer.step5.roomScan.rescan')}</Text>
+              <Text style={styles.rescanBtnText}>{t('addOffer.step5.roomScan.rescan')}</Text>
             </Pressable>
             <Pressable onPress={confirmPreview} style={styles.primaryBtnWide} disabled={busy}>
               {busy ? (
-                <ActivityIndicator color="#0f172a" />
+                <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.primaryBtnText}>{t('addOffer.step5.roomScan.usePlan')}</Text>
               )}
@@ -359,7 +393,7 @@ function RoomScanModalBody({
 
       {phase === 'processing' ? (
         <View style={styles.processing}>
-          <ActivityIndicator size="large" color="#38bdf8" />
+          <ActivityIndicator size="large" color="#0284c7" />
           <Text style={styles.processingText}>{t('addOffer.step5.roomScan.processing')}</Text>
         </View>
       ) : null}
@@ -368,81 +402,134 @@ function RoomScanModalBody({
 }
 
 const styles = StyleSheet.create({
-  previewClose: {
-    alignSelf: 'flex-end',
-    padding: 4,
-    marginBottom: 4,
-  },
-  primaryBtnText: { color: '#0f172a', fontWeight: '900', fontSize: 14 },
-  secondaryBtnText: { color: '#e2e8f0', fontWeight: '800', fontSize: 13 },
   previewRoot: {
     flex: 1,
-    backgroundColor: '#020617',
-    paddingHorizontal: 16,
+    backgroundColor: '#f1f5f9',
   },
-  previewTitle: { color: '#f8fafc', fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
-  previewSubtitle: { color: '#94a3b8', fontSize: 14, marginTop: 6, marginBottom: 18, lineHeight: 20 },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  previewClose: {
+    padding: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(148,163,184,0.18)',
+  },
+  previewTitle: { color: '#0f172a', fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
+  previewSubtitle: { color: '#64748b', fontSize: 14, marginTop: 6, lineHeight: 20 },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    alignItems: 'center',
+  },
   previewCard: {
     borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(56,189,248,0.25)',
-    backgroundColor: '#0b1220',
+    borderColor: 'rgba(148,163,184,0.35)',
+    backgroundColor: '#f8fafc',
     alignSelf: 'center',
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
   },
-  statsRow: { flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap', justifyContent: 'center' },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    width: '100%',
+  },
   statPill: {
-    backgroundColor: 'rgba(15,23,42,0.9)',
-    borderColor: 'rgba(148,163,184,0.2)',
+    backgroundColor: '#ffffff',
+    borderColor: 'rgba(148,163,184,0.35)',
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    minWidth: 96,
+    minWidth: 88,
     alignItems: 'center',
   },
-  statLabel: { color: '#94a3b8', fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
-  statValue: { color: '#f8fafc', fontSize: 16, fontWeight: '800', marginTop: 2 },
-  previewActions: { marginTop: 'auto', gap: 10 },
+  statLabel: {
+    color: '#64748b',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  statValue: { color: '#0f172a', fontSize: 16, fontWeight: '800', marginTop: 2 },
+  objectsBlock: { width: '100%', marginTop: 14 },
+  objectsTitle: {
+    color: '#334155',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
+  objectsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  objectChip: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(14,165,233,0.28)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  objectChipText: { color: '#0f172a', fontSize: 12, fontWeight: '700' },
+  previewActions: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(148,163,184,0.45)',
+    backgroundColor: '#f8fafc',
+  },
+  actionsRow: { flexDirection: 'row', gap: 8 },
+  secondaryHalf: {
+    flex: 1,
+    borderRadius: 16,
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.45)',
+    backgroundColor: '#ffffff',
+  },
+  walkthroughBtn: {
+    borderColor: 'rgba(14,165,233,0.4)',
+    backgroundColor: 'rgba(224,242,254,0.9)',
+  },
   primaryBtnWide: {
-    backgroundColor: '#38bdf8',
+    backgroundColor: '#0284c7',
     borderRadius: 18,
     minHeight: 52,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  secondaryBtnWide: {
-    borderRadius: 18,
-    minHeight: 48,
+  rescanBtn: {
+    borderRadius: 16,
+    minHeight: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.35)',
   },
-  pdfBtnWide: {
-    borderRadius: 18,
-    minHeight: 48,
-    flexDirection: 'row',
+  rescanBtnText: { color: '#64748b', fontWeight: '700', fontSize: 14 },
+  primaryBtnText: { color: '#ffffff', fontWeight: '900', fontSize: 15 },
+  secondaryBtnText: { color: '#334155', fontWeight: '800', fontSize: 13 },
+  walkthroughBtnText: { color: '#0369a1', fontWeight: '800', fontSize: 13 },
+  previewError: { color: '#b91c1c', textAlign: 'center', marginTop: 10, width: '100%' },
+  processing: {
+    flex: 1,
+    backgroundColor: '#f1f5f9',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(56,189,248,0.35)',
-    backgroundColor: 'rgba(15,23,42,0.55)',
+    gap: 12,
   },
-  walkthroughBtnWide: {
-    borderRadius: 18,
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(56,189,248,0.45)',
-    backgroundColor: 'rgba(14,165,233,0.12)',
-  },
-  walkthroughBtnText: { color: '#e0f2fe', fontWeight: '800', fontSize: 13 },
-  previewError: { color: '#fca5a5', textAlign: 'center', marginTop: 10 },
-  processing: { flex: 1, backgroundColor: '#020617', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  processingText: { color: '#cbd5e1', fontWeight: '600' },
+  processingText: { color: '#334155', fontWeight: '600' },
 });

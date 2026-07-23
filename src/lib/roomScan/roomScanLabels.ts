@@ -1,4 +1,5 @@
 import { getAppLocale, t } from '../../i18n';
+import type { RoomScanObjectCategory } from '../../types/roomScan';
 
 const ROOM_TYPE_KEYS = new Set([
   'livingRoom',
@@ -15,9 +16,98 @@ const ROOM_TYPE_KEYS = new Set([
   'unspecified',
 ]);
 
+const OBJECT_CATEGORIES = new Set<RoomScanObjectCategory>([
+  'storage',
+  'refrigerator',
+  'stove',
+  'bed',
+  'sink',
+  'washerDryer',
+  'toilet',
+  'bathtub',
+  'oven',
+  'dishwasher',
+  'table',
+  'sofa',
+  'chair',
+  'fireplace',
+  'television',
+  'stairs',
+  'unknown',
+]);
+
 export function getRoomScanSectionLabel(key: string): string {
   const normalized = ROOM_TYPE_KEYS.has(key) ? key : 'unspecified';
   return t(`addOffer.step5.roomScan.roomTypes.${normalized}`);
+}
+
+export function normalizeRoomScanObjectCategory(raw: string): RoomScanObjectCategory {
+  const key = String(raw || '').trim();
+  if (OBJECT_CATEGORIES.has(key as RoomScanObjectCategory)) return key as RoomScanObjectCategory;
+  // Apple czasem zwraca synonimy / warianty.
+  if (key === 'refrigerator' || key === 'fridge') return 'refrigerator';
+  if (key === 'stove' || key === 'cooktop') return 'stove';
+  if (key === 'washer' || key === 'dryer' || key === 'washerDryer') return 'washerDryer';
+  if (key === 'tv' || key === 'television') return 'television';
+  return 'unknown';
+}
+
+export function getRoomScanObjectLabel(category: RoomScanObjectCategory): string {
+  return t(`addOffer.step5.roomScan.objects.${category}`);
+}
+
+/** Ikona Ionicons dla kategorii obiektu na liście (nie SVG). */
+export function getRoomScanObjectIcon(category: RoomScanObjectCategory): string {
+  switch (category) {
+    case 'stove':
+    case 'oven':
+      return 'flame-outline';
+    case 'refrigerator':
+      return 'snow-outline';
+    case 'dishwasher':
+    case 'sink':
+      return 'water-outline';
+    case 'washerDryer':
+      return 'sync-outline';
+    case 'toilet':
+    case 'bathtub':
+      return 'water-outline';
+    case 'bed':
+      return 'bed-outline';
+    case 'sofa':
+      return 'cafe-outline';
+    case 'table':
+    case 'chair':
+      return 'grid-outline';
+    case 'television':
+      return 'tv-outline';
+    case 'fireplace':
+      return 'flame-outline';
+    case 'storage':
+      return 'file-tray-stacked-outline';
+    case 'stairs':
+      return 'git-commit-outline';
+    default:
+      return 'cube-outline';
+  }
+}
+
+/**
+ * Heurystyka: kuchenka / piekarnik / zmywarka / lodówka → kuchnia itd.
+ */
+export function inferRoomTypeFromObjects(categories: RoomScanObjectCategory[]): string {
+  const set = new Set(categories);
+  if (set.has('stove') || set.has('oven') || set.has('dishwasher') || set.has('refrigerator')) {
+    return 'kitchen';
+  }
+  if (set.has('toilet') || set.has('bathtub')) return 'bathroom';
+  if (set.has('washerDryer')) return 'laundry';
+  if (set.has('bed')) return 'bedroom';
+  if (set.has('sofa') || set.has('television') || set.has('fireplace')) return 'livingRoom';
+  if (set.has('table') && set.has('chair')) return 'diningRoom';
+  if (set.has('sink') && !set.has('stove')) return 'bathroom';
+  if (set.has('storage')) return 'closet';
+  return 'unspecified';
 }
 
 export function formatRoomScanRoomCount(count: number): string {

@@ -41,8 +41,11 @@ function buildMeta(
     scannedAt,
     roomCount: sections.length,
     totalAreaSqM,
+    ceilingHeightM: 2.7,
     sections,
     walls,
+    objects: [],
+    openings: [],
     bounds: {
       minX: Math.min(...xs) - pad,
       maxX: Math.max(...xs) + pad,

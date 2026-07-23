@@ -12,12 +12,10 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { useI18n } from '../i18n';
 import { useAuthStore } from '../store/useAuthStore';
-import { isInvestorProIdentity } from '../utils/partnerIdentity';
 import {
   createPhotoSessionRequest,
   fetchMyPhotoSessionRequests,
@@ -91,9 +89,8 @@ export default function ProPhotoSessionModal({
 }: Props) {
   const { t } = useI18n();
   const navigation = useNavigation<any>();
-  const { token, user } = useAuthStore() as any;
+  const { token } = useAuthStore() as any;
   const isDark = theme.glass === 'dark';
-  const isInvestorPro = isInvestorProIdentity(user);
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -274,12 +271,6 @@ export default function ProPhotoSessionModal({
     }, 280);
   };
 
-  const handleBecomePro = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onClose();
-    navigation.navigate('Profil', { openShop: true });
-  };
-
   const handleOpenSampleOffer = (sampleId: ProPhotoSessionExampleId) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const offer = getProPhotoSessionSampleOffer(sampleId, t);
@@ -441,26 +432,6 @@ export default function ProPhotoSessionModal({
                       <Text style={[styles.pricingValue, { color: theme.text }]}>199 zł</Text>
                     </View>
                     <Text style={[styles.pricingHint, { color: theme.subtitle }]}>{t('addOffer.step5.proSession.priceHint')}</Text>
-                    <View style={[styles.proBenefitBox, { backgroundColor: isDark ? 'rgba(168,85,247,0.1)' : 'rgba(168,85,247,0.06)', borderColor: isDark ? 'rgba(168,85,247,0.28)' : 'rgba(168,85,247,0.18)' }]}>
-                      <Ionicons name="ribbon-outline" size={16} color="#a855f7" />
-                      <Text style={[styles.proBenefitText, { color: theme.text }]}>
-                        {isInvestorPro ? t('addOffer.step5.proSession.proFreeActive') : t('addOffer.step5.proSession.proBenefit')}
-                      </Text>
-                    </View>
-                    {!isInvestorPro ? (
-                      <TouchableOpacity onPress={handleBecomePro} activeOpacity={0.9} style={styles.becomeProBtnWrap}>
-                        <LinearGradient
-                          colors={isDark ? ['#4c1d95', '#7c3aed', '#a855f7'] : ['#6d28d9', '#8b5cf6', '#a78bfa']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          style={styles.becomeProBtn}
-                        >
-                          <Ionicons name="diamond" size={16} color="#fff" />
-                          <Text style={styles.becomeProBtnText}>{t('addOffer.step5.proSession.becomePro')}</Text>
-                          <Ionicons name="arrow-forward" size={15} color="rgba(255,255,255,0.92)" />
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    ) : null}
                   </View>
 
                   <View style={[styles.sectionCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>

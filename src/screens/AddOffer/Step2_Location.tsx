@@ -891,14 +891,15 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
   const syncStreetToDraft = useCallback(() => {
     const trimmedStreet = String(streetInput || '').trim();
-    if (trimmedStreet.length > 2 && trimmedStreet !== String(draft.street || '').trim()) {
-      updateDraft({ street: trimmedStreet });
-    }
-  }, [streetInput, draft.street, updateDraft]);
+    if (trimmedStreet.length <= 2) return;
+    const currentStreet = String(useOfferStore.getState().draft.street || '').trim();
+    if (trimmedStreet === currentStreet) return;
+    updateDraft({ street: trimmedStreet });
+  }, [streetInput, updateDraft]);
 
   useEffect(() => {
     syncStreetToDraft();
-  }, [syncStreetToDraft]);
+  }, [streetInput, syncStreetToDraft]);
 
   const flyTo = (targetLat: number | string | null | undefined, targetLng: number | string | null | undefined, isExact: boolean) => {
     const lat = Number(targetLat);

@@ -4,6 +4,49 @@ export type RoomScanWallSegment = {
   x2: number;
   z2: number;
   lengthM?: number;
+  /** Wysokość ściany (podłoga → sufit), metry. */
+  heightM?: number;
+};
+
+export type RoomScanObjectCategory =
+  | 'storage'
+  | 'refrigerator'
+  | 'stove'
+  | 'bed'
+  | 'sink'
+  | 'washerDryer'
+  | 'toilet'
+  | 'bathtub'
+  | 'oven'
+  | 'dishwasher'
+  | 'table'
+  | 'sofa'
+  | 'chair'
+  | 'fireplace'
+  | 'television'
+  | 'stairs'
+  | 'unknown';
+
+export type RoomScanDetectedObject = {
+  id: string;
+  category: RoomScanObjectCategory;
+  label: string;
+  centerX: number;
+  centerZ: number;
+  widthM?: number;
+  depthM?: number;
+};
+
+export type RoomScanOpeningKind = 'door' | 'window' | 'opening';
+
+export type RoomScanOpening = {
+  id: string;
+  kind: RoomScanOpeningKind;
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
+  lengthM?: number;
 };
 
 export type RoomScanSection = {
@@ -12,6 +55,9 @@ export type RoomScanSection = {
   centerX: number;
   centerZ: number;
   areaSqM?: number;
+  /** Średnia wysokość pomieszczenia (m), jeśli znana. */
+  ceilingHeightM?: number;
+  inferredFromObjects?: boolean;
 };
 
 export type FloorPlanScanMeta = {
@@ -19,8 +65,12 @@ export type FloorPlanScanMeta = {
   scannedAt: string;
   roomCount: number;
   totalAreaSqM: number | null;
+  /** Średnia wysokość pomieszczeń (podłoga → sufit). */
+  ceilingHeightM: number | null;
   sections: RoomScanSection[];
   walls: RoomScanWallSegment[];
+  objects: RoomScanDetectedObject[];
+  openings: RoomScanOpening[];
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
 };
 

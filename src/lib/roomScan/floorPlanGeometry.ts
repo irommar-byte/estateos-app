@@ -25,19 +25,56 @@ export type MappedSection = {
   centerX: number;
   centerZ: number;
   areaSqM?: number;
+  ceilingHeightM?: number;
   x: number;
   y: number;
   fill: string;
 };
 
+export type MappedObject = {
+  id: string;
+  category: string;
+  label: string;
+  x: number;
+  y: number;
+  glyph: string;
+};
+
+export type MappedOpening = {
+  id: string;
+  kind: string;
+  a: { x: number; y: number };
+  b: { x: number; y: number };
+};
+
 const ROOM_FILL_COLORS = [
-  'rgba(56,189,248,0.14)',
-  'rgba(52,211,153,0.14)',
-  'rgba(167,139,250,0.14)',
-  'rgba(251,191,36,0.14)',
-  'rgba(244,114,182,0.14)',
-  'rgba(94,234,212,0.14)',
+  'rgba(14,165,233,0.12)',
+  'rgba(16,185,129,0.12)',
+  'rgba(139,92,246,0.10)',
+  'rgba(245,158,11,0.12)',
+  'rgba(236,72,153,0.10)',
+  'rgba(6,182,212,0.12)',
 ];
+
+const OBJECT_GLYPH: Record<string, string> = {
+  stove: 'AGD',
+  oven: 'AGD',
+  refrigerator: 'LOD',
+  dishwasher: 'ZM',
+  sink: 'ZL',
+  washerDryer: 'PR',
+  toilet: 'WC',
+  bathtub: 'WAN',
+  bed: 'LOZ',
+  sofa: 'SOF',
+  table: 'ST',
+  chair: 'KR',
+  television: 'TV',
+  fireplace: 'KOM',
+  storage: 'SZ',
+  stairs: 'SCH',
+  unknown: '•',
+};
 
 export function wallLengthMeters(wall: RoomScanWallSegment): number {
   if (typeof wall.lengthM === 'number' && wall.lengthM > 0) return wall.lengthM;
@@ -227,10 +264,41 @@ export function mapSectionsForRender(
       centerX: section.centerX,
       centerZ: section.centerZ,
       areaSqM: section.areaSqM,
+      ceilingHeightM: section.ceilingHeightM,
       fill: ROOM_FILL_COLORS[index % ROOM_FILL_COLORS.length],
       ...p,
     };
   });
+}
+
+export function mapObjectsForRender(
+  objects: FloorPlanScanMeta['objects'],
+  bounds: FloorPlanScanMeta['bounds'],
+  viewport: FloorPlanViewport,
+): MappedObject[] {
+  return (objects || []).map((obj, index) => {
+    const p = mapFloorPlanPoint(obj.centerX, obj.centerZ, bounds, viewport);
+    return {
+      id: obj.id || `obj-${index}`,
+      category: obj.category,
+      label: obj.label,
+      glyph: OBJECT_GLYPH[obj.category] || OBJECT_GLYPH.unknown,
+      ...p,
+    };
+  });
+}
+
+export function mapOpeningsForRender(
+  openings: FloorPlanScanMeta['openings'],
+  bounds: FloorPlanScanMeta['bounds'],
+  viewport: FloorPlanViewport,
+): MappedOpening[] {
+  return (openings || []).map((opening, index) => ({
+    id: opening.id || `op-${index}`,
+    kind: opening.kind,
+    a: mapFloorPlanPoint(opening.x1, opening.z1, bounds, viewport),
+    b: mapFloorPlanPoint(opening.x2, opening.z2, bounds, viewport),
+  }));
 }
 
 export function sectionMarkerRadiusPx(viewport: FloorPlanViewport, areaSqM?: number): number {

@@ -100,8 +100,33 @@ export const useOfferStore = create<OfferStore>((set) => ({
     set((state) => (state.currentStep === step ? state : { currentStep: step })),
   updateDraft: (data) =>
     set((state) => {
+      if (!data || typeof data !== 'object') return state;
       const keys = Object.keys(data);
-      if (keys.length > 0 && keys.every((k) => state.draft[k] === data[k])) {
+      if (keys.length === 0) return state;
+
+      const sameValue = (prev: unknown, next: unknown): boolean => {
+        if (Object.is(prev, next)) return true;
+        if (Array.isArray(prev) && Array.isArray(next)) {
+          return prev.length === next.length && prev.every((v, i) => Object.is(v, next[i]));
+        }
+        if (
+          prev &&
+          next &&
+          typeof prev === 'object' &&
+          typeof next === 'object' &&
+          !Array.isArray(prev) &&
+          !Array.isArray(next)
+        ) {
+          try {
+            return JSON.stringify(prev) === JSON.stringify(next);
+          } catch {
+            return false;
+          }
+        }
+        return false;
+      };
+
+      if (keys.every((k) => sameValue(state.draft[k], (data as Record<string, unknown>)[k]))) {
         return state;
       }
       return { draft: { ...state.draft, ...data } };

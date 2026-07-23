@@ -1,10 +1,12 @@
 import React, { useMemo, forwardRef } from 'react';
 import { View, StyleSheet } from 'react-native';
-import Svg, { G, Line, Rect, Text as SvgText, Circle } from 'react-native-svg';
+import Svg, { G, Line, Rect, Text as SvgText, Circle, Polygon } from 'react-native-svg';
 import type { FloorPlanScanMeta, RoomScanWallSegment } from '../../types/roomScan';
 import {
   buildFloorPlanViewport,
   formatWallDimension,
+  mapObjectsForRender,
+  mapOpeningsForRender,
   mapSectionsForRender,
   mapWallsForRender,
   sectionMarkerRadiusPx,
@@ -32,11 +34,16 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
   },
   ref,
 ) {
-  const padding = forExport ? 72 : 36;
+  const padding = forExport ? 72 : 40;
   const headerH = forExport ? 88 : 0;
   const footerH = forExport ? 56 : 0;
   const drawH = height - headerH - footerH;
-  const bg = forExport ? '#0b1220' : '#0b1220';
+  const bg = forExport ? '#f8fafc' : '#f4f7fb';
+  const wallStroke = '#1e293b';
+  const wallCore = '#334155';
+  const dimBg = 'rgba(255,255,255,0.95)';
+  const dimText = '#0f172a';
+  const muted = '#64748b';
 
   const viewport = useMemo(
     () => buildFloorPlanViewport(meta.bounds, width, drawH, padding),
@@ -53,28 +60,75 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
     [meta.sections, meta.bounds, viewport],
   );
 
+  const mappedObjects = useMemo(
+    () => mapObjectsForRender(meta.objects || [], meta.bounds, viewport),
+    [meta.objects, meta.bounds, viewport],
+  );
+
+  const mappedOpenings = useMemo(
+    () => mapOpeningsForRender(meta.openings || [], meta.bounds, viewport),
+    [meta.openings, meta.bounds, viewport],
+  );
+
   const scaleBar = useMemo(() => {
     const targetPx = forExport ? 120 : 72;
     const niceMeters = [1, 2, 3, 5, 10].find((m) => m * viewport.scale >= targetPx * 0.75) || 1;
     return { meters: niceMeters, px: niceMeters * viewport.scale };
   }, [viewport.scale, forExport]);
 
+  const compassCx = width - padding - 28;
+  const compassCy = (forExport ? headerH : 0) + padding + 28;
+  const compassR = forExport ? 34 : 30;
+
   return (
     <View style={[styles.wrap, { width, height, backgroundColor: bg }]}>
       <Svg ref={ref} width={width} height={height}>
         <Rect x={0} y={0} width={width} height={height} fill={bg} rx={forExport ? 24 : 0} />
 
+        {/* Soft floor grid */}
+        <G opacity={0.35}>
+          {Array.from({ length: 12 }).map((_, i) => {
+            const x = padding + i * ((width - padding * 2) / 11);
+            return (
+              <Line
+                key={`gx-${i}`}
+                x1={x}
+                y1={headerH + padding * 0.4}
+                x2={x}
+                y2={headerH + drawH - padding * 0.4}
+                stroke="#cbd5e1"
+                strokeWidth={1}
+              />
+            );
+          })}
+          {Array.from({ length: 12 }).map((_, i) => {
+            const y = headerH + padding * 0.4 + i * ((drawH - padding * 0.8) / 11);
+            return (
+              <Line
+                key={`gy-${i}`}
+                x1={padding * 0.4}
+                y1={y}
+                x2={width - padding * 0.4}
+                y2={y}
+                stroke="#cbd5e1"
+                strokeWidth={1}
+              />
+            );
+          })}
+        </G>
+
         {forExport ? (
           <G>
-            <SvgText x={padding} y={34} fill="#7dd3fc" fontSize={11} fontWeight="700" letterSpacing={2}>
+            <SvgText x={padding} y={34} fill="#0369a1" fontSize={11} fontWeight="700" letterSpacing={2}>
               {t('addOffer.step5.roomScan.export.brand')}
             </SvgText>
-            <SvgText x={padding} y={58} fill="#f8fafc" fontSize={22} fontWeight="800">
+            <SvgText x={padding} y={58} fill="#0f172a" fontSize={22} fontWeight="800">
               {title || t('addOffer.step5.roomScan.export.defaultTitle')}
             </SvgText>
-            <SvgText x={padding} y={78} fill="#94a3b8" fontSize={12} fontWeight="500">
+            <SvgText x={padding} y={78} fill={muted} fontSize={12} fontWeight="500">
               {formatRoomScanRoomCount(meta.roomCount)}
               {meta.totalAreaSqM ? ` · ~${meta.totalAreaSqM} m²` : ''}
+              {meta.ceilingHeightM ? ` · H ${meta.ceilingHeightM.toFixed(2)} m` : ''}
             </SvgText>
           </G>
         ) : null}
@@ -90,13 +144,27 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                   cy={section.y}
                   r={r}
                   fill="none"
-                  stroke="rgba(56,189,248,0.22)"
+                  stroke="rgba(14,165,233,0.28)"
                   strokeWidth={1}
                   strokeDasharray="4 4"
                 />
               </G>
             );
           })}
+
+          {mappedOpenings.map((opening) => (
+            <Line
+              key={opening.id}
+              x1={opening.a.x}
+              y1={opening.a.y}
+              x2={opening.b.x}
+              y2={opening.b.y}
+              stroke={opening.kind === 'window' ? '#38bdf8' : '#f59e0b'}
+              strokeWidth={opening.kind === 'door' ? 5 : 3.5}
+              strokeLinecap="butt"
+              strokeDasharray={opening.kind === 'window' ? '6 3' : undefined}
+            />
+          ))}
 
           {mappedWalls.map((wall) => (
             <G key={wall.id}>
@@ -105,8 +173,8 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                 y1={wall.a.y}
                 x2={wall.b.x}
                 y2={wall.b.y}
-                stroke="#0f172a"
-                strokeWidth={forExport ? 18 : 12}
+                stroke="#e2e8f0"
+                strokeWidth={forExport ? 16 : 12}
                 strokeLinecap="square"
               />
               <Line
@@ -114,26 +182,26 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                 y1={wall.a.y}
                 x2={wall.b.x}
                 y2={wall.b.y}
-                stroke="#e2e8f0"
-                strokeWidth={forExport ? 3 : 2}
+                stroke={wallCore}
+                strokeWidth={forExport ? 3.5 : 2.5}
                 strokeLinecap="square"
               />
               {wall.showLabel ? (
                 <G>
                   <Rect
-                    x={wall.lx - 28}
+                    x={wall.lx - 30}
                     y={wall.ly - 11}
-                    width={56}
+                    width={60}
                     height={20}
                     rx={10}
-                    fill="rgba(15,23,42,0.94)"
-                    stroke="rgba(148,163,184,0.35)"
-                    strokeWidth={0.5}
+                    fill={dimBg}
+                    stroke="#cbd5e1"
+                    strokeWidth={0.8}
                   />
                   <SvgText
                     x={wall.lx}
                     y={wall.ly + 4}
-                    fill="#f1f5f9"
+                    fill={dimText}
                     fontSize={forExport ? 10 : 8}
                     fontWeight="700"
                     textAnchor="middle"
@@ -145,43 +213,99 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
             </G>
           ))}
 
-          {mappedSections.map((section) => (
-            <G key={`${section.id}-label`}>
-              <Rect
-                x={section.x - 54}
-                y={section.y - 22}
-                width={108}
-                height={section.areaSqM ? 40 : 24}
-                rx={12}
-                fill="rgba(15,23,42,0.88)"
-                stroke="rgba(56,189,248,0.35)"
-                strokeWidth={1}
-              />
-              <SvgText
-                x={section.x}
-                y={section.y - 4}
-                fill="#f8fafc"
-                fontSize={forExport ? 12 : 10}
-                fontWeight="800"
-                textAnchor="middle"
-              >
-                {section.label}
-              </SvgText>
-              {section.areaSqM ? (
+          {mappedObjects.map((obj) => {
+            const boxW = Math.max(28, Math.min(46, obj.glyph.length * 8 + 12));
+            return (
+              <G key={obj.id}>
+                <Rect
+                  x={obj.x - boxW / 2}
+                  y={obj.y - 11}
+                  width={boxW}
+                  height={22}
+                  rx={6}
+                  fill="#ffffff"
+                  stroke="#94a3b8"
+                  strokeWidth={1}
+                />
                 <SvgText
-                  x={section.x}
-                  y={section.y + 12}
-                  fill="#94a3b8"
-                  fontSize={forExport ? 9 : 8}
+                  x={obj.x}
+                  y={obj.y + 4}
+                  fill="#0f172a"
+                  fontSize={forExport ? 9 : 7.5}
+                  fontWeight="800"
+                  textAnchor="middle"
+                >
+                  {obj.glyph}
+                </SvgText>
+                <SvgText
+                  x={obj.x}
+                  y={obj.y + 20}
+                  fill={muted}
+                  fontSize={forExport ? 8 : 7}
                   fontWeight="600"
                   textAnchor="middle"
                 >
-                  {section.areaSqM} m²
+                  {obj.label}
                 </SvgText>
-              ) : null}
-            </G>
-          ))}
+              </G>
+            );
+          })}
 
+          {mappedSections.map((section) => {
+            const labelH = section.ceilingHeightM ? 52 : section.areaSqM ? 40 : 24;
+            return (
+              <G key={`${section.id}-label`}>
+                <Rect
+                  x={section.x - 58}
+                  y={section.y - labelH / 2}
+                  width={116}
+                  height={labelH}
+                  rx={12}
+                  fill="rgba(255,255,255,0.94)"
+                  stroke="rgba(14,165,233,0.35)"
+                  strokeWidth={1}
+                />
+                <SvgText
+                  x={section.x}
+                  y={section.y - (section.ceilingHeightM ? 10 : section.areaSqM ? 4 : 0) + 4}
+                  fill="#0f172a"
+                  fontSize={forExport ? 12 : 10}
+                  fontWeight="800"
+                  textAnchor="middle"
+                >
+                  {section.label}
+                </SvgText>
+                {section.areaSqM ? (
+                  <SvgText
+                    x={section.x}
+                    y={section.y + (section.ceilingHeightM ? 6 : 12)}
+                    fill={muted}
+                    fontSize={forExport ? 9 : 8}
+                    fontWeight="600"
+                    textAnchor="middle"
+                  >
+                    {section.areaSqM} m²
+                  </SvgText>
+                ) : null}
+                {section.ceilingHeightM ? (
+                  <SvgText
+                    x={section.x}
+                    y={section.y + 20}
+                    fill="#0369a1"
+                    fontSize={forExport ? 9 : 8}
+                    fontWeight="700"
+                    textAnchor="middle"
+                  >
+                    {t('addOffer.step5.roomScan.ceilingShort', {
+                      height: section.ceilingHeightM.toFixed(2),
+                    })}
+                  </SvgText>
+                ) : null}
+              </G>
+            );
+          })}
+
+          {/* Scale bar */}
           <G>
             <Rect
               x={padding - 8}
@@ -189,29 +313,30 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
               width={scaleBar.px + 16}
               height={28}
               rx={8}
-              fill="rgba(15,23,42,0.75)"
+              fill="rgba(255,255,255,0.92)"
+              stroke="#cbd5e1"
             />
             <Line
               x1={padding}
               y1={drawH - padding + 8}
               x2={padding + scaleBar.px}
               y2={drawH - padding + 8}
-              stroke="#e2e8f0"
+              stroke={wallStroke}
               strokeWidth={2}
             />
-            <Line x1={padding} y1={drawH - padding + 2} x2={padding} y2={drawH - padding + 14} stroke="#e2e8f0" strokeWidth={2} />
+            <Line x1={padding} y1={drawH - padding + 2} x2={padding} y2={drawH - padding + 14} stroke={wallStroke} strokeWidth={2} />
             <Line
               x1={padding + scaleBar.px}
               y1={drawH - padding + 2}
               x2={padding + scaleBar.px}
               y2={drawH - padding + 14}
-              stroke="#e2e8f0"
+              stroke={wallStroke}
               strokeWidth={2}
             />
             <SvgText
               x={padding + scaleBar.px / 2}
               y={drawH - padding - 6}
-              fill="#cbd5e1"
+              fill={dimText}
               fontSize={forExport ? 10 : 8}
               fontWeight="700"
               textAnchor="middle"
@@ -219,6 +344,49 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
               {scaleBar.meters} m
             </SvgText>
           </G>
+        </G>
+
+        {/* Professional compass — N at top of drawing */}
+        <G>
+          <Circle cx={compassCx} cy={compassCy} r={compassR} fill="#ffffff" stroke="#94a3b8" strokeWidth={1.2} />
+          <Circle cx={compassCx} cy={compassCy} r={compassR - 7} fill="none" stroke="#e2e8f0" strokeWidth={1} />
+          <Polygon
+            points={`${compassCx},${compassCy - compassR + 8} ${compassCx + 7},${compassCy + 2} ${compassCx},${compassCy - 2} ${compassCx - 7},${compassCy + 2}`}
+            fill="#dc2626"
+          />
+          <Polygon
+            points={`${compassCx},${compassCy + compassR - 8} ${compassCx + 6},${compassCy - 1} ${compassCx},${compassCy + 2} ${compassCx - 6},${compassCy - 1}`}
+            fill="#475569"
+          />
+          <SvgText
+            x={compassCx}
+            y={compassCy - compassR + 3}
+            fill="#0f172a"
+            fontSize={10}
+            fontWeight="900"
+            textAnchor="middle"
+          >
+            N
+          </SvgText>
+          <SvgText x={compassCx} y={compassCy + compassR + 1} fill={muted} fontSize={8} fontWeight="700" textAnchor="middle">
+            S
+          </SvgText>
+          <SvgText x={compassCx + compassR + 1} y={compassCy + 3} fill={muted} fontSize={8} fontWeight="700" textAnchor="middle">
+            E
+          </SvgText>
+          <SvgText x={compassCx - compassR - 1} y={compassCy + 3} fill={muted} fontSize={8} fontWeight="700" textAnchor="middle">
+            W
+          </SvgText>
+          <SvgText
+            x={compassCx}
+            y={compassCy + compassR + 14}
+            fill={muted}
+            fontSize={7}
+            fontWeight="600"
+            textAnchor="middle"
+          >
+            {t('addOffer.step5.roomScan.compassHint')}
+          </SvgText>
         </G>
 
         {forExport ? (

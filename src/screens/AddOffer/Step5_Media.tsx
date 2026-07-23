@@ -607,7 +607,24 @@ export default function Step5_Media({ theme }: { theme: any }) {
         <AddOfferStepper currentStep={5} draft={draft} theme={theme} navigation={navigation} />
         <Text style={{ fontSize: 34, fontWeight: '800', marginBottom: 30, color: theme.text }}>{translate('addOffer.step5.header')}</Text>
 
-        <View style={[styles.limitsDashboard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.05)' }]}>
+        {/* —— Zdjęcia —— */}
+        <View
+          style={[
+            styles.sectionBlock,
+            {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+              borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.06)',
+            },
+          ]}
+        >
+          <Text style={[styles.sectionEyebrow, { color: theme.subtitle }]}>
+            {translate('addOffer.step5.sections.addPhotos')}
+          </Text>
+          <Text style={[styles.sectionLead, { color: theme.subtitle }]}>
+            {translate('addOffer.step5.gallery.lead')}
+          </Text>
+
+          <View style={[styles.limitsDashboard, { backgroundColor: 'transparent', borderWidth: 0, marginBottom: 16, padding: 0 }]}>
             <CapacityBar label={translate('addOffer.step5.capacity.photos')} current={displayImages.length} max={MAX_IMAGES} suffix={translate('addOffer.step5.capacity.suffixPhotos')} theme={theme} />
             <CapacityBar label={translate('addOffer.step5.capacity.diskSpace')} current={usedMB} max={MAX_MB} suffix={translate('addOffer.step5.capacity.suffixMb')} theme={theme} />
             {estimatedCount > 0 && (
@@ -622,13 +639,6 @@ export default function Step5_Media({ theme }: { theme: any }) {
               </Text>
             )}
           </View>
-
-          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 5 }}>
-            {translate('addOffer.step5.sections.addPhotos')}
-          </Text>
-          <Text style={{ fontSize: 12, fontWeight: '500', color: theme.subtitle, marginBottom: 12, lineHeight: 17 }}>
-            {translate('addOffer.step5.gallery.lead')}
-          </Text>
 
           {displayImages.length > 0 && (
             <View style={[styles.gridContainer, { height: gridHeight }]}>
@@ -650,54 +660,69 @@ export default function Step5_Media({ theme }: { theme: any }) {
             </View>
           )}
 
-          <View style={styles.mediaActionsRow}>
-            <View style={styles.mediaActionFlex}>
-              <AppleHover onPress={pickGallery} scaleTo={0.98}>
-                <View
-                  style={[
-                    styles.addMediaBtn,
-                    styles.mediaActionBtn,
-                    { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)', opacity: sizingGallery ? 0.65 : 1 },
-                  ]}
-                >
-                  {sizingGallery ? (
-                    <ActivityIndicator color={theme.text} style={{ marginRight: 8 }} />
-                  ) : (
-                    <Ionicons name="camera" size={22} color={theme.text} style={{ marginRight: 8 }} />
-                  )}
-                  <Text style={[styles.mediaActionText, { color: theme.text }]} numberOfLines={2}>
-                    {sizingGallery
-                      ? translate('addOffer.step5.gallery.sizing')
-                      : displayImages.length > 0
-                        ? translate('addOffer.step5.gallery.addMore')
-                        : translate('addOffer.step5.gallery.open')}
-                  </Text>
-                </View>
-              </AppleHover>
+          <AppleHover onPress={pickGallery} scaleTo={0.98}>
+            <View
+              style={[
+                styles.addMediaBtn,
+                styles.fullWidthActionBtn,
+                { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)', opacity: sizingGallery ? 0.65 : 1 },
+              ]}
+            >
+              {sizingGallery ? (
+                <ActivityIndicator color={theme.text} style={{ marginRight: 8 }} />
+              ) : (
+                <Ionicons name="images-outline" size={22} color={theme.text} style={{ marginRight: 10 }} />
+              )}
+              <Text style={[styles.fullWidthActionText, { color: theme.text }]} numberOfLines={2}>
+                {sizingGallery
+                  ? translate('addOffer.step5.gallery.sizing')
+                  : displayImages.length > 0
+                    ? translate('addOffer.step5.gallery.addMore')
+                    : translate('addOffer.step5.gallery.open')}
+              </Text>
             </View>
-            <View style={styles.mediaActionFlex}>
-              <AppleHover onPress={() => setProPhotoSessionOpen(true)} scaleTo={0.98}>
-                <View
-                  style={[
-                    styles.proSessionBtn,
-                    styles.mediaActionBtn,
-                    {
-                      borderColor: isDark ? 'rgba(168,85,247,0.35)' : 'rgba(168,85,247,0.25)',
-                      backgroundColor: isDark ? 'rgba(168,85,247,0.1)' : 'rgba(168,85,247,0.06)',
-                    },
-                  ]}
-                >
-                  <Ionicons name="sparkles" size={20} color="#a855f7" style={{ marginRight: 8 }} />
-                  <Text style={[styles.mediaActionText, { color: theme.text }]} numberOfLines={3}>
-                    {translate('addOffer.step5.proSession.cta')}
-                  </Text>
-                </View>
-              </AppleHover>
-            </View>
-          </View>
+          </AppleHover>
 
-          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 15 }}>
+          <AppleHover onPress={() => setProPhotoSessionOpen(true)} scaleTo={0.98}>
+            <View
+              style={[
+                styles.proSessionBtn,
+                styles.fullWidthActionBtn,
+                {
+                  marginTop: 10,
+                  borderColor: isDark ? 'rgba(168,85,247,0.35)' : 'rgba(168,85,247,0.25)',
+                  backgroundColor: isDark ? 'rgba(168,85,247,0.1)' : 'rgba(168,85,247,0.06)',
+                },
+              ]}
+            >
+              <Ionicons name="camera-outline" size={22} color="#a855f7" style={{ marginRight: 10 }} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[styles.fullWidthActionText, { color: theme.text }]} numberOfLines={2}>
+                  {translate('addOffer.step5.proSession.cta')}
+                </Text>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: theme.subtitle, marginTop: 3 }}>
+                  {translate('addOffer.step5.proSession.priceHint')}
+                </Text>
+              </View>
+            </View>
+          </AppleHover>
+        </View>
+
+        {/* —— Plan —— */}
+        <View
+          style={[
+            styles.sectionBlock,
+            {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+              borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.06)',
+            },
+          ]}
+        >
+          <Text style={[styles.sectionEyebrow, { color: theme.subtitle }]}>
             {translate('addOffer.step5.sections.floorPlan')}
+          </Text>
+          <Text style={[styles.sectionLead, { color: theme.subtitle }]}>
+            {translate('addOffer.step5.floorPlan.sectionLead')}
           </Text>
 
           {roomScanAvailable ? (
@@ -706,34 +731,43 @@ export default function Step5_Media({ theme }: { theme: any }) {
                 style={[
                   styles.roomScanCta,
                   {
-                    borderColor: isDark ? 'rgba(56,189,248,0.35)' : 'rgba(14,165,233,0.35)',
-                    backgroundColor: isDark ? 'rgba(15,23,42,0.85)' : 'rgba(240,249,255,0.95)',
+                    borderColor: isDark ? 'rgba(56,189,248,0.45)' : 'rgba(14,165,233,0.4)',
+                    backgroundColor: isDark ? 'rgba(14,165,233,0.12)' : 'rgba(224,242,254,0.95)',
                   },
                 ]}
               >
-                <View style={styles.roomScanIconWrap}>
-                  <Ionicons name="scan-outline" size={22} color="#0ea5e9" />
+                <View style={[styles.roomScanIconWrap, { width: 52, height: 52, borderRadius: 16 }]}>
+                  <Ionicons name="scan-outline" size={26} color="#0284c7" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: theme.text }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: theme.text }}>
                       {translate('addOffer.step5.floorPlan.scan')}
                     </Text>
                     <View style={styles.roomScanBadge}>
                       <Text style={styles.roomScanBadgeText}>{translate('addOffer.step5.floorPlan.scanBadge')}</Text>
                     </View>
                   </View>
-                  <Text style={{ fontSize: 12, fontWeight: '500', color: theme.subtitle, marginTop: 4, lineHeight: 17 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '500', color: theme.subtitle, marginTop: 5, lineHeight: 18 }}>
                     {translate('addOffer.step5.floorPlan.scanHint')}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={theme.subtitle} />
+                <Ionicons name="chevron-forward" size={20} color="#0284c7" />
               </View>
             </AppleHover>
           ) : null}
 
           <AppleHover onPress={pickFloorPlan} scaleTo={0.98}>
-            <View style={[styles.floorPlanContainer, { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)', height: draft.floorPlan ? 220 : 70, marginTop: roomScanAvailable ? 10 : 0 }]}>
+            <View
+              style={[
+                styles.floorPlanContainer,
+                {
+                  borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)',
+                  height: draft.floorPlan ? 220 : 72,
+                  marginTop: roomScanAvailable ? 12 : 0,
+                },
+              ]}
+            >
               {draft.floorPlan ? (
                 <View style={{ width: '100%', height: '100%', position: 'relative' }}>
                   <Image source={{ uri: draft.floorPlan }} style={{ width: '100%', height: '100%', borderRadius: 16 }} resizeMode="cover" />
@@ -750,98 +784,87 @@ export default function Step5_Media({ theme }: { theme: any }) {
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                   <Ionicons name="map-outline" size={24} color={theme.text} style={{ marginRight: 10 }} />
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>{translate('addOffer.step5.floorPlan.upload')}</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>
+                    {translate('addOffer.step5.floorPlan.upload')}
+                  </Text>
                 </View>
               )}
             </View>
           </AppleHover>
+        </View>
 
-          <RoomScanModal
-            visible={roomScanOpen}
-            onClose={() => setRoomScanOpen(false)}
-            onComplete={handleRoomScanComplete}
+        <RoomScanModal
+          visible={roomScanOpen}
+          onClose={() => setRoomScanOpen(false)}
+          onComplete={handleRoomScanComplete}
+        />
+
+        <View style={styles.titleSection}>
+          <Text style={[styles.sectionEyebrow, { color: theme.subtitle, marginBottom: 10 }]}>
+            {translate('addOffer.step5.sections.title')}
+          </Text>
+          <View
+            style={[
+              styles.titleInputBox,
+              {
+                backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF',
+                borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)',
+              },
+            ]}
+          >
+            <TextInput
+              style={[styles.titleInput, { color: theme.text }]}
+              placeholder={translate('addOffer.step5.titlePlaceholder')}
+              placeholderTextColor={theme.subtitle}
+              value={draft.title}
+              onChangeText={handleTitleChange}
+              maxLength={MAX_TITLE_LENGTH}
+            />
+          </View>
+          <AddOfferFieldHint
+            current={titleLength}
+            min={ADD_OFFER_TITLE_MIN}
+            max={ADD_OFFER_TITLE_MAX}
           />
+        </View>
 
-          <View style={styles.titleSection}>
-            <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 8 }}>
-              {translate('addOffer.step5.sections.title')}
-            </Text>
-            <View
+        <ProPhotoSessionModal
+          visible={proPhotoSessionOpen}
+          onClose={() => setProPhotoSessionOpen(false)}
+          theme={theme}
+          draft={{
+            city: draft.city,
+            district: draft.district,
+            street: draft.street,
+            propertyType: draft.propertyType,
+            transactionType: draft.transactionType,
+          }}
+        />
+
+        {/* —— Opis —— */}
+        <View style={{ marginTop: 8, marginBottom: 8 }}>
+          <Text style={[styles.sectionEyebrow, { color: theme.subtitle }]}>
+            {translate('addOffer.step5.sections.description')}
+          </Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text, marginTop: 14, marginBottom: 6 }}>
+            {translate('addOffer.step5.ai.manualLabel')}
+          </Text>
+          <Text style={{ fontSize: 12, fontWeight: '500', color: theme.subtitle, marginBottom: 10, lineHeight: 17 }}>
+            {translate('addOffer.step5.ai.manualHint')}
+          </Text>
+
+          <View style={{ position: 'relative' }}>
+            <Animated.View
               style={[
-                styles.titleInputBox,
+                StyleSheet.absoluteFillObject,
                 {
-                  backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF',
-                  borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)',
+                  backgroundColor: Colors.aiGlow,
+                  borderRadius: 24,
+                  opacity: glowAnim,
+                  transform: [{ scale: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1.02] }) }],
                 },
               ]}
-            >
-              <TextInput
-                style={[styles.titleInput, { color: theme.text }]}
-                placeholder={translate('addOffer.step5.titlePlaceholder')}
-                placeholderTextColor={theme.subtitle}
-                value={draft.title}
-                onChangeText={handleTitleChange}
-                maxLength={MAX_TITLE_LENGTH}
-              />
-            </View>
-            <AddOfferFieldHint
-              current={titleLength}
-              min={ADD_OFFER_TITLE_MIN}
-              max={ADD_OFFER_TITLE_MAX}
             />
-          </View>
-
-          <ProPhotoSessionModal
-            visible={proPhotoSessionOpen}
-            onClose={() => setProPhotoSessionOpen(false)}
-            theme={theme}
-            draft={{
-              city: draft.city,
-              district: draft.district,
-              street: draft.street,
-              propertyType: draft.propertyType,
-              transactionType: draft.transactionType,
-            }}
-          />
-
-          <View style={{ marginTop: 20, marginBottom: 8 }}>
-            <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle }}>
-              {translate('addOffer.step5.sections.description')}
-            </Text>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.subtitle, marginTop: 14, marginBottom: 8 }}>
-              {translate('addOffer.step5.ai.detailsNotesLabel')}
-            </Text>
-            <View
-              style={{
-                backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF',
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.08)',
-                padding: 14,
-                minHeight: 88,
-                marginBottom: 12,
-              }}
-            >
-              <TextInput
-                multiline
-                style={{ fontSize: 14, fontWeight: '500', lineHeight: 20, color: theme.text, textAlignVertical: 'top' }}
-                placeholder={translate('addOffer.step5.ai.detailsNotesPlaceholder')}
-                placeholderTextColor={theme.subtitle}
-                value={aiDetailsNotes}
-                onChangeText={setAiDetailsNotes}
-                editable={!isDescriptionBusy}
-              />
-            </View>
-            <MagicalAiDescribeButton
-              label={translate('addOffer.step5.ai.createProfessional')}
-              busyLabel={translate('addOffer.step5.ai.generatingGpt')}
-              busy={isGeneratingGpt}
-              onPress={generateGptDescription}
-            />
-          </View>
-          
-          <View style={{ position: 'relative', marginTop: 14 }}>
-            <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: Colors.aiGlow, borderRadius: 24, opacity: glowAnim, transform: [{ scale: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1.02] }) }] }]} />
             <View
               style={{
                 backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF',
@@ -872,6 +895,38 @@ export default function Step5_Media({ theme }: { theme: any }) {
             <AddOfferFieldHint current={descLength} min={ADD_OFFER_DESC_MIN} max={ADD_OFFER_DESC_MAX} />
           ) : null}
 
+          <Text style={{ fontSize: 13, fontWeight: '700', color: theme.subtitle, marginTop: 22, marginBottom: 8 }}>
+            {translate('addOffer.step5.ai.detailsNotesLabel')}
+          </Text>
+          <View
+            style={{
+              backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF',
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.08)',
+              padding: 14,
+              minHeight: 88,
+              marginBottom: 12,
+            }}
+          >
+            <TextInput
+              multiline
+              style={{ fontSize: 14, fontWeight: '500', lineHeight: 20, color: theme.text, textAlignVertical: 'top' }}
+              placeholder={translate('addOffer.step5.ai.detailsNotesPlaceholder')}
+              placeholderTextColor={theme.subtitle}
+              value={aiDetailsNotes}
+              onChangeText={setAiDetailsNotes}
+              editable={!isDescriptionBusy}
+            />
+          </View>
+          <MagicalAiDescribeButton
+            label={translate('addOffer.step5.ai.createProfessional')}
+            busyLabel={translate('addOffer.step5.ai.generatingGpt')}
+            busy={isGeneratingGpt}
+            onPress={generateGptDescription}
+          />
+        </View>
+
         <AddOfferStepFooterHint
           theme={theme}
           icon="images-outline"
@@ -887,6 +942,15 @@ const styles = StyleSheet.create({
   titleSection: { marginBottom: 30 },
   titleInputBox: { borderRadius: 16, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 5 },
   titleInput: { fontSize: 16, fontWeight: '600', paddingHorizontal: 20, paddingVertical: 18 },
+
+  sectionBlock: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 18,
+  },
+  sectionEyebrow: { fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
+  sectionLead: { fontSize: 12, fontWeight: '500', marginTop: 6, marginBottom: 14, lineHeight: 17 },
   
   limitsDashboard: { padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 25, gap: 16 },
   capacityContainer: { width: '100%' },
@@ -897,7 +961,7 @@ const styles = StyleSheet.create({
   capacityFill: { height: '100%', borderRadius: 3 },
   capacityHint: { fontSize: 11, fontWeight: '600', marginTop: 2 },
 
-  gridContainer: { position: 'relative', width: '100%', marginBottom: 20 },
+  gridContainer: { position: 'relative', width: '100%', marginBottom: 16 },
   squareContainer: { position: 'absolute', borderRadius: 16, backgroundColor: '#e5e5ea' },
   squareImage: { width: '100%', height: '100%', borderRadius: 16 },
   
@@ -914,19 +978,24 @@ const styles = StyleSheet.create({
   miniProgressTrack: { width: '70%', height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' },
   miniProgressFill: { height: '100%', backgroundColor: Colors.primary },
 
-  mediaActionsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  mediaActionFlex: { flex: 1, minWidth: 0 },
-  mediaActionBtn: { width: '100%', minHeight: 78, paddingHorizontal: 12, paddingVertical: 14 },
-  mediaActionText: { flex: 1, fontSize: 13, fontWeight: '700', lineHeight: 17 },
+  fullWidthActionBtn: {
+    width: '100%',
+    minHeight: 64,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  fullWidthActionText: { flex: 1, fontSize: 14, fontWeight: '700', lineHeight: 19 },
   addMediaBtn: { borderRadius: 18, borderStyle: 'dashed', borderWidth: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   proSessionBtn: { borderRadius: 18, borderWidth: 1.5, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   floorPlanContainer: { width: '100%', borderRadius: 18, borderStyle: 'dashed', borderWidth: 2 },
   roomScanCta: {
     width: '100%',
-    borderRadius: 18,
-    borderWidth: 1,
+    borderRadius: 20,
+    borderWidth: 1.5,
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -935,12 +1004,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: 'rgba(14,165,233,0.12)',
+    backgroundColor: 'rgba(14,165,233,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   roomScanBadge: {
-    backgroundColor: 'rgba(14,165,233,0.15)',
+    backgroundColor: 'rgba(14,165,233,0.18)',
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 2,
