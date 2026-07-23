@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
+import OpenInSystemBrowserGate from "@/components/layout/OpenInSystemBrowserGate";
 import FloatingPreferencesDock from "@/components/layout/FloatingPreferencesDock";
 import WebNotificationPrompt from "@/components/layout/WebNotificationPrompt";
 import PresentationFlowOrchestrator from "@/components/presentation/PresentationFlowOrchestrator";
@@ -115,6 +116,7 @@ export default async function RootLayout({
                     <CampaignAttributionBoundary />
                     <Tracker />
                     <Navbar />
+                    <OpenInSystemBrowserGate />
                     <EcosystemVerticalTransition />
                     <FloatingPreferencesDock />
                     <WebNotificationPrompt />

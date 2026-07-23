@@ -328,23 +328,28 @@ export default function OfferGalleryLightbox({
               setOffset((o) => clampOffset(o.x, o.y, next));
             }}
           >
-            <motion.img
-              key={`${index}-${images[index]}`}
-              src={images[index]}
-              alt=""
-              draggable={false}
-              initial={{ opacity: 0.35, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.18 }}
-              className="max-h-[min(86vh,960px)] w-auto max-w-[min(100vw,1400px)] select-none object-contain"
+            <div
+              className="flex max-h-[min(86vh,960px)] max-w-[min(100vw,1400px)] items-center justify-center will-change-transform"
               style={{
                 transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,
                 transformOrigin: "center center",
                 transition: isInteracting ? "none" : "transform 0.16s ease-out",
-                filter: "contrast(1.04) saturate(1.08) brightness(1.02)",
-                willChange: "transform",
               }}
-            />
+            >
+              <motion.img
+                key={`${index}-${images[index]}`}
+                src={images[index]}
+                alt=""
+                draggable={false}
+                initial={{ opacity: 0.35 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.18 }}
+                className="max-h-[min(86vh,960px)] w-auto max-w-[min(100vw,1400px)] select-none object-contain"
+                style={{
+                  filter: "contrast(1.04) saturate(1.08) brightness(1.02)",
+                }}
+              />
+            </div>
           </div>
         </div>
 
