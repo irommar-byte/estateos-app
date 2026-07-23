@@ -20,6 +20,8 @@ import PublishAuthGate, { type AuthGateContext } from '@/components/auth/Publish
 import AddOfferStepProgress from '@/components/offers/AddOfferStepProgress';
 import AddOfferPublishSummary from '@/components/offers/AddOfferPublishSummary';
 import ContactVerificationPanel from '@/components/ContactVerificationPanel';
+import SiriMagicButton from '@/components/ui/SiriMagicButton';
+import { typewriterReveal } from '@/lib/typewriterReveal';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -158,6 +160,7 @@ function buildDescriptionDraftFromForm(
   data: Record<string, unknown>,
   locale: string,
   amenities: { id: string; label: string }[],
+  userNotes = "",
 ): Record<string, unknown> {
   const selectedLabels = Array.isArray(data.amenities) ? (data.amenities as string[]) : [];
   const selectedIds = amenities
@@ -189,7 +192,7 @@ function buildDescriptionDraftFromForm(
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
       .trim(),
-    userNotes: String((data as any).aiNotes || (data as any).sellerNotes || (data as any).notes || "").trim(),
+    userNotes: String(userNotes || "").trim(),
     hasBalcony: amenityPatch.hasBalcony,
     hasParking: amenityPatch.hasParking,
     hasStorage: amenityPatch.hasStorage,
@@ -310,6 +313,8 @@ export default function ClientForm({
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [aiDetailsNotes, setAiDetailsNotes] = useState("");
+  const typewriterCancelRef = useRef<null | (() => void)>(null);
   const [actionModal, setActionModal] = useState<"none" | "limit" | "success" | "error" | "otp" | "payment_success" | "oferta_plus" | "verify">("none");
   const [serverErrorMessage, setServerErrorMessage] = useState('');
   const [errorFieldTarget, setErrorFieldTarget] = useState<FormFieldTarget>(null);
@@ -806,7 +811,7 @@ export default function ClientForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(buildDescriptionDraftFromForm(data, locale, AMENITIES)),
+        body: JSON.stringify(buildDescriptionDraftFromForm(data, locale, AMENITIES, aiDetailsNotes)),
       });
       const payload = await res.json().catch(() => ({}));
       if (res.status === 401) {
@@ -818,9 +823,24 @@ export default function ClientForm({
       if (!res.ok || !payload?.success || !String(payload?.description || "").trim()) {
         throw new Error(String(payload?.error || ao.aiGenFailed));
       }
-      const html = plainTextToEditorHtml(String(payload.description).trim());
-      updateData({ description: html });
-      if (editorRef.current) editorRef.current.innerHTML = html;
+      const plain = String(payload.description).trim();
+      typewriterCancelRef.current?.();
+      const controller = typewriterReveal(
+        plain,
+        (partial) => {
+          const html = plainTextToEditorHtml(partial);
+          updateData({ description: html });
+          if (editorRef.current) editorRef.current.innerHTML = html;
+        },
+        {
+          chunk: 4,
+          intervalMs: 14,
+          onDone: () => {
+            typewriterCancelRef.current = null;
+          },
+        },
+      );
+      typewriterCancelRef.current = controller.cancel;
     } catch (err) {
       alert(err instanceof Error ? err.message : ao.aiGenFailed);
     } finally {
@@ -2268,17 +2288,34 @@ export default function ClientForm({
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-                <div className="lg:col-span-2">
-                  <div className="flex items-center justify-between mb-4">
-                    <label className={labelPremium}>{ao.exclusiveDescLabel}</label>
-                    <button onClick={handleGenerateAI} disabled={isGeneratingAI} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#10b981]/20 to-emerald-900/40 border border-[#10b981]/50 text-[#10b981] text-[11px] font-black uppercase tracking-widest hover:bg-[#10b981] hover:text-black transition-all shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-                      {isGeneratingAI ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                      {isGeneratingAI ? ao.generating : ao.aiAssistantBtn}
-                    </button>
+                <div className="lg:col-span-2 space-y-5">
+                  <div>
+                    <label className={labelPremium}>{ao.detailsNotesLabel}</label>
+                    <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-stretch">
+                      <textarea
+                        value={aiDetailsNotes}
+                        onChange={(e) => setAiDetailsNotes(e.target.value)}
+                        rows={4}
+                        placeholder={ao.detailsNotesPlaceholder}
+                        className="min-h-[7rem] flex-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm leading-relaxed text-[#f5f5f7] outline-none transition focus:border-[#10b981]/60"
+                      />
+                      <div className="flex shrink-0 items-center sm:items-end">
+                        <SiriMagicButton
+                          label={ao.magicDescribeBtn}
+                          busyLabel={ao.magicDescribing}
+                          busy={isGeneratingAI}
+                          onClick={() => void handleGenerateAI()}
+                        />
+                      </div>
+                    </div>
+                    <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">{ao.detailsNotesHint}</p>
                   </div>
+
+                  <div>
+                    <label className={labelPremium}>{ao.exclusiveDescLabel}</label>
                   
                   {/* Edytor Premium */}
-                  <div className="rounded-[2rem] border border-white/10 bg-white/5 overflow-hidden focus-within:border-[#10b981] transition-colors shadow-inner">
+                  <div className="mt-3 rounded-[2rem] border border-white/10 bg-white/5 overflow-hidden focus-within:border-[#10b981] transition-colors shadow-inner">
                     <div className="flex items-center gap-2 p-3 border-b border-white/10 bg-black/40">
                       <button onClick={() => execCommand('bold')} className="p-2 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"><Bold size={16}/></button>
                       <button onClick={() => execCommand('italic')} className="p-2 hover:bg-white/10 rounded-lg text-zinc-400 hover:text-white transition-colors"><Italic size={16}/></button>
@@ -2294,6 +2331,7 @@ export default function ClientForm({
                       onInput={(e) => updateData({ description: e.currentTarget.innerHTML })}
                       data-placeholder={ao.descriptionPlaceholderAttr}
                     ></div>
+                  </div>
                   </div>
                 </div>
                 

@@ -57,7 +57,7 @@ export const addOffer = {
       },
       description: {
         label: 'Description (recommended)',
-        action: 'Add a description — at least {{min}} characters (use “GPT Mini description” or “Template AI”).',
+        action: 'Add a description — at least {{min}} characters (you can use “Create professional description”).',
       },
     },
   },
@@ -362,7 +362,7 @@ export const addOffer = {
     },
     coverBadge: 'COVER',
     gallery: {
-      lead: 'The first photo is the listing cover. Use arrows to reorder.',
+      lead: 'The first photo is the listing cover. Drag by the dots to reorder.',
       addLabel: 'Add',
       open: 'Open gallery',
       addMore: 'Add more photos',
@@ -528,14 +528,18 @@ export const addOffer = {
     ai: {
       generate: 'Template AI',
       generateGpt: 'GPT Mini description',
+      createProfessional: 'Create professional description',
+      detailsNotesLabel: 'Details / highlights (notes for AI)',
+      detailsNotesPlaceholder:
+        'E.g. garage included, fresh bathroom remodel, near school, quiet street…',
       generating: 'Analyzing...',
-      generatingGpt: 'GPT is analyzing the area…',
-      gptRequiresLogin: 'Sign in to generate a GPT description.',
+      generatingGpt: 'Creating a professional description…',
+      gptRequiresLogin: 'Sign in to generate an AI description.',
       gptErrorTitle: 'Description generation',
       gptInsufficientData:
-        'Complete property type, location (map pin), and parameters in earlier steps.',
+        'Complete property type, location (map pin), and parameters in earlier steps — or add notes above.',
       descriptionPlaceholder:
-        'Let AI analyze your property and create the ideal description, or enter it manually...',
+        'Let AI create a professional description from your parameters and notes, or enter it manually...',
       intros: [
         'Step into a space that redefines luxury and comfort.',
         'A rare market opportunity. A property that captures attention instantly.',

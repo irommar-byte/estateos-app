@@ -210,7 +210,8 @@ ZASADY:
 - Długość: ok. 900–1600 znaków (4–7 akapitów).
 - Bez emoji, bez nagłówków CAPS, bez list punktowanych parametrów.
 - Jeśli podano existingDescription lub userNotes — wykorzystaj je jako bazę (przepisz / rozwiń / ujednolić styl). Nie ignoruj faktów z notatek.
-- NIGDY nie podawaj ceny, czynszu, kaucji, prowizji ani kwot w zł/€ — cena jest poza opisem.
+- NIGDY nie podawaj ceny oferty (ceny sprzedaży / czynszu głównego), kaucji ani prowizji w zł/€ — cena główna jest poza opisem.
+- WYJĄTEK: jeśli w userNotes sprzedawca podał ceny przyległości (garaż, komórka, parking, dodatkowe pomieszczenie, opłaty za media poza czynszem) — możesz je naturalnie zawrzeć.
 - Zakończ krótkim zaproszeniem do kontaktu/prezentacji.`;
 }
 

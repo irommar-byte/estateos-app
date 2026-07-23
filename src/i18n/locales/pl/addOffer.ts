@@ -57,7 +57,7 @@ export const addOffer = {
       },
       description: {
         label: 'Opis (zalecany)',
-        action: 'Dodaj opis — minimum {{min}} znaków (możesz użyć „Opis GPT Mini” lub „Szablon AI”).',
+        action: 'Dodaj opis — minimum {{min}} znaków (możesz użyć „Stwórz profesjonalny opis”).',
       },
     },
   },
@@ -370,7 +370,7 @@ export const addOffer = {
     },
     coverBadge: 'OKŁADKA',
     gallery: {
-      lead: 'Pierwsze zdjęcie to okładka ogłoszenia. Strzałkami zmienisz kolejność.',
+      lead: 'Pierwsze zdjęcie to okładka ogłoszenia. Przeciągnij za kropki, aby zmienić kolejność.',
       addLabel: 'Dodaj',
       open: 'Otwórz galerię',
       addMore: 'Dodaj kolejne zdjęcia',
@@ -536,14 +536,18 @@ export const addOffer = {
     ai: {
       generate: 'Szablon AI',
       generateGpt: 'Opis GPT Mini',
+      createProfessional: 'Stwórz profesjonalny opis',
+      detailsNotesLabel: 'Szczegóły / atuty (notatki do AI)',
+      detailsNotesPlaceholder:
+        'Np. garaż w cenie, świeży remont łazienki, blisko szkoły, cicha okolica…',
       generating: 'Analizuję...',
-      generatingGpt: 'GPT analizuje okolicę…',
-      gptRequiresLogin: 'Zaloguj się, aby wygenerować opis GPT.',
+      generatingGpt: 'Tworzę profesjonalny opis…',
+      gptRequiresLogin: 'Zaloguj się, aby wygenerować opis AI.',
       gptErrorTitle: 'Generowanie opisu',
       gptInsufficientData:
-        'Uzupełnij typ nieruchomości, lokalizację (pinezkę) i parametry w poprzednich krokach.',
+        'Uzupełnij typ nieruchomości, lokalizację (pinezkę) i parametry w poprzednich krokach — albo dopisz notatki powyżej.',
       descriptionPlaceholder:
-        'Pozwól AI przeanalizować Twoją nieruchomość i stworzyć idealny opis, lub wpisz go ręcznie...',
+        'Pozwól AI stworzyć profesjonalny opis na podstawie parametrów i Twoich notatek, lub wpisz go ręcznie...',
       intros: [
         'Przekrocz próg przestrzeni, która redefiniuje pojęcie luksusu i komfortu.',
         'Rzadka okazja na rynku. Nieruchomość, która natychmiast przykuwa uwagę.',

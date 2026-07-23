@@ -17,6 +17,7 @@ import {
   Easing,
   LayoutAnimation,
   UIManager,
+  PanResponder,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -29,6 +30,7 @@ import type { RoomScanDraftAssets } from '../types/roomScan';
 import { normalizeStoredScanMeta } from '../lib/roomScan/parseRoomPlanJson';
 import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import type { AddOfferOption } from './AddOffer/AddOfferOptionField';
+import MagicalAiDescribeButton from '../components/MagicalAiDescribeButton';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNavigation } from '@react-navigation/native';
@@ -88,6 +90,8 @@ import { generateListingDescriptionWithGpt } from '../services/offerDescriptionA
 
 const { width } = Dimensions.get('window');
 const MAX_IMAGES = 15;
+const EDIT_GALLERY_COLUMNS = 3;
+const EDIT_GALLERY_GAP = 8;
 const HEATING_OPTIONS = [
   { key: '', labelKey: 'offer.shared.heating.none' },
   { key: 'Miejskie', labelKey: 'offer.shared.heating.district' },
@@ -133,6 +137,173 @@ type EditableImage = {
   /** Względna ścieżka serwerowa (np. `/uploads/abc.jpg`) — wysyłana w payloadzie. */
   serverPath?: string;
 };
+
+const editableImageKey = (img: EditableImage) => img.serverPath || img.uri;
+
+const getEditGalleryPosition = (index: number, tileSize: number) => ({
+  x: (index % EDIT_GALLERY_COLUMNS) * (tileSize + EDIT_GALLERY_GAP),
+  y: Math.floor(index / EDIT_GALLERY_COLUMNS) * (tileSize + EDIT_GALLERY_GAP),
+});
+
+function DraggableEditSquare({
+  img,
+  index,
+  total,
+  tileSize,
+  coverLabel,
+  onDragStart,
+  onDragEnd,
+  onHoverSwap,
+  onRemove,
+}: {
+  img: EditableImage;
+  index: number;
+  total: number;
+  tileSize: number;
+  coverLabel: string;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onHoverSwap: (key: string, targetIndex: number) => void;
+  onRemove: (index: number) => void;
+}) {
+  const pos = useRef(new Animated.ValueXY(getEditGalleryPosition(index, tileSize))).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const [isActive, setIsActive] = useState(false);
+  const isDragging = useRef(false);
+  const initialIndex = useRef(index);
+  const lastHoveredIndex = useRef(index);
+  const onDragStartRef = useRef(onDragStart);
+  const onDragEndRef = useRef(onDragEnd);
+  const onHoverSwapRef = useRef(onHoverSwap);
+  const indexRef = useRef(index);
+  const totalRef = useRef(total);
+  const keyRef = useRef(editableImageKey(img));
+  onDragStartRef.current = onDragStart;
+  onDragEndRef.current = onDragEnd;
+  onHoverSwapRef.current = onHoverSwap;
+  indexRef.current = index;
+  totalRef.current = total;
+  keyRef.current = editableImageKey(img);
+
+  useEffect(() => {
+    if (!isDragging.current) {
+      Animated.spring(pos, {
+        toValue: getEditGalleryPosition(index, tileSize),
+        useNativeDriver: true,
+        friction: 9,
+        tension: 68,
+      }).start();
+    }
+  }, [index, pos, tileSize]);
+
+  const finishDrag = useCallback(() => {
+    setIsActive(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Animated.parallel([
+      Animated.spring(pos, {
+        toValue: getEditGalleryPosition(indexRef.current, tileSize),
+        useNativeDriver: true,
+        friction: 9,
+        tension: 85,
+      }),
+      Animated.spring(scaleAnim, { toValue: 1, friction: 6, useNativeDriver: true }),
+    ]).start(() => {
+      onDragEndRef.current();
+    });
+    isDragging.current = false;
+  }, [pos, scaleAnim, tileSize]);
+
+  const finishDragRef = useRef(finishDrag);
+  finishDragRef.current = finishDrag;
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4,
+        onPanResponderTerminationRequest: () => false,
+        onShouldBlockNativeResponder: () => true,
+        onPanResponderGrant: () => {
+          isDragging.current = true;
+          setIsActive(true);
+          initialIndex.current = indexRef.current;
+          lastHoveredIndex.current = indexRef.current;
+          onDragStartRef.current();
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          Animated.spring(scaleAnim, { toValue: 1.08, friction: 6, useNativeDriver: true }).start();
+        },
+        onPanResponderMove: (_e, gestureState) => {
+          const startPos = getEditGalleryPosition(initialIndex.current, tileSize);
+          const currentX = startPos.x + gestureState.dx;
+          const currentY = startPos.y + gestureState.dy;
+          pos.setValue({ x: currentX, y: currentY });
+
+          const cellStride = tileSize + EDIT_GALLERY_GAP;
+          const centerX = currentX + tileSize / 2;
+          const centerY = currentY + tileSize / 2;
+          const n = totalRef.current;
+          const targetCol = Math.max(0, Math.min(EDIT_GALLERY_COLUMNS - 1, Math.floor(centerX / cellStride)));
+          const rowCount = Math.max(1, Math.ceil(n / EDIT_GALLERY_COLUMNS));
+          const maxRow = Math.max(0, rowCount - 1);
+          const targetRow = Math.max(0, Math.min(maxRow, Math.floor(centerY / cellStride)));
+          let targetIndex = targetRow * EDIT_GALLERY_COLUMNS + targetCol;
+          targetIndex = Math.min(Math.max(0, targetIndex), Math.max(0, n - 1));
+
+          if (targetIndex !== lastHoveredIndex.current) {
+            lastHoveredIndex.current = targetIndex;
+            Haptics.selectionAsync();
+            onHoverSwapRef.current(keyRef.current, targetIndex);
+          }
+        },
+        onPanResponderRelease: () => finishDragRef.current(),
+        onPanResponderTerminate: () => finishDragRef.current(),
+      }),
+    [pos, scaleAnim, tileSize],
+  );
+
+  const stackOrder = isActive ? 1000 : 10 + index;
+
+  return (
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={[
+        styles.dragTile,
+        {
+          width: tileSize,
+          height: tileSize,
+          transform: [{ translateX: pos.x }, { translateY: pos.y }, { scale: scaleAnim }],
+          zIndex: stackOrder,
+          shadowColor: isActive ? '#10B981' : '#000',
+          shadowOpacity: isActive ? 0.45 : 0,
+          shadowOffset: isActive ? { width: 0, height: 8 } : { width: 0, height: 0 },
+          shadowRadius: isActive ? 12 : 0,
+          elevation: isActive ? 24 : Math.min(2 + index, 20),
+        },
+      ]}
+    >
+      <Image source={{ uri: img.uri }} style={styles.imageThumbnail} contentFit="cover" transition={200} />
+      <View style={[styles.matrixOverlay, { opacity: isActive ? 0.35 : 1 }]}>
+        <View style={styles.dotMatrix}>
+          {[...Array(9)].map((_, i) => (
+            <View key={i} style={styles.matrixDot} />
+          ))}
+        </View>
+      </View>
+      {index === 0 ? (
+        <View style={styles.mainPhotoBadge}>
+          <Ionicons name="star" size={9} color="#FFD60A" />
+          <Text style={styles.mainPhotoText}>{coverLabel}</Text>
+        </View>
+      ) : null}
+      <Pressable style={styles.deleteImageBtn} onPress={() => onRemove(index)} hitSlop={8}>
+        <Ionicons name="close" size={14} color="#FFF" />
+      </Pressable>
+    </Animated.View>
+  );
+}
 
 const isTrue = (val: any) => val === true || val === 'true' || val === 1;
 
@@ -257,6 +428,11 @@ export default function EditOfferScreen({ route }: any) {
     street: '',
   });
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  const [aiDetailsNotes, setAiDetailsNotes] = useState('');
+  const [isDraggingGallery, setIsDraggingGallery] = useState(false);
+  const [dragSnapshot, setDragSnapshot] = useState<EditableImage[] | null>(null);
+  const dragSnapshotRef = useRef<EditableImage[] | null>(null);
+  const descGlowAnim = useRef(new Animated.Value(0)).current;
   const [amenities, setAmenities] = useState({
     hasBalcony: false,
     hasParking: false,
@@ -645,43 +821,60 @@ export default function EditOfferScreen({ route }: any) {
   const removeImage = (indexToRemove: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     enqueueLayoutSpring();
-    setImages((prev) => prev.filter((_, index) => index !== indexToRemove));
+    const source = dragSnapshot ?? images;
+    const next = source.filter((_, index) => index !== indexToRemove);
+    setDragSnapshot(null);
+    dragSnapshotRef.current = null;
+    setImages(next);
   };
 
-  /**
-   * Zamiana miejscami sąsiadami — proste strzałki ←/→. Wybór nie-najbliższego
-   * sąsiada robi się wprost: kilka razy w prawo. Świadomie zostawiamy strzałki
-   * zamiast drag-handle, bo na mniejszych iPhone'ach trafienie w uchwyt przy
-   * trzymanej kamerze potrafi być nieprecyzyjne — strzałki są deterministyczne.
-   */
-  const moveImage = (from: number, dir: -1 | 1) => {
-    setImages((prev) => {
-      const to = from + dir;
-      if (to < 0 || to >= prev.length) return prev;
-      const next = [...prev];
-      const tmp = next[to];
-      next[to] = next[from];
-      next[from] = tmp;
-      return next;
-    });
-    Haptics.selectionAsync();
-    enqueueLayoutSpring();
-  };
+  const handleGalleryDragStart = useCallback(() => {
+    const next = [...images];
+    dragSnapshotRef.current = next;
+    setDragSnapshot(next);
+    setIsDraggingGallery(true);
+  }, [images]);
 
-  /**
-   * Awansowanie zdjęcia na okładkę — przesuwa wybrany obraz na pozycję 0,
-   * a pozostałe „przepada" o jedno w prawo. Klasyczny pattern z Photos.app.
-   */
-  const setAsCover = (index: number) => {
-    if (index === 0) return;
-    setImages((prev) => {
-      const next = [...prev];
-      const [picked] = next.splice(index, 1);
-      next.unshift(picked);
-      return next;
-    });
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    enqueueLayoutSpring();
+  const handleGalleryDragEnd = useCallback(() => {
+    setIsDraggingGallery(false);
+    const snap = dragSnapshotRef.current;
+    if (snap) setImages(snap);
+    dragSnapshotRef.current = null;
+    setDragSnapshot(null);
+  }, []);
+
+  const handleGalleryHoverSwap = useCallback(
+    (key: string, targetIndex: number) => {
+      setDragSnapshot((prev) => {
+        const arr = [...(prev ?? images)];
+        const currentIndex = arr.findIndex((img) => editableImageKey(img) === key);
+        if (currentIndex === targetIndex || currentIndex === -1) return prev;
+        const next = [...arr];
+        const [item] = next.splice(currentIndex, 1);
+        next.splice(targetIndex, 0, item);
+        dragSnapshotRef.current = next;
+        return next;
+      });
+    },
+    [images],
+  );
+
+  const startDescriptionTyping = (fullText: string, onDone: () => void) => {
+    setDescription('');
+    const words = fullText.split(' ');
+    let currentWordIndex = 0;
+    let tempText = '';
+    const typingInterval = setInterval(() => {
+      if (currentWordIndex < words.length) {
+        tempText += (currentWordIndex === 0 ? '' : ' ') + words[currentWordIndex];
+        setDescription(tempText);
+        if (currentWordIndex % 4 === 0) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        currentWordIndex++;
+      } else {
+        clearInterval(typingInterval);
+        onDone();
+      }
+    }, 36);
   };
 
   // -------- RESET FORMULARZA DO ORYGINAŁU --------
@@ -743,7 +936,8 @@ export default function EditOfferScreen({ route }: any) {
       String(originalData?.propertyType || '').trim() ||
       String(locationState.city || '').trim() ||
       String(area || '').trim() ||
-      String(price || '').trim();
+      String(price || '').trim() ||
+      String(aiDetailsNotes || '').trim();
     if (!hasBasics) {
       Alert.alert(t('offer.edit.ai.errorTitle'), t('offer.edit.ai.insufficientData'));
       return;
@@ -755,10 +949,18 @@ export default function EditOfferScreen({ route }: any) {
 
     setIsGeneratingDescription(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(descGlowAnim, { toValue: 0.55, duration: 800, useNativeDriver: true }),
+        Animated.timing(descGlowAnim, { toValue: 0.12, duration: 800, useNativeDriver: true }),
+      ]),
+    ).start();
     try {
       const draftPayload = {
         title: title.trim(),
         description: description.trim(),
+        existingDescription: description.trim(),
+        userNotes: aiDetailsNotes.trim(),
         propertyType: originalData?.propertyType,
         transactionType: originalData?.transactionType,
         city: locationState.city,
@@ -777,15 +979,20 @@ export default function EditOfferScreen({ route }: any) {
         ...amenities,
       };
       const { description: generated } = await generateListingDescriptionWithGpt(token, draftPayload, locale);
-      setDescription(generated);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      startDescriptionTyping(generated, () => {
+        setIsGeneratingDescription(false);
+        descGlowAnim.stopAnimation();
+        Animated.timing(descGlowAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      });
     } catch (err: any) {
+      setIsGeneratingDescription(false);
+      descGlowAnim.stopAnimation();
+      Animated.timing(descGlowAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start();
       Alert.alert(
         t('offer.edit.ai.errorTitle'),
         String(err?.message || t('offer.edit.ai.failed')),
       );
-    } finally {
-      setIsGeneratingDescription(false);
     }
   };
 
@@ -1357,6 +1564,9 @@ export default function EditOfferScreen({ route }: any) {
   }
 
   const TILE = (width - 16 * 2 - 12 * 2 - 8 * 2) / 3;
+  const displayGalleryImages = dragSnapshot ?? images;
+  const galleryGridHeight =
+    Math.ceil((displayGalleryImages.length + 1) / EDIT_GALLERY_COLUMNS) * (TILE + EDIT_GALLERY_GAP);
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
@@ -1411,6 +1621,7 @@ export default function EditOfferScreen({ route }: any) {
       >
         <ScrollView
           ref={mainScrollRef}
+          scrollEnabled={!isDraggingGallery}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
@@ -1519,83 +1730,39 @@ export default function EditOfferScreen({ route }: any) {
           )}
 
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, padding: 12 }]}>
-            <View style={styles.imageGrid}>
+            <View style={[styles.imageGridAbsolute, { height: galleryGridHeight }]}>
               <Pressable
                 style={[
                   styles.addImageBtn,
-                  { width: TILE, height: TILE, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' },
+                  {
+                    width: TILE,
+                    height: TILE,
+                    backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
+                    left: getEditGalleryPosition(displayGalleryImages.length, TILE).x,
+                    top: getEditGalleryPosition(displayGalleryImages.length, TILE).y,
+                  },
                 ]}
                 onPress={pickImage}
               >
                 <Ionicons name="camera" size={26} color={primaryColor} />
                 <Text style={[styles.addImageText, { color: primaryColor }]}>{t('offer.edit.gallery.add')}</Text>
               </Pressable>
-              
-              {images.map((img, index) => {
-                const isFirst = index === 0;
-                const isLast = index === images.length - 1;
-                return (
-                  <View key={`${img.uri}-${index}`} style={[styles.imageWrapper, { width: TILE, height: TILE }]}>
-                    <Image
-                      source={{ uri: img.uri }}
-                      style={styles.imageThumbnail}
-                      contentFit="cover"
-                      transition={200}
-                    />
 
-                    {/* Delete */}
-                    <Pressable
-                      style={styles.deleteImageBtn}
-                      onPress={() => removeImage(index)}
-                      hitSlop={8}
-                    >
-                      <Ionicons name="close" size={14} color="#FFF" />
-                  </Pressable>
-
-                    {/* Cover badge */}
-                    {isFirst ? (
-                    <View style={styles.mainPhotoBadge}>
-                        <Ionicons name="star" size={9} color="#FFD60A" />
-                        <Text style={styles.mainPhotoText}>{t('offer.edit.gallery.cover')}</Text>
-                      </View>
-                    ) : null}
-
-                    {/* Mini-pasek akcji ←  ☆  → przy dolnej krawędzi */}
-                    <View style={styles.imageActionsBar}>
-                      <Pressable
-                        disabled={isFirst}
-                        onPress={() => moveImage(index, -1)}
-                        style={[styles.imageActionBtn, isFirst && styles.imageActionBtnDisabled]}
-                        hitSlop={6}
-                      >
-                        <Ionicons name="chevron-back" size={14} color={isFirst ? '#888' : '#FFF'} />
-                      </Pressable>
-                      {!isFirst ? (
-                        <Pressable
-                          onPress={() => setAsCover(index)}
-                          style={styles.imageActionBtn}
-                          hitSlop={6}
-                        >
-                          <Ionicons name="star-outline" size={13} color="#FFD60A" />
-                        </Pressable>
-                      ) : (
-                        <View style={[styles.imageActionBtn, styles.imageActionBtnDisabled]}>
-                          <Ionicons name="star" size={13} color="#FFD60A" />
-                    </View>
-                  )}
-                      <Pressable
-                        disabled={isLast}
-                        onPress={() => moveImage(index, 1)}
-                        style={[styles.imageActionBtn, isLast && styles.imageActionBtnDisabled]}
-                        hitSlop={6}
-                      >
-                        <Ionicons name="chevron-forward" size={14} color={isLast ? '#888' : '#FFF'} />
-                      </Pressable>
-                </View>
+              {displayGalleryImages.map((img, index) => (
+                <DraggableEditSquare
+                  key={editableImageKey(img)}
+                  img={img}
+                  index={index}
+                  total={displayGalleryImages.length}
+                  tileSize={TILE}
+                  coverLabel={t('offer.edit.gallery.cover')}
+                  onDragStart={handleGalleryDragStart}
+                  onDragEnd={handleGalleryDragEnd}
+                  onHoverSwap={handleGalleryHoverSwap}
+                  onRemove={removeImage}
+                />
+              ))}
             </View>
-                );
-              })}
-          </View>
           </View>
           <Text style={styles.sectionFooter}>
             {t('offer.edit.gallery.footer')}
@@ -1724,42 +1891,63 @@ export default function EditOfferScreen({ route }: any) {
                   {t('offer.edit.mainInfo.descriptionHint')}
                 </Text>
               </View>
-              <Pressable
-                onPress={handleGenerateDescription}
-                disabled={isGeneratingDescription}
-                style={({ pressed }) => [
-                  styles.aiDescBtn,
-                  {
-                    backgroundColor: isDark ? '#2C1F45' : '#F4ECFF',
-                    opacity: pressed || isGeneratingDescription ? 0.75 : 1,
-                  },
-                ]}
-              >
-                {isGeneratingDescription ? (
-                  <ActivityIndicator size="small" color="#AF52DE" />
-                ) : (
-                  <>
-                    <Ionicons name="sparkles" size={14} color="#AF52DE" />
-                    <Text style={styles.aiDescBtnText}>{t('offer.edit.ai.generate')}</Text>
-                  </>
-                )}
-              </Pressable>
             </View>
-            <TextInput 
+            <Text style={[styles.fieldHint, { color: subColor, marginBottom: 6 }]}>
+              {t('offer.edit.ai.detailsNotesLabel')}
+            </Text>
+            <TextInput
               style={[
                 styles.textAreaPremium,
                 {
                   color: txtColor,
                   backgroundColor: isDark ? '#141416' : '#F7F8FA',
                   borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)',
+                  minHeight: 88,
+                  marginBottom: 10,
                 },
               ]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder={t('offer.edit.mainInfo.descriptionPlaceholder')}
+              value={aiDetailsNotes}
+              onChangeText={setAiDetailsNotes}
+              placeholder={t('offer.edit.ai.detailsNotesPlaceholder')}
               placeholderTextColor={subColor}
               multiline
+              editable={!isGeneratingDescription}
             />
+            <MagicalAiDescribeButton
+              label={t('offer.edit.ai.createProfessional')}
+              busyLabel={t('offer.edit.ai.generating')}
+              busy={isGeneratingDescription}
+              onPress={handleGenerateDescription}
+            />
+            <View style={{ position: 'relative', marginTop: 12 }}>
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  StyleSheet.absoluteFillObject,
+                  {
+                    backgroundColor: '#AF52DE',
+                    borderRadius: 14,
+                    opacity: descGlowAnim,
+                  },
+                ]}
+              />
+              <TextInput
+                style={[
+                  styles.textAreaPremium,
+                  {
+                    color: txtColor,
+                    backgroundColor: isDark ? '#141416' : '#F7F8FA',
+                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)',
+                  },
+                ]}
+                value={description}
+                onChangeText={setDescription}
+                placeholder={t('offer.edit.mainInfo.descriptionPlaceholder')}
+                placeholderTextColor={subColor}
+                multiline
+                editable={!isGeneratingDescription}
+              />
+            </View>
           </View>
 
           {/* ====== PARAMETRY ====== */}
@@ -3332,8 +3520,9 @@ const styles = StyleSheet.create({
   },
 
   /* ===== IMAGES ===== */
-  imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  imageGridAbsolute: { position: 'relative', width: '100%' },
   addImageBtn: {
+    position: 'absolute',
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
@@ -3342,8 +3531,28 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0,122,255,0.4)',
   },
   addImageText: { fontSize: 11, fontWeight: '700', marginTop: 2 },
-  imageWrapper: { borderRadius: 12, overflow: 'hidden', position: 'relative' },
+  dragTile: { position: 'absolute', borderRadius: 12, overflow: 'hidden', backgroundColor: '#1C1C1E' },
   imageThumbnail: { width: '100%', height: '100%' },
+  matrixOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.12)',
+  },
+  dotMatrix: {
+    width: 22,
+    height: 22,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignContent: 'space-between',
+  },
+  matrixDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
   deleteImageBtn: {
     position: 'absolute',
     top: 4,

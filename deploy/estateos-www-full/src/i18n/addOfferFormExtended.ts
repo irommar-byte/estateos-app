@@ -30,8 +30,13 @@ export type AddOfferFormExtended = {
   photoAddLine2: string;
   photoGalleryHint: string;
   exclusiveDescLabel: string;
+  detailsNotesLabel: string;
+  detailsNotesPlaceholder: string;
+  detailsNotesHint: string;
   generating: string;
   aiAssistantBtn: string;
+  magicDescribeBtn: string;
+  magicDescribing: string;
   propertyPlanLabel: string;
   uploadFloorPlanBtn: string;
   rentDetailsHeading: string;
@@ -252,8 +257,14 @@ const pl: AddOfferFormExtended = {
   photoGalleryHint:
     "Możesz dodać dowolną liczbę zdjęć, przeciągnij je aby ułożyć kolejność. Łączna waga plików to max 30 MB.",
   exclusiveDescLabel: "Ekskluzywny opis",
+  detailsNotesLabel: "Szczegóły i walory (dla AI)",
+  detailsNotesPlaceholder:
+    "Napisz kilka zdań: ciekawostki, plusy, klimat, okolica, wyposażenie, przyległości z cenami (np. garaż 250 zł/mc)…",
+  detailsNotesHint: "Te notatki + dane z formularza AI połączy w profesjonalny opis. Ceny głównej oferty nie wpisuj — przyległości możesz.",
   generating: "Generowanie...",
   aiAssistantBtn: "Asystent AI",
+  magicDescribeBtn: "Stwórz profesjonalny opis",
+  magicDescribing: "Magicznie piszę opis…",
   propertyPlanLabel: "Plan nieruchomości",
   uploadFloorPlanBtn: "Wgraj rzut",
   rentDetailsHeading: "Szczegóły wynajmu",
@@ -489,8 +500,14 @@ const en: AddOfferFormExtended = {
   photoGalleryHint:
     "Add any number of photos and drag to reorder. Total file size max 30 MB.",
   exclusiveDescLabel: "Exclusive description",
+  detailsNotesLabel: "Details & highlights (for AI)",
+  detailsNotesPlaceholder:
+    "A few sentences: highlights, vibe, neighborhood, extras with fees (e.g. garage €80/mo)…",
+  detailsNotesHint: "AI merges these notes with your form data into a polished listing. Skip the main price — ancillary fees are OK.",
   generating: "Generating…",
   aiAssistantBtn: "AI assistant",
+  magicDescribeBtn: "Create professional description",
+  magicDescribing: "Writing your description…",
   propertyPlanLabel: "Floor plan",
   uploadFloorPlanBtn: "Upload plan",
   rentDetailsHeading: "Rental details",
@@ -726,8 +743,14 @@ const uk: AddOfferFormExtended = {
   photoGalleryHint:
     "Додайте будь-яку кількість фото та перетягніть для зміни порядку. Загальний розмір файлів — до 30 МБ.",
   exclusiveDescLabel: "Ексклюзивний опис",
+  detailsNotesLabel: "Деталі та переваги (для AI)",
+  detailsNotesPlaceholder:
+    "Кілька речень: цікавинки, плюси, атмосфера, околиця, додаткові приміщення з цінами…",
+  detailsNotesHint: "AI з’єднає нотатки з даними форми в професійний опис. Основну ціну не вказуйте — додаткові можна.",
   generating: "Генерація…",
   aiAssistantBtn: "AI-асистент",
+  magicDescribeBtn: "Створити професійний опис",
+  magicDescribing: "Чарівно пишу опис…",
   propertyPlanLabel: "План нерухомості",
   uploadFloorPlanBtn: "Завантажити план",
   rentDetailsHeading: "Деталі оренди",

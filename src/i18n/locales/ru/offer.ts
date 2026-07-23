@@ -563,6 +563,11 @@ export const offer = {
     },
     ai: {
       generate: 'AI описание',
+      createProfessional: 'Создать профессиональное описание',
+      detailsNotesLabel: 'Детали / плюсы (заметки для AI)',
+      detailsNotesPlaceholder:
+        'Напр. гараж в цене, свежий ремонт, тихий двор…',
+      generating: 'Пишу описание…',
       errorTitle: 'Генерация описания',
       insufficientData: 'Заполните основные параметры (тип, город, площадь или цену), чтобы сгенерировать описание.',
       requiresLogin: 'Войдите снова, чтобы использовать AI.',

@@ -445,11 +445,11 @@ export const offer = {
     gallery: {
       sectionTitle: 'GALERIA ZDJĘĆ',
       counter: '{{current}} / {{max}}',
-      hint: 'Pierwsze zdjęcie to okładka. Użyj strzałek ← → aby przestawić, albo gwiazdki, aby ustawić jako główne.',
+      hint: 'Pierwsze zdjęcie to okładka. Przeciągnij za kropki, aby zmienić kolejność.',
       add: 'Dodaj',
       cover: 'Główne',
       footer:
-        'Pierwsze zdjęcie pokazujemy w wynikach Radaru i jako okładkę oferty publicznej. Zmieniaj kolejność, aż dopasujesz idealny pierwszy kadr.',
+        'Pierwsze zdjęcie pokazujemy w wynikach Radaru i jako okładkę oferty publicznej. Przeciągnij za kropki, aż dopasujesz idealny pierwszy kadr.',
     },
     floorPlan: {
       sectionTitle: 'PLAN NIERUCHOMOŚCI',
@@ -579,6 +579,11 @@ export const offer = {
     },
     ai: {
       generate: 'AI opis',
+      createProfessional: 'Stwórz profesjonalny opis',
+      detailsNotesLabel: 'Szczegóły / atuty (notatki do AI)',
+      detailsNotesPlaceholder:
+        'Np. garaż w cenie, świeży remont łazienki, blisko szkoły, cicha okolica…',
+      generating: 'Tworzę profesjonalny opis…',
       errorTitle: 'Generowanie opisu',
       insufficientData: 'Uzupełnij podstawowe parametry (typ, miasto, powierzchnia lub cenę), aby wygenerować opis.',
       requiresLogin: 'Zaloguj się ponownie, aby użyć AI.',

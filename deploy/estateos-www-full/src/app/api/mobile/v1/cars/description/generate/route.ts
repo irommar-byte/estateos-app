@@ -1,0 +1,53 @@
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+import { NextResponse } from 'next/server';
+import { authorizeMobile } from '@/lib/mobileAuth';
+import {
+  generateCarListingDescriptionWithGpt,
+  openAiErrorMessage,
+  type CarDescriptionDraftInput,
+} from '@/lib/carListingDescriptionAi';
+
+export async function POST(req: Request) {
+  const auth = await authorizeMobile(req);
+  if (!auth.ok) return auth.response;
+
+  let body: CarDescriptionDraftInput;
+  try {
+    body = (await req.json()) as CarDescriptionDraftInput;
+  } catch {
+    return NextResponse.json({ success: false, error: 'Nieprawidłowy JSON.' }, { status: 400 });
+  }
+
+  const hasBasics =
+    String(body.make || '').trim() &&
+    String(body.model || '').trim() &&
+    String(body.city || '').trim();
+
+  if (!hasBasics) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Uzupełnij markę, model i miejscowość przed generowaniem opisu.',
+      },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const result = await generateCarListingDescriptionWithGpt(body);
+    return NextResponse.json({
+      success: true,
+      description: result.description,
+      model: result.model,
+      generatedBy: 'gpt',
+    });
+  } catch (err) {
+    console.warn('[car-listing-description-ai/mobile]', err);
+    return NextResponse.json(
+      { success: false, error: openAiErrorMessage(err) },
+      { status: 502 },
+    );
+  }
+}

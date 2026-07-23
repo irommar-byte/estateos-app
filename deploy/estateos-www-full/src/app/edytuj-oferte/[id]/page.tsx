@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Home, MapPin, Loader2, Save, ArrowLeft, Image as ImageIcon, Trash2, GripHorizontal, Building2, Layers, CheckCircle, BedDouble, Calendar, Box, Sparkles, Map } from "lucide-react";
+import { Home, MapPin, Loader2, Save, ArrowLeft, Image as ImageIcon, Trash2, Building2, Layers, CheckCircle, BedDouble, Calendar, Box, Sparkles, Map } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -54,7 +54,17 @@ const SortablePhoto = ({ url, onRemove, isMain }: { url: string, onRemove: (url:
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`relative w-28 h-28 md:w-36 md:h-36 rounded-2xl overflow-hidden border-2 group transition-all ${isMain ? 'border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.4)]' : 'border-[#222] bg-[#0a0a0a] hover:border-emerald-500/50'}`}>
       <img src={url} className={`w-full h-full object-cover saturate-[1.2] transition-all duration-700 ${isMain ? 'opacity-100 scale-110' : 'opacity-60 group-hover:opacity-100 group-hover:scale-105'}`} alt="Foto" />
-      <div {...attributes} {...listeners} className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/60 backdrop-blur-sm cursor-grab active:cursor-grabbing transition-opacity duration-300 z-10"><GripHorizontal size={32} className="text-white drop-shadow-lg" /></div>
+      <div
+        {...attributes}
+        {...listeners}
+        className="absolute inset-0 z-10 flex cursor-grab items-center justify-center bg-black/45 opacity-100 backdrop-blur-[2px] transition-opacity active:cursor-grabbing sm:bg-transparent sm:opacity-0 sm:group-hover:bg-black/60 sm:group-hover:opacity-100 sm:group-hover:backdrop-blur-sm"
+      >
+        <div className="flex items-center gap-1 rounded-full border border-white/15 bg-black/65 px-3 py-2 shadow-xl backdrop-blur-md">
+          <span className="h-1.5 w-1.5 rounded-full bg-white/85" />
+          <span className="h-1.5 w-1.5 rounded-full bg-white/85" />
+          <span className="h-1.5 w-1.5 rounded-full bg-white/85" />
+        </div>
+      </div>
       <button onClick={() => onRemove(url)} className="absolute top-2 right-2 p-2 bg-black/80 border border-white/10 hover:bg-red-500 hover:border-red-400 rounded-full text-white/80 hover:text-white z-20 transition-all shadow-xl"><Trash2 size={14} /></button>
       {isMain && <div className="absolute bottom-0 left-0 w-full bg-emerald-500 text-black text-[10px] uppercase tracking-[0.2em] font-black text-center py-1.5 z-20 shadow-[0_-10px_20px_rgba(16,185,129,0.5)]">Główne</div>}
     </div>

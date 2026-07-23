@@ -444,11 +444,11 @@ export const offer = {
     gallery: {
       sectionTitle: 'PHOTO GALLERY',
       counter: '{{current}} / {{max}}',
-      hint: 'The first photo is the cover. Use ← → arrows to reorder, or the star to set as main.',
+      hint: 'The first photo is the cover. Drag by the dots to reorder.',
       add: 'Add',
       cover: 'Cover',
       footer:
-        'We show the first photo in Radar results and as the public listing cover. Reorder until the first frame is perfect.',
+        'We show the first photo in Radar results and as the public listing cover. Drag by the dots until the first frame is perfect.',
     },
     floorPlan: {
       sectionTitle: 'FLOOR PLAN',
@@ -576,6 +576,11 @@ export const offer = {
     },
     ai: {
       generate: 'AI description',
+      createProfessional: 'Create professional description',
+      detailsNotesLabel: 'Details / highlights (notes for AI)',
+      detailsNotesPlaceholder:
+        'E.g. garage included, fresh bathroom remodel, near school, quiet street…',
+      generating: 'Creating a professional description…',
       errorTitle: 'Description generation',
       insufficientData: 'Fill in basics (type, city, area or price) before generating a description.',
       requiresLogin: 'Sign in again to use AI.',

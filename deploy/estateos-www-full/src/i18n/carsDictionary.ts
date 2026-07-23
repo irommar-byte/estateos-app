@@ -82,8 +82,13 @@ export type CarsDictionary = {
     titlePlaceholder: string;
     descriptionLabel: string;
     descriptionPlaceholder: string;
+    detailsNotesLabel: string;
+    detailsNotesPlaceholder: string;
+    detailsNotesHint: string;
     aiAssistantBtn: string;
     aiGenerating: string;
+    magicDescribeBtn: string;
+    magicDescribing: string;
     aiMissingPrefix: string;
     aiGenFailed: string;
     offerEyebrow: string;
@@ -465,8 +470,14 @@ const pl: CarsDictionary = {
     titlePlaceholder: "np. BMW X5 xDrive30d M Sport",
     descriptionLabel: "Opis",
     descriptionPlaceholder: "Opisz stan auta, historię serwisową, wyposażenie...",
+    detailsNotesLabel: "Szczegóły i walory (dla AI)",
+    detailsNotesPlaceholder:
+      "Kilka zdań: plusy, ciekawostki, serwis, dodatki z cenami (np. felgi 2 000 zł)…",
+    detailsNotesHint: "AI połączy notatki z danymi formularza. Ceny auta nie wpisuj — ceny dodatków możesz.",
     aiAssistantBtn: "Asystent AI",
     aiGenerating: "Generowanie opisu…",
+    magicDescribeBtn: "Stwórz profesjonalny opis",
+    magicDescribing: "Magicznie piszę opis…",
     aiMissingPrefix: "Uzupełnij brakujące dane przed generowaniem opisu:",
     aiGenFailed: "Nie udało się wygenerować opisu AI. Spróbuj ponownie za chwilę.",
     offerEyebrow: "Oferta",
@@ -855,8 +866,14 @@ const en: CarsDictionary = {
     titlePlaceholder: "e.g. BMW X5 xDrive30d M Sport",
     descriptionLabel: "Description",
     descriptionPlaceholder: "Describe condition, service history, equipment...",
+    detailsNotesLabel: "Details & highlights (for AI)",
+    detailsNotesPlaceholder:
+      "A few sentences: pluses, service notes, extras with prices (e.g. wheels 2,000 PLN)…",
+    detailsNotesHint: "AI merges notes with form data. Skip the car price — accessory prices are OK.",
     aiAssistantBtn: "AI assistant",
     aiGenerating: "Generating description…",
+    magicDescribeBtn: "Create professional description",
+    magicDescribing: "Writing your description…",
     aiMissingPrefix: "Fill in the missing fields before generating a description:",
     aiGenFailed: "Could not generate the AI description. Please try again in a moment.",
     offerEyebrow: "Offer",
@@ -1242,8 +1259,14 @@ const uk: CarsDictionary = {
     titlePlaceholder: "напр. BMW X5 xDrive30d M Sport",
     descriptionLabel: "Опис",
     descriptionPlaceholder: "Опишіть стан, сервісну історію, комплектацію...",
+    detailsNotesLabel: "Деталі та переваги (для AI)",
+    detailsNotesPlaceholder:
+      "Кілька речень: плюси, сервіс, додаткові опції з цінами…",
+    detailsNotesHint: "AI з’єднає нотатки з даними форми. Ціну авто не вказуйте — ціни додатків можна.",
     aiAssistantBtn: "AI-асистент",
     aiGenerating: "Генерація опису…",
+    magicDescribeBtn: "Створити професійний опис",
+    magicDescribing: "Чарівно пишу опис…",
     aiMissingPrefix: "Заповніть відсутні дані перед генерацією опису:",
     aiGenFailed: "Не вдалося згенерувати опис AI. Спробуйте ще раз за хвилину.",
     offerEyebrow: "Пропозиція",

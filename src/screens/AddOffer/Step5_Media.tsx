@@ -14,11 +14,9 @@ import {
   ADD_OFFER_DESC_MIN,
   ADD_OFFER_TITLE_MAX,
   ADD_OFFER_TITLE_MIN,
-  resolvePlotAreaForSubmit,
 } from './validation';
 import {
   OFFER_MEDIA_MAX_IMAGES,
-  OFFER_MEDIA_UPLOAD_CAP_BYTES,
   OFFER_MEDIA_UPLOAD_CAP_MB,
   estimateBytesForDraftImage,
   sumEstimatedUploadBytes,
@@ -26,36 +24,19 @@ import {
   canAcceptDraftImage,
   formatMediaCapacityAlert,
 } from '../../utils/offerMediaCapacity';
-import { REST_OF_COUNTRY_CITY } from '../../constants/locationEcosystem';
-import { getAppLocale, t, useI18n } from '../../i18n';
+import { t, useI18n } from '../../i18n';
 import RoomScanModal, { isRoomScanSupportedOnDevice } from '../../components/roomScan/RoomScanModal';
 import ProPhotoSessionModal from '../../components/ProPhotoSessionModal';
+import MagicalAiDescribeButton from '../../components/MagicalAiDescribeButton';
 import type { RoomScanDraftAssets } from '../../types/roomScan';
-import { pl } from '../../i18n/locales/pl';
-import { en } from '../../i18n/locales/en';
 import { useAuthStore } from '../../store/useAuthStore';
 import { generateListingDescriptionWithGpt } from '../../services/offerDescriptionAiService';
-import CarPhotoGrid from '../../components/cars/CarPhotoGrid';
 
 const Colors = { primary: '#10b981', aiGlow: '#8b5cf6', danger: '#ef4444', premiumDark: '#1C1C1E', premiumBorder: 'rgba(255,255,255,0.08)' };
 
-function getAddOfferAiCopy() {
-  return getAppLocale() === 'en' ? en.addOffer.step5.ai : pl.addOffer.step5.ai;
-}
-
-const HEATING_LABEL_KEYS: Record<string, string> = {
-  '': 'addOffer.step3.heating.none',
-  Miejskie: 'addOffer.step3.heating.district',
-  Gazowe: 'addOffer.step3.heating.gas',
-  Elektryczne: 'addOffer.step3.heating.electric',
-  'Pompa Ciepła': 'addOffer.step3.heating.heatPump',
-  'Węglowe/Pellet': 'addOffer.step3.heating.coalPellet',
-  Inne: 'addOffer.step3.heating.other',
-};
 const MAX_TITLE_LENGTH = 70;
 const MAX_IMAGES = OFFER_MEDIA_MAX_IMAGES;
 const MAX_MB = OFFER_MEDIA_UPLOAD_CAP_MB;
-const MAX_BYTES = OFFER_MEDIA_UPLOAD_CAP_BYTES;
 
 function countUnknownImageSizes(uris: string[], sizes: Record<string, number> | undefined): number {
   const map = sizes || {};
@@ -303,11 +284,6 @@ const DraggableSquare = ({
   );
 };
 
-const formatNumber = (value: number | string): string =>
-  String(value || '')
-    .replace(/\D/g, '')
-    .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-
 export default function Step5_Media({ theme }: { theme: any }) {
   const { t: translate, locale } = useI18n();
   const token = useAuthStore((s) => s.token);
@@ -337,9 +313,9 @@ export default function Step5_Media({ theme }: { theme: any }) {
       return () => clearTimeout(id);
     }, [setCurrentStep, updateDraft])
   );
-  
-  const [isGenerating, setIsGenerating] = useState(false);
+
   const [isGeneratingGpt, setIsGeneratingGpt] = useState(false);
+  const [aiDetailsNotes, setAiDetailsNotes] = useState('');
   const [isDraggingGlobal, setIsDraggingGlobal] = useState(false);
   const glowAnim = useRef(new Animated.Value(0)).current;
 
@@ -530,7 +506,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
     setRoomScanOpen(false);
   };
 
-  const isDescriptionBusy = isGenerating || isGeneratingGpt;
+  const isDescriptionBusy = isGeneratingGpt;
 
   const startDescriptionTyping = (fullText: string, onDone: () => void) => {
     updateDraft({ description: '' });
@@ -572,7 +548,8 @@ export default function Step5_Media({ theme }: { theme: any }) {
       String(draft.propertyType || '').trim() ||
       String(draft.city || '').trim() ||
       String(draft.area || '').trim() ||
-      String(draft.price || '').trim();
+      String(draft.price || '').trim() ||
+      String(aiDetailsNotes || '').trim();
     if (!hasBasics) {
       Alert.alert(
         translate('addOffer.step5.ai.gptErrorTitle'),
@@ -593,7 +570,15 @@ export default function Step5_Media({ theme }: { theme: any }) {
     startGlowAnimation();
 
     try {
-      const { description } = await generateListingDescriptionWithGpt(token, { ...draft }, locale);
+      const { description } = await generateListingDescriptionWithGpt(
+        token,
+        {
+          ...draft,
+          existingDescription: draft.description,
+          userNotes: aiDetailsNotes.trim(),
+        },
+        locale,
+      );
       startDescriptionTyping(description, () => {
         setIsGeneratingGpt(false);
         stopGlowAnimation();
@@ -609,179 +594,6 @@ export default function Step5_Media({ theme }: { theme: any }) {
     }
   };
 
-  const generateAI = () => {
-    if (isDescriptionBusy) return;
-    setIsGenerating(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    startGlowAnimation();
-
-    const ai = getAddOfferAiCopy();
-    const randomIntro = ai.intros[Math.floor(Math.random() * ai.intros.length)];
-    const randomPoi = ai.poi[Math.floor(Math.random() * ai.poi.length)];
-    const propType =
-      draft.propertyType === 'HOUSE'
-        ? ai.propertyType.house
-        : draft.propertyType === 'PLOT'
-          ? ai.propertyType.plot
-          : ai.propertyType.flat;
-    const condition =
-      draft.condition === 'READY'
-        ? ai.condition.ready
-        : draft.condition === 'RENOVATION'
-          ? ai.condition.renovation
-          : ai.condition.developer;
-    const transactionType = draft.transactionType === 'RENT' ? ai.transaction.rent : ai.transaction.sell;
-    const isRestOfCountry = String(draft.city || '').trim() === REST_OF_COUNTRY_CITY;
-    const district = String(draft.district || '').trim();
-    const city = String(draft.city || '').trim();
-    const locationName =
-      isRestOfCountry
-        ? district && district.toLowerCase() !== 'ogólna'
-          ? district
-          : ai.locationFallback
-        : district && district.toLowerCase() !== 'ogólna'
-          ? `${city}, ${district}`
-          : city || ai.locationFallback;
-
-    const areaNum = Number(String(draft.area || '').replace(/\s/g, '').replace(',', '.')) || 0;
-    const priceNum = Number(String(draft.price || '').replace(/\s/g, '')) || 0;
-    const adminFeeNum = Number(String(draft.adminFee || draft.rent || '').replace(/\s/g, '')) || 0;
-    const depositNum = Number(String(draft.deposit || '').replace(/\s/g, '')) || 0;
-    const pricePerSqm = areaNum > 0 ? Math.round(priceNum / areaNum) : 0;
-    const avgPrice =
-      city === 'Warszawa'
-        ? 16500
-        : city === 'Łódź'
-          ? 8500
-          : city === 'Kraków' || city === 'Wrocław' || city === 'Poznań' || city === 'Trójmiasto'
-            ? 13000
-            : 12000;
-    const diffPercent = avgPrice > 0 && pricePerSqm > 0 ? Math.round(((pricePerSqm - avgPrice) / avgPrice) * 100) : 0;
-
-    const marketHeader =
-      diffPercent <= -5 ? ai.marketHeader.bargain : diffPercent >= 5 ? ai.marketHeader.premium : ai.marketHeader.fair;
-    const marketNarrativePool =
-      diffPercent <= -5 ? ai.marketOccasion : diffPercent >= 5 ? ai.marketPremium : ai.marketFair;
-    const marketNarrative = marketNarrativePool[Math.floor(Math.random() * marketNarrativePool.length)];
-
-    const heatingKey = String(draft.heating || '');
-    const heatingLabel = translate(HEATING_LABEL_KEYS[heatingKey] || 'addOffer.step3.heating.none');
-    const amenities: string[] = [];
-    if (draft.hasBalcony) amenities.push(ai.amenities.balcony);
-    if (draft.hasParking) amenities.push(ai.amenities.parking);
-    if (draft.hasStorage) amenities.push(ai.amenities.storage);
-    if (draft.hasElevator) amenities.push(ai.amenities.elevator);
-    if (draft.hasGarden) amenities.push(ai.amenities.garden);
-    if (draft.isFurnished) amenities.push(ai.amenities.furnished);
-
-    const poiCandidates = [...ai.poiCandidates];
-    if (city === 'Warszawa') {
-      poiCandidates.push(...ai.poiWarsaw);
-    }
-    if (draft.lat && draft.lng) {
-      poiCandidates.push(ai.poiPin);
-    }
-    const shuffledPoi = [...poiCandidates].sort(() => Math.random() - 0.5);
-    const enrichedPoi = shuffledPoi.slice(0, 3).join('\n');
-
-    let bullets = '';
-    if (draft.transactionType) {
-      bullets += `\n${ai.bullets.transaction} ${
-        draft.transactionType === 'SELL' ? ai.transactionLabels.sell : ai.transactionLabels.rent
-      }`;
-    }
-    if (draft.propertyType) {
-      const propertyTypeLabel =
-        draft.propertyType === 'HOUSE'
-          ? ai.propertyTypeLabels.house
-          : draft.propertyType === 'PLOT'
-            ? ai.propertyTypeLabels.plot
-            : draft.propertyType === 'PREMISES'
-              ? ai.propertyTypeLabels.premises
-              : ai.propertyTypeLabels.flat;
-      bullets += `\n${ai.bullets.propertyType} ${propertyTypeLabel}`;
-    }
-    const plotAreaForAi = resolvePlotAreaForSubmit(draft);
-    if (draft.propertyType === 'PLOT') {
-      if (plotAreaForAi) bullets += `\n${ai.bullets.plotArea} ${plotAreaForAi} m²`;
-    } else {
-      if (draft.area) bullets += `\n${ai.bullets.area} ${draft.area} m²`;
-      if (draft.propertyType === 'HOUSE' && plotAreaForAi) {
-        bullets += `\n${ai.bullets.plotArea} ${plotAreaForAi} m²`;
-      }
-    }
-    if (draft.rooms) bullets += `\n${ai.bullets.rooms} ${draft.rooms}`;
-    if (draft.floor) bullets += `\n${ai.bullets.floor} ${draft.floor}`;
-    if (draft.totalFloors) bullets += `\n${ai.bullets.totalFloors} ${draft.totalFloors}`;
-    if (draft.yearBuilt || draft.buildYear) {
-      bullets += `\n${ai.bullets.yearBuilt} ${draft.yearBuilt || draft.buildYear}`;
-    }
-    if (draft.price) bullets += `\n${ai.bullets.price} ${formatNumber(draft.price)} PLN`;
-    if (pricePerSqm > 0) bullets += `\n${ai.bullets.pricePerSqm} ${formatNumber(pricePerSqm)} PLN`;
-    if (adminFeeNum > 0 && draft.transactionType === 'SELL') {
-      bullets += `\n${ai.bullets.adminFee} ${formatNumber(adminFeeNum)} PLN`;
-    }
-    if (depositNum > 0 && draft.transactionType === 'RENT') {
-      bullets += `\n${ai.bullets.deposit} ${formatNumber(depositNum)} PLN`;
-    }
-    if (draft.condition && draft.propertyType !== 'PLOT') {
-      const conditionLabel =
-        draft.condition === 'READY'
-          ? ai.conditionLabels.ready
-          : draft.condition === 'RENOVATION'
-            ? ai.conditionLabels.renovation
-            : ai.conditionLabels.developer;
-      bullets += `\n${ai.bullets.condition} ${conditionLabel}`;
-    }
-    bullets += `\n${ai.bullets.heating} ${heatingLabel}`;
-    if (draft.city || draft.district) bullets += `\n${ai.bullets.location} ${locationName}`;
-    if (draft.street) bullets += `\n${ai.bullets.address} ${draft.street}`;
-    if (draft.apartmentNumber) bullets += `\n${ai.bullets.apartmentNumber} ${draft.apartmentNumber}`;
-    if (draft.isExactLocation !== undefined) {
-      bullets += `\n${ai.bullets.locationMode} ${
-        draft.isExactLocation ? ai.locationMode.exact : ai.locationMode.approximate
-      }`;
-    }
-
-    const amenitiesText =
-      amenities.length > 0 ? amenities.map((item) => `✓ ${item}`).join('\n') : ai.amenities.none;
-
-    const marketSpread =
-      pricePerSqm > 0
-        ? `\n${translate('addOffer.step5.ai.marketSpread', {
-            offerPrice: formatNumber(pricePerSqm),
-            avgPrice: formatNumber(avgPrice),
-            sign: diffPercent > 0 ? '+' : '',
-            percent: diffPercent,
-          })}`
-        : '';
-
-    const fullText = translate('addOffer.step5.ai.bodyTemplate', {
-      intro: randomIntro,
-      propertyType: propType,
-      transaction: transactionType,
-      location: locationName,
-      condition,
-      neighborhoodSection: ai.sections.neighborhood,
-      randomPoi,
-      enrichedPoi,
-      marketSection: ai.sections.market,
-      marketHeader,
-      marketNarrative,
-      marketSpread,
-      amenitiesSection: ai.sections.amenities,
-      amenitiesText,
-      parametersSection: ai.sections.parameters,
-      bullets,
-    });
-    
-    startDescriptionTyping(fullText, () => {
-      setIsGenerating(false);
-      stopGlowAnimation();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    });
-  };
-
   const isDark = theme.glass === 'dark';
   // Obliczamy dynamiczną wysokość kontenera, aby absolutnie ułożone kwadraty nie obcięły się u dołu
   const gridHeight =
@@ -795,32 +607,76 @@ export default function Step5_Media({ theme }: { theme: any }) {
         <AddOfferStepper currentStep={5} draft={draft} theme={theme} navigation={navigation} />
         <Text style={{ fontSize: 34, fontWeight: '800', marginBottom: 30, color: theme.text }}>{translate('addOffer.step5.header')}</Text>
 
-        <CarPhotoGrid
-          images={draftImages}
-          imageByteSizes={imageSizes}
-          onChange={(nextImages, nextSizes) => updateDraft({ images: nextImages, imageByteSizes: nextSizes })}
-          labels={{
-            title: translate('addOffer.step5.sections.addPhotos'),
-            lead: translate('addOffer.step5.gallery.lead'),
-            photosLabel: translate('addOffer.step5.capacity.photos'),
-            photosSuffix: translate('addOffer.step5.capacity.suffixPhotos'),
-            sizeLabel: translate('addOffer.step5.capacity.diskSpace'),
-            sizeSuffix: translate('addOffer.step5.capacity.suffixMb'),
-            coverBadge: translate('addOffer.step5.coverBadge'),
-            addLabel: translate('addOffer.step5.gallery.addLabel'),
-            limitTitle: translate('addOffer.step5.alerts.photoLimit.title'),
-            limitBody: translate('addOffer.step5.alerts.photoLimit.message'),
-            permissionTitle: translate('addOffer.step5.alerts.photoAccess.title'),
-            permissionBody: translate('addOffer.step5.alerts.photoAccess.message'),
-            permissionCancel: translate('addOffer.common.cancel'),
-            permissionSettings: translate('addOffer.common.settings'),
-            storageTitle: translate('addOffer.step5.alerts.storageLimit.title'),
-          }}
-        />
+        <View style={[styles.limitsDashboard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.05)' }]}>
+            <CapacityBar label={translate('addOffer.step5.capacity.photos')} current={displayImages.length} max={MAX_IMAGES} suffix={translate('addOffer.step5.capacity.suffixPhotos')} theme={theme} />
+            <CapacityBar label={translate('addOffer.step5.capacity.diskSpace')} current={usedMB} max={MAX_MB} suffix={translate('addOffer.step5.capacity.suffixMb')} theme={theme} />
+            {estimatedCount > 0 && (
+              <Text style={[styles.capacityHint, { color: theme.subtitle }]}>
+                {translate('addOffer.step5.capacity.estimatedSizeHint', {
+                  count: estimatedCount,
+                  filesLabel:
+                    estimatedCount === 1
+                      ? translate('addOffer.step5.capacity.estimatedSizeFileOne')
+                      : translate('addOffer.step5.capacity.estimatedSizeFileMany'),
+                })}
+              </Text>
+            )}
+          </View>
 
-        <View style={[styles.mediaActionsRow, { marginTop: 14 }]}>
-          <View style={styles.mediaActionFlex}>
-            <AppleHover onPress={() => setProPhotoSessionOpen(true)} scaleTo={0.98}>
+          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 5 }}>
+            {translate('addOffer.step5.sections.addPhotos')}
+          </Text>
+          <Text style={{ fontSize: 12, fontWeight: '500', color: theme.subtitle, marginBottom: 12, lineHeight: 17 }}>
+            {translate('addOffer.step5.gallery.lead')}
+          </Text>
+
+          {displayImages.length > 0 && (
+            <View style={[styles.gridContainer, { height: gridHeight }]}>
+              {displayImages.map((uri: string, index: number) => (
+                <DraggableSquare
+                  key={uri}
+                  uri={uri}
+                  index={index}
+                  total={displayImages.length}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onHoverSwap={handleHoverSwap}
+                  onRemove={removeImage}
+                  theme={theme}
+                  progress={uploadProgress[uri] ?? 100}
+                  squareSize={squareSize}
+                />
+              ))}
+            </View>
+          )}
+
+          <View style={styles.mediaActionsRow}>
+            <View style={styles.mediaActionFlex}>
+              <AppleHover onPress={pickGallery} scaleTo={0.98}>
+                <View
+                  style={[
+                    styles.addMediaBtn,
+                    styles.mediaActionBtn,
+                    { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)', opacity: sizingGallery ? 0.65 : 1 },
+                  ]}
+                >
+                  {sizingGallery ? (
+                    <ActivityIndicator color={theme.text} style={{ marginRight: 8 }} />
+                  ) : (
+                    <Ionicons name="camera" size={22} color={theme.text} style={{ marginRight: 8 }} />
+                  )}
+                  <Text style={[styles.mediaActionText, { color: theme.text }]} numberOfLines={2}>
+                    {sizingGallery
+                      ? translate('addOffer.step5.gallery.sizing')
+                      : displayImages.length > 0
+                        ? translate('addOffer.step5.gallery.addMore')
+                        : translate('addOffer.step5.gallery.open')}
+                  </Text>
+                </View>
+              </AppleHover>
+            </View>
+            <View style={styles.mediaActionFlex}>
+              <AppleHover onPress={() => setProPhotoSessionOpen(true)} scaleTo={0.98}>
                 <View
                   style={[
                     styles.proSessionBtn,
@@ -838,7 +694,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
                 </View>
               </AppleHover>
             </View>
-        </View>
+          </View>
 
           <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 15 }}>
             {translate('addOffer.step5.sections.floorPlan')}
@@ -952,31 +808,39 @@ export default function Step5_Media({ theme }: { theme: any }) {
             <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle }}>
               {translate('addOffer.step5.sections.description')}
             </Text>
-            <View style={styles.aiButtonsRow}>
-              <View style={styles.aiButtonFlex}>
-                <AppleHover onPress={generateAI} scaleTo={1.03}>
-                  <View style={[styles.aiTemplateBtn, styles.aiButtonFlexInner]}>
-                    <Ionicons name="flash-outline" size={16} color="#ffffff" />
-                    <Text style={styles.aiBtnText} numberOfLines={1}>
-                      {isGenerating ? translate('addOffer.step5.ai.generating') : translate('addOffer.step5.ai.generate')}
-                    </Text>
-                  </View>
-                </AppleHover>
-              </View>
-              <View style={styles.aiButtonFlex}>
-                <AppleHover onPress={generateGptDescription} scaleTo={1.03}>
-                  <View style={[styles.aiGptBtn, styles.aiButtonFlexInner]}>
-                    <Ionicons name="sparkles" size={16} color="#ffffff" />
-                    <Text style={styles.aiBtnText} numberOfLines={1}>
-                      {isGeneratingGpt ? translate('addOffer.step5.ai.generatingGpt') : translate('addOffer.step5.ai.generateGpt')}
-                    </Text>
-                  </View>
-                </AppleHover>
-              </View>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.subtitle, marginTop: 14, marginBottom: 8 }}>
+              {translate('addOffer.step5.ai.detailsNotesLabel')}
+            </Text>
+            <View
+              style={{
+                backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF',
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.08)',
+                padding: 14,
+                minHeight: 88,
+                marginBottom: 12,
+              }}
+            >
+              <TextInput
+                multiline
+                style={{ fontSize: 14, fontWeight: '500', lineHeight: 20, color: theme.text, textAlignVertical: 'top' }}
+                placeholder={translate('addOffer.step5.ai.detailsNotesPlaceholder')}
+                placeholderTextColor={theme.subtitle}
+                value={aiDetailsNotes}
+                onChangeText={setAiDetailsNotes}
+                editable={!isDescriptionBusy}
+              />
             </View>
+            <MagicalAiDescribeButton
+              label={translate('addOffer.step5.ai.createProfessional')}
+              busyLabel={translate('addOffer.step5.ai.generatingGpt')}
+              busy={isGeneratingGpt}
+              onPress={generateGptDescription}
+            />
           </View>
           
-          <View style={{ position: 'relative' }}>
+          <View style={{ position: 'relative', marginTop: 14 }}>
             <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: Colors.aiGlow, borderRadius: 24, opacity: glowAnim, transform: [{ scale: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1.02] }) }] }]} />
             <View
               style={{
@@ -1096,35 +960,4 @@ const styles = StyleSheet.create({
   },
   scannedBadgeText: { color: '#e0f2fe', fontSize: 11, fontWeight: '800' },
   removeFloorPlanBtn: { position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.6)', width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
-  aiButtonsRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 10,
-    marginTop: 12,
-  },
-  aiButtonFlex: { flex: 1, minWidth: 0 },
-  aiButtonFlexInner: {
-    flex: 1,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  aiTemplateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(100,116,139,0.92)',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
-    gap: 6,
-  },
-  aiGptBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.aiGlow,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
-    gap: 6,
-  },
-  aiBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 12, flexShrink: 1 },
 });

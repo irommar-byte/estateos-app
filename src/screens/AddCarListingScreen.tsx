@@ -29,6 +29,8 @@ import CarRegistrationScanPrompt from '../components/cars/CarRegistrationScanPro
 import CarVehicleDocsSection, { type CarVehicleDocsState } from '../components/cars/CarVehicleDocsSection';
 import CarAddEntryPanel, { type CarAddEntryMethod } from '../components/cars/CarAddEntryPanel';
 import CarAuthGateModal from '../components/cars/CarAuthGateModal';
+import MagicalAiDescribeButton from '../components/MagicalAiDescribeButton';
+import { generateCarListingDescriptionWithGpt } from '../services/carDescriptionAiService';
 import { formatDateForForm } from '../utils/polishDateInput';
 import {
   listMissingListingFields,
@@ -215,6 +217,9 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
   const [highlightKeys, setHighlightKeys] = useState<CarListingMissingFieldKey[]>([]);
   const [scanNotice, setScanNotice] = useState<string | null>(null);
   const [publishAuthOpen, setPublishAuthOpen] = useState(false);
+  const [aiDetailsNotes, setAiDetailsNotes] = useState('');
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
+  const [isDraggingPhotos, setIsDraggingPhotos] = useState(false);
   const formRef = useRef(form);
   formRef.current = form;
   const autoPublishTried = useRef(false);
@@ -395,6 +400,74 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
 
   const isHighlighted = (key: CarListingMissingFieldKey) => highlightKeys.includes(key);
 
+  const startDescriptionTyping = (fullText: string, onDone: () => void) => {
+    patchForm({ description: '' });
+    const words = fullText.split(' ');
+    let currentWordIndex = 0;
+    let tempText = '';
+    const typingInterval = setInterval(() => {
+      if (currentWordIndex < words.length) {
+        tempText += (currentWordIndex === 0 ? '' : ' ') + words[currentWordIndex];
+        patchForm({ description: tempText });
+        currentWordIndex++;
+      } else {
+        clearInterval(typingInterval);
+        onDone();
+      }
+    }, 36);
+  };
+
+  const generateCarDescription = async () => {
+    if (isGeneratingDescription) return;
+    if (!token) {
+      Alert.alert('Generowanie opisu', 'Zaloguj się, aby wygenerować opis AI.');
+      return;
+    }
+    const hasBasics =
+      String(form.make || '').trim() &&
+      String(form.model || '').trim() &&
+      String(form.city || '').trim();
+    if (!hasBasics) {
+      Alert.alert('Generowanie opisu', 'Uzupełnij markę, model i miejscowość przed generowaniem opisu.');
+      return;
+    }
+
+    setIsGeneratingDescription(true);
+    try {
+      const { description } = await generateCarListingDescriptionWithGpt(
+        token,
+        {
+          vehicleType: form.vehicleType,
+          make: form.make,
+          model: form.model,
+          year: form.year,
+          mileageKm: form.mileageKm,
+          fuelType: form.fuelType,
+          transmission: form.transmission,
+          bodyType: form.bodyType,
+          exteriorColor: form.exteriorColor,
+          generation: form.generation,
+          enginePower: form.enginePower,
+          engineCapacity: form.engineCapacity,
+          trimVersion: form.trimVersion,
+          doorCount: form.doorCount,
+          city: form.city,
+          localityCountry: form.localityCountry,
+          title: form.title,
+          existingDescription: form.description,
+          userNotes: aiDetailsNotes.trim(),
+        },
+        'pl',
+      );
+      startDescriptionTyping(description, () => {
+        setIsGeneratingDescription(false);
+      });
+    } catch (err: any) {
+      setIsGeneratingDescription(false);
+      Alert.alert('Generowanie opisu', String(err?.message || 'Nie udało się wygenerować opisu.'));
+    }
+  };
+
   const publishListing = useCallback(
     async (authToken: string) => {
       if (!form.title.trim() || !form.make.trim() || !form.model.trim() || !form.city.trim()) {
@@ -525,7 +598,11 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
           />
         </ScrollView>
       ) : (
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          scrollEnabled={!isDraggingPhotos}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text style={styles.eyebrow}>EstateOS™Car</Text>
           {!token && mode === 'create' ? (
             <Text style={styles.guestBanner}>
@@ -557,6 +634,7 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
               images={form.images}
               imageByteSizes={form.imageByteSizes}
               onChange={(images, imageByteSizes) => patchForm({ images, imageByteSizes })}
+              onDraggingChange={setIsDraggingPhotos}
             />
           </View>
 
@@ -581,6 +659,30 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
             colors={colors}
             styles={styles}
           />
+
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Szczegóły / atuty (notatki do AI)</Text>
+            <TextInput
+              value={aiDetailsNotes}
+              onChangeText={setAiDetailsNotes}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+              placeholder="Np. serwis ASO, nowy rozrząd, hak, opony zimowe w cenie…"
+              placeholderTextColor={colors.placeholder}
+              editable={!isGeneratingDescription}
+              style={[styles.input, styles.textarea]}
+            />
+            <View style={{ marginTop: 10 }}>
+              <MagicalAiDescribeButton
+                label="Stwórz profesjonalny opis"
+                busyLabel="Tworzę opis…"
+                busy={isGeneratingDescription}
+                onPress={() => void generateCarDescription()}
+              />
+            </View>
+          </View>
+
           <Field
             label="Opis"
             value={form.description}

@@ -528,14 +528,18 @@ export const addOffer = {
     ai: {
       generate: 'Шаблон ИИ',
       generateGpt: 'Описание GPT Mini',
+      createProfessional: 'Создать профессиональное описание',
+      detailsNotesLabel: 'Детали / плюсы (заметки для AI)',
+      detailsNotesPlaceholder:
+        'Напр. гараж в цене, свежий ремонт ванной, рядом школа, тихий район…',
       generating: 'Анализ...',
-      generatingGpt: 'GPT анализирует район…',
+      generatingGpt: 'Пишу профессиональное описание…',
       gptRequiresLogin: 'Войдите, чтобы сгенерировать описание GPT.',
       gptErrorTitle: 'Генерация описания',
       gptInsufficientData:
-        'Заполните тип, локацию (метку на карте) и параметры на предыдущих шагах.',
+        'Заполните тип, локацию (метку на карте) и параметры на предыдущих шагах — или добавьте заметки выше.',
       descriptionPlaceholder:
-        'Let AI analyze your property and create the ideal description, or enter it manually...',
+        'Пусть AI создаст описание по параметрам и вашим заметкам, или введите его вручную...',
       intros: [
         'Step into a space that redefines luxury and comfort.',
         'A rare market opportunity. A property that captures attention instantly.',
