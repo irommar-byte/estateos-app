@@ -93,9 +93,9 @@ function serializeRequest(row: any, user?: { name?: string | null; phone?: strin
     transactionType: row.transactionType,
     isProFree,
     paymentLabel: isProFree
-      ? 'GRATIS — Investor Pro (pierwsza sesja na koncie)'
-      : '199 zł — sesja płatna',
-    paymentAmountPln: isProFree ? 0 : 199,
+      ? '199 zł — sesja płatna (Warszawa)'
+      : '199 zł — sesja płatna (Warszawa)',
+    paymentAmountPln: 199,
     acceptedAt: row.acceptedAt ? row.acceptedAt.toISOString() : null,
     adminNote: row.adminNote || null,
     createdAt: row.createdAt?.toISOString?.() || row.createdAt,
@@ -160,9 +160,8 @@ export async function createPhotoSessionRequest(req: Request) {
   const propertyType = String(body?.propertyType || '').trim() || null;
   const transactionType = String(body?.transactionType || '').trim() || null;
   const note = String(body?.note || '').trim() || null;
-  const investorPro = await isUserInvestorPro(userId);
-  const proAlreadyUsed = investorPro ? await hasUsedProFreeOnAccount(userId) : false;
-  const isProFree = investorPro && !proAlreadyUsed;
+  // Sesja zawsze płatna 199 zł — benefit Pro-free wyłączony produktowo.
+  const isProFree = false;
 
   const duplicatePending = await prisma.photoSessionRequest.findFirst({
     where: {
@@ -397,9 +396,7 @@ async function notifyUserPhotoSessionUpdate(
       propertyType: row?.propertyType || null,
       transactionType: row?.transactionType || null,
       isProFree: row?.isProFree ? '1' : '0',
-      paymentLabel: row?.isProFree
-        ? 'GRATIS — Investor Pro (pierwsza sesja na koncie)'
-        : '199 zł — sesja płatna',
+      paymentLabel: '199 zł — sesja płatna (Warszawa)',
       note: row?.note || null,
       adminNote: row?.adminNote || null,
       ...extra,
@@ -518,7 +515,7 @@ export async function acceptAdminPhotoSessionRequest(req: Request) {
   await appendEvent({ requestId: id, actorUserId: auth.adminId, action: 'ACCEPTED', proposedAt: row.proposedAt, note: adminNote });
 
   const whenLabel = formatWhen(row.proposedAt);
-  const paymentHint = row.isProFree ? 'Sesja gratis w ramach Investor Pro.' : 'Rozliczenie: 199 zł.';
+  const paymentHint = 'Rozliczenie: 199 zł (fotograf Warszawa).';
   await notifyUserPhotoSessionUpdate(
     row.userId,
     id,

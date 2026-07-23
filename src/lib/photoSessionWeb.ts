@@ -103,8 +103,8 @@ export async function adminPhotoSessionAction(
   return data as { success: boolean; request: PhotoSessionRequestItem };
 }
 
-export function paymentLabel(isProFree: boolean) {
-  return isProFree ? 'GRATIS — Investor Pro (pierwsza sesja na koncie)' : '199 zł — sesja płatna';
+export function paymentLabel(_isProFree: boolean) {
+  return '199 zł — sesja płatna (Warszawa)';
 }
 
 export function buildNextDays(count = 30) {

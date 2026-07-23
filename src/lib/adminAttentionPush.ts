@@ -120,9 +120,7 @@ export function notifyAdminPhotoSessionPending(
       })
     : '—';
   const where = propertyLabel?.trim() ? propertyLabel.trim().slice(0, 72) : 'Nieruchomość w kreatorze';
-  const payment = isProFree
-    ? 'GRATIS (Investor Pro — pierwsza sesja)'
-    : '199 zł do zapłaty';
+  const payment = '199 zł do zapłaty (fotograf Warszawa)';
 
   void sendNotification({
     userId: PHOTO_SESSION_ADMIN_USER_ID,
