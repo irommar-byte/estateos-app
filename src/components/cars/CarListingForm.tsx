@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import SiriMagicButton from "@/components/ui/SiriMagicButton";
+import { typewriterReveal } from "@/lib/typewriterReveal";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { CarsDictionary } from "@/i18n/carsDictionary";
 import CarCatalogFields from "@/components/cars/CarCatalogFields";
@@ -286,6 +288,8 @@ export default function CarListingForm({
   const [draftReady, setDraftReady] = useState(mode !== "create");
   const [fillingFromDocs, setFillingFromDocs] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [aiDetailsNotes, setAiDetailsNotes] = useState("");
+  const typewriterCancelRef = useRef<null | (() => void)>(null);
   const [aiMissingNotice, setAiMissingNotice] = useState<string | null>(null);
   const photoGalleryRef = useRef<CarPhotoGalleryFieldHandle>(null);
   const draftTimerRef = useRef<number | null>(null);
@@ -562,7 +566,7 @@ export default function CarListingForm({
           localityCountry: form.localityCountry,
           title: form.title,
           existingDescription: form.description,
-          userNotes: "",
+          userNotes: aiDetailsNotes,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -575,7 +579,20 @@ export default function CarListingForm({
       if (!response.ok || !payload?.success || !String(payload?.description || "").trim()) {
         throw new Error(String(payload?.error || f.aiGenFailed));
       }
-      setField("description", String(payload.description).trim());
+      const plain = String(payload.description).trim();
+      typewriterCancelRef.current?.();
+      const controller = typewriterReveal(
+        plain,
+        (partial) => setField("description", partial),
+        {
+          chunk: 4,
+          intervalMs: 14,
+          onDone: () => {
+            typewriterCancelRef.current = null;
+          },
+        },
+      );
+      typewriterCancelRef.current = controller.cancel;
       setAiMissingNotice(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : f.aiGenFailed);
@@ -752,28 +769,43 @@ export default function CarListingForm({
             />
           </CarFormField>
 
-          <div className="grid gap-2">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="grid gap-3">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
+                {f.detailsNotesLabel}
+              </label>
+              <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-stretch">
+                <textarea
+                  value={aiDetailsNotes}
+                  onChange={(e) => setAiDetailsNotes(e.target.value)}
+                  rows={4}
+                  placeholder={f.detailsNotesPlaceholder}
+                  className={`min-h-[7rem] flex-1 resize-y ${carFieldInputClass}`}
+                />
+                <div className="flex shrink-0 items-center sm:items-end">
+                  <SiriMagicButton
+                    label={f.magicDescribeBtn}
+                    busyLabel={f.magicDescribing}
+                    busy={isGeneratingAI}
+                    disabled={uploading || submitting}
+                    onClick={() => void handleGenerateAI()}
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-[var(--eos-muted)]">{f.detailsNotesHint}</p>
+            </div>
+            <div className="grid gap-2">
               <label className="text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
                 {f.descriptionLabel}
               </label>
-              <button
-                type="button"
-                onClick={() => void handleGenerateAI()}
-                disabled={isGeneratingAI || uploading || submitting}
-                className="inline-flex items-center gap-2 rounded-xl border border-sky-400/45 bg-gradient-to-r from-sky-500/15 to-cyan-500/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-sky-700 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-300"
-              >
-                {isGeneratingAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                {isGeneratingAI ? f.aiGenerating : f.aiAssistantBtn}
-              </button>
+              <textarea
+                value={form.description}
+                onChange={(e) => setField("description", e.target.value)}
+                className={`min-h-[160px] resize-y ${carFieldInputClass} ${highlightClass(isHighlighted("description"))}`}
+                placeholder={f.descriptionPlaceholder}
+              />
+              {aiMissingNotice ? <p className={carAlertWarningClass}>{aiMissingNotice}</p> : null}
             </div>
-            <textarea
-              value={form.description}
-              onChange={(e) => setField("description", e.target.value)}
-              className={`min-h-[160px] resize-y ${carFieldInputClass} ${highlightClass(isHighlighted("description"))}`}
-              placeholder={f.descriptionPlaceholder}
-            />
-            {aiMissingNotice ? <p className={carAlertWarningClass}>{aiMissingNotice}</p> : null}
           </div>
         </CarFormSection>
 

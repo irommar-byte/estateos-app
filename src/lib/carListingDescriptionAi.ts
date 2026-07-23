@@ -53,7 +53,8 @@ ZASADY:
 - Parametry z JSON wpleć naturalnie (1–2 zdania), reszta to narracja sprzedażowa.
 - Nie wymyślaj historii serwisowej, wypadków, gwarancji ani wyposażenia, jeśli nie wynika to z danych lub notatek.
 - Nie podawaj VIN ani numeru rejestracyjnego.
-- NIGDY nie podawaj ceny, kwoty w zł/€ ani „do negocjacji” z liczbą — cena jest poza opisem.
+- NIGDY nie podawaj ceny sprzedaży pojazdu ani „do negocjacji” z kwotą — cena główna jest poza opisem.
+- WYJĄTEK: jeśli w userNotes są ceny przyległości / dodatków (felgi, hak, box dachowy, ubezpieczenie AC itd.) — możesz je zawrzeć.
 - Długość: ok. 700–1400 znaków (3–6 akapitów).
 - Bez emoji, bez nagłówków CAPS, bez list punktowanych parametrów.
 - Zakończ krótkim zaproszeniem do kontaktu / oględzin.`;
