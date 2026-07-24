@@ -21,7 +21,8 @@ import CarFavoriteButton from '../components/cars/CarFavoriteButton';
 import CarInquirySheet from '../components/cars/CarInquirySheet';
 import CarVehicleChecksPanel from '../components/cars/CarVehicleChecksPanel';
 import SellerCarsSection from '../components/cars/SellerCarsSection';
-import { fetchCarById, formatCarPrice, parseCarImages, type CarListing } from '../services/carsApi';
+import { fetchCarById, parseCarImages, type CarListing } from '../services/carsApi';
+import { useMoneyContext } from '../money/useMoneyContext';
 import { deleteCarListing } from '../services/carsMutations';
 import { openDirectContactChat } from '../utils/openDirectContact';
 import { useCarScreenTheme, type CarScreenColors } from '../theme/carScreenTheme';
@@ -55,6 +56,8 @@ export default function CarDetailScreen({ navigation, route }: CarDetailScreenPr
 
   const token = useAuthStore((s) => s.token);
   const userId = useAuthStore((s) => s.user?.id);
+  const { formatOffer } = useMoneyContext();
+  const carPrice = car ? formatOffer(car) : null;
   const initialCar = route.params?.car;
   const carId = Number(route.params?.carId || initialCar?.id || 0);
   const [car, setCar] = useState<CarListing | null>(initialCar || null);
@@ -241,7 +244,10 @@ export default function CarDetailScreen({ navigation, route }: CarDetailScreenPr
               <Gauge color={colors.muted} size={14} />
               <Text style={styles.sub}>{new Intl.NumberFormat('pl-PL').format(car.mileageKm)} km</Text>
             </View>
-            <Text style={styles.price}>{formatCarPrice(car.pricePln)}</Text>
+            <Text style={styles.price}>{carPrice?.primary || '—'}</Text>
+            {carPrice?.secondary ? (
+              <Text style={[styles.specLabel, { marginTop: 4 }]}>{carPrice.secondary}</Text>
+            ) : null}
 
             {isOwner ? (
               <View style={styles.ownerRow}>
@@ -335,7 +341,7 @@ export default function CarDetailScreen({ navigation, route }: CarDetailScreenPr
           make={car.make}
           model={car.model}
           year={car.year}
-          pricePln={car.pricePln}
+          priceLabel={carPrice?.primary || '—'}
           city={car.city}
           onSuccess={(threadId, peerUserId) => {
             void openDirectContactChat(navigation, token, peerUserId);

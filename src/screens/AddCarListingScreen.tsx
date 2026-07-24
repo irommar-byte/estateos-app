@@ -53,6 +53,12 @@ import {
   type VehicleType,
 } from '../utils/vehicleTypes';
 import { useCarScreenTheme, type CarScreenColors } from '../theme/carScreenTheme';
+import CurrencySegmentControl from '../components/CurrencySegmentControl';
+import { convertBetweenCurrencies, normalizeListingCurrency } from '../money/convert';
+import { formatApproxLine } from '../money/format';
+import { getEurPlnRate } from '../money/fxRateService';
+import { buildOfferPricePayload } from '../money/offerPrice';
+import type { ListingCurrency } from '../money/types';
 
 type FormState = CarCatalogFormState &
   CarVehicleDocsState & {
@@ -61,6 +67,7 @@ type FormState = CarCatalogFormState &
     description: string;
     mileageKm: string;
     pricePln: string;
+    priceCurrency: ListingCurrency;
     city: string;
     localityCountry: string;
     cityLat: number | null;
@@ -100,6 +107,7 @@ const EMPTY_FORM: FormState = {
   description: '',
   mileageKm: '',
   pricePln: '',
+  priceCurrency: 'PLN',
   city: '',
   localityCountry: 'Polska',
   cityLat: null,
@@ -137,7 +145,12 @@ function carToForm(car: CarListing): FormState {
     engineCapacity: car.engineCapacity || '',
     trimVersion: car.trimVersion || '',
     doorCount: car.doorCount ? String(car.doorCount) : '',
-    pricePln: String(car.pricePln),
+    priceCurrency: normalizeListingCurrency(car.priceCurrency),
+    pricePln: String(
+      Number(car.price ?? car.priceAmount ?? 0) > 0
+        ? Math.round(Number(car.price ?? car.priceAmount))
+        : Math.round(Number(car.pricePln || 0)),
+    ),
     city: car.city,
     localityCountry: car.localityCountry || 'Polska',
     cityLat: car.cityLat ?? null,
@@ -152,8 +165,13 @@ function carToForm(car: CarListing): FormState {
   };
 }
 
-function toPayload(form: FormState, uploadedImages: string[]): CarFormPayload {
+function toPayload(form: FormState, uploadedImages: string[], fxRate: number): CarFormPayload {
   const doorCount = Number(form.doorCountSlug || form.doorCount);
+  const money = buildOfferPricePayload({
+    priceString: form.pricePln,
+    priceCurrency: normalizeListingCurrency(form.priceCurrency),
+    rate: fxRate,
+  });
   return {
     title: form.title.trim(),
     description: form.description.trim(),
@@ -171,7 +189,10 @@ function toPayload(form: FormState, uploadedImages: string[]): CarFormPayload {
     engineCapacity: form.engineCapacity.trim(),
     trimVersion: form.trimVersion.trim(),
     doorCount: Number.isFinite(doorCount) && doorCount > 0 ? doorCount : null,
-    pricePln: Number(form.pricePln) || 0,
+    price: money.priceAmount,
+    priceAmount: money.priceAmount,
+    priceCurrency: money.priceCurrency,
+    pricePln: money.pricePln,
     city: form.city.trim(),
     localityCountry: form.localityCountry.trim() || 'Polska',
     cityLat: form.cityLat,
@@ -199,7 +220,7 @@ type AddCarListingScreenProps = {
 
 export default function AddCarListingScreen({ navigation, route }: AddCarListingScreenProps) {
   const insets = useSafeAreaInsets();
-  const { colors } = useCarScreenTheme();
+  const { colors, isDark } = useCarScreenTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const token = useAuthStore((s) => s.token);
   const mode = route.params?.mode || (route.params?.car ? 'edit' : 'create');
@@ -220,9 +241,23 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
   const [aiDetailsNotes, setAiDetailsNotes] = useState('');
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
   const [isDraggingPhotos, setIsDraggingPhotos] = useState(false);
+  const [fxRate, setFxRate] = useState(4.32);
+  const [fxDate, setFxDate] = useState('');
   const formRef = useRef(form);
   formRef.current = form;
   const autoPublishTried = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    void getEurPlnRate().then((snap) => {
+      if (cancelled) return;
+      setFxRate(snap.rate);
+      setFxDate(snap.date);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
 
   useEffect(() => {
     if (mode !== 'edit' || !carId) return;
@@ -486,7 +521,7 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
       setSubmitting(true);
       try {
         const uploadedImages = form.images.length ? await uploadCarImages(authToken, form.images) : [];
-        const payload = toPayload(form, uploadedImages);
+        const payload = toPayload(form, uploadedImages, fxRate);
 
         if (mode === 'edit' && carId > 0) {
           const updated = await updateCarListing(authToken, carId, payload);
@@ -511,7 +546,7 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
         setSubmitting(false);
       }
     },
-    [form, mode, carId, navigation],
+    [form, mode, carId, navigation, fxRate],
   );
 
   const handleSubmit = async () => {
@@ -719,8 +754,29 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
               />
             </View>
             <View style={styles.half}>
+              <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 6 }]}>Waluta ceny</Text>
+              <CurrencySegmentControl
+                value={normalizeListingCurrency(form.priceCurrency)}
+                isDark={isDark}
+                onChange={(code) => {
+                  const from = normalizeListingCurrency(form.priceCurrency);
+                  if (from === code) return;
+                  const amount = Number(String(form.pricePln).replace(/\s/g, '').replace(',', '.'));
+                  const nextAmount =
+                    Number.isFinite(amount) && amount > 0
+                      ? convertBetweenCurrencies(amount, from, code, fxRate)
+                      : amount;
+                  patchForm({
+                    priceCurrency: code,
+                    pricePln:
+                      Number.isFinite(nextAmount) && nextAmount > 0
+                        ? String(Math.round(nextAmount))
+                        : form.pricePln,
+                  });
+                }}
+              />
               <Field
-                label="Cena PLN"
+                label={`Cena ${normalizeListingCurrency(form.priceCurrency)}`}
                 value={form.pricePln}
                 onChangeText={(pricePln) => patchForm({ pricePln })}
                 keyboardType="number-pad"
@@ -728,6 +784,12 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
                 colors={colors}
                 styles={styles}
               />
+              {Number(form.pricePln) > 0 && formatApproxLine(Number(form.pricePln), form.priceCurrency, fxRate) ? (
+                <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
+                  {formatApproxLine(Number(form.pricePln), form.priceCurrency, fxRate)}
+                  {fxDate ? ` · NBP ${fxDate}` : ''}
+                </Text>
+              ) : null}
             </View>
           </View>
 

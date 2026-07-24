@@ -3,6 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useLocale } from "@/contexts/LocaleContext";
+import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 
 type CarPreview = {
   id: number;
@@ -24,6 +26,9 @@ function carImageSrc(imageUrl?: string) {
 }
 
 export default function SellerCarsSection({ userId }: { userId: number }) {
+  const { dict, locale } = useLocale();
+  const { formatOffer } = useFormatOfferPrice();
+  const s = dict.cars.seller;
   const [cars, setCars] = useState<CarPreview[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -51,11 +56,11 @@ export default function SellerCarsSection({ userId }: { userId: number }) {
     <section className="mx-auto mt-10 max-w-6xl px-4 pb-16 sm:px-6">
       <div className="mb-5 flex items-end justify-between gap-4 border-b border-[var(--eos-border)] pb-4">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-400">EstateOS™Car</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight">Ogłoszenia samochodowe</h2>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-500">{s.eyebrow}</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--eos-text)]">{s.title}</h2>
         </div>
-        <Link href="/cars" className="text-xs font-black uppercase tracking-[0.12em] text-sky-300 hover:text-sky-200">
-          Katalog Cars
+        <Link href="/cars" className="text-xs font-black uppercase tracking-[0.12em] text-sky-600 hover:text-sky-500 dark:text-sky-300 dark:hover:text-sky-200">
+          {dict.cars.common.carsCatalog}
         </Link>
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -74,9 +79,7 @@ export default function SellerCarsSection({ userId }: { userId: number }) {
               </p>
               <h3 className="line-clamp-2 font-semibold">{car.title}</h3>
               <p className="text-sm text-[var(--eos-muted)]">{car.city}</p>
-              <p className="font-bold text-sky-300">
-                {new Intl.NumberFormat("pl-PL").format(car.pricePln)} PLN
-              </p>
+              <p className="font-bold text-sky-600 dark:text-sky-300">{formatOffer(car).primary}</p>
             </div>
           </Link>
         ))}

@@ -6,6 +6,10 @@ import { Loader2 } from "lucide-react";
 import SiriMagicButton from "@/components/ui/SiriMagicButton";
 import { typewriterReveal } from "@/lib/typewriterReveal";
 import { useLocale } from "@/contexts/LocaleContext";
+import { useFxRate } from "@/contexts/FxRateContext";
+import { convertBetweenCurrencies } from "@/lib/money/convert";
+import { formatApproxLine } from "@/lib/money/format";
+import type { ListingCurrency } from "@/lib/money/types";
 import type { CarsDictionary } from "@/i18n/carsDictionary";
 import CarCatalogFields from "@/components/cars/CarCatalogFields";
 import CarCityMapPicker from "@/components/cars/CarCityMapPicker";
@@ -123,6 +127,7 @@ export type CarFormState = CarVehicleDocsFormState & {
   doorCount: string;
   doorCountSlug: string;
   pricePln: string;
+  priceCurrency: ListingCurrency;
   city: string;
   cityLat: number | null;
   cityLng: number | null;
@@ -159,6 +164,7 @@ export const initialCarForm: CarFormState = {
   doorCount: "",
   doorCountSlug: "",
   pricePln: "",
+  priceCurrency: "PLN",
   city: "",
   cityLat: null,
   cityLng: null,
@@ -202,6 +208,9 @@ function toPayload(form: CarFormState, images: string[]) {
     engineCapacity: form.engineCapacity.trim(),
     trimVersion: form.trimVersion.trim(),
     doorCount: Number.isFinite(doorCount) && doorCount > 0 ? doorCount : null,
+    price: Number(form.pricePln),
+    priceAmount: Number(form.pricePln),
+    priceCurrency: form.priceCurrency === "EUR" ? "EUR" : "PLN",
     pricePln: Number(form.pricePln),
     city: form.city.trim(),
     cityLat: form.cityLat,
@@ -272,6 +281,7 @@ export default function CarListingForm({
   entryMethod,
 }: CarListingFormProps) {
   const { dict, locale } = useLocale();
+  const { rate: fxRate, rateDate: fxDate } = useFxRate();
   const c = dict.cars;
   const f = c.form;
   const [form, setForm] = useState<CarFormState>(initialValues || initialCarForm);
@@ -691,14 +701,55 @@ export default function CarListingForm({
                 placeholder="58 000"
               />
             </CarFormField>
-            <CarFormField label={f.priceLabel}>
-              <CarFormattedNumberInput
-                value={form.pricePln}
-                onChange={(digits) => setField("pricePln", digits)}
-                className={`${carFieldInputClass} ${highlightClass(isHighlighted("pricePln"))}`}
-                placeholder="319 000"
-                required
-              />
+            <CarFormField label={f.priceLabel.replace("(PLN)", "").trim() || "Cena"}>
+              <div className="mb-3 flex gap-2">
+                {(["PLN", "EUR"] as const).map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => {
+                      const from = form.priceCurrency === "EUR" ? "EUR" : "PLN";
+                      if (from === code) return;
+                      const amount = Number(String(form.pricePln).replace(/\s/g, "").replace(",", "."));
+                      const next =
+                        Number.isFinite(amount) && amount > 0
+                          ? convertBetweenCurrencies(amount, from, code, fxRate)
+                          : amount;
+                      setForm((prev) => ({
+                        ...prev,
+                        priceCurrency: code,
+                        pricePln:
+                          Number.isFinite(next) && next > 0 ? String(Math.round(next)) : prev.pricePln,
+                      }));
+                    }}
+                    className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+                      form.priceCurrency === code
+                        ? "bg-sky-500 text-white"
+                        : "bg-black/5 text-slate-600 dark:bg-white/10 dark:text-slate-200"
+                    }`}
+                  >
+                    {code}
+                  </button>
+                ))}
+              </div>
+              <div className="relative">
+                <CarFormattedNumberInput
+                  value={form.pricePln}
+                  onChange={(digits) => setField("pricePln", digits)}
+                  className={`${carFieldInputClass} ${highlightClass(isHighlighted("pricePln"))}`}
+                  placeholder="319 000"
+                  required
+                />
+                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  {form.priceCurrency}
+                </div>
+              </div>
+              {Number(form.pricePln) > 0 && formatApproxLine(Number(form.pricePln), form.priceCurrency, fxRate) ? (
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  {formatApproxLine(Number(form.pricePln), form.priceCurrency, fxRate)}
+                  {fxDate ? ` · NBP ${fxDate}` : ""}
+                </p>
+              ) : null}
             </CarFormField>
           </div>
         </CarFormSection>

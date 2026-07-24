@@ -18,6 +18,9 @@ export type CarFormPayload = {
   engineCapacity?: string;
   trimVersion?: string;
   doorCount?: number | null;
+  price: number;
+  priceAmount?: number;
+  priceCurrency?: 'PLN' | 'EUR';
   pricePln: number;
   city: string;
   cityLat?: number | null;

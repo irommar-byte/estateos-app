@@ -22,7 +22,8 @@ import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { useAuthStore } from '../store/useAuthStore';
-import { fetchCarsCatalog, fetchMyCars, formatCarPrice, type CarListing } from '../services/carsApi';
+import { fetchCarsCatalog, fetchMyCars, type CarListing } from '../services/carsApi';
+import { useMoneyContext } from '../money/useMoneyContext';
 import CarFavoriteButton from '../components/cars/CarFavoriteButton';
 import CarAuthGateModal from '../components/cars/CarAuthGateModal';
 import CatalogSearchFilterButton from '../components/CatalogSearchFilterButton';
@@ -134,6 +135,11 @@ export default function CarsCatalogScreen({
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
+  const { formatOffer } = useMoneyContext();
+  const formatCarMoney = useCallback(
+    (car: unknown) => formatOffer(car),
+    [formatOffer],
+  );
   const [cars, setCars] = useState<CarListing[]>([]);
   const [myCars, setMyCars] = useState<CarListing[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
@@ -227,7 +233,7 @@ export default function CarsCatalogScreen({
       title: car.title || `${car.make} ${car.model}`,
       subtitle: [car.year, car.city].filter(Boolean).join(' · ') || undefined,
       imageUrl: car.imageUrl,
-      priceLabel: formatCarPrice(car.pricePln),
+      priceLabel: formatCarMoney(car).primary,
       vehicleType: car.vehicleType,
       cityLat: car.cityLat,
       cityLng: car.cityLng,
@@ -255,7 +261,7 @@ export default function CarsCatalogScreen({
         mineEmpty: 'Twoje ogłoszenia aut pojawią się tutaj po wystawieniu.',
       },
     });
-  }, [favoriteCars, myCars, cars, userLocation, t]);
+  }, [favoriteCars, myCars, cars, userLocation, t, formatCarMoney]);
 
   const featuredSpotlightCars = useMemo(
     () =>
@@ -738,7 +744,7 @@ export default function CarsCatalogScreen({
                 title={t('radar.home.galleryFeaturedSectionTitle')}
                 lead={t('radar.home.galleryFeaturedLead')}
                 badgeLabel={t('radar.home.galleryFeaturedBadge')}
-                formatPrice={(raw) => ({ primary: formatCarPrice(Number(raw?.pricePln || 0)) })}
+                formatPrice={(raw) => formatCarMoney(raw)}
                 onPressOffer={(item) => openCarDetail(item.raw as unknown as CarListing)}
                 autoRotateEnabled={featuredSpotlightVisible}
                 horizontalMargin={0}
@@ -845,7 +851,7 @@ export default function CarsCatalogScreen({
                       {car.exteriorColor ? ` · ${car.exteriorColor}` : ''}
                     </Text>
                     <Text style={[styles.cardPrice, cardLayout.compact && styles.cardPriceCompact]}>
-                      {formatCarPrice(car.pricePln)}
+                      {formatCarMoney(car).primary}
                     </Text>
                   </View>
                 </Pressable>
@@ -898,15 +904,22 @@ export default function CarsCatalogScreen({
           />
         </View>
 
-        <View style={styles.topBarCenter}>{centerChrome}</View>
+        <View
+          style={[
+            styles.topBarCenter,
+            browseMode === 'GALLERY' && styles.topBarCenterGallery,
+          ]}
+        >
+          {centerChrome}
+        </View>
 
-        <View style={{ flexShrink: 0, zIndex: 5 }}>
+        <View style={styles.topBarSearchSlot}>
           <CatalogSearchFilterButton
             isDark={isDark}
             accent={CAR_ACCENT}
             label={t('radar.home.searchCtaLabel')}
-            hint={isCarRadarActive ? t('radar.home.radarBrand') : t('radar.home.searchCtaHintCars')}
-            active={hasAdvancedFiltersActive || isCarRadarActive}
+            hint={t('radar.home.searchCtaHint')}
+            active={hasAdvancedFiltersActive}
             lightChrome={isGalleryLightChrome}
             accessibilityLabel={t('radar.home.advancedSearch')}
             onPress={() => {
@@ -1081,7 +1094,7 @@ export default function CarsCatalogScreen({
                           style={[styles.mapOfferPrice, { color: isDark ? '#FFF' : '#1C1C1E' }]}
                           numberOfLines={1}
                         >
-                          {formatCarPrice(item.pricePln)}
+                          {formatCarMoney(item).primary}
                         </Text>
                         <CarFavoriteButton
                           carId={item.id}
@@ -1308,7 +1321,7 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
       flexDirection: 'row',
       alignItems: 'flex-start',
       justifyContent: 'space-between',
-      gap: 6,
+      gap: 8,
     },
     topBarSideSlot: {
       width: 50,
@@ -1323,6 +1336,17 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
       maxWidth: 168,
       alignSelf: 'center',
       zIndex: 1,
+      overflow: 'hidden',
+    },
+    topBarCenterGallery: {
+      maxWidth: 196,
+      paddingTop: 2,
+    },
+    topBarSearchSlot: {
+      width: 112,
+      flexGrow: 0,
+      flexShrink: 0,
+      zIndex: 5,
     },
     filterButtonWrap: {
       width: 50,

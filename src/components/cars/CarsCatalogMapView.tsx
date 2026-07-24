@@ -7,7 +7,9 @@ import React, {
 } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import { formatMarkerPriceCompact } from '../../money/format';
+import { formatMarkerPriceCompact, resolveOfferDisplayAmount } from '../../money/format';
+import { resolveOfferListingPrice } from '../../money/offerPrice';
+import { useMoneyContext } from '../../money/useMoneyContext';
 import type { CarListing } from '../../services/carsApi';
 import {
   fitMapCoordinatesAboveOverlay,
@@ -72,6 +74,7 @@ const CarsCatalogMapView = forwardRef<CarsCatalogMapViewHandle, Props>(function 
   ref,
 ) {
   const mapRef = useRef<MapView | null>(null);
+  const { preference, rate } = useMoneyContext();
   const mappableCars = useMemo(
     () => cars.filter((car) => isValidCoord(car.cityLat, car.cityLng)),
     [cars],
@@ -114,7 +117,15 @@ const CarsCatalogMapView = forwardRef<CarsCatalogMapViewHandle, Props>(function 
       >
         {mappableCars.map((car) => {
           const selected = selectedCarId === car.id;
-          const label = formatMarkerPriceCompact(car.pricePln, 'PLN');
+          const listing = resolveOfferListingPrice(car, rate);
+          const disp = resolveOfferDisplayAmount({
+            amount: listing.amount,
+            listingCurrency: listing.currency,
+            pricePln: listing.plnAmount,
+            displayPreference: preference,
+            rate,
+          });
+          const label = formatMarkerPriceCompact(disp.displayAmount, disp.displayCurrency);
           return (
             <Marker
               key={car.id}

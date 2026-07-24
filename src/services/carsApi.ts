@@ -19,7 +19,13 @@ export type CarListing = {
   engineCapacity?: string;
   trimVersion?: string;
   doorCount?: number | null;
+  /** Kwota w walucie ogłoszenia. */
+  price?: number;
+  priceAmount?: number;
+  priceCurrency?: 'PLN' | 'EUR' | string;
   pricePln: number;
+  exchangeRateUsed?: number | null;
+  exchangeRateDate?: string | null;
   city: string;
   cityLat?: number | null;
   cityLng?: number | null;

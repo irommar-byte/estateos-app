@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
-import { fetchCarsByUserId, formatCarPrice, type CarListing } from '../../services/carsApi';
+import { fetchCarsByUserId, type CarListing } from '../../services/carsApi';
+import { useMoneyContext } from '../../money/useMoneyContext';
 import { useCarScreenTheme, type CarScreenColors, carCardElevation } from '../../theme/carScreenTheme';
 
 type SellerCarsSectionProps = {
@@ -13,6 +14,7 @@ type SellerCarsSectionProps = {
 export default function SellerCarsSection({ userId, excludeCarId }: SellerCarsSectionProps) {
   const navigation = useNavigation<any>();
   const { colors, isDark } = useCarScreenTheme();
+  const { formatOffer } = useMoneyContext();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [cars, setCars] = useState<CarListing[]>([]);
 
@@ -50,7 +52,7 @@ export default function SellerCarsSection({ userId, excludeCarId }: SellerCarsSe
             <Text style={styles.cardMeta}>
               {car.year} · {car.city}
             </Text>
-            <Text style={styles.cardPrice}>{formatCarPrice(car.pricePln)}</Text>
+            <Text style={styles.cardPrice}>{formatOffer(car).primary}</Text>
           </Pressable>
         ))}
       </ScrollView>

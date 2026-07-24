@@ -187,9 +187,9 @@ const styles = StyleSheet.create({
   outer: {
     alignSelf: 'center',
     width: '100%',
-    minWidth: 148,
+    minWidth: 132,
     maxWidth: 196,
-    flexShrink: 0,
+    flexShrink: 1,
   },
   outerStatus: {
     minWidth: 168,

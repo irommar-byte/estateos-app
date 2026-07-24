@@ -88,7 +88,7 @@ import {
 } from '../utils/mobileOfferUpdate';
 import { promoteMobileOfferListing } from '../utils/mobileOfferPromote';
 import { promoteMobileCarListing } from '../utils/mobileCarPromote';
-import { fetchMyCars, formatCarPrice } from '../services/carsApi';
+import { fetchMyCars } from '../services/carsApi';
 import { isOfferPromotionActive } from '../utils/listingPromotion';
 import { formatOfferLocationLine } from '../constants/locationEcosystem';
 import { useMoneyContext } from '../money/useMoneyContext';
@@ -1336,7 +1336,7 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
           <View style={{ flex: 1, justifyContent: 'center' }}>
             <Text style={[styles.offerTitle, { color: theme.text, marginBottom: 4 }]} numberOfLines={2}>{item.title}</Text>
             <Text style={styles.offerSubtitle} numberOfLines={2}>
-              {formatCarPrice(Number(item.pricePln || 0))} • {item.city || '—'} • {item.make} {item.model}
+              {formatOffer(item).primary} • {item.city || '—'} • {item.make} {item.model}
             </Text>
           </View>
         </View>
@@ -1373,7 +1373,7 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
           <View style={{ flex: 1, justifyContent: 'center' }}>
             <Text style={{ fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 4 }} numberOfLines={2}>{selectedCar.title}</Text>
             <Text style={{ fontSize: 15, fontWeight: '600', color: theme.subtitle }}>
-              {formatCarPrice(Number(selectedCar.pricePln || 0))} • {selectedCar.make} {selectedCar.model}
+              {formatOffer(selectedCar).primary} • {selectedCar.make} {selectedCar.model}
             </Text>
           </View>
         </View>

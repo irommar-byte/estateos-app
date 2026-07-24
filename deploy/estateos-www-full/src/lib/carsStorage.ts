@@ -19,7 +19,12 @@ export type CarListingRecord = {
   engineCapacity: string;
   trimVersion: string;
   doorCount: number | null;
+  /** Kwota w walucie ogłoszenia (PLN|EUR). */
+  price: number;
+  priceCurrency: 'PLN' | 'EUR';
   pricePln: number;
+  exchangeRateUsed: number | null;
+  exchangeRateDate: string | null;
   city: string;
   imageUrl: string;
   images: string;
@@ -139,7 +144,16 @@ function mapRow(row: any): CarListingRecord {
     engineCapacity: toStringValue(row.engineCapacity),
     trimVersion: toStringValue(row.trimVersion),
     doorCount: row.doorCount == null ? null : toNumber(row.doorCount),
+    price: toNumber(row.price != null && row.price !== '' ? row.price : row.pricePln),
+    priceCurrency: String(row.priceCurrency || 'PLN').trim().toUpperCase() === 'EUR' ? 'EUR' : 'PLN',
     pricePln: toNumber(row.pricePln),
+    exchangeRateUsed:
+      row.exchangeRateUsed == null || row.exchangeRateUsed === ''
+        ? null
+        : toNumber(row.exchangeRateUsed),
+    exchangeRateDate: row.exchangeRateDate
+      ? new Date(row.exchangeRateDate).toISOString().slice(0, 10)
+      : null,
     city: toStringValue(row.city),
     imageUrl: images[0] || imageUrl,
     images: serializeImages(images, imageUrl),
@@ -160,6 +174,10 @@ function mapRow(row: any): CarListingRecord {
 }
 
 const ALLOWED_CAR_LISTING_COLUMNS = new Set([
+  "price",
+  "priceCurrency",
+  "exchangeRateUsed",
+  "exchangeRateDate",
   "generation",
   "enginePower",
   "engineCapacity",
@@ -220,6 +238,16 @@ export async function ensureCarsStorage() {
   await ensureCarListingColumn("promotedUntil", "DATETIME(3) NULL");
   await ensureCarListingColumn("exteriorColor", "VARCHAR(80) NULL");
   await ensureCarListingColumn("vehicleType", "VARCHAR(32) NULL DEFAULT 'car'");
+  await ensureCarListingColumn("price", "DECIMAL(12,2) NULL");
+  await ensureCarListingColumn("priceCurrency", "VARCHAR(8) NOT NULL DEFAULT 'PLN'");
+  await ensureCarListingColumn("exchangeRateUsed", "DOUBLE NULL");
+  await ensureCarListingColumn("exchangeRateDate", "DATETIME(3) NULL");
+  await prisma.$executeRawUnsafe(`
+    UPDATE CarListing
+    SET price = COALESCE(NULLIF(price, 0), pricePln),
+        priceCurrency = COALESCE(NULLIF(priceCurrency, ''), 'PLN')
+    WHERE price IS NULL OR price = 0 OR priceCurrency IS NULL OR priceCurrency = ''
+  `);
   await prisma.$executeRawUnsafe(SEED_SQL);
 }
 
@@ -268,7 +296,11 @@ export async function createCarListing(input: {
   engineCapacity?: string;
   trimVersion?: string;
   doorCount?: number | null;
+  price: number;
+  priceCurrency?: 'PLN' | 'EUR';
   pricePln: number;
+  exchangeRateUsed?: number | null;
+  exchangeRateDate?: Date | string | null;
   city: string;
   imageUrl?: string;
   images?: string[];
@@ -293,10 +325,11 @@ export async function createCarListing(input: {
     `
       INSERT INTO CarListing
       (userId, title, make, model, year, mileageKm, fuelType, transmission, bodyType, vehicleType, exteriorColor,
-       generation, enginePower, engineCapacity, trimVersion, doorCount, pricePln, city,
+       generation, enginePower, engineCapacity, trimVersion, doorCount, price, priceCurrency, pricePln,
+       exchangeRateUsed, exchangeRateDate, city,
        imageUrl, images, description, cityLat, cityLng, localityCountry, vin, registrationNumber,
        firstRegistrationDate, insuranceValidUntil, restrictVehicleDocs, showContactPhone)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     input.userId,
     input.title,
@@ -314,7 +347,15 @@ export async function createCarListing(input: {
     input.engineCapacity ?? "",
     input.trimVersion ?? "",
     input.doorCount ?? null,
+    input.price,
+    String(input.priceCurrency || "PLN").toUpperCase() === "EUR" ? "EUR" : "PLN",
     input.pricePln,
+    input.exchangeRateUsed ?? null,
+    input.exchangeRateDate
+      ? (input.exchangeRateDate instanceof Date
+          ? input.exchangeRateDate
+          : new Date(String(input.exchangeRateDate)))
+      : null,
     input.city,
     coverImage,
     imagesJson,
@@ -352,7 +393,11 @@ export type CarListingUpdateInput = {
   engineCapacity?: string;
   trimVersion?: string;
   doorCount?: number | null;
+  price: number;
+  priceCurrency?: 'PLN' | 'EUR';
   pricePln: number;
+  exchangeRateUsed?: number | null;
+  exchangeRateDate?: Date | string | null;
   city: string;
   imageUrl?: string;
   images?: string[];
@@ -388,7 +433,8 @@ export async function updateCarListing(
       UPDATE CarListing
       SET title = ?, make = ?, model = ?, year = ?, mileageKm = ?, fuelType = ?,
           transmission = ?, bodyType = ?, vehicleType = ?, exteriorColor = ?, generation = ?, enginePower = ?, engineCapacity = ?,
-          trimVersion = ?, doorCount = ?, pricePln = ?, city = ?, imageUrl = ?, images = ?,
+          trimVersion = ?, doorCount = ?, price = ?, priceCurrency = ?, pricePln = ?,
+          exchangeRateUsed = ?, exchangeRateDate = ?, city = ?, imageUrl = ?, images = ?,
           description = ?, cityLat = ?, cityLng = ?, localityCountry = ?, vin = ?,
           registrationNumber = ?, firstRegistrationDate = ?, insuranceValidUntil = ?,
           restrictVehicleDocs = ?, showContactPhone = ?,
@@ -410,7 +456,15 @@ export async function updateCarListing(
     input.engineCapacity ?? "",
     input.trimVersion ?? "",
     input.doorCount ?? null,
+    input.price,
+    String(input.priceCurrency || "PLN").toUpperCase() === "EUR" ? "EUR" : "PLN",
     input.pricePln,
+    input.exchangeRateUsed ?? null,
+    input.exchangeRateDate
+      ? (input.exchangeRateDate instanceof Date
+          ? input.exchangeRateDate
+          : new Date(String(input.exchangeRateDate)))
+      : null,
     input.city,
     coverImage,
     imagesJson,

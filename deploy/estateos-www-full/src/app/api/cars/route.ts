@@ -6,6 +6,8 @@ import { sanitizeCarListingForViewer } from "@/lib/carVehicleDocPrivacy";
 import { isPromotionActive } from "@/lib/listingPromotion";
 import { rehostRemoteCarImages } from "@/lib/rehostRemoteCarImages";
 import { resolveUploaderUserId } from "@/lib/upload/resolveUploader";
+import { resolveOfferPriceFromBody } from "@/lib/money/offerPrice.server";
+import { enrichOfferMoneyFields } from "@/lib/money/offerPrice";
 
 
 async function ensureCarEngagementTable() {
@@ -98,7 +100,9 @@ function validateBody(raw: Record<string, unknown>): CarListingUpdateInput & { u
     engineCapacity: String(raw?.engineCapacity || "").trim(),
     trimVersion: String(raw?.trimVersion || "").trim(),
     doorCount,
-    pricePln: toSafeNumber(raw?.pricePln, 0),
+    price: toSafeNumber(raw?.price ?? raw?.priceAmount ?? raw?.pricePln, 0),
+    priceCurrency: (String(raw?.priceCurrency || 'PLN').toUpperCase() === 'EUR' ? 'EUR' : 'PLN') as 'PLN' | 'EUR',
+    pricePln: toSafeNumber(raw?.pricePln ?? raw?.price ?? raw?.priceAmount, 0),
     city: String(raw?.city || "").trim() || "Polska",
     imageUrl: String(raw?.imageUrl || "").trim(),
     images: Array.isArray(raw?.images)
@@ -132,7 +136,12 @@ export async function GET(req: Request) {
     const mine = await listCarsByUser(viewerUserId, 100);
     const engagement = await loadCarEngagement(mine.map((c) => c.id));
     return NextResponse.json(
-      mine.map((listing) => withEngagement(withFeaturedFlag(listing), engagement)),
+      mine.map((listing) =>
+        withEngagement(
+          withFeaturedFlag(enrichOfferMoneyFields(listing as unknown as Record<string, unknown>) as any),
+          engagement,
+        ),
+      ),
       { status: 200 },
     );
   }
@@ -142,7 +151,14 @@ export async function GET(req: Request) {
     const engagement = await loadCarEngagement(sellerCars.map((c) => c.id));
     return NextResponse.json(
       sellerCars.map((listing) =>
-        withEngagement(withFeaturedFlag(sanitizeCarListingForViewer(listing)), engagement),
+        withEngagement(
+          withFeaturedFlag(
+            enrichOfferMoneyFields(
+              sanitizeCarListingForViewer(listing) as unknown as Record<string, unknown>,
+            ) as any,
+          ),
+          engagement,
+        ),
       ),
       { status: 200 },
     );
@@ -151,7 +167,14 @@ export async function GET(req: Request) {
   const engagement = await loadCarEngagement(all.map((c) => c.id));
   return NextResponse.json(
     all.map((listing) =>
-      withEngagement(withFeaturedFlag(sanitizeCarListingForViewer(listing)), engagement),
+      withEngagement(
+        withFeaturedFlag(
+          enrichOfferMoneyFields(
+            sanitizeCarListingForViewer(listing) as unknown as Record<string, unknown>,
+          ) as any,
+        ),
+        engagement,
+      ),
     ),
     { status: 200 },
   );
@@ -167,7 +190,9 @@ export async function POST(req: Request) {
     }
     const body = (await req.json()) as Record<string, unknown>;
     const payload = validateBody(body);
-    if (!payload.title || !payload.make || !payload.model || payload.pricePln <= 0) {
+    const hasPriceHint =
+      toSafeNumber(body.price ?? body.priceAmount ?? body.pricePln ?? payload.pricePln, 0) > 0;
+    if (!payload.title || !payload.make || !payload.model || !hasPriceHint) {
       return NextResponse.json(
         { error: "Uzupełnij tytuł, markę, model i cenę, aby opublikować ogłoszenie." },
         { status: 400 },
@@ -191,11 +216,27 @@ export async function POST(req: Request) {
     }
 
     try {
+      const money = await resolveOfferPriceFromBody({
+        price: body.price ?? body.priceAmount ?? body.pricePln ?? payload.pricePln,
+        priceAmount: body.priceAmount ?? body.price ?? body.pricePln ?? payload.pricePln,
+        priceCurrency: body.priceCurrency,
+      });
+      if (money.price <= 0 || money.pricePln <= 0) {
+        return NextResponse.json(
+          { error: "Uzupełnij tytuł, markę, model i cenę, aby opublikować ogłoszenie." },
+          { status: 400 },
+        );
+      }
       const created = await createCarListing({
         ...payload,
         userId,
         images: hostedImages,
         imageUrl: hostedImages[0] || payload.imageUrl,
+        price: money.price,
+        priceCurrency: money.priceCurrency,
+        pricePln: money.pricePln,
+        exchangeRateUsed: money.exchangeRateUsed,
+        exchangeRateDate: money.exchangeRateDate,
       });
       try {
         const { carRadarService } = await import("@/lib/services/carRadar.service");
@@ -205,7 +246,7 @@ export async function POST(req: Request) {
       } catch (err) {
         console.warn("[CAR_RADAR] notify import failed", err);
       }
-      return NextResponse.json({ success: true, listing: created }, { status: 201 });
+      return NextResponse.json({ success: true, listing: enrichOfferMoneyFields(created as unknown as Record<string, unknown>) }, { status: 201 });
     } catch (createError) {
       console.error("cars create", createError);
       return NextResponse.json(

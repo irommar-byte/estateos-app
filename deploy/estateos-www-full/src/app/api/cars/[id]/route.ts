@@ -4,6 +4,8 @@ import type { CarListingUpdateInput } from "@/lib/carsStorage";
 import { normalizeCarExteriorColor } from "@/lib/carColors";
 import { sanitizeCarListingForViewer } from "@/lib/carVehicleDocPrivacy";
 import { resolveUploaderUserId } from "@/lib/upload/resolveUploader";
+import { resolveOfferPriceFromBody } from "@/lib/money/offerPrice.server";
+import { enrichOfferMoneyFields } from "@/lib/money/offerPrice";
 
 function toSafeNumber(v: unknown, fallback: number): number {
   const n = Number(v);
@@ -40,7 +42,9 @@ function validateBody(raw: Record<string, unknown>): CarListingUpdateInput {
     engineCapacity: String(raw?.engineCapacity || "").trim(),
     trimVersion: String(raw?.trimVersion || "").trim(),
     doorCount,
-    pricePln: toSafeNumber(raw?.pricePln, 0),
+    price: toSafeNumber(raw?.price ?? raw?.priceAmount ?? raw?.pricePln, 0),
+    priceCurrency: (String(raw?.priceCurrency || 'PLN').toUpperCase() === 'EUR' ? 'EUR' : 'PLN') as 'PLN' | 'EUR',
+    pricePln: toSafeNumber(raw?.pricePln ?? raw?.price ?? raw?.priceAmount, 0),
     city: String(raw?.city || "").trim() || "Polska",
     imageUrl: String(raw?.imageUrl || "").trim(),
     images: Array.isArray(raw?.images)
@@ -72,7 +76,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ error: "Car listing not found" }, { status: 404 });
   }
   const viewerUserId = await resolveUploaderUserId(req);
-  return NextResponse.json(sanitizeCarListingForViewer(listing, viewerUserId), { status: 200 });
+  return NextResponse.json(
+    enrichOfferMoneyFields(
+      sanitizeCarListingForViewer(listing, viewerUserId) as unknown as Record<string, unknown>,
+    ),
+    { status: 200 },
+  );
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -90,16 +99,31 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const body = (await req.json()) as Record<string, unknown>;
     const payload = validateBody(body);
-    if (!payload.title || !payload.make || !payload.model || payload.pricePln <= 0) {
+    const money = await resolveOfferPriceFromBody({
+      price: body.price ?? body.priceAmount ?? body.pricePln ?? payload.pricePln,
+      priceAmount: body.priceAmount ?? body.price ?? body.pricePln ?? payload.pricePln,
+      priceCurrency: body.priceCurrency,
+    });
+    if (!payload.title || !payload.make || !payload.model || money.price <= 0 || money.pricePln <= 0) {
       return NextResponse.json({ error: "Invalid car listing payload" }, { status: 400 });
     }
 
-    const updated = await updateCarListing(carId, userId, payload);
+    const updated = await updateCarListing(carId, userId, {
+      ...payload,
+      price: money.price,
+      priceCurrency: money.priceCurrency,
+      pricePln: money.pricePln,
+      exchangeRateUsed: money.exchangeRateUsed,
+      exchangeRateDate: money.exchangeRateDate,
+    });
     if (!updated) {
       return NextResponse.json({ error: "Ogłoszenie nie istnieje lub brak uprawnień." }, { status: 403 });
     }
 
-    return NextResponse.json({ success: true, listing: updated }, { status: 200 });
+    return NextResponse.json({
+      success: true,
+      listing: enrichOfferMoneyFields(updated as unknown as Record<string, unknown>),
+    }, { status: 200 });
   } catch {
     return NextResponse.json({ error: "Failed to update car listing" }, { status: 500 });
   }

@@ -57,6 +57,8 @@ export default function CatalogSearchFilterButton({
             style={[styles.label, { color: isDark ? '#FFF' : '#0F172A' }]}
             numberOfLines={1}
             allowFontScaling={false}
+            adjustsFontSizeToFit
+            minimumFontScale={0.78}
           >
             {label}
           </Text>
@@ -65,6 +67,8 @@ export default function CatalogSearchFilterButton({
               style={[styles.hint, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}
               numberOfLines={1}
               allowFontScaling={false}
+              adjustsFontSizeToFit
+              minimumFontScale={0.78}
             >
               {hint}
             </Text>
@@ -78,10 +82,11 @@ export default function CatalogSearchFilterButton({
 
 const styles = StyleSheet.create({
   wrap: {
-    width: 92,
+    width: 112,
     height: 50,
     borderRadius: 25,
     overflow: 'hidden',
+    flexGrow: 0,
     flexShrink: 0,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.22)',
@@ -100,8 +105,8 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 7,
-    gap: 5,
+    paddingHorizontal: 8,
+    gap: 6,
     borderRadius: 25,
   },
   glassLight: {
@@ -113,18 +118,20 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   copy: {
     flex: 1,
     minWidth: 0,
+    flexShrink: 1,
   },
   label: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: -0.2,
   },
   hint: {
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: '600',
     marginTop: 1,
   },
@@ -132,6 +139,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    marginRight: 2,
+    marginRight: 1,
+    flexShrink: 0,
   },
 });

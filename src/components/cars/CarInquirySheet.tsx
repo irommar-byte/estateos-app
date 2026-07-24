@@ -26,7 +26,6 @@ import {
   parseStoredPhoneToLine,
 } from '../../utils/phoneRegions';
 import { submitCarInquiry } from '../../services/carsInquiry';
-import { formatCarPrice } from '../../services/carsApi';
 import { useCarScreenTheme, type CarScreenColors } from '../../theme/carScreenTheme';
 
 const VIEWING_OPTIONS = [
@@ -45,7 +44,7 @@ type CarInquirySheetProps = {
   make: string;
   model: string;
   year: number;
-  pricePln: number;
+  priceLabel: string;
   city: string;
   onSuccess: (threadId: number, peerUserId: number) => void;
 };
@@ -59,7 +58,7 @@ export default function CarInquirySheet({
   make,
   model,
   year,
-  pricePln,
+  priceLabel,
   city,
   onSuccess,
 }: CarInquirySheetProps) {
@@ -125,7 +124,7 @@ export default function CarInquirySheet({
           <Text style={styles.summary}>
             {make} {model} · {year} · {city}
           </Text>
-          <Text style={styles.price}>{formatCarPrice(pricePln)}</Text>
+          <Text style={styles.price}>{priceLabel}</Text>
 
           <Text style={styles.label}>Termin oględzin</Text>
           <View style={styles.chips}>

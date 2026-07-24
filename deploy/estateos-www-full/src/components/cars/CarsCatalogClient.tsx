@@ -28,11 +28,11 @@ import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCar
 import InfiniteHorizontalRail from "@/components/catalog/InfiniteHorizontalRail";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import { useLocale } from "@/contexts/LocaleContext";
+import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import type { EstateOsCarListing } from "@/lib/carsCatalog";
 import { isCarFavoriteId, loadCarFavoriteIds } from "@/lib/carFavoritesStorage";
 import {
   carImageSrc,
-  formatCarPrice,
   formatMileage,
   sortCarListings,
   type CarSortKey,
@@ -116,6 +116,7 @@ function railTitleByType(type: string, cat: ReturnType<typeof useLocale>["dict"]
 
 export default function CarsCatalogClient() {
   const { dict, locale } = useLocale();
+  const { formatOffer } = useFormatOfferPrice();
   const cat = dict.cars.catalog;
   const sortOptions = useMemo(() => getCarSortOptions(locale), [locale]);
   const { location, denied, pending, request } = useUserLocation();
@@ -358,7 +359,7 @@ export default function CarsCatalogClient() {
         href: `/cars/${car.id}`,
         title: car.title,
         subtitle: `${car.make} · ${car.model} · ${car.year} · ${car.city}`,
-        priceLabel: formatCarPrice(car.pricePln, locale),
+        priceLabel: formatOffer(car).primary,
         imageUrl: carImageSrc(car.imageUrl),
         badge: cat.featuredBadge,
       })),
@@ -458,7 +459,7 @@ export default function CarsCatalogClient() {
           </p>
           <h3 className="line-clamp-2 text-base font-semibold">{car.title}</h3>
           <p className="text-sm text-[var(--eos-muted)]">{car.city} · {formatMileage(car.mileageKm, locale)}</p>
-          <p className="text-base font-bold text-sky-300">{formatCarPrice(car.pricePln, locale)}</p>
+          <p className="text-base font-bold text-sky-300">{formatOffer(car).primary}</p>
         </div>
       </Link>
     );
@@ -878,7 +879,7 @@ export default function CarsCatalogClient() {
                           {car.make} · {car.model} · {car.year} · {car.city}
                         </p>
                         <p className="mt-2 text-base font-bold tabular-nums text-sky-600 dark:text-sky-300">
-                          {formatCarPrice(car.pricePln, locale)}
+                          {formatOffer(car).primary}
                         </p>
                         {car.featured ? (
                           <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-500">
@@ -971,7 +972,7 @@ export default function CarsCatalogClient() {
                   <p className="text-sm text-[var(--eos-muted)]">
                     {car.city} · {formatMileage(car.mileageKm, locale)} · {car.fuelType}
                   </p>
-                  <p className="text-lg font-bold text-sky-300">{formatCarPrice(car.pricePln, locale)}</p>
+                  <p className="text-lg font-bold text-sky-300">{formatOffer(car).primary}</p>
                 </div>
               </Link>
             ))}
