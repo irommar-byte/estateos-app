@@ -41,11 +41,14 @@ export function buildContactMessagePushPayload(params: {
     data: {
       target: 'contact',
       targetType: 'CONTACT',
+      /** ID wątku Contact w DB (nie mylić z APNs thread-id). */
       threadId: String(params.threadId),
       peerUserId: String(params.senderUserId),
       peerName: params.senderName,
       notificationType: 'CONTACT_MESSAGE',
+      /** APNs grouping key — NSE ustawia content.threadIdentifier. */
       threadIdentifier,
+      iosThreadId: threadIdentifier,
     },
   };
 }
