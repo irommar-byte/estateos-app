@@ -44,6 +44,7 @@ type Props = {
 
 const DEFAULT_PAGE_SIZE = 12;
 const LOAD_MORE_THRESHOLD_PX = 420;
+const CARD_RADIUS = 18;
 
 function hexToRgba(hex: string, alpha: number): string {
   const raw = hex.replace('#', '');
@@ -56,7 +57,7 @@ function hexToRgba(hex: string, alpha: number): string {
 
 /**
  * Poziomy pasek jak WWW InfiniteHorizontalRail — doładowuje karty przy przewijaniu w prawo.
- * Panel 3D z tłem działu (accent).
+ * Panel premium: delikatny tint działu, bez pionowej kreski i bez „kwadratowego” bleedu pod kartami.
  */
 export default function CatalogHorizontalRail({
   title,
@@ -101,31 +102,41 @@ export default function CatalogHorizontalRail({
     [canLoadMore, loadMore],
   );
 
+  // Bardzo lekki tint — karty nie siedzą na „płycie” koloru, więc rogi wyglądają okrągło.
   const panelBg = isDark
-    ? [hexToRgba(accent, 0.18), hexToRgba(accent, 0.06), 'rgba(18,18,20,0.92)']
-    : [hexToRgba(accent, 0.16), hexToRgba(accent, 0.05), 'rgba(255,255,255,0.94)'];
+    ? [hexToRgba(accent, 0.1), 'rgba(22,22,24,0.96)', 'rgba(18,18,20,0.98)']
+    : [hexToRgba(accent, 0.07), 'rgba(255,255,255,0.98)', 'rgba(248,250,252,0.96)'];
 
   return (
     <View
       style={[
         styles.panel,
         {
-          borderColor: isDark ? hexToRgba(accent, 0.35) : hexToRgba(accent, 0.28),
-          shadowColor: accent,
+          borderColor: isDark ? hexToRgba(accent, 0.22) : hexToRgba(accent, 0.14),
+          shadowColor: isDark ? '#000' : accent,
         },
       ]}
     >
-      <LinearGradient colors={panelBg as [string, string, ...string[]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-      <View style={[styles.panelSheen, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.55)' }]} />
-      <View style={[styles.accentRail, { backgroundColor: accent }]} />
+      <LinearGradient
+        colors={panelBg as [string, string, ...string[]]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <View
+        style={[
+          styles.panelSheen,
+          { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)' },
+        ]}
+      />
 
       <View style={styles.head}>
         <View
           style={[
             styles.iconBubble,
             {
-              backgroundColor: hexToRgba(accent, isDark ? 0.28 : 0.18),
-              borderColor: hexToRgba(accent, 0.45),
+              backgroundColor: hexToRgba(accent, isDark ? 0.28 : 0.14),
+              borderColor: hexToRgba(accent, 0.4),
               shadowColor: accent,
             },
           ]}
@@ -141,7 +152,7 @@ export default function CatalogHorizontalRail({
           </Text>
         </View>
         {items.length > 0 ? (
-          <View style={[styles.countPill, { backgroundColor: hexToRgba(accent, isDark ? 0.28 : 0.16) }]}>
+          <View style={[styles.countPill, { backgroundColor: hexToRgba(accent, isDark ? 0.28 : 0.14) }]}>
             <Text style={[styles.count, { color: accent }]}>{items.length}</Text>
           </View>
         ) : null}
@@ -154,7 +165,7 @@ export default function CatalogHorizontalRail({
               styles.empty,
               {
                 borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
-                backgroundColor: isDark ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.72)',
+                backgroundColor: isDark ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.86)',
               },
             ]}
           >
@@ -177,36 +188,42 @@ export default function CatalogHorizontalRail({
               onPress={() => onPressItem(item.id)}
               haptic="selection"
               pressScale={0.97}
-              style={[
-                styles.card,
-                {
-                  backgroundColor: isDark ? 'rgba(28,28,30,0.96)' : '#FFFFFF',
-                  borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.06)',
-                  shadowColor: isDark ? '#000' : accent,
-                },
-              ]}
+              style={styles.cardPress}
             >
-              {item.imageUrl ? (
-                <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" />
-              ) : (
-                <View style={[styles.image, styles.imageFallback, { backgroundColor: hexToRgba(accent, 0.14) }]}>
-                  <Ionicons name={icon} size={22} color={accent} />
+              <View
+                style={[
+                  styles.card,
+                  {
+                    backgroundColor: isDark ? 'rgba(28,28,30,1)' : '#FFFFFF',
+                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.06)',
+                    shadowColor: isDark ? '#000' : '#0F172A',
+                  },
+                ]}
+              >
+                <View style={styles.imageClip}>
+                  {item.imageUrl ? (
+                    <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" />
+                  ) : (
+                    <View style={[styles.image, styles.imageFallback, { backgroundColor: hexToRgba(accent, 0.12) }]}>
+                      <Ionicons name={icon} size={22} color={accent} />
+                    </View>
+                  )}
                 </View>
-              )}
-              <View style={styles.cardBody}>
-                <Text numberOfLines={1} style={[styles.cardTitle, { color: isDark ? '#FFF' : '#111' }]}>
-                  {item.title}
-                </Text>
-                {item.subtitle ? (
-                  <Text numberOfLines={1} style={styles.cardSub}>
-                    {item.subtitle}
+                <View style={styles.cardBody}>
+                  <Text numberOfLines={1} style={[styles.cardTitle, { color: isDark ? '#FFF' : '#111' }]}>
+                    {item.title}
                   </Text>
-                ) : null}
-                {item.priceLabel ? (
-                  <Text numberOfLines={1} style={[styles.cardPrice, { color: accent }]}>
-                    {item.priceLabel}
-                  </Text>
-                ) : null}
+                  {item.subtitle ? (
+                    <Text numberOfLines={1} style={styles.cardSub}>
+                      {item.subtitle}
+                    </Text>
+                  ) : null}
+                  {item.priceLabel ? (
+                    <Text numberOfLines={1} style={[styles.cardPrice, { color: accent }]}>
+                      {item.priceLabel}
+                    </Text>
+                  ) : null}
+                </View>
               </View>
             </ApplePressable>
           ))}
@@ -246,41 +263,32 @@ export function CatalogHorizontalRailStack({ sections, isDark, onPressItem }: St
 }
 
 const styles = StyleSheet.create({
-  stack: { gap: 14 },
+  stack: { gap: 16 },
   panel: {
     marginBottom: 2,
-    borderRadius: 22,
+    borderRadius: 24,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    paddingTop: 12,
-    paddingBottom: 14,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    elevation: 6,
+    paddingTop: 14,
+    paddingBottom: 16,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 4,
   },
   panelSheen: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 18,
-  },
-  accentRail: {
-    position: 'absolute',
-    left: 0,
-    top: 14,
-    bottom: 14,
-    width: 3.5,
-    borderTopRightRadius: 3,
-    borderBottomRightRadius: 3,
+    height: 20,
   },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 14,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   iconBubble: {
     width: 32,
@@ -289,10 +297,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.28,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 2,
   },
   headCopy: { flex: 1, minWidth: 0, gap: 1 },
   title: { fontSize: 16, fontWeight: '800', letterSpacing: -0.35 },
@@ -307,27 +315,38 @@ const styles = StyleSheet.create({
   count: { fontSize: 12, fontWeight: '800' },
   empty: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 16,
+    borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 16,
     marginHorizontal: 12,
   },
-  row: { gap: 12, paddingHorizontal: 12, paddingRight: 16 },
+  row: { gap: 12, paddingHorizontal: 14, paddingRight: 18 },
+  cardPress: {
+    width: 172,
+  },
   card: {
-    width: 168,
-    borderRadius: 16,
+    width: 172,
+    borderRadius: CARD_RADIUS,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.14,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  image: { width: '100%', height: 108 },
+  imageClip: {
+    width: '100%',
+    height: 112,
+    overflow: 'hidden',
+    borderTopLeftRadius: CARD_RADIUS,
+    borderTopRightRadius: CARD_RADIUS,
+    backgroundColor: '#1E293B',
+  },
+  image: { width: '100%', height: '100%' },
   imageFallback: { alignItems: 'center', justifyContent: 'center' },
-  cardBody: { paddingHorizontal: 10, paddingVertical: 9, gap: 2 },
-  cardTitle: { fontSize: 13, fontWeight: '700' },
+  cardBody: { paddingHorizontal: 11, paddingVertical: 10, gap: 2 },
+  cardTitle: { fontSize: 13, fontWeight: '700', letterSpacing: -0.2 },
   cardSub: { fontSize: 11, color: '#8E8E93' },
-  cardPrice: { marginTop: 2, fontSize: 12, fontWeight: '700' },
+  cardPrice: { marginTop: 3, fontSize: 13, fontWeight: '800', letterSpacing: -0.2 },
   sentinel: { width: 24, height: 1 },
 });

@@ -27,6 +27,11 @@ type Props = {
   onPressOffer: (offer: GalleryOffer) => void;
   /** Auto-rotacja + wibracja tylko gdy sekcja jest widoczna na ekranie (np. nie przewinięta). */
   autoRotateEnabled?: boolean;
+  /**
+   * Zewnętrzny margines shella. Homes: 16 (pełna szerokość list).
+   * Cars: 0 gdy parent już ma paddingHorizontal — inaczej wyróżnione jest za wąskie.
+   */
+  horizontalMargin?: number;
 };
 
 const ROTATE_MS = 20_000;
@@ -154,6 +159,7 @@ export default function FeaturedOfferSpotlight({
   formatPrice,
   onPressOffer,
   autoRotateEnabled = true,
+  horizontalMargin = 16,
 }: Props) {
   const isFocused = useIsFocused();
   const [appActive, setAppActive] = useState(() => AppState.currentState === 'active');
@@ -350,7 +356,7 @@ export default function FeaturedOfferSpotlight({
   });
 
   return (
-    <View style={[styles.shell, isDark ? styles.shellDark : styles.shellLight]}>
+    <View style={[styles.shell, { marginHorizontal: horizontalMargin }, isDark ? styles.shellDark : styles.shellLight]}>
       <LinearGradient
         colors={
           isDark
@@ -434,21 +440,20 @@ export default function FeaturedOfferSpotlight({
 
 const styles = StyleSheet.create({
   shell: {
-    marginHorizontal: 16,
     marginBottom: 12,
     borderRadius: 24,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 14,
-    overflow: 'visible',
+    overflow: 'hidden',
     gap: 12,
   },
   shellDark: {
-    borderColor: 'rgba(251,191,36,0.28)',
+    borderColor: 'rgba(251,191,36,0.22)',
     backgroundColor: 'rgba(28,25,23,0.92)',
   },
   shellLight: {
-    borderColor: 'rgba(251,191,36,0.35)',
-    backgroundColor: '#FFFBEB',
+    borderColor: 'rgba(251,191,36,0.22)',
+    backgroundColor: '#FFFCF5',
   },
   headRow: {
     flexDirection: 'row',
@@ -506,7 +511,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     width: '100%',
-    overflow: 'visible',
+    overflow: 'hidden',
   },
   card: {
     borderRadius: 18,
@@ -516,17 +521,20 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   cardDark: {
-    borderColor: 'rgba(251,191,36,0.22)',
-    backgroundColor: 'rgba(15,23,42,0.55)',
+    borderColor: 'rgba(251,191,36,0.18)',
+    backgroundColor: 'rgba(15,23,42,0.72)',
   },
   cardLight: {
-    borderColor: 'rgba(251,191,36,0.28)',
+    borderColor: 'rgba(15,23,42,0.06)',
     backgroundColor: '#FFFFFF',
   },
   imageWrap: {
     position: 'relative',
     aspectRatio: 16 / 10,
     backgroundColor: '#1E293B',
+    overflow: 'hidden',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
   },
   image: {
     width: '100%',

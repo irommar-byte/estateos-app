@@ -947,15 +947,18 @@ function createCatalogStyles(colors: CarScreenColors, isDark: boolean) {
       gap: 0,
     },
     card: {
-      borderRadius: 16,
+      borderRadius: 20,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.cardBorder,
-      backgroundColor: isDark ? 'rgba(15,23,42,0.55)' : '#FFFFFF',
+      backgroundColor: isDark ? 'rgba(15,23,42,0.72)' : '#FFFFFF',
       overflow: 'hidden',
     },
     cardImageWrap: {
       position: 'relative',
       backgroundColor: isDark ? '#1E293B' : '#E2E8F0',
+      overflow: 'hidden',
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
     },
     cardImage: {
       width: '100%',

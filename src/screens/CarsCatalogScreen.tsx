@@ -17,6 +17,7 @@ import MapView, { Circle, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { Image } from 'expo-image';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -218,7 +219,7 @@ export default function CarsCatalogScreen({
       favorites: favoriteCars.map(toListing),
       mine: myCars.map(toListing),
       catalog: cars.map(toListing),
-      userLocation: null,
+      userLocation,
       labels: {
         favorites: t('radar.home.galleryRailFavorites'),
         mine: t('radar.home.galleryRailMine'),
@@ -232,7 +233,7 @@ export default function CarsCatalogScreen({
         mineEmpty: 'Twoje ogłoszenia aut pojawią się tutaj po wystawieniu.',
       },
     });
-  }, [favoriteCars, myCars, cars, t]);
+  }, [favoriteCars, myCars, cars, userLocation, t]);
 
   const featuredSpotlightCars = useMemo(
     () =>
@@ -517,13 +518,22 @@ export default function CarsCatalogScreen({
                   marginBottom: 16,
                   paddingHorizontal: 14,
                   paddingVertical: 16,
-                  borderRadius: 22,
+                  borderRadius: 24,
                   borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: isDark ? 'rgba(14,165,233,0.38)' : 'rgba(14,165,233,0.22)',
+                  borderColor: isDark ? 'rgba(14,165,233,0.32)' : 'rgba(14,165,233,0.18)',
                   overflow: 'hidden',
-                  backgroundColor: isDark ? 'rgba(14,165,233,0.12)' : 'rgba(14,165,233,0.08)',
                 }}
               >
+                <LinearGradient
+                  colors={
+                    isDark
+                      ? ['rgba(14,165,233,0.24)', 'rgba(15,23,42,0.55)', 'rgba(15,23,42,0.2)']
+                      : ['rgba(14,165,233,0.16)', 'rgba(255,255,255,0.96)', 'rgba(240,249,255,0.92)']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
                 <View
                   style={{
                     width: 40,
@@ -531,19 +541,38 @@ export default function CarsCatalogScreen({
                     borderRadius: 20,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: isDark ? 'rgba(14,165,233,0.28)' : 'rgba(14,165,233,0.16)',
+                    backgroundColor: isDark ? 'rgba(14,165,233,0.28)' : 'rgba(14,165,233,0.14)',
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: isDark ? 'rgba(14,165,233,0.4)' : 'rgba(14,165,233,0.28)',
                   }}
                 >
                   <Ionicons name="albums" size={18} color={CAR_ACCENT} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 1.4, color: CAR_ACCENT }}>
                     EstateOS™ Market
                   </Text>
-                  <Text style={[styles.title, { fontSize: 20, marginTop: 2 }]}>
+                  <Text style={[styles.title, { fontSize: 20, marginTop: 2 }]} numberOfLines={1}>
                     {t('radar.home.galleryRailsStackTitle')}
                   </Text>
-                  <Text style={styles.lead}>{t('radar.home.galleryRailsViewLead')}</Text>
+                  <Text style={[styles.lead, { fontSize: 12, lineHeight: 16 }]} numberOfLines={2}>
+                    {t('radar.home.galleryRailsViewLead')}
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    minWidth: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingHorizontal: 8,
+                    backgroundColor: isDark ? 'rgba(14,165,233,0.28)' : 'rgba(14,165,233,0.14)',
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: CAR_ACCENT }}>
+                    {marketRailSections.filter((s) => s.items.length > 0 || (s.showWhenEmpty && s.emptyLabel)).length}
+                  </Text>
                 </View>
               </View>
               <CatalogHorizontalRailStack
@@ -568,25 +597,26 @@ export default function CarsCatalogScreen({
               <FeaturedOfferSpotlight
                 offers={featuredSpotlightCars}
                 isDark={isDark}
-                title="Galeria wyróżnionych"
-                lead="Premiumowa ekspozycja — rotacja co 20 sekund."
-                badgeLabel="Wyróżnione"
+                title={t('radar.home.galleryFeaturedSectionTitle')}
+                lead={t('radar.home.galleryFeaturedLead')}
+                badgeLabel={t('radar.home.galleryFeaturedBadge')}
                 formatPrice={(raw) => ({ primary: formatCarPrice(Number(raw?.pricePln || 0)) })}
                 onPressOffer={(item) => openCarDetail(item.raw as unknown as CarListing)}
                 autoRotateEnabled={featuredSpotlightVisible}
+                horizontalMargin={0}
               />
             </View>
           ) : null}
 
           {!loading && !error && filtered.length > 0 ? (
             <View style={styles.viewToggleRow}>
-              <Text style={styles.viewToggleLabel}>Widok</Text>
+              <Text style={styles.viewToggleLabel}>{t('radar.home.galleryViewLabel')}</Text>
               <View style={styles.viewToggleGroup}>
                 {(
                   [
-                    { key: 'cover' as const, label: 'Cover', iconOn: 'tablet-landscape', iconOff: 'tablet-landscape-outline' },
-                    { key: 'list' as const, label: 'Lista', iconOn: 'list', iconOff: 'list-outline' },
-                    { key: 'grid' as const, label: 'Siatka', iconOn: 'grid', iconOff: 'grid-outline' },
+                    { key: 'cover' as const, label: t('radar.home.galleryViewCover'), iconOn: 'tablet-landscape', iconOff: 'tablet-landscape-outline' },
+                    { key: 'list' as const, label: t('radar.home.galleryViewList'), iconOn: 'list', iconOff: 'list-outline' },
+                    { key: 'grid' as const, label: t('radar.home.galleryViewGrid'), iconOn: 'grid', iconOff: 'grid-outline' },
                   ] as const
                 ).map((mode) => {
                   const selected = viewMode === mode.key;
@@ -1283,9 +1313,9 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
       justifyContent: 'space-between',
     },
     card: {
-      borderRadius: 18,
+      borderRadius: 20,
       overflow: 'hidden',
-      borderWidth: 1,
+      borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.cardBorder,
       backgroundColor: colors.surface,
     },
@@ -1294,6 +1324,9 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
     },
     cardImageWrap: {
       position: 'relative',
+      overflow: 'hidden',
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
     },
     cardImage: {
       width: '100%',
