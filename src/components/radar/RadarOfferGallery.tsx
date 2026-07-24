@@ -15,6 +15,7 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { useI18n } from '../../i18n';
 import type { AppLocale } from '../../i18n';
 import { isFavoriteId } from '../../utils/favoritesStorage';
@@ -744,17 +745,33 @@ export default function RadarOfferGallery({
           ) : undefined
         }
       >
-        <View style={styles.railsHero}>
-          <View style={[styles.railsIconBubble, { backgroundColor: isDark ? 'rgba(99,102,241,0.22)' : 'rgba(99,102,241,0.12)' }]}>
+        <View style={[styles.railsHero, { borderColor: isDark ? 'rgba(99,102,241,0.38)' : 'rgba(99,102,241,0.22)' }]}>
+          <LinearGradient
+            colors={
+              isDark
+                ? ['rgba(99,102,241,0.28)', 'rgba(15,23,42,0.55)', 'rgba(15,23,42,0.2)']
+                : ['rgba(99,102,241,0.18)', 'rgba(255,255,255,0.95)', 'rgba(238,242,255,0.9)']
+            }
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.railsHeroSheen} />
+          <View style={[styles.railsIconBubble, { backgroundColor: isDark ? 'rgba(99,102,241,0.32)' : 'rgba(99,102,241,0.16)' }]}>
             <Ionicons name="albums" size={18} color={GALLERY_ACCENT} />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.railsTitle, { color: isDark ? '#F5F5F7' : '#111' }]}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.railsEyebrow}>EstateOS™ Market</Text>
+            <Text style={[styles.railsTitle, { color: isDark ? '#F8FAFC' : '#0F172A' }]} numberOfLines={1}>
               {t('radar.home.galleryRailsStackTitle')}
             </Text>
-            <Text style={styles.railsSub}>{t('radar.home.galleryRailsViewLead')}</Text>
+            <Text style={styles.railsSub} numberOfLines={2}>
+              {t('radar.home.galleryRailsViewLead')}
+            </Text>
           </View>
-          <Text style={styles.railsCount}>{visibleRails.length}</Text>
+          <View style={styles.railsCountPill}>
+            <Text style={styles.railsCount}>{visibleRails.length}</Text>
+          </View>
         </View>
         {visibleRails.length ? (
           <CatalogHorizontalRailStack
@@ -1525,37 +1542,69 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginHorizontal: 6,
-    marginBottom: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 14,
-    borderRadius: 18,
+    marginHorizontal: 4,
+    marginBottom: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(99,102,241,0.22)',
-    backgroundColor: 'rgba(99,102,241,0.08)',
+    overflow: 'hidden',
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 5,
+  },
+  railsHeroSheen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 16,
+    backgroundColor: 'rgba(255,255,255,0.35)',
   },
   railsIconBubble: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(99,102,241,0.35)',
+  },
+  railsEyebrow: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    color: '#6366F1',
+    marginBottom: 2,
   },
   railsTitle: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '800',
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
   },
   railsSub: {
-    marginTop: 2,
+    marginTop: 3,
     fontSize: 12,
     fontWeight: '500',
     color: '#8E8E93',
+    lineHeight: 16,
+  },
+  railsCountPill: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(99,102,241,0.16)',
   },
   railsCount: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#8E8E93',
+    fontWeight: '800',
+    color: '#6366F1',
   },
   emptyWrap: {
     alignItems: 'center',

@@ -16,8 +16,8 @@ type Props = {
 };
 
 /**
- * Wyraźny CTA wyszukiwania / filtrów — zamiast samotnej lupy,
- * żeby użytkownik wiedział, że tu ustawia kupno/wynajem i parametry.
+ * Kompaktowy CTA wyszukiwania — wygląda jak pole „Szukaj”,
+ * żeby od razu było wiadomo, że tu ustawia się kupno/wynajem i parametry.
  */
 export default function CatalogSearchFilterButton({
   isDark,
@@ -29,14 +29,16 @@ export default function CatalogSearchFilterButton({
   onPress,
   accessibilityLabel,
 }: Props) {
+  const a11y = accessibilityLabel || (hint ? `${label}. ${hint}` : label);
+
   return (
     <ApplePressable
       onPress={onPress}
       haptic="medium"
-      pressScale={0.97}
+      pressScale={0.96}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel || label}
-      style={styles.wrap}
+      accessibilityLabel={a11y}
+      style={[styles.wrap, lightChrome && styles.wrapLight]}
     >
       <BlurView
         intensity={lightChrome ? 96 : isDark ? 82 : 92}
@@ -44,30 +46,31 @@ export default function CatalogSearchFilterButton({
         style={[
           styles.glass,
           lightChrome && styles.glassLight,
-          active && { borderColor: `${accent}99`, backgroundColor: `${accent}22` },
+          active && { borderColor: `${accent}AA`, backgroundColor: `${accent}1F` },
         ]}
       >
-        <View style={[styles.iconBubble, { backgroundColor: `${accent}28` }]}>
-          <Ionicons name="options-outline" size={18} color={accent} />
-          <Ionicons
-            name="search"
-            size={11}
-            color={accent}
-            style={styles.searchOverlay}
-          />
+        <View style={[styles.iconBubble, { backgroundColor: `${accent}30` }]}>
+          <Ionicons name="search" size={16} color={accent} />
         </View>
         <View style={styles.copy}>
-          <Text style={[styles.label, { color: isDark ? '#FFF' : '#0F172A' }]} numberOfLines={1}>
+          <Text
+            style={[styles.label, { color: isDark ? '#FFF' : '#0F172A' }]}
+            numberOfLines={1}
+            allowFontScaling={false}
+          >
             {label}
           </Text>
           {hint ? (
-            <Text style={[styles.hint, { color: isDark ? 'rgba(255,255,255,0.62)' : '#64748B' }]} numberOfLines={1}>
+            <Text
+              style={[styles.hint, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}
+              numberOfLines={1}
+              allowFontScaling={false}
+            >
               {hint}
             </Text>
           ) : null}
         </View>
         {active ? <View style={[styles.dot, { backgroundColor: accent }]} /> : null}
-        <Ionicons name="chevron-forward" size={16} color={isDark ? 'rgba(255,255,255,0.45)' : '#94A3B8'} />
       </BlurView>
     </ApplePressable>
   );
@@ -75,37 +78,41 @@ export default function CatalogSearchFilterButton({
 
 const styles = StyleSheet.create({
   wrap: {
-    maxWidth: 168,
-    minWidth: 128,
+    width: 92,
     height: 50,
     borderRadius: 25,
     overflow: 'hidden',
+    flexShrink: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.22)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  wrapLight: {
+    borderColor: 'rgba(15,23,42,0.1)',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
   },
   glass: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    gap: 7,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.22)',
+    paddingHorizontal: 7,
+    gap: 5,
     borderRadius: 25,
   },
   glassLight: {
     backgroundColor: 'rgba(255,255,255,0.96)',
-    borderColor: 'rgba(15,23,42,0.08)',
   },
   iconBubble: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  searchOverlay: {
-    position: 'absolute',
-    right: 4,
-    bottom: 4,
   },
   copy: {
     flex: 1,
@@ -114,16 +121,17 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 0.1,
+    letterSpacing: -0.2,
   },
   hint: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '600',
     marginTop: 1,
   },
   dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 2,
   },
 });

@@ -6563,10 +6563,10 @@ const styles = StyleSheet.create({
   },
   topBarContainer: {
     position: 'absolute',
-    left: 20,
-    right: 20,
+    left: 14,
+    right: 14,
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
     zIndex: 50,
   },
   topBarCompact: {

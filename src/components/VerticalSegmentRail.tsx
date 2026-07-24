@@ -78,10 +78,14 @@ export default function VerticalSegmentRail({ isDark, compact = true }: Props) {
           >
             <Ionicons
               name={highlight === 'home' ? 'home' : 'home-outline'}
-              size={compact ? 15 : 16}
+              size={13}
               color={highlight === 'home' ? '#10b981' : '#8E8E93'}
             />
             <Text
+              numberOfLines={1}
+              allowFontScaling={false}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
               style={[
                 styles.label,
                 { color: highlight === 'home' ? (isDark ? '#FFF' : '#111') : '#8E8E93' },
@@ -100,10 +104,14 @@ export default function VerticalSegmentRail({ isDark, compact = true }: Props) {
           >
             <Ionicons
               name={highlight === 'car' ? 'car-sport' : 'car-sport-outline'}
-              size={compact ? 15 : 16}
+              size={13}
               color={highlight === 'car' ? '#0EA5E9' : '#8E8E93'}
             />
             <Text
+              numberOfLines={1}
+              allowFontScaling={false}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
               style={[
                 styles.label,
                 { color: highlight === 'car' ? (isDark ? '#FFF' : '#111') : '#8E8E93' },
@@ -119,31 +127,43 @@ export default function VerticalSegmentRail({ isDark, compact = true }: Props) {
 }
 
 const styles = StyleSheet.create({
-  outer: { alignSelf: 'center', maxWidth: 220, width: '100%' },
-  outerCompact: { maxWidth: 200 },
+  outer: {
+    alignSelf: 'center',
+    width: '100%',
+    minWidth: 148,
+    maxWidth: 196,
+    flexShrink: 0,
+  },
+  outerCompact: { maxWidth: 178 },
   blur: {
-    borderRadius: 18,
+    borderRadius: 16,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
   },
-  row: { flexDirection: 'row', padding: 3, position: 'relative' },
+  row: { flexDirection: 'row', padding: 2.5, position: 'relative' },
   pill: {
     position: 'absolute',
-    top: 3,
-    bottom: 3,
-    left: 3,
-    borderRadius: 15,
+    top: 2.5,
+    bottom: 2.5,
+    left: 2.5,
+    borderRadius: 13,
   },
   half: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderRadius: 15,
+    gap: 3,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+    borderRadius: 13,
     zIndex: 1,
+    minWidth: 0,
   },
-  label: { fontSize: 12, fontWeight: '700', letterSpacing: -0.2 },
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: -0.35,
+    flexShrink: 1,
+  },
 });

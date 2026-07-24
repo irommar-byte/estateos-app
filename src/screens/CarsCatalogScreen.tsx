@@ -490,22 +490,59 @@ export default function CarsCatalogScreen({
             />
           }
         >
-          <Text style={styles.eyebrow}>EstateOS™Car</Text>
-          <Text style={styles.title}>
-            {marketContentMode === 'rails' ? t('radar.home.galleryRailsStackTitle') : 'Katalog samochodów'}
-          </Text>
-          <Text style={styles.lead}>
-            {marketContentMode === 'rails'
-              ? t('radar.home.galleryRailsViewLead')
-              : `${filtered.length} ogłoszeń${
+          {marketContentMode === 'rails' ? null : (
+            <>
+              <Text style={styles.eyebrow}>EstateOS™Car</Text>
+              <Text style={styles.title}>Katalog samochodów</Text>
+              <Text style={styles.lead}>
+                {`${filtered.length} ogłoszeń${
                   advancedFilters.vehicleType
                     ? ` · ${VEHICLE_TYPE_OPTIONS.find((o) => o.value === advancedFilters.vehicleType)?.labelPl || ''}`
                     : ''
                 }`}
-          </Text>
+              </Text>
+            </>
+          )}
 
           {marketContentMode === 'rails' ? (
-            <View style={{ marginTop: 8, marginHorizontal: -6 }}>
+            <View style={{ marginTop: 10 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  marginBottom: 16,
+                  paddingHorizontal: 14,
+                  paddingVertical: 16,
+                  borderRadius: 22,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: isDark ? 'rgba(14,165,233,0.38)' : 'rgba(14,165,233,0.22)',
+                  overflow: 'hidden',
+                  backgroundColor: isDark ? 'rgba(14,165,233,0.12)' : 'rgba(14,165,233,0.08)',
+                }}
+              >
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isDark ? 'rgba(14,165,233,0.28)' : 'rgba(14,165,233,0.16)',
+                  }}
+                >
+                  <Ionicons name="albums" size={18} color={CAR_ACCENT} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 1.4, color: CAR_ACCENT }}>
+                    EstateOS™ Market
+                  </Text>
+                  <Text style={[styles.title, { fontSize: 20, marginTop: 2 }]}>
+                    {t('radar.home.galleryRailsStackTitle')}
+                  </Text>
+                  <Text style={styles.lead}>{t('radar.home.galleryRailsViewLead')}</Text>
+                </View>
+              </View>
               <CatalogHorizontalRailStack
                 sections={marketRailSections}
                 isDark={isDark}
