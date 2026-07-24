@@ -211,8 +211,8 @@ export const offer = {
 
   detail: {
     noDescription: 'No description available for this property.',
-    shareTitleIos: 'EstateOS™ — share listing',
-    shareTitle: 'EstateOS™',
+    shareTitleIos: 'Share listing',
+    shareTitle: 'Share listing',
     reportTargetLabel: 'Listing: {{title}}',
     dealTitleFallback: 'Transaction #{{dealId}}',
     closedFallbackSubline:

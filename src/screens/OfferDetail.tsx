@@ -638,6 +638,7 @@ export default function OfferDetail({ route, navigation }: any) {
     const { message, url } = buildOfferShareMessage({
       title: displayOffer.title,
       priceLine: displayOffer.price,
+      locationLine: displayOffer.location,
       offerId: offer.id,
     });
     try {

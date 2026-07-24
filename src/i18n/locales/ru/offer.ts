@@ -211,8 +211,8 @@ export const offer = {
 
   detail: {
     noDescription: 'Для этого объекта нет описания.',
-    shareTitleIos: 'EstateOS™ — листинг акций',
-    shareTitle: 'EstateOS™',
+    shareTitleIos: 'Поделиться объявлением',
+    shareTitle: 'Поделиться объявлением',
     reportTargetLabel: 'Листинг: {{title}}',
     dealTitleFallback: 'Транзакция #{{dealId}}',
     closedFallbackSubline:

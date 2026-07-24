@@ -211,8 +211,8 @@ export const offer = {
 
   detail: {
     noDescription: 'Brak opisu dla tej nieruchomości.',
-    shareTitleIos: 'EstateOS™ — udostępnianie oferty',
-    shareTitle: 'EstateOS™',
+    shareTitleIos: 'Udostępnij ofertę',
+    shareTitle: 'Udostępnij ofertę',
     reportTargetLabel: 'Oferta: {{title}}',
     dealTitleFallback: 'Transakcja #{{dealId}}',
     closedFallbackSubline:

@@ -9,12 +9,13 @@ import {
   Alert,
   Platform,
   TouchableOpacity,
+  Share,
 } from 'react-native';
 import { Image } from 'expo-image';
 import ImageViewing from 'react-native-image-viewing';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, Gauge, MapPin, Fuel, Settings2, Calendar, Images, X } from 'lucide-react-native';
+import { ChevronLeft, Gauge, MapPin, Fuel, Settings2, Calendar, Images, X, Share as ShareIcon } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import CarAuthGateModal from '../components/cars/CarAuthGateModal';
 import CarFavoriteButton from '../components/cars/CarFavoriteButton';
@@ -24,6 +25,7 @@ import SellerCarsSection from '../components/cars/SellerCarsSection';
 import { fetchCarById, formatCarPrice, parseCarImages, type CarListing } from '../services/carsApi';
 import { deleteCarListing } from '../services/carsMutations';
 import { openDirectContactChat } from '../utils/openDirectContact';
+import { buildCarShareMessage } from '../utils/offerShareUrls';
 import { useCarScreenTheme, type CarScreenColors } from '../theme/carScreenTheme';
 
 type CarDetailScreenProps = {
@@ -142,6 +144,28 @@ export default function CarDetailScreen({ navigation, route }: CarDetailScreenPr
     setInquiryOpen(true);
   };
 
+  const handleShare = async () => {
+    if (!car?.id) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const { message, url } = buildCarShareMessage({
+      title: car.title || `${car.make} ${car.model} ${car.year}`,
+      priceLine: formatCarPrice(car.pricePln),
+      locationLine: [car.city, car.year ? String(car.year) : null, car.mileageKm != null ? `${new Intl.NumberFormat('pl-PL').format(car.mileageKm)} km` : null]
+        .filter(Boolean)
+        .join(' · '),
+      carId: car.id,
+    });
+    try {
+      await Share.share(
+        Platform.OS === 'ios'
+          ? { message, url, title: 'EstateOS™Car — udostępnianie' }
+          : { message, title: 'EstateOS™Car' },
+      );
+    } catch {
+      /* anulowano */
+    }
+  };
+
   const openAuthEntry = (intent: 'login' | 'register') => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setAuthGateOpen(false);
@@ -163,11 +187,22 @@ export default function CarDetailScreen({ navigation, route }: CarDetailScreenPr
           <Text style={styles.backLabel}>Cars</Text>
         </Pressable>
         {car ? (
-          <CarFavoriteButton
-            carId={car.id}
-            isLoggedIn={Boolean(token)}
-            onAuthRequired={() => setAuthGateOpen(true)}
-          />
+          <View style={styles.topBarRight}>
+            <Pressable
+              onPress={handleShare}
+              style={styles.shareBtn}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Udostępnij ogłoszenie"
+            >
+              <ShareIcon color={colors.accent} size={20} />
+            </Pressable>
+            <CarFavoriteButton
+              carId={car.id}
+              isLoggedIn={Boolean(token)}
+              onAuthRequired={() => setAuthGateOpen(true)}
+            />
+          </View>
         ) : null}
       </View>
 
@@ -337,6 +372,17 @@ function createStyles(colors: CarScreenColors) {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+    },
+    topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    shareBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.inputBorder,
     },
     backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8 },
     backLabel: { color: colors.accent, fontSize: 12, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase' },
