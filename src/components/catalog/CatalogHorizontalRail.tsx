@@ -201,6 +201,7 @@ export default function CatalogHorizontalRail({
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.row}
+          style={styles.rowScroll}
           onScroll={onScroll}
           scrollEventThrottle={64}
         >
@@ -212,56 +213,124 @@ export default function CatalogHorizontalRail({
               pressScale={0.97}
               style={{ width: d.cardW }}
             >
+              {/* Warstwa 1: miękki ambient (daleki, rozproszony). */}
               <View
                 style={[
-                  styles.card,
+                  styles.shadowAmbient,
                   {
-                    width: d.cardW,
-                    borderRadius: d.radius,
-                    backgroundColor: isDark ? 'rgba(28,28,30,1)' : '#FFFFFF',
-                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.06)',
-                    shadowColor: isDark ? '#000' : '#0F172A',
+                    borderRadius: d.radius + 2,
+                    shadowColor: isDark ? '#000' : accent,
+                    shadowOpacity: isDark ? 0.55 : 0.22,
+                    shadowRadius: density === 'large' ? 28 : 22,
+                    shadowOffset: { width: 0, height: density === 'large' ? 14 : 10 },
+                    elevation: 0,
                   },
                 ]}
               >
+                {/* Warstwa 2: kontaktowy cień pod kartą. */}
                 <View
                   style={[
-                    styles.imageClip,
+                    styles.shadowContact,
                     {
-                      height: d.imageH,
-                      borderTopLeftRadius: d.radius,
-                      borderTopRightRadius: d.radius,
+                      borderRadius: d.radius + 1,
+                      shadowColor: '#000',
+                      shadowOpacity: isDark ? 0.45 : 0.14,
+                      shadowRadius: density === 'large' ? 14 : 10,
+                      shadowOffset: { width: 0, height: density === 'large' ? 8 : 5 },
+                      elevation: density === 'large' ? 10 : 7,
                     },
                   ]}
                 >
-                  {item.imageUrl ? (
-                    <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" />
-                  ) : (
-                    <View style={[styles.image, styles.imageFallback, { backgroundColor: hexToRgba(accent, 0.12) }]}>
-                      <Ionicons name={icon} size={22} color={accent} />
-                    </View>
-                  )}
-                </View>
-                <View style={styles.cardBody}>
-                  <Text
-                    numberOfLines={density === 'large' ? 2 : 1}
-                    style={[styles.cardTitle, { color: isDark ? '#FFF' : '#111', fontSize: d.titleSize }]}
+                  {/* Warstwa 3: lekki rim / lokalny glow akcentu. */}
+                  <View
+                    style={[
+                      styles.shadowRim,
+                      {
+                        borderRadius: d.radius,
+                        shadowColor: isDark ? '#FFF' : accent,
+                        shadowOpacity: isDark ? 0.08 : 0.18,
+                        shadowRadius: 6,
+                        shadowOffset: { width: 0, height: 1 },
+                        elevation: 0,
+                      },
+                    ]}
                   >
-                    {item.title}
-                  </Text>
-                  {item.subtitle ? (
-                    <Text numberOfLines={1} style={styles.cardSub}>
-                      {item.subtitle}
-                    </Text>
-                  ) : null}
-                  {item.priceLabel ? (
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.cardPrice, { color: accent, fontSize: d.priceSize }]}
+                    <View
+                      style={[
+                        styles.card,
+                        {
+                          width: d.cardW,
+                          borderRadius: d.radius,
+                          backgroundColor: isDark ? 'rgba(28,28,30,1)' : '#FFFFFF',
+                          borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.05)',
+                        },
+                      ]}
                     >
-                      {item.priceLabel}
-                    </Text>
-                  ) : null}
+                      <View
+                        style={[
+                          styles.imageClip,
+                          {
+                            height: d.imageH,
+                            borderTopLeftRadius: d.radius,
+                            borderTopRightRadius: d.radius,
+                          },
+                        ]}
+                      >
+                        {item.imageUrl ? (
+                          <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" />
+                        ) : (
+                          <View
+                            style={[
+                              styles.image,
+                              styles.imageFallback,
+                              { backgroundColor: hexToRgba(accent, 0.12) },
+                            ]}
+                          >
+                            <Ionicons name={icon} size={22} color={accent} />
+                          </View>
+                        )}
+                        {/* Delikatny highlight na górze zdjęcia — „szkło”. */}
+                        <LinearGradient
+                          pointerEvents="none"
+                          colors={
+                            isDark
+                              ? ['rgba(255,255,255,0.14)', 'transparent']
+                              : ['rgba(255,255,255,0.55)', 'transparent']
+                          }
+                          style={styles.imageSheen}
+                        />
+                        <LinearGradient
+                          pointerEvents="none"
+                          colors={['transparent', 'rgba(0,0,0,0.22)']}
+                          style={styles.imageBottomShade}
+                        />
+                      </View>
+                      <View style={styles.cardBody}>
+                        <Text
+                          numberOfLines={density === 'large' ? 2 : 1}
+                          style={[
+                            styles.cardTitle,
+                            { color: isDark ? '#FFF' : '#111', fontSize: d.titleSize },
+                          ]}
+                        >
+                          {item.title}
+                        </Text>
+                        {item.subtitle ? (
+                          <Text numberOfLines={1} style={styles.cardSub}>
+                            {item.subtitle}
+                          </Text>
+                        ) : null}
+                        {item.priceLabel ? (
+                          <Text
+                            numberOfLines={1}
+                            style={[styles.cardPrice, { color: accent, fontSize: d.priceSize }]}
+                          >
+                            {item.priceLabel}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  </View>
                 </View>
               </View>
             </ApplePressable>
@@ -385,9 +454,9 @@ const styles = StyleSheet.create({
   panel: {
     marginBottom: 0,
     borderRadius: 0,
-    overflow: 'hidden',
+    overflow: 'visible',
     paddingTop: 22,
-    paddingBottom: 26,
+    paddingBottom: 18,
     backgroundColor: 'transparent',
   },
   head: {
@@ -427,14 +496,29 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     marginHorizontal: 12,
   },
-  row: { gap: 12, paddingHorizontal: 14, paddingRight: 18 },
+  rowScroll: {
+    overflow: 'visible',
+  },
+  row: {
+    gap: 14,
+    paddingHorizontal: 14,
+    paddingRight: 20,
+    paddingTop: 6,
+    paddingBottom: 14,
+  },
+  shadowAmbient: {
+    backgroundColor: 'transparent',
+  },
+  shadowContact: {
+    backgroundColor: 'transparent',
+  },
+  shadowRim: {
+    backgroundColor: 'transparent',
+  },
   card: {
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 3,
+    backgroundColor: '#FFF',
   },
   imageClip: {
     width: '100%',
@@ -443,6 +527,20 @@ const styles = StyleSheet.create({
   },
   image: { width: '100%', height: '100%' },
   imageFallback: { alignItems: 'center', justifyContent: 'center' },
+  imageSheen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '42%',
+  },
+  imageBottomShade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '28%',
+  },
   cardBody: { paddingHorizontal: 11, paddingVertical: 10, gap: 2 },
   cardTitle: { fontWeight: '700', letterSpacing: -0.2 },
   cardSub: { fontSize: 11, color: '#8E8E93' },
