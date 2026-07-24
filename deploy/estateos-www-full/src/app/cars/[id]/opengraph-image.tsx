@@ -10,5 +10,5 @@ type Props = { params: Promise<{ id: string }> };
 /** Legacy path — przekieruj na szybki JPEG z cache. */
 export default async function CarOpenGraphImage({ params }: Props) {
   const { id } = await params;
-  redirect(`/api/og/car/${id}?v5`);
+  redirect(`/api/og/car/${id}?v6`);
 }
