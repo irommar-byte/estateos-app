@@ -129,7 +129,7 @@ export default function VerticalSegmentRail({
             accessibilityRole="tab"
             accessibilityState={{ selected: highlight === 'home' }}
             onPress={() => select('home')}
-            haptic="selection"
+            haptic="none"
             pressScale={0.97}
             style={styles.half}
           >
@@ -155,7 +155,7 @@ export default function VerticalSegmentRail({
             accessibilityRole="tab"
             accessibilityState={{ selected: highlight === 'car' }}
             onPress={() => select('car')}
-            haptic="selection"
+            haptic="none"
             pressScale={0.97}
             style={styles.half}
           >

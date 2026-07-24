@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { Dimensions, Modal, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Modal, Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   Extrapolation,
@@ -10,7 +10,6 @@ import Animated, {
   useSharedValue,
   withDelay,
   withRepeat,
-  withSequence,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
@@ -25,6 +24,7 @@ import Svg, {
   RadialGradient,
   Stop,
 } from 'react-native-svg';
+import * as Device from 'expo-device';
 import * as Haptics from 'expo-haptics';
 import { useEcosystemStore, type EcosystemVertical } from '../../store/useEcosystemStore';
 import { useI18n } from '../../i18n';
@@ -32,14 +32,31 @@ import { useI18n } from '../../i18n';
 const { width: W, height: H } = Dimensions.get('window');
 const DIAG = Math.sqrt(W * W + H * H);
 
-const CREST = Math.min(228, W * 0.58);
-const EXPAND_SCALE = (DIAG / CREST) * 1.12;
-const STAR_COUNT = 56;
+const CREST = Math.min(210, W * 0.54);
+/** Mniejszy scale końcowy = mniej janku przy ekspansji na starych GPU. */
+const EXPAND_SCALE = Math.min((DIAG / CREST) * 1.05, 14);
 
-const SWEEP_DELAY_MS = 280;
-const SWEEP_MS = 780;
-const EXPAND_MS = 920;
-const EXIT_MS = 320;
+/**
+ * Tier wydajności — mniej gwiazd / SVG / równoległych animacji na słabszym sprzęcie.
+ * totalMemory bywa niedostępne na simulatorze → ostrożny fallback.
+ */
+const TOTAL_MEM = Number(Device.totalMemory || 0);
+/** Android i urządzenia z < ~3.2 GB RAM → lżejsza ścieżka animacji. */
+const LOW_END =
+  Platform.OS === 'android' || (TOTAL_MEM > 0 && TOTAL_MEM < 3.2 * 1024 * 1024 * 1024);
+const STAR_COUNT = LOW_END ? 14 : 28;
+const SHOW_ORBIT = !LOW_END;
+const GEAR_TEETH_A = LOW_END ? 8 : 12;
+const GEAR_TEETH_B = LOW_END ? 6 : 9;
+
+const SWEEP_DELAY_MS = LOW_END ? 180 : 240;
+const SWEEP_MS = LOW_END ? 560 : 680;
+const EXPAND_MS = LOW_END ? 720 : 860;
+const EXIT_MS = LOW_END ? 260 : 300;
+const CREST_IN_MS = LOW_END ? 320 : 380;
+
+const SMOOTH = Easing.bezier(0.22, 1, 0.36, 1);
+const SMOOTH_OUT = Easing.bezier(0.16, 1, 0.3, 1);
 
 type Theme = {
   fill: [string, string, string];
@@ -59,6 +76,17 @@ const CAR_THEME: Theme = {
   metal: ['rgba(255,255,255,0.00)', 'rgba(255,255,255,0.85)', 'rgba(255,255,255,0.00)'],
 };
 
+/** Heavy → krótka przerwa → Light (tik-tak). */
+async function playSwitchHaptics() {
+  try {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    await new Promise<void>((resolve) => setTimeout(resolve, 78));
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  } catch {
+    /* ignore */
+  }
+}
+
 function gearToothPath(
   cx: number,
   cy: number,
@@ -76,9 +104,7 @@ function gearToothPath(
     const a3 = a0 + step * 0.62;
     const a4 = a0 + step * 0.82;
     const a5 = a0 + step;
-
     const pt = (r: number, a: number) => `${cx + Math.cos(a) * r},${cy + Math.sin(a) * r}`;
-
     if (i === 0) parts.push(`M ${pt(rootR, a0)}`);
     else parts.push(`L ${pt(rootR, a0)}`);
     parts.push(`L ${pt(innerR, a1)}`);
@@ -96,140 +122,90 @@ function MetalGear({
   teeth,
   accent,
   uid,
+  simplified,
 }: {
   size: number;
   teeth: number;
   accent: string;
   uid: string;
+  simplified?: boolean;
 }) {
   const cx = size / 2;
   const cy = size / 2;
-  const outerR = size * 0.48;
   const tipR = size * 0.42;
   const rootR = size * 0.3;
   const holeR = size * 0.11;
   const hubR = size * 0.2;
-  const path = gearToothPath(cx, cy, teeth, tipR, outerR * 0.88, rootR);
+  const path = useMemo(
+    () => gearToothPath(cx, cy, teeth, tipR, size * 0.42, rootR),
+    [cx, cy, teeth, tipR, rootR, size],
+  );
   const gradId = `metal-${uid}`;
-  const shineId = `shine-${uid}`;
   const hubId = `hub-${uid}`;
+
+  if (simplified) {
+    return (
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <Path d={path} fill={accent} opacity={0.55} stroke="rgba(255,255,255,0.45)" strokeWidth={1} />
+        <Circle cx={cx} cy={cy} r={hubR} fill="#CBD5E1" />
+        <Circle cx={cx} cy={cy} r={holeR} fill="#0B1220" />
+      </Svg>
+    );
+  }
 
   return (
     <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <Defs>
         <SvgLinearGradient id={gradId} x1="18%" y1="8%" x2="82%" y2="92%">
           <Stop offset="0%" stopColor="#F8FAFC" stopOpacity="1" />
-          <Stop offset="28%" stopColor="#CBD5E1" stopOpacity="1" />
-          <Stop offset="52%" stopColor={accent} stopOpacity="0.55" />
-          <Stop offset="72%" stopColor="#94A3B8" stopOpacity="1" />
+          <Stop offset="32%" stopColor="#CBD5E1" stopOpacity="1" />
+          <Stop offset="55%" stopColor={accent} stopOpacity="0.5" />
           <Stop offset="100%" stopColor="#E2E8F0" stopOpacity="1" />
-        </SvgLinearGradient>
-        <SvgLinearGradient id={shineId} x1="20%" y1="0%" x2="80%" y2="100%">
-          <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.95" />
-          <Stop offset="35%" stopColor="#FFFFFF" stopOpacity="0.15" />
-          <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
         </SvgLinearGradient>
         <RadialGradient id={hubId} cx="42%" cy="38%" r="62%">
           <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.9" />
-          <Stop offset="45%" stopColor="#CBD5E1" stopOpacity="1" />
           <Stop offset="100%" stopColor="#64748B" stopOpacity="1" />
         </RadialGradient>
       </Defs>
       <G>
-        <Path
-          d={path}
-          fill={`url(#${gradId})`}
-          stroke="rgba(255,255,255,0.55)"
-          strokeWidth={1.1}
-        />
-        <Path d={path} fill={`url(#${shineId})`} opacity={0.55} />
-        <Circle
-          cx={cx}
-          cy={cy}
-          r={hubR}
-          fill={`url(#${hubId})`}
-          stroke="rgba(255,255,255,0.65)"
-          strokeWidth={1}
-        />
-        <Circle
-          cx={cx}
-          cy={cy}
-          r={holeR}
-          fill="#0B1220"
-          stroke="rgba(255,255,255,0.25)"
-          strokeWidth={0.8}
-        />
-        <Circle
-          cx={cx - size * 0.12}
-          cy={cy - size * 0.14}
-          r={size * 0.06}
-          fill="#FFFFFF"
-          opacity={0.35}
-        />
+        <Path d={path} fill={`url(#${gradId})`} stroke="rgba(255,255,255,0.5)" strokeWidth={1} />
+        <Circle cx={cx} cy={cy} r={hubR} fill={`url(#${hubId})`} />
+        <Circle cx={cx} cy={cy} r={holeR} fill="#0B1220" />
       </G>
     </Svg>
   );
 }
 
-function Star({
-  left,
-  top,
-  size,
-  delay,
-  warm,
+/** Statyczne gwiazdy + jedna wspólna animacja migotu (zamiast N× withRepeat). */
+function Starfield({
+  stars,
+  twinkle,
 }: {
-  left: number;
-  top: number;
-  size: number;
-  delay: number;
-  warm: boolean;
+  stars: { id: number; left: number; top: number; size: number; warm: boolean; base: number }[];
+  twinkle: SharedValue<number>;
 }) {
-  const o = useSharedValue(0);
-  const twinkle = useSharedValue(0);
-
-  useEffect(() => {
-    const peak = warm ? 0.35 + Math.random() * 0.25 : 0.4 + Math.random() * 0.45;
-    o.value = withDelay(delay, withTiming(peak, { duration: 700 }));
-    twinkle.value = withDelay(
-      delay + 200,
-      withRepeat(
-        withSequence(
-          withTiming(1, { duration: 900 + Math.random() * 800, easing: Easing.inOut(Easing.sin) }),
-          withTiming(0, { duration: 900 + Math.random() * 800, easing: Easing.inOut(Easing.sin) }),
-        ),
-        -1,
-        false,
-      ),
-    );
-    return () => {
-      cancelAnimation(o);
-      cancelAnimation(twinkle);
-    };
-  }, [delay, o, twinkle, warm]);
-
-  const style = useAnimatedStyle(() => ({
-    opacity: o.value * interpolate(twinkle.value, [0, 1], [0.55, 1], Extrapolation.CLAMP),
-    transform: [{ scale: interpolate(twinkle.value, [0, 1], [0.85, 1.15], Extrapolation.CLAMP) }],
+  const fieldStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(twinkle.value, [0, 1], [0.72, 1], Extrapolation.CLAMP),
   }));
 
   return (
-    <Animated.View
-      style={[
-        {
-          position: 'absolute',
-          left,
-          top,
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: warm ? '#F5D08A' : '#FFFFFF',
-          shadowColor: warm ? '#F5D08A' : '#FFF',
-          shadowOpacity: 0.8,
-          shadowRadius: size * 1.4,
-        },
-        style,
-      ]}
-    />
+    <Animated.View style={[StyleSheet.absoluteFill, fieldStyle]} pointerEvents="none">
+      {stars.map((s) => (
+        <View
+          key={s.id}
+          style={{
+            position: 'absolute',
+            left: s.left,
+            top: s.top,
+            width: s.size,
+            height: s.size,
+            borderRadius: s.size / 2,
+            backgroundColor: s.warm ? '#F5D08A' : '#FFFFFF',
+            opacity: s.base,
+          }}
+        />
+      ))}
+    </Animated.View>
   );
 }
 
@@ -294,7 +270,7 @@ function CrestSweep({
     progress.value = -0.35;
     progress.value = withDelay(
       delayMs,
-      withTiming(1.35, { duration: durationMs, easing: Easing.bezier(0.22, 1, 0.36, 1) }),
+      withTiming(1.35, { duration: durationMs, easing: SMOOTH }),
     );
     return () => cancelAnimation(progress);
   }, [delayMs, durationMs, progress]);
@@ -304,7 +280,7 @@ function CrestSweep({
       { translateX: interpolate(progress.value, [-0.35, 1.35], [-CREST * 0.85, CREST * 0.95]) },
       { rotate: '22deg' },
     ],
-    opacity: interpolate(progress.value, [-0.35, 0.1, 0.85, 1.35], [0, 0.95, 0.95, 0], Extrapolation.CLAMP),
+    opacity: interpolate(progress.value, [-0.35, 0.12, 0.82, 1.35], [0, 0.9, 0.9, 0], Extrapolation.CLAMP),
   }));
 
   return (
@@ -314,19 +290,15 @@ function CrestSweep({
   );
 }
 
-/** Dwie metaliczne zębatki u dołu — wkręcają się w siebie. */
 function MeshingGears({ accent }: { accent: string }) {
   const a = useSharedValue(0);
   const b = useSharedValue(0);
   const fade = useSharedValue(0);
-  const teethA = 12;
-  const teethB = 9;
-  // Przełożenie: większa obraca się wolniej, żeby zęby się zazębiały.
-  const durationA = 3200;
-  const durationB = durationA * (teethA / teethB);
+  const durationA = LOW_END ? 4200 : 3400;
+  const durationB = durationA * (GEAR_TEETH_A / GEAR_TEETH_B);
 
   useEffect(() => {
-    fade.value = withDelay(160, withTiming(1, { duration: 480 }));
+    fade.value = withDelay(120, withTiming(1, { duration: 360, easing: SMOOTH_OUT }));
     a.value = withRepeat(withTiming(360, { duration: durationA, easing: Easing.linear }), -1, false);
     b.value = withRepeat(withTiming(-360, { duration: durationB, easing: Easing.linear }), -1, false);
     return () => {
@@ -336,25 +308,25 @@ function MeshingGears({ accent }: { accent: string }) {
     };
   }, [a, b, fade, durationA, durationB]);
 
-  const wrapStyle = useAnimatedStyle(() => ({ opacity: fade.value * 0.92 }));
+  const wrapStyle = useAnimatedStyle(() => ({ opacity: fade.value * 0.9 }));
   const gearAStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${a.value}deg` }] }));
   const gearBStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${b.value}deg` }] }));
 
   return (
     <Animated.View style={[styles.gearsWrap, wrapStyle]}>
       <Animated.View style={[styles.gearA, gearAStyle]}>
-        <MetalGear size={54} teeth={teethA} accent={accent} uid="a" />
+        <MetalGear size={LOW_END ? 44 : 52} teeth={GEAR_TEETH_A} accent={accent} uid="a" simplified={LOW_END} />
       </Animated.View>
       <Animated.View style={[styles.gearB, gearBStyle]}>
-        <MetalGear size={40} teeth={teethB} accent={accent} uid="b" />
+        <MetalGear size={LOW_END ? 32 : 38} teeth={GEAR_TEETH_B} accent={accent} uid="b" simplified={LOW_END} />
       </Animated.View>
     </Animated.View>
   );
 }
 
 /**
- * Homes ↔ Cars: czarne niebo z gwiazdami → crest → błysk → ekspansja.
- * Katalog ładuje się od razu pod overlay (activeVertical przełączane przy starcie).
+ * Homes ↔ Cars: płynne przejście z lekkim footprintem GPU.
+ * Katalog ładuje się pod overlay w trakcie animacji.
  */
 export default function EcosystemVerticalTransition() {
   const { t } = useI18n();
@@ -368,6 +340,7 @@ export default function EcosystemVerticalTransition() {
   const expand = useSharedValue(0);
   const contentFade = useSharedValue(1);
   const overlayOut = useSharedValue(0);
+  const twinkle = useSharedValue(0);
 
   const to: EcosystemVertical = pendingSwitch?.to ?? 'home';
   const isCar = to === 'car';
@@ -382,9 +355,9 @@ export default function EcosystemVerticalTransition() {
         id: i,
         left: (((i * 97) % 1000) / 1000) * W,
         top: (((i * 53) % 1000) / 1000) * H,
-        size: 1.2 + (i % 4) * 0.7,
-        delay: 40 + (i % 12) * 35,
+        size: 1.1 + (i % 3) * 0.55,
         warm: i % 5 === 0,
+        base: 0.35 + ((i * 17) % 50) / 100,
       })),
     [],
   );
@@ -397,12 +370,13 @@ export default function EcosystemVerticalTransition() {
       expand.value = 0;
       contentFade.value = 1;
       overlayOut.value = 0;
+      cancelAnimation(twinkle);
+      twinkle.value = 0;
       return;
     }
 
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void playSwitchHaptics();
 
-    // Czarne niebo od razu — potem montujemy katalog pod osłoną, żeby ładował się w trakcie.
     backdrop.value = 1;
     crestIn.value = 0;
     sweep.value = -0.35;
@@ -410,24 +384,27 @@ export default function EcosystemVerticalTransition() {
     contentFade.value = 1;
     overlayOut.value = 0;
 
-    crestIn.value = withDelay(
-      40,
-      withTiming(1, { duration: 420, easing: Easing.bezier(0.16, 1, 0.3, 1) }),
+    // Jeden wspólny migot gwiazd — taniej niż N osobnych pętli.
+    twinkle.value = withRepeat(
+      withTiming(1, { duration: LOW_END ? 1600 : 1200, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true,
     );
+
+    crestIn.value = withTiming(1, { duration: CREST_IN_MS, easing: SMOOTH_OUT });
 
     const loadTimer = setTimeout(() => {
       setActiveVertical(pendingSwitch.to);
-    }, 30);
+    }, 24);
 
-    const expandAt = SWEEP_DELAY_MS + SWEEP_MS + 40;
+    const expandAt = SWEEP_DELAY_MS + SWEEP_MS + 20;
     const doneAt = expandAt + EXPAND_MS + EXIT_MS;
 
     const expandTimer = setTimeout(() => {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      contentFade.value = withTiming(0, { duration: 220, easing: Easing.in(Easing.quad) });
+      contentFade.value = withTiming(0, { duration: 200, easing: Easing.out(Easing.quad) });
       expand.value = withTiming(1, {
         duration: EXPAND_MS,
-        easing: Easing.bezier(0.18, 0.9, 0.22, 1),
+        easing: SMOOTH,
       });
     }, expandAt);
 
@@ -435,17 +412,18 @@ export default function EcosystemVerticalTransition() {
       overlayOut.value = withTiming(1, { duration: EXIT_MS, easing: Easing.inOut(Easing.cubic) }, (finished) => {
         if (finished) runOnJS(clearVerticalSwitch)();
       });
-    }, expandAt + EXPAND_MS - 60);
+    }, expandAt + EXPAND_MS - 80);
 
     const safety = setTimeout(() => {
       clearVerticalSwitch();
-    }, doneAt + 160);
+    }, doneAt + 140);
 
     return () => {
       clearTimeout(loadTimer);
       clearTimeout(expandTimer);
       clearTimeout(doneTimer);
       clearTimeout(safety);
+      cancelAnimation(twinkle);
     };
   }, [
     pendingSwitch,
@@ -457,17 +435,18 @@ export default function EcosystemVerticalTransition() {
     expand,
     contentFade,
     overlayOut,
+    twinkle,
   ]);
 
   const starfieldStyle = useAnimatedStyle(() => ({
     opacity:
       backdrop.value *
       interpolate(overlayOut.value, [0, 1], [1, 0], Extrapolation.CLAMP) *
-      interpolate(expand.value, [0.55, 1], [1, 0.2], Extrapolation.CLAMP),
+      interpolate(expand.value, [0.45, 1], [1, 0.15], Extrapolation.CLAMP),
   }));
 
   const crestStyle = useAnimatedStyle(() => {
-    const enter = interpolate(crestIn.value, [0, 1], [0.82, 1], Extrapolation.CLAMP);
+    const enter = interpolate(crestIn.value, [0, 1], [0.88, 1], Extrapolation.CLAMP);
     const grow = interpolate(expand.value, [0, 1], [1, EXPAND_SCALE], Extrapolation.CLAMP);
     return {
       opacity: crestIn.value * interpolate(overlayOut.value, [0, 1], [1, 0], Extrapolation.CLAMP),
@@ -476,15 +455,15 @@ export default function EcosystemVerticalTransition() {
   });
 
   const innerContentStyle = useAnimatedStyle(() => ({
-    opacity: contentFade.value * interpolate(expand.value, [0, 0.2], [1, 0], Extrapolation.CLAMP),
+    opacity: contentFade.value * interpolate(expand.value, [0, 0.18], [1, 0], Extrapolation.CLAMP),
   }));
 
   const ringsStyle = useAnimatedStyle(() => ({
-    opacity: contentFade.value * interpolate(expand.value, [0, 0.12], [1, 0], Extrapolation.CLAMP),
+    opacity: contentFade.value * interpolate(expand.value, [0, 0.1], [1, 0], Extrapolation.CLAMP),
   }));
 
   const gearsFadeStyle = useAnimatedStyle(() => ({
-    opacity: contentFade.value * interpolate(expand.value, [0, 0.25], [1, 0], Extrapolation.CLAMP),
+    opacity: contentFade.value * interpolate(expand.value, [0, 0.22], [1, 0], Extrapolation.CLAMP),
   }));
 
   if (!pendingSwitch) return null;
@@ -495,17 +474,20 @@ export default function EcosystemVerticalTransition() {
         <Animated.View style={[StyleSheet.absoluteFill, starfieldStyle]}>
           <View style={[StyleSheet.absoluteFill, styles.space]} />
           <LinearGradient
-            colors={['rgba(0,0,0,0.15)', 'transparent', 'rgba(0,0,0,0.55)']}
-            locations={[0, 0.4, 1]}
+            colors={['rgba(0,0,0,0.12)', 'transparent', 'rgba(0,0,0,0.5)']}
+            locations={[0, 0.42, 1]}
             style={StyleSheet.absoluteFill}
           />
-          {stars.map((s) => (
-            <Star key={s.id} left={s.left} top={s.top} size={s.size} delay={s.delay} warm={s.warm} />
-          ))}
+          <Starfield stars={stars} twinkle={twinkle} />
         </Animated.View>
 
         <View style={styles.stage}>
-          <Animated.View style={[styles.crest, crestStyle]}>
+          <Animated.View
+            shouldRasterizeIOS
+            renderToHardwareTextureAndroid
+            collapsable={false}
+            style={[styles.crest, !LOW_END && styles.crestShadow, crestStyle]}
+          >
             <LinearGradient
               colors={[...theme.fill]}
               start={{ x: 0.15, y: 0 }}
@@ -513,7 +495,7 @@ export default function EcosystemVerticalTransition() {
               style={StyleSheet.absoluteFill}
             />
             <LinearGradient
-              colors={['rgba(255,255,255,0.28)', 'transparent', 'rgba(0,0,0,0.18)']}
+              colors={['rgba(255,255,255,0.26)', 'transparent', 'rgba(0,0,0,0.16)']}
               locations={[0, 0.45, 1]}
               style={StyleSheet.absoluteFill}
             />
@@ -525,14 +507,24 @@ export default function EcosystemVerticalTransition() {
               progress={sweep}
             />
 
-            <Animated.View style={[styles.rings, ringsStyle]}>
-              <OrbitRing size={CREST - 18} duration={12000} color="rgba(255,255,255,0.18)" />
-              <OrbitRing size={CREST - 42} duration={8600} reverse color={theme.rim} thickness={1.5} />
-            </Animated.View>
+            {SHOW_ORBIT ? (
+              <Animated.View style={[styles.rings, ringsStyle]}>
+                <OrbitRing size={CREST - 20} duration={14000} color="rgba(255,255,255,0.16)" />
+                <OrbitRing size={CREST - 44} duration={9800} reverse color={theme.rim} thickness={1.4} />
+              </Animated.View>
+            ) : (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.staticRing,
+                  { width: CREST - 28, height: CREST - 28, borderRadius: (CREST - 28) / 2, borderColor: theme.rim },
+                ]}
+              />
+            )}
 
             <Animated.View style={[styles.crestContent, innerContentStyle]}>
               <View style={[styles.iconDisc, { borderColor: theme.rim }]}>
-                <Ionicons name={isCar ? 'car-sport' : 'home'} size={40} color="#FFFFFF" />
+                <Ionicons name={isCar ? 'car-sport' : 'home'} size={38} color="#FFFFFF" />
               </View>
               <Text style={styles.brand}>EstateOS™</Text>
               <Text style={styles.label}>{label}</Text>
@@ -570,21 +562,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.28)',
+  },
+  crestShadow: {
     shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.35,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
   },
   crestSweep: {
     position: 'absolute',
     top: -CREST * 0.35,
-    width: 54,
+    width: 48,
     height: CREST * 1.7,
   },
   rings: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  staticRing: {
+    position: 'absolute',
+    borderWidth: 1.25,
+    opacity: 0.55,
   },
   crestContent: {
     alignItems: 'center',
@@ -594,9 +593,9 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   iconDisc: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -626,25 +625,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   gearsWrap: {
-    width: 96,
-    height: 72,
+    width: 92,
+    height: 68,
   },
   gearA: {
     position: 'absolute',
     left: 0,
     top: 4,
-    shadowColor: '#FFFFFF',
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 0 },
   },
   gearB: {
     position: 'absolute',
     right: 0,
     bottom: 0,
-    shadowColor: '#FFFFFF',
-    shadowOpacity: 0.28,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
   },
 });
