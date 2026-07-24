@@ -35,21 +35,29 @@ type Props = {
 const HOLD_SECONDS = 3;
 const HOLD_MS = HOLD_SECONDS * 1000;
 
+function hexToRgba(hex: string, alpha: number): string {
+  const raw = hex.replace('#', '');
+  if (raw.length !== 6) return `rgba(14,165,233,${alpha})`;
+  const r = parseInt(raw.slice(0, 2), 16);
+  const g = parseInt(raw.slice(2, 4), 16);
+  const b = parseInt(raw.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function buildChrome(isActive: boolean, isDark: boolean, activeAccent: string): Chrome {
   if (isActive) {
-    const a = activeAccent;
     return {
-      accent: a,
-      borderColor: isDark ? `${a}6B` : `${a}57`,
-      fill: isDark ? `${a}24` : `${a}17`,
-      iconBg: isDark ? `${a}33` : `${a}1F`,
+      accent: activeAccent,
+      borderColor: hexToRgba(activeAccent, isDark ? 0.55 : 0.42),
+      fill: hexToRgba(activeAccent, isDark ? 0.28 : 0.2),
+      iconBg: hexToRgba(activeAccent, isDark ? 0.38 : 0.26),
     };
   }
   return {
     accent: '#FF3B30',
-    borderColor: isDark ? 'rgba(255,59,48,0.4)' : 'rgba(255,59,48,0.32)',
-    fill: isDark ? 'rgba(255,59,48,0.12)' : 'rgba(255,59,48,0.07)',
-    iconBg: isDark ? 'rgba(255,59,48,0.18)' : 'rgba(255,59,48,0.1)',
+    borderColor: isDark ? 'rgba(255,59,48,0.5)' : 'rgba(255,59,48,0.4)',
+    fill: isDark ? 'rgba(255,59,48,0.22)' : 'rgba(255,59,48,0.14)',
+    iconBg: isDark ? 'rgba(255,59,48,0.3)' : 'rgba(255,59,48,0.18)',
   };
 }
 
@@ -346,9 +354,17 @@ export default function LiveRadarControlPill({
           ]}
         >
           <BlurView
-            intensity={isDark ? 82 : 92}
+            intensity={isDark ? 88 : 96}
             tint={isDark ? 'dark' : 'light'}
-            style={[styles.pill, { backgroundColor: chrome.fill, overflow: 'hidden' }]}
+            style={[
+              styles.pill,
+              {
+                backgroundColor: chrome.fill,
+                overflow: 'hidden',
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: chrome.borderColor,
+              },
+            ]}
           >
             {holdMode ? (
               <Animated.View
@@ -372,15 +388,25 @@ export default function LiveRadarControlPill({
               softBg={holdMode ? 'rgba(249,115,22,0.22)' : chrome.iconBg}
             />
             <View style={styles.textWrap}>
-              <Text style={[styles.title, { color: holdMode ? '#F97316' : chrome.accent }]}>
+              <Text
+                numberOfLines={1}
+                allowFontScaling={false}
+                adjustsFontSizeToFit
+                minimumFontScale={0.82}
+                style={[styles.title, { color: holdMode ? '#F97316' : chrome.accent }]}
+              >
                 {brandLabel}
               </Text>
               <Text
+                numberOfLines={1}
+                allowFontScaling={false}
+                adjustsFontSizeToFit
+                minimumFontScale={0.78}
                 style={[
                   styles.status,
                   holdMode
                     ? { color: isDark ? '#FDBA74' : '#C2410C' }
-                    : { color: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(15,23,42,0.62)' },
+                    : { color: isDark ? 'rgba(255,255,255,0.78)' : 'rgba(15,23,42,0.62)' },
                 ]}
               >
                 {holdMode === 'disable'
@@ -404,6 +430,10 @@ export default function LiveRadarControlPill({
 
         <Text
           pointerEvents="none"
+          numberOfLines={1}
+          allowFontScaling={false}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
           style={[
             styles.hint,
             {
@@ -436,7 +466,9 @@ const styles = StyleSheet.create({
   heroWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 72,
+    width: '100%',
+    maxWidth: 164,
+    alignSelf: 'center',
   },
   pulseLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -445,28 +477,30 @@ const styles = StyleSheet.create({
   },
   pulseWave: {
     position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 2,
+    width: 140,
+    height: 70,
+    borderRadius: 35,
+    borderWidth: 1.5,
   },
   btnWrapper: {
-    borderRadius: 22,
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 164,
   },
   calibrationBtn: {
     borderWidth: 1.5,
-    borderRadius: 22,
+    borderRadius: 20,
     overflow: 'hidden',
   },
   pressed: { opacity: 0.92, transform: [{ scale: 0.985 }] },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minWidth: 168,
-    maxWidth: 220,
+    gap: 7,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+    width: '100%',
+    minWidth: 0,
   },
   holdFill: {
     position: 'absolute',
@@ -475,14 +509,16 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   textWrap: { flex: 1, minWidth: 0, gap: 1 },
-  title: { fontSize: 13, fontWeight: '800', letterSpacing: -0.2 },
-  status: { fontSize: 11, fontWeight: '600' },
-  scope: { marginTop: 1, fontSize: 10, fontWeight: '600', lineHeight: 13 },
+  title: { fontSize: 12, fontWeight: '900', letterSpacing: -0.2 },
+  status: { fontSize: 9, fontWeight: '700', letterSpacing: 0.15 },
+  scope: { marginTop: 1, fontSize: 9, fontWeight: '600', lineHeight: 11 },
   hint: {
-    marginTop: 6,
-    fontSize: 10,
+    marginTop: 3,
+    fontSize: 8,
     fontWeight: '600',
+    letterSpacing: -0.1,
     textAlign: 'center',
-    maxWidth: 220,
+    width: '100%',
+    paddingHorizontal: 2,
   },
 });

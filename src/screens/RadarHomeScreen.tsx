@@ -3160,9 +3160,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     if (isRadarActive) {
       return {
         accent: '#10B981',
-        borderColor: isDark ? 'rgba(16,185,129,0.42)' : 'rgba(16,185,129,0.34)',
-        fill: isDark ? 'rgba(16,185,129,0.14)' : 'rgba(16,185,129,0.09)',
-        iconBg: isDark ? 'rgba(16,185,129,0.2)' : 'rgba(16,185,129,0.12)',
+        borderColor: isDark ? 'rgba(16,185,129,0.55)' : 'rgba(16,185,129,0.42)',
+        fill: isDark ? 'rgba(16,185,129,0.28)' : 'rgba(16,185,129,0.2)',
+        iconBg: isDark ? 'rgba(16,185,129,0.36)' : 'rgba(16,185,129,0.24)',
         shadow: {
           shadowColor: '#000',
           shadowOffset: { width: 0, height: 4 },
@@ -3174,9 +3174,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     }
     return {
       accent: '#FF3B30',
-      borderColor: isDark ? 'rgba(255,59,48,0.4)' : 'rgba(255,59,48,0.32)',
-      fill: isDark ? 'rgba(255,59,48,0.12)' : 'rgba(255,59,48,0.07)',
-      iconBg: isDark ? 'rgba(255,59,48,0.18)' : 'rgba(255,59,48,0.1)',
+      borderColor: isDark ? 'rgba(255,59,48,0.5)' : 'rgba(255,59,48,0.4)',
+      fill: isDark ? 'rgba(255,59,48,0.22)' : 'rgba(255,59,48,0.14)',
+      iconBg: isDark ? 'rgba(255,59,48,0.3)' : 'rgba(255,59,48,0.18)',
       shadow: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
@@ -5210,6 +5210,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       />
                       <View style={styles.radarPillTextWrap}>
                         <Text
+                          numberOfLines={1}
+                          allowFontScaling={false}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.82}
                           style={[
                             styles.radarTitle,
                             {
@@ -5220,6 +5224,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                           {t('radar.home.radarBrand')}
                         </Text>
                         <Text
+                          numberOfLines={1}
+                          allowFontScaling={false}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.78}
                           style={[
                             styles.radarStatus,
                             radarHoldMode ? { color: isDark ? '#FDBA74' : '#C2410C' } : null,
@@ -5254,6 +5262,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   </Pressable>
                   <Text
                     pointerEvents="none"
+                    numberOfLines={1}
+                    allowFontScaling={false}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
                     style={[
                       styles.radarCalibrationTapHint,
                       {
@@ -5300,22 +5312,24 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           <View style={styles.topBarCenterSpacer} />
         )}
 
-        <CatalogSearchFilterButton
-          isDark={isDark}
-          accent={showOnlyFavorites ? favoritesScopeAccent : modeAccentColor}
-          label={t('radar.home.searchCtaLabel')}
-          hint={t('radar.home.searchCtaHint')}
-          active={hasAdvancedFiltersActive}
-          lightChrome={isGalleryLightChrome}
-          accessibilityLabel={t('radar.home.advancedSearch')}
-          onPress={() => {
-            setDraftAdvancedFilters({
-              ...advancedFilters,
-              localityCountryCode: advancedFilters.localityCountryCode.trim() || 'PL',
-            });
-            setShowAdvancedSearch(true);
-          }}
-        />
+        <View style={{ flexShrink: 0, zIndex: 5 }}>
+          <CatalogSearchFilterButton
+            isDark={isDark}
+            accent={showOnlyFavorites ? favoritesScopeAccent : modeAccentColor}
+            label={t('radar.home.searchCtaLabel')}
+            hint={t('radar.home.searchCtaHint')}
+            active={hasAdvancedFiltersActive}
+            lightChrome={isGalleryLightChrome}
+            accessibilityLabel={t('radar.home.advancedSearch')}
+            onPress={() => {
+              setDraftAdvancedFilters({
+                ...advancedFilters,
+                localityCountryCode: advancedFilters.localityCountryCode.trim() || 'PL',
+              });
+              setShowAdvancedSearch(true);
+            }}
+          />
+        </View>
       </View>
 
       {!showOnlyFavorites && radarBrowseMode === 'GALLERY' && !showAreaPicker && (
@@ -6580,6 +6594,7 @@ const styles = StyleSheet.create({
   topBarSideSlot: {
     width: 50,
     flexShrink: 0,
+    zIndex: 4,
   },
   topBarCenterSpacer: {
     flex: 1,
@@ -6588,18 +6603,22 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     minWidth: 0,
-    paddingHorizontal: 6,
-    maxWidth: 320,
+    paddingHorizontal: 2,
+    maxWidth: 168,
     alignSelf: 'center',
+    zIndex: 1,
+    overflow: 'visible',
   },
   topBarCenterStackGallery: {
     justifyContent: 'center',
     paddingTop: 2,
+    maxWidth: 196,
   },
   topBarToolsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    zIndex: 4,
   },
   searchBarSlot: {
     flex: 1,
@@ -6998,6 +7017,8 @@ const styles = StyleSheet.create({
   radarHeroWrap: {
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
+    maxWidth: 164,
   },
   radarPulseLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -7006,9 +7027,9 @@ const styles = StyleSheet.create({
   },
   radarPulseWave: {
     position: 'absolute',
-    width: 280,
-    height: 86,
-    borderRadius: 43,
+    width: 148,
+    height: 72,
+    borderRadius: 36,
     borderWidth: 1.5,
   },
   favoritesAuraWave: {
@@ -7019,32 +7040,36 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   radarBtnWrapper: {
-    borderRadius: 26,
+    borderRadius: 20,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.2)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 9,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 6,
+    width: '100%',
+    maxWidth: 164,
   },
   radarCalibrationBtn: {
     borderWidth: 1,
   },
   radarCalibrationFace: {
-    borderRadius: 25,
+    borderRadius: 19,
   },
   radarCalibrationPressed: {
     opacity: 0.88,
     transform: [{ scale: 0.985 }],
   },
   radarCalibrationTapHint: {
-    marginTop: 4,
-    fontSize: 9,
+    marginTop: 3,
+    fontSize: 8,
     fontWeight: '600',
-    letterSpacing: 0.2,
+    letterSpacing: -0.1,
     textAlign: 'center',
+    paddingHorizontal: 2,
+    width: '100%',
   },
   radarHoldFill: {
     position: 'absolute',
@@ -7055,11 +7080,11 @@ const styles = StyleSheet.create({
   radarPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    gap: 10,
-    minWidth: 220,
-    maxWidth: '92%',
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+    gap: 7,
+    width: '100%',
+    minWidth: 0,
   },
   radarPillTextWrap: {
     flexDirection: 'column',
@@ -7068,23 +7093,23 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   radarTitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '900',
-    letterSpacing: 0.1,
+    letterSpacing: -0.2,
   },
   radarStatus: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     color: '#8E8E93',
     marginTop: 1,
-    letterSpacing: 0.7,
+    letterSpacing: 0.2,
   },
   radarScopeLine: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
-    marginTop: 4,
-    lineHeight: 13,
-    letterSpacing: 0.15,
+    marginTop: 2,
+    lineHeight: 11,
+    letterSpacing: -0.1,
   },
   favoritesScopeContainer: {
     position: 'absolute',

@@ -867,19 +867,21 @@ export default function CarsCatalogScreen({
 
         <View style={styles.topBarCenter}>{centerChrome}</View>
 
-        <CatalogSearchFilterButton
-          isDark={isDark}
-          accent={CAR_ACCENT}
-          label={t('radar.home.searchCtaLabel')}
-          hint={isCarRadarActive ? t('radar.home.radarBrand') : t('radar.home.searchCtaHintCars')}
-          active={hasAdvancedFiltersActive || isCarRadarActive}
-          lightChrome={isGalleryLightChrome}
-          accessibilityLabel={t('radar.home.advancedSearch')}
-          onPress={() => {
-            setDraftAdvancedFilters(isCarRadarActive ? carRadarFilters : advancedFilters);
-            setShowAdvancedSearch(true);
-          }}
-        />
+        <View style={{ flexShrink: 0, zIndex: 5 }}>
+          <CatalogSearchFilterButton
+            isDark={isDark}
+            accent={CAR_ACCENT}
+            label={t('radar.home.searchCtaLabel')}
+            hint={isCarRadarActive ? t('radar.home.radarBrand') : t('radar.home.searchCtaHintCars')}
+            active={hasAdvancedFiltersActive || isCarRadarActive}
+            lightChrome={isGalleryLightChrome}
+            accessibilityLabel={t('radar.home.advancedSearch')}
+            onPress={() => {
+              setDraftAdvancedFilters(isCarRadarActive ? carRadarFilters : advancedFilters);
+              setShowAdvancedSearch(true);
+            }}
+          />
+        </View>
       </View>
 
       {browseMode === 'MAP' && !loading && !error && mappableCount === 0 ? (
@@ -1271,19 +1273,21 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
       flexDirection: 'row',
       alignItems: 'flex-start',
       justifyContent: 'space-between',
-      gap: 8,
+      gap: 6,
     },
     topBarSideSlot: {
       width: 50,
       flexShrink: 0,
+      zIndex: 4,
     },
     topBarCenter: {
       flex: 1,
       alignItems: 'center',
       minWidth: 0,
-      paddingHorizontal: 6,
-      maxWidth: 320,
+      paddingHorizontal: 2,
+      maxWidth: 168,
       alignSelf: 'center',
+      zIndex: 1,
     },
     filterButtonWrap: {
       width: 50,
