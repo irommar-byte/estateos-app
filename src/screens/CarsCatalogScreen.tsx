@@ -1106,13 +1106,13 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
     },
     topBarContainer: {
       position: 'absolute',
-      left: 20,
-      right: 20,
+      left: 14,
+      right: 14,
       zIndex: 20,
       flexDirection: 'row',
       alignItems: 'flex-start',
       justifyContent: 'space-between',
-      gap: 12,
+      gap: 8,
     },
     topBarSideSlot: {
       width: 50,
