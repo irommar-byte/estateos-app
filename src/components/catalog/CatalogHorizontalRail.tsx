@@ -31,6 +31,8 @@ export type CatalogRailSection = {
   emptyLabel?: string;
 };
 
+export type CatalogRailDensity = 'compact' | 'comfortable' | 'large';
+
 type Props = {
   title: string;
   icon: keyof typeof Ionicons.glyphMap;
@@ -40,11 +42,17 @@ type Props = {
   isDark: boolean;
   onPressItem: (id: number | string) => void;
   pageSize?: number;
+  density?: CatalogRailDensity;
 };
 
 const DEFAULT_PAGE_SIZE = 12;
 const LOAD_MORE_THRESHOLD_PX = 420;
-const CARD_RADIUS = 18;
+
+const DENSITY = {
+  compact: { cardW: 132, imageH: 84, radius: 14, titleSize: 12, priceSize: 11 },
+  comfortable: { cardW: 172, imageH: 112, radius: 18, titleSize: 13, priceSize: 13 },
+  large: { cardW: 248, imageH: 148, radius: 20, titleSize: 15, priceSize: 15 },
+} as const;
 
 function hexToRgba(hex: string, alpha: number): string {
   const raw = hex.replace('#', '');
@@ -57,7 +65,6 @@ function hexToRgba(hex: string, alpha: number): string {
 
 /**
  * Poziomy pasek jak WWW InfiniteHorizontalRail — doładowuje karty przy przewijaniu w prawo.
- * Panel premium: delikatny tint działu, bez pionowej kreski i bez „kwadratowego” bleedu pod kartami.
  */
 export default function CatalogHorizontalRail({
   title,
@@ -68,9 +75,11 @@ export default function CatalogHorizontalRail({
   isDark,
   onPressItem,
   pageSize = DEFAULT_PAGE_SIZE,
+  density = 'comfortable',
 }: Props) {
   const [visibleCount, setVisibleCount] = useState(pageSize);
   const loadingMoreRef = useRef(false);
+  const d = DENSITY[density] || DENSITY.comfortable;
 
   useEffect(() => {
     setVisibleCount(pageSize);
@@ -102,18 +111,18 @@ export default function CatalogHorizontalRail({
     [canLoadMore, loadMore],
   );
 
-  // Bardzo lekki tint — karty nie siedzą na „płycie” koloru, więc rogi wyglądają okrągło.
+  // Pełniejsze zabarwienie taśmy — solidny tint działu na całym panelu.
   const panelBg = isDark
-    ? [hexToRgba(accent, 0.1), 'rgba(22,22,24,0.96)', 'rgba(18,18,20,0.98)']
-    : [hexToRgba(accent, 0.07), 'rgba(255,255,255,0.98)', 'rgba(248,250,252,0.96)'];
+    ? [hexToRgba(accent, 0.34), hexToRgba(accent, 0.2), hexToRgba(accent, 0.12)]
+    : [hexToRgba(accent, 0.28), hexToRgba(accent, 0.16), hexToRgba(accent, 0.1)];
 
   return (
     <View
       style={[
         styles.panel,
         {
-          borderColor: isDark ? hexToRgba(accent, 0.22) : hexToRgba(accent, 0.14),
-          shadowColor: isDark ? '#000' : accent,
+          borderColor: isDark ? hexToRgba(accent, 0.42) : hexToRgba(accent, 0.28),
+          shadowColor: accent,
         },
       ]}
     >
@@ -126,7 +135,7 @@ export default function CatalogHorizontalRail({
       <View
         style={[
           styles.panelSheen,
-          { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)' },
+          { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.45)' },
         ]}
       />
 
@@ -135,8 +144,8 @@ export default function CatalogHorizontalRail({
           style={[
             styles.iconBubble,
             {
-              backgroundColor: hexToRgba(accent, isDark ? 0.28 : 0.14),
-              borderColor: hexToRgba(accent, 0.4),
+              backgroundColor: hexToRgba(accent, isDark ? 0.36 : 0.22),
+              borderColor: hexToRgba(accent, 0.5),
               shadowColor: accent,
             },
           ]}
@@ -152,7 +161,7 @@ export default function CatalogHorizontalRail({
           </Text>
         </View>
         {items.length > 0 ? (
-          <View style={[styles.countPill, { backgroundColor: hexToRgba(accent, isDark ? 0.28 : 0.14) }]}>
+          <View style={[styles.countPill, { backgroundColor: hexToRgba(accent, isDark ? 0.32 : 0.2) }]}>
             <Text style={[styles.count, { color: accent }]}>{items.length}</Text>
           </View>
         ) : null}
@@ -165,7 +174,7 @@ export default function CatalogHorizontalRail({
               styles.empty,
               {
                 borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
-                backgroundColor: isDark ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.86)',
+                backgroundColor: isDark ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.78)',
               },
             ]}
           >
@@ -188,19 +197,30 @@ export default function CatalogHorizontalRail({
               onPress={() => onPressItem(item.id)}
               haptic="selection"
               pressScale={0.97}
-              style={styles.cardPress}
+              style={{ width: d.cardW }}
             >
               <View
                 style={[
                   styles.card,
                   {
+                    width: d.cardW,
+                    borderRadius: d.radius,
                     backgroundColor: isDark ? 'rgba(28,28,30,1)' : '#FFFFFF',
                     borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.06)',
                     shadowColor: isDark ? '#000' : '#0F172A',
                   },
                 ]}
               >
-                <View style={styles.imageClip}>
+                <View
+                  style={[
+                    styles.imageClip,
+                    {
+                      height: d.imageH,
+                      borderTopLeftRadius: d.radius,
+                      borderTopRightRadius: d.radius,
+                    },
+                  ]}
+                >
                   {item.imageUrl ? (
                     <Image source={{ uri: item.imageUrl }} style={styles.image} contentFit="cover" />
                   ) : (
@@ -210,7 +230,10 @@ export default function CatalogHorizontalRail({
                   )}
                 </View>
                 <View style={styles.cardBody}>
-                  <Text numberOfLines={1} style={[styles.cardTitle, { color: isDark ? '#FFF' : '#111' }]}>
+                  <Text
+                    numberOfLines={density === 'large' ? 2 : 1}
+                    style={[styles.cardTitle, { color: isDark ? '#FFF' : '#111', fontSize: d.titleSize }]}
+                  >
                     {item.title}
                   </Text>
                   {item.subtitle ? (
@@ -219,7 +242,10 @@ export default function CatalogHorizontalRail({
                     </Text>
                   ) : null}
                   {item.priceLabel ? (
-                    <Text numberOfLines={1} style={[styles.cardPrice, { color: accent }]}>
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.cardPrice, { color: accent, fontSize: d.priceSize }]}
+                    >
                       {item.priceLabel}
                     </Text>
                   ) : null}
@@ -238,10 +264,16 @@ type StackProps = {
   sections: CatalogRailSection[];
   isDark: boolean;
   onPressItem: (id: number | string) => void;
+  density?: CatalogRailDensity;
 };
 
 /** Stos taśm Market — ukrywa puste kategorie (poza showWhenEmpty). */
-export function CatalogHorizontalRailStack({ sections, isDark, onPressItem }: StackProps) {
+export function CatalogHorizontalRailStack({
+  sections,
+  isDark,
+  onPressItem,
+  density = 'comfortable',
+}: StackProps) {
   const visible = sections.filter((s) => s.items.length > 0 || (s.showWhenEmpty && s.emptyLabel));
   if (!visible.length) return null;
   return (
@@ -256,8 +288,67 @@ export function CatalogHorizontalRailStack({ sections, isDark, onPressItem }: St
           emptyLabel={section.emptyLabel}
           isDark={isDark}
           onPressItem={onPressItem}
+          density={density}
         />
       ))}
+    </View>
+  );
+}
+
+type DensityToggleProps = {
+  value: CatalogRailDensity;
+  onChange: (v: CatalogRailDensity) => void;
+  isDark: boolean;
+  accent?: string;
+};
+
+/** Przełącznik Małe / Średnie / Duże okienka w taśmach. */
+export function CatalogRailDensityToggle({
+  value,
+  onChange,
+  isDark,
+  accent = '#6366F1',
+}: DensityToggleProps) {
+  const options: { key: CatalogRailDensity; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
+    { key: 'compact', icon: 'grid-outline', label: 'Małe' },
+    { key: 'comfortable', icon: 'tablet-landscape-outline', label: 'Średnie' },
+    { key: 'large', icon: 'tablet-landscape', label: 'Duże' },
+  ];
+
+  return (
+    <View
+      style={[
+        styles.densityWrap,
+        {
+          backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.72)',
+          borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)',
+        },
+      ]}
+    >
+      {options.map((opt) => {
+        const selected = value === opt.key;
+        return (
+          <ApplePressable
+            key={opt.key}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            accessibilityLabel={opt.label}
+            haptic="selection"
+            pressScale={0.94}
+            onPress={() => {
+              if (!selected) onChange(opt.key);
+            }}
+            style={[
+              styles.densityBtn,
+              selected && {
+                backgroundColor: hexToRgba(accent, isDark ? 0.35 : 0.18),
+              },
+            ]}
+          >
+            <Ionicons name={opt.icon} size={15} color={selected ? accent : '#8E8E93'} />
+          </ApplePressable>
+        );
+      })}
     </View>
   );
 }
@@ -272,16 +363,16 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 16,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.14,
     shadowRadius: 16,
-    elevation: 4,
+    elevation: 5,
   },
   panelSheen: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 20,
+    height: 22,
   },
   head: {
     flexDirection: 'row',
@@ -321,12 +412,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
   },
   row: { gap: 12, paddingHorizontal: 14, paddingRight: 18 },
-  cardPress: {
-    width: 172,
-  },
   card: {
-    width: 172,
-    borderRadius: CARD_RADIUS,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     shadowOffset: { width: 0, height: 4 },
@@ -336,17 +422,29 @@ const styles = StyleSheet.create({
   },
   imageClip: {
     width: '100%',
-    height: 112,
     overflow: 'hidden',
-    borderTopLeftRadius: CARD_RADIUS,
-    borderTopRightRadius: CARD_RADIUS,
     backgroundColor: '#1E293B',
   },
   image: { width: '100%', height: '100%' },
   imageFallback: { alignItems: 'center', justifyContent: 'center' },
   cardBody: { paddingHorizontal: 11, paddingVertical: 10, gap: 2 },
-  cardTitle: { fontSize: 13, fontWeight: '700', letterSpacing: -0.2 },
+  cardTitle: { fontWeight: '700', letterSpacing: -0.2 },
   cardSub: { fontSize: 11, color: '#8E8E93' },
-  cardPrice: { marginTop: 3, fontSize: 13, fontWeight: '800', letterSpacing: -0.2 },
+  cardPrice: { marginTop: 3, fontWeight: '800', letterSpacing: -0.2 },
   sentinel: { width: 24, height: 1 },
+  densityWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 2,
+    gap: 1,
+  },
+  densityBtn: {
+    width: 32,
+    height: 28,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

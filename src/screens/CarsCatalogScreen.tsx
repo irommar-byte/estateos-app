@@ -29,12 +29,13 @@ import CatalogSearchFilterButton from '../components/CatalogSearchFilterButton';
 import CarsCatalogMapView, { type CarsCatalogMapViewHandle } from '../components/cars/CarsCatalogMapView';
 import CarsAdvancedSearchModal from '../components/cars/CarsAdvancedSearchModal';
 import VerticalSegmentRail from '../components/VerticalSegmentRail';
-import { CatalogHorizontalRailStack } from '../components/catalog/CatalogHorizontalRail';
+import { CatalogHorizontalRailStack, CatalogRailDensityToggle, type CatalogRailDensity } from '../components/catalog/CatalogHorizontalRail';
 import { buildCarMarketRailSections } from '../components/catalog/buildMarketRails';
 import MarketCatalogViewToggle, {
   type MarketCatalogContentMode,
 } from '../components/catalog/MarketCatalogViewToggle';
 import ChromeIconButton from '../components/catalog/ChromeIconButton';
+import MarketUnreadQuickReplyBubble from '../components/messaging/MarketUnreadQuickReplyBubble';
 import * as Haptics from 'expo-haptics';
 import { useCarScreenTheme, type CarScreenColors } from '../theme/carScreenTheme';
 import FeaturedOfferSpotlight from '../components/radar/FeaturedOfferSpotlight';
@@ -99,6 +100,7 @@ export default function CarsCatalogScreen({
   const [browseMode, setBrowseMode] = useState<BrowseMode>(resolvedInitial);
   const [marketContentMode, setMarketContentMode] = useState<MarketCatalogContentMode>('catalog');
   const [viewMode, setViewMode] = useState<ViewMode>(isTabletLike ? 'grid' : 'cover');
+  const [railDensity, setRailDensity] = useState<CatalogRailDensity>('comfortable');
   const isListView = viewMode === 'list';
   const isGridView = viewMode === 'grid';
   const isMultiCol = isListView || isGridView;
@@ -559,25 +561,20 @@ export default function CarsCatalogScreen({
                     {t('radar.home.galleryRailsViewLead')}
                   </Text>
                 </View>
-                <View
-                  style={{
-                    minWidth: 32,
-                    height: 32,
-                    borderRadius: 16,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    paddingHorizontal: 8,
-                    backgroundColor: isDark ? 'rgba(14,165,233,0.28)' : 'rgba(14,165,233,0.14)',
-                  }}
-                >
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: CAR_ACCENT }}>
-                    {marketRailSections.filter((s) => s.items.length > 0 || (s.showWhenEmpty && s.emptyLabel)).length}
-                  </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <CatalogRailDensityToggle
+                    value={railDensity}
+                    onChange={setRailDensity}
+                    isDark={isDark}
+                    accent={CAR_ACCENT}
+                  />
+                  <MarketUnreadQuickReplyBubble isDark={isDark} accent={CAR_ACCENT} />
                 </View>
               </View>
               <CatalogHorizontalRailStack
                 sections={marketRailSections}
                 isDark={isDark}
+                density={railDensity}
                 onPressItem={(id) => {
                   const car =
                     myCars.find((c) => c.id === Number(id)) || cars.find((c) => c.id === Number(id));

@@ -22,11 +22,15 @@ import { isFavoriteId } from '../../utils/favoritesStorage';
 import { resolveOfferPriceDiscount } from '../../utils/offerPriceDiscount';
 import { isOfferFeatured } from '../../utils/listingPromotion';
 import FeaturedOfferSpotlight from './FeaturedOfferSpotlight';
-import type { CatalogRailItem } from '../catalog/CatalogHorizontalRail';
-import { CatalogHorizontalRailStack } from '../catalog/CatalogHorizontalRail';
+import type { CatalogRailDensity, CatalogRailItem } from '../catalog/CatalogHorizontalRail';
+import {
+  CatalogHorizontalRailStack,
+  CatalogRailDensityToggle,
+} from '../catalog/CatalogHorizontalRail';
 import { buildHomeMarketRailSections } from '../catalog/buildMarketRails';
 import type { MarketCatalogContentMode } from '../catalog/MarketCatalogViewToggle';
 import ApplePressable from '../ApplePressable';
+import MarketUnreadQuickReplyBubble from '../messaging/MarketUnreadQuickReplyBubble';
 import { carCardElevation, useCarScreenTheme, type CarScreenColors } from '../../theme/carScreenTheme';
 import { formatLocationLabel } from '../../constants/locationEcosystem';
 
@@ -225,6 +229,7 @@ export default function RadarOfferGallery({
   const featuredSpotlightVisible = scrollY < Math.max(featuredSpotlightBottom - 72, 0);
   const isTabletLike = width >= 600;
   const [viewMode, setViewMode] = useState<GalleryViewMode>(isTabletLike ? 'grid' : 'cover');
+  const [railDensity, setRailDensity] = useState<CatalogRailDensity>('comfortable');
   const [page, setPage] = useState(1);
   const gap = 14;
   const horizontalPad = 20;
@@ -769,14 +774,21 @@ export default function RadarOfferGallery({
               {t('radar.home.galleryRailsViewLead')}
             </Text>
           </View>
-          <View style={styles.railsCountPill}>
-            <Text style={styles.railsCount}>{visibleRails.length}</Text>
+          <View style={styles.railsHeroActions}>
+            <CatalogRailDensityToggle
+              value={railDensity}
+              onChange={setRailDensity}
+              isDark={isDark}
+              accent={GALLERY_ACCENT}
+            />
+            <MarketUnreadQuickReplyBubble isDark={isDark} accent={GALLERY_ACCENT} />
           </View>
         </View>
         {visibleRails.length ? (
           <CatalogHorizontalRailStack
             sections={marketRailSections}
             isDark={isDark}
+            density={railDensity}
             onPressItem={onPressRailItem}
           />
         ) : (
@@ -1565,6 +1577,12 @@ const styles = StyleSheet.create({
     right: 0,
     height: 16,
     backgroundColor: 'rgba(255,255,255,0.35)',
+  },
+  railsHeroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
   },
   railsIconBubble: {
     width: 40,
