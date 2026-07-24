@@ -1123,6 +1123,10 @@ type PushNavigationTarget =
       params: { offer: { id: number | string }; id: number | string; offerId: number | string };
     }
   | {
+      screen: 'CarDetail';
+      params: { carId: number | string; id?: number | string };
+    }
+  | {
       screen: 'DealroomChat';
       params: { dealId: number | string; offerId?: number | string; title?: string };
     }
@@ -1151,6 +1155,14 @@ const parseNumericOrStringId = (value: unknown): number | string | null => {
 };
 
 const parseLinkToPushTarget = (url: string): PushNavigationTarget | null => {
+  const carIdStr = extractIdFromDeeplink(url, 'car');
+  const carId = parseNumericOrStringId(carIdStr);
+  if (carId) {
+    return {
+      screen: 'CarDetail',
+      params: { carId, id: carId },
+    };
+  }
   const offerIdStr = extractIdFromDeeplink(url, 'offer');
   const id = parseNumericOrStringId(offerIdStr);
   if (id) {
@@ -1211,11 +1223,16 @@ const parsePushTargetFromResponse = (
   const targetTypeNorm = String(firstDefined(data.targetType, data.entity, data.notificationType) || '')
     .trim()
     .toUpperCase();
+  const targetTypeLooksCar =
+    targetTypeNorm === 'CAR' ||
+    targetTypeNorm.includes('CAR_RADAR') ||
+    targetTypeNorm === 'CAR_RADAR_MATCH';
   const targetTypeLooksOffer =
-    targetTypeNorm.includes('OFFER') ||
+    !targetTypeLooksCar &&
+    (targetTypeNorm.includes('OFFER') ||
     targetTypeNorm.includes('LISTING') ||
     targetTypeNorm.includes('PROPERTY') ||
-    targetTypeNorm.includes('RADAR');
+    targetTypeNorm.includes('RADAR'));
   const targetTypeLooksContact = targetTypeNorm.includes('CONTACT');
   const targetTypeLooksDeal =
     !targetTypeLooksContact &&
@@ -1241,10 +1258,14 @@ const parsePushTargetFromResponse = (
   const deeplinkLower = deeplink.toLowerCase();
   const deeplinkOfferId = extractIdFromDeeplink(deeplink, 'offer');
   const deeplinkDealId = extractIdFromDeeplink(deeplink, 'deal');
+  const deeplinkCarId = extractIdFromDeeplink(deeplink, 'car');
 
   const extractedIds = extractPushDealAndOfferIds(data);
   const offerId = parseNumericOrStringId(extractedIds.offerId ?? deeplinkOfferId);
   const dealId = parseNumericOrStringId(extractedIds.dealId ?? deeplinkDealId);
+  const carId = parseNumericOrStringId(
+    firstDefined(data.carId, data.car_id, targetTypeLooksCar ? data.targetId : null, deeplinkCarId)
+  );
   const auctionEventId = parseNumericOrStringId(data.eventId);
   const pushTypeNorm = String(firstDefined(data.type, data.notificationType) || '')
     .trim()
@@ -1268,12 +1289,20 @@ const parsePushTargetFromResponse = (
   const looksLikeOffer = routeHint.includes('offer') || routeHint.includes('oferta');
   const looksLikeDealOrChat =
     routeHint.includes('deal') || routeHint.includes('chat') || routeHint.includes('dealroom');
+  const looksLikeCar =
+    targetTypeLooksCar ||
+    routeHint.includes('car_radar') ||
+    routeHint === 'cardetail' ||
+    routeHint === 'car_detail' ||
+    String(data.notificationType || '').toLowerCase() === 'car_radar_match' ||
+    /(^|\/)car(\/|$)/i.test(deeplinkLower);
   const looksLikeRadar =
-    routeHint.includes('radar') ||
+    !looksLikeCar &&
+    (routeHint.includes('radar') ||
     routeHint.includes('match') ||
     routeHint.includes('favorite') ||
     routeHint.includes('favourite') ||
-    routeHint.includes('ulub');
+    routeHint.includes('ulub'));
   const deeplinkLooksLikeDeal = /(deal|dealroom|chat|conversation|thread)/i.test(deeplinkLower);
   const deeplinkLooksLikeOffer = /(offer|oferta|listing|property|\/o\/)/i.test(deeplinkLower);
   const deeplinkLooksLikeRadar = /(radar|favorite|favourite|ulub)/i.test(deeplinkLower);
@@ -1282,7 +1311,7 @@ const parsePushTargetFromResponse = (
     routeHint.startsWith('offer_') ||
     routeHint.startsWith('listing_') ||
     routeHint.startsWith('property_') ||
-    routeHint.startsWith('radar_') ||
+    (routeHint.startsWith('radar_') && !routeHint.startsWith('car_')) ||
     targetTypeLooksOffer;
   const explicitDealTarget =
     ['dealroom', 'dealroom_chat', 'deal', 'chat', 'message', 'deal_chat'].includes(routeHint) ||
@@ -1295,14 +1324,22 @@ const parsePushTargetFromResponse = (
     response?.notification?.request?.content?.body || ''
   )}`.toLowerCase();
   const offerSemanticHint =
-    /(ofert|offer|listing|nieruchomo|radar|aktywac|opublikow|dopasowan)/i.test(textHint) ||
-    /(offer|listing|property|oferta|radar|match)/i.test(String(data.notificationType || '').toLowerCase());
+    !looksLikeCar &&
+    (/(ofert|offer|listing|nieruchomo|radar|aktywac|opublikow|dopasowan)/i.test(textHint) ||
+    /(offer|listing|property|oferta|radar|match)/i.test(String(data.notificationType || '').toLowerCase()));
 
   const contactThreadId = parseNumericOrStringId(
     firstDefined(data.threadId, data.contactThreadId, targetTypeLooksContact ? data.targetId : null)
   );
   const contactPeerUserId = parseNumericOrStringId(firstDefined(data.peerUserId, data.senderId, data.fromUserId));
   const contactPeerName = String(firstDefined(data.peerName, data.senderName) || '').trim();
+
+  if (looksLikeCar && carId) {
+    return {
+      screen: 'CarDetail',
+      params: { carId: Number(carId), id: Number(carId) },
+    };
+  }
 
   if (targetTypeLooksContact && contactThreadId) {
     return {
@@ -1528,7 +1565,12 @@ export default function App() {
 
     lastNavigationKeyRef.current = { key: navigationKey, at: now };
     if (__DEV__) console.log('[PUSH][NAVIGATE]', navigationKey);
-    if (target.screen === 'OfferDetail' || target.screen === 'DealroomChat' || target.screen === 'ContactChat') {
+    if (
+      target.screen === 'OfferDetail' ||
+      target.screen === 'CarDetail' ||
+      target.screen === 'DealroomChat' ||
+      target.screen === 'ContactChat'
+    ) {
       (navigationRef as any).dispatch(StackActions.push(target.screen, target.params));
     } else {
       (navigationRef as any).navigate(target.screen, target.params);

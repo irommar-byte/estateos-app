@@ -5,7 +5,7 @@
 
 import { API_URL } from '../config/network';
 
-export function extractIdFromDeeplink(deeplink: string, kind: 'offer' | 'deal'): string | null {
+export function extractIdFromDeeplink(deeplink: string, kind: 'offer' | 'deal' | 'car'): string | null {
   if (!deeplink) return null;
   const cleaned = deeplink.trim();
   if (!cleaned) return null;
@@ -21,6 +21,13 @@ export function extractIdFromDeeplink(deeplink: string, kind: 'offer' | 'deal'):
           /listing\/(\d+)/i,
           /property\/(\d+)/i,
         ]
+      : kind === 'car'
+        ? [
+            /^estateos:\/\/car\/([^/?#]+)/i,
+            /\/car\/([^/?#]+)/i,
+            /cars?\/(\d+)/i,
+            /auto\/(\d+)/i,
+          ]
       : [/deals?\/(\d+)/i, /dealroom\/(\d+)/i, /chat\/(\d+)/i, /thread\/(\d+)/i, /conversation\/(\d+)/i];
 
   for (const rx of pathRegexes) {
@@ -48,6 +55,16 @@ export function extractIdFromDeeplink(deeplink: string, kind: 'offer' | 'deal'):
         u.searchParams.get('propertyId') ||
         u.searchParams.get('id')
       );
+    }
+
+    if (kind === 'car') {
+      if (u.protocol === 'estateos:' && String(u.hostname || '').toLowerCase() === 'car') {
+        const seg = u.pathname.replace(/^\//, '');
+        if (seg) return decodeURIComponent(seg);
+      }
+      const cm = u.pathname.match(/\/(?:car|auto)\/([^/]+)/i);
+      if (cm?.[1]) return cm[1];
+      return u.searchParams.get('carId') || u.searchParams.get('car_id') || u.searchParams.get('id');
     }
 
     const dm = u.pathname.match(/\/(?:deal|dealroom|chat)\/([^/]+)/i);

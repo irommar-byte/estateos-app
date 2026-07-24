@@ -38,6 +38,12 @@ import ChromeIconButton from '../components/catalog/ChromeIconButton';
 import MarketUnreadQuickReplyBubble from '../components/messaging/MarketUnreadQuickReplyBubble';
 import LiveRadarControlPill from '../components/radar/LiveRadarControlPill';
 import { useCarRadarStore } from '../store/useCarRadarStore';
+import { registerPushNotifications } from '../hooks/usePushNotifications';
+import { API_URL } from '../config/network';
+import {
+  buildCanonicalCarRadarPreferencesDto,
+  postCarRadarPreferencesToBackend,
+} from '../utils/carRadarPreferenceSync';
 import * as Haptics from 'expo-haptics';
 import { useCarScreenTheme, type CarScreenColors } from '../theme/carScreenTheme';
 import FeaturedOfferSpotlight from '../components/radar/FeaturedOfferSpotlight';
@@ -127,6 +133,7 @@ export default function CarsCatalogScreen({
   }, [isListView, isGridView, screenWidth]);
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
   const [cars, setCars] = useState<CarListing[]>([]);
   const [myCars, setMyCars] = useState<CarListing[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
@@ -427,6 +434,30 @@ export default function CarsCatalogScreen({
     setShowAdvancedSearch(true);
   }, [isCarRadarActive, carRadarFilters, advancedFilters]);
 
+  const syncCarRadarToBackend = useCallback(
+    async (filters: CarsAdvancedFilters, enabled: boolean) => {
+      const userId = Number(user?.id || 0);
+      if (!token || !(userId > 0)) return;
+      const dto = buildCanonicalCarRadarPreferencesDto({
+        userId,
+        filters,
+        enabled,
+        pushNotifications: enabled,
+      });
+      const ok = await postCarRadarPreferencesToBackend({ apiUrl: API_URL, token, dto });
+      if (enabled && ok) {
+        const pushOk = await registerPushNotifications(token, { showPrompt: true });
+        if (!pushOk) {
+          Alert.alert(
+            'Powiadomienia radaru aut',
+            'Radar aut został zapisany, ale nie udało się zarejestrować powiadomień push. Włącz powiadomienia w ustawieniach iPhone’a, potem włącz radar ponownie.',
+          );
+        }
+      }
+    },
+    [token, user?.id],
+  );
+
   const enableCarRadarFromLastSave = useCallback(async () => {
     const hasParams = carsAdvancedFiltersActive(carRadarFilters);
     if (!hasParams) {
@@ -437,11 +468,13 @@ export default function CarsCatalogScreen({
     await setCarRadarActive(true);
     setNearbyModeEnabled(false);
     pendingFitAllRef.current = true;
-  }, [carRadarFilters, openCarRadarCalibration, setCarRadarActive]);
+    void syncCarRadarToBackend(carRadarFilters, true);
+  }, [carRadarFilters, openCarRadarCalibration, setCarRadarActive, syncCarRadarToBackend]);
 
   const disableCarRadar = useCallback(async () => {
     await setCarRadarActive(false);
-  }, [setCarRadarActive]);
+    void syncCarRadarToBackend(carRadarFilters, false);
+  }, [setCarRadarActive, syncCarRadarToBackend, carRadarFilters]);
 
   const enableNearbyMode = useCallback(async () => {
     try {
@@ -1113,7 +1146,9 @@ export default function CarsCatalogScreen({
           setAdvancedFilters(draftAdvancedFilters);
           setShowAdvancedSearch(false);
           if (radarCalibrateOpen || isCarRadarActive) {
-            void commitCarRadarFilters(draftAdvancedFilters, true);
+            void commitCarRadarFilters(draftAdvancedFilters, true).then(() => {
+              void syncCarRadarToBackend(draftAdvancedFilters, true);
+            });
             setNearbyModeEnabled(false);
             pendingFitAllRef.current = true;
           }
