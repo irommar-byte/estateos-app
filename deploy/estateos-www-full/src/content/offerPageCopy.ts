@@ -85,6 +85,28 @@ export type OfferPageCopy = {
   commissionCompany: string;
   openCompanyProfile: string;
   contactSeller: string;
+  askSeller: string;
+  sellerOnline: string;
+  sellerOffline: string;
+  guestAsk: {
+    title: string;
+    subtitle: string;
+    questionsLabel: string;
+    questions: { key: string; label: string }[];
+    phoneLabel: string;
+    phonePlaceholder: string;
+    messageLabel: string;
+    messagePlaceholder: string;
+    nameLabel: string;
+    nameOptional: string;
+    namePlaceholder: string;
+    send: string;
+    sending: string;
+    successTitle: string;
+    successBody: string;
+    close: string;
+    errorGeneric: string;
+  };
   agentPhotoAlt: string;
   companyLogoAlt: string;
   agentRoleLabel: string;
@@ -248,6 +270,35 @@ const PL: OfferPageCopy = {
   commissionCompany: "Firma obsługująca",
   openCompanyProfile: "Otwórz wizytówkę",
   contactSeller: "Skontaktuj się ze sprzedawcą",
+  askSeller: "Zapytaj",
+  sellerOnline: "Online",
+  sellerOffline: "Offline",
+  guestAsk: {
+    title: "Zapytaj wystawcę",
+    subtitle:
+      "Bez rejestracji — zostaw telefon i krótką wiadomość. Wystawca dostanie e-mail oraz powiadomienie w EstateOS.",
+    questionsLabel: "Popularne pytania",
+    questions: [
+      { key: "isAvailable", label: "Czy oferta jest nadal aktualna?" },
+      { key: "viewingWhen", label: "Kiedy można obejrzeć?" },
+      { key: "priceNegotiable", label: "Czy cena jest do negocjacji?" },
+      { key: "moreInfo", label: "Proszę o więcej informacji" },
+    ],
+    phoneLabel: "Twój telefon",
+    phonePlaceholder: "+48 …",
+    messageLabel: "Krótka wiadomość",
+    messagePlaceholder: "Napisz, o co chcesz zapytać…",
+    nameLabel: "Imię",
+    nameOptional: "opcjonalnie",
+    namePlaceholder: "Jak się do Ciebie zwracać?",
+    send: "Wyślij zapytanie",
+    sending: "Wysyłanie…",
+    successTitle: "Zapytanie wysłane",
+    successBody:
+      "Wystawca otrzymał Twoją wiadomość na e-mail oraz powiadomienie. Oczekuj kontaktu telefonicznego.",
+    close: "Zamknij",
+    errorGeneric: "Nie udało się wysłać zapytania. Spróbuj ponownie.",
+  },
   agentPhotoAlt: "Zdjęcie agenta",
   companyLogoAlt: "Logo firmy",
   agentRoleLabel: "Agent",
@@ -411,6 +462,35 @@ const EN: OfferPageCopy = {
   commissionCompany: "Handling company",
   openCompanyProfile: "Open profile card",
   contactSeller: "Contact the seller",
+  askSeller: "Ask",
+  sellerOnline: "Online",
+  sellerOffline: "Offline",
+  guestAsk: {
+    title: "Ask the seller",
+    subtitle:
+      "No account needed — leave your phone and a short message. The seller gets an email and an EstateOS notification.",
+    questionsLabel: "Popular questions",
+    questions: [
+      { key: "isAvailable", label: "Is this listing still available?" },
+      { key: "viewingWhen", label: "When can I view the property?" },
+      { key: "priceNegotiable", label: "Is the price negotiable?" },
+      { key: "moreInfo", label: "Please share more details" },
+    ],
+    phoneLabel: "Your phone",
+    phonePlaceholder: "+48 …",
+    messageLabel: "Short message",
+    messagePlaceholder: "What would you like to ask?",
+    nameLabel: "Name",
+    nameOptional: "optional",
+    namePlaceholder: "How should we address you?",
+    send: "Send inquiry",
+    sending: "Sending…",
+    successTitle: "Inquiry sent",
+    successBody:
+      "The seller received your message by email and as a notification. Expect a phone callback.",
+    close: "Close",
+    errorGeneric: "Could not send the inquiry. Please try again.",
+  },
   agentPhotoAlt: "Agent photo",
   companyLogoAlt: "Company logo",
   agentRoleLabel: "Agent",

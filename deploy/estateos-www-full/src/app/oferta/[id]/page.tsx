@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { Suspense, useEffect, useState, use } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2, BedDouble, Layers, Calendar, Ruler, Home } from "lucide-react";
+import { ArchiveX, Shield, Briefcase, CheckCircle2, CalendarPlus, Lock, Timer, FileImage, X, Maximize2, BedDouble, Layers, Calendar, Ruler, Home } from "lucide-react";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import {
   describeOfferAgentCommission,
@@ -30,7 +30,6 @@ import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 import { useLocale } from "@/contexts/LocaleContext";
 import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
 import { isOfferNewListing } from "@/lib/offerLifecycle";
-import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 import OfferFloorPlanPanel from "@/components/offers/OfferFloorPlanPanel";
 import { parseFloorPlanScanMeta } from "@/lib/roomScan/parseFloorPlanScanMeta";
@@ -39,6 +38,8 @@ import OpenHouseReserveModal from "@/components/offer/OpenHouseReserveModal";
 import AuctionOfferBanner from "@/components/offer/AuctionOfferBanner";
 import AuctionBidModal from "@/components/offer/AuctionBidModal";
 import ProfileWriteMessageButton from "@/components/contact/ProfileWriteMessageButton";
+import OfferHeroMetaBar from "@/components/offer/OfferHeroMetaBar";
+import OfferGuestAskModal from "@/components/offer/OfferGuestAskModal";
 import type { OpenHouseEventRecord } from "@/lib/openHouseTypes";
 import type { AuctionEventRecord } from "@/lib/auctionTypes";
 import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
@@ -175,6 +176,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const [isOpenHouseModalOpen, setIsOpenHouseModalOpen] = useState(false);
   const [auctionEvent, setAuctionEvent] = useState<AuctionEventRecord | null>(null);
   const [isAuctionModalOpen, setIsAuctionModalOpen] = useState(false);
+  const [isGuestAskOpen, setIsGuestAskOpen] = useState(false);
   const isLegalKwVerified = isOfferLegallyVerified(offer);
   const isNewListing = isOfferNewListing(offer);
   const sellerAvatar = getBestUserAvatarUrl(offer?.user);
@@ -628,94 +630,44 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     : ""}
                 </p>
               ) : null}
-              <div className="flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-2.5 rounded-3xl border border-white/10 bg-zinc-950/85 px-3 py-3 shadow-2xl backdrop-blur-3xl sm:gap-x-4 sm:gap-y-3 sm:px-5 sm:py-3.5 hover:border-white/20 transition-all duration-300">
-                <button 
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPublicProfileId(String(offer?.user?.id || offer?.userId)); }} 
-                  className="flex max-w-full items-center gap-3 rounded-full border border-white/5 bg-white/5 px-4 py-2 shadow-inner transition-all duration-300 group cursor-pointer hover:border-white/10 hover:bg-white/10 sm:max-w-[min(100%,20rem)]"
-                >
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-white/10 to-transparent border border-white/10 group-hover:border-white/30 transition-colors ${themeColors.textActive}`}>
-                     {sellerAvatar ? (
-                       <img src={sellerAvatar} alt="" className="w-full h-full object-cover" />
-                     ) : sellerIsAgency ? (
-                       <Briefcase size={14} />
-                     ) : (
-                       <span className="text-[14px] group-hover:scale-110 transition-transform">👤</span>
-                     )}
-                  </div>
-                  
-                  <div className="flex flex-col items-start leading-tight">
-                      <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black tracking-widest text-white/90 uppercase group-hover:text-white transition-colors max-w-[12rem] sm:max-w-[16rem] truncate">
-                            {sellerLabel}
-                          </span>
-                          <span className={`w-1.5 h-1.5 rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.5)] ${themeColors.primaryBg}`}></span>
-                      </div>
-                      {sellerPersonLine ? (
-                        <span className="text-[8px] font-bold text-white/50 uppercase tracking-widest truncate max-w-[14rem]">
-                          {sellerPersonLine}
-                        </span>
-                      ) : null}
-                      {(() => {
-                        const total = Number(offer?.user?.reviewsData?.totalReviews ?? 0);
-                        const avg = total > 0 ? Number(offer?.user?.reviewsData?.averageRating ?? 0) : 0;
-                        if (total === 0) return null;
-                        return (
-                      <div className="flex items-center gap-1 mt-0.5">
-                          {[1,2,3,4,5].map(i => <Star key={i} size={10} className={i <= Math.round(avg) ? "text-yellow-500 fill-yellow-500" : "text-white/20"} />)}
-                          <span className="text-[9px] font-bold text-yellow-500/80 tracking-widest ml-1">{avg.toFixed(1)}</span>
-                      </div>
-                        );
-                      })()}
-                  </div>
-                </button>
-
-                {!isOwner && canContactSeller && (offer?.user?.id || offer?.userId) ? (
-                  <ProfileWriteMessageButton
-                    peerUserId={Number(offer?.user?.id || offer?.userId)}
-                    peerName={sellerLabel}
-                    currentUserId={currentUser?.id}
-                    variant="offer"
-                  />
-                ) : null}
-
-                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 sm:gap-x-4">
-                  <div className="flex flex-col items-center justify-center">
-                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.views}</span>
-                      <div className="flex items-center gap-1.5">
-                          <Eye size={12} className="text-zinc-400" />
-                          <span className="text-[11px] font-black text-white tracking-widest">{offer?.views || 0}</span>
-                      </div>
-                  </div>
-
-                  <LegalVerifiedShieldBadge
-                    active={isLegalKwVerified}
-                    label={isLegalKwVerified ? t.legalVerifiedKw : t.legalUnverifiedKw}
-                    sublabel={t.legalVerifiedKwSublabel}
-                    variant="bar"
-                  />
-
-                  {isNewListing ? (
-                    <motion.span
-                      className="rounded-full border border-blue-500/45 bg-blue-500/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-blue-300"
-                      animate={{ opacity: [1, 0.45, 1] }}
-                      transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
-                    >
-                      {t.newOfferBadge}
-                    </motion.span>
-                  ) : null}
-
-                  <div className="flex flex-col items-center justify-center">
-                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.offerId}</span>
-                      <span className={`text-[11px] font-black tracking-[0.2em] px-2 py-0.5 rounded-md border ${themeColors.textActive} ${themeColors.bgActiveSoft} ${themeColors.borderActive}`}>{offer?.id || offer?._id}</span>
-                  </div>
-
-                  <div className="flex flex-col items-center justify-center">
-                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.listedSince}</span>
-                      <span className="text-[11px] font-black text-white/70 tracking-widest">{offer?.createdAt ? new Date(offer.createdAt).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB") : t.noData}</span>
-                  </div>
-                </div>
-
-              </div>
+              <OfferHeroMetaBar
+                sellerLabel={sellerLabel}
+                sellerPersonLine={sellerPersonLine}
+                sellerAvatar={sellerAvatar}
+                sellerIsAgency={sellerIsAgency}
+                averageRating={Number(offer?.user?.reviewsData?.averageRating ?? offer?.sellerReviewsData?.averageRating ?? 0)}
+                totalReviews={Number(offer?.user?.reviewsData?.totalReviews ?? offer?.sellerReviewsData?.totalReviews ?? 0)}
+                isOnline={Boolean(offer?.user?.isOnline ?? offer?.sellerIsOnline)}
+                isOwner={isOwner}
+                canAsk={canContactSeller && Boolean(offer?.user?.id || offer?.userId)}
+                views={Number(offer?.views || 0)}
+                offerId={offer?.id || offer?._id}
+                listedAtLabel={
+                  offer?.createdAt
+                    ? new Date(offer.createdAt).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB")
+                    : t.noData
+                }
+                isLegalKwVerified={isLegalKwVerified}
+                isNewListing={isNewListing}
+                themeTextActive={themeColors.textActive}
+                themeBgActiveSoft={themeColors.bgActiveSoft}
+                themeBorderActive={themeColors.borderActive}
+                labels={{
+                  ask: t.askSeller,
+                  views: t.views,
+                  offerId: t.offerId,
+                  listedSince: t.listedSince,
+                  online: t.sellerOnline,
+                  offline: t.sellerOffline,
+                  legalVerifiedKw: t.legalVerifiedKw,
+                  legalUnverifiedKw: t.legalUnverifiedKw,
+                  legalVerifiedKwSublabel: t.legalVerifiedKwSublabel,
+                  newOfferBadge: t.newOfferBadge,
+                  noData: t.noData,
+                }}
+                onOpenProfile={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
+                onAsk={() => setIsGuestAskOpen(true)}
+              />
 
             {showAuctionBanner && auctionEvent ? (
               <AuctionOfferBanner
@@ -1186,14 +1138,24 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                             {t.openCompanyProfile}
                           </button>
                           {!isOwner && canContactSeller && (offer?.user?.id || offer?.userId) ? (
-                            <ProfileWriteMessageButton
-                              peerUserId={Number(offer?.user?.id || offer?.userId)}
-                              peerName={sellerLabel}
-                              currentUserId={currentUser?.id}
-                              variant="light"
-                              label={t.contactSeller}
-                              className="!min-h-0 flex-1 !px-3 !py-2.5"
-                            />
+                            currentUser?.id ? (
+                              <ProfileWriteMessageButton
+                                peerUserId={Number(offer?.user?.id || offer?.userId)}
+                                peerName={sellerLabel}
+                                currentUserId={currentUser?.id}
+                                variant="light"
+                                label={t.contactSeller}
+                                className="!min-h-0 flex-1 !px-3 !py-2.5"
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setIsGuestAskOpen(true)}
+                                className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-emerald-600 transition-colors hover:bg-emerald-500/20 dark:text-emerald-300"
+                              >
+                                {t.askSeller}
+                              </button>
+                            )
                           ) : null}
                         </div>
                       </div>
@@ -1341,6 +1303,16 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         isOpen={!!publicProfileId} 
         userId={publicProfileId} 
         onClose={() => setPublicProfileId(null)} 
+      />
+
+      <OfferGuestAskModal
+        isOpen={isGuestAskOpen}
+        onClose={() => setIsGuestAskOpen(false)}
+        offerId={Number(offer.id || offer._id)}
+        offerTitle={String(offer.title || `Oferta #${offer.id || offer._id}`)}
+        copy={t.guestAsk}
+        defaultPhone={String(currentUser?.phone || '')}
+        defaultName={String(currentUser?.name || '').split(' ')[0] || ''}
       />
 
       <OpenHouseReserveModal

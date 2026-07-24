@@ -406,3 +406,55 @@ export function buildAppointmentUpdateEmailHtml(params: {
 
   return wrapTransactionalEmail(body);
 }
+
+export function buildOfferGuestInquiryEmail(params: {
+  sellerName?: string | null;
+  offerTitle: string;
+  offerId: number;
+  offerUrl: string;
+  city?: string | null;
+  priceLabel: string;
+  question: string;
+  message: string;
+  phone: string;
+  guestName?: string | null;
+}): string {
+  const firstName = escapeHtml(extractFirstName(params.sellerName));
+  const title = escapeHtml(params.offerTitle);
+  const city = escapeHtml(String(params.city || '').trim() || '—');
+  const price = escapeHtml(params.priceLabel);
+  const question = escapeHtml(params.question);
+  const message = escapeHtml(params.message).replace(/\n/g, '<br />');
+  const phone = escapeHtml(params.phone);
+  const guest = params.guestName ? escapeHtml(params.guestName) : null;
+
+  const body = `
+    <p style="margin:0 0 8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#86868b;">
+      Nowe zapytanie
+    </p>
+    <h1 style="margin:0 0 16px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:26px;line-height:1.2;font-weight:700;letter-spacing:-0.03em;color:#1d1d1f;">
+      Cześć ${firstName}, ktoś pyta o Twoją ofertę
+    </h1>
+    <p style="margin:0 0 20px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:16px;line-height:1.5;color:#424245;">
+      Gość skontaktował się bez konta EstateOS — możesz odpisać bezpośrednio na podany numer telefonu.
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f5f5f7;border-radius:14px;">
+      <tr>
+        <td style="padding:18px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;line-height:1.55;color:#1d1d1f;">
+          <p style="margin:0 0 10px 0;"><span style="color:#86868b;">Oferta</span><br /><strong>#${params.offerId} · ${title}</strong></p>
+          <p style="margin:0 0 10px 0;"><span style="color:#86868b;">Lokalizacja / cena</span><br /><strong>${city} · ${price}</strong></p>
+          <p style="margin:0 0 10px 0;"><span style="color:#86868b;">Wybrane pytanie</span><br /><strong>${question}</strong></p>
+          ${guest ? `<p style="margin:0 0 10px 0;"><span style="color:#86868b;">Od</span><br /><strong>${guest}</strong></p>` : ''}
+          <p style="margin:0 0 10px 0;"><span style="color:#86868b;">Telefon</span><br /><strong style="font-size:18px;letter-spacing:0.02em;">${phone}</strong></p>
+          <p style="margin:12px 0 0 0;padding-top:12px;border-top:1px solid rgba(0,0,0,0.06);"><span style="color:#86868b;">Wiadomość</span><br />${message}</p>
+        </td>
+      </tr>
+    </table>
+    ${emailPrimaryButtonHtml(params.offerUrl, 'Otwórz ofertę w EstateOS')}
+    <p style="margin:20px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;line-height:1.5;color:#86868b;">
+      To zapytanie nie tworzy czatu w aplikacji — odpowiedz telefonicznie. Pełna korespondencja Deal Room wymaga konta.
+    </p>
+  `;
+
+  return wrapTransactionalEmail(body);
+}
