@@ -125,8 +125,8 @@ export async function loadOfferShareCard(
   const images = parseImageList(row.images);
   const primary = absolutizeMediaUrl(resolveOfferPrimaryImage(row)) || images[0] || '';
   const canonicalUrl = `${resolvePublicAppOrigin()}/o/${offerId}`;
-  const ogDescription = `${summaryLine} — ${priceLabel}. Zobacz galerię i parametry na EstateOS™. Kontakt po bezpłatnej rejestracji.`;
-  const ogTitle = `${title} — ${locationLabel}`;
+  const ogDescription = `${summaryLine} — ${priceLabel}. Galeria, parametry i kontakt na EstateOS™.`;
+  const ogTitle = `${title} — ${priceLabel}`;
 
   const portalToken = opts?.portalToken?.trim() || null;
   const agentRaw = opts?.agentUserId;
