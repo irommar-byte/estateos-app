@@ -36,6 +36,8 @@ import MarketCatalogViewToggle, {
 } from '../components/catalog/MarketCatalogViewToggle';
 import ChromeIconButton from '../components/catalog/ChromeIconButton';
 import MarketUnreadQuickReplyBubble from '../components/messaging/MarketUnreadQuickReplyBubble';
+import LiveRadarControlPill from '../components/radar/LiveRadarControlPill';
+import { useCarRadarStore } from '../store/useCarRadarStore';
 import * as Haptics from 'expo-haptics';
 import { useCarScreenTheme, type CarScreenColors } from '../theme/carScreenTheme';
 import FeaturedOfferSpotlight from '../components/radar/FeaturedOfferSpotlight';
@@ -155,7 +157,17 @@ export default function CarsCatalogScreen({
   const [featuredSpotlightBottom, setFeaturedSpotlightBottom] = useState(420);
   const featuredSpotlightVisible = scrollY < Math.max(featuredSpotlightBottom - 72, 0);
   const isGalleryLightChrome = browseMode === 'GALLERY' && !isDark;
+  const isCarRadarActive = useCarRadarStore((s) => s.isCarRadarActive);
+  const carRadarFilters = useCarRadarStore((s) => s.carRadarFilters);
+  const hydrateCarRadar = useCarRadarStore((s) => s.hydrate);
+  const setCarRadarActive = useCarRadarStore((s) => s.setCarRadarActive);
+  const commitCarRadarFilters = useCarRadarStore((s) => s.commitCarRadarFilters);
+  const [radarCalibrateOpen, setRadarCalibrateOpen] = useState(false);
   const hasAdvancedFiltersActive = useMemo(() => carsAdvancedFiltersActive(advancedFilters), [advancedFilters]);
+
+  useEffect(() => {
+    void hydrateCarRadar();
+  }, [hydrateCarRadar]);
 
   useEffect(() => {
     setBrowseMode(surface === 'explore' ? 'MAP' : 'GALLERY');
@@ -198,8 +210,9 @@ export default function CarsCatalogScreen({
 
   const filtered = useMemo(() => {
     const base = showOnlyFavorites ? favoriteCars : cars;
-    return applyCarsAdvancedFilters(base, advancedFilters);
-  }, [cars, favoriteCars, advancedFilters, showOnlyFavorites]);
+    const filters = isCarRadarActive ? carRadarFilters : advancedFilters;
+    return applyCarsAdvancedFilters(base, filters);
+  }, [cars, favoriteCars, advancedFilters, carRadarFilters, isCarRadarActive, showOnlyFavorites]);
 
   const marketRailSections = useMemo(() => {
     const toListing = (car: CarListing) => ({
@@ -324,9 +337,44 @@ export default function CarsCatalogScreen({
     };
   }, [browseMode, mapCars, nearbyModeEnabled, loading]);
 
+  const carRadarScopeLine = useMemo(() => {
+    if (!isCarRadarActive) return '';
+    const bits: string[] = [];
+    if (carRadarFilters.make.trim()) bits.push(carRadarFilters.make.trim());
+    if (carRadarFilters.model.trim()) bits.push(carRadarFilters.model.trim());
+    if (carRadarFilters.vehicleType.trim()) bits.push(carRadarFilters.vehicleType.trim());
+    if (carRadarFilters.city.trim()) bits.push(carRadarFilters.city.trim());
+    if (carRadarFilters.maxPrice.trim()) bits.push(`do ${carRadarFilters.maxPrice} zł`);
+    if (carRadarFilters.mapBounds) bits.push(`${Math.round(carRadarFilters.mapBounds.radiusKm)} km`);
+    return bits.slice(0, 3).join(' · ') || t('radar.home.statusLive');
+  }, [isCarRadarActive, carRadarFilters, t]);
+
   const mapReason = useMemo(() => {
     const count = mapCars.length;
     const offersWord = pluralCars(count, locale);
+    if (isCarRadarActive) {
+      if (count === 0) {
+        return {
+          title: t('radar.home.radarBrand'),
+          subtitle: t('radar.home.reason.databaseEmptySubtitle'),
+          accent: CAR_ACCENT,
+          actionLabel: t('radar.home.reason.showAllMap'),
+          empty: true,
+          kind: 'radar' as const,
+        };
+      }
+      return {
+        title: t('radar.home.radarBrand'),
+        subtitle: t('radar.home.reason.allOffersSubtitle', {
+          count: String(count),
+          offers: offersWord,
+        }),
+        accent: CAR_ACCENT,
+        actionLabel: t('radar.home.reason.showAllMap'),
+        empty: false,
+        kind: 'radar' as const,
+      };
+    }
     if (nearbyModeEnabled) {
       if (count === 0) {
         return {
@@ -335,6 +383,7 @@ export default function CarsCatalogScreen({
           accent: CAR_ACCENT,
           actionLabel: t('radar.home.reason.showAllMap'),
           empty: true,
+          kind: 'nearby' as const,
         };
       }
       return {
@@ -346,6 +395,7 @@ export default function CarsCatalogScreen({
         accent: CAR_ACCENT,
         actionLabel: t('radar.home.reason.showAllMap'),
         empty: false,
+        kind: 'nearby' as const,
       };
     }
     if (count === 0) {
@@ -355,6 +405,7 @@ export default function CarsCatalogScreen({
         accent: isDark ? '#94A3B8' : '#64748B',
         actionLabel: null as string | null,
         empty: true,
+        kind: 'all' as const,
       };
     }
     return {
@@ -366,8 +417,31 @@ export default function CarsCatalogScreen({
       accent: isDark ? '#94A3B8' : '#64748B',
       actionLabel: t('radar.home.reason.showNearby'),
       empty: false,
+      kind: 'all' as const,
     };
-  }, [mapCars.length, nearbyModeEnabled, t, locale, isDark]);
+  }, [mapCars.length, nearbyModeEnabled, isCarRadarActive, t, locale, isDark]);
+
+  const openCarRadarCalibration = useCallback(() => {
+    setDraftAdvancedFilters(isCarRadarActive ? carRadarFilters : advancedFilters);
+    setRadarCalibrateOpen(true);
+    setShowAdvancedSearch(true);
+  }, [isCarRadarActive, carRadarFilters, advancedFilters]);
+
+  const enableCarRadarFromLastSave = useCallback(async () => {
+    const hasParams = carsAdvancedFiltersActive(carRadarFilters);
+    if (!hasParams) {
+      openCarRadarCalibration();
+      return;
+    }
+    setAdvancedFilters(carRadarFilters);
+    await setCarRadarActive(true);
+    setNearbyModeEnabled(false);
+    pendingFitAllRef.current = true;
+  }, [carRadarFilters, openCarRadarCalibration, setCarRadarActive]);
+
+  const disableCarRadar = useCallback(async () => {
+    await setCarRadarActive(false);
+  }, [setCarRadarActive]);
 
   const enableNearbyMode = useCallback(async () => {
     try {
@@ -458,14 +532,33 @@ export default function CarsCatalogScreen({
     openCarDetail(car);
   };
 
-  const centerChrome = (
-    <View style={{ width: '100%', alignItems: 'center', gap: 2 }}>
-      <VerticalSegmentRail
+  const centerChrome =
+    browseMode === 'MAP' || surface === 'explore' ? (
+      <LiveRadarControlPill
         isDark={isDark}
-        mode={browseMode === 'MAP' || surface === 'explore' ? 'status' : 'switch'}
+        isActive={isCarRadarActive}
+        activeAccent={CAR_ACCENT}
+        brandLabel={t('radar.home.radarBrand')}
+        statusLive={t('radar.home.statusLive')}
+        statusInactive={t('radar.home.statusInactive')}
+        hintDisable={t('radar.home.calibrationHoldKeepHint')}
+        hintEnable={t('radar.home.calibrationHoldKeepEnableHint')}
+        hintHoldToDisable={t('radar.home.calibrationHoldToDisableHint')}
+        hintInactive={t('radar.home.calibrationInactiveHint')}
+        scopeLine={carRadarScopeLine}
+        onOpenCalibration={openCarRadarCalibration}
+        onHoldCompleteEnable={() => {
+          void enableCarRadarFromLastSave();
+        }}
+        onHoldCompleteDisable={() => {
+          void disableCarRadar();
+        }}
       />
-    </View>
-  );
+    ) : (
+      <View style={{ width: '100%', alignItems: 'center', gap: 2 }}>
+        <VerticalSegmentRail isDark={isDark} mode="switch" />
+      </View>
+    );
 
   return (
     <View style={styles.screen}>
@@ -778,12 +871,12 @@ export default function CarsCatalogScreen({
           isDark={isDark}
           accent={CAR_ACCENT}
           label={t('radar.home.searchCtaLabel')}
-          hint={t('radar.home.searchCtaHintCars')}
-          active={hasAdvancedFiltersActive}
+          hint={isCarRadarActive ? t('radar.home.radarBrand') : t('radar.home.searchCtaHintCars')}
+          active={hasAdvancedFiltersActive || isCarRadarActive}
           lightChrome={isGalleryLightChrome}
           accessibilityLabel={t('radar.home.advancedSearch')}
           onPress={() => {
-            setDraftAdvancedFilters(advancedFilters);
+            setDraftAdvancedFilters(isCarRadarActive ? carRadarFilters : advancedFilters);
             setShowAdvancedSearch(true);
           }}
         />
@@ -821,7 +914,15 @@ export default function CarsCatalogScreen({
             >
               <View style={[styles.mapReasonIconBubble, { backgroundColor: `${mapReason.accent}22` }]}>
                 <Ionicons
-                  name={mapReason.empty ? 'alert-circle' : nearbyModeEnabled ? 'navigate' : 'car-sport'}
+                  name={
+                    mapReason.empty
+                      ? 'alert-circle'
+                      : mapReason.kind === 'radar'
+                        ? 'radio'
+                        : nearbyModeEnabled
+                          ? 'navigate'
+                          : 'car-sport'
+                  }
                   size={14}
                   color={mapReason.accent}
                 />
@@ -847,6 +948,10 @@ export default function CarsCatalogScreen({
               {mapReason.actionLabel ? (
                 <Pressable
                   onPress={() => {
+                    if (mapReason.kind === 'radar') {
+                      void disableCarRadar();
+                      return;
+                    }
                     if (nearbyModeEnabled) showAllMapPins();
                     else void enableNearbyMode();
                   }}
@@ -978,7 +1083,10 @@ export default function CarsCatalogScreen({
         cars={cars}
         draft={draftAdvancedFilters}
         onChangeDraft={setDraftAdvancedFilters}
-        onClose={() => setShowAdvancedSearch(false)}
+        onClose={() => {
+          setShowAdvancedSearch(false);
+          setRadarCalibrateOpen(false);
+        }}
         onReset={() => setDraftAdvancedFilters(EMPTY_CARS_ADVANCED_FILTERS)}
         onPickMapArea={() => {
           const withCoords = cars.filter(
@@ -1002,6 +1110,12 @@ export default function CarsCatalogScreen({
         onApply={() => {
           setAdvancedFilters(draftAdvancedFilters);
           setShowAdvancedSearch(false);
+          if (radarCalibrateOpen || isCarRadarActive) {
+            void commitCarRadarFilters(draftAdvancedFilters, true);
+            setNearbyModeEnabled(false);
+            pendingFitAllRef.current = true;
+          }
+          setRadarCalibrateOpen(false);
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }}
       />
