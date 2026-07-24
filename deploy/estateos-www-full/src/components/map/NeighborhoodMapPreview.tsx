@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { ExternalLink, MapPin } from "lucide-react";
+import { formatPublicAddressLine } from "@/lib/publicOfferLocation";
 
 type Props = {
   lat: number;
@@ -91,7 +92,7 @@ export default function NeighborhoodMapPreview({
   const [mapError, setMapError] = useState<string | null>(null);
 
   const isOffer = variant === "offer";
-  const locationLine = [street, district, city].filter(Boolean).join(", ");
+  const locationLine = formatPublicAddressLine({ street, district, city });
   const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}&z=${showPin ? 18 : 15}`;
   const streetViewUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
   const defaultLabel = showPin ? "Podgląd lokalizacji (Mapbox)" : "Okolica nieruchomości";

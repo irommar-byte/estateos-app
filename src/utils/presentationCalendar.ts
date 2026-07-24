@@ -363,7 +363,13 @@ export function formatOfferLocationForCalendar(offer: any): string {
   if (!offer || typeof offer !== 'object') return '';
   const street = String(offer.street || '').trim();
   const city = String(offer.city || '').trim();
-  const district = String(offer.district || '').trim();
+  const districtRaw = String(offer.district || '').trim();
+  const district =
+    !districtRaw ||
+    /^(inny obszar|other|inne|og[oó]lna|ogolna|brak|n\/a|pozostałe|pozostale|-|—)$/i.test(districtRaw) ||
+    (city && districtRaw.toLowerCase() === city.toLowerCase())
+      ? ''
+      : districtRaw;
   const parts = [
     street,
     [district, city].filter(Boolean).join(', ') || city,

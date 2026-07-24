@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import type { GalleryOffer } from './RadarOfferGallery';
+import { formatLocationLabel } from '../../constants/locationEcosystem';
 
 type Props = {
   offers: GalleryOffer[];
@@ -59,12 +60,12 @@ function SpotlightCard({
   pageKey,
 }: SpotlightCardProps) {
   const cardOpacity = useRef(new Animated.Value(0)).current;
-  const cardScale = useRef(new Animated.Value(0.86)).current;
+  const cardScale = useRef(new Animated.Value(0.94)).current;
   const cardTranslateY = useRef(new Animated.Value(18)).current;
 
   useEffect(() => {
     cardOpacity.setValue(0);
-    cardScale.setValue(0.86);
+    cardScale.setValue(0.94);
     cardTranslateY.setValue(18);
     Animated.parallel([
       Animated.timing(cardOpacity, {
@@ -91,9 +92,9 @@ function SpotlightCard({
     ]).start();
   }, [pageKey, enterDelay, cardOpacity, cardScale, cardTranslateY]);
 
-  const subtitle = [item.type, String(item.raw?.district || item.raw?.city || '').trim()]
-    .filter(Boolean)
-    .join(' · ');
+  const typeOnly = String(item.type || '').split('•')[0].trim();
+  const location = formatLocationLabel(item.raw?.city, item.raw?.district, '');
+  const subtitle = [typeOnly, location].filter(Boolean).join(' · ');
 
   return (
     <Animated.View
@@ -158,12 +159,17 @@ export default function FeaturedOfferSpotlight({
   const [appActive, setAppActive] = useState(() => AppState.currentState === 'active');
   const canAutoRotate = autoRotateEnabled && isFocused && appActive;
 
-  const { width } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
   const pages = useMemo(() => chunk(offers, PAGE_SIZE), [offers]);
   const [page, setPage] = useState(0);
   const pageRef = useRef(0);
   const transitioningRef = useRef(false);
-  const cardWidth = (width - 20 * 2 - 12) / 2;
+  const [gridWidth, setGridWidth] = useState(0);
+  const GRID_GAP = 12;
+  const cardWidth = useMemo(() => {
+    const usable = gridWidth > 0 ? gridWidth : Math.max(0, windowWidth - 72);
+    return Math.max(120, (usable - GRID_GAP) / 2);
+  }, [gridWidth, windowWidth]);
 
   const gridOpacity = useRef(new Animated.Value(1)).current;
   const gridTranslateY = useRef(new Animated.Value(0)).current;
@@ -192,7 +198,7 @@ export default function FeaturedOfferSpotlight({
   const runEnterAnimation = useCallback(() => {
     gridOpacity.setValue(0);
     gridTranslateY.setValue(20);
-    gridScale.setValue(0.9);
+    gridScale.setValue(0.96);
     gridRotate.setValue(-1);
 
     Animated.parallel([
@@ -333,9 +339,10 @@ export default function FeaturedOfferSpotlight({
   if (!offers.length) return null;
 
   const current = pages[page] ?? [];
+  // Lekki ruch bez dużego rotate — obrót wycinał karty przy overflow:hidden.
   const rotateZ = gridRotate.interpolate({
     inputRange: [0, 0.45, 1],
-    outputRange: ['0deg', '-2.6deg', '2.4deg'],
+    outputRange: ['0deg', '-0.6deg', '0.5deg'],
   });
   const progressWidth = progress.interpolate({
     inputRange: [0, 1],
@@ -395,6 +402,10 @@ export default function FeaturedOfferSpotlight({
       </View>
 
       <Animated.View
+        onLayout={(event) => {
+          const next = Math.floor(event.nativeEvent.layout.width);
+          if (next > 0 && next !== gridWidth) setGridWidth(next);
+        }}
         style={[
           styles.grid,
           {
@@ -428,7 +439,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 14,
-    overflow: 'hidden',
+    overflow: 'visible',
     gap: 12,
   },
   shellDark: {
@@ -494,10 +505,14 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     gap: 12,
+    width: '100%',
+    overflow: 'visible',
   },
   card: {
     borderRadius: 18,
     overflow: 'hidden',
+    flexGrow: 0,
+    flexShrink: 0,
     borderWidth: StyleSheet.hairlineWidth,
   },
   cardDark: {

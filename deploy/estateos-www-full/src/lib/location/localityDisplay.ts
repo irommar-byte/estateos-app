@@ -1,4 +1,5 @@
 import { getStrictCities, getStrictDistrictCatalog, normalizeText } from "@/lib/location/locationCatalog";
+import { isGenericDistrictLabel } from "@/lib/publicOfferLocation";
 
 /** Czy etykieta wygląda jak adres ulicy (np. „Wesoła 3", „Zamość 13"), a nie miejscowość. */
 export function looksLikeStreetAddress(label: unknown): boolean {
@@ -70,6 +71,7 @@ export function sanitizeNonStrictAreaLabel(
 ): string {
   const token = String(raw ?? "").trim();
   if (!token) return "";
+  if (isGenericDistrictLabel(token)) return "";
   const cityNorm = normalizeText(String(city ?? ""));
   const tokenNorm = normalizeText(token);
   if (!tokenNorm) return "";

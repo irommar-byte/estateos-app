@@ -18,13 +18,16 @@ import * as Haptics from 'expo-haptics';
 import type { useI18n } from '../../i18n';
 import type { AppLocale } from '../../i18n';
 import { isFavoriteId } from '../../utils/favoritesStorage';
-import AdvancedFilterSegment from '../AdvancedFilterSegment';
 import { resolveOfferPriceDiscount } from '../../utils/offerPriceDiscount';
 import { isOfferFeatured } from '../../utils/listingPromotion';
 import FeaturedOfferSpotlight from './FeaturedOfferSpotlight';
+import type { CatalogRailItem } from '../catalog/CatalogHorizontalRail';
+import CollapsibleMarketRails from '../catalog/CollapsibleMarketRails';
+import { buildHomeMarketRailSections } from '../catalog/buildMarketRails';
 import { carCardElevation, useCarScreenTheme, type CarScreenColors } from '../../theme/carScreenTheme';
+import { formatLocationLabel } from '../../constants/locationEcosystem';
 
-export type GalleryViewMode = 'list' | 'grid';
+export type GalleryViewMode = 'cover' | 'list' | 'grid';
 
 export type GalleryTransactionFilter = 'ALL' | 'RENT' | 'SELL';
 export type GalleryCountryFilter = 'ALL' | 'PL' | 'ABROAD';
@@ -75,9 +78,14 @@ type Props = {
   formatPublishDate: (raw: Record<string, unknown>) => string;
   isOfferVerified: (offerId: number | string, raw: Record<string, unknown>) => boolean;
   t: ReturnType<typeof useI18n>['t'];
+  favoriteRailItems?: CatalogRailItem[];
+  mineRailItems?: CatalogRailItem[];
+  onPressRailItem?: (id: number | string) => void;
 };
 
 const NEAR_ACCENT = '#10b981';
+const GALLERY_ACCENT = '#6366F1';
+const ABROAD_COLOR = '#F59E0B';
 
 function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const R = 6371;
@@ -100,10 +108,6 @@ function formatApproxKm(km: number, locale: AppLocale): string {
     minimumFractionDigits: 0,
   });
 }
-const RENT_COLOR = '#0A84FF';
-const SELL_COLOR = '#10b981';
-const GALLERY_ACCENT = '#6366F1';
-const ABROAD_COLOR = '#F59E0B';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -205,6 +209,9 @@ export default function RadarOfferGallery({
   formatPublishDate,
   isOfferVerified,
   t,
+  favoriteRailItems = [],
+  mineRailItems = [],
+  onPressRailItem,
 }: Props) {
   const { width } = useWindowDimensions();
   const { colors, elevation, isDark: _carIsDark } = useCarScreenTheme();
@@ -213,29 +220,26 @@ export default function RadarOfferGallery({
   const [featuredSpotlightBottom, setFeaturedSpotlightBottom] = useState(420);
   const featuredSpotlightVisible = scrollY < Math.max(featuredSpotlightBottom - 72, 0);
   const isTabletLike = width >= 600;
-  const [viewMode, setViewMode] = useState<GalleryViewMode>(isTabletLike ? 'grid' : 'list');
+  const [viewMode, setViewMode] = useState<GalleryViewMode>(isTabletLike ? 'grid' : 'cover');
   const [page, setPage] = useState(1);
   const gap = 14;
   const horizontalPad = 20;
+  /** Cover = dawna Lista (duże karty). Lista = 2× więcej (mniejsze). Siatka = siatka. */
+  const isCoverView = viewMode === 'cover';
+  const isListView = viewMode === 'list';
   const isGridView = viewMode === 'grid';
-  const cardWidth = isGridView ? (width - horizontalPad * 2 - gap) / 2 : width - horizontalPad * 2;
-  const imageAspectRatio = isGridView ? 4 / 3 : 16 / 10;
+  const isMultiCol = isListView || isGridView;
+  const numColumns = isListView ? 2 : isGridView ? (width >= 900 ? 3 : 2) : 1;
+  const cardWidth = isMultiCol
+    ? (width - horizontalPad * 2 - gap * (numColumns - 1)) / numColumns
+    : width - horizontalPad * 2;
+  const imageAspectRatio = isCoverView ? 16 / 10 : isListView ? 5 / 4 : 4 / 3;
   const catalogStyles = useMemo(() => createCatalogStyles(colors, isDark), [colors, isDark]);
 
   const wrapFilterChange = useCallback(<T,>(fn: (v: T) => void, value: T) => {
     animateFilterChange();
     fn(value);
   }, []);
-
-  const transactionOptions = useMemo(
-    () =>
-      [
-        { key: 'ALL' as const, label: t('radar.home.galleryFilterAll') },
-        { key: 'RENT' as const, label: t('radar.home.galleryFilterRent') },
-        { key: 'SELL' as const, label: t('radar.home.galleryFilterBuy') },
-      ] as const,
-    [t],
-  );
 
   const sortOptions = useMemo(
     () =>
@@ -250,9 +254,11 @@ export default function RadarOfferGallery({
   );
 
 
-  const filterKey = `${transactionFilter}-${countryFilter}-${propertyFilter}-${sortFilter}-${viewMode}`;
+  /** Stały page size — zmiana widoku nie przeładowuje listy. */
+  const pageSize = GALLERY_PAGE_SIZE;
+  const filtersKey = `${transactionFilter}-${countryFilter}-${propertyFilter}-${sortFilter}`;
   const totalCount = offers.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / GALLERY_PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const safePage = Math.min(page, totalPages);
 
   const featuredOffers = useMemo(() => {
@@ -266,14 +272,93 @@ export default function RadarOfferGallery({
       );
   }, [featuredOffersProp, offers]);
 
+  const marketRailSections = useMemo(() => {
+    const toHome = (item: GalleryOffer | CatalogRailItem & { raw?: Record<string, unknown>; lat?: number; lng?: number }) => {
+      if ('raw' in item && item.raw) {
+        const g = item as GalleryOffer;
+        return {
+          id: g.id,
+          lat: g.lat,
+          lng: g.lng,
+          title: String(g.raw?.title || g.type || 'Oferta'),
+          subtitle: [g.area, g.rooms].filter(Boolean).join(' · ') || undefined,
+          imageUrl: g.image,
+          priceLabel: formatPrice(g.raw).primary,
+          raw: g.raw,
+        };
+      }
+      const r = item as CatalogRailItem;
+      return {
+        id: r.id,
+        title: r.title,
+        subtitle: r.subtitle,
+        imageUrl: r.imageUrl,
+        priceLabel: r.priceLabel,
+        raw: {},
+      };
+    };
+
+    const favFromIds = new Set(favoriteRailItems.map((x) => String(x.id)));
+    const favorites = [
+      ...favoriteRailItems.map((item) => {
+        const full = offers.find((o) => String(o.id) === String(item.id));
+        return full
+          ? toHome(full)
+          : {
+              id: item.id,
+              title: item.title,
+              subtitle: item.subtitle,
+              imageUrl: item.imageUrl,
+              priceLabel: item.priceLabel,
+              raw: {},
+            };
+      }),
+    ];
+    const mine = mineRailItems.map((item) => {
+      const full = offers.find((o) => String(o.id) === String(item.id));
+      return full
+        ? toHome(full)
+        : {
+            id: item.id,
+            title: item.title,
+            subtitle: item.subtitle,
+            imageUrl: item.imageUrl,
+            priceLabel: item.priceLabel,
+            raw: {},
+          };
+    });
+    const catalog = offers.map(toHome);
+    void favFromIds;
+
+    return buildHomeMarketRailSections({
+      favorites,
+      mine,
+      catalog,
+      userLocation,
+      labels: {
+        favorites: t('radar.home.galleryRailFavorites'),
+        mine: t('radar.home.galleryRailMine'),
+        newest: t('radar.home.galleryRailNewest'),
+        nearest: t('radar.home.galleryRailNearest'),
+        discounted: t('radar.home.galleryRailDiscounted'),
+        flats: t('radar.home.galleryRailFlats'),
+        houses: t('radar.home.galleryRailHouses'),
+        plots: t('radar.home.galleryRailPlots'),
+        commercial: t('radar.home.galleryRailCommercial'),
+        favoritesEmpty: t('radar.home.galleryRailFavoritesEmpty'),
+        mineEmpty: t('radar.home.galleryRailMineEmpty'),
+      },
+    });
+  }, [offers, favoriteRailItems, mineRailItems, userLocation, formatPrice, t]);
+
   useEffect(() => {
     setPage(1);
-  }, [filterKey, totalCount]);
+  }, [filtersKey, totalCount]);
 
   const paginatedOffers = useMemo(() => {
-    const start = (safePage - 1) * GALLERY_PAGE_SIZE;
-    return offers.slice(start, start + GALLERY_PAGE_SIZE);
-  }, [offers, safePage]);
+    const start = (safePage - 1) * pageSize;
+    return offers.slice(start, start + pageSize);
+  }, [offers, safePage, pageSize]);
 
   const goToPage = useCallback(
     (nextPage: number) => {
@@ -322,56 +407,42 @@ export default function RadarOfferGallery({
         <View style={[catalogStyles.viewToggleRow, { paddingHorizontal: horizontalPad, marginBottom: 4 }]}>
           <Text style={catalogStyles.viewToggleLabel}>{t('radar.home.galleryViewLabel')}</Text>
           <View style={catalogStyles.viewToggleGroup}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: viewMode === 'list' }}
-              onPress={() => {
-                if (viewMode === 'list') return;
-                Haptics.selectionAsync();
-                animateFilterChange();
-                setViewMode('list');
-              }}
-              style={[catalogStyles.viewToggleBtn, viewMode === 'list' && catalogStyles.viewToggleBtnActive]}
-            >
-              <Ionicons
-                name={viewMode === 'list' ? 'list' : 'list-outline'}
-                size={16}
-                color={viewMode === 'list' ? colors.chipActiveText : colors.muted}
-              />
-              <Text
-                style={[
-                  catalogStyles.viewToggleBtnLabel,
-                  viewMode === 'list' && catalogStyles.viewToggleBtnLabelActive,
-                ]}
-              >
-                {t('radar.home.galleryViewList')}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: viewMode === 'grid' }}
-              onPress={() => {
-                if (viewMode === 'grid') return;
-                Haptics.selectionAsync();
-                animateFilterChange();
-                setViewMode('grid');
-              }}
-              style={[catalogStyles.viewToggleBtn, viewMode === 'grid' && catalogStyles.viewToggleBtnActive]}
-            >
-              <Ionicons
-                name={viewMode === 'grid' ? 'grid' : 'grid-outline'}
-                size={16}
-                color={viewMode === 'grid' ? colors.chipActiveText : colors.muted}
-              />
-              <Text
-                style={[
-                  catalogStyles.viewToggleBtnLabel,
-                  viewMode === 'grid' && catalogStyles.viewToggleBtnLabelActive,
-                ]}
-              >
-                {t('radar.home.galleryViewGrid')}
-              </Text>
-            </Pressable>
+            {(
+              [
+                { key: 'cover' as const, label: t('radar.home.galleryViewCover'), iconOn: 'tablet-landscape', iconOff: 'tablet-landscape-outline' },
+                { key: 'list' as const, label: t('radar.home.galleryViewList'), iconOn: 'list', iconOff: 'list-outline' },
+                { key: 'grid' as const, label: t('radar.home.galleryViewGrid'), iconOn: 'grid', iconOff: 'grid-outline' },
+              ] as const
+            ).map((mode) => {
+              const selected = viewMode === mode.key;
+              return (
+                <Pressable
+                  key={mode.key}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => {
+                    if (selected) return;
+                    void Haptics.selectionAsync();
+                    setViewMode(mode.key);
+                  }}
+                  style={[catalogStyles.viewToggleBtn, selected && catalogStyles.viewToggleBtnActive]}
+                >
+                  <Ionicons
+                    name={(selected ? mode.iconOn : mode.iconOff) as any}
+                    size={16}
+                    color={selected ? colors.chipActiveText : colors.muted}
+                  />
+                  <Text
+                    style={[
+                      catalogStyles.viewToggleBtnLabel,
+                      selected && catalogStyles.viewToggleBtnLabelActive,
+                    ]}
+                  >
+                    {mode.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
@@ -391,18 +462,6 @@ export default function RadarOfferGallery({
             </Pressable>
           </View>
         ) : null}
-
-        <View style={{ paddingHorizontal: horizontalPad }}>
-          <AdvancedFilterSegment
-            options={transactionOptions}
-            value={transactionFilter}
-            onChange={(v) => wrapFilterChange(onTransactionFilterChange, v)}
-            accentColor={
-              transactionFilter === 'RENT' ? RENT_COLOR : transactionFilter === 'SELL' ? SELL_COLOR : GALLERY_ACCENT
-            }
-            isDark={isDark}
-          />
-        </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
           {sortOptions.map((opt) => (
@@ -436,12 +495,9 @@ export default function RadarOfferGallery({
       onClearFilters,
       onPressOffer,
       onSortFilterChange,
-      onTransactionFilterChange,
       sortFilter,
       sortOptions,
       t,
-      transactionFilter,
-      transactionOptions,
       userLocation,
       viewMode,
       formatPrice,
@@ -456,7 +512,8 @@ export default function RadarOfferGallery({
     const tx = String(item.raw?.transactionType || '').toUpperCase();
     const txLabel =
       tx === 'RENT' ? t('radar.home.transactionRentShort') : t('radar.home.transactionSellShort');
-    const cityLine = [item.type, String(item.raw?.district || item.raw?.city || '').trim()]
+    const typeOnly = String(item.type || '').split('•')[0].trim();
+    const cityLine = [typeOnly, formatLocationLabel(item.raw?.city, item.raw?.district, '')]
       .filter(Boolean)
       .join(' · ');
     const fav = isFavoriteId(item.id, favorites);
@@ -465,7 +522,7 @@ export default function RadarOfferGallery({
     const verified = isOfferVerified(item.id, item.raw);
     const publishLabel = formatPublishDate(item.raw);
     const featured = isOfferFeatured(item.raw);
-    const isLeftColumn = isGridView ? index % 2 === 0 : true;
+    const isLeftColumn = isMultiCol ? index % numColumns !== numColumns - 1 : true;
     const distanceKmValue =
       userLocation && Number.isFinite(item.lat) && Number.isFinite(item.lng)
         ? haversineKm(userLocation.latitude, userLocation.longitude, item.lat, item.lng)
@@ -482,9 +539,9 @@ export default function RadarOfferGallery({
           elevation.card,
           {
             width: cardWidth,
-            marginRight: isGridView && isLeftColumn ? gap : 0,
+            marginRight: isMultiCol && isLeftColumn ? gap : 0,
             marginBottom: gap,
-            alignSelf: isGridView ? undefined : 'center',
+            alignSelf: isMultiCol ? undefined : 'center',
             opacity: pressed ? 0.94 : 1,
             transform: [{ scale: pressed ? 0.99 : 1 }],
           },
@@ -559,93 +616,121 @@ export default function RadarOfferGallery({
   };
 
   const listFooter = useMemo(() => {
-    if (totalCount === 0 || totalPages <= 1) return null;
-    const pageStart = (safePage - 1) * GALLERY_PAGE_SIZE + 1;
-    const pageEnd = Math.min(safePage * GALLERY_PAGE_SIZE, totalCount);
+    const pageStart = (safePage - 1) * pageSize + 1;
+    const pageEnd = Math.min(safePage * pageSize, totalCount);
+    const showPagination = totalCount > 0 && totalPages > 1;
 
     return (
-      <View style={styles.paginationBlock}>
-        <Text style={[styles.paginationRangeText, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}>
-          {t('radar.home.galleryPageRange', {
-            from: String(pageStart),
-            to: String(pageEnd),
-            total: String(totalCount),
-          })}
-        </Text>
-        <View style={styles.paginationRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('radar.home.galleryPagePrev')}
-            disabled={safePage <= 1}
-            onPress={() => goToPage(safePage - 1)}
-            style={({ pressed }) => [
-              styles.paginationArrow,
-              {
-                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-                borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
-                opacity: safePage <= 1 ? 0.35 : pressed ? 0.82 : 1,
-              },
-            ]}
-          >
-            <Ionicons name="chevron-back" size={18} color={isDark ? '#E5E7EB' : '#374151'} />
-          </Pressable>
+      <View>
+        {showPagination ? (
+          <View style={styles.paginationBlock}>
+            <Text style={[styles.paginationRangeText, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}>
+              {t('radar.home.galleryPageRange', {
+                from: String(pageStart),
+                to: String(pageEnd),
+                total: String(totalCount),
+              })}
+            </Text>
+            <View style={styles.paginationRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('radar.home.galleryPagePrev')}
+                disabled={safePage <= 1}
+                onPress={() => goToPage(safePage - 1)}
+                style={({ pressed }) => [
+                  styles.paginationArrow,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+                    opacity: safePage <= 1 ? 0.35 : pressed ? 0.82 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="chevron-back" size={18} color={isDark ? '#E5E7EB' : '#374151'} />
+              </Pressable>
 
-          <View style={styles.paginationPages}>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
-              const active = pageNum === safePage;
-              return (
-                <Pressable
-                  key={pageNum}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={t('radar.home.galleryPageGo', { page: String(pageNum) })}
-                  onPress={() => goToPage(pageNum)}
-                  style={({ pressed }) => [
-                    styles.paginationPageChip,
-                    {
-                      backgroundColor: active
-                        ? `${GALLERY_ACCENT}${isDark ? '40' : '28'}`
-                        : isDark
-                          ? 'rgba(255,255,255,0.07)'
-                          : 'rgba(0,0,0,0.04)',
-                      borderColor: active ? `${GALLERY_ACCENT}99` : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-                      opacity: pressed ? 0.86 : 1,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.paginationPageChipText,
-                      { color: active ? GALLERY_ACCENT : isDark ? '#D4D4D8' : '#475569' },
-                    ]}
-                  >
-                    {pageNum}
-                  </Text>
-                </Pressable>
-              );
-            })}
+              <View style={styles.paginationPages}>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+                  const active = pageNum === safePage;
+                  return (
+                    <Pressable
+                      key={pageNum}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={t('radar.home.galleryPageGo', { page: String(pageNum) })}
+                      onPress={() => goToPage(pageNum)}
+                      style={({ pressed }) => [
+                        styles.paginationPageChip,
+                        {
+                          backgroundColor: active
+                            ? `${GALLERY_ACCENT}${isDark ? '40' : '28'}`
+                            : isDark
+                              ? 'rgba(255,255,255,0.07)'
+                              : 'rgba(0,0,0,0.04)',
+                          borderColor: active
+                            ? `${GALLERY_ACCENT}99`
+                            : isDark
+                              ? 'rgba(255,255,255,0.08)'
+                              : 'rgba(0,0,0,0.06)',
+                          opacity: pressed ? 0.86 : 1,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.paginationPageChipText,
+                          { color: active ? GALLERY_ACCENT : isDark ? '#D4D4D8' : '#475569' },
+                        ]}
+                      >
+                        {pageNum}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('radar.home.galleryPageNext')}
+                disabled={safePage >= totalPages}
+                onPress={() => goToPage(safePage + 1)}
+                style={({ pressed }) => [
+                  styles.paginationArrow,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+                    opacity: safePage >= totalPages ? 0.35 : pressed ? 0.82 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="chevron-forward" size={18} color={isDark ? '#E5E7EB' : '#374151'} />
+              </Pressable>
+            </View>
           </View>
+        ) : null}
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('radar.home.galleryPageNext')}
-            disabled={safePage >= totalPages}
-            onPress={() => goToPage(safePage + 1)}
-            style={({ pressed }) => [
-              styles.paginationArrow,
-              {
-                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-                borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
-                opacity: safePage >= totalPages ? 0.35 : pressed ? 0.82 : 1,
-              },
-            ]}
-          >
-            <Ionicons name="chevron-forward" size={18} color={isDark ? '#E5E7EB' : '#374151'} />
-          </Pressable>
-        </View>
+        {onPressRailItem ? (
+          <CollapsibleMarketRails
+            sections={marketRailSections}
+            isDark={isDark}
+            onPressItem={onPressRailItem}
+            title={t('radar.home.galleryRailsStackTitle')}
+            subtitle={t('radar.home.galleryRailsStackSubtitle')}
+          />
+        ) : null}
       </View>
     );
-  }, [goToPage, isDark, safePage, t, totalCount, totalPages]);
+  }, [
+    goToPage,
+    isDark,
+    marketRailSections,
+    onPressRailItem,
+    pageSize,
+    safePage,
+    t,
+    totalCount,
+    totalPages,
+  ]);
 
   return (
     <FlatList
@@ -653,10 +738,11 @@ export default function RadarOfferGallery({
       style={styles.root}
       data={paginatedOffers}
       keyExtractor={(item) => String(item.id)}
-      numColumns={isGridView ? 2 : 1}
-      key={`gallery-${viewMode}-${filterKey}-p${safePage}`}
+      numColumns={numColumns}
+      key={`gallery-cols-${numColumns}`}
+      extraData={`${viewMode}-${cardWidth}-${imageAspectRatio}`}
       columnWrapperStyle={
-        isGridView ? [catalogStyles.columnWrap, { paddingHorizontal: horizontalPad }] : undefined
+        isMultiCol ? [catalogStyles.columnWrap, { paddingHorizontal: horizontalPad }] : undefined
       }
       contentContainerStyle={{
         paddingBottom: bottomInset + 88,
@@ -674,9 +760,10 @@ export default function RadarOfferGallery({
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GALLERY_ACCENT} />
         ) : undefined
       }
-      initialNumToRender={10}
-      maxToRenderPerBatch={12}
-      windowSize={8}
+      initialNumToRender={12}
+      maxToRenderPerBatch={16}
+      windowSize={10}
+      removeClippedSubviews={false}
       ListEmptyComponent={
         <View style={styles.emptyWrap}>
           <Ionicons name="images-outline" size={40} color={isDark ? '#6366F1' : '#94A3B8'} />

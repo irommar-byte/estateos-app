@@ -702,12 +702,17 @@ export function formatLocationLabel(
   countryLabel?: unknown,
 ): string {
   const city = String(cityInput ?? '').trim();
-  const district = String(districtInput ?? '').trim();
+  const districtRaw = String(districtInput ?? '').trim();
+  const district =
+    !districtRaw ||
+    /^(inny obszar|other|inne|og[oó]lna|ogolna|brak|n\/a|pozostałe|pozostale|-|—)$/i.test(districtRaw) ||
+    (city && districtRaw.toLowerCase() === city.toLowerCase())
+      ? ''
+      : districtRaw;
   const country = normalizeLocalityCountryLabel(countryLabel);
   if (city === REST_OF_COUNTRY_CITY) {
-    const locality = district;
-    if (locality && country) return `${locality}, ${country}`;
-    return locality || country || fallback;
+    if (district && country) return `${district}, ${country}`;
+    return district || country || fallback;
   }
   if (city && district) return `${city}, ${district}`;
   if (city) return city;

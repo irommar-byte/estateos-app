@@ -11,7 +11,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RadarStatus from '../components/RadarStatus';
-import { METRO_STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
+import { METRO_STRICT_CITIES, STRICT_CITY_DISTRICTS, formatLocationLabel } from '../constants/locationEcosystem';
 import { API_URL } from '../config/network';
 import { logRadarCalibrationSearch } from '../services/radarSearchHistoryService';
 import { buildCanonicalRadarPreferencesDto } from '../contracts/parityContracts';
@@ -562,7 +562,7 @@ export default function Radar({ theme, route }: any) {
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <View style={{ flex: 1 }}>
                           <Text style={[styles.cardPrice, { color: isDark ? '#FFF' : '#000' }]}>{parseInt(offer.price || "0").toLocaleString(dateLocale)} PLN</Text>
-                          <Text style={[styles.cardTitle, { color: isDark ? '#CCC' : '#8E8E93' }]} numberOfLines={1}>{offer.propertyType === 'FLAT' ? t('radar.home.propertyFlat') : offer.propertyType === 'HOUSE' ? t('radar.home.propertyHouse') : offer.propertyType === 'PLOT' ? t('radar.home.propertyPlot') : t('radar.home.propertyPremises')} • {offer.district || offer.city}</Text>
+                          <Text style={[styles.cardTitle, { color: isDark ? '#CCC' : '#8E8E93' }]} numberOfLines={1}>{offer.propertyType === 'FLAT' ? t('radar.home.propertyFlat') : offer.propertyType === 'HOUSE' ? t('radar.home.propertyHouse') : offer.propertyType === 'PLOT' ? t('radar.home.propertyPlot') : t('radar.home.propertyPremises')} • {formatLocationLabel(offer.city, offer.district, t('radar.home.locationFallback'))}</Text>
                         </View>
                         <Pressable style={styles.favButton} onPress={(e) => { e.stopPropagation(); toggleFavorite(offer.id); }}><Ionicons name={isFav ? "heart" : "heart-outline"} size={22} color={isFav ? BaseColors.danger : BaseColors.subtitle} /></Pressable>
                       </View>

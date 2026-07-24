@@ -176,7 +176,10 @@ export default function EditOfferLocationEditor({
         </View>
       )}
       <Text style={[styles.coordsLine, { color: isDark ? '#AEAEB2' : '#636366' }]}>
-        {[value.street, value.district, value.city].filter(Boolean).join(', ') || t('offer.edit.location.mapCoordsFallback')}
+        {[value.street, value.district, value.city]
+          .map((part) => String(part || '').trim())
+          .filter((part) => part && !/^(inny obszar|other|inne|og[oó]lna|ogolna)$/i.test(part))
+          .join(', ') || t('offer.edit.location.mapCoordsFallback')}
       </Text>
     </View>
   );

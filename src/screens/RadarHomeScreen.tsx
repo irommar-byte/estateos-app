@@ -74,6 +74,7 @@ import {
   resolveLocalityCountryFromPlace,
   offerMatchesCityFilter,
   offerListingCountryIso,
+  formatLocationLabel,
 } from '../constants/locationEcosystem';
 import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
 import { useFloatingChatsLayoutStore } from '../store/useFloatingChatsLayoutStore';
@@ -97,6 +98,8 @@ import RadarOfferGallery, {
 } from '../components/radar/RadarOfferGallery';
 import { isOfferFeatured } from '../utils/listingPromotion';
 import RadarBrowseModeRail from '../components/radar/RadarBrowseModeRail';
+import VerticalSegmentRail from '../components/VerticalSegmentRail';
+import { HomeTransactionSubRail, type HomeTxFilter } from '../components/MarketCatalogSubRails';
 import RadarStatusBulb from '../components/radar/RadarStatusBulb';
 import { OfferMapMarkerPin } from '../components/radar/OfferMapMarkerPin';
 import { AndroidMapPriceMarker } from '../components/radar/AndroidMapPriceMarker';
@@ -297,7 +300,6 @@ const DEFAULT_REGION = {
   latitudeDelta: 0.0922,
   longitudeDelta: 0.0421,
 };
-let hasAskedLocationInCurrentSession = false;
 
 type MapOffer = {
   id: number | string;
@@ -1014,14 +1016,29 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [activeIndex, setActiveIndex] = useState(0);
   const [favorites, setFavorites] = useState<number[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(!!route?.params?.favoritesOnly);
-  const [radarBrowseMode, setRadarBrowseMode] = useState<'RADAR' | 'GALLERY'>('GALLERY');
-  const [galleryTransactionFilter, setGalleryTransactionFilter] = useState<GalleryTransactionFilter>('ALL');
+  const tabSurface: 'market' | 'explore' =
+    route?.params?.tabSurface === 'explore' ? 'explore' : 'market';
+  const [exploreLive, setExploreLive] = useState(
+    () => !!(route?.params?.exploreLive || route?.params?.openCalibration || route?.params?.radarFocus),
+  );
+  const [radarBrowseMode, setRadarBrowseMode] = useState<'RADAR' | 'GALLERY'>(() => {
+    if (route?.params?.tabSurface === 'explore') return 'RADAR';
+    if (route?.params?.radarBrowseMode === 'RADAR' || route?.params?.radarBrowseMode === 'GALLERY') {
+      return route.params.radarBrowseMode;
+    }
+    return 'GALLERY';
+  });
+  const [galleryTransactionFilter, setGalleryTransactionFilter] = useState<GalleryTransactionFilter>('SELL');
   const [galleryCountryFilter, setGalleryCountryFilter] = useState<GalleryCountryFilter>('ALL');
   const [galleryPropertyFilter, setGalleryPropertyFilter] = useState<GalleryPropertyFilter>('ALL');
   const [gallerySortFilter, setGallerySortFilter] = useState<GallerySortFilter>('NEWEST');
   const [favoritesMapScope, setFavoritesMapScope] = useState<'FAVORITES' | 'MINE'>('MINE');
   const [unreadDealroomMessagesCount, setUnreadDealroomMessagesCount] = useState(0);
   const [userLocation, setUserLocation] = useState<UserLocation>(null);
+  /** Opt-in: filtr 25 km + zoom GPS — domyślnie pokazujemy całą mapę pinezek. */
+  const [nearbyModeEnabled, setNearbyModeEnabled] = useState(false);
+  const didFitAllPinsRef = useRef(false);
+  const pendingFitAllPinsRef = useRef(false);
   const [mapType, setMapType] = useState<'standard' | 'hybrid'>('standard');
   const [showCalibration, setShowCalibration] = useState(false);
   const [recentRadarAreasList, setRecentRadarAreasList] = useState<RadarRecentSavedArea[]>([]);
@@ -1248,7 +1265,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     [topBarTop, topUiSpacing.radarTopOffset]
   );
   /** Bezpośrednio pod paskiem wyszukiwania — bez luki na mapę. */
-  const browseChromeTop = useMemo(() => topBarTop + 52, [topBarTop]);
+  const browseChromeTop = useMemo(() => {
+    const subRail = tabSurface === 'market' && radarBrowseMode === 'GALLERY' && !showOnlyFavorites ? 40 : 0;
+    return topBarTop + 52 + subRail;
+  }, [topBarTop, tabSurface, radarBrowseMode, showOnlyFavorites]);
   const isGalleryBrowse = !showOnlyFavorites && radarBrowseMode === 'GALLERY' && !showAreaPicker;
   const isGalleryLightChrome = isGalleryBrowse && !isDark;
   /** iOS: po wyjściu z Galerii MapView potrafi „zamrozić” gesty — odświeżamy je jednym cyklem. */
@@ -1344,18 +1364,31 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   const hasActiveGalleryFilters = useMemo(
     () =>
-      galleryTransactionFilter !== 'ALL' ||
       galleryCountryFilter !== 'ALL' ||
       galleryPropertyFilter !== 'ALL' ||
       gallerySortFilter !== 'NEWEST',
-    [galleryTransactionFilter, galleryCountryFilter, galleryPropertyFilter, gallerySortFilter],
+    [galleryCountryFilter, galleryPropertyFilter, gallerySortFilter],
   );
 
   const clearGalleryFilters = useCallback(() => {
-    setGalleryTransactionFilter('ALL');
+    setGalleryTransactionFilter('SELL');
     setGalleryCountryFilter('ALL');
     setGalleryPropertyFilter('ALL');
     setGallerySortFilter('NEWEST');
+  }, []);
+
+  const refreshUserLocation = useCallback(async (): Promise<UserLocation> => {
+    try {
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const nextLoc = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+      };
+      setUserLocation(nextLoc);
+      return nextLoc;
+    } catch {
+      return null;
+    }
   }, []);
 
   const ensureGalleryLocation = useCallback(async (): Promise<boolean> => {
@@ -1564,18 +1597,31 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     }
   }, []);
 
-  const refreshUserLocation = useCallback(async (): Promise<UserLocation> => {
+  const enableNearbyMode = useCallback(async () => {
     try {
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const nextLoc = {
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-      };
-      setUserLocation(nextLoc);
-      return nextLoc;
+      let permission = await Location.getForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        permission = await Location.requestForegroundPermissionsAsync();
+      }
+      if (permission.status !== 'granted') {
+        Alert.alert(
+          t('radar.home.reason.nearbyPermissionTitle'),
+          t('radar.home.reason.nearbyPermissionBody'),
+        );
+        return;
+      }
+      setNearbyModeEnabled(true);
+      await locateUserAndCenterMap();
+      Haptics.selectionAsync();
     } catch {
-      return null;
+      // noop
     }
+  }, [locateUserAndCenterMap, t]);
+
+  const showAllMapPins = useCallback(() => {
+    pendingFitAllPinsRef.current = true;
+    setNearbyModeEnabled(false);
+    Haptics.selectionAsync();
   }, []);
 
   useFocusEffect(
@@ -1586,10 +1632,21 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (route?.params?.favoritesScope === 'FAVORITES' || route?.params?.favoritesScope === 'MINE') {
         setFavoritesMapScope(route.params.favoritesScope);
       }
+      if (route?.params?.tabSurface === 'market') {
+        setRadarBrowseMode('GALLERY');
+        setExploreLive(false);
+      } else if (route?.params?.tabSurface === 'explore') {
+        setRadarBrowseMode('RADAR');
+        if (route?.params?.exploreLive === true || route?.params?.openCalibration || route?.params?.radarFocus) {
+          setExploreLive(true);
+        }
+      }
       // Deep-link z pusha: gdy App.tsx przekierował tu z intencją „pokaż
       // dopasowania Radaru", podnosimy tryb tu, na ekranie docelowym.
       if (route?.params?.radarFocus === 'matches') {
         setShowRadarMatchesOnly(true);
+        setExploreLive(true);
+        setRadarBrowseMode('RADAR');
       }
       if (route?.params?.openCalibration) {
         if (user) {
@@ -1599,7 +1656,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         }
         navigation.setParams?.({ openCalibration: undefined });
       }
-    }, [route?.params?.favoritesOnly, route?.params?.favoritesScope, route?.params?.radarFocus, route?.params?.openCalibration, user, isRadarActive, navigation])
+    }, [route?.params?.favoritesOnly, route?.params?.favoritesScope, route?.params?.radarFocus, route?.params?.openCalibration, route?.params?.tabSurface, route?.params?.exploreLive, user, isRadarActive, navigation])
   );
 
   useEffect(() => {
@@ -1959,41 +2016,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       : SELL_MARKER_COLOR;
   const draftModeAccentColor = draftAdvancedFilters.transactionType === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
 
-  useFocusEffect(
-    useCallback(() => {
-      let mounted = true;
-      if (!splashDone) return () => { mounted = false; };
-
-      const run = async () => {
-        try {
-          const permission = await Location.getForegroundPermissionsAsync();
-          if (!mounted) return;
-
-          if (permission.status === 'granted') {
-            await locateUserAndCenterMap();
-            return;
-          }
-
-          if (hasAskedLocationInCurrentSession) return;
-          hasAskedLocationInCurrentSession = true;
-
-          // Apple 5.1.1(iv): przed dialogiem systemowym nie pokazujemy
-          // własnego okna zachęcającego do zgody ani opcji odroczenia.
-                    const req = await Location.requestForegroundPermissionsAsync();
-                    if (!mounted || req.status !== 'granted') return;
-                    await locateUserAndCenterMap();
-        } catch {
-          // noop
-        }
-      };
-
-      run();
-      return () => {
-        mounted = false;
-      };
-    }, [locateUserAndCenterMap, splashDone])
-  );
-
   /**
    * Mapowanie surowej oferty z backendu → `MapOffer` używane przez listę i mapę.
    * Wydzielone z `fetchOffers`, żeby ten sam normalizer mógł być użyty zarówno
@@ -2001,33 +2023,34 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
    */
   const mapRawOffer = useCallback((o: any): MapOffer | null => {
     if (!Number.isFinite(Number(o?.lat)) || !Number.isFinite(Number(o?.lng))) return null;
-                let firstImage: string | null = null;
-                try {
-                  const parsed = typeof o.images === 'string' ? JSON.parse(o.images) : o.images;
-                  if (Array.isArray(parsed) && parsed.length > 0) {
-                    firstImage = toAbsoluteImage(parsed[0]);
-                  }
-                } catch {
-                  firstImage = null;
-                }
-                const propertyLabel = o.propertyType === 'FLAT'
-      ? t('radar.home.propertyFlat')
-                  : o.propertyType === 'HOUSE'
-        ? t('radar.home.propertyHouse')
-                    : o.propertyType === 'PLOT'
-          ? t('radar.home.propertyPlot')
-          : t('radar.home.propertyPremises');
-                return {
-                  id: o.id,
+    let firstImage: string | null = null;
+    try {
+      const parsed = typeof o.images === 'string' ? JSON.parse(o.images) : o.images;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        firstImage = toAbsoluteImage(parsed[0]);
+      }
+    } catch {
+      firstImage = null;
+    }
+    const propertyLabel =
+      o.propertyType === 'FLAT'
+        ? t('radar.home.propertyFlat')
+        : o.propertyType === 'HOUSE'
+          ? t('radar.home.propertyHouse')
+          : o.propertyType === 'PLOT'
+            ? t('radar.home.propertyPlot')
+            : t('radar.home.propertyPremises');
+    return {
+      id: o.id,
       price: '',
-      type: `${propertyLabel} • ${o.district || o.city || t('radar.home.locationFallback')}`,
-                  area: `${o.area || 0} m²`,
+      type: `${propertyLabel} • ${formatLocationLabel(o.city, o.district, t('radar.home.locationFallback'))}`,
+      area: `${o.area || 0} m²`,
       rooms: `${o.rooms || '-'} ${t('radar.plural.roomsSuffix')}`,
-                  lat: Number(o.lat),
-                  lng: Number(o.lng),
-                  image: firstImage,
-                  raw: o,
-                };
+      lat: Number(o.lat),
+      lng: Number(o.lng),
+      image: firstImage,
+      raw: o,
+    };
   }, [t]);
 
   /**
@@ -2273,15 +2296,17 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     const withDistance = radarFiltered
       .map((o) => ({ offer: o, distance: distanceKm(userLocation.latitude, userLocation.longitude, o.lat, o.lng) }))
       .sort((a, b) => a.distance - b.distance);
-    const nearby = withDistance
-      .filter((x) => x.distance <= NEARBY_RADIUS_KM)
-      .map((x) => x.offer);
     // Wyszukiwanie tekstowe i filtry rozszerzone = cała baza (sortowana wg odległości od GPS).
-    // Sam tryb „okolica" zostaje ograniczony do 25 km.
     if (hasAdvancedFiltersActive || normalizedSearchTokens.length > 0) {
       return withDistance.map((x) => x.offer);
     }
-    return nearby;
+    // Okolica (25 km) tylko po świadomym CTA — inaczej cała mapa pinezek jak w autach.
+    if (nearbyModeEnabled) {
+      return withDistance
+        .filter((x) => x.distance <= NEARBY_RADIUS_KM)
+        .map((x) => x.offer);
+    }
+    return withDistance.map((x) => x.offer);
   }, [
     offers,
     blockedIds,
@@ -2292,6 +2317,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     favorites,
     user?.id,
     userLocation,
+    nearbyModeEnabled,
     advancedFilters,
     hasAdvancedFiltersActive,
     mapUsesRadarFilters,
@@ -2503,6 +2529,36 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     mapRawOffer,
   ]);
 
+  const galleryFavoriteRailItems = useMemo(() => {
+    const favoriteIdSet = new Set(normalizeFavoriteIds(favorites));
+    const favoriteFromFeed = offers.filter((o) => favoriteIdSet.has(Number(o.id)));
+    const seen = new Set<number>();
+    const rows: MapOffer[] = [];
+    for (const o of [...favoriteFromFeed, ...favoriteHydratedOffers]) {
+      const id = Number(o.id);
+      if (!favoriteIdSet.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      rows.push(o);
+    }
+    return rows.slice(0, 24).map((o) => ({
+      id: o.id,
+      title: String(o.raw?.title || o.type || 'Oferta'),
+      subtitle: [o.area, o.rooms].filter(Boolean).join(' · ') || undefined,
+      imageUrl: o.image,
+      priceLabel: formatOffer(o.raw).primary,
+    }));
+  }, [offers, favoriteHydratedOffers, favorites, formatOffer]);
+
+  const galleryMineRailItems = useMemo(() => {
+    return myOffersForMap.slice(0, 24).map((o) => ({
+      id: o.id,
+      title: String(o.raw?.title || o.type || 'Oferta'),
+      subtitle: [o.area, o.rooms].filter(Boolean).join(' · ') || undefined,
+      imageUrl: o.image,
+      priceLabel: formatOffer(o.raw).primary,
+    }));
+  }, [myOffersForMap, formatOffer]);
+
   const searchFooterMatchCount = useMemo(() => {
     if (normalizedSearchTokens.length === 0) return searchOnlyMatchCount;
     return activeOffers.length;
@@ -2583,8 +2639,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
    *  2. Tryb „Ulubione"        — Ulubione + scope=FAVORITES.
    *  3. Tryb „Rozszerzone"     — aktywne `advancedFilters` (cena, dzielnica, typ…).
    *  4. Tryb „Wyszukiwanie"    — wpisana fraza w pasku wyszukiwania.
-   *  5. Tryb „Okolica"         — masz GPS, brak innych filtrów → wyłącznie oferty ≤25 km (bez ulubionych spoza zasięgu).
-   *  6. Tryb „Wszystkie"       — brak filtrów, brak lokalizacji → cała baza.
+   *  5. Tryb „Okolica"         — user włączył „Pokaż w Twojej okolicy" → oferty ≤25 km.
+   *  6. Tryb „Wszystkie"       — domyślnie cała baza / cała mapa pinezek.
    *
    * Każdy tryb dostaje krótki tytuł („Wyszukiwanie rozszerzone"),
    * podtytuł z konkretami (np. „Sprzedaż · Mokotów · do 800 tys.")
@@ -2805,8 +2861,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       return r;
     }
 
-    // Tryb 5 — Okolica (GPS bez filtrów)
-    if (userLocation) {
+    // Tryb 5 — Okolica (GPS + świadome CTA)
+    if (nearbyModeEnabled && userLocation) {
       const r: Reason = isEmpty
         ? {
             icon: 'location-outline',
@@ -2814,7 +2870,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             subtitle: t('radar.home.reason.nearbyEmptySubtitle'),
             accent: '#10B981',
             severity: 'empty',
-            action: { label: t('radar.home.reason.filter'), onPress: () => setShowAdvancedSearch(true) },
+            action: { label: t('radar.home.reason.showAllMap'), onPress: () => showAllMapPins() },
           }
         : {
             icon: 'location-outline',
@@ -2822,12 +2878,12 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             subtitle: t('radar.home.reason.nearbyActiveSubtitle', { count: String(count), offers: pluralOffers(count) }),
             accent: '#10B981',
             severity: 'normal',
-            action: { label: t('radar.home.reason.filter'), onPress: () => setShowAdvancedSearch(true) },
+            action: { label: t('radar.home.reason.showAllMap'), onPress: () => showAllMapPins() },
           };
       return r;
     }
 
-    // Tryb 6 — Wszystko, brak filtrów, brak lokalizacji
+    // Tryb 6 — Wszystko, brak filtrów — sugeruj okolicę
     const r: Reason = isEmpty
       ? {
           icon: 'apps-outline',
@@ -2843,7 +2899,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           subtitle: t('radar.home.reason.allOffersSubtitle', { count: String(count), offers: pluralOffers(count) }),
           accent: isDark ? '#94A3B8' : '#64748B',
           severity: 'normal',
-          action: { label: t('radar.home.reason.filter'), onPress: () => setShowAdvancedSearch(true) },
+          action: { label: t('radar.home.reason.showNearby'), onPress: () => { void enableNearbyMode(); } },
         };
     return r;
   }, [
@@ -2855,6 +2911,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     advancedFilters,
     searchQuery,
     userLocation,
+    nearbyModeEnabled,
     isDark,
     mineUiAccent,
     favoritesUiAccent,
@@ -2867,6 +2924,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     visibleRadarMatchingOffers.length,
     t,
     locale,
+    enableNearbyMode,
+    showAllMapPins,
   ]);
 
   /**
@@ -3216,6 +3275,34 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       animated: true,
     });
   }, []);
+
+  /** Jak mapa aut: na starcie Explore dopasuj kamerę do wszystkich pinezek. */
+  useEffect(() => {
+    if (radarBrowseMode !== 'RADAR') {
+      didFitAllPinsRef.current = false;
+      return;
+    }
+    if (nearbyModeEnabled || showOnlyFavorites || showRadarMatchesOnly) return;
+    if (hasAdvancedFiltersActive || normalizedSearchTokens.length > 0) return;
+    if (activeOffers.length === 0) return;
+    const shouldFit = !didFitAllPinsRef.current || pendingFitAllPinsRef.current;
+    if (!shouldFit) return;
+    didFitAllPinsRef.current = true;
+    pendingFitAllPinsRef.current = false;
+    const timer = setTimeout(() => {
+      focusMapToOffers(activeOffers);
+    }, Platform.OS === 'ios' ? 320 : 220);
+    return () => clearTimeout(timer);
+  }, [
+    radarBrowseMode,
+    nearbyModeEnabled,
+    showOnlyFavorites,
+    showRadarMatchesOnly,
+    hasAdvancedFiltersActive,
+    normalizedSearchTokens.length,
+    activeOffers,
+    focusMapToOffers,
+  ]);
 
   const focusMapToActiveSearch = useCallback(() => {
     if (activeOffers.length > 0) {
@@ -4484,27 +4571,61 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         ]}
         pointerEvents="auto"
       >
-        <Pressable
-          style={({ pressed }) => [
-            styles.topBarSideSlot,
-            styles.filterButtonWrap,
-            isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
-            pressed && { opacity: 0.8 },
-          ]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setMapType((prev) => (prev === 'standard' ? 'hybrid' : 'standard'));
-          }}
-          accessibilityLabel="Map type"
-        >
-          <BlurView
-            intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
-            tint={isDark ? 'dark' : 'light'}
-            style={[styles.filterGlass, isGalleryLightChrome && styles.filterGlassGalleryLight, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
+        <View style={[styles.topBarSideSlot, styles.topBarToolsRow, { width: 'auto', maxWidth: 112 }]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.filterButtonWrap,
+              isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
+              pressed && { opacity: 0.8 },
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setMapType((prev) => (prev === 'standard' ? 'hybrid' : 'standard'));
+            }}
+            accessibilityLabel="Map type"
           >
-            <Ionicons name="map" size={22} color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'} />
-          </BlurView>
-        </Pressable>
+            <BlurView
+              intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
+              tint={isDark ? 'dark' : 'light'}
+              style={[styles.filterGlass, isGalleryLightChrome && styles.filterGlassGalleryLight, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
+            >
+              <Ionicons name="map" size={22} color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'} />
+            </BlurView>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.filterButtonWrap,
+              isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
+              pressed && { opacity: 0.8 },
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setShowOnlyFavorites((prev) => {
+                const next = !prev;
+                if (next) setFavoritesMapScope('MINE');
+                return next;
+              });
+            }}
+            accessibilityLabel={t('radar.home.favoritesTab')}
+            accessibilityState={{ selected: showOnlyFavorites }}
+          >
+            <BlurView
+              intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
+              tint={isDark ? 'dark' : 'light'}
+              style={[
+                styles.filterGlass,
+                isGalleryLightChrome && styles.filterGlassGalleryLight,
+                showOnlyFavorites && { backgroundColor: favoritesScopeBg },
+              ]}
+            >
+              <Ionicons
+                name={showOnlyFavorites ? 'heart' : 'heart-outline'}
+                size={22}
+                color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'}
+              />
+            </BlurView>
+          </Pressable>
+        </View>
 
         {showOnlyFavorites ? (
           <Animated.View
@@ -4517,6 +4638,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             ]}
           >
             <View style={styles.favoritesScopeRailOuter}>
+              <VerticalSegmentRail isDark={isDark} />
+              <View style={{ height: 8 }} />
               <BlurView
                 intensity={isDark ? 85 : 92}
                 tint={isDark ? 'dark' : 'light'}
@@ -4673,20 +4796,31 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               },
             ]}
           >
-            <RadarBrowseModeRail
-              mode={radarBrowseMode}
-              isDark={isDark}
-              embeddedInTopBar
-              radarLabel={t('radar.home.browseModeRadar')}
-              galleryLabel={t('radar.home.browseModeGallery')}
-              onSelectRadar={() => setRadarBrowseMode('RADAR')}
-              onSelectGallery={() => {
-                setRadarBrowseMode('GALLERY');
-                setShowRadarMatchesOnly(false);
-              }}
-            />
+            <VerticalSegmentRail isDark={isDark} />
+            {tabSurface === 'explore' ? (
+              <View style={{ marginTop: 8, width: '100%', alignItems: 'center' }}>
+                <RadarBrowseModeRail
+                  mode={exploreLive ? 'RADAR' : 'GALLERY'}
+                  isDark={isDark}
+                  embeddedInTopBar
+                  variant="mapRadar"
+                  radarLabel={t('radar.home.browseModeLiveRadar')}
+                  galleryLabel={t('radar.home.browseModeMap')}
+                  onSelectRadar={() => {
+                    setExploreLive(true);
+                    setRadarBrowseMode('RADAR');
+                  }}
+                  onSelectGallery={() => {
+                    setExploreLive(false);
+                    setShowRadarMatchesOnly(false);
+                    setRadarBrowseMode('RADAR');
+                  }}
+                />
+              </View>
+            ) : null}
+            {tabSurface !== 'explore' || exploreLive ? (
             <JellyReveal visible key="radar-calibration-pill">
-              <View style={styles.radarHeroWrap}>
+              <View style={[styles.radarHeroWrap, tabSurface === 'explore' && { marginTop: 8 }]}>
                 {isRadarActive && (
                   <View pointerEvents="none" style={styles.radarPulseLayer}>
                     <Animated.View
@@ -4801,6 +4935,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 </Animated.View>
               </View>
             </JellyReveal>
+            ) : null}
           </Animated.View>
         ) : radarBrowseMode === 'GALLERY' ? (
           <Animated.View
@@ -4813,18 +4948,30 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               },
             ]}
           >
-            <RadarBrowseModeRail
-              mode={radarBrowseMode}
-              isDark={isDark}
-              embeddedInTopBar
-              radarLabel={t('radar.home.browseModeRadar')}
-              galleryLabel={t('radar.home.browseModeGallery')}
-              onSelectRadar={() => setRadarBrowseMode('RADAR')}
-              onSelectGallery={() => {
-                setRadarBrowseMode('GALLERY');
-                setShowRadarMatchesOnly(false);
-              }}
-            />
+            <VerticalSegmentRail isDark={isDark} />
+            {tabSurface === 'market' ? (
+              <HomeTransactionSubRail
+                isDark={isDark}
+                value={galleryTransactionFilter === 'RENT' ? 'RENT' : 'SELL'}
+                onChange={(v: HomeTxFilter) => setGalleryTransactionFilter(v)}
+              />
+            ) : null}
+            {tabSurface !== 'market' ? (
+              <View style={{ marginTop: 8, width: '100%', alignItems: 'center' }}>
+                <RadarBrowseModeRail
+                  mode={radarBrowseMode}
+                  isDark={isDark}
+                  embeddedInTopBar
+                  radarLabel={t('radar.home.browseModeRadar')}
+                  galleryLabel={t('radar.home.browseModeGallery')}
+                  onSelectRadar={() => setRadarBrowseMode('RADAR')}
+                  onSelectGallery={() => {
+                    setRadarBrowseMode('GALLERY');
+                    setShowRadarMatchesOnly(false);
+                  }}
+                />
+              </View>
+            ) : null}
           </Animated.View>
         ) : (
           <View style={styles.topBarCenterSpacer} />
@@ -4880,6 +5027,18 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           <RadarOfferGallery
             offers={galleryOffers}
             featuredOffers={galleryFeaturedOffers}
+            favoriteRailItems={galleryFavoriteRailItems}
+            mineRailItems={galleryMineRailItems}
+            onPressRailItem={(id) => {
+              const fromGallery = galleryOffers.find((o) => Number(o.id) === Number(id));
+              const fromFav = [...offers, ...favoriteHydratedOffers, ...myOffersForMap].find(
+                (o) => Number(o.id) === Number(id),
+              );
+              const raw = fromGallery?.raw || fromFav?.raw;
+              if (!raw) return;
+              Haptics.selectionAsync();
+              navigation.navigate('OfferDetail', { offer: raw });
+            }}
             isDark={isDark}
             bottomInset={bottomCardsInset + 64}
             favorites={favorites}
