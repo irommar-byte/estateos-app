@@ -13,6 +13,7 @@ import {
   resolveServicingCompanyName,
 } from '@/lib/sellerDisplay';
 import { getBestUserAvatarUrl } from '@/lib/userAvatar';
+import { formatPublicOfferLocation } from '@/lib/publicOfferLocation';
 
 export function resolvePublicAppOrigin(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://estateos.pl').replace(
@@ -81,13 +82,15 @@ export type OfferShareCard = {
   ogDescription: string;
   canonicalUrl: string;
   imageUrl: string;
-  /** PNG 1200×630 pod Facebook / Messenger (nie WebP z galerii). */
+  /** JPEG 1200×630 pod Facebook / Messenger. */
   socialImageUrl: string;
   images: string[];
   priceLabel: string;
   isRent: boolean;
   locationLabel: string;
   summaryLine: string;
+  /** Bogatsza linia meta (m² / pokoje) — na kartę OG. */
+  detailLine: string;
   propertyTypeLabel: string;
   transactionLabel: string;
   area: number | null;
@@ -118,16 +121,20 @@ export async function loadOfferShareCard(
   const isRent = String(row.transactionType || '').toUpperCase() === 'RENT';
   const propertyTypeLabel = formatOfferPropertyType(row.propertyType, 'pl') || 'Nieruchomość';
   const transactionLabel = isRent ? 'Wynajem' : 'Sprzedaż';
-  const locParts = [row.district, row.city].filter(Boolean);
-  const locationLabel = locParts.join(', ') || row.city || 'Polska';
+  const locationLabel = formatPublicOfferLocation(row.city, row.district);
   const title = String(row.title || '').trim() || `Oferta #${offerId}`;
   const priceLabel = formatPricePln(row.pricePln ?? row.price, isRent);
+  const areaBit = row.area != null && Number(row.area) > 0 ? `${Number(row.area)} m²` : null;
+  const roomsBit = row.rooms != null && Number(row.rooms) > 0 ? `${Number(row.rooms)} pok.` : null;
   const summaryLine = [propertyTypeLabel, transactionLabel, locationLabel].filter(Boolean).join(' · ');
+  const detailLine = [propertyTypeLabel, transactionLabel, locationLabel, areaBit, roomsBit]
+    .filter(Boolean)
+    .join(' · ');
 
   const images = parseImageList(row.images);
   const primary = absolutizeMediaUrl(resolveOfferPrimaryImage(row)) || images[0] || '';
   const canonicalUrl = `${resolvePublicAppOrigin()}/o/${offerId}`;
-  const ogDescription = `${summaryLine} — ${priceLabel}. Galeria, parametry i kontakt na EstateOS™.`;
+  const ogDescription = `${detailLine} — ${priceLabel}. Galeria, parametry i kontakt na EstateOS™.`;
   const ogTitle = `${title} — ${priceLabel}`;
 
   const portalToken = opts?.portalToken?.trim() || null;
@@ -216,12 +223,13 @@ export async function loadOfferShareCard(
     ogDescription,
     canonicalUrl,
     imageUrl: primary,
-    socialImageUrl: `${resolvePublicAppOrigin()}/api/og/offer/${offerId}?v5`,
+    socialImageUrl: `${resolvePublicAppOrigin()}/api/og/offer/${offerId}?v6`,
     images: images.length ? images : primary ? [primary] : [],
     priceLabel,
     isRent,
     locationLabel,
     summaryLine,
+    detailLine,
     propertyTypeLabel,
     transactionLabel,
     area: row.area != null ? Number(row.area) : null,

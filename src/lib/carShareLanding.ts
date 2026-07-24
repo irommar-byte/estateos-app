@@ -45,12 +45,14 @@ export type CarShareMeta = {
   ogTitle: string;
   ogDescription: string;
   canonicalUrl: string;
-  /** Zawsze PNG /opengraph-image — Facebook niezawodnie pokazuje kartę. */
+  /** JPEG z /api/og/car — Facebook niezawodnie pokazuje kartę. */
   imageUrl: string;
-  /** Oryginalne zdjęcie auta (webp/jpeg) do kompozycji karty PNG. */
+  /** Oryginalne zdjęcie auta (webp/jpeg) do kompozycji karty. */
   photoUrl: string;
   priceLabel: string;
   locationLabel: string;
+  summaryLine: string;
+  chips: string[];
 };
 
 export async function loadCarShareMeta(carId: number): Promise<CarShareMeta | null> {
@@ -62,26 +64,28 @@ export async function loadCarShareMeta(carId: number): Promise<CarShareMeta | nu
   const priceLabel = formatCarPrice(car.pricePln);
   const locationLabel = String(car.city || "").trim() || "Polska";
   const mileage = formatMileage(car.mileageKm);
-  const summary = [`${car.make} ${car.model}`, String(car.year), mileage, locationLabel]
-    .filter(Boolean)
-    .join(" · ");
+  const makeModel = `${car.make} ${car.model}`.trim();
+  const year = car.year != null ? String(car.year) : "";
+  const chips = [makeModel, year, mileage].filter(Boolean);
+  const summaryLine = [...chips, locationLabel].filter(Boolean).join(" · ");
   const images = parseCarImages(car);
   const photoUrl = images[0] || "";
   const origin = resolvePublicAppOrigin();
   const canonicalUrl = `${origin}/cars/${carId}`;
-  // Szybki JPEG z cache (FB nie lubi wolnego / ciężkiego PNG z ImageResponse).
-  const imageUrl = `${origin}/api/og/car/${carId}?v5`;
+  const imageUrl = `${origin}/api/og/car/${carId}?v6`;
 
   return {
     id: carId,
     title,
     ogTitle: `${title} — ${priceLabel}`,
-    ogDescription: `${summary}. Ogłoszenie EstateOS™Car — zdjęcia, parametry i kontakt.`,
+    ogDescription: `${summaryLine}. Ogłoszenie EstateOS™Car — zdjęcia, parametry i kontakt.`,
     canonicalUrl,
     imageUrl,
     photoUrl,
     priceLabel,
     locationLabel,
+    summaryLine,
+    chips,
   };
 }
 
