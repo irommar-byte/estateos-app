@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import { normalizeTransactionType } from "@/lib/transactionType";
+import { formatPublicOfferLocation } from "@/lib/publicOfferLocation";
 import { useLocale } from "@/contexts/LocaleContext";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
@@ -142,8 +143,8 @@ function formatAreaLabel(offer: CatalogOffer): string {
 }
 
 function formatLocationLabel(offer: CatalogOffer, countryDefault: string): string {
-  const parts = [offer.district, offer.city].map((p) => String(p || "").trim()).filter(Boolean);
-  return parts.length ? parts.join(" · ") : countryDefault;
+  const label = formatPublicOfferLocation(offer.city, offer.district);
+  return label === "Polska" ? countryDefault : label.replace(", ", " · ");
 }
 
 export default function CatalogPage() {
