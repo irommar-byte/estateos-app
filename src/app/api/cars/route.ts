@@ -197,6 +197,14 @@ export async function POST(req: Request) {
         images: hostedImages,
         imageUrl: hostedImages[0] || payload.imageUrl,
       });
+      try {
+        const { carRadarService } = await import("@/lib/services/carRadar.service");
+        void carRadarService.notifyForNewCar(created).catch((err) => {
+          console.warn("[CAR_RADAR] notify failed", err);
+        });
+      } catch (err) {
+        console.warn("[CAR_RADAR] notify import failed", err);
+      }
       return NextResponse.json({ success: true, listing: created }, { status: 201 });
     } catch (createError) {
       console.error("cars create", createError);
