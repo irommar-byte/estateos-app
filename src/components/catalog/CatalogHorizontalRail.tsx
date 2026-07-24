@@ -111,32 +111,45 @@ export default function CatalogHorizontalRail({
     [canLoadMore, loadMore],
   );
 
-  // Pełniejsze zabarwienie taśmy — solidny tint działu na całym panelu.
+  // Płynne zabarwienie: znika u góry i dołu — bez ostrej krawędzi między taśmami.
   const panelBg = isDark
-    ? [hexToRgba(accent, 0.34), hexToRgba(accent, 0.2), hexToRgba(accent, 0.12)]
-    : [hexToRgba(accent, 0.28), hexToRgba(accent, 0.16), hexToRgba(accent, 0.1)];
+    ? [
+        'transparent',
+        hexToRgba(accent, 0.08),
+        hexToRgba(accent, 0.28),
+        hexToRgba(accent, 0.18),
+        hexToRgba(accent, 0.06),
+        'transparent',
+      ]
+    : [
+        'transparent',
+        hexToRgba(accent, 0.1),
+        hexToRgba(accent, 0.26),
+        hexToRgba(accent, 0.16),
+        hexToRgba(accent, 0.06),
+        'transparent',
+      ];
 
   return (
-    <View
-      style={[
-        styles.panel,
-        {
-          borderColor: isDark ? hexToRgba(accent, 0.42) : hexToRgba(accent, 0.28),
-          shadowColor: accent,
-        },
-      ]}
-    >
+    <View style={styles.panel}>
       <LinearGradient
         colors={panelBg as [string, string, ...string[]]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        locations={[0, 0.12, 0.38, 0.62, 0.86, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <View
-        style={[
-          styles.panelSheen,
-          { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.45)' },
-        ]}
+      <LinearGradient
+        colors={
+          isDark
+            ? ['transparent', hexToRgba(accent, 0.12), 'transparent']
+            : ['transparent', hexToRgba(accent, 0.1), 'transparent']
+        }
+        locations={[0, 0.45, 1]}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
       />
 
       <View style={styles.head}>
@@ -144,8 +157,8 @@ export default function CatalogHorizontalRail({
           style={[
             styles.iconBubble,
             {
-              backgroundColor: hexToRgba(accent, isDark ? 0.36 : 0.22),
-              borderColor: hexToRgba(accent, 0.5),
+              backgroundColor: hexToRgba(accent, isDark ? 0.36 : 0.2),
+              borderColor: hexToRgba(accent, 0.45),
               shadowColor: accent,
             },
           ]}
@@ -161,7 +174,7 @@ export default function CatalogHorizontalRail({
           </Text>
         </View>
         {items.length > 0 ? (
-          <View style={[styles.countPill, { backgroundColor: hexToRgba(accent, isDark ? 0.32 : 0.2) }]}>
+          <View style={[styles.countPill, { backgroundColor: hexToRgba(accent, isDark ? 0.32 : 0.18) }]}>
             <Text style={[styles.count, { color: accent }]}>{items.length}</Text>
           </View>
         ) : null}
@@ -278,18 +291,25 @@ export function CatalogHorizontalRailStack({
   if (!visible.length) return null;
   return (
     <View style={styles.stack}>
-      {visible.map((section) => (
-        <CatalogHorizontalRail
+      {visible.map((section, index) => (
+        <View
           key={section.id}
-          title={section.title}
-          icon={section.icon}
-          accent={section.accent}
-          items={section.items}
-          emptyLabel={section.emptyLabel}
-          isDark={isDark}
-          onPressItem={onPressItem}
-          density={density}
-        />
+          style={[
+            styles.stackItem,
+            index > 0 && styles.stackItemOverlap,
+          ]}
+        >
+          <CatalogHorizontalRail
+            title={section.title}
+            icon={section.icon}
+            accent={section.accent}
+            items={section.items}
+            emptyLabel={section.emptyLabel}
+            isDark={isDark}
+            onPressItem={onPressItem}
+            density={density}
+          />
+        </View>
       ))}
     </View>
   );
@@ -354,25 +374,21 @@ export function CatalogRailDensityToggle({
 }
 
 const styles = StyleSheet.create({
-  stack: { gap: 16 },
-  panel: {
-    marginBottom: 2,
-    borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-    paddingTop: 14,
-    paddingBottom: 16,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
-    shadowRadius: 16,
-    elevation: 5,
+  stack: { gap: 0 },
+  stackItem: {
+    zIndex: 1,
   },
-  panelSheen: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 22,
+  /** Lekkie nachodzenie — gradienty sąsiadujących taśm zlewają się. */
+  stackItemOverlap: {
+    marginTop: -18,
+  },
+  panel: {
+    marginBottom: 0,
+    borderRadius: 0,
+    overflow: 'hidden',
+    paddingTop: 22,
+    paddingBottom: 26,
+    backgroundColor: 'transparent',
   },
   head: {
     flexDirection: 'row',

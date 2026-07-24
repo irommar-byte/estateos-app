@@ -517,7 +517,7 @@ export default function CarsCatalogScreen({
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 12,
-                  marginBottom: 16,
+                  marginBottom: 2,
                   paddingHorizontal: 14,
                   paddingVertical: 16,
                   borderRadius: 24,
