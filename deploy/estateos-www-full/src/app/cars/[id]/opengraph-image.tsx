@@ -1,21 +1,21 @@
 import { ImageResponse } from 'next/og';
-import { loadOfferShareCard } from '@/lib/offerShareLanding';
+import { loadCarShareMeta } from '@/lib/carShareLanding';
 
 export const runtime = 'nodejs';
-export const alt = 'Oferta nieruchomości — EstateOS™';
+export const alt = 'Ogłoszenie auta — EstateOS™Car';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
 type Props = { params: Promise<{ id: string }> };
 
-export default async function OfferOpenGraphImage({ params }: Props) {
+export default async function CarOpenGraphImage({ params }: Props) {
   const { id } = await params;
-  const card = await loadOfferShareCard(Number(id));
+  const meta = await loadCarShareMeta(Number(id));
 
-  const title = card?.title || 'Oferta nieruchomości';
-  const subtitle = card?.summaryLine || 'EstateOS™';
-  const price = card?.priceLabel || '';
-  const photo = card?.imageUrl || '';
+  const title = meta?.title || 'Ogłoszenie auta';
+  const price = meta?.priceLabel || '';
+  const subtitle = meta?.ogDescription?.split('.')[0] || 'EstateOS™Car';
+  const photo = meta?.photoUrl || '';
 
   return new ImageResponse(
     (
@@ -25,7 +25,7 @@ export default async function OfferOpenGraphImage({ params }: Props) {
           height: '100%',
           display: 'flex',
           flexDirection: 'row',
-          background: '#0a0a0c',
+          background: '#0b1220',
           fontFamily: 'system-ui, sans-serif',
         }}
       >
@@ -35,7 +35,7 @@ export default async function OfferOpenGraphImage({ params }: Props) {
             height: '100%',
             display: 'flex',
             position: 'relative',
-            background: 'linear-gradient(145deg, #0a0a0c 0%, #141416 55%, #0f766e 120%)',
+            background: 'linear-gradient(145deg, #020617 0%, #0c4a6e 55%, #082f49 120%)',
           }}
         >
           {photo ? (
@@ -45,7 +45,11 @@ export default async function OfferOpenGraphImage({ params }: Props) {
               alt=""
               width={700}
               height={630}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
             />
           ) : null}
           <div
@@ -53,7 +57,7 @@ export default async function OfferOpenGraphImage({ params }: Props) {
               position: 'absolute',
               inset: 0,
               background: photo
-                ? 'linear-gradient(90deg, rgba(10,10,12,0.12) 35%, rgba(10,10,12,0.92) 100%)'
+                ? 'linear-gradient(90deg, rgba(2,6,23,0.15) 40%, rgba(2,6,23,0.92) 100%)'
                 : 'transparent',
             }}
           />
@@ -67,7 +71,7 @@ export default async function OfferOpenGraphImage({ params }: Props) {
             flexDirection: 'column',
             justifyContent: 'flex-end',
             padding: 48,
-            background: photo ? '#0a0a0c' : 'transparent',
+            background: photo ? '#0b1220' : 'transparent',
           }}
         >
           <div
@@ -75,28 +79,28 @@ export default async function OfferOpenGraphImage({ params }: Props) {
               fontSize: 18,
               letterSpacing: '0.28em',
               textTransform: 'uppercase',
-              color: '#10b981',
+              color: '#38bdf8',
               marginBottom: 18,
             }}
           >
-            EstateOS™
+            EstateOS™Car
           </div>
           <div
             style={{
-              fontSize: photo ? 34 : 48,
+              fontSize: photo ? 36 : 48,
               fontWeight: 800,
               color: 'white',
               lineHeight: 1.12,
               maxWidth: 460,
             }}
           >
-            {title.length > 72 ? `${title.slice(0, 69)}…` : title}
+            {title.length > 70 ? `${title.slice(0, 67)}…` : title}
           </div>
-          <div style={{ marginTop: 16, fontSize: 22, color: 'rgba(255,255,255,0.82)', maxWidth: 440 }}>
-            {subtitle}
+          <div style={{ marginTop: 16, fontSize: 22, color: 'rgba(226,232,240,0.88)', maxWidth: 440 }}>
+            {subtitle.length > 90 ? `${subtitle.slice(0, 87)}…` : subtitle}
           </div>
           {price ? (
-            <div style={{ marginTop: 18, fontSize: 34, fontWeight: 800, color: '#f9e498' }}>{price}</div>
+            <div style={{ marginTop: 18, fontSize: 34, fontWeight: 800, color: '#fde68a' }}>{price}</div>
           ) : null}
         </div>
       </div>

@@ -33,9 +33,10 @@ function parseCarImages(car: { imageUrl?: string | null; images?: string | null 
       /* ignore */
     }
   }
-  const cover = absolutizeMediaUrl(carImageSrc(car.imageUrl));
+  const cover = absolutizeMediaUrl(String(car.imageUrl || "").trim() || carImageSrc(car.imageUrl));
   const list = fromJson.length ? fromJson : cover ? [cover] : [];
-  return Array.from(new Set(list));
+  // Unsplash placeholder z carImageSrc nie chcemy jako „prawdziwe” zdjęcie w OG.
+  return Array.from(new Set(list.filter((u) => !u.includes("images.unsplash.com"))));
 }
 
 export type CarShareMeta = {
@@ -44,7 +45,10 @@ export type CarShareMeta = {
   ogTitle: string;
   ogDescription: string;
   canonicalUrl: string;
+  /** Zawsze PNG /opengraph-image — Facebook niezawodnie pokazuje kartę. */
   imageUrl: string;
+  /** Oryginalne zdjęcie auta (webp/jpeg) do kompozycji karty PNG. */
+  photoUrl: string;
   priceLabel: string;
   locationLabel: string;
 };
@@ -62,8 +66,11 @@ export async function loadCarShareMeta(carId: number): Promise<CarShareMeta | nu
     .filter(Boolean)
     .join(" · ");
   const images = parseCarImages(car);
-  const imageUrl = images[0] || `${resolvePublicAppOrigin()}/cars/opengraph-image`;
-  const canonicalUrl = `${resolvePublicAppOrigin()}/cars/${carId}`;
+  const photoUrl = images[0] || "";
+  const origin = resolvePublicAppOrigin();
+  const canonicalUrl = `${origin}/cars/${carId}`;
+  // PNG generowane przez Next — nie WebP z uploadu (FB Groups często bez podglądu).
+  const imageUrl = `${origin}/cars/${carId}/opengraph-image`;
 
   return {
     id: carId,
@@ -72,6 +79,7 @@ export async function loadCarShareMeta(carId: number): Promise<CarShareMeta | nu
     ogDescription: `${summary}. Ogłoszenie EstateOS™Car — zdjęcia, parametry i kontakt.`,
     canonicalUrl,
     imageUrl,
+    photoUrl,
     priceLabel,
     locationLabel,
   };
@@ -97,6 +105,7 @@ export function carShareMetadata(meta: CarShareMeta): Metadata {
           url: meta.imageUrl,
           width: 1200,
           height: 630,
+          type: "image/png",
           alt: meta.ogTitle,
         },
       ],

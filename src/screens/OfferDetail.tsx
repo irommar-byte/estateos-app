@@ -2,7 +2,7 @@ import FloorPlanViewer from '../components/FloorPlanViewer';
 import { normalizeStoredScanMeta } from '../lib/roomScan/parseRoomPlanJson';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert, Modal, Platform, Pressable, ScrollView, ActivityIndicator, useColorScheme, type GestureResponderEvent } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Alert, Modal, Platform, Pressable, ScrollView, ActivityIndicator, useColorScheme, type GestureResponderEvent } from 'react-native';
 import { useThemeStore } from '../store/useThemeStore';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,7 +35,7 @@ import { fetchOpenHouseForOffer } from '../services/openHouseService';
 import { fetchAuctionForOffer } from '../services/auctionService';
 import type { OpenHouseEventRecord } from '../contracts/openHouseContract';
 import type { AuctionEventRecord } from '../contracts/auctionContract';
-import { buildOfferShareMessage, SITE_ORIGIN } from '../utils/offerShareUrls';
+import { SITE_ORIGIN } from '../utils/offerShareUrls';
 import { DEAL_EVENT_PREFIX } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 import OwnerLegalVerificationCard from '../components/OwnerLegalVerificationCard';
@@ -635,18 +635,12 @@ export default function OfferDetail({ route, navigation }: any) {
     if (isSamplePreview) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!offer?.id) return;
-    const { message, url } = buildOfferShareMessage({
-      title: displayOffer.title,
-      priceLine: displayOffer.price,
-      locationLine: displayOffer.location,
-      offerId: offer.id,
-    });
     try {
-      await Share.share(
-        Platform.OS === 'ios'
-          ? { message, url, title: t('offer.detail.shareTitleIos') }
-          : { message, title: t('offer.detail.shareTitle') }
-      );
+      const { shareListingLink, buildOfferLandingPageUrl } = await import('../utils/offerShareUrls');
+      await shareListingLink({
+        url: buildOfferLandingPageUrl(offer.id),
+        sheetTitle: t('offer.detail.shareTitleIos'),
+      });
     } catch {
       /* anulowano lub błąd share */
     }

@@ -1,5 +1,5 @@
 import { API_URL } from '../config/network';
-import { Platform } from 'react-native';
+import { Platform, Share } from 'react-native';
 
 /** Publiczny origin serwisu (bez /api). */
 export const SITE_ORIGIN = API_URL.replace(/\/+$/, '').replace(/\/api\/?.*$/i, '') || 'https://estateos.pl';
@@ -31,39 +31,28 @@ export function buildCarAppDeepLink(carId: number | string): string {
   return `estateos://cars/${id}`;
 }
 
-type ShareMessageParams = {
-  title: string;
-  priceLine: string;
-  locationLine?: string | null;
-  url: string;
-};
-
 /**
- * Czysta treść share (bez spamowego footera i bez podwójnego URL).
- * Na iOS URL idzie w polu `url` (preview), więc NIE powtarzamy go w `message`
- * — Facebook / Messenger inaczej sklejają tekst z linkiem.
+ * Profesjonalny share pod Facebook / grupy:
+ * wysyłamy **sam link** (bez własnego tekstu).
+ * Dzięki temu FB scrapuje Open Graph i pokazuje kartę ze zdjęciem,
+ * a nie goły post tekstowy z URL w treści.
  */
-export function buildProfessionalShareContent(params: ShareMessageParams): {
-  message: string;
+export async function shareListingLink(params: {
   url: string;
-} {
-  const title = String(params.title || '').trim() || 'EstateOS™';
-  const price = String(params.priceLine || '').trim();
-  const location = String(params.locationLine || '').trim();
-  const url = params.url;
-
-  const headline = price ? `${title} — ${price}` : title;
-  const lines = [headline];
-  if (location) lines.push(location);
+  /** Tytuł activity sheet (iOS) / chooser (Android) — nie trafia do treści posta FB. */
+  sheetTitle?: string;
+}): Promise<void> {
+  const url = String(params.url || '').trim();
+  if (!url) return;
+  const sheetTitle = params.sheetTitle || 'EstateOS™';
 
   if (Platform.OS === 'ios') {
-    // iOS: osobne `url` → bogata karta; message bez linku.
-    return { message: lines.join('\n'), url };
+    await Share.share({ url, title: sheetTitle });
+    return;
   }
 
-  // Android / inne: jeden link na końcu wiadomości.
-  lines.push('', url);
-  return { message: lines.join('\n'), url };
+  // Android: sam URL jako message — FB traktuje to jak udostępnienie linku.
+  await Share.share({ message: url, title: sheetTitle });
 }
 
 export function buildOfferShareMessage(params: {
@@ -72,12 +61,16 @@ export function buildOfferShareMessage(params: {
   offerId: number | string;
   locationLine?: string | null;
 }): { message: string; url: string } {
-  return buildProfessionalShareContent({
-    title: params.title,
-    priceLine: params.priceLine,
-    locationLine: params.locationLine,
-    url: buildOfferLandingPageUrl(params.offerId),
-  });
+  const url = buildOfferLandingPageUrl(params.offerId);
+  // Zachowane dla kompatybilności (kalendarz / testy) — share UI używa shareListingLink.
+  const title = String(params.title || '').trim() || 'EstateOS™';
+  const price = String(params.priceLine || '').trim();
+  const location = String(params.locationLine || '').trim();
+  const headline = price ? `${title} — ${price}` : title;
+  const lines = [headline];
+  if (location) lines.push(location);
+  lines.push('', url);
+  return { message: lines.join('\n'), url };
 }
 
 export function buildCarShareMessage(params: {
@@ -86,10 +79,13 @@ export function buildCarShareMessage(params: {
   carId: number | string;
   locationLine?: string | null;
 }): { message: string; url: string } {
-  return buildProfessionalShareContent({
-    title: params.title,
-    priceLine: params.priceLine,
-    locationLine: params.locationLine,
-    url: buildCarLandingPageUrl(params.carId),
-  });
+  const url = buildCarLandingPageUrl(params.carId);
+  const title = String(params.title || '').trim() || 'EstateOS™Car';
+  const price = String(params.priceLine || '').trim();
+  const location = String(params.locationLine || '').trim();
+  const headline = price ? `${title} — ${price}` : title;
+  const lines = [headline];
+  if (location) lines.push(location);
+  lines.push('', url);
+  return { message: lines.join('\n'), url };
 }

@@ -9,7 +9,6 @@ import {
   Alert,
   Platform,
   TouchableOpacity,
-  Share,
 } from 'react-native';
 import { Image } from 'expo-image';
 import ImageViewing from 'react-native-image-viewing';
@@ -25,7 +24,6 @@ import SellerCarsSection from '../components/cars/SellerCarsSection';
 import { fetchCarById, formatCarPrice, parseCarImages, type CarListing } from '../services/carsApi';
 import { deleteCarListing } from '../services/carsMutations';
 import { openDirectContactChat } from '../utils/openDirectContact';
-import { buildCarShareMessage } from '../utils/offerShareUrls';
 import { useCarScreenTheme, type CarScreenColors } from '../theme/carScreenTheme';
 
 type CarDetailScreenProps = {
@@ -147,20 +145,12 @@ export default function CarDetailScreen({ navigation, route }: CarDetailScreenPr
   const handleShare = async () => {
     if (!car?.id) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const { message, url } = buildCarShareMessage({
-      title: car.title || `${car.make} ${car.model} ${car.year}`,
-      priceLine: formatCarPrice(car.pricePln),
-      locationLine: [car.city, car.year ? String(car.year) : null, car.mileageKm != null ? `${new Intl.NumberFormat('pl-PL').format(car.mileageKm)} km` : null]
-        .filter(Boolean)
-        .join(' · '),
-      carId: car.id,
-    });
     try {
-      await Share.share(
-        Platform.OS === 'ios'
-          ? { message, url, title: 'EstateOS™Car — udostępnianie' }
-          : { message, title: 'EstateOS™Car' },
-      );
+      const { shareListingLink, buildCarLandingPageUrl } = await import('../utils/offerShareUrls');
+      await shareListingLink({
+        url: buildCarLandingPageUrl(car.id),
+        sheetTitle: 'EstateOS™Car',
+      });
     } catch {
       /* anulowano */
     }
