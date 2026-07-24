@@ -216,7 +216,7 @@ export async function loadOfferShareCard(
     ogDescription,
     canonicalUrl,
     imageUrl: primary,
-    socialImageUrl: `${resolvePublicAppOrigin()}/o/${offerId}/opengraph-image`,
+    socialImageUrl: `${resolvePublicAppOrigin()}/api/og/offer/${offerId}?v5`,
     images: images.length ? images : primary ? [primary] : [],
     priceLabel,
     isRent,

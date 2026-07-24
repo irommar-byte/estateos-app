@@ -39,7 +39,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
           url: card.socialImageUrl,
           width: 1200,
           height: 630,
-          type: 'image/png',
+          type: 'image/jpeg',
           alt: card.ogTitle,
         },
       ],

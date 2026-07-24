@@ -69,8 +69,8 @@ export async function loadCarShareMeta(carId: number): Promise<CarShareMeta | nu
   const photoUrl = images[0] || "";
   const origin = resolvePublicAppOrigin();
   const canonicalUrl = `${origin}/cars/${carId}`;
-  // PNG generowane przez Next — nie WebP z uploadu (FB Groups często bez podglądu).
-  const imageUrl = `${origin}/cars/${carId}/opengraph-image`;
+  // Szybki JPEG z cache (FB nie lubi wolnego / ciężkiego PNG z ImageResponse).
+  const imageUrl = `${origin}/api/og/car/${carId}?v5`;
 
   return {
     id: carId,
@@ -105,7 +105,7 @@ export function carShareMetadata(meta: CarShareMeta): Metadata {
           url: meta.imageUrl,
           width: 1200,
           height: 630,
-          type: "image/png",
+          type: "image/jpeg",
           alt: meta.ogTitle,
         },
       ],
