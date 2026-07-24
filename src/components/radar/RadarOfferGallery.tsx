@@ -750,18 +750,31 @@ export default function RadarOfferGallery({
           ) : undefined
         }
       >
-        <View style={[styles.railsHero, { borderColor: isDark ? 'rgba(99,102,241,0.38)' : 'rgba(99,102,241,0.22)' }]}>
+        <View style={styles.railsHero}>
           <LinearGradient
             colors={
               isDark
-                ? ['rgba(99,102,241,0.28)', 'rgba(15,23,42,0.55)', 'rgba(15,23,42,0.2)']
-                : ['rgba(99,102,241,0.18)', 'rgba(255,255,255,0.95)', 'rgba(238,242,255,0.9)']
+                ? [
+                    'transparent',
+                    'rgba(99,102,241,0.22)',
+                    'rgba(99,102,241,0.16)',
+                    'rgba(99,102,241,0.06)',
+                    'transparent',
+                  ]
+                : [
+                    'transparent',
+                    'rgba(99,102,241,0.16)',
+                    'rgba(99,102,241,0.12)',
+                    'rgba(99,102,241,0.05)',
+                    'transparent',
+                  ]
             }
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+            locations={[0, 0.22, 0.48, 0.78, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
             style={StyleSheet.absoluteFill}
+            pointerEvents="none"
           />
-          <View style={styles.railsHeroSheen} />
           <View style={[styles.railsIconBubble, { backgroundColor: isDark ? 'rgba(99,102,241,0.32)' : 'rgba(99,102,241,0.16)' }]}>
             <Ionicons name="albums" size={18} color={GALLERY_ACCENT} />
           </View>
@@ -785,12 +798,14 @@ export default function RadarOfferGallery({
           </View>
         </View>
         {visibleRails.length ? (
-          <CatalogHorizontalRailStack
-            sections={marketRailSections}
-            isDark={isDark}
-            density={railDensity}
-            onPressItem={onPressRailItem}
-          />
+          <View style={styles.railsStackWrap}>
+            <CatalogHorizontalRailStack
+              sections={marketRailSections}
+              isDark={isDark}
+              density={railDensity}
+              onPressItem={onPressRailItem}
+            />
+          </View>
         ) : (
           <View style={styles.emptyWrap}>
             <Ionicons name="albums-outline" size={40} color={isDark ? '#6366F1' : '#94A3B8'} />
@@ -1557,26 +1572,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginHorizontal: 4,
-    marginBottom: 4,
+    marginHorizontal: 0,
+    marginBottom: 0,
     paddingHorizontal: 14,
-    paddingVertical: 16,
-    borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    elevation: 5,
+    paddingTop: 14,
+    paddingBottom: 28,
+    borderRadius: 0,
+    borderWidth: 0,
+    overflow: 'visible',
+    backgroundColor: 'transparent',
   },
-  railsHeroSheen: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 16,
-    backgroundColor: 'rgba(255,255,255,0.35)',
+  railsStackWrap: {
+    marginTop: -16,
   },
   railsHeroActions: {
     flexDirection: 'row',

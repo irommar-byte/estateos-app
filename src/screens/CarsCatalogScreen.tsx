@@ -511,30 +511,43 @@ export default function CarsCatalogScreen({
           )}
 
           {marketContentMode === 'rails' ? (
-            <View style={{ marginTop: 10 }}>
+            <View style={{ marginTop: 4 }}>
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 12,
-                  marginBottom: 2,
-                  paddingHorizontal: 14,
-                  paddingVertical: 16,
-                  borderRadius: 24,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: isDark ? 'rgba(14,165,233,0.32)' : 'rgba(14,165,233,0.18)',
-                  overflow: 'hidden',
+                  marginBottom: 0,
+                  paddingHorizontal: 4,
+                  paddingTop: 10,
+                  paddingBottom: 28,
+                  overflow: 'visible',
+                  backgroundColor: 'transparent',
                 }}
               >
                 <LinearGradient
                   colors={
                     isDark
-                      ? ['rgba(14,165,233,0.24)', 'rgba(15,23,42,0.55)', 'rgba(15,23,42,0.2)']
-                      : ['rgba(14,165,233,0.16)', 'rgba(255,255,255,0.96)', 'rgba(240,249,255,0.92)']
+                      ? [
+                          'transparent',
+                          'rgba(14,165,233,0.2)',
+                          'rgba(14,165,233,0.14)',
+                          'rgba(14,165,233,0.05)',
+                          'transparent',
+                        ]
+                      : [
+                          'transparent',
+                          'rgba(14,165,233,0.14)',
+                          'rgba(14,165,233,0.1)',
+                          'rgba(14,165,233,0.04)',
+                          'transparent',
+                        ]
                   }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
+                  locations={[0, 0.22, 0.48, 0.78, 1]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
                   style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
                 />
                 <View
                   style={{
@@ -571,16 +584,18 @@ export default function CarsCatalogScreen({
                   <MarketUnreadQuickReplyBubble isDark={isDark} accent={CAR_ACCENT} />
                 </View>
               </View>
-              <CatalogHorizontalRailStack
-                sections={marketRailSections}
-                isDark={isDark}
-                density={railDensity}
-                onPressItem={(id) => {
-                  const car =
-                    myCars.find((c) => c.id === Number(id)) || cars.find((c) => c.id === Number(id));
-                  if (car) openCarDetail(car);
-                }}
-              />
+              <View style={{ marginTop: -16 }}>
+                <CatalogHorizontalRailStack
+                  sections={marketRailSections}
+                  isDark={isDark}
+                  density={railDensity}
+                  onPressItem={(id) => {
+                    const car =
+                      myCars.find((c) => c.id === Number(id)) || cars.find((c) => c.id === Number(id));
+                    if (car) openCarDetail(car);
+                  }}
+                />
+              </View>
             </View>
           ) : (
             <>
