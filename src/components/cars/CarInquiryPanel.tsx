@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { dispatchContactUnreadRefresh } from "@/lib/contactServiceWeb";
-import { formatCarPrice } from "@/lib/carsPresentation";
+import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import { formatDisplayPhone, toTelHref } from "@/lib/carContactPhoneShared";
 import { useLocale } from "@/contexts/LocaleContext";
 import { carAlertErrorClass, carAlertInfoClass } from "@/components/cars/carFormStyles";
@@ -19,6 +19,8 @@ type CarInquiryPanelProps = {
   model: string;
   year: number;
   pricePln: number;
+  price?: number;
+  priceCurrency?: "PLN" | "EUR";
   city: string;
   sellerUserId: number | null;
   currentUserId?: number | null;
@@ -32,6 +34,8 @@ export default function CarInquiryPanel({
   model,
   year,
   pricePln,
+  price,
+  priceCurrency = "PLN",
   city,
   sellerUserId,
   currentUserId,
@@ -39,6 +43,7 @@ export default function CarInquiryPanel({
 }: CarInquiryPanelProps) {
   const router = useRouter();
   const { dict, locale } = useLocale();
+  const { formatOffer } = useFormatOfferPrice();
   const i = dict.cars.inquiry;
   const callHref = sellerPhone ? toTelHref(sellerPhone) : "";
   const displayPhone = sellerPhone ? formatDisplayPhone(sellerPhone) : "";
@@ -59,7 +64,7 @@ export default function CarInquiryPanel({
   const isOwner = Number.isFinite(selfId) && sellerUserId != null && selfId === sellerUserId;
 
   const summary = useMemo(
-    () => `${make} ${model} · ${year} · ${city} · ${formatCarPrice(pricePln, locale)}`,
+    () => `${make} ${model} · ${year} · ${city} · ${formatOffer({ pricePln, price: price ?? pricePln, priceCurrency }).primary}`,
     [make, model, year, city, pricePln, locale],
   );
 

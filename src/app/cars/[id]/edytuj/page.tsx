@@ -50,7 +50,10 @@ export default async function EditCarPage({ params }: { params: Promise<{ id: st
         trimVersionSlug: "",
         doorCount: car.doorCount ? String(car.doorCount) : "",
         doorCountSlug: "",
-        pricePln: String(car.pricePln),
+        priceCurrency: (String(car.priceCurrency || "PLN").toUpperCase() === "EUR" ? "EUR" : "PLN") as "PLN" | "EUR",
+        pricePln: String(
+          Number(car.price || 0) > 0 ? Math.round(Number(car.price)) : Math.round(Number(car.pricePln || 0)),
+        ),
         city: car.city,
         cityLat: car.cityLat,
         cityLng: car.cityLng,

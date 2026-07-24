@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useLocale } from "@/contexts/LocaleContext";
-import { formatCarPrice } from "@/lib/carsPresentation";
+import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 
 type CarPreview = {
   id: number;
@@ -27,6 +27,7 @@ function carImageSrc(imageUrl?: string) {
 
 export default function SellerCarsSection({ userId }: { userId: number }) {
   const { dict, locale } = useLocale();
+  const { formatOffer } = useFormatOfferPrice();
   const s = dict.cars.seller;
   const [cars, setCars] = useState<CarPreview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,7 +79,7 @@ export default function SellerCarsSection({ userId }: { userId: number }) {
               </p>
               <h3 className="line-clamp-2 font-semibold">{car.title}</h3>
               <p className="text-sm text-[var(--eos-muted)]">{car.city}</p>
-              <p className="font-bold text-sky-600 dark:text-sky-300">{formatCarPrice(car.pricePln, locale)}</p>
+              <p className="font-bold text-sky-600 dark:text-sky-300">{formatOffer(car).primary}</p>
             </div>
           </Link>
         ))}

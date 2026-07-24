@@ -9,7 +9,8 @@ import CarOwnerActions from "@/components/cars/CarOwnerActions";
 import CarVehicleChecksClient from "@/components/cars/CarVehicleChecksClient";
 import EosButton from "@/components/ui/EosButton";
 import { useLocale } from "@/contexts/LocaleContext";
-import { formatCarPrice, formatMileage } from "@/lib/carsPresentation";
+import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
+import { formatMileage } from "@/lib/carsPresentation";
 import type { CarListingRecord } from "@/lib/carsStorage";
 
 type CarDetailClientProps = {
@@ -32,7 +33,9 @@ function SpecItem({ icon: Icon, label, value }: { icon: typeof Fuel; label: stri
 
 export default function CarDetailClient({ car, currentUserId, sellerPhone = null }: CarDetailClientProps) {
   const { dict, locale } = useLocale();
+  const { formatOffer } = useFormatOfferPrice();
   const d = dict.cars.detail;
+  const priceDisplay = formatOffer(car);
 
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] px-4 pb-24 pt-32 text-[var(--eos-text)] sm:px-6">
@@ -75,8 +78,11 @@ export default function CarDetailClient({ car, currentUserId, sellerPhone = null
                 <div>
                   <p className="text-xs uppercase tracking-[0.16em] text-[var(--eos-muted)]">{d.price}</p>
                   <p className="mt-1 text-3xl font-bold text-sky-600 dark:text-sky-300 sm:text-4xl">
-                    {formatCarPrice(car.pricePln, locale)}
+                    {priceDisplay.primary}
                   </p>
+                  {priceDisplay.secondary ? (
+                    <p className="mt-1 text-sm text-[var(--eos-muted)]">{priceDisplay.secondary}</p>
+                  ) : null}
                 </div>
                 {car.userId ? (
                   <EosButton href={`/profil/${car.userId}`} variant="secondary" size="sm">
@@ -140,6 +146,8 @@ export default function CarDetailClient({ car, currentUserId, sellerPhone = null
                 model={car.model}
                 year={car.year}
                 pricePln={car.pricePln}
+                price={Number(car.price || car.pricePln || 0)}
+                priceCurrency={(String(car.priceCurrency || "PLN").toUpperCase() === "EUR" ? "EUR" : "PLN") as "PLN" | "EUR"}
                 city={car.city}
                 sellerUserId={car.userId}
                 currentUserId={currentUserId}
