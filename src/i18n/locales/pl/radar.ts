@@ -112,6 +112,8 @@ export const radar = {
     galleryRailsEmptyBody: 'Dodaj oferty do ulubionych albo wróć do katalogu.',
     marketViewCatalogA11y: 'Pokaż katalog ofert',
     marketViewRailsA11y: 'Pokaż taśmy Market',
+    verticalSwitchToHome: 'Przełączam na tryb EstateOS™Home',
+    verticalSwitchToCar: 'Przełączam na tryb EstateOS™Car',
     galleryRailNewest: 'Najnowsze',
     galleryRailNearest: 'Najbliżej',
     galleryRailDiscounted: 'Obniżki',

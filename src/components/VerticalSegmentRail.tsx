@@ -1,8 +1,14 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import Animated, {
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
+import ApplePressable from './ApplePressable';
 import { useEcosystemStore, type EcosystemVertical } from '../store/useEcosystemStore';
 
 type Props = {
@@ -11,14 +17,40 @@ type Props = {
   compact?: boolean;
 };
 
+const PILL_SPRING = { damping: 18, stiffness: 240, mass: 0.7 };
+
 export default function VerticalSegmentRail({ isDark, compact = true }: Props) {
   const activeVertical = useEcosystemStore((s) => s.activeVertical);
-  const setActiveVertical = useEcosystemStore((s) => s.setActiveVertical);
+  const pendingSwitch = useEcosystemStore((s) => s.pendingSwitch);
+  const requestVerticalSwitch = useEcosystemStore((s) => s.requestVerticalSwitch);
+  const [trackWidth, setTrackWidth] = useState(0);
+
+  /** Podświetlenie podąża za wyborem (w tym w trakcie animacji przejścia). */
+  const highlight: EcosystemVertical = pendingSwitch?.to ?? activeVertical;
+  const pillX = useSharedValue(highlight === 'car' ? 1 : 0);
+
+  useEffect(() => {
+    pillX.value = withSpring(highlight === 'car' ? 1 : 0, PILL_SPRING);
+  }, [highlight, pillX]);
+
+  const onTrackLayout = (e: LayoutChangeEvent) => {
+    setTrackWidth(e.nativeEvent.layout.width);
+  };
+
+  const pillW = Math.max(0, (trackWidth - 6) / 2);
+  const pillStyle = useAnimatedStyle(() => ({
+    width: pillW,
+    transform: [{ translateX: pillX.value * pillW }],
+    backgroundColor: interpolateColor(
+      pillX.value,
+      [0, 1],
+      ['rgba(16,185,129,0.22)', 'rgba(14,165,233,0.22)'],
+    ),
+  }));
 
   const select = (v: EcosystemVertical) => {
-    if (activeVertical === v) return;
-    void Haptics.selectionAsync();
-    setActiveVertical(v);
+    if (highlight === v || pendingSwitch) return;
+    requestVerticalSwitch(v);
   };
 
   return (
@@ -34,55 +66,52 @@ export default function VerticalSegmentRail({ isDark, compact = true }: Props) {
           },
         ]}
       >
-        <View style={styles.row}>
-          <Pressable
+        <View style={styles.row} onLayout={onTrackLayout}>
+          {pillW > 0 ? <Animated.View style={[styles.pill, pillStyle]} /> : null}
+          <ApplePressable
             accessibilityRole="tab"
-            accessibilityState={{ selected: activeVertical === 'home' }}
+            accessibilityState={{ selected: highlight === 'home' }}
             onPress={() => select('home')}
-            style={({ pressed }) => [
-              styles.half,
-              activeVertical === 'home' && styles.halfActiveHome,
-              pressed && { opacity: 0.88 },
-            ]}
+            haptic="selection"
+            pressScale={0.97}
+            style={styles.half}
           >
             <Ionicons
-              name={activeVertical === 'home' ? 'home' : 'home-outline'}
+              name={highlight === 'home' ? 'home' : 'home-outline'}
               size={compact ? 15 : 16}
-              color={activeVertical === 'home' ? '#10b981' : '#8E8E93'}
+              color={highlight === 'home' ? '#10b981' : '#8E8E93'}
             />
             <Text
               style={[
                 styles.label,
-                { color: activeVertical === 'home' ? (isDark ? '#FFF' : '#111') : '#8E8E93' },
+                { color: highlight === 'home' ? (isDark ? '#FFF' : '#111') : '#8E8E93' },
               ]}
             >
               Homes
             </Text>
-          </Pressable>
-          <Pressable
+          </ApplePressable>
+          <ApplePressable
             accessibilityRole="tab"
-            accessibilityState={{ selected: activeVertical === 'car' }}
+            accessibilityState={{ selected: highlight === 'car' }}
             onPress={() => select('car')}
-            style={({ pressed }) => [
-              styles.half,
-              activeVertical === 'car' && styles.halfActiveCar,
-              pressed && { opacity: 0.88 },
-            ]}
+            haptic="selection"
+            pressScale={0.97}
+            style={styles.half}
           >
             <Ionicons
-              name={activeVertical === 'car' ? 'car-sport' : 'car-sport-outline'}
+              name={highlight === 'car' ? 'car-sport' : 'car-sport-outline'}
               size={compact ? 15 : 16}
-              color={activeVertical === 'car' ? '#0EA5E9' : '#8E8E93'}
+              color={highlight === 'car' ? '#0EA5E9' : '#8E8E93'}
             />
             <Text
               style={[
                 styles.label,
-                { color: activeVertical === 'car' ? (isDark ? '#FFF' : '#111') : '#8E8E93' },
+                { color: highlight === 'car' ? (isDark ? '#FFF' : '#111') : '#8E8E93' },
               ]}
             >
               Cars
             </Text>
-          </Pressable>
+          </ApplePressable>
         </View>
       </BlurView>
     </View>
@@ -97,7 +126,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
   },
-  row: { flexDirection: 'row', padding: 3, gap: 2 },
+  row: { flexDirection: 'row', padding: 3, position: 'relative' },
+  pill: {
+    position: 'absolute',
+    top: 3,
+    bottom: 3,
+    left: 3,
+    borderRadius: 15,
+  },
   half: {
     flex: 1,
     flexDirection: 'row',
@@ -107,8 +143,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 8,
     borderRadius: 15,
+    zIndex: 1,
   },
-  halfActiveHome: { backgroundColor: 'rgba(16,185,129,0.16)' },
-  halfActiveCar: { backgroundColor: 'rgba(14,165,233,0.16)' },
   label: { fontSize: 12, fontWeight: '700', letterSpacing: -0.2 },
 });

@@ -25,6 +25,7 @@ import type { CatalogRailItem } from '../catalog/CatalogHorizontalRail';
 import { CatalogHorizontalRailStack } from '../catalog/CatalogHorizontalRail';
 import { buildHomeMarketRailSections } from '../catalog/buildMarketRails';
 import type { MarketCatalogContentMode } from '../catalog/MarketCatalogViewToggle';
+import ApplePressable from '../ApplePressable';
 import { carCardElevation, useCarScreenTheme, type CarScreenColors } from '../../theme/carScreenTheme';
 import { formatLocationLabel } from '../../constants/locationEcosystem';
 
@@ -154,12 +155,11 @@ function MiniChip({
   onPress: () => void;
 }) {
   return (
-    <Pressable
-      onPress={() => {
-        Haptics.selectionAsync();
-        onPress();
-      }}
-      style={({ pressed }) => [
+    <ApplePressable
+      onPress={onPress}
+      haptic="selection"
+      pressScale={0.96}
+      style={[
         styles.miniChip,
         {
           backgroundColor: active
@@ -169,7 +169,6 @@ function MiniChip({
               : 'rgba(0,0,0,0.04)',
           borderColor: active ? `${accent}99` : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
         },
-        pressed && { opacity: 0.86, transform: [{ scale: 0.97 }] },
       ]}
     >
       {icon ? (
@@ -181,7 +180,7 @@ function MiniChip({
       >
         {label}
       </Text>
-    </Pressable>
+    </ApplePressable>
   );
 }
 
@@ -420,13 +419,14 @@ export default function RadarOfferGallery({
             ).map((mode) => {
               const selected = viewMode === mode.key;
               return (
-                <Pressable
+                <ApplePressable
                   key={mode.key}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
+                  haptic="selection"
+                  pressScale={0.96}
                   onPress={() => {
                     if (selected) return;
-                    void Haptics.selectionAsync();
                     setViewMode(mode.key);
                   }}
                   style={[catalogStyles.viewToggleBtn, selected && catalogStyles.viewToggleBtnActive]}
@@ -444,7 +444,7 @@ export default function RadarOfferGallery({
                   >
                     {mode.label}
                   </Text>
-                </Pressable>
+                </ApplePressable>
               );
             })}
           </View>
@@ -711,8 +711,6 @@ export default function RadarOfferGallery({
               </Pressable>
             </View>
           </View>
-        ) : null}
-
         ) : null}
       </View>
     );

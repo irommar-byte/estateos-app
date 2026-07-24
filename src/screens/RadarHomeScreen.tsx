@@ -103,6 +103,7 @@ import CatalogSearchFilterButton from '../components/CatalogSearchFilterButton';
 import MarketCatalogViewToggle, {
   type MarketCatalogContentMode,
 } from '../components/catalog/MarketCatalogViewToggle';
+import ChromeIconButton from '../components/catalog/ChromeIconButton';
 import VerticalSegmentRail from '../components/VerticalSegmentRail';
 import RadarStatusBulb from '../components/radar/RadarStatusBulb';
 import { OfferMapMarkerPin } from '../components/radar/OfferMapMarkerPin';
@@ -4864,60 +4865,35 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               accessibilityLabelRails={t('radar.home.marketViewRailsA11y')}
             />
           ) : (
-            <Pressable
-              style={({ pressed }) => [
-                styles.filterButtonWrap,
-                isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
-                pressed && { opacity: 0.8 },
-              ]}
+            <ChromeIconButton
+              icon="map"
+              color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'}
+              isDark={isDark}
+              lightChrome={isGalleryLightChrome}
+              activeBg={showOnlyFavorites ? favoritesScopeBg : undefined}
+              accessibilityLabel="Map type"
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setMapType((prev) => (prev === 'standard' ? 'hybrid' : 'standard'));
               }}
-              accessibilityLabel="Map type"
-            >
-              <BlurView
-                intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
-                tint={isDark ? 'dark' : 'light'}
-                style={[styles.filterGlass, isGalleryLightChrome && styles.filterGlassGalleryLight, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
-              >
-                <Ionicons name="map" size={22} color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'} />
-              </BlurView>
-            </Pressable>
+            />
           )}
-          <Pressable
-            style={({ pressed }) => [
-              styles.filterButtonWrap,
-              isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
-              pressed && { opacity: 0.8 },
-            ]}
+          <ChromeIconButton
+            icon={showOnlyFavorites ? 'heart' : 'heart-outline'}
+            color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'}
+            isDark={isDark}
+            lightChrome={isGalleryLightChrome}
+            activeBg={showOnlyFavorites ? favoritesScopeBg : undefined}
+            accessibilityLabel={t('radar.home.favoritesTab')}
+            accessibilityState={{ selected: showOnlyFavorites }}
+            haptic="medium"
             onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               setShowOnlyFavorites((prev) => {
                 const next = !prev;
                 if (next) setFavoritesMapScope('MINE');
                 return next;
               });
             }}
-            accessibilityLabel={t('radar.home.favoritesTab')}
-            accessibilityState={{ selected: showOnlyFavorites }}
-          >
-            <BlurView
-              intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
-              tint={isDark ? 'dark' : 'light'}
-              style={[
-                styles.filterGlass,
-                isGalleryLightChrome && styles.filterGlassGalleryLight,
-                showOnlyFavorites && { backgroundColor: favoritesScopeBg },
-              ]}
-            >
-              <Ionicons
-                name={showOnlyFavorites ? 'heart' : 'heart-outline'}
-                size={22}
-                color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'}
-              />
-            </BlurView>
-          </Pressable>
+          />
         </View>
 
         {showOnlyFavorites ? (

@@ -1,7 +1,9 @@
 import React from 'react';
+import { StyleSheet, View } from 'react-native';
 import { useEcosystemStore } from '../store/useEcosystemStore';
 import RadarHomeScreen from '../screens/RadarHomeScreen';
 import CarsCatalogScreen from '../screens/CarsCatalogScreen';
+import EcosystemVerticalTransition from '../components/ecosystem/EcosystemVerticalTransition';
 
 export type MarketSurface = 'market' | 'explore';
 
@@ -19,17 +21,8 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
   const activeVertical = useEcosystemStore((s) => s.activeVertical);
   const baseParams = route?.params && typeof route.params === 'object' ? route.params : {};
 
-  if (activeVertical === 'car') {
-    return (
-      <CarsCatalogScreen
-        surface={surface}
-        initialBrowseMode={surface === 'market' ? 'GALLERY' : 'MAP'}
-      />
-    );
-  }
-
   const openLiveRadar = !!(baseParams.openCalibration || baseParams.radarFocus);
-  const params =
+  const homeParams =
     surface === 'market'
       ? {
           ...baseParams,
@@ -40,16 +33,29 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
       : {
           ...baseParams,
           tabSurface: 'explore' as const,
-          // Mapa katalogu domyślnie; Radar live przy deep linku kalibracji / matches
           radarBrowseMode: 'RADAR' as const,
           exploreLive: openLiveRadar || baseParams.exploreLive === true,
         };
 
   return (
-    <RadarHomeScreen
-      splashDone={splashDone}
-      navigation={navigation}
-      route={{ ...(route || {}), params }}
-    />
+    <View style={styles.root}>
+      {activeVertical === 'car' ? (
+        <CarsCatalogScreen
+          surface={surface}
+          initialBrowseMode={surface === 'market' ? 'GALLERY' : 'MAP'}
+        />
+      ) : (
+        <RadarHomeScreen
+          splashDone={splashDone}
+          navigation={navigation}
+          route={{ ...(route || {}), params: homeParams }}
+        />
+      )}
+      <EcosystemVerticalTransition />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});

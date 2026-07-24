@@ -1,8 +1,8 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import ApplePressable from './ApplePressable';
 
 type Props = {
   isDark: boolean;
@@ -30,14 +30,13 @@ export default function CatalogSearchFilterButton({
   accessibilityLabel,
 }: Props) {
   return (
-    <Pressable
-      onPress={() => {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        onPress();
-      }}
+    <ApplePressable
+      onPress={onPress}
+      haptic="medium"
+      pressScale={0.97}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel || label}
-      style={({ pressed }) => [styles.wrap, pressed && { opacity: 0.88, transform: [{ scale: 0.98 }] }]}
+      style={styles.wrap}
     >
       <BlurView
         intensity={lightChrome ? 96 : isDark ? 82 : 92}
@@ -70,7 +69,7 @@ export default function CatalogSearchFilterButton({
         {active ? <View style={[styles.dot, { backgroundColor: accent }]} /> : null}
         <Ionicons name="chevron-forward" size={16} color={isDark ? 'rgba(255,255,255,0.45)' : '#94A3B8'} />
       </BlurView>
-    </Pressable>
+    </ApplePressable>
   );
 }
 

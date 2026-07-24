@@ -1,8 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import ApplePressable from '../ApplePressable';
 
 export type MarketCatalogContentMode = 'catalog' | 'rails';
 
@@ -86,19 +86,14 @@ export default function MarketCatalogViewToggle({
   const iconColor = active ? accent : isDark ? '#FFF' : '#1C1C1E';
 
   return (
-    <Pressable
+    <ApplePressable
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
       accessibilityLabel={active ? accessibilityLabelCatalog : accessibilityLabelRails}
-      onPress={() => {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        onToggle();
-      }}
-      style={({ pressed }) => [
-        styles.wrap,
-        lightChrome && styles.wrapLight,
-        pressed && { opacity: 0.86, transform: [{ scale: 0.96 }] },
-      ]}
+      onPress={onToggle}
+      haptic="medium"
+      pressScale={0.94}
+      style={[styles.wrap, lightChrome && styles.wrapLight]}
     >
       <BlurView
         intensity={lightChrome ? 96 : isDark ? 80 : 90}
@@ -138,7 +133,7 @@ export default function MarketCatalogViewToggle({
         </Animated.View>
         {active ? <View style={[styles.dot, { backgroundColor: accent }]} /> : null}
       </BlurView>
-    </Pressable>
+    </ApplePressable>
   );
 }
 

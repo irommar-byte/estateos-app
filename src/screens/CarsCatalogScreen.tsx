@@ -33,11 +33,13 @@ import { buildCarMarketRailSections } from '../components/catalog/buildMarketRai
 import MarketCatalogViewToggle, {
   type MarketCatalogContentMode,
 } from '../components/catalog/MarketCatalogViewToggle';
+import ChromeIconButton from '../components/catalog/ChromeIconButton';
 import * as Haptics from 'expo-haptics';
 import { useCarScreenTheme, type CarScreenColors } from '../theme/carScreenTheme';
 import FeaturedOfferSpotlight from '../components/radar/FeaturedOfferSpotlight';
 import { isOfferFeatured } from '../utils/listingPromotion';
 import { carToSpotlightOffer } from '../utils/carSpotlightOffer';
+import ApplePressable from '../components/ApplePressable';
 import {
   applyCarsAdvancedFilters,
   carsAdvancedFiltersActive,
@@ -549,10 +551,12 @@ export default function CarsCatalogScreen({
                 ).map((mode) => {
                   const selected = viewMode === mode.key;
                   return (
-                    <Pressable
+                    <ApplePressable
                       key={mode.key}
                       accessibilityRole="button"
                       accessibilityState={{ selected }}
+                      haptic="selection"
+                      pressScale={0.96}
                       onPress={() => toggleViewMode(mode.key)}
                       style={[styles.viewToggleBtn, selected && styles.viewToggleBtnActive]}
                     >
@@ -564,7 +568,7 @@ export default function CarsCatalogScreen({
                       <Text style={[styles.viewToggleBtnLabel, selected && styles.viewToggleBtnLabelActive]}>
                         {mode.label}
                       </Text>
-                    </Pressable>
+                    </ApplePressable>
                   );
                 })}
               </View>
@@ -660,56 +664,30 @@ export default function CarsCatalogScreen({
               accessibilityLabelRails={t('radar.home.marketViewRailsA11y')}
             />
           ) : (
-            <Pressable
-              style={({ pressed }) => [
-                styles.filterButtonWrap,
-                isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
-                pressed && { opacity: 0.8 },
-              ]}
+            <ChromeIconButton
+              icon="map"
+              color={isDark ? '#FFF' : '#1C1C1E'}
+              isDark={isDark}
+              lightChrome={isGalleryLightChrome}
+              accessibilityLabel="Typ mapy"
               onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setMapType((prev) => (prev === 'standard' ? 'hybrid' : 'standard'));
               }}
-              accessibilityLabel="Typ mapy"
-            >
-              <BlurView
-                intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
-                tint={isDark ? 'dark' : 'light'}
-                style={[styles.filterGlass, isGalleryLightChrome && styles.filterGlassGalleryLight]}
-              >
-                <Ionicons name="map" size={22} color={isDark ? '#FFF' : '#1C1C1E'} />
-              </BlurView>
-            </Pressable>
+            />
           )}
-          <Pressable
-            style={({ pressed }) => [
-              styles.filterButtonWrap,
-              isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
-              pressed && { opacity: 0.8 },
-            ]}
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              setShowOnlyFavorites((prev) => !prev);
-            }}
+          <ChromeIconButton
+            icon={showOnlyFavorites ? 'heart' : 'heart-outline'}
+            color={showOnlyFavorites ? FAV_ACCENT : isDark ? '#FFF' : '#1C1C1E'}
+            isDark={isDark}
+            lightChrome={isGalleryLightChrome}
+            activeBg={showOnlyFavorites ? 'rgba(247,119,178,0.22)' : undefined}
             accessibilityLabel="Ulubione"
             accessibilityState={{ selected: showOnlyFavorites }}
-          >
-            <BlurView
-              intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
-              tint={isDark ? 'dark' : 'light'}
-              style={[
-                styles.filterGlass,
-                isGalleryLightChrome && styles.filterGlassGalleryLight,
-                showOnlyFavorites && { backgroundColor: 'rgba(247,119,178,0.22)' },
-              ]}
-            >
-              <Ionicons
-                name={showOnlyFavorites ? 'heart' : 'heart-outline'}
-                size={22}
-                color={showOnlyFavorites ? FAV_ACCENT : isDark ? '#FFF' : '#1C1C1E'}
-              />
-            </BlurView>
-          </Pressable>
+            haptic="medium"
+            onPress={() => {
+              setShowOnlyFavorites((prev) => !prev);
+            }}
+          />
         </View>
 
         <View style={styles.topBarCenter}>{centerChrome}</View>
