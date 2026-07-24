@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Dimensions, Modal, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -10,6 +10,7 @@ import Animated, {
   useSharedValue,
   withDelay,
   withRepeat,
+  withSequence,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
@@ -22,39 +23,95 @@ import { useI18n } from '../../i18n';
 const { width: W, height: H } = Dimensions.get('window');
 const DIAG = Math.sqrt(W * W + H * H);
 
-/** Duże kółko crestu — błysk tylko w nim, potem ekspansja na fullscreen. */
 const CREST = Math.min(228, W * 0.58);
 const EXPAND_SCALE = (DIAG / CREST) * 1.12;
+const STAR_COUNT = 56;
 
 const INTRO_MS = 320;
 const SWEEP_DELAY_MS = 280;
 const SWEEP_MS = 780;
 const EXPAND_MS = 920;
-const EXIT_MS = 280;
+const EXIT_MS = 320;
 
 type Theme = {
-  deep: string;
   fill: [string, string, string];
   rim: string;
-  accent: string;
   metal: [string, string, string];
 };
 
 const HOME_THEME: Theme = {
-  deep: 'rgba(3,26,20,0.72)',
   fill: ['#10B981', '#059669', '#047857'],
   rim: 'rgba(167,243,208,0.7)',
-  accent: '#34D399',
   metal: ['rgba(255,255,255,0.00)', 'rgba(255,255,255,0.85)', 'rgba(255,255,255,0.00)'],
 };
 
 const CAR_THEME: Theme = {
-  deep: 'rgba(2,11,22,0.72)',
   fill: ['#38BDF8', '#0EA5E9', '#0284C7'],
   rim: 'rgba(186,230,253,0.7)',
-  accent: '#7DD3FC',
   metal: ['rgba(255,255,255,0.00)', 'rgba(255,255,255,0.85)', 'rgba(255,255,255,0.00)'],
 };
+
+function Star({
+  left,
+  top,
+  size,
+  delay,
+  warm,
+}: {
+  left: number;
+  top: number;
+  size: number;
+  delay: number;
+  warm: boolean;
+}) {
+  const o = useSharedValue(0);
+  const twinkle = useSharedValue(0);
+
+  useEffect(() => {
+    const peak = warm ? 0.35 + Math.random() * 0.25 : 0.4 + Math.random() * 0.45;
+    o.value = withDelay(delay, withTiming(peak, { duration: 700 }));
+    twinkle.value = withDelay(
+      delay + 200,
+      withRepeat(
+        withSequence(
+          withTiming(1, { duration: 900 + Math.random() * 800, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0, { duration: 900 + Math.random() * 800, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+        false,
+      ),
+    );
+    return () => {
+      cancelAnimation(o);
+      cancelAnimation(twinkle);
+    };
+  }, [delay, o, twinkle, warm]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: o.value * interpolate(twinkle.value, [0, 1], [0.55, 1], Extrapolation.CLAMP),
+    transform: [{ scale: interpolate(twinkle.value, [0, 1], [0.85, 1.15], Extrapolation.CLAMP) }],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        {
+          position: 'absolute',
+          left,
+          top,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: warm ? '#F5D08A' : '#FFFFFF',
+          shadowColor: warm ? '#F5D08A' : '#FFF',
+          shadowOpacity: 0.8,
+          shadowRadius: size * 1.4,
+        },
+        style,
+      ]}
+    />
+  );
+}
 
 function OrbitRing({
   size,
@@ -102,9 +159,6 @@ function OrbitRing({
   );
 }
 
-/**
- * Błysk tylko wewnątrz kółka (rodzic ma overflow:hidden).
- */
 function CrestSweep({
   colors,
   delayMs,
@@ -140,8 +194,42 @@ function CrestSweep({
   );
 }
 
+/** Dwie dyskretne zębatki u dołu — wkręcają się w siebie. */
+function MeshingGears({ accent }: { accent: string }) {
+  const a = useSharedValue(0);
+  const b = useSharedValue(0);
+  const fade = useSharedValue(0);
+
+  useEffect(() => {
+    fade.value = withDelay(180, withTiming(1, { duration: 420 }));
+    a.value = withRepeat(withTiming(360, { duration: 2400, easing: Easing.linear }), -1, false);
+    b.value = withRepeat(withTiming(-360, { duration: 2400 * (22 / 16), easing: Easing.linear }), -1, false);
+    return () => {
+      cancelAnimation(a);
+      cancelAnimation(b);
+      cancelAnimation(fade);
+    };
+  }, [a, b, fade]);
+
+  const wrapStyle = useAnimatedStyle(() => ({ opacity: fade.value * 0.72 }));
+  const gearAStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${a.value}deg` }] }));
+  const gearBStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${b.value}deg` }] }));
+
+  return (
+    <Animated.View style={[styles.gearsWrap, wrapStyle]}>
+      <Animated.View style={[styles.gearA, gearAStyle]}>
+        <Ionicons name="settings-outline" size={22} color={accent} />
+      </Animated.View>
+      <Animated.View style={[styles.gearB, gearBStyle]}>
+        <Ionicons name="settings-outline" size={16} color="rgba(255,255,255,0.55)" />
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
 /**
- * Homes ↔ Cars: crest → błysk w kółku → ekspansja koloru na cały ekran → dział.
+ * Homes ↔ Cars: czarne niebo z gwiazdami → crest → błysk → ekspansja.
+ * Katalog ładuje się od razu pod overlay (activeVertical przełączane przy starcie).
  */
 export default function EcosystemVerticalTransition() {
   const { t } = useI18n();
@@ -154,6 +242,7 @@ export default function EcosystemVerticalTransition() {
   const sweep = useSharedValue(-0.35);
   const expand = useSharedValue(0);
   const contentFade = useSharedValue(1);
+  const overlayOut = useSharedValue(0);
 
   const to: EcosystemVertical = pendingSwitch?.to ?? 'home';
   const isCar = to === 'car';
@@ -162,6 +251,19 @@ export default function EcosystemVerticalTransition() {
     ? t('radar.home.verticalSwitchToCar')
     : t('radar.home.verticalSwitchToHome');
 
+  const stars = useMemo(
+    () =>
+      Array.from({ length: STAR_COUNT }, (_, i) => ({
+        id: i,
+        left: (((i * 97) % 1000) / 1000) * W,
+        top: (((i * 53) % 1000) / 1000) * H,
+        size: 1.2 + (i % 4) * 0.7,
+        delay: 40 + (i % 12) * 35,
+        warm: i % 5 === 0,
+      })),
+    [],
+  );
+
   useEffect(() => {
     if (!pendingSwitch) {
       backdrop.value = 0;
@@ -169,25 +271,30 @@ export default function EcosystemVerticalTransition() {
       sweep.value = -0.35;
       expand.value = 0;
       contentFade.value = 1;
+      overlayOut.value = 0;
       return;
     }
 
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    backdrop.value = 0;
+    // Czarne niebo od razu — potem montujemy katalog pod osłoną, żeby ładował się w trakcie.
+    backdrop.value = 1;
     crestIn.value = 0;
     sweep.value = -0.35;
     expand.value = 0;
     contentFade.value = 1;
+    overlayOut.value = 0;
 
-    backdrop.value = withTiming(1, { duration: INTRO_MS, easing: Easing.out(Easing.cubic) });
     crestIn.value = withDelay(
-      60,
+      40,
       withTiming(1, { duration: 420, easing: Easing.bezier(0.16, 1, 0.3, 1) }),
     );
 
+    const loadTimer = setTimeout(() => {
+      setActiveVertical(pendingSwitch.to);
+    }, 30);
+
     const expandAt = SWEEP_DELAY_MS + SWEEP_MS + 40;
-    const commitAt = expandAt + Math.round(EXPAND_MS * 0.28);
     const doneAt = expandAt + EXPAND_MS + EXIT_MS;
 
     const expandTimer = setTimeout(() => {
@@ -199,24 +306,19 @@ export default function EcosystemVerticalTransition() {
       });
     }, expandAt);
 
-    const commitTimer = setTimeout(() => {
-      void Haptics.selectionAsync();
-      setActiveVertical(pendingSwitch.to);
-    }, commitAt);
-
     const doneTimer = setTimeout(() => {
-      backdrop.value = withTiming(0, { duration: EXIT_MS, easing: Easing.inOut(Easing.cubic) }, (finished) => {
+      overlayOut.value = withTiming(1, { duration: EXIT_MS, easing: Easing.inOut(Easing.cubic) }, (finished) => {
         if (finished) runOnJS(clearVerticalSwitch)();
       });
-    }, expandAt + EXPAND_MS - 40);
+    }, expandAt + EXPAND_MS - 60);
 
     const safety = setTimeout(() => {
       clearVerticalSwitch();
-    }, doneAt + 120);
+    }, doneAt + 160);
 
     return () => {
+      clearTimeout(loadTimer);
       clearTimeout(expandTimer);
-      clearTimeout(commitTimer);
       clearTimeout(doneTimer);
       clearTimeout(safety);
     };
@@ -229,17 +331,21 @@ export default function EcosystemVerticalTransition() {
     sweep,
     expand,
     contentFade,
+    overlayOut,
   ]);
 
-  const backdropStyle = useAnimatedStyle(() => ({
-    opacity: backdrop.value * interpolate(expand.value, [0.75, 1], [1, 0.15], Extrapolation.CLAMP),
+  const starfieldStyle = useAnimatedStyle(() => ({
+    opacity:
+      backdrop.value *
+      interpolate(overlayOut.value, [0, 1], [1, 0], Extrapolation.CLAMP) *
+      interpolate(expand.value, [0.55, 1], [1, 0.2], Extrapolation.CLAMP),
   }));
 
   const crestStyle = useAnimatedStyle(() => {
     const enter = interpolate(crestIn.value, [0, 1], [0.82, 1], Extrapolation.CLAMP);
     const grow = interpolate(expand.value, [0, 1], [1, EXPAND_SCALE], Extrapolation.CLAMP);
     return {
-      opacity: crestIn.value,
+      opacity: crestIn.value * interpolate(overlayOut.value, [0, 1], [1, 0], Extrapolation.CLAMP),
       transform: [{ scale: enter * grow }],
     };
   });
@@ -252,13 +358,25 @@ export default function EcosystemVerticalTransition() {
     opacity: contentFade.value * interpolate(expand.value, [0, 0.12], [1, 0], Extrapolation.CLAMP),
   }));
 
+  const gearsFadeStyle = useAnimatedStyle(() => ({
+    opacity: contentFade.value * interpolate(expand.value, [0, 0.25], [1, 0], Extrapolation.CLAMP),
+  }));
+
   if (!pendingSwitch) return null;
 
   return (
     <Modal visible transparent animationType="none" statusBarTranslucent presentationStyle="overFullScreen">
       <View style={styles.root} pointerEvents="none">
-        <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.deep }]} />
+        <Animated.View style={[StyleSheet.absoluteFill, starfieldStyle]}>
+          <View style={[StyleSheet.absoluteFill, styles.space]} />
+          <LinearGradient
+            colors={['rgba(0,0,0,0.15)', 'transparent', 'rgba(0,0,0,0.55)']}
+            locations={[0, 0.4, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+          {stars.map((s) => (
+            <Star key={s.id} left={s.left} top={s.top} size={s.size} delay={s.delay} warm={s.warm} />
+          ))}
         </Animated.View>
 
         <View style={styles.stage}>
@@ -275,7 +393,6 @@ export default function EcosystemVerticalTransition() {
               style={StyleSheet.absoluteFill}
             />
 
-            {/* Błysk wyłącznie w kółku */}
             <CrestSweep
               colors={theme.metal}
               delayMs={SWEEP_DELAY_MS}
@@ -297,6 +414,10 @@ export default function EcosystemVerticalTransition() {
             </Animated.View>
           </Animated.View>
         </View>
+
+        <Animated.View style={[styles.gearsDock, gearsFadeStyle]}>
+          <MeshingGears accent={isCar ? '#7DD3FC' : '#34D399'} />
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -306,6 +427,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: 'transparent',
+  },
+  space: {
+    backgroundColor: '#000000',
   },
   stage: {
     ...StyleSheet.absoluteFillObject,
@@ -368,5 +492,26 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  gearsDock: {
+    position: 'absolute',
+    bottom: 48,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  gearsWrap: {
+    width: 56,
+    height: 40,
+  },
+  gearA: {
+    position: 'absolute',
+    left: 4,
+    top: 4,
+  },
+  gearB: {
+    position: 'absolute',
+    right: 2,
+    bottom: 2,
   },
 });
