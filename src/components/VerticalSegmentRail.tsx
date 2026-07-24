@@ -10,16 +10,27 @@ import Animated, {
 } from 'react-native-reanimated';
 import ApplePressable from './ApplePressable';
 import { useEcosystemStore, type EcosystemVertical } from '../store/useEcosystemStore';
+import { useI18n } from '../i18n';
 
 type Props = {
   isDark: boolean;
   /** Węższy wariant pod top bar. */
   compact?: boolean;
+  /**
+   * `switch` — Homes|Cars z animacją (tylko Market).
+   * `status` — informacyjny badge Radaru (Mapy), bez przełączania.
+   */
+  mode?: 'switch' | 'status';
 };
 
 const PILL_SPRING = { damping: 18, stiffness: 240, mass: 0.7 };
 
-export default function VerticalSegmentRail({ isDark, compact = true }: Props) {
+export default function VerticalSegmentRail({
+  isDark,
+  compact = true,
+  mode = 'switch',
+}: Props) {
+  const { t } = useI18n();
   const activeVertical = useEcosystemStore((s) => s.activeVertical);
   const pendingSwitch = useEcosystemStore((s) => s.pendingSwitch);
   const requestVerticalSwitch = useEcosystemStore((s) => s.requestVerticalSwitch);
@@ -49,9 +60,55 @@ export default function VerticalSegmentRail({ isDark, compact = true }: Props) {
   }));
 
   const select = (v: EcosystemVertical) => {
+    if (mode !== 'switch') return;
     if (highlight === v || pendingSwitch) return;
     requestVerticalSwitch(v);
   };
+
+  if (mode === 'status') {
+    const isCar = highlight === 'car';
+    const accent = isCar ? '#0EA5E9' : '#10b981';
+    const label = isCar
+      ? t('radar.home.radarStatusCars')
+      : t('radar.home.radarStatusHomes');
+
+    return (
+      <View style={[styles.outer, styles.outerStatus, compact && styles.outerStatusCompact]}>
+        <BlurView
+          intensity={isDark ? 85 : 92}
+          tint={isDark ? 'dark' : 'light'}
+          style={[
+            styles.blur,
+            styles.statusBlur,
+            {
+              borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+              backgroundColor: isDark ? 'rgba(28,28,30,0.82)' : 'rgba(255,255,255,0.92)',
+            },
+          ]}
+        >
+          <View
+            accessibilityRole="text"
+            accessibilityLabel={label}
+            style={[
+              styles.statusRow,
+              { backgroundColor: isCar ? 'rgba(14,165,233,0.16)' : 'rgba(16,185,129,0.16)' },
+            ]}
+          >
+            <Ionicons name={isCar ? 'car-sport' : 'home'} size={14} color={accent} />
+            <Text
+              numberOfLines={1}
+              allowFontScaling={false}
+              adjustsFontSizeToFit
+              minimumFontScale={0.78}
+              style={[styles.statusLabel, { color: isDark ? '#FFF' : '#111' }]}
+            >
+              {label}
+            </Text>
+          </View>
+        </BlurView>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.outer, compact && styles.outerCompact]}>
@@ -134,11 +191,19 @@ const styles = StyleSheet.create({
     maxWidth: 196,
     flexShrink: 0,
   },
+  outerStatus: {
+    minWidth: 168,
+    maxWidth: 260,
+  },
   outerCompact: { maxWidth: 178 },
+  outerStatusCompact: { maxWidth: 240 },
   blur: {
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  statusBlur: {
+    borderRadius: 18,
   },
   row: { flexDirection: 'row', padding: 2.5, position: 'relative' },
   pill: {
@@ -164,6 +229,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: -0.35,
+    flexShrink: 1,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    minWidth: 0,
+  },
+  statusLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: -0.3,
     flexShrink: 1,
   },
 });

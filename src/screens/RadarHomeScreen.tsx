@@ -4907,7 +4907,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             ]}
           >
             <View style={styles.favoritesScopeRailOuter}>
-              <VerticalSegmentRail isDark={isDark} />
+              <VerticalSegmentRail
+                isDark={isDark}
+                mode={tabSurface === 'explore' ? 'status' : 'switch'}
+              />
               <View style={{ height: 8 }} />
               <BlurView
                 intensity={isDark ? 85 : 92}
@@ -5065,7 +5068,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               },
             ]}
           >
-            <VerticalSegmentRail isDark={isDark} />
+            <VerticalSegmentRail isDark={isDark} mode="status" />
             <JellyReveal visible key="radar-calibration-pill">
               <View style={[styles.radarHeroWrap, tabSurface === 'explore' && { marginTop: 8 }]}>
                 {(isRadarActive || radarHoldMode) && (
@@ -5295,7 +5298,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               },
             ]}
           >
-            <VerticalSegmentRail isDark={isDark} />
+            <VerticalSegmentRail isDark={isDark} mode="switch" />
           </Animated.View>
         ) : (
           <View style={styles.topBarCenterSpacer} />

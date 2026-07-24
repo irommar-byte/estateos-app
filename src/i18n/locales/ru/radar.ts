@@ -114,6 +114,8 @@ export const radar = {
     marketViewRailsA11y: 'Показать ленты Market',
     verticalSwitchToHome: 'Переключаю на режим EstateOS™Home',
     verticalSwitchToCar: 'Переключаю на режим EstateOS™Car',
+    radarStatusHomes: 'Радар в недвижимости',
+    radarStatusCars: 'Радар в автомобилях',
     galleryRailNewest: 'Новые',
     galleryRailNearest: 'Ближайшие',
     galleryRailDiscounted: 'Скидки',

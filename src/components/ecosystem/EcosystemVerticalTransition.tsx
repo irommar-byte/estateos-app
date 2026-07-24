@@ -16,6 +16,15 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, {
+  Circle,
+  Defs,
+  G,
+  LinearGradient as SvgLinearGradient,
+  Path,
+  RadialGradient,
+  Stop,
+} from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { useEcosystemStore, type EcosystemVertical } from '../../store/useEcosystemStore';
 import { useI18n } from '../../i18n';
@@ -27,7 +36,6 @@ const CREST = Math.min(228, W * 0.58);
 const EXPAND_SCALE = (DIAG / CREST) * 1.12;
 const STAR_COUNT = 56;
 
-const INTRO_MS = 320;
 const SWEEP_DELAY_MS = 280;
 const SWEEP_MS = 780;
 const EXPAND_MS = 920;
@@ -50,6 +58,118 @@ const CAR_THEME: Theme = {
   rim: 'rgba(186,230,253,0.7)',
   metal: ['rgba(255,255,255,0.00)', 'rgba(255,255,255,0.85)', 'rgba(255,255,255,0.00)'],
 };
+
+function gearToothPath(
+  cx: number,
+  cy: number,
+  teeth: number,
+  outerR: number,
+  innerR: number,
+  rootR: number,
+): string {
+  const parts: string[] = [];
+  for (let i = 0; i < teeth; i++) {
+    const step = (Math.PI * 2) / teeth;
+    const a0 = i * step;
+    const a1 = a0 + step * 0.18;
+    const a2 = a0 + step * 0.38;
+    const a3 = a0 + step * 0.62;
+    const a4 = a0 + step * 0.82;
+    const a5 = a0 + step;
+
+    const pt = (r: number, a: number) => `${cx + Math.cos(a) * r},${cy + Math.sin(a) * r}`;
+
+    if (i === 0) parts.push(`M ${pt(rootR, a0)}`);
+    else parts.push(`L ${pt(rootR, a0)}`);
+    parts.push(`L ${pt(innerR, a1)}`);
+    parts.push(`L ${pt(outerR, a2)}`);
+    parts.push(`L ${pt(outerR, a3)}`);
+    parts.push(`L ${pt(innerR, a4)}`);
+    parts.push(`L ${pt(rootR, a5)}`);
+  }
+  parts.push('Z');
+  return parts.join(' ');
+}
+
+function MetalGear({
+  size,
+  teeth,
+  accent,
+  uid,
+}: {
+  size: number;
+  teeth: number;
+  accent: string;
+  uid: string;
+}) {
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerR = size * 0.48;
+  const tipR = size * 0.42;
+  const rootR = size * 0.3;
+  const holeR = size * 0.11;
+  const hubR = size * 0.2;
+  const path = gearToothPath(cx, cy, teeth, tipR, outerR * 0.88, rootR);
+  const gradId = `metal-${uid}`;
+  const shineId = `shine-${uid}`;
+  const hubId = `hub-${uid}`;
+
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Defs>
+        <SvgLinearGradient id={gradId} x1="18%" y1="8%" x2="82%" y2="92%">
+          <Stop offset="0%" stopColor="#F8FAFC" stopOpacity="1" />
+          <Stop offset="28%" stopColor="#CBD5E1" stopOpacity="1" />
+          <Stop offset="52%" stopColor={accent} stopOpacity="0.55" />
+          <Stop offset="72%" stopColor="#94A3B8" stopOpacity="1" />
+          <Stop offset="100%" stopColor="#E2E8F0" stopOpacity="1" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id={shineId} x1="20%" y1="0%" x2="80%" y2="100%">
+          <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.95" />
+          <Stop offset="35%" stopColor="#FFFFFF" stopOpacity="0.15" />
+          <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+        </SvgLinearGradient>
+        <RadialGradient id={hubId} cx="42%" cy="38%" r="62%">
+          <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.9" />
+          <Stop offset="45%" stopColor="#CBD5E1" stopOpacity="1" />
+          <Stop offset="100%" stopColor="#64748B" stopOpacity="1" />
+        </RadialGradient>
+      </Defs>
+      <G>
+        <Path
+          d={path}
+          fill={`url(#${gradId})`}
+          stroke="rgba(255,255,255,0.55)"
+          strokeWidth={1.1}
+        />
+        <Path d={path} fill={`url(#${shineId})`} opacity={0.55} />
+        <Circle
+          cx={cx}
+          cy={cy}
+          r={hubR}
+          fill={`url(#${hubId})`}
+          stroke="rgba(255,255,255,0.65)"
+          strokeWidth={1}
+        />
+        <Circle
+          cx={cx}
+          cy={cy}
+          r={holeR}
+          fill="#0B1220"
+          stroke="rgba(255,255,255,0.25)"
+          strokeWidth={0.8}
+        />
+        <Circle
+          cx={cx - size * 0.12}
+          cy={cy - size * 0.14}
+          r={size * 0.06}
+          fill="#FFFFFF"
+          opacity={0.35}
+        />
+      </G>
+    </Svg>
+  );
+}
 
 function Star({
   left,
@@ -194,34 +314,39 @@ function CrestSweep({
   );
 }
 
-/** Dwie dyskretne zębatki u dołu — wkręcają się w siebie. */
+/** Dwie metaliczne zębatki u dołu — wkręcają się w siebie. */
 function MeshingGears({ accent }: { accent: string }) {
   const a = useSharedValue(0);
   const b = useSharedValue(0);
   const fade = useSharedValue(0);
+  const teethA = 12;
+  const teethB = 9;
+  // Przełożenie: większa obraca się wolniej, żeby zęby się zazębiały.
+  const durationA = 3200;
+  const durationB = durationA * (teethA / teethB);
 
   useEffect(() => {
-    fade.value = withDelay(180, withTiming(1, { duration: 420 }));
-    a.value = withRepeat(withTiming(360, { duration: 2400, easing: Easing.linear }), -1, false);
-    b.value = withRepeat(withTiming(-360, { duration: 2400 * (22 / 16), easing: Easing.linear }), -1, false);
+    fade.value = withDelay(160, withTiming(1, { duration: 480 }));
+    a.value = withRepeat(withTiming(360, { duration: durationA, easing: Easing.linear }), -1, false);
+    b.value = withRepeat(withTiming(-360, { duration: durationB, easing: Easing.linear }), -1, false);
     return () => {
       cancelAnimation(a);
       cancelAnimation(b);
       cancelAnimation(fade);
     };
-  }, [a, b, fade]);
+  }, [a, b, fade, durationA, durationB]);
 
-  const wrapStyle = useAnimatedStyle(() => ({ opacity: fade.value * 0.72 }));
+  const wrapStyle = useAnimatedStyle(() => ({ opacity: fade.value * 0.92 }));
   const gearAStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${a.value}deg` }] }));
   const gearBStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${b.value}deg` }] }));
 
   return (
     <Animated.View style={[styles.gearsWrap, wrapStyle]}>
       <Animated.View style={[styles.gearA, gearAStyle]}>
-        <Ionicons name="settings-outline" size={22} color={accent} />
+        <MetalGear size={54} teeth={teethA} accent={accent} uid="a" />
       </Animated.View>
       <Animated.View style={[styles.gearB, gearBStyle]}>
-        <Ionicons name="settings-outline" size={16} color="rgba(255,255,255,0.55)" />
+        <MetalGear size={40} teeth={teethB} accent={accent} uid="b" />
       </Animated.View>
     </Animated.View>
   );
@@ -416,7 +541,7 @@ export default function EcosystemVerticalTransition() {
         </View>
 
         <Animated.View style={[styles.gearsDock, gearsFadeStyle]}>
-          <MeshingGears accent={isCar ? '#7DD3FC' : '#34D399'} />
+          <MeshingGears accent={isCar ? '#38BDF8' : '#34D399'} />
         </Animated.View>
       </View>
     </Modal>
@@ -495,23 +620,31 @@ const styles = StyleSheet.create({
   },
   gearsDock: {
     position: 'absolute',
-    bottom: 48,
+    bottom: 52,
     left: 0,
     right: 0,
     alignItems: 'center',
   },
   gearsWrap: {
-    width: 56,
-    height: 40,
+    width: 96,
+    height: 72,
   },
   gearA: {
     position: 'absolute',
-    left: 4,
+    left: 0,
     top: 4,
+    shadowColor: '#FFFFFF',
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
   },
   gearB: {
     position: 'absolute',
-    right: 2,
-    bottom: 2,
+    right: 0,
+    bottom: 0,
+    shadowColor: '#FFFFFF',
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
   },
 });

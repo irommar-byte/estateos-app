@@ -457,7 +457,10 @@ export default function CarsCatalogScreen({
 
   const centerChrome = (
     <View style={{ width: '100%', alignItems: 'center', gap: 2 }}>
-      <VerticalSegmentRail isDark={isDark} />
+      <VerticalSegmentRail
+        isDark={isDark}
+        mode={browseMode === 'MAP' || surface === 'explore' ? 'status' : 'switch'}
+      />
     </View>
   );
 

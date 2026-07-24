@@ -101,6 +101,7 @@ import OfferCommentsScreen from './src/screens/OfferCommentsScreen';
 import CarsCatalogScreen from './src/screens/CarsCatalogScreen';
 import CarDetailScreen from './src/screens/CarDetailScreen';
 import AddCarListingScreen from './src/screens/AddCarListingScreen';
+import MarketExploreShell from './src/navigation/MarketExploreShell';
 import { extractIdFromDeeplink } from './src/utils/deeplinkParse';
 import {
   extractPushDealAndOfferIds,
@@ -491,6 +492,8 @@ const FloatingNextButton = (props: any) => {
 
   const isArrow = isFocused && step > 0;
   const isReady = !isFocused || step === 0 || isValid;
+  /** Jedyna zmiana plusika względem trybu: kolor wypełnienia (Home zielony / Cars niebieski). */
+  const plusFillColor = activeVertical === 'car' ? '#0EA5E9' : Colors.primary;
   // Apple-glass grawer: w obu motywach FILL jest CZYSTY BIAŁY (max
   // jasność), a STROKE robi „halo" w opposite-tone, żeby litery były
   // czytelne ZARÓWNO na zielonym plus-przycisku, JAK i na szklanym tab
@@ -579,7 +582,7 @@ const FloatingNextButton = (props: any) => {
           width: 80,
           height: 80,
           borderRadius: 40,
-          backgroundColor: isReady ? Colors.primary : (isDark ? '#222' : '#e5e5e5'),
+          backgroundColor: isReady ? plusFillColor : (isDark ? '#222' : '#e5e5e5'),
           justifyContent: 'center',
           alignItems: 'center'
         }}>
@@ -829,7 +832,6 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
   const messagesTabBadgeCount = unreadDealCount + unreadContactCount;
   const profilePendingCount = useProfileTabBadgeStore((state) => state.profilePendingCount);
   const activeVertical = useEcosystemStore((state) => state.activeVertical);
-  const setActiveVertical = useEcosystemStore((state) => state.setActiveVertical);
   useEffect(() => { restoreSession(); }, []);
 
   useEffect(() => {
@@ -973,54 +975,74 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
     }}
     >
       <Tab.Screen
-        name="Radar"
-        listeners={{
-          tabPress: () => setActiveVertical('home'),
+        name="Market"
+        options={{
+          tabBarLabel: t('tabs.market'),
+          tabBarIcon: ({ color }) => (
+            <Ionicons name={activeVertical === 'car' ? 'car-sport' : 'home'} size={26} color={color} />
+          ),
         }}
-        options={{ tabBarLabel: t('tabs.home'), tabBarIcon: ({ color }) => <Ionicons name="home" size={26} color={color} /> }}
       >
-        {props => <RadarHomeScreen {...props} splashDone={splashDone} />}
+        {(props) => (
+          <MarketExploreShell {...props} splashDone={splashDone} surface="market" />
+        )}
+      </Tab.Screen>
+      <Tab.Screen
+        name="Explore"
+        options={{
+          tabBarLabel: t('tabs.mapsRadar'),
+          tabBarIcon: ({ color }) => <Ionicons name="map" size={24} color={color} />,
+        }}
+      >
+        {(props) => (
+          <MarketExploreShell {...props} splashDone={splashDone} surface="explore" />
+        )}
+      </Tab.Screen>
+      {/* Aliasy wsteczne: stare deep linki navigate('Radar'|'Cars'|'Ulubione') */}
+      <Tab.Screen
+        name="Radar"
+        options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }}
+      >
+        {(props) => {
+          const p = props.route?.params;
+          const live = !!(p?.openCalibration || p?.radarFocus || p?.exploreLive);
+          return (
+            <MarketExploreShell
+              {...props}
+              splashDone={splashDone}
+              surface={live ? 'explore' : 'market'}
+            />
+          );
+        }}
       </Tab.Screen>
       <Tab.Screen
         name="Cars"
-        listeners={{
-          tabPress: () => setActiveVertical('car'),
-        }}
-        options={{
-          tabBarLabel: 'Cars',
-          tabBarIcon: ({ color }) => <Ionicons name="car-sport" size={24} color={color} />,
-          tabBarBadge: activeVertical === 'car' ? '•' : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: '#0EA5E9',
-            color: '#0EA5E9',
-            fontSize: 9,
-            minWidth: 12,
-            height: 12,
-            lineHeight: 10,
-            borderRadius: 6,
-          },
-        }}
+        options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }}
       >
-        {() => <CarsCatalogScreen />}
+        {() => <CarsCatalogScreen surface="market" initialBrowseMode="GALLERY" />}
       </Tab.Screen>
       <Tab.Screen
         name="Ulubione"
-        listeners={{
-          tabPress: () => setActiveVertical('home'),
-        }}
         initialParams={{ favoritesOnly: true, favoritesScope: 'MINE' }}
-        options={{ tabBarLabel: t('tabs.favorites'), tabBarIcon: ({ color }) => <Ionicons name="heart" size={24} color={color} /> }}
+        options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }}
       >
-        {props => <RadarHomeScreen {...props} splashDone={splashDone} />}
+        {(props) => (
+          <MarketExploreShell
+            {...props}
+            splashDone={splashDone}
+            surface="market"
+            route={{
+              ...props.route,
+              params: { ...props.route?.params, favoritesOnly: true, favoritesScope: 'MINE' },
+            }}
+          />
+        )}
       </Tab.Screen>
       <Tab.Screen name="Dodaj" options={{ tabBarLabel: '', tabBarButton: (props) => <FloatingNextButton {...props} /> }}>
         {() => <AddOfferNavigator theme={currentColors} />}
       </Tab.Screen>
       <Tab.Screen
         name="Wiadomości"
-        listeners={{
-          tabPress: () => setActiveVertical('home'),
-        }}
         options={{
           tabBarLabel: t('tabs.messages'),
           tabBarIcon: ({ color }) => (
@@ -1047,9 +1069,6 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       </Tab.Screen>
       <Tab.Screen
         name="Profil"
-        listeners={{
-          tabPress: () => setActiveVertical('home'),
-        }}
         options={{
           tabBarLabel: t('tabs.profile'),
           tabBarIcon: ({ color }) => <Ionicons name="person-circle" size={28} color={color} />,
@@ -1114,7 +1133,7 @@ type PushNavigationTarget =
   | {
       screen: 'MainTabs';
       params: {
-        screen: 'Radar' | 'Ulubione' | 'Wiadomości' | 'Profil';
+        screen: 'Market' | 'Explore' | 'Radar' | 'Cars' | 'Ulubione' | 'Wiadomości' | 'Profil' | 'Dodaj';
         params?: Record<string, unknown>;
       };
     }
@@ -1442,7 +1461,7 @@ const parsePushTargetFromResponse = (
   if (looksLikeRadar || deeplinkLooksLikeRadar || deeplinkLower.includes('://radar')) {
     return {
       screen: 'MainTabs',
-      params: { screen: 'Radar', params: { radarFocus: 'matches' } },
+      params: { screen: 'Explore', params: { radarFocus: 'matches', exploreLive: true } },
     };
   }
 

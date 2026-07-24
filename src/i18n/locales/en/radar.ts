@@ -114,6 +114,8 @@ export const radar = {
     marketViewRailsA11y: 'Show Market rails',
     verticalSwitchToHome: 'Switching to EstateOS™Home mode',
     verticalSwitchToCar: 'Switching to EstateOS™Car mode',
+    radarStatusHomes: 'Radar in real estate',
+    radarStatusCars: 'Radar in cars',
     galleryRailNewest: 'Newest',
     galleryRailNearest: 'Nearest',
     galleryRailDiscounted: 'Price drops',
