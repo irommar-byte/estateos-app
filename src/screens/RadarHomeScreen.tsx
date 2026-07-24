@@ -100,6 +100,9 @@ import RadarOfferGallery, {
 } from '../components/radar/RadarOfferGallery';
 import { isOfferFeatured } from '../utils/listingPromotion';
 import CatalogSearchFilterButton from '../components/CatalogSearchFilterButton';
+import MarketCatalogViewToggle, {
+  type MarketCatalogContentMode,
+} from '../components/catalog/MarketCatalogViewToggle';
 import VerticalSegmentRail from '../components/VerticalSegmentRail';
 import RadarStatusBulb from '../components/radar/RadarStatusBulb';
 import { OfferMapMarkerPin } from '../components/radar/OfferMapMarkerPin';
@@ -1084,6 +1087,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const pendingFitAllPinsRef = useRef(false);
   const [fitAllRequestId, setFitAllRequestId] = useState(0);
   const [mapType, setMapType] = useState<'standard' | 'hybrid'>('standard');
+  const [marketContentMode, setMarketContentMode] = useState<MarketCatalogContentMode>('catalog');
   const [showCalibration, setShowCalibration] = useState(false);
   const [recentRadarAreasList, setRecentRadarAreasList] = useState<RadarRecentSavedArea[]>([]);
   const [showFavoritesCalibration, setShowFavoritesCalibration] = useState(false);
@@ -4847,26 +4851,40 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         pointerEvents="auto"
       >
         <View style={[styles.topBarSideSlot, styles.topBarToolsRow, { width: 'auto', maxWidth: 112 }]}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.filterButtonWrap,
-              isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
-              pressed && { opacity: 0.8 },
-            ]}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setMapType((prev) => (prev === 'standard' ? 'hybrid' : 'standard'));
-            }}
-            accessibilityLabel="Map type"
-          >
-            <BlurView
-              intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
-              tint={isDark ? 'dark' : 'light'}
-              style={[styles.filterGlass, isGalleryLightChrome && styles.filterGlassGalleryLight, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
+          {isGalleryBrowse && tabSurface === 'market' ? (
+            <MarketCatalogViewToggle
+              mode={marketContentMode}
+              onToggle={() =>
+                setMarketContentMode((prev) => (prev === 'catalog' ? 'rails' : 'catalog'))
+              }
+              isDark={isDark}
+              lightChrome={isGalleryLightChrome}
+              accent="#6366F1"
+              accessibilityLabelCatalog={t('radar.home.marketViewCatalogA11y')}
+              accessibilityLabelRails={t('radar.home.marketViewRailsA11y')}
+            />
+          ) : (
+            <Pressable
+              style={({ pressed }) => [
+                styles.filterButtonWrap,
+                isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
+                pressed && { opacity: 0.8 },
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setMapType((prev) => (prev === 'standard' ? 'hybrid' : 'standard'));
+              }}
+              accessibilityLabel="Map type"
             >
-              <Ionicons name="map" size={22} color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'} />
-            </BlurView>
-          </Pressable>
+              <BlurView
+                intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
+                tint={isDark ? 'dark' : 'light'}
+                style={[styles.filterGlass, isGalleryLightChrome && styles.filterGlassGalleryLight, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
+              >
+                <Ionicons name="map" size={22} color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'} />
+              </BlurView>
+            </Pressable>
+          )}
           <Pressable
             style={({ pressed }) => [
               styles.filterButtonWrap,
@@ -5383,6 +5401,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               return isOfferLegallyVerified(raw, ownVerifiedFromEndpoint);
             }}
             t={t}
+            contentMode={marketContentMode}
           />
           </View>
         </Animated.View>

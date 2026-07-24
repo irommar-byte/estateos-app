@@ -28,8 +28,11 @@ import CatalogSearchFilterButton from '../components/CatalogSearchFilterButton';
 import CarsCatalogMapView, { type CarsCatalogMapViewHandle } from '../components/cars/CarsCatalogMapView';
 import CarsAdvancedSearchModal from '../components/cars/CarsAdvancedSearchModal';
 import VerticalSegmentRail from '../components/VerticalSegmentRail';
-import CollapsibleMarketRails from '../components/catalog/CollapsibleMarketRails';
+import { CatalogHorizontalRailStack } from '../components/catalog/CatalogHorizontalRail';
 import { buildCarMarketRailSections } from '../components/catalog/buildMarketRails';
+import MarketCatalogViewToggle, {
+  type MarketCatalogContentMode,
+} from '../components/catalog/MarketCatalogViewToggle';
 import * as Haptics from 'expo-haptics';
 import { useCarScreenTheme, type CarScreenColors } from '../theme/carScreenTheme';
 import FeaturedOfferSpotlight from '../components/radar/FeaturedOfferSpotlight';
@@ -91,6 +94,7 @@ export default function CarsCatalogScreen({
   const resolvedInitial: BrowseMode =
     initialBrowseMode || (surface === 'explore' ? 'MAP' : 'GALLERY');
   const [browseMode, setBrowseMode] = useState<BrowseMode>(resolvedInitial);
+  const [marketContentMode, setMarketContentMode] = useState<MarketCatalogContentMode>('catalog');
   const [viewMode, setViewMode] = useState<ViewMode>(isTabletLike ? 'grid' : 'cover');
   const isListView = viewMode === 'list';
   const isGridView = viewMode === 'grid';
@@ -485,14 +489,33 @@ export default function CarsCatalogScreen({
           }
         >
           <Text style={styles.eyebrow}>EstateOS™Car</Text>
-          <Text style={styles.title}>Katalog samochodów</Text>
+          <Text style={styles.title}>
+            {marketContentMode === 'rails' ? t('radar.home.galleryRailsStackTitle') : 'Katalog samochodów'}
+          </Text>
           <Text style={styles.lead}>
-            {filtered.length} ogłoszeń
-            {advancedFilters.vehicleType
-              ? ` · ${VEHICLE_TYPE_OPTIONS.find((o) => o.value === advancedFilters.vehicleType)?.labelPl || ''}`
-              : ''}
+            {marketContentMode === 'rails'
+              ? t('radar.home.galleryRailsViewLead')
+              : `${filtered.length} ogłoszeń${
+                  advancedFilters.vehicleType
+                    ? ` · ${VEHICLE_TYPE_OPTIONS.find((o) => o.value === advancedFilters.vehicleType)?.labelPl || ''}`
+                    : ''
+                }`}
           </Text>
 
+          {marketContentMode === 'rails' ? (
+            <View style={{ marginTop: 8, marginHorizontal: -6 }}>
+              <CatalogHorizontalRailStack
+                sections={marketRailSections}
+                isDark={isDark}
+                onPressItem={(id) => {
+                  const car =
+                    myCars.find((c) => c.id === Number(id)) || cars.find((c) => c.id === Number(id));
+                  if (car) openCarDetail(car);
+                }}
+              />
+            </View>
+          ) : (
+            <>
           {featuredSpotlightCars.length > 0 ? (
             <View
               onLayout={(event) => {
@@ -617,44 +640,25 @@ export default function CarsCatalogScreen({
               ))}
             </View>
           )}
-
-          <CollapsibleMarketRails
-            sections={marketRailSections}
-            isDark={isDark}
-            onPressItem={(id) => {
-              const car =
-                myCars.find((c) => c.id === Number(id)) || cars.find((c) => c.id === Number(id));
-              if (car) openCarDetail(car);
-            }}
-            title={t('radar.home.galleryRailsStackTitle')}
-            subtitle={t('radar.home.galleryRailsStackSubtitle')}
-          />
+            </>
+          )}
         </ScrollView>
       ) : null}
 
       <View pointerEvents="box-none" style={[styles.topBarContainer, { top: topBarOffset }]}>
         <View style={[styles.topBarSideSlot, { width: 'auto', maxWidth: 112, flexDirection: 'row', gap: 10 }]}>
-          {browseMode === 'MAP' ? (
-            <Pressable
-              style={({ pressed }) => [
-                styles.filterButtonWrap,
-                isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
-                pressed && { opacity: 0.8 },
-              ]}
-              onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setMapType((prev) => (prev === 'standard' ? 'hybrid' : 'standard'));
-              }}
-              accessibilityLabel="Typ mapy"
-            >
-              <BlurView
-                intensity={isDark ? 80 : 90}
-                tint={isDark ? 'dark' : 'light'}
-                style={styles.filterGlass}
-              >
-                <Ionicons name="map" size={22} color={isDark ? '#FFF' : '#1C1C1E'} />
-              </BlurView>
-            </Pressable>
+          {browseMode === 'GALLERY' && surface === 'market' ? (
+            <MarketCatalogViewToggle
+              mode={marketContentMode}
+              onToggle={() =>
+                setMarketContentMode((prev) => (prev === 'catalog' ? 'rails' : 'catalog'))
+              }
+              isDark={isDark}
+              lightChrome={isGalleryLightChrome}
+              accent={CAR_ACCENT}
+              accessibilityLabelCatalog={t('radar.home.marketViewCatalogA11y')}
+              accessibilityLabelRails={t('radar.home.marketViewRailsA11y')}
+            />
           ) : (
             <Pressable
               style={({ pressed }) => [

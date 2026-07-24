@@ -22,8 +22,9 @@ import { resolveOfferPriceDiscount } from '../../utils/offerPriceDiscount';
 import { isOfferFeatured } from '../../utils/listingPromotion';
 import FeaturedOfferSpotlight from './FeaturedOfferSpotlight';
 import type { CatalogRailItem } from '../catalog/CatalogHorizontalRail';
-import CollapsibleMarketRails from '../catalog/CollapsibleMarketRails';
+import { CatalogHorizontalRailStack } from '../catalog/CatalogHorizontalRail';
 import { buildHomeMarketRailSections } from '../catalog/buildMarketRails';
+import type { MarketCatalogContentMode } from '../catalog/MarketCatalogViewToggle';
 import { carCardElevation, useCarScreenTheme, type CarScreenColors } from '../../theme/carScreenTheme';
 import { formatLocationLabel } from '../../constants/locationEcosystem';
 
@@ -81,6 +82,8 @@ type Props = {
   favoriteRailItems?: CatalogRailItem[];
   mineRailItems?: CatalogRailItem[];
   onPressRailItem?: (id: number | string) => void;
+  /** Katalog siatki vs taśmy Market (przełączane ikoną w top barze). */
+  contentMode?: MarketCatalogContentMode;
 };
 
 const NEAR_ACCENT = '#10b981';
@@ -212,6 +215,7 @@ export default function RadarOfferGallery({
   favoriteRailItems = [],
   mineRailItems = [],
   onPressRailItem,
+  contentMode = 'catalog',
 }: Props) {
   const { width } = useWindowDimensions();
   const { colors, elevation, isDark: _carIsDark } = useCarScreenTheme();
@@ -709,28 +713,71 @@ export default function RadarOfferGallery({
           </View>
         ) : null}
 
-        {onPressRailItem ? (
-          <CollapsibleMarketRails
-            sections={marketRailSections}
-            isDark={isDark}
-            onPressItem={onPressRailItem}
-            title={t('radar.home.galleryRailsStackTitle')}
-            subtitle={t('radar.home.galleryRailsStackSubtitle')}
-          />
         ) : null}
       </View>
     );
   }, [
     goToPage,
     isDark,
-    marketRailSections,
-    onPressRailItem,
     pageSize,
     safePage,
     t,
     totalCount,
     totalPages,
   ]);
+
+  if (contentMode === 'rails' && onPressRailItem) {
+    const visibleRails = marketRailSections.filter(
+      (s) => s.items.length > 0 || (s.showWhenEmpty && s.emptyLabel),
+    );
+    return (
+      <ScrollView
+        style={styles.root}
+        contentContainerStyle={{
+          paddingBottom: bottomInset + 88,
+          paddingTop: 8,
+          paddingHorizontal: 10,
+          flexGrow: 1,
+        }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GALLERY_ACCENT} />
+          ) : undefined
+        }
+      >
+        <View style={styles.railsHero}>
+          <View style={[styles.railsIconBubble, { backgroundColor: isDark ? 'rgba(99,102,241,0.22)' : 'rgba(99,102,241,0.12)' }]}>
+            <Ionicons name="albums" size={18} color={GALLERY_ACCENT} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.railsTitle, { color: isDark ? '#F5F5F7' : '#111' }]}>
+              {t('radar.home.galleryRailsStackTitle')}
+            </Text>
+            <Text style={styles.railsSub}>{t('radar.home.galleryRailsViewLead')}</Text>
+          </View>
+          <Text style={styles.railsCount}>{visibleRails.length}</Text>
+        </View>
+        {visibleRails.length ? (
+          <CatalogHorizontalRailStack
+            sections={marketRailSections}
+            isDark={isDark}
+            onPressItem={onPressRailItem}
+          />
+        ) : (
+          <View style={styles.emptyWrap}>
+            <Ionicons name="albums-outline" size={40} color={isDark ? '#6366F1' : '#94A3B8'} />
+            <Text style={[styles.emptyTitle, { color: isDark ? '#FFF' : '#0F172A' }]}>
+              {t('radar.home.galleryRailsEmptyTitle')}
+            </Text>
+            <Text style={[styles.emptyBody, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}>
+              {t('radar.home.galleryRailsEmptyBody')}
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+    );
+  }
 
   return (
     <FlatList
@@ -1475,6 +1522,42 @@ const styles = StyleSheet.create({
   },
   cardFooterMetaDark: {
     color: 'rgba(255,255,255,0.35)',
+  },
+  railsHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 6,
+    marginBottom: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(99,102,241,0.22)',
+    backgroundColor: 'rgba(99,102,241,0.08)',
+  },
+  railsIconBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  railsTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  railsSub: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#8E8E93',
+  },
+  railsCount: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#8E8E93',
   },
   emptyWrap: {
     alignItems: 'center',
