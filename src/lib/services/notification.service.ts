@@ -129,7 +129,8 @@ export const notificationService = {
       if (payload?.subtitle) msg.subtitle = String(payload.subtitle);
       const channelId = payload?.channelId || payload?.android?.channelId;
       if (channelId) msg.channelId = String(channelId);
-      // collapseId/tag NIE forwardujemy — na iOS collapseId zostawia tylko ostatni banner.
+      // collapseId/tag NIE forwardujemy — na iOS collapseId zostawia tylko ostatni banner
+      // (to wygląda jak „znikające” wiadomości zamiast stosu rozmowy).
       if (typeof payload?.mutableContent === 'boolean') {
         msg.mutableContent = payload.mutableContent;
       }
@@ -150,12 +151,22 @@ export const notificationService = {
           ? (payload.data as { threadIdentifier?: unknown }).threadIdentifier
           : undefined);
       if (threadIdentifier) {
-        (msg as Record<string, unknown>).threadIdentifier = String(threadIdentifier);
+        const thread = String(threadIdentifier);
+        // Expo nie mapuje oficjalnie aps.thread-id — NSE czyta to z data.body.
+        // Duplikujemy klucze, żeby grupowanie nie znikało przy zmianie kształtu payloadu.
+        msg.data = {
+          ...(typeof msg.data === 'object' && msg.data != null ? msg.data : {}),
+          threadIdentifier: thread,
+          iosThreadId: thread,
+        };
+        (msg as Record<string, unknown>).threadIdentifier = thread;
+        // Wymuś NSE: bez mutableContent iOS nie odpali Notification Service Extension.
+        msg.mutableContent = true;
         msg.ios = {
           ...(typeof msg.ios === 'object' && msg.ios != null
             ? (msg.ios as Record<string, unknown>)
             : {}),
-          threadId: String(threadIdentifier),
+          threadId: thread,
         };
       }
 

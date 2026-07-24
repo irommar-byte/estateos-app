@@ -47,6 +47,7 @@ export function buildDealroomMessagePushPayload(params: {
       senderId: params.senderId != null ? String(params.senderId) : undefined,
       senderName: params.senderName || undefined,
       threadIdentifier,
+      iosThreadId: threadIdentifier,
       deeplink: `estateos://dealroom/${params.dealId}`,
       screen: 'DealroomChat',
       route: 'DealroomChat',
