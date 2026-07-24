@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo } from 'react';
+import { Dimensions, Modal, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   Extrapolation,
@@ -9,61 +9,187 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withDelay,
+  withRepeat,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useEcosystemStore, type EcosystemVertical } from '../../store/useEcosystemStore';
 import { useI18n } from '../../i18n';
 
-/** Krócej niż WWW — na telefonie wolniej męczy; nadal cinematic. */
-const GEAR_MS = 720;
-const ZOOM_MS = 780;
-const EXIT_MS = 220;
+const { width: W, height: H } = Dimensions.get('window');
 
-const HOME_GRADIENT = ['#0B3D2E', '#10B981', '#064E3B'] as const;
-const CAR_GRADIENT = ['#0C4A6E', '#0EA5E9', '#082F49'] as const;
+/** Rytm: intro → crest → bloom → dissolve. Bez skalowania bitmapy. */
+const INTRO_MS = 380;
+const HOLD_MS = 720;
+const BLOOM_MS = 780;
+const EXIT_MS = 420;
+const TOTAL_MS = INTRO_MS + HOLD_MS + BLOOM_MS + EXIT_MS;
 
-function Gear({
+type Theme = {
+  deep: string;
+  mid: string;
+  glow: string;
+  rim: string;
+  accent: string;
+  metal: [string, string, string];
+};
+
+const HOME_THEME: Theme = {
+  deep: '#031A14',
+  mid: '#0A3D2E',
+  glow: 'rgba(52,211,153,0.55)',
+  rim: 'rgba(167,243,208,0.55)',
+  accent: '#34D399',
+  metal: ['rgba(255,255,255,0.00)', 'rgba(236,253,245,0.55)', 'rgba(255,255,255,0.00)'],
+};
+
+const CAR_THEME: Theme = {
+  deep: '#020B16',
+  mid: '#0B2F4A',
+  glow: 'rgba(56,189,248,0.52)',
+  rim: 'rgba(186,230,253,0.55)',
+  accent: '#38BDF8',
+  metal: ['rgba(255,255,255,0.00)', 'rgba(240,249,255,0.55)', 'rgba(255,255,255,0.00)'],
+};
+
+function OrbitRing({
   size,
   duration,
   reverse,
-  opacity,
+  color,
+  thickness = StyleSheet.hairlineWidth * 2,
+  dash = false,
 }: {
   size: number;
   duration: number;
   reverse?: boolean;
-  opacity: number;
+  color: string;
+  thickness?: number;
+  dash?: boolean;
 }) {
   const rot = useSharedValue(0);
 
   useEffect(() => {
     rot.value = 0;
-    rot.value = withTiming(reverse ? -360 : 360, {
-      duration,
-      easing: Easing.linear,
-    });
+    rot.value = withRepeat(
+      withTiming(reverse ? -360 : 360, { duration, easing: Easing.linear }),
+      -1,
+      false,
+    );
     return () => cancelAnimation(rot);
   }, [duration, reverse, rot]);
 
   const style = useAnimatedStyle(() => ({
     transform: [{ rotate: `${rot.value}deg` }],
-    opacity,
   }));
 
   return (
-    <Animated.View style={style}>
-      <Ionicons name="settings-outline" size={size} color="rgba(255,255,255,0.88)" />
+    <Animated.View
+      style={[
+        {
+          position: 'absolute',
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: thickness,
+          borderColor: color,
+          borderStyle: dash ? 'dashed' : 'solid',
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+function SpecularSweep({ colors }: { colors: Theme['metal'] }) {
+  const x = useSharedValue(-W * 0.6);
+
+  useEffect(() => {
+    x.value = -W * 0.6;
+    x.value = withDelay(
+      120,
+      withTiming(W * 1.1, { duration: 980, easing: Easing.bezier(0.22, 1, 0.36, 1) }),
+    );
+    return () => cancelAnimation(x);
+  }, [x]);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateX: x.value }, { rotate: '18deg' }],
+  }));
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.sweep, style]}>
+      <LinearGradient colors={[...colors]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
     </Animated.View>
   );
 }
 
+function DustMote({
+  left,
+  top,
+  size,
+  delay,
+  drift,
+  color,
+}: {
+  left: number;
+  top: number;
+  size: number;
+  delay: number;
+  drift: number;
+  color: string;
+}) {
+  const y = useSharedValue(0);
+  const o = useSharedValue(0);
+
+  useEffect(() => {
+    o.value = withDelay(
+      delay,
+      withSequence(
+        withTiming(0.55, { duration: 420 }),
+        withTiming(0.2, { duration: 900 }),
+        withTiming(0, { duration: 500 }),
+      ),
+    );
+    y.value = withDelay(
+      delay,
+      withTiming(-drift, { duration: 1800, easing: Easing.out(Easing.quad) }),
+    );
+    return () => {
+      cancelAnimation(o);
+      cancelAnimation(y);
+    };
+  }, [delay, drift, o, y]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: o.value,
+    transform: [{ translateY: y.value }],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        {
+          position: 'absolute',
+          left,
+          top,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: color,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
 /**
- * Pełnoekranowe przejście Homes ↔ Cars — jak WWW (zębatki → zoom ikony),
- * dopracowane pod telefon: głębsze gradienty, miękkie krzywe, krótszy rytm.
+ * Cinematiczne przejście Homes ↔ Cars — Rolls-Royce / Apple:
+ * velvet veil, orbit rings, crest, light sweep, soft bloom (bez zoomu ikony).
  */
 export default function EcosystemVerticalTransition() {
   const { t } = useI18n();
@@ -71,221 +197,333 @@ export default function EcosystemVerticalTransition() {
   const setActiveVertical = useEcosystemStore((s) => s.setActiveVertical);
   const clearVerticalSwitch = useEcosystemStore((s) => s.clearVerticalSwitch);
 
-  const visible = useSharedValue(0);
-  const gearsOpacity = useSharedValue(0);
-  const gearsY = useSharedValue(10);
-  const zoomScale = useSharedValue(0.42);
-  const zoomOpacity = useSharedValue(0);
-  const veil = useSharedValue(0);
+  const progress = useSharedValue(0);
+  const crestScale = useSharedValue(0.92);
+  const crestOpacity = useSharedValue(0);
+  const bloom = useSharedValue(0);
+  const exit = useSharedValue(0);
 
   const to: EcosystemVertical = pendingSwitch?.to ?? 'home';
   const isCar = to === 'car';
+  const theme = isCar ? CAR_THEME : HOME_THEME;
   const label = isCar
     ? t('radar.home.verticalSwitchToCar')
     : t('radar.home.verticalSwitchToHome');
 
+  const motes = useMemo(
+    () =>
+      Array.from({ length: 14 }, (_, i) => ({
+        id: i,
+        left: (W * ((i * 37) % 100)) / 100,
+        top: H * (0.22 + ((i * 19) % 55) / 100),
+        size: 1.5 + (i % 3),
+        delay: 180 + i * 55,
+        drift: 28 + (i % 5) * 10,
+      })),
+    [],
+  );
+
   useEffect(() => {
     if (!pendingSwitch) {
-      visible.value = 0;
+      progress.value = 0;
+      crestScale.value = 0.92;
+      crestOpacity.value = 0;
+      bloom.value = 0;
+      exit.value = 0;
       return;
     }
 
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    visible.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) });
-    veil.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.quad) });
-    gearsOpacity.value = withTiming(1, { duration: 260, easing: Easing.out(Easing.cubic) });
-    gearsY.value = withTiming(0, { duration: 320, easing: Easing.out(Easing.cubic) });
-    zoomOpacity.value = 0;
-    zoomScale.value = 0.42;
+    progress.value = 0;
+    exit.value = 0;
+    bloom.value = 0;
+    crestOpacity.value = 0;
+    crestScale.value = 0.88;
 
-    const commit = setTimeout(() => {
+    progress.value = withTiming(1, { duration: INTRO_MS, easing: Easing.out(Easing.cubic) });
+    crestOpacity.value = withDelay(
+      80,
+      withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) }),
+    );
+    crestScale.value = withDelay(
+      60,
+      withTiming(1, { duration: 640, easing: Easing.bezier(0.16, 1, 0.3, 1) }),
+    );
+
+    const commitAt = INTRO_MS + Math.round(HOLD_MS * 0.55);
+    const bloomAt = INTRO_MS + HOLD_MS;
+    const doneAt = TOTAL_MS;
+
+    const commitTimer = setTimeout(() => {
       void Haptics.selectionAsync();
       setActiveVertical(pendingSwitch.to);
-
-      gearsOpacity.value = withTiming(0, { duration: 180, easing: Easing.in(Easing.quad) });
-      gearsY.value = withTiming(-8, { duration: 180, easing: Easing.in(Easing.quad) });
-      zoomOpacity.value = withSequence(
-        withTiming(1, { duration: 140, easing: Easing.out(Easing.quad) }),
-        withDelay(
-          Math.round(ZOOM_MS * 0.42),
-          withTiming(0, {
-            duration: Math.round(ZOOM_MS * 0.48),
-            easing: Easing.in(Easing.cubic),
-          }),
-        ),
-      );
-      zoomScale.value = withTiming(38, {
-        duration: ZOOM_MS,
+      bloom.value = withTiming(1, {
+        duration: BLOOM_MS,
         easing: Easing.bezier(0.22, 1, 0.36, 1),
       });
-      veil.value = withDelay(
-        Math.round(ZOOM_MS * 0.5),
-        withTiming(0, { duration: EXIT_MS + 120, easing: Easing.inOut(Easing.quad) }),
-      );
-      visible.value = withDelay(
-        ZOOM_MS,
-        withTiming(0, { duration: EXIT_MS, easing: Easing.in(Easing.quad) }, (finished) => {
-          if (finished) runOnJS(clearVerticalSwitch)();
-        }),
-      );
-    }, GEAR_MS);
+      crestOpacity.value = withTiming(0, { duration: 320, easing: Easing.in(Easing.quad) });
+      crestScale.value = withTiming(1.06, { duration: 420, easing: Easing.out(Easing.quad) });
+    }, commitAt);
 
-    return () => clearTimeout(commit);
+    const exitTimer = setTimeout(() => {
+      exit.value = withTiming(1, { duration: EXIT_MS, easing: Easing.inOut(Easing.cubic) }, (finished) => {
+        if (finished) runOnJS(clearVerticalSwitch)();
+      });
+    }, bloomAt + Math.round(BLOOM_MS * 0.35));
+
+    const safety = setTimeout(() => {
+      clearVerticalSwitch();
+    }, doneAt + 80);
+
+    return () => {
+      clearTimeout(commitTimer);
+      clearTimeout(exitTimer);
+      clearTimeout(safety);
+    };
   }, [
     pendingSwitch,
     setActiveVertical,
     clearVerticalSwitch,
-    visible,
-    veil,
-    gearsOpacity,
-    gearsY,
-    zoomOpacity,
-    zoomScale,
+    progress,
+    crestScale,
+    crestOpacity,
+    bloom,
+    exit,
   ]);
 
-  const rootStyle = useAnimatedStyle(() => ({
-    opacity: visible.value,
-  }));
-
   const veilStyle = useAnimatedStyle(() => ({
-    opacity: veil.value,
+    opacity: interpolate(progress.value, [0, 1], [0, 1], Extrapolation.CLAMP) *
+      interpolate(exit.value, [0, 1], [1, 0], Extrapolation.CLAMP),
   }));
 
-  const gearsStyle = useAnimatedStyle(() => ({
-    opacity: gearsOpacity.value,
-    transform: [{ translateY: gearsY.value }],
+  const crestStyle = useAnimatedStyle(() => ({
+    opacity: crestOpacity.value * interpolate(exit.value, [0, 1], [1, 0], Extrapolation.CLAMP),
+    transform: [
+      { scale: crestScale.value },
+      {
+        translateY: interpolate(crestOpacity.value, [0, 1], [14, 0], Extrapolation.CLAMP),
+      },
+    ],
   }));
 
-  const zoomStyle = useAnimatedStyle(() => ({
-    opacity: zoomOpacity.value,
-    transform: [{ scale: zoomScale.value }],
+  const bloomCoreStyle = useAnimatedStyle(() => {
+    const s = interpolate(bloom.value, [0, 1], [0.15, 4.8], Extrapolation.CLAMP);
+    const o = interpolate(bloom.value, [0, 0.15, 0.7, 1], [0, 0.85, 0.55, 0], Extrapolation.CLAMP);
+    return {
+      opacity: o * interpolate(exit.value, [0, 1], [1, 0], Extrapolation.CLAMP),
+      transform: [{ scale: s }],
+    };
+  });
+
+  const bloomHaloStyle = useAnimatedStyle(() => {
+    const s = interpolate(bloom.value, [0, 1], [0.4, 6.2], Extrapolation.CLAMP);
+    const o = interpolate(bloom.value, [0, 0.2, 0.75, 1], [0, 0.45, 0.25, 0], Extrapolation.CLAMP);
+    return {
+      opacity: o * interpolate(exit.value, [0, 1], [1, 0], Extrapolation.CLAMP),
+      transform: [{ scale: s }],
+    };
+  });
+
+  const vignetteStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 1], [0, 0.9], Extrapolation.CLAMP) *
+      interpolate(exit.value, [0, 1], [1, 0], Extrapolation.CLAMP),
   }));
 
-  const glowStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(veil.value, [0, 1], [0, 0.55], Extrapolation.CLAMP),
-    transform: [{ scale: interpolate(veil.value, [0, 1], [0.92, 1.08], Extrapolation.CLAMP) }],
+  const copyStyle = useAnimatedStyle(() => ({
+    opacity: crestOpacity.value * interpolate(bloom.value, [0, 0.35], [1, 0], Extrapolation.CLAMP),
+    transform: [
+      {
+        translateY: interpolate(crestOpacity.value, [0, 1], [10, 0], Extrapolation.CLAMP),
+      },
+    ],
   }));
 
   if (!pendingSwitch) return null;
 
-  const gradient = isCar ? CAR_GRADIENT : HOME_GRADIENT;
-
   return (
-    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.root, rootStyle]}>
-      <Animated.View style={[StyleSheet.absoluteFill, veilStyle]}>
-        <LinearGradient colors={[...gradient]} start={{ x: 0.05, y: 0 }} end={{ x: 0.95, y: 1 }} style={StyleSheet.absoluteFill} />
-        <LinearGradient
-          colors={['rgba(0,0,0,0.35)', 'transparent', 'rgba(0,0,0,0.45)']}
-          locations={[0, 0.45, 1]}
-          style={StyleSheet.absoluteFill}
-        />
-        <Animated.View
-          style={[
-            styles.glow,
-            { backgroundColor: isCar ? 'rgba(56,189,248,0.35)' : 'rgba(52,211,153,0.32)' },
-            glowStyle,
-          ]}
-        />
-      </Animated.View>
-
-      <View style={styles.center}>
-        <Animated.View style={[styles.gearsBlock, gearsStyle]}>
-          <View style={styles.gearStage}>
-            <View style={styles.gearA}>
-              <Gear size={54} duration={GEAR_MS} opacity={0.92} />
-            </View>
-            <View style={styles.gearB}>
-              <Gear size={38} duration={Math.round(GEAR_MS * 1.12)} reverse opacity={0.72} />
-            </View>
-          </View>
-          <Text style={styles.brand}>EstateOS™</Text>
-          <Text style={styles.label}>{label}</Text>
+    <Modal visible transparent animationType="none" statusBarTranslucent presentationStyle="overFullScreen">
+      <View style={styles.root} pointerEvents="none">
+        <Animated.View style={[StyleSheet.absoluteFill, veilStyle]}>
+          <LinearGradient
+            colors={[theme.deep, theme.mid, theme.deep]}
+            locations={[0, 0.48, 1]}
+            start={{ x: 0.15, y: 0 }}
+            end={{ x: 0.9, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <LinearGradient
+            colors={['rgba(0,0,0,0.55)', 'transparent', 'rgba(0,0,0,0.72)']}
+            locations={[0, 0.42, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+          <Animated.View style={[styles.centerGlow, { backgroundColor: theme.glow }, vignetteStyle]} />
         </Animated.View>
 
-        <Animated.View style={[styles.zoomWrap, zoomStyle]}>
-          <BlurView intensity={28} tint="light" style={styles.iconGlass}>
-            <Ionicons
-              name={isCar ? 'car-sport' : 'home'}
-              size={56}
-              color="#FFFFFF"
+        <SpecularSweep colors={theme.metal} />
+
+        {motes.map((m) => (
+          <DustMote
+            key={m.id}
+            left={m.left}
+            top={m.top}
+            size={m.size}
+            delay={m.delay}
+            drift={m.drift}
+            color={isCar ? 'rgba(186,230,253,0.9)' : 'rgba(167,243,208,0.9)'}
+          />
+        ))}
+
+        <View style={styles.stage}>
+          <Animated.View style={[styles.crestWrap, crestStyle]}>
+            <OrbitRing size={168} duration={14000} color="rgba(255,255,255,0.10)" thickness={1} />
+            <OrbitRing size={148} duration={9000} reverse color={theme.rim} thickness={1.25} />
+            <OrbitRing size={128} duration={11000} color="rgba(255,255,255,0.16)" thickness={StyleSheet.hairlineWidth} dash />
+
+            <LinearGradient
+              colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0.14)']}
+              start={{ x: 0.2, y: 0 }}
+              end={{ x: 0.8, y: 1 }}
+              style={styles.crestDisc}
+            >
+              <View style={[styles.crestInner, { borderColor: theme.rim }]}>
+                <Ionicons name={isCar ? 'car-sport' : 'home'} size={42} color="#FFFFFF" />
+              </View>
+            </LinearGradient>
+          </Animated.View>
+
+          <Animated.View style={[styles.copy, copyStyle]}>
+            <Text style={styles.brand}>EstateOS™</Text>
+            <Text style={styles.label}>{label}</Text>
+            <View style={[styles.hairline, { backgroundColor: theme.accent }]} />
+          </Animated.View>
+        </View>
+
+        {/* Soft color bloom — skalujemy gładkie kule gradientu, NIE ikonę */}
+        <View style={styles.bloomStage} pointerEvents="none">
+          <Animated.View style={[styles.bloomHalo, bloomHaloStyle]}>
+            <LinearGradient
+              colors={[theme.glow, 'transparent']}
+              style={StyleSheet.absoluteFill}
             />
-          </BlurView>
-        </Animated.View>
+          </Animated.View>
+          <Animated.View style={[styles.bloomCore, bloomCoreStyle]}>
+            <LinearGradient
+              colors={[
+                isCar ? 'rgba(125,211,252,0.95)' : 'rgba(110,231,183,0.95)',
+                isCar ? 'rgba(14,165,233,0.55)' : 'rgba(16,185,129,0.55)',
+                'transparent',
+              ]}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
+        </View>
       </View>
-    </Animated.View>
+    </Modal>
   );
 }
 
+const BLOOM_BASE = Math.max(W, H) * 0.42;
+
 const styles = StyleSheet.create({
   root: {
-    zIndex: 999,
-    elevation: 999,
+    flex: 1,
+    backgroundColor: 'transparent',
   },
-  center: {
+  centerGlow: {
+    position: 'absolute',
+    width: W * 0.9,
+    height: W * 0.9,
+    borderRadius: W * 0.45,
+    alignSelf: 'center',
+    top: H * 0.22,
+    opacity: 0.35,
+  },
+  sweep: {
+    position: 'absolute',
+    top: -H * 0.2,
+    width: 90,
+    height: H * 1.4,
+    opacity: 0.55,
+  },
+  stage: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 28,
+    paddingHorizontal: 32,
   },
-  glow: {
-    position: 'absolute',
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    alignSelf: 'center',
-    top: '32%',
-  },
-  gearsBlock: {
-    alignItems: 'center',
-    gap: 18,
-  },
-  gearStage: {
-    width: 118,
-    height: 118,
+  crestWrap: {
+    width: 176,
+    height: 176,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gearA: {
-    position: 'absolute',
-    left: 8,
-    top: 10,
+  crestDisc: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.35)',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
   },
-  gearB: {
-    position: 'absolute',
-    right: 6,
-    bottom: 8,
+  crestInner: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+  copy: {
+    marginTop: 28,
+    alignItems: 'center',
+    gap: 10,
   },
   brand: {
-    color: 'rgba(255,255,255,0.62)',
+    color: 'rgba(255,255,255,0.55)',
     fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 3.2,
+    fontWeight: '700',
+    letterSpacing: 4.2,
     textTransform: 'uppercase',
   },
   label: {
-    color: '#FFF',
-    fontSize: 18,
-    fontWeight: '600',
-    letterSpacing: -0.35,
+    color: '#F8FAFC',
+    fontSize: 19,
+    fontWeight: '500',
+    letterSpacing: -0.4,
     textAlign: 'center',
-    lineHeight: 24,
-    maxWidth: 280,
+    lineHeight: 26,
+    maxWidth: 300,
   },
-  zoomWrap: {
-    position: 'absolute',
+  hairline: {
+    marginTop: 4,
+    width: 36,
+    height: 2,
+    borderRadius: 1,
+    opacity: 0.85,
+  },
+  bloomStage: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconGlass: {
-    width: 112,
-    height: 112,
-    borderRadius: 36,
+  bloomCore: {
+    width: BLOOM_BASE,
+    height: BLOOM_BASE,
+    borderRadius: BLOOM_BASE / 2,
     overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.42)',
+  },
+  bloomHalo: {
+    position: 'absolute',
+    width: BLOOM_BASE * 1.15,
+    height: BLOOM_BASE * 1.15,
+    borderRadius: (BLOOM_BASE * 1.15) / 2,
+    overflow: 'hidden',
   },
 });
