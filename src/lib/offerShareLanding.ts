@@ -81,6 +81,8 @@ export type OfferShareCard = {
   ogDescription: string;
   canonicalUrl: string;
   imageUrl: string;
+  /** PNG 1200×630 pod Facebook / Messenger (nie WebP z galerii). */
+  socialImageUrl: string;
   images: string[];
   priceLabel: string;
   isRent: boolean;
@@ -214,6 +216,7 @@ export async function loadOfferShareCard(
     ogDescription,
     canonicalUrl,
     imageUrl: primary,
+    socialImageUrl: `${resolvePublicAppOrigin()}/o/${offerId}/opengraph-image`,
     images: images.length ? images : primary ? [primary] : [],
     priceLabel,
     isRent,

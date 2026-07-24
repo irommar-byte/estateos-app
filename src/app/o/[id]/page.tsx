@@ -34,24 +34,21 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       description: card.ogDescription,
       url: card.canonicalUrl,
       locale: 'pl_PL',
-      images: card.imageUrl
-        ? [{ url: card.imageUrl, width: 1200, height: 630, alt: card.ogTitle }]
-        : [
-            {
-              url: `${resolvePublicAppOrigin()}/o/${offerId}/opengraph-image`,
-              width: 1200,
-              height: 630,
-              alt: card.ogTitle,
-            },
-          ],
+      images: [
+        {
+          url: card.socialImageUrl,
+          width: 1200,
+          height: 630,
+          type: 'image/png',
+          alt: card.ogTitle,
+        },
+      ],
     },
     twitter: {
       card: 'summary_large_image',
       title: card.ogTitle,
       description: card.ogDescription,
-      images: card.imageUrl
-        ? [card.imageUrl]
-        : [`${resolvePublicAppOrigin()}/o/${offerId}/opengraph-image`],
+      images: [card.socialImageUrl],
     },
     robots: { index: true, follow: true },
     other: {
