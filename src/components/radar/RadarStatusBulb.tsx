@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { Animated, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 type Props = {
@@ -9,30 +9,38 @@ type Props = {
   softBg: string;
 };
 
-/** Czytelna dioda statusu — wyraźne mruganie gdy Radar nieaktywny. */
+/**
+ * Dioda statusu Live Radar.
+ * Nieaktywna (czerwona) mruga jak kierunkowskaz w aucie — ostre ON/OFF.
+ */
 export default function RadarStatusBulb({ active, blink, tint, softBg }: Props) {
   if (active) {
     return (
-      <View style={[styles.wrap, { backgroundColor: softBg }]}>
+      <Animated.View style={[styles.wrap, { backgroundColor: softBg }]}>
         <Ionicons name="radio" size={17} color={tint} />
-      </View>
+      </Animated.View>
     );
   }
 
-  const iconOpacity = blink.interpolate({
-    inputRange: [0, 0.06, 1],
-    outputRange: [0, 0, 1],
-  });
-  const badgeOpacity = blink.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.28, 1],
+  // Kierunkowskaz: pełna jasność ↔ prawie zgaszona (bez miękkiego fade).
+  const bulbOpacity = blink.interpolate({
+    inputRange: [0, 0.49, 0.5, 1],
+    outputRange: [0.12, 0.12, 1, 1],
   });
 
   return (
-    <Animated.View style={[styles.wrap, { backgroundColor: softBg, opacity: badgeOpacity }]}>
-      <Animated.View style={{ opacity: iconOpacity }}>
-        <Ionicons name="radio-outline" size={17} color={tint} />
-      </Animated.View>
+    <Animated.View
+      style={[
+        styles.wrap,
+        {
+          backgroundColor: softBg,
+          opacity: bulbOpacity,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: tint,
+        },
+      ]}
+    >
+      <Ionicons name="radio" size={17} color={tint} />
     </Animated.View>
   );
 }

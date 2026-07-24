@@ -10,7 +10,7 @@ export const HOME_CTA_MODES = ['BUYER', 'SELLER', 'INVESTOR', 'OWNER'] as const;
 export type HomeCtaMode = (typeof HOME_CTA_MODES)[number];
 
 export type HomeCtaRouteSpec =
-  | { screen: 'MainTabs'; params: { screen: 'Radar' | 'Dodaj' | 'Profil' } }
+  | { screen: 'MainTabs'; params: { screen: 'Market' | 'Explore' | 'Radar' | 'Dodaj' | 'Profil' } }
   | { screen: 'EstateDiscovery' };
 
 export type HomeCtaContract = {

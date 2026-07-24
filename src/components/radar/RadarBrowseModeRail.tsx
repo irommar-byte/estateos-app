@@ -4,8 +4,10 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
+type Mode = 'RADAR' | 'GALLERY';
+
 type Props = {
-  mode: 'RADAR' | 'GALLERY';
+  mode: Mode;
   isDark: boolean;
   radarLabel: string;
   galleryLabel: string;
@@ -13,6 +15,11 @@ type Props = {
   onSelectGallery: () => void;
   /** W top barze — bez dolnego marginesu i bocznego paddingu. */
   embeddedInTopBar?: boolean;
+  /**
+   * galleryMap: Galeria | Mapa (domyślne)
+   * mapRadar: Mapa | Radar (tab Mapy+Radar)
+   */
+  variant?: 'galleryMap' | 'mapRadar';
 };
 
 export default function RadarBrowseModeRail({
@@ -23,7 +30,29 @@ export default function RadarBrowseModeRail({
   onSelectRadar,
   onSelectGallery,
   embeddedInTopBar = false,
+  variant = 'galleryMap',
 }: Props) {
+  const isMapRadar = variant === 'mapRadar';
+  /** W mapRadar: GALLERY = Mapa, RADAR = Radar live */
+  const leftActive = mode === 'GALLERY';
+  const rightActive = mode === 'RADAR';
+  const leftIcon = (isMapRadar
+    ? leftActive
+      ? 'map'
+      : 'map-outline'
+    : leftActive
+      ? 'grid'
+      : 'grid-outline') as keyof typeof Ionicons.glyphMap;
+  const rightIcon = (isMapRadar
+    ? rightActive
+      ? 'radio'
+      : 'radio-outline'
+    : rightActive
+      ? 'map'
+      : 'map-outline') as keyof typeof Ionicons.glyphMap;
+  const leftAccent = isMapRadar ? '#0EA5E9' : '#6366F1';
+  const rightAccent = '#10b981';
+
   return (
     <View style={[styles.outer, embeddedInTopBar && styles.outerEmbedded]}>
       <BlurView
@@ -40,27 +69,31 @@ export default function RadarBrowseModeRail({
         <View style={styles.row}>
           <Pressable
             accessibilityRole="tab"
-            accessibilityState={{ selected: mode === 'GALLERY' }}
+            accessibilityState={{ selected: leftActive }}
             onPress={() => {
-              if (mode === 'GALLERY') return;
+              if (leftActive) return;
               Haptics.selectionAsync();
               onSelectGallery();
             }}
             style={({ pressed }) => [
               styles.half,
-              mode === 'GALLERY' && styles.halfActiveGallery,
+              leftActive && { backgroundColor: `${leftAccent}29` },
               pressed && { opacity: 0.88 },
             ]}
           >
-            <Ionicons
-              name={mode === 'GALLERY' ? 'grid' : 'grid-outline'}
-              size={16}
-              color={mode === 'GALLERY' ? '#6366F1' : '#8E8E93'}
-            />
+            <Ionicons name={leftIcon} size={16} color={leftActive ? leftAccent : '#8E8E93'} />
             <Text
               style={[
                 styles.label,
-                { color: mode === 'GALLERY' ? (isDark ? '#E0E7FF' : '#3730A3') : '#8E8E93' },
+                {
+                  color: leftActive
+                    ? isDark
+                      ? '#E0F2FE'
+                      : isMapRadar
+                        ? '#075985'
+                        : '#3730A3'
+                    : '#8E8E93',
+                },
               ]}
               numberOfLines={1}
             >
@@ -70,27 +103,23 @@ export default function RadarBrowseModeRail({
           <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]} />
           <Pressable
             accessibilityRole="tab"
-            accessibilityState={{ selected: mode === 'RADAR' }}
+            accessibilityState={{ selected: rightActive }}
             onPress={() => {
-              if (mode === 'RADAR') return;
+              if (rightActive) return;
               Haptics.selectionAsync();
               onSelectRadar();
             }}
             style={({ pressed }) => [
               styles.half,
-              mode === 'RADAR' && styles.halfActiveRadar,
+              rightActive && styles.halfActiveRadar,
               pressed && { opacity: 0.88 },
             ]}
           >
-            <Ionicons
-              name={mode === 'RADAR' ? 'map' : 'map-outline'}
-              size={16}
-              color={mode === 'RADAR' ? '#10b981' : '#8E8E93'}
-            />
+            <Ionicons name={rightIcon} size={16} color={rightActive ? rightAccent : '#8E8E93'} />
             <Text
               style={[
                 styles.label,
-                { color: mode === 'RADAR' ? (isDark ? '#C9F9E7' : '#0B5B43') : '#8E8E93' },
+                { color: rightActive ? (isDark ? '#C9F9E7' : '#0B5B43') : '#8E8E93' },
               ]}
               numberOfLines={1}
             >
@@ -137,9 +166,6 @@ const styles = StyleSheet.create({
   },
   halfActiveRadar: {
     backgroundColor: 'rgba(16,185,129,0.16)',
-  },
-  halfActiveGallery: {
-    backgroundColor: 'rgba(99,102,241,0.18)',
   },
   divider: {
     width: StyleSheet.hairlineWidth,

@@ -41,7 +41,10 @@ export function navigateTabBarTickerAction(action: TabBarTickerAction): boolean 
         navigationRef.dispatch(
           CommonActions.navigate({
             name: 'MainTabs',
-            params: { screen: 'Radar', params: { openCalibration: true } },
+            params: {
+              screen: 'Explore',
+              params: { openCalibration: true, exploreLive: true, radarBrowseMode: 'RADAR' },
+            },
           }),
         );
         return true;

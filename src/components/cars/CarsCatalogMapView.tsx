@@ -1,8 +1,19 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { formatMarkerPriceCompact } from '../../money/format';
 import type { CarListing } from '../../services/carsApi';
+import {
+  fitMapCoordinatesAboveOverlay,
+  focusMapCoordinateAboveOverlay,
+  MAP_OVERLAY_EDGE_PADDING,
+} from '../../utils/mapCameraFocus';
 import { OfferMapMarkerPin } from '../radar/OfferMapMarkerPin';
 
 const DEFAULT_REGION: Region = {
@@ -18,9 +29,15 @@ const CAR_PIN_COLORS: [string, string, string] = ['#38BDF8', '#0EA5E9', '#0284C7
 type Props = {
   cars: CarListing[];
   selectedCarId: number | null;
+  /** Tap pinezki — wybór + fokus (bez natychmiastowego detail). */
   onSelectCar: (car: CarListing) => void;
   isDark: boolean;
   mapType?: 'standard' | 'hybrid';
+};
+
+export type CarsCatalogMapViewHandle = {
+  fitToCars: () => void;
+  focusCar: (car: CarListing) => void;
 };
 
 function isValidCoord(lat?: number | null, lng?: number | null): lat is number {
@@ -50,7 +67,10 @@ function regionForCars(cars: CarListing[]): Region {
   };
 }
 
-export default function CarsCatalogMapView({ cars, selectedCarId, onSelectCar, isDark, mapType = 'standard' }: Props) {
+const CarsCatalogMapView = forwardRef<CarsCatalogMapViewHandle, Props>(function CarsCatalogMapView(
+  { cars, selectedCarId, onSelectCar, isDark, mapType = 'standard' },
+  ref,
+) {
   const mapRef = useRef<MapView | null>(null);
   const mappableCars = useMemo(
     () => cars.filter((car) => isValidCoord(car.cityLat, car.cityLng)),
@@ -60,20 +80,25 @@ export default function CarsCatalogMapView({ cars, selectedCarId, onSelectCar, i
 
   const fitToCars = useCallback(() => {
     if (!mapRef.current || mappableCars.length === 0) return;
-    const coords = mappableCars.map((car) => ({
-      latitude: car.cityLat as number,
-      longitude: car.cityLng as number,
-    }));
-    mapRef.current.fitToCoordinates(coords, {
-      edgePadding: { top: 120, right: 48, bottom: 120, left: 48 },
-      animated: true,
-    });
+    fitMapCoordinatesAboveOverlay(
+      mapRef.current,
+      mappableCars.map((car) => ({
+        latitude: car.cityLat as number,
+        longitude: car.cityLng as number,
+      })),
+      { edgePadding: MAP_OVERLAY_EDGE_PADDING },
+    );
   }, [mappableCars]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => fitToCars(), 320);
-    return () => clearTimeout(timer);
-  }, [fitToCars]);
+  const focusCar = useCallback((car: CarListing) => {
+    if (!isValidCoord(car.cityLat, car.cityLng)) return;
+    focusMapCoordinateAboveOverlay(mapRef.current, {
+      latitude: Number(car.cityLat),
+      longitude: Number(car.cityLng),
+    });
+  }, []);
+
+  useImperativeHandle(ref, () => ({ fitToCars, focusCar }), [fitToCars, focusCar]);
 
   return (
     <View style={styles.wrap}>
@@ -110,7 +135,9 @@ export default function CarsCatalogMapView({ cars, selectedCarId, onSelectCar, i
       </MapView>
     </View>
   );
-}
+});
+
+export default CarsCatalogMapView;
 
 const styles = StyleSheet.create({
   wrap: {

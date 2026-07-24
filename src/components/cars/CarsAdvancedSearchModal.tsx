@@ -10,6 +10,7 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  PanResponder,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,9 +20,12 @@ import { BODY_TYPE_OPTIONS } from '../../services/carCatalogApi';
 import type { CarListing } from '../../services/carsApi';
 import {
   countCarsAdvancedMatches,
+  countCarsForFacet,
   type CarsAdvancedFilters,
+  type CarsMapBounds,
   type CarsSortKey,
 } from '../../utils/carsAdvancedFilters';
+import { VEHICLE_TYPE_OPTIONS } from '../../utils/vehicleTypes';
 
 const CAR_ACCENT = '#0EA5E9';
 
@@ -34,6 +38,7 @@ type Props = {
   onClose: () => void;
   onApply: () => void;
   onReset: () => void;
+  onPickMapArea?: () => void;
 };
 
 function Chip({
@@ -72,6 +77,7 @@ export default function CarsAdvancedSearchModal({
   onClose,
   onApply,
   onReset,
+  onPickMapArea,
 }: Props) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -83,6 +89,29 @@ export default function CarsAdvancedSearchModal({
   );
 
   const matchCount = useMemo(() => countCarsAdvancedMatches(cars, draft), [cars, draft]);
+
+  const sheetPan = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, g) => g.dy > 8 && Math.abs(g.dy) > Math.abs(g.dx),
+        onPanResponderRelease: (_, g) => {
+          if (g.dy > 90 || g.vy > 1.1) onClose();
+        },
+      }),
+    [onClose],
+  );
+
+  const cityOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const car of cars) {
+      const city = String(car.city || '').trim();
+      if (!city) continue;
+      counts.set(city, (counts.get(city) || 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'pl'))
+      .map(([city, count]) => ({ city, count }));
+  }, [cars]);
 
   const makeOptions = useMemo(
     () =>
@@ -207,12 +236,16 @@ export default function CarsAdvancedSearchModal({
               { backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7', height: sheetMaxHeight, maxHeight: sheetMaxHeight },
               keyboardInset > 0 && { paddingBottom: keyboardInset },
             ]}
+            {...sheetPan.panHandlers}
           >
             <View style={styles.dragHandle} />
+            <Text style={[styles.swipeHint, { color: isDark ? 'rgba(255,255,255,0.45)' : '#8E8E93' }]}>
+              Przesuń w dół, aby zamknąć
+            </Text>
             <View style={styles.header}>
               <View style={styles.headerTitleRow}>
-                <Ionicons name="search" size={22} color={CAR_ACCENT} />
-                <Text style={[styles.title, { color: isDark ? '#FFF' : '#1C1C1E' }]}>Wyszukiwanie rozszerzone</Text>
+                <Ionicons name="options-outline" size={22} color={CAR_ACCENT} />
+                <Text style={[styles.title, { color: isDark ? '#FFF' : '#1C1C1E' }]}>Filtry i wyszukiwanie</Text>
               </View>
               <Pressable onPress={onReset}>
                 <Text style={[styles.reset, { color: CAR_ACCENT }]}>Wyczyść</Text>
@@ -226,14 +259,42 @@ export default function CarsAdvancedSearchModal({
               keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
               contentContainerStyle={{ paddingBottom: 16, flexGrow: 1 }}
             >
-              <Text style={[styles.sectionLead, { color: isDark ? '#FFF' : '#1C1C1E' }]}>Szukaj w katalogu aut</Text>
+              <Text style={[styles.sectionLead, { color: isDark ? '#FFF' : '#1C1C1E' }]}>Czego szukasz?</Text>
+              <Text style={styles.hint}>
+                Wpisz frazę z tytułu lub opisu ogłoszenia — np. „SUV rodzinny”, „diesel”, „Warszawa”.
+                Łączymy to z filtrami poniżej (marka, nadwozie, lokalizacja).
+              </Text>
               <TextInput
                 value={draft.query}
                 onChangeText={(query) => onChangeDraft({ ...draft, query })}
-                placeholder="Marka, model, miasto, paliwo…"
+                placeholder="np. kombi, hybryd, firmowy…"
                 placeholderTextColor="#8E8E93"
                 style={[styles.input, { color: isDark ? '#FFF' : '#1C1C1E' }]}
               />
+
+              <Text style={styles.section}>Typ pojazdu</Text>
+              <View style={styles.row}>
+                <Chip
+                  label={`Wszystkie (${countCarsForFacet(cars, draft, { vehicleType: '' })})`}
+                  active={!draft.vehicleType}
+                  isDark={isDark}
+                  onPress={() => onChangeDraft({ ...draft, vehicleType: '' })}
+                />
+                {VEHICLE_TYPE_OPTIONS.map((opt) => (
+                  <Chip
+                    key={opt.value}
+                    label={`${opt.labelPl} (${countCarsForFacet(cars, draft, { vehicleType: opt.value })})`}
+                    active={draft.vehicleType === opt.value}
+                    isDark={isDark}
+                    onPress={() =>
+                      onChangeDraft({
+                        ...draft,
+                        vehicleType: draft.vehicleType === opt.value ? '' : opt.value,
+                      })
+                    }
+                  />
+                ))}
+              </View>
 
               <Text style={styles.section}>Marka</Text>
               {makeOptions.length === 0 ? (
@@ -243,7 +304,14 @@ export default function CarsAdvancedSearchModal({
                   {makeOptions.map((opt) => (
                     <Chip
                       key={opt.value}
-                      label={opt.label}
+                      label={`${opt.label} (${countCarsForFacet(cars, draft, {
+                        make: opt.label,
+                        makeSlug: opt.label,
+                        model: '',
+                        modelSlug: '',
+                        generation: '',
+                        generationSlug: '',
+                      })})`}
                       active={draft.make === opt.label}
                       isDark={isDark}
                       onPress={() => selectMake(opt.label)}
@@ -304,7 +372,7 @@ export default function CarsAdvancedSearchModal({
                 {BODY_TYPE_OPTIONS.map((body) => (
                   <Chip
                     key={body}
-                    label={body}
+                    label={`${body} (${countCarsForFacet(cars, draft, { bodyType: body })})`}
                     active={draft.bodyType === body}
                     isDark={isDark}
                     onPress={() => onChangeDraft({ ...draft, bodyType: draft.bodyType === body ? '' : body })}
@@ -343,13 +411,71 @@ export default function CarsAdvancedSearchModal({
               </View>
 
               <Text style={styles.section}>Lokalizacja</Text>
-              <TextInput
-                value={draft.city}
-                onChangeText={(city) => onChangeDraft({ ...draft, city })}
-                placeholder="Miasto lub region"
-                placeholderTextColor="#8E8E93"
-                style={[styles.input, { color: isDark ? '#FFF' : '#1C1C1E' }]}
-              />
+              <Text style={styles.hint}>
+                Wybierz miejscowość z katalogu aut albo zaznacz obszar na mapie — wtedy pokażemy tylko
+                ogłoszenia z pinezką w tym kole.
+              </Text>
+              <View style={styles.row}>
+                <Chip
+                  label={`Cała baza (${countCarsForFacet(cars, draft, { city: '', mapBounds: null })})`}
+                  active={!draft.city && !draft.mapBounds}
+                  isDark={isDark}
+                  onPress={() => onChangeDraft({ ...draft, city: '', mapBounds: null })}
+                />
+                {cityOptions.map(({ city, count }) => (
+                  <Chip
+                    key={city}
+                    label={`${city} (${count})`}
+                    active={draft.city === city && !draft.mapBounds}
+                    isDark={isDark}
+                    onPress={() =>
+                      onChangeDraft({
+                        ...draft,
+                        city: draft.city === city ? '' : city,
+                        mapBounds: null,
+                      })
+                    }
+                  />
+                ))}
+              </View>
+              {onPickMapArea ? (
+                <Pressable
+                  onPress={onPickMapArea}
+                  style={[
+                    styles.mapCard,
+                    {
+                      borderColor: draft.mapBounds ? CAR_ACCENT : isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)',
+                      backgroundColor: draft.mapBounds
+                        ? isDark
+                          ? 'rgba(14,165,233,0.14)'
+                          : 'rgba(14,165,233,0.1)'
+                        : isDark
+                          ? 'rgba(255,255,255,0.04)'
+                          : 'rgba(0,0,0,0.03)',
+                    },
+                  ]}
+                >
+                  <Ionicons name="map" size={22} color={CAR_ACCENT} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.mapCardTitle, { color: isDark ? '#FFF' : '#1C1C1E' }]}>
+                      Zaznacz obszar na mapie
+                    </Text>
+                    <Text style={styles.hint}>
+                      {draft.mapBounds
+                        ? `Obszar: ${draft.mapBounds.radiusKm.toFixed(1)} km`
+                        : 'Otwórz mapę, ustaw środek i promień — jak przy nieruchomościach.'}
+                    </Text>
+                  </View>
+                  {draft.mapBounds ? (
+                    <Pressable
+                      onPress={() => onChangeDraft({ ...draft, mapBounds: null })}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="close-circle" size={22} color="#8E8E93" />
+                    </Pressable>
+                  ) : null}
+                </Pressable>
+              ) : null}
 
               <Text style={styles.section}>Cena (PLN)</Text>
               <View style={styles.inputRow}>
@@ -453,7 +579,27 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: 'rgba(150,150,150,0.4)',
     alignSelf: 'center',
+    marginBottom: 4,
+  },
+  swipeHint: {
+    textAlign: 'center',
+    fontSize: 10,
+    fontWeight: '600',
     marginBottom: 8,
+  },
+  mapCard: {
+    marginTop: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 14,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  mapCardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 2,
   },
   header: {
     flexDirection: 'row',

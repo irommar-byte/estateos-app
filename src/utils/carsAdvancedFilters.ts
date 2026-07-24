@@ -2,6 +2,12 @@ import type { CarListing } from '../services/carsApi';
 
 export type CarsSortKey = 'newest' | 'price_asc' | 'price_desc' | 'mileage_asc' | 'year_desc';
 
+export type CarsMapBounds = {
+  centerLat: number;
+  centerLng: number;
+  radiusKm: number;
+};
+
 export type CarsAdvancedFilters = {
   query: string;
   vehicleType: string;
@@ -23,6 +29,7 @@ export type CarsAdvancedFilters = {
   minMileage: string;
   maxMileage: string;
   sort: CarsSortKey;
+  mapBounds: CarsMapBounds | null;
 };
 
 export const EMPTY_CARS_ADVANCED_FILTERS: CarsAdvancedFilters = {
@@ -46,6 +53,7 @@ export const EMPTY_CARS_ADVANCED_FILTERS: CarsAdvancedFilters = {
   minMileage: '',
   maxMileage: '',
   sort: 'newest',
+  mapBounds: null,
 };
 
 function normalizeLabel(value: string) {
@@ -57,6 +65,19 @@ function parseDigits(value: string): number | null {
   if (!digits) return null;
   const n = Number(digits);
   return Number.isFinite(n) ? n : null;
+}
+
+function distanceKm(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const aa =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((aLat * Math.PI) / 180) *
+      Math.cos((bLat * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
 }
 
 export function carsAdvancedFiltersActive(filters: CarsAdvancedFilters): boolean {
@@ -77,6 +98,7 @@ export function carsAdvancedFiltersActive(filters: CarsAdvancedFilters): boolean
     filters.maxYear.trim() !== '' ||
     filters.minMileage.trim() !== '' ||
     filters.maxMileage.trim() !== '' ||
+    filters.mapBounds != null ||
     filters.sort !== 'newest'
   );
 }
@@ -123,8 +145,30 @@ export function applyCarsAdvancedFilters(
     if (maxYear != null && car.year > maxYear) return false;
     if (minMileage != null && car.mileageKm < minMileage) return false;
     if (maxMileage != null && car.mileageKm > maxMileage) return false;
+    if (filters.mapBounds) {
+      const lat = Number(car.cityLat);
+      const lng = Number(car.cityLng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+      const d = distanceKm(
+        filters.mapBounds.centerLat,
+        filters.mapBounds.centerLng,
+        lat,
+        lng,
+      );
+      if (d > filters.mapBounds.radiusKm) return false;
+    }
     if (q) {
-      const haystack = [car.title, car.make, car.model, car.city, car.fuelType, car.exteriorColor, car.bodyType]
+      const haystack = [
+        car.title,
+        car.make,
+        car.model,
+        car.city,
+        car.fuelType,
+        car.exteriorColor,
+        car.bodyType,
+        car.generation,
+        car.description,
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -157,4 +201,13 @@ export function sortCarListings(cars: CarListing[], sort: CarsSortKey): CarListi
 
 export function countCarsAdvancedMatches(cars: CarListing[], draft: CarsAdvancedFilters): number {
   return applyCarsAdvancedFilters(cars, draft).length;
+}
+
+/** Faceted count for a chip — ignore the facet field itself. */
+export function countCarsForFacet(
+  cars: CarListing[],
+  draft: CarsAdvancedFilters,
+  patch: Partial<CarsAdvancedFilters>,
+): number {
+  return applyCarsAdvancedFilters(cars, { ...draft, ...patch }).length;
 }

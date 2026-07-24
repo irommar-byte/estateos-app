@@ -1,5 +1,7 @@
 export const tabs = {
   home: 'Homes',
+  market: 'Market',
+  mapsRadar: 'Maps+Radar',
   radar: 'Radar',
   favorites: 'Mine',
   add: 'Add',

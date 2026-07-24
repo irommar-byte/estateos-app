@@ -21,6 +21,7 @@ import {
   Dimensions,
   useColorScheme,
   AppState,
+  PanResponder,
 } from 'react-native';
 import MapViewCore, { Marker, Region, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import { RadarMapView } from '../components/MapGestureHost';
@@ -77,6 +78,7 @@ import {
   formatLocationLabel,
 } from '../constants/locationEcosystem';
 import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
+import { focusMapCoordinateAboveOverlay, fitMapCoordinatesAboveOverlay } from '../utils/mapCameraFocus';
 import { useFloatingChatsLayoutStore } from '../store/useFloatingChatsLayoutStore';
 import { getOfferLifecycleState, isOfferClosed } from '../utils/offerLifecycle';
 import { syncRadarLiveActivity } from '../services/radarLiveActivityService';
@@ -97,9 +99,8 @@ import RadarOfferGallery, {
   type GalleryTransactionFilter,
 } from '../components/radar/RadarOfferGallery';
 import { isOfferFeatured } from '../utils/listingPromotion';
-import RadarBrowseModeRail from '../components/radar/RadarBrowseModeRail';
+import CatalogSearchFilterButton from '../components/CatalogSearchFilterButton';
 import VerticalSegmentRail from '../components/VerticalSegmentRail';
-import { HomeTransactionSubRail, type HomeTxFilter } from '../components/MarketCatalogSubRails';
 import RadarStatusBulb from '../components/radar/RadarStatusBulb';
 import { OfferMapMarkerPin } from '../components/radar/OfferMapMarkerPin';
 import { AndroidMapPriceMarker } from '../components/radar/AndroidMapPriceMarker';
@@ -295,10 +296,10 @@ type RankedSuggestion = {
   count: number;
 };
 const DEFAULT_REGION = {
-  latitude: 52.2297,
-  longitude: 21.0122,
-  latitudeDelta: 0.0922,
-  longitudeDelta: 0.0421,
+  latitude: 52.1,
+  longitude: 19.4,
+  latitudeDelta: 7.2,
+  longitudeDelta: 7.2,
 };
 
 type MapOffer = {
@@ -383,11 +384,15 @@ type AdvancedFilters = {
   priceCurrency: ListingCurrency;
   minPrice: number | null;
   maxPrice: number | null;
+  minPricePerM2: number | null;
+  maxPricePerM2: number | null;
   minArea: number | null;
   maxArea: number | null;
   minPlotArea: number | null;
   maxPlotArea: number | null;
   minRooms: number | null;
+  /** Wolne wyszukiwanie w tytule / opisie / lokalizacji (np. „penthouse”, „piekarnia”). */
+  keyword: string;
   city: string;
   districts: string[];
   localityCountryCode: string;
@@ -403,11 +408,14 @@ const DEFAULT_ADVANCED_FILTERS: AdvancedFilters = {
   priceCurrency: 'PLN',
   minPrice: null,
   maxPrice: null,
+  minPricePerM2: null,
+  maxPricePerM2: null,
   minArea: null,
   maxArea: null,
   minPlotArea: null,
   maxPlotArea: null,
   minRooms: null,
+  keyword: '',
   city: '',
   districts: [],
   localityCountryCode: '',
@@ -470,6 +478,9 @@ const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
 
 /** Promień trybu „Oferty w Twojej okolicy" na Radarze (bez filtrów / wyszukiwania). */
 const NEARBY_RADIUS_KM = 25;
+/** Hold na Live Radar: włącz / wyłącz (ms). */
+const RADAR_HOLD_SECONDS = 3;
+const RADAR_HOLD_MS = RADAR_HOLD_SECONDS * 1000;
 
 function propertyTypeMatchesFilter(rawType: string, filterType: AdvancedFilters['propertyType']): boolean {
   return radarPropertyTypeMatchesFilter(rawType, filterType);
@@ -500,6 +511,20 @@ function offerMatchesAdvancedFilters(
   );
   if (minPln !== null && rawPrice < minPln) return false;
   if (maxPln !== null && rawPrice > maxPln) return false;
+
+  if (filters.minPricePerM2 !== null || filters.maxPricePerM2 !== null) {
+    if (!(rawArea > 0) || !(rawPrice > 0)) return false;
+    const perM2 = rawPrice / rawArea;
+    const { minPln: minPerM2, maxPln: maxPerM2 } = advancedPriceBoundsToPln(
+      filters.minPricePerM2,
+      filters.maxPricePerM2,
+      filters.priceCurrency,
+      rate,
+    );
+    if (minPerM2 !== null && perM2 < minPerM2) return false;
+    if (maxPerM2 !== null && perM2 > maxPerM2) return false;
+  }
+
   if (filters.minArea !== null && rawArea < filters.minArea) return false;
   if (filters.maxArea !== null && rawArea > filters.maxArea) return false;
 
@@ -519,6 +544,24 @@ function offerMatchesAdvancedFilters(
 
   if (filters.minRooms !== null && rawRooms < filters.minRooms) return false;
   if (!propertyTypeMatchesFilter(rawPropertyType, filters.propertyType)) return false;
+
+  const keyword = normalizeSearchText(filters.keyword || '');
+  if (keyword) {
+    const haystack = normalizeSearchText(
+      [
+        offer.raw?.title,
+        offer.raw?.description,
+        offer.raw?.city,
+        offer.raw?.district,
+        offer.raw?.street,
+        offer.raw?.address,
+        offer.type,
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+    if (!haystack.includes(keyword)) return false;
+  }
 
   if (filters.locationMode === 'CITY') {
     if (locationFacet !== 'country') {
@@ -1039,6 +1082,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [nearbyModeEnabled, setNearbyModeEnabled] = useState(false);
   const didFitAllPinsRef = useRef(false);
   const pendingFitAllPinsRef = useRef(false);
+  const [fitAllRequestId, setFitAllRequestId] = useState(0);
   const [mapType, setMapType] = useState<'standard' | 'hybrid'>('standard');
   const [showCalibration, setShowCalibration] = useState(false);
   const [recentRadarAreasList, setRecentRadarAreasList] = useState<RadarRecentSavedArea[]>([]);
@@ -1266,9 +1310,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   );
   /** Bezpośrednio pod paskiem wyszukiwania — bez luki na mapę. */
   const browseChromeTop = useMemo(() => {
-    const subRail = tabSurface === 'market' && radarBrowseMode === 'GALLERY' && !showOnlyFavorites ? 40 : 0;
-    return topBarTop + 52 + subRail;
-  }, [topBarTop, tabSurface, radarBrowseMode, showOnlyFavorites]);
+    return topBarTop + 52;
+  }, [topBarTop]);
   const isGalleryBrowse = !showOnlyFavorites && radarBrowseMode === 'GALLERY' && !showAreaPicker;
   const isGalleryLightChrome = isGalleryBrowse && !isDark;
   /** iOS: po wyjściu z Galerii MapView potrafi „zamrozić” gesty — odświeżamy je jednym cyklem. */
@@ -1279,10 +1322,33 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     () => Math.round(height - insets.top - Math.max(insets.bottom, 10) - 6),
     [height, insets.top, insets.bottom]
   );
+  const advancedSheetPan = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, g) => g.dy > 8 && Math.abs(g.dy) > Math.abs(g.dx),
+        onPanResponderRelease: (_, g) => {
+          if (g.dy > 90 || g.vy > 1.1) {
+            Keyboard.dismiss();
+            setShowAdvancedSearch(false);
+          }
+        },
+      }),
+    [],
+  );
+
   const radarPulseA = useRef(new Animated.Value(0)).current;
   const radarPulseB = useRef(new Animated.Value(0)).current;
   const radarInactiveBlink = useRef(new Animated.Value(1)).current;
   const radarCalibrateNudge = useRef(new Animated.Value(0)).current;
+  const radarHoldProgress = useRef(new Animated.Value(0)).current;
+  const radarHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const radarHoldArmRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const radarHoldHapticRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const radarHoldTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const radarHoldCompletedRef = useRef(false);
+  const radarPressStartedAtRef = useRef(0);
+  const [radarHoldMode, setRadarHoldMode] = useState<null | 'disable' | 'enable'>(null);
+  const [radarHoldSecondsLeft, setRadarHoldSecondsLeft] = useState(3);
   const favoritesHeartBeat = useRef(new Animated.Value(1)).current;
   const favoritesAuraPulse = useRef(new Animated.Value(0)).current;
   const modeIslandOpacity = useRef(new Animated.Value(1)).current;
@@ -1449,19 +1515,21 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   useEffect(() => {
     let pulseAAnim: Animated.CompositeAnimation | null = null;
     let pulseBAnim: Animated.CompositeAnimation | null = null;
-    if (isRadarActive) {
+    if (isRadarActive || radarHoldMode) {
+      const duration = radarHoldMode ? 260 : 1500;
+      const stagger = radarHoldMode ? 110 : 760;
       radarPulseA.setValue(0);
       radarPulseB.setValue(0);
       pulseAAnim = Animated.loop(
         Animated.sequence([
-          Animated.timing(radarPulseA, { toValue: 1, duration: 1500, useNativeDriver: true }),
+          Animated.timing(radarPulseA, { toValue: 1, duration, useNativeDriver: true }),
           Animated.timing(radarPulseA, { toValue: 0, duration: 0, useNativeDriver: true }),
         ])
       );
       pulseBAnim = Animated.loop(
         Animated.sequence([
-          Animated.delay(760),
-          Animated.timing(radarPulseB, { toValue: 1, duration: 1500, useNativeDriver: true }),
+          Animated.delay(stagger),
+          Animated.timing(radarPulseB, { toValue: 1, duration, useNativeDriver: true }),
           Animated.timing(radarPulseB, { toValue: 0, duration: 0, useNativeDriver: true }),
         ])
       );
@@ -1477,51 +1545,55 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       pulseAAnim?.stop();
       pulseBAnim?.stop();
     };
-  }, [isRadarActive, radarPulseA, radarPulseB]);
+  }, [isRadarActive, radarHoldMode, radarPulseA, radarPulseB]);
 
   useEffect(() => {
     let blinkLoop: Animated.CompositeAnimation | null = null;
     let nudgeTimer: ReturnType<typeof setInterval> | null = null;
 
-    if (!isRadarActive) {
+    // Hold (oczekiwanie) → 2× szybciej; inaczej klasyczny kierunkowskaz gdy nieaktywny.
+    const shouldBlink = !!radarHoldMode || !isRadarActive;
+    if (shouldBlink) {
+      const half = radarHoldMode ? 210 : 420;
+      radarInactiveBlink.setValue(1);
       blinkLoop = Animated.loop(
         Animated.sequence([
           Animated.timing(radarInactiveBlink, {
             toValue: 1,
-            duration: 480,
-            easing: Easing.out(Easing.cubic),
+            duration: 0,
             useNativeDriver: true,
           }),
-          Animated.delay(140),
+          Animated.delay(half),
           Animated.timing(radarInactiveBlink, {
             toValue: 0,
-            duration: 480,
-            easing: Easing.in(Easing.cubic),
+            duration: 0,
             useNativeDriver: true,
           }),
-          Animated.delay(140),
+          Animated.delay(half),
         ]),
       );
       blinkLoop.start();
 
-      const runNudge = () => {
-        radarCalibrateNudge.setValue(0);
-        Animated.sequence([
-          Animated.timing(radarCalibrateNudge, {
-            toValue: 1,
-            duration: 1400,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-          }),
-          Animated.timing(radarCalibrateNudge, {
-            toValue: 0,
-            duration: 1000,
-            easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
-          }),
-        ]).start();
-      };
-      nudgeTimer = setInterval(runNudge, 30_000);
+      if (!isRadarActive && !radarHoldMode) {
+        const runNudge = () => {
+          radarCalibrateNudge.setValue(0);
+          Animated.sequence([
+            Animated.timing(radarCalibrateNudge, {
+              toValue: 1,
+              duration: 1400,
+              easing: Easing.inOut(Easing.sin),
+              useNativeDriver: true,
+            }),
+            Animated.timing(radarCalibrateNudge, {
+              toValue: 0,
+              duration: 1000,
+              easing: Easing.inOut(Easing.sin),
+              useNativeDriver: true,
+            }),
+          ]).start();
+        };
+        nudgeTimer = setInterval(runNudge, 30_000);
+      }
     } else {
       radarInactiveBlink.stopAnimation();
       radarCalibrateNudge.stopAnimation();
@@ -1533,7 +1605,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       blinkLoop?.stop();
       if (nudgeTimer) clearInterval(nudgeTimer);
     };
-  }, [isRadarActive, radarInactiveBlink, radarCalibrateNudge]);
+  }, [isRadarActive, radarHoldMode, radarInactiveBlink, radarCalibrateNudge]);
 
   useEffect(() => {
     let beatAnim: Animated.CompositeAnimation | null = null;
@@ -1620,7 +1692,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   const showAllMapPins = useCallback(() => {
     pendingFitAllPinsRef.current = true;
+    didFitAllPinsRef.current = false;
     setNearbyModeEnabled(false);
+    setFitAllRequestId((n) => n + 1);
     Haptics.selectionAsync();
   }, []);
 
@@ -1947,6 +2021,22 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return getStrictDistrictsForCity(selectedCity);
   }, [draftAdvancedFilters.city]);
 
+  const districtFilterEntries = useMemo(() => {
+    if (!draftAdvancedFilters.city.trim()) return [] as { district: string; count: number }[];
+    const pool = advancedFilterBrowseBase.filter((offer) =>
+      offerMatchesAdvancedFilters(offer, { ...draftAdvancedFilters, districts: [] }, rate),
+    );
+    return backendDistrictsForDraftCity.map((district) => {
+      const distNorm = normalizeSearchText(district);
+      return {
+        district,
+        count: pool.filter(
+          (offer) => normalizeSearchText(String(offer.raw?.district || '').trim()) === distNorm,
+        ).length,
+      };
+    });
+  }, [advancedFilterBrowseBase, backendDistrictsForDraftCity, draftAdvancedFilters, rate]);
+
   const searchOnlyMatchCount = useMemo(() => {
     if (normalizedSearchTokens.length === 0) {
       if (showOnlyFavorites) {
@@ -1985,11 +2075,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       advancedFilters.transactionType !== 'SELL' ||
       advancedFilters.minPrice !== null ||
       advancedFilters.maxPrice !== null ||
+      advancedFilters.minPricePerM2 !== null ||
+      advancedFilters.maxPricePerM2 !== null ||
       advancedFilters.minArea !== null ||
       advancedFilters.maxArea !== null ||
       advancedFilters.minPlotArea !== null ||
       advancedFilters.maxPlotArea !== null ||
       advancedFilters.minRooms !== null ||
+      advancedFilters.keyword.trim() ||
       advancedFilters.locationMode !== 'CITY' ||
       advancedFilters.mapBounds !== null ||
       advancedFilters.city.trim() ||
@@ -3254,29 +3347,18 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const focusMapToOffers = useCallback((items: MapOffer[]) => {
     if (!mapRef.current) return;
     if (items.length === 0) return;
-    if (items.length === 1) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: items[0].lat,
-          longitude: items[0].lng,
-          latitudeDelta: 0.03,
-          longitudeDelta: 0.02,
-        },
-        650
-      );
-      return;
-    }
     const coords = items
       .map((o) => ({ latitude: Number(o.lat), longitude: Number(o.lng) }))
       .filter((c) => hasFiniteCoords(c.latitude, c.longitude));
     if (coords.length === 0) return;
-    mapRef.current.fitToCoordinates(coords, {
-      edgePadding: { top: 120, right: 80, bottom: 280, left: 80 },
-      animated: true,
-    });
+    fitMapCoordinatesAboveOverlay(mapRef.current, coords);
   }, []);
 
-  /** Jak mapa aut: na starcie Explore dopasuj kamerę do wszystkich pinezek. */
+  /**
+   * Jak mapa aut: na starcie Explore dopasuj kamerę do wszystkich pinezek.
+   * Flaga `didFitAllPins` ustawiana DOPIERO po udanym fit — inaczej cleanup przy
+   * zmianie `activeOffers` anuluje timer i mapa zostaje na DEFAULT_REGION (Warszawa).
+   */
   useEffect(() => {
     if (radarBrowseMode !== 'RADAR') {
       didFitAllPinsRef.current = false;
@@ -3284,15 +3366,34 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     }
     if (nearbyModeEnabled || showOnlyFavorites || showRadarMatchesOnly) return;
     if (hasAdvancedFiltersActive || normalizedSearchTokens.length > 0) return;
-    if (activeOffers.length === 0) return;
+    if (loading || activeOffers.length === 0) return;
     const shouldFit = !didFitAllPinsRef.current || pendingFitAllPinsRef.current;
     if (!shouldFit) return;
-    didFitAllPinsRef.current = true;
-    pendingFitAllPinsRef.current = false;
+
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const offersSnapshot = activeOffers;
+
+    const runFit = () => {
+      if (cancelled) return;
+      if (!mapRef.current) {
+        retryTimer = setTimeout(runFit, 180);
+        return;
+      }
+      focusMapToOffers(offersSnapshot);
+      didFitAllPinsRef.current = true;
+      pendingFitAllPinsRef.current = false;
+    };
+
     const timer = setTimeout(() => {
-      focusMapToOffers(activeOffers);
-    }, Platform.OS === 'ios' ? 320 : 220);
-    return () => clearTimeout(timer);
+      InteractionManager.runAfterInteractions(runFit);
+    }, Platform.OS === 'ios' ? 420 : 280);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [
     radarBrowseMode,
     nearbyModeEnabled,
@@ -3302,6 +3403,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     normalizedSearchTokens.length,
     activeOffers,
     focusMapToOffers,
+    fitAllRequestId,
+    loading,
   ]);
 
   const focusMapToActiveSearch = useCallback(() => {
@@ -3617,6 +3720,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     }
 
     setAdvancedFilters(draftAdvancedFilters);
+    setGalleryTransactionFilter(draftAdvancedFilters.transactionType);
     logAdvancedMapSearch({
       token,
       userId: user?.id,
@@ -3644,6 +3748,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     const reset: AdvancedFilters = { ...DEFAULT_ADVANCED_FILTERS };
     setDraftAdvancedFilters(reset);
     setAdvancedFilters(reset);
+    setGalleryTransactionFilter('SELL');
     setDraftOfferIdInput('');
     setAdvancedExtrasExpanded(false);
     setPendingMapFocusAfterApply(true);
@@ -3712,6 +3817,61 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     await postRadarPreferencesToBackend({ apiUrl: API_URL, token, dto });
   };
 
+  const disableLiveRadar = useCallback(async () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    setShowRadarMatchesOnly(false);
+    const nextFilters = { ...radarFilters, pushNotifications: false };
+    setRadarFilters(nextFilters);
+    await setRadarActive(false);
+    try {
+      if (user?.id && token) {
+        const dto = buildCanonicalRadarPreferencesDto({
+          userId: Number(user.id),
+          filters: nextFilters,
+          mapContext: mapContextForCanonicalDto(nextFilters, radarMapBounds),
+        });
+        await postRadarPreferencesToBackend({ apiUrl: API_URL, token, dto });
+      }
+      const ownerId = Number(user?.id || 0);
+      if (ownerId > 0) {
+        await saveRadarCommittedState({
+          userId: ownerId,
+          // Zachowujemy ostatnią konfigurację filtrów — przy ponownym hold-enable
+          // włączamy z pushNotifications: true.
+          filters: { ...radarFilters, pushNotifications: false },
+          mapBounds: radarMapBounds,
+          areaSummary,
+          committedAtIso: new Date().toISOString(),
+        });
+      }
+    } catch {
+      // Lokalny stan i tak wyłączony — sync może dojść przy kolejnej kalibracji.
+    }
+  }, [radarFilters, radarMapBounds, areaSummary, setRadarActive, user?.id, token]);
+
+  const clearRadarHoldAction = useCallback(() => {
+    if (radarHoldArmRef.current) {
+      clearTimeout(radarHoldArmRef.current);
+      radarHoldArmRef.current = null;
+    }
+    if (radarHoldTimerRef.current) {
+      clearTimeout(radarHoldTimerRef.current);
+      radarHoldTimerRef.current = null;
+    }
+    if (radarHoldHapticRef.current) {
+      clearInterval(radarHoldHapticRef.current);
+      radarHoldHapticRef.current = null;
+    }
+    if (radarHoldTickRef.current) {
+      clearInterval(radarHoldTickRef.current);
+      radarHoldTickRef.current = null;
+    }
+    radarHoldProgress.stopAnimation();
+    radarHoldProgress.setValue(0);
+    setRadarHoldMode(null);
+    setRadarHoldSecondsLeft(RADAR_HOLD_SECONDS);
+  }, [radarHoldProgress]);
+
   const commitRadarCalibrationState = useCallback(
     async (filtersToApply: RadarFilters, mapSnap: typeof radarMapBounds, summarySnap: string) => {
     setRadarFilters(filtersToApply);
@@ -3758,6 +3918,119 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     },
     [token, user?.id, setRadarActive],
   );
+
+  const enableLiveRadarFromLastSave = useCallback(async () => {
+    if (!user) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      pendingAuthTargetRef.current = 'radar';
+      setAuthGateContext('radar');
+      return;
+    }
+
+    const ownerId = Number(user.id || 0);
+    let nextFilters = { ...radarFilters, pushNotifications: true };
+    let nextBounds = radarMapBounds;
+    let nextSummary = areaSummary;
+
+    if (ownerId > 0) {
+      try {
+        const committed = await loadRadarCommittedState(ownerId);
+        if (committed?.filters) {
+          nextFilters = { ...committed.filters, pushNotifications: true };
+          nextBounds = committed.mapBounds ?? nextBounds;
+          nextSummary = committed.areaSummary || nextSummary;
+        }
+      } catch {
+        // fallback: bieżące filtry w pamięci
+      }
+    }
+
+    if (isRadarFactoryDefaults({ ...nextFilters, pushNotifications: false })) {
+      // Brak zapisanej kalibracji — otwórz ustawienia zamiast pustego LIVE.
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      openRadarCalibration();
+      return;
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (nextBounds) {
+      setRadarMapBounds(nextBounds);
+      setMapUsesRadarFilters(true);
+      setAreaSummary(nextSummary || areaSummary);
+    }
+    await commitRadarCalibrationState(nextFilters, nextBounds, nextSummary || areaSummary);
+  }, [
+    user,
+    radarFilters,
+    radarMapBounds,
+    areaSummary,
+    commitRadarCalibrationState,
+  ]);
+
+  const startRadarHoldAction = useCallback(() => {
+    if (radarHoldMode) return;
+    const mode: 'disable' | 'enable' = isRadarActive ? 'disable' : 'enable';
+    radarHoldCompletedRef.current = false;
+    setRadarHoldMode(mode);
+    setRadarHoldSecondsLeft(RADAR_HOLD_SECONDS);
+    radarHoldProgress.setValue(0);
+    Animated.timing(radarHoldProgress, {
+      toValue: 1,
+      duration: RADAR_HOLD_MS,
+      useNativeDriver: false,
+    }).start();
+
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    radarHoldHapticRef.current = setInterval(() => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }, 95);
+
+    let left = RADAR_HOLD_SECONDS;
+    radarHoldTickRef.current = setInterval(() => {
+      left -= 1;
+      setRadarHoldSecondsLeft(Math.max(0, left));
+      if (left <= 0 && radarHoldTickRef.current) {
+        clearInterval(radarHoldTickRef.current);
+        radarHoldTickRef.current = null;
+      }
+    }, 1000);
+
+    radarHoldTimerRef.current = setTimeout(() => {
+      radarHoldCompletedRef.current = true;
+      if (radarHoldHapticRef.current) {
+        clearInterval(radarHoldHapticRef.current);
+        radarHoldHapticRef.current = null;
+      }
+      if (radarHoldTickRef.current) {
+        clearInterval(radarHoldTickRef.current);
+        radarHoldTickRef.current = null;
+      }
+      radarHoldProgress.stopAnimation();
+      radarHoldProgress.setValue(0);
+      setRadarHoldMode(null);
+      setRadarHoldSecondsLeft(RADAR_HOLD_SECONDS);
+      if (mode === 'disable') {
+        void disableLiveRadar();
+      } else {
+        void enableLiveRadarFromLastSave();
+      }
+    }, RADAR_HOLD_MS);
+  }, [
+    radarHoldMode,
+    isRadarActive,
+    radarHoldProgress,
+    disableLiveRadar,
+    enableLiveRadarFromLastSave,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (radarHoldArmRef.current) clearTimeout(radarHoldArmRef.current);
+      if (radarHoldTimerRef.current) clearTimeout(radarHoldTimerRef.current);
+      if (radarHoldHapticRef.current) clearInterval(radarHoldHapticRef.current);
+      if (radarHoldTickRef.current) clearInterval(radarHoldTickRef.current);
+    };
+  }, []);
 
   const applyRadarCalibration = async (
     filtersToApply: RadarFilters,
@@ -4169,12 +4442,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const focusOffer = (index: number) => {
     const offer = activeOffers[index];
     if (!offer) return;
-    mapRef.current?.animateToRegion({
+    focusMapCoordinateAboveOverlay(mapRef.current, {
       latitude: offer.lat,
       longitude: offer.lng,
-      latitudeDelta: 0.035,
-      longitudeDelta: 0.02,
-    }, 350);
+    });
     setActiveIndex(index);
   };
 
@@ -4184,12 +4455,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (index < 0) return;
       const offer = activeOffers[index];
       if (!offer) return;
-      mapRef.current?.animateToRegion({
+      focusMapCoordinateAboveOverlay(mapRef.current, {
         latitude: offer.lat,
         longitude: offer.lng,
-        latitudeDelta: 0.035,
-        longitudeDelta: 0.02,
-      }, 350);
+      });
       setActiveIndex(index);
       listRef.current?.scrollToIndex({ index, animated: true });
     },
@@ -4465,10 +4734,16 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             }}
             initialRegion={DEFAULT_REGION}
             onMapReady={() => {
-              if (Platform.OS !== 'ios' || iosMapPinsReady) return;
-              InteractionManager.runAfterInteractions(() => {
-                requestAnimationFrame(() => setIosMapPinsReady(true));
-              });
+              if (Platform.OS === 'ios' && !iosMapPinsReady) {
+                InteractionManager.runAfterInteractions(() => {
+                  requestAnimationFrame(() => setIosMapPinsReady(true));
+                });
+              }
+              // Mapa gotowa wcześniej niż oferty / timer — wymuś ponowną próbę fitu.
+              if (!didFitAllPinsRef.current) {
+                pendingFitAllPinsRef.current = true;
+                setFitAllRequestId((n) => n + 1);
+              }
             }}
             onRegionChange={handleMapRegionChange}
             onRegionChangeComplete={handleMapRegionChangeComplete}
@@ -4797,39 +5072,29 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             ]}
           >
             <VerticalSegmentRail isDark={isDark} />
-            {tabSurface === 'explore' ? (
-              <View style={{ marginTop: 8, width: '100%', alignItems: 'center' }}>
-                <RadarBrowseModeRail
-                  mode={exploreLive ? 'RADAR' : 'GALLERY'}
-                  isDark={isDark}
-                  embeddedInTopBar
-                  variant="mapRadar"
-                  radarLabel={t('radar.home.browseModeLiveRadar')}
-                  galleryLabel={t('radar.home.browseModeMap')}
-                  onSelectRadar={() => {
-                    setExploreLive(true);
-                    setRadarBrowseMode('RADAR');
-                  }}
-                  onSelectGallery={() => {
-                    setExploreLive(false);
-                    setShowRadarMatchesOnly(false);
-                    setRadarBrowseMode('RADAR');
-                  }}
-                />
-              </View>
-            ) : null}
-            {tabSurface !== 'explore' || exploreLive ? (
             <JellyReveal visible key="radar-calibration-pill">
               <View style={[styles.radarHeroWrap, tabSurface === 'explore' && { marginTop: 8 }]}>
-                {isRadarActive && (
+                {(isRadarActive || radarHoldMode) && (
                   <View pointerEvents="none" style={styles.radarPulseLayer}>
                     <Animated.View
                       style={[
                         styles.radarPulseWave,
                         {
-                          borderColor: 'rgba(16,185,129,0.55)',
-                          opacity: radarPulseA.interpolate({ inputRange: [0, 1], outputRange: [0.42, 0] }),
-                          transform: [{ scale: radarPulseA.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.85] }) }],
+                          borderColor: radarHoldMode
+                            ? 'rgba(249,115,22,0.75)'
+                            : 'rgba(16,185,129,0.55)',
+                          opacity: radarPulseA.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [radarHoldMode ? 0.6 : 0.42, 0],
+                          }),
+                          transform: [
+                            {
+                              scale: radarPulseA.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [0.92, radarHoldMode ? 2.2 : 1.85],
+                              }),
+                            },
+                          ],
                         },
                       ]}
                     />
@@ -4837,9 +5102,21 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       style={[
                         styles.radarPulseWave,
                         {
-                          borderColor: 'rgba(16,185,129,0.42)',
-                          opacity: radarPulseB.interpolate({ inputRange: [0, 1], outputRange: [0.34, 0] }),
-                          transform: [{ scale: radarPulseB.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.95] }) }],
+                          borderColor: radarHoldMode
+                            ? 'rgba(251,146,60,0.55)'
+                            : 'rgba(16,185,129,0.42)',
+                          opacity: radarPulseB.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [radarHoldMode ? 0.48 : 0.34, 0],
+                          }),
+                          transform: [
+                            {
+                              scale: radarPulseB.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [0.96, radarHoldMode ? 2.4 : 1.95],
+                              }),
+                            },
+                          ],
                         },
                       ]}
                     />
@@ -4847,7 +5124,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 )}
                 <Animated.View
                   style={
-                    !isRadarActive
+                    !isRadarActive && !radarHoldMode
                       ? {
                           transform: [
                             {
@@ -4868,45 +5145,106 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   }
                 >
                   <Pressable
+                    onPressIn={() => {
+                      radarPressStartedAtRef.current = Date.now();
+                      if (radarHoldArmRef.current) clearTimeout(radarHoldArmRef.current);
+                      // Krótki próg — tap = kalibracja; dopiero przytrzymanie startuje 3 s.
+                      radarHoldArmRef.current = setTimeout(() => {
+                        radarHoldArmRef.current = null;
+                        startRadarHoldAction();
+                      }, 320);
+                    }}
+                    onPressOut={() => {
+                      if (!radarHoldCompletedRef.current) {
+                        clearRadarHoldAction();
+                      }
+                    }}
                     onPress={() => {
-                      if (isRadarActive && visibleRadarMatchingOffers.length > 0 && !showOnlyFavorites) {
-                        Haptics.selectionAsync();
-                        setShowRadarMatchesOnly(true);
+                      if (radarHoldCompletedRef.current) {
+                        radarHoldCompletedRef.current = false;
                         return;
                       }
-                      openRadarCalibration();
-                    }}
-                    onLongPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      if (Date.now() - radarPressStartedAtRef.current > 280) {
+                        return;
+                      }
                       openRadarCalibration();
                     }}
                     style={({ pressed }) => [
                       styles.radarBtnWrapper,
                       styles.radarCalibrationBtn,
                       radarCalibrationChrome.shadow,
-                      { borderColor: radarCalibrationChrome.borderColor },
+                      {
+                        borderColor: radarHoldMode
+                          ? 'rgba(249,115,22,0.9)'
+                          : radarCalibrationChrome.borderColor,
+                      },
                       pressed && styles.radarCalibrationPressed,
                     ]}
                   >
                     <BlurView
                       intensity={isDark ? 82 : 92}
                       tint={isDark ? 'dark' : 'light'}
-                      style={[styles.radarPill, styles.radarCalibrationFace, { backgroundColor: radarCalibrationChrome.fill }]}
+                      style={[
+                        styles.radarPill,
+                        styles.radarCalibrationFace,
+                        { backgroundColor: radarCalibrationChrome.fill, overflow: 'hidden' },
+                      ]}
                     >
+                      {radarHoldMode ? (
+                        <Animated.View
+                          pointerEvents="none"
+                          style={[
+                            styles.radarHoldFill,
+                            {
+                              backgroundColor: isDark
+                                ? 'rgba(249,115,22,0.32)'
+                                : 'rgba(249,115,22,0.26)',
+                              width: radarHoldProgress.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ['0%', '100%'],
+                              }),
+                            },
+                          ]}
+                        />
+                      ) : null}
                       <RadarStatusBulb
-                        active={isRadarActive}
+                        active={isRadarActive && !radarHoldMode}
                         blink={radarInactiveBlink}
-                        tint={radarCalibrationChrome.accent}
-                        softBg={radarCalibrationChrome.iconBg}
+                        tint={radarHoldMode ? '#F97316' : radarCalibrationChrome.accent}
+                        softBg={
+                          radarHoldMode ? 'rgba(249,115,22,0.22)' : radarCalibrationChrome.iconBg
+                        }
                       />
                       <View style={styles.radarPillTextWrap}>
-                        <Text style={[styles.radarTitle, { color: radarCalibrationChrome.accent }]}>
+                        <Text
+                          style={[
+                            styles.radarTitle,
+                            {
+                              color: radarHoldMode ? '#F97316' : radarCalibrationChrome.accent,
+                            },
+                          ]}
+                        >
                           {t('radar.home.radarBrand')}
                         </Text>
-                        <Text style={styles.radarStatus}>
-                          {isRadarActive ? t('radar.home.statusLive') : t('radar.home.statusInactive')}
+                        <Text
+                          style={[
+                            styles.radarStatus,
+                            radarHoldMode ? { color: isDark ? '#FDBA74' : '#C2410C' } : null,
+                          ]}
+                        >
+                          {radarHoldMode === 'disable'
+                            ? t('radar.home.calibrationHoldCountdown', {
+                                seconds: String(radarHoldSecondsLeft),
+                              })
+                            : radarHoldMode === 'enable'
+                              ? t('radar.home.calibrationHoldEnableCountdown', {
+                                  seconds: String(radarHoldSecondsLeft),
+                                })
+                              : isRadarActive
+                                ? t('radar.home.statusLive')
+                                : t('radar.home.statusInactive')}
                         </Text>
-                        {isRadarActive && radarActiveScopeLine ? (
+                        {!radarHoldMode && isRadarActive && radarActiveScopeLine ? (
                           <Text
                             numberOfLines={2}
                             ellipsizeMode="tail"
@@ -4921,21 +5259,36 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       </View>
                     </BlurView>
                   </Pressable>
-                  {!isRadarActive ? (
-                    <Text
-                      pointerEvents="none"
-                      style={[
-                        styles.radarCalibrationTapHint,
-                        { color: isDark ? 'rgba(255,180,174,0.78)' : 'rgba(185,28,28,0.62)' },
-                      ]}
-                    >
-                      {t('radar.home.calibrationTapHint')}
-                    </Text>
-                  ) : null}
+                  <Text
+                    pointerEvents="none"
+                    style={[
+                      styles.radarCalibrationTapHint,
+                      {
+                        color: radarHoldMode
+                          ? isDark
+                            ? 'rgba(253,186,116,0.92)'
+                            : 'rgba(194,65,12,0.78)'
+                          : isRadarActive
+                            ? isDark
+                              ? 'rgba(16,185,129,0.78)'
+                              : 'rgba(5,120,85,0.72)'
+                            : isDark
+                              ? 'rgba(255,180,174,0.78)'
+                              : 'rgba(185,28,28,0.62)',
+                      },
+                    ]}
+                  >
+                    {radarHoldMode === 'disable'
+                      ? t('radar.home.calibrationHoldKeepHint')
+                      : radarHoldMode === 'enable'
+                        ? t('radar.home.calibrationHoldKeepEnableHint')
+                        : isRadarActive
+                          ? t('radar.home.calibrationHoldToDisableHint')
+                          : t('radar.home.calibrationInactiveHint')}
+                  </Text>
                 </Animated.View>
               </View>
             </JellyReveal>
-            ) : null}
           </Animated.View>
         ) : radarBrowseMode === 'GALLERY' ? (
           <Animated.View
@@ -4949,66 +5302,27 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             ]}
           >
             <VerticalSegmentRail isDark={isDark} />
-            {tabSurface === 'market' ? (
-              <HomeTransactionSubRail
-                isDark={isDark}
-                value={galleryTransactionFilter === 'RENT' ? 'RENT' : 'SELL'}
-                onChange={(v: HomeTxFilter) => setGalleryTransactionFilter(v)}
-              />
-            ) : null}
-            {tabSurface !== 'market' ? (
-              <View style={{ marginTop: 8, width: '100%', alignItems: 'center' }}>
-                <RadarBrowseModeRail
-                  mode={radarBrowseMode}
-                  isDark={isDark}
-                  embeddedInTopBar
-                  radarLabel={t('radar.home.browseModeRadar')}
-                  galleryLabel={t('radar.home.browseModeGallery')}
-                  onSelectRadar={() => setRadarBrowseMode('RADAR')}
-                  onSelectGallery={() => {
-                    setRadarBrowseMode('GALLERY');
-                    setShowRadarMatchesOnly(false);
-                  }}
-                />
-              </View>
-            ) : null}
           </Animated.View>
         ) : (
           <View style={styles.topBarCenterSpacer} />
         )}
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.topBarSideSlot,
-            styles.filterButtonWrap,
-            isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
-            pressed && { opacity: 0.8 },
-          ]}
+        <CatalogSearchFilterButton
+          isDark={isDark}
+          accent={showOnlyFavorites ? favoritesScopeAccent : modeAccentColor}
+          label={t('radar.home.searchCtaLabel')}
+          hint={t('radar.home.searchCtaHint')}
+          active={hasAdvancedFiltersActive}
+          lightChrome={isGalleryLightChrome}
+          accessibilityLabel={t('radar.home.advancedSearch')}
           onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             setDraftAdvancedFilters({
               ...advancedFilters,
               localityCountryCode: advancedFilters.localityCountryCode.trim() || 'PL',
             });
             setShowAdvancedSearch(true);
           }}
-          accessibilityLabel={t('radar.home.advancedSearch')}
-        >
-          <BlurView
-            intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
-            tint={isDark ? 'dark' : 'light'}
-            style={[styles.filterGlass, isGalleryLightChrome && styles.filterGlassGalleryLight, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
-          >
-            <Ionicons
-              name="search"
-              size={22}
-              color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'}
-            />
-            {hasAdvancedFiltersActive && (
-              <View style={[styles.filterActiveDot, { backgroundColor: showOnlyFavorites ? favoritesScopeAccent : modeAccentColor }]} />
-            )}
-          </BlurView>
-        </Pressable>
+        />
       </View>
 
       {!showOnlyFavorites && radarBrowseMode === 'GALLERY' && !showAreaPicker && (
@@ -5422,8 +5736,12 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 { height: advancedSheetMaxHeight, maxHeight: advancedSheetMaxHeight },
                 advancedSearchKeyboardInset > 0 && { paddingBottom: advancedSearchKeyboardInset },
               ]}
+              {...advancedSheetPan.panHandlers}
             >
             <View style={styles.modalDragHandle} />
+            <Text style={[styles.advancedSwipeHint, { color: isDark ? 'rgba(255,255,255,0.45)' : '#8E8E93' }]}>
+              {t('radar.advancedSearch.swipeDownToClose')}
+            </Text>
             <View style={styles.advancedHeader}>
               <View style={styles.advancedHeaderTitleRow}>
                 <Ionicons name="search" size={22} color={draftModeAccentColor} />
@@ -5456,6 +5774,47 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   accentColor={draftModeAccentColor}
                   isDark={isDark}
                 />
+
+                <Text style={[styles.advancedSection, { marginTop: 18 }]}>
+                  {t('radar.advancedSearch.keywordSection')}
+                </Text>
+                <View
+                  style={[
+                    styles.advancedCityInputWrap,
+                    {
+                      borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.1)',
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)',
+                    },
+                  ]}
+                >
+                  <Ionicons name="sparkles-outline" size={18} color={draftModeAccentColor} />
+                  <TextInput
+                    style={[styles.advancedCityInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
+                    value={draftAdvancedFilters.keyword}
+                    onChangeText={(keyword) => setDraftAdvancedFilters((p) => ({ ...p, keyword }))}
+                    placeholder={t('radar.advancedSearch.keywordPlaceholder')}
+                    placeholderTextColor={isDark ? 'rgba(235,235,245,0.45)' : 'rgba(60,60,67,0.55)'}
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    returnKeyType="search"
+                  />
+                  {draftAdvancedFilters.keyword.trim() ? (
+                    <Pressable
+                      onPress={() => setDraftAdvancedFilters((p) => ({ ...p, keyword: '' }))}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#8E8E93" />
+                    </Pressable>
+                  ) : null}
+                </View>
+                <Text
+                  style={[
+                    styles.advancedHint,
+                    { marginTop: 8, color: isDark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.72)' },
+                  ]}
+                >
+                  {t('radar.advancedSearch.keywordHint')}
+                </Text>
 
                 <Text style={[styles.advancedSection, { marginTop: 18 }]}>
                   {t('radar.advancedSearch.locationSection')}
@@ -5656,7 +6015,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                           },
                         ]}
                       >
-                        <Ionicons name="search" size={18} color={draftModeAccentColor} />
+                        <Ionicons name="location-outline" size={18} color={draftModeAccentColor} />
                         <TextInput
                           style={[styles.advancedCityInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
                           value={draftAdvancedFilters.city}
@@ -5669,7 +6028,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                               mapBounds: null,
                             }))
                           }
-                          placeholder={t('radar.home.searchPlaceholder')}
+                          placeholder={t('radar.advancedSearch.cityOverridePlaceholder')}
                           placeholderTextColor={isDark ? 'rgba(235,235,245,0.45)' : 'rgba(60,60,67,0.55)'}
                           autoCorrect={false}
                           autoCapitalize="words"
@@ -5696,7 +6055,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                           { marginTop: 8, color: isDark ? 'rgba(235,235,245,0.45)' : 'rgba(60,60,67,0.65)' },
                         ]}
                       >
-                        {t('radar.advancedSearch.polandScopeHint')}
+                        {t('radar.advancedSearch.cityOverrideHint')}
                       </Text>
 
                       {draftAdvancedFilters.city.trim() ? (
@@ -5704,9 +6063,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                           <Text style={styles.advancedSection}>
                             {t('radar.calibration.districts', { city: draftAdvancedFilters.city.trim() })}
                           </Text>
-                          {backendDistrictsForDraftCity.length > 0 ? (
+                          {districtFilterEntries.length > 0 ? (
                             <View style={styles.advancedRow}>
-                              {backendDistrictsForDraftCity.map((district) => {
+                              {districtFilterEntries.map(({ district, count }) => {
                                 const active = draftAdvancedFilters.districts.includes(district);
                                 return (
                                   <Pressable
@@ -5740,7 +6099,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                                         active && { color: draftModeAccentColor },
                                       ]}
                                     >
-                                      {district}
+                                      {`${district} (${count})`}
                                     </Text>
                                   </Pressable>
                                 );
@@ -5908,6 +6267,55 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   onChangeText={(v) => setDraftAdvancedFilters((p) => ({ ...p, maxPrice: v ? Number(v.replace(/\D/g, '')) : null }))}
                 />
               </View>
+
+                <Text style={styles.advancedSection}>
+                  {t('radar.advancedSearch.pricePerM2Section', {
+                    currency: draftAdvancedFilters.priceCurrency === 'EUR' ? '€' : 'zł',
+                  })}
+                </Text>
+                <Text style={[styles.advancedPriceHint, { color: isDark ? '#8E8E93' : '#6B7280' }]}>
+                  {t('radar.advancedSearch.pricePerM2Hint')}
+                </Text>
+                <View style={styles.advancedInputRow}>
+                  <TextInput
+                    style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
+                    placeholder={t('radar.advancedSearch.pricePerM2From', {
+                      currency: draftAdvancedFilters.priceCurrency,
+                    })}
+                    placeholderTextColor="#8E8E93"
+                    keyboardType="numeric"
+                    value={
+                      draftAdvancedFilters.minPricePerM2 === null
+                        ? ''
+                        : String(draftAdvancedFilters.minPricePerM2)
+                    }
+                    onChangeText={(v) =>
+                      setDraftAdvancedFilters((p) => ({
+                        ...p,
+                        minPricePerM2: v ? Number(v.replace(/\D/g, '')) : null,
+                      }))
+                    }
+                  />
+                  <TextInput
+                    style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
+                    placeholder={t('radar.advancedSearch.pricePerM2To', {
+                      currency: draftAdvancedFilters.priceCurrency,
+                    })}
+                    placeholderTextColor="#8E8E93"
+                    keyboardType="numeric"
+                    value={
+                      draftAdvancedFilters.maxPricePerM2 === null
+                        ? ''
+                        : String(draftAdvancedFilters.maxPricePerM2)
+                    }
+                    onChangeText={(v) =>
+                      setDraftAdvancedFilters((p) => ({
+                        ...p,
+                        maxPricePerM2: v ? Number(v.replace(/\D/g, '')) : null,
+                      }))
+                    }
+                  />
+                </View>
 
                 <Text style={styles.advancedSection}>{t('radar.advancedSearch.areaSection')}</Text>
               <View style={styles.advancedInputRow}>
@@ -6644,6 +7052,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     textAlign: 'center',
   },
+  radarHoldFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+  },
   radarPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -7072,6 +7486,12 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: 'rgba(150,150,150,0.4)',
     alignSelf: 'center',
+    marginBottom: 4,
+  },
+  advancedSwipeHint: {
+    textAlign: 'center',
+    fontSize: 10,
+    fontWeight: '600',
     marginBottom: 8,
   },
   advancedHeader: {
