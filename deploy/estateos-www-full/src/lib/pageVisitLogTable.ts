@@ -9,33 +9,53 @@ const EXTRA_COLUMNS: Array<{ name: string; ddl: string }> = [
   { name: 'userId', ddl: 'userId INT NULL' },
 ];
 
+let ensurePromise: Promise<void> | null = null;
+
+/** DDL only once per process — calling ALTER on every /api/admin/stats made Centrala hang. */
 export async function ensurePageVisitLogTable(): Promise<void> {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS PageVisitLog (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      visitorHash VARCHAR(64) NOT NULL,
-      ip VARCHAR(64) NOT NULL,
-      country VARCHAR(8) NOT NULL DEFAULT 'UN',
-      path VARCHAR(191) NOT NULL DEFAULT '/',
-      userAgent VARCHAR(255) NULL,
-      createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-      PRIMARY KEY (id),
-      KEY PageVisitLog_path_createdAt_idx (path, createdAt),
-      KEY PageVisitLog_hash_createdAt_idx (visitorHash, createdAt)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `);
+  if (ensurePromise) return ensurePromise;
+  ensurePromise = (async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS PageVisitLog (
+        id BIGINT NOT NULL AUTO_INCREMENT,
+        visitorHash VARCHAR(64) NOT NULL,
+        ip VARCHAR(64) NOT NULL,
+        country VARCHAR(8) NOT NULL DEFAULT 'UN',
+        path VARCHAR(191) NOT NULL DEFAULT '/',
+        userAgent VARCHAR(255) NULL,
+        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        KEY PageVisitLog_path_createdAt_idx (path, createdAt),
+        KEY PageVisitLog_hash_createdAt_idx (visitorHash, createdAt),
+        KEY PageVisitLog_createdAt_idx (createdAt)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
 
-  for (const column of EXTRA_COLUMNS) {
-    try {
-      await prisma.$executeRawUnsafe(`ALTER TABLE PageVisitLog ADD COLUMN ${column.ddl}`);
-    } catch {
-      // kolumna już istnieje
+    for (const column of EXTRA_COLUMNS) {
+      try {
+        await prisma.$executeRawUnsafe(`ALTER TABLE PageVisitLog ADD COLUMN ${column.ddl}`);
+      } catch {
+        // kolumna już istnieje
+      }
     }
-  }
 
-  try {
-    await prisma.$executeRawUnsafe(`CREATE INDEX PageVisitLog_userId_createdAt_idx ON PageVisitLog (userId, createdAt)`);
-  } catch {
-    // indeks już istnieje
-  }
+    try {
+      await prisma.$executeRawUnsafe(
+        `CREATE INDEX PageVisitLog_userId_createdAt_idx ON PageVisitLog (userId, createdAt)`,
+      );
+    } catch {
+      // indeks już istnieje
+    }
+
+    try {
+      await prisma.$executeRawUnsafe(`CREATE INDEX PageVisitLog_createdAt_idx ON PageVisitLog (createdAt)`);
+    } catch {
+      // indeks już istnieje
+    }
+  })().catch((err) => {
+    ensurePromise = null;
+    throw err;
+  });
+
+  return ensurePromise;
 }
