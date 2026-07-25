@@ -30,6 +30,7 @@ export default function EstateOsGuidePanel() {
             <h2 className="mt-5 max-w-xl text-2xl font-semibold tracking-tight text-white sm:text-3xl">{title}</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-white/65">
               Guide pomaga odkrywać miejsca, zapamiętywać ważne tropy i rozumieć kolejny krok — bez formularza, presji i udawanej pewności.
+              Pełne Discovery™ (przesuwanie kart i uczenie gustu) działa w aplikacji mobilnej EstateOS — tutaj na www prowadzimy Cię dalej przez mapę, oferty i konto.
             </p>
           </div>
           <div className="grid w-full gap-2 sm:grid-cols-3 lg:w-[34rem] lg:grid-cols-1">
