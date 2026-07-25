@@ -93,6 +93,12 @@ export type AdminUserDetail = {
     topPropertyTypes: Array<{ key: string; value: number }>;
     dislikeReasons: Array<{ key: string; value: number }>;
     summaryLine: string;
+    confidence: number;
+    contradictionIndex: number;
+    explorationHunger: number;
+    searchPhase: string;
+    lastCorrectionAt: string | null;
+    lastVisitAt: string | null;
     updatedAt: string | null;
   } | null;
   devices: AdminUserDeviceRow[];
@@ -228,6 +234,12 @@ export function shapeAdminUserDetail(user: {
     districtStats: unknown;
     propertyStats: unknown;
     reasonStats: unknown;
+    confidence: number;
+    contradictionIndex: number;
+    explorationHunger: number;
+    searchPhase: string;
+    lastCorrectionAt: Date | null;
+    lastVisitAt: Date | null;
     updatedAt: Date;
   } | null;
   devices: Array<{
@@ -346,6 +358,12 @@ export function shapeAdminUserDetail(user: {
             topPropertyTypes: brief.topPropertyTypes,
             dislikeReasons: brief.dislikeReasons,
             summaryLine: brief.summaryLine,
+            confidence: user.discoveryProfile.confidence,
+            contradictionIndex: user.discoveryProfile.contradictionIndex,
+            explorationHunger: user.discoveryProfile.explorationHunger,
+            searchPhase: user.discoveryProfile.searchPhase,
+            lastCorrectionAt: user.discoveryProfile.lastCorrectionAt?.toISOString() ?? null,
+            lastVisitAt: user.discoveryProfile.lastVisitAt?.toISOString() ?? null,
             updatedAt: user.discoveryProfile.updatedAt.toISOString(),
           };
         })()

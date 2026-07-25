@@ -483,6 +483,18 @@ export default function AdminUserDetailPanel({
           <InfoRow label="Odrzucenia" value={String(user.discovery.dislikesCount)} />
           <InfoRow label="Fast track" value={String(user.discovery.fastTrackCount)} />
           <InfoRow label="Otwarcia kart" value={String(user.discovery.opensCount)} />
+          <InfoRow label="Pewność profilu" value={`${Math.round(user.discovery.confidence * 100)}%`} />
+          <InfoRow
+            label="Napięcie preferencji"
+            value={
+              user.discovery.contradictionIndex >= 0.55
+                ? "Wysokie — warto prowadzić spokojniej"
+                : user.discovery.contradictionIndex >= 0.25
+                  ? "Umiarkowane"
+                  : "Niskie"
+            }
+          />
+          <InfoRow label="Faza poszukiwania" value={user.discovery.searchPhase === "COMPLETED" ? "Zakończona" : "Aktywna"} />
           <InfoRow
             label="Preferowany budżet"
             value={
@@ -549,6 +561,8 @@ export default function AdminUserDetailPanel({
                 : "—"
             }
           />
+          <InfoRow label="Ostatnia korekta gustu" value={formatDate(user.discovery.lastCorrectionAt)} />
+          <InfoRow label="Ostatni feedback z wizyty" value={formatDate(user.discovery.lastVisitAt)} />
           <InfoRow label="Ostatnia aktualizacja" value={formatDate(user.discovery.updatedAt)} />
         </Section>
       ) : null}

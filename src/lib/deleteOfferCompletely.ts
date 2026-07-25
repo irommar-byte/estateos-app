@@ -102,8 +102,10 @@ export async function deleteOfferCompletely(offerId: number): Promise<DeleteOffe
     await tx.$executeRawUnsafe(`DELETE FROM OfferViewLog WHERE offerId = ?`, offerId);
     try {
       await tx.$executeRawUnsafe(`DELETE FROM DiscoveryEvent WHERE offerId = ?`, offerId);
+      await tx.$executeRawUnsafe(`DELETE FROM DiscoveryEmbeddingJob WHERE offerId = ?`, offerId);
+      await tx.$executeRawUnsafe(`DELETE FROM DiscoveryGalleryPlan WHERE offerId = ?`, offerId);
     } catch {
-      // tabela opcjonalna w starszych instalacjach
+      // Discovery Foundation tables are optional on older installations.
     }
 
     await tx.offer.delete({ where: { id: offerId } });

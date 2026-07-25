@@ -1,206 +1,239 @@
 import { NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import { prisma } from '@/lib/prisma';
-import { verifyMobileToken } from '@/lib/jwtMobile';
-import {
-  DISCOVERY_META,
-  asStatMap,
-  bumpMeta,
-} from '@/lib/discoveryInsights';
+import { authorizeMobile } from '@/lib/mobileAuth';
+import { getClientIp } from '@/lib/observability';
+import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
+import { DISCOVERY_META } from '@/lib/discoveryInsights';
+import { updateDiscoveryProfileFromEvent } from '@/lib/discovery/behaviour';
+import { buildDiscoveryEventIdempotencyKey, parseDiscoveryIncomingEvent } from '@/lib/discovery/events';
+import { createDiscoveryProfileSnapshot } from '@/lib/discovery/engine';
+import type { DiscoveryCandidate } from '@/lib/discovery/types';
 
-const EVENT_TYPES = new Set([
-  'DISCOVERY_LIKE',
-  'DISCOVERY_DISLIKE',
-  'DISCOVERY_FAST_TRACK',
-  'DISCOVERY_OPEN',
-  'DISCOVERY_DISLIKE_REASON',
-] as const);
-
-const REASON_CODES = new Set([
-  'PRICE_TOO_HIGH',
-  'LOCATION_MISMATCH',
-  'LAYOUT_MISMATCH',
-  'QUALITY_LOW',
-] as const);
-
-const PLATFORMS = new Set(['ios', 'android', 'web'] as const);
-
-function parseUserIdFromAuthHeader(authHeader: string | null): number | null {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  const rawToken = authHeader.slice('Bearer '.length).trim();
-  const token = rawToken.startsWith('Bearer ') ? rawToken.slice('Bearer '.length).trim() : rawToken;
-  if (!token) return null;
-
-  const verified = verifyMobileToken(token) as any;
-  const verifiedId = Number(verified?.id ?? verified?.userId ?? verified?.sub);
-  if (Number.isFinite(verifiedId) && verifiedId > 0) return verifiedId;
-
-  const decoded = jwt.decode(token) as any;
-  const decodedId = Number(decoded?.id ?? decoded?.userId ?? decoded?.sub);
-  return Number.isFinite(decodedId) && decodedId > 0 ? decodedId : null;
-}
-
-function incStat(stats: Record<string, number>, key: string, delta: number) {
-  const cleanKey = String(key || '').trim();
-  if (!cleanKey) return stats;
-  const current = Number(stats[cleanKey] || 0);
-  stats[cleanKey] = current + delta;
-  return stats;
+function incrementLegacy(map: Record<string, number>, key: string, delta: number) {
+  if (!key) return;
+  map[key] = Number(map[key] || 0) + delta;
 }
 
 export async function POST(req: Request) {
   try {
-    const userId = parseUserIdFromAuthHeader(
-      req.headers.get('authorization') || req.headers.get('Authorization')
-    );
-    if (!userId) {
-      return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
+    const auth = await authorizeMobile(req);
+    if (!auth.ok) return auth.response;
+    const userId = auth.userId;
+    const ipBucket = checkRateLimit(`discovery-events:ip:${getClientIp(req)}`, 120, 60_000);
+    if (!ipBucket.allowed) return rateLimitResponse(ipBucket.retryAfterSeconds);
+    const userBucket = checkRateLimit(`discovery-events:user:${userId}`, 90, 60_000);
+    if (!userBucket.allowed) return rateLimitResponse(userBucket.retryAfterSeconds);
+
+    const parsed = parseDiscoveryIncomingEvent(await req.json().catch(() => ({})));
+    if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
+    const event = parsed.event;
+    const idempotencyKey = buildDiscoveryEventIdempotencyKey(userId, event);
+    const existingEvent = await prisma.discoveryEvent.findUnique({ where: { idempotencyKey } });
+    if (existingEvent) {
+      return NextResponse.json({ success: true, id: String(existingEvent.id), idempotent: true });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const eventType = String(body?.eventType || '').toUpperCase();
-    const offerId = Number(body?.offerId);
-    const photoIndex = body?.photoIndex == null ? null : Number(body.photoIndex);
-    const score = body?.score == null ? null : Number(body.score);
-    const reasonCode = body?.reasonCode == null ? null : String(body.reasonCode).toUpperCase();
-    const source = String(body?.source || 'mobile_discovery').trim();
-    const platform = String(body?.platform || '').toLowerCase();
-    const atRaw = body?.at ? new Date(body.at) : new Date();
-
-    if (!EVENT_TYPES.has(eventType as any)) {
-      return NextResponse.json({ error: 'Niepoprawne eventType' }, { status: 400 });
-    }
-    if (!Number.isFinite(offerId) || offerId <= 0) {
-      return NextResponse.json({ error: 'offerId musi być > 0' }, { status: 400 });
-    }
-    if (!PLATFORMS.has(platform as any)) {
-      return NextResponse.json({ error: 'Niepoprawna platform' }, { status: 400 });
-    }
-    if (reasonCode && !REASON_CODES.has(reasonCode as any)) {
-      return NextResponse.json({ error: 'Niepoprawne reasonCode' }, { status: 400 });
-    }
-    if (eventType === 'DISCOVERY_DISLIKE_REASON' && !reasonCode) {
-      return NextResponse.json({ error: 'reasonCode jest wymagane dla DISCOVERY_DISLIKE_REASON' }, { status: 400 });
-    }
-    if (score != null && (!Number.isFinite(score) || score < 0 || score > 100)) {
-      return NextResponse.json({ error: 'score musi być w zakresie 0..100' }, { status: 400 });
-    }
-    if (photoIndex != null && (!Number.isFinite(photoIndex) || photoIndex < 0)) {
-      return NextResponse.json({ error: 'photoIndex musi być >= 0' }, { status: 400 });
-    }
-    if (Number.isNaN(atRaw.getTime())) {
-      return NextResponse.json({ error: 'Niepoprawne at (ISO datetime)' }, { status: 400 });
-    }
-
-    const offer = await prisma.offer.findUnique({
-      where: { id: offerId },
+    const offer = event.offerId
+      ? await prisma.offer.findUnique({
+      where: { id: event.offerId },
       select: {
         id: true,
+        title: true,
         city: true,
         district: true,
         propertyType: true,
         transactionType: true,
         price: true,
         pricePln: true,
+        priceCurrency: true,
+        listPricePln: true,
         area: true,
+        rooms: true,
+        hasBalcony: true,
+        hasParking: true,
+        hasGarden: true,
+        hasElevator: true,
+        isFurnished: true,
+        images: true,
+        status: true,
+        expiresAt: true,
+        createdAt: true,
+        updatedAt: true,
       },
-    });
-    if (!offer) {
+    })
+      : null;
+    if (event.offerId && !offer) {
       return NextResponse.json({ error: 'Oferta nie istnieje' }, { status: 404 });
     }
 
-    const offerPrice = Number(offer.pricePln ?? offer.price ?? 0);
-    const offerArea = Number(offer.area ?? 0);
-
     const created = await prisma.$transaction(async (tx) => {
+      if (event.sessionId) {
+        const session = await tx.discoverySession.findUnique({ where: { id: event.sessionId } });
+        if (session && session.userId !== userId) {
+          throw new Error('DISCOVERY_SESSION_FORBIDDEN');
+        }
+        await tx.discoverySession.upsert({
+          where: { id: event.sessionId },
+          create: { id: event.sessionId, userId, lastActivityAt: event.at },
+          update: {
+            lastActivityAt: event.at,
+            status: event.eventType === 'DISCOVERY_PHASE_END' ? 'COMPLETED' : 'ACTIVE',
+            ...(event.eventType === 'DISCOVERY_PAUSE' ? { tempoMode: 'PAUSED', endedAt: event.at } : {}),
+          },
+        });
+      }
+
+      const reasonOnlyFollowUp = event.eventType === 'DISCOVERY_DISLIKE' && !!event.reasonCode && !!event.offerId
+        ? await tx.discoveryEvent.findFirst({
+            where: {
+              userId,
+              offerId: event.offerId,
+              eventType: 'DISCOVERY_DISLIKE',
+              reasonCode: null,
+              createdAt: { gte: new Date(event.at.getTime() - 10 * 60_000) },
+            },
+            select: { id: true },
+          })
+        : null;
+      const profileEvent = reasonOnlyFollowUp ? { ...event, legacyReasonOnly: true } : event;
+      const existingProfile = await tx.discoveryProfile.findUnique({ where: { userId } });
+      const profile = createDiscoveryProfileSnapshot({
+        tasteVector: existingProfile?.tasteVector,
+        preferenceVector: existingProfile?.preferenceVector,
+        confidence: existingProfile?.confidence,
+        contradictionIndex: existingProfile?.contradictionIndex,
+        explorationHunger: existingProfile?.explorationHunger,
+        searchPhase: existingProfile?.searchPhase,
+        cityStats: existingProfile?.cityStats,
+        districtStats: existingProfile?.districtStats,
+        propertyStats: existingProfile?.propertyStats,
+        reasonStats: existingProfile?.reasonStats,
+      });
+      const candidate = offer as DiscoveryCandidate | null;
+      const nextProfile = profileEvent.legacyReasonOnly || !candidate
+        ? profile
+        : updateDiscoveryProfileFromEvent({ existing: profile, event: profileEvent, candidate });
+
+      const cityStats = { ...(existingProfile?.cityStats as Record<string, number> || {}) };
+      const districtStats = { ...(existingProfile?.districtStats as Record<string, number> || {}) };
+      const propertyStats = { ...(existingProfile?.propertyStats as Record<string, number> || {}) };
+      const reasonStats = { ...(existingProfile?.reasonStats as Record<string, number> || {}) };
+      const delta = profileEvent.legacyReasonOnly ? 0 :
+        event.eventType === 'DISCOVERY_LIKE' || event.eventType === 'DISCOVERY_PRIORITY' ? 1 :
+          event.eventType === 'DISCOVERY_DISLIKE' || (event.eventType === 'DISCOVERY_VISIT_FEEDBACK' && event.visitOutcome === 'NO') ? -1 : 0;
+      if (delta) {
+        incrementLegacy(cityStats, candidate?.city || '', delta);
+        incrementLegacy(districtStats, candidate?.district || '', delta);
+        incrementLegacy(propertyStats, String(candidate?.propertyType || ''), delta);
+      }
+      if (event.reasonCode) incrementLegacy(reasonStats, event.reasonCode, 1);
+      if (candidate && !profileEvent.legacyReasonOnly) {
+        const candidatePrice = Number(candidate.pricePln ?? candidate.price ?? 0);
+        if (event.eventType === 'DISCOVERY_LIKE' || event.eventType === 'DISCOVERY_PRIORITY') {
+          reasonStats[DISCOVERY_META.priceLikedSum] = Number(reasonStats[DISCOVERY_META.priceLikedSum] || 0) + candidatePrice;
+          reasonStats[DISCOVERY_META.priceLikedN] = Number(reasonStats[DISCOVERY_META.priceLikedN] || 0) + 1;
+          reasonStats[DISCOVERY_META.areaLikedSum] = Number(reasonStats[DISCOVERY_META.areaLikedSum] || 0) + Number(candidate.area || 0);
+          reasonStats[DISCOVERY_META.areaLikedN] = Number(reasonStats[DISCOVERY_META.areaLikedN] || 0) + 1;
+          const txKey = candidate.transactionType === 'RENT' ? DISCOVERY_META.txRent : DISCOVERY_META.txSell;
+          reasonStats[txKey] = Number(reasonStats[txKey] || 0) + 1;
+        } else if (event.eventType === 'DISCOVERY_DISLIKE') {
+          reasonStats[DISCOVERY_META.priceDislikedSum] = Number(reasonStats[DISCOVERY_META.priceDislikedSum] || 0) + candidatePrice;
+          reasonStats[DISCOVERY_META.priceDislikedN] = Number(reasonStats[DISCOVERY_META.priceDislikedN] || 0) + 1;
+        }
+      }
+
       const evt = await tx.discoveryEvent.create({
         data: {
           userId,
-          eventType,
-          offerId,
-          photoIndex,
-          score,
-          reasonCode,
-          source: source || 'mobile_discovery',
-          platform,
-          at: atRaw,
+          sessionId: event.sessionId,
+          idempotencyKey,
+          eventType: event.eventType,
+          offerId: event.offerId,
+          photoIndex: event.photoIndex,
+          score: event.score,
+          reasonCode: event.reasonCode,
+          visitOutcome: event.visitOutcome,
+          correctionTarget: event.correctionTarget,
+          dwellMs: event.dwellMs,
+          decisionLatencyMs: event.decisionLatencyMs,
+          source: event.source,
+          platform: event.platform,
+          at: event.at,
         },
       });
-
-      const existingProfile = await tx.discoveryProfile.findUnique({ where: { userId } });
-      const reasonStats = asStatMap(existingProfile?.reasonStats);
-      const cityStats = asStatMap(existingProfile?.cityStats);
-      const districtStats = asStatMap(existingProfile?.districtStats);
-      const propertyStats = asStatMap(existingProfile?.propertyStats);
-
-      const delta =
-        eventType === 'DISCOVERY_LIKE' || eventType === 'DISCOVERY_FAST_TRACK'
-          ? 1
-          : eventType === 'DISCOVERY_DISLIKE' || eventType === 'DISCOVERY_DISLIKE_REASON'
-            ? -1
-            : 0;
-
-      if (delta !== 0) {
-        incStat(cityStats, offer.city, delta);
-        incStat(districtStats, offer.district, delta);
-        incStat(propertyStats, String(offer.propertyType), delta);
-      }
-
-      if (eventType === 'DISCOVERY_LIKE' || eventType === 'DISCOVERY_FAST_TRACK') {
-        bumpMeta(reasonStats, DISCOVERY_META.priceLikedSum, DISCOVERY_META.priceLikedN, offerPrice);
-        bumpMeta(reasonStats, DISCOVERY_META.areaLikedSum, DISCOVERY_META.areaLikedN, offerArea);
-        if (String(offer.transactionType) === 'RENT') {
-          reasonStats[DISCOVERY_META.txRent] = Number(reasonStats[DISCOVERY_META.txRent] || 0) + 1;
-        } else {
-          reasonStats[DISCOVERY_META.txSell] = Number(reasonStats[DISCOVERY_META.txSell] || 0) + 1;
-        }
-      } else if (eventType === 'DISCOVERY_DISLIKE' || eventType === 'DISCOVERY_DISLIKE_REASON') {
-        bumpMeta(
-          reasonStats,
-          DISCOVERY_META.priceDislikedSum,
-          DISCOVERY_META.priceDislikedN,
-          offerPrice,
-        );
-      }
-
-      if (reasonCode) {
-        incStat(reasonStats, reasonCode, 1);
-      }
 
       await tx.discoveryProfile.upsert({
         where: { userId },
         create: {
           userId,
-          likesCount: eventType === 'DISCOVERY_LIKE' ? 1 : 0,
-          dislikesCount:
-            eventType === 'DISCOVERY_DISLIKE' || eventType === 'DISCOVERY_DISLIKE_REASON' ? 1 : 0,
-          fastTrackCount: eventType === 'DISCOVERY_FAST_TRACK' ? 1 : 0,
-          opensCount: eventType === 'DISCOVERY_OPEN' ? 1 : 0,
+          likesCount: event.eventType === 'DISCOVERY_LIKE' ? 1 : 0,
+          dislikesCount: event.eventType === 'DISCOVERY_DISLIKE' && !profileEvent.legacyReasonOnly ? 1 : 0,
+          fastTrackCount: event.eventType === 'DISCOVERY_PRIORITY' ? 1 : 0,
+          opensCount: event.eventType === 'DISCOVERY_DEPTH_OPEN' ? 1 : 0,
           reasonStats,
           cityStats,
           districtStats,
           propertyStats,
+          tasteVector: nextProfile.tasteVector,
+          preferenceVector: nextProfile.preferenceVector,
+          confidence: nextProfile.confidence,
+          contradictionIndex: nextProfile.contradictionIndex,
+          explorationHunger: nextProfile.explorationHunger,
+          searchPhase: nextProfile.searchPhase,
+          ...(event.eventType === 'DISCOVERY_CORRECTION' ? { lastCorrectionAt: event.at } : {}),
+          ...(event.eventType === 'DISCOVERY_VISIT_FEEDBACK' ? { lastVisitAt: event.at } : {}),
         },
         update: {
-          likesCount: { increment: eventType === 'DISCOVERY_LIKE' ? 1 : 0 },
-          dislikesCount: {
-            increment:
-              eventType === 'DISCOVERY_DISLIKE' || eventType === 'DISCOVERY_DISLIKE_REASON' ? 1 : 0,
-          },
-          fastTrackCount: { increment: eventType === 'DISCOVERY_FAST_TRACK' ? 1 : 0 },
-          opensCount: { increment: eventType === 'DISCOVERY_OPEN' ? 1 : 0 },
+          likesCount: { increment: event.eventType === 'DISCOVERY_LIKE' ? 1 : 0 },
+          dislikesCount: { increment: event.eventType === 'DISCOVERY_DISLIKE' && !profileEvent.legacyReasonOnly ? 1 : 0 },
+          fastTrackCount: { increment: event.eventType === 'DISCOVERY_PRIORITY' ? 1 : 0 },
+          opensCount: { increment: event.eventType === 'DISCOVERY_DEPTH_OPEN' ? 1 : 0 },
           reasonStats,
           cityStats,
           districtStats,
           propertyStats,
+          tasteVector: nextProfile.tasteVector,
+          preferenceVector: nextProfile.preferenceVector,
+          confidence: nextProfile.confidence,
+          contradictionIndex: nextProfile.contradictionIndex,
+          explorationHunger: nextProfile.explorationHunger,
+          searchPhase: nextProfile.searchPhase,
+          ...(event.eventType === 'DISCOVERY_CORRECTION' ? { lastCorrectionAt: event.at } : {}),
+          ...(event.eventType === 'DISCOVERY_VISIT_FEEDBACK' ? { lastVisitAt: event.at } : {}),
         },
       });
+
+      if (event.sessionId) {
+        const currentSession = await tx.discoverySession.findUnique({
+          where: { id: event.sessionId },
+          select: { shownOfferIds: true, decisionCount: true },
+        });
+        const shownOfferIds = Array.isArray(currentSession?.shownOfferIds)
+          ? currentSession.shownOfferIds.map((id) => Number(id)).filter(Number.isFinite)
+          : [];
+        if (event.eventType === 'DISCOVERY_VIEW_CARD' && event.offerId && !shownOfferIds.includes(event.offerId)) {
+          shownOfferIds.push(event.offerId);
+        }
+        const isDecision = ['DISCOVERY_LIKE', 'DISCOVERY_DISLIKE', 'DISCOVERY_PRIORITY'].includes(event.eventType) &&
+          !profileEvent.legacyReasonOnly;
+        await tx.discoverySession.update({
+          where: { id: event.sessionId },
+          data: {
+            shownOfferIds: shownOfferIds.slice(-120),
+            decisionCount: (currentSession?.decisionCount || 0) + (isDecision ? 1 : 0),
+            lastActivityAt: event.at,
+          },
+        });
+      }
 
       return evt;
     });
 
-    return NextResponse.json({ success: true, id: String(created.id) });
+    return NextResponse.json({ success: true, id: String(created.id), idempotent: false });
   } catch (error) {
+    if (error instanceof Error && error.message === 'DISCOVERY_SESSION_FORBIDDEN') {
+      return NextResponse.json({ error: 'Sesja Discovery nie należy do użytkownika' }, { status: 403 });
+    }
     console.error('[DISCOVERY EVENTS ERROR]', error);
     return NextResponse.json({ error: 'Błąd serwera' }, { status: 500 });
   }
