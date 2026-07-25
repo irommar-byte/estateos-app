@@ -89,6 +89,7 @@ export const UK: OfferPageCopy = {
   askSeller: "Запитати",
   sellerOnline: "Online",
   sellerOffline: "Offline",
+  sellerLastSeenPrefix: "Був онлайн",
   guestAsk: {
     title: "Запитати продавця",
     subtitle:
