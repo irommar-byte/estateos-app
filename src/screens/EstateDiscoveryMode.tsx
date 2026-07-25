@@ -36,7 +36,6 @@ import { useDiscoveryStore } from '../store/useDiscoveryStore';
 import DiscoverySessionIsland, { type DiscoveryIslandState } from '../components/discovery/DiscoverySessionIsland';
 import DiscoveryGlassOrb from '../components/discovery/DiscoveryGlassOrb';
 import DiscoverySmartGallery from '../components/discovery/DiscoverySmartGallery';
-import DiscoverySaveAffirmationSheet from '../components/discovery/DiscoverySaveAffirmationSheet';
 import DiscoveryDislikeReasonSheet, { type DislikeReason } from '../components/discovery/DiscoveryDislikeReasonSheet';
 import DiscoveryPrioritySheet from '../components/discovery/DiscoveryPrioritySheet';
 import DiscoveryInsightBubble from '../components/discovery/DiscoveryInsightBubble';
@@ -291,17 +290,20 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   // Responsywne wyliczanie wielkości karty
   const CARD_WIDTH = isTablet ? Math.min(width * 0.75, 540) : width * 0.94;
   const CARD_HEIGHT = isTablet ? Math.min(height * 0.75, 780) : height * 0.72;
-  
-  const SWIPE_THRESHOLD_X = CARD_WIDTH * 0.35;
-  const SWIPE_THRESHOLD_Y = -CARD_HEIGHT * 0.25;
+  const SWIPE_THRESHOLD_X = CARD_WIDTH * 0.28;
+  const SWIPE_THRESHOLD_Y = -CARD_HEIGHT * 0.18;
 
   const [offers, setOffers] = useState<DiscoveryOffer[]>([]);
   const position = useRef(new Animated.ValueXY()).current;
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const topOfferId = offers[0]?.id;
   const topOfferRef = useRef<DiscoveryOffer | null>(null);
+  const offersRef = useRef<DiscoveryOffer[]>([]);
+  const swipingRef = useRef(false);
   const cardShownAtRef = useRef(Date.now());
   const trackedOfferRef = useRef<string | null>(null);
+  const saveAffirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const forceSwipeRef = useRef<((direction: 'right' | 'left' | 'up') => void) | null>(null);
   const sendDiscoveryEventRef = useRef<((eventType: DiscoveryEventType, offer: DiscoveryOffer, extra?: {
     reasonCode?: DiscoveryDislikeReasonCode;
     photoIndex?: number;
@@ -428,8 +430,16 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   }, [sendDiscoveryEvent]);
 
   useEffect(() => {
+    offersRef.current = offers;
     topOfferRef.current = offers[0] || null;
   }, [offers]);
+
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+      if (saveAffirmTimerRef.current) clearTimeout(saveAffirmTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -573,45 +583,6 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     void Image.prefetch(preload);
   }, [offers, activePhotoIndex]);
 
-  // === FIZYKA PAN RESPONDERA ===
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      },
-      onPanResponderMove: (_, gestureState) => {
-        const newY = gestureState.dy > 0 ? gestureState.dy * 0.15 : gestureState.dy; // Blokujemy swipe w dół
-        position.setValue({ x: gestureState.dx, y: newY });
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy < SWIPE_THRESHOLD_Y && Math.abs(gestureState.dx) < SWIPE_THRESHOLD_X) {
-          forceSwipe('up');
-        } else if (gestureState.dx > SWIPE_THRESHOLD_X) {
-          forceSwipe('right');
-        } else if (gestureState.dx < -SWIPE_THRESHOLD_X) {
-          forceSwipe('left');
-        } else {
-          resetPosition();
-        }
-      },
-    })
-  ).current;
-
-  // === ANIMACJE KARTY ===
-  const forceSwipe = useCallback((direction: 'right' | 'left' | 'up') => {
-    let toX = 0; let toY = 0;
-    if (direction === 'right') toX = width * 1.5;
-    if (direction === 'left') toX = -width * 1.5;
-    if (direction === 'up') toY = -height * 1.5;
-
-    Animated.timing(position, {
-      toValue: { x: toX, y: toY },
-      duration: 350,
-      useNativeDriver: false,
-    }).start(() => onSwipeComplete(direction));
-  }, [position, width, height]);
-
   const resetPosition = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Animated.spring(position, {
@@ -619,83 +590,171 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       friction: 6,
       tension: 40,
       useNativeDriver: false,
-    }).start();
+    }).start(() => {
+      swipingRef.current = false;
+    });
   }, [position]);
 
-  function armUndo(offer: DiscoveryOffer, direction: 'right' | 'left' | 'up') {
+  const armUndo = useCallback((offer: DiscoveryOffer) => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     setUndoOffer(offer);
     undoTimerRef.current = setTimeout(() => {
       setUndoOffer(null);
     }, 7000);
-  }
+  }, []);
 
-  function commitDecision(direction: 'right' | 'left' | 'up', top: DiscoveryOffer) {
-    if (top) {
-      const price = parsePriceNumber(top.price);
-      const area = parsePriceNumber(top.area);
-      const locationKey = top.location.split(',')[0]?.trim().toLowerCase() || top.location.toLowerCase();
-      setProfile((prev) => {
-        const next: DiscoveryProfile = {
-          likedLocations: { ...prev.likedLocations },
-          dislikedLocations: { ...prev.dislikedLocations },
-          medianLikedPrice: prev.medianLikedPrice,
-          medianLikedArea: prev.medianLikedArea,
-          interactions: prev.interactions + 1,
-        };
-        if (direction === 'right' || direction === 'up') {
-          next.likedLocations[locationKey] = (next.likedLocations[locationKey] || 0) + 1;
-          next.medianLikedPrice =
-            next.medianLikedPrice == null ? price : Math.round((next.medianLikedPrice * 0.72) + (price * 0.28));
-          next.medianLikedArea =
-            next.medianLikedArea == null ? area : Math.round((next.medianLikedArea * 0.72) + (area * 0.28));
-        } else if (direction === 'left') {
-          next.dislikedLocations[locationKey] = (next.dislikedLocations[locationKey] || 0) + 1;
-        }
-        return next;
-      });
-      if (direction === 'left') {
-        dislikeCountRef.current += 1;
-        if (shouldAskDiscoveryDislikeReason(dislikeCountRef.current)) setPendingDislikeOffer(top);
-      } else {
-        setPendingDislikeOffer(null);
+  const showSaveAffirmationBriefly = useCallback((offer: DiscoveryOffer) => {
+    if (saveAffirmTimerRef.current) clearTimeout(saveAffirmTimerRef.current);
+    setSaveOffer(offer);
+    // Tylko island — bez Modal, żeby talia nie stawała po każdym like.
+    saveAffirmTimerRef.current = setTimeout(() => {
+      setSaveOffer(null);
+    }, 2200);
+  }, []);
+
+  const commitDecision = useCallback((direction: 'right' | 'left' | 'up', top: DiscoveryOffer) => {
+    const price = parsePriceNumber(top.price);
+    const area = parsePriceNumber(top.area);
+    const locationKey = top.location.split(',')[0]?.trim().toLowerCase() || top.location.toLowerCase();
+    setProfile((prev) => {
+      const next: DiscoveryProfile = {
+        likedLocations: { ...prev.likedLocations },
+        dislikedLocations: { ...prev.dislikedLocations },
+        medianLikedPrice: prev.medianLikedPrice,
+        medianLikedArea: prev.medianLikedArea,
+        interactions: prev.interactions + 1,
+      };
+      if (direction === 'right' || direction === 'up') {
+        next.likedLocations[locationKey] = (next.likedLocations[locationKey] || 0) + 1;
+        next.medianLikedPrice =
+          next.medianLikedPrice == null ? price : Math.round((next.medianLikedPrice * 0.72) + (price * 0.28));
+        next.medianLikedArea =
+          next.medianLikedArea == null ? area : Math.round((next.medianLikedArea * 0.72) + (area * 0.28));
+      } else if (direction === 'left') {
+        next.dislikedLocations[locationKey] = (next.dislikedLocations[locationKey] || 0) + 1;
       }
-      void sendDiscoveryEvent(
-        direction === 'right'
-          ? 'DISCOVERY_LIKE'
-          : direction === 'left'
-            ? 'DISCOVERY_DISLIKE'
-            : 'DISCOVERY_PRIORITY',
-        top,
-        { decisionLatencyMs: Date.now() - cardShownAtRef.current },
-      );
+      return next;
+    });
+    if (direction === 'left') {
+      dislikeCountRef.current += 1;
+      if (shouldAskDiscoveryDislikeReason(dislikeCountRef.current)) setPendingDislikeOffer(top);
+    } else {
+      setPendingDislikeOffer(null);
     }
+    void sendDiscoveryEventRef.current?.(
+      direction === 'right'
+        ? 'DISCOVERY_LIKE'
+        : direction === 'left'
+          ? 'DISCOVERY_DISLIKE'
+          : 'DISCOVERY_PRIORITY',
+      top,
+      { decisionLatencyMs: Date.now() - cardShownAtRef.current },
+    );
 
     if (direction === 'right') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } else if (direction === 'left') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    } else if (direction === 'up') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    } else {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
     setOffers((prev) => prev.slice(1));
     setActivePhotoIndex(0);
     position.setValue({ x: 0, y: 0 });
-    armUndo(top, direction);
-    if (direction === 'right') setSaveOffer(top);
-  }
+    swipingRef.current = false;
+    armUndo(top);
+    if (direction === 'right') showSaveAffirmationBriefly(top);
+  }, [armUndo, position, showSaveAffirmationBriefly]);
 
-  function onSwipeComplete(direction: 'right' | 'left' | 'up') {
-    const top = offers[0];
-    if (!top) return;
+  const onSwipeComplete = useCallback((direction: 'right' | 'left' | 'up') => {
+    const top = offersRef.current[0];
+    if (!top) {
+      position.setValue({ x: 0, y: 0 });
+      swipingRef.current = false;
+      return;
+    }
     if (direction === 'up') {
       position.setValue({ x: 0, y: 0 });
+      swipingRef.current = false;
       setPriorityOffer(top);
       return;
     }
     commitDecision(direction, top);
-  }
+  }, [commitDecision, position]);
+
+  // === ANIMACJE KARTY ===
+  const forceSwipe = useCallback((direction: 'right' | 'left' | 'up') => {
+    if (swipingRef.current) return;
+    if (!offersRef.current[0]) return;
+    swipingRef.current = true;
+
+    let toX = 0;
+    let toY = 0;
+    if (direction === 'right') toX = width * 1.5;
+    if (direction === 'left') toX = -width * 1.5;
+    if (direction === 'up') toY = -height * 1.5;
+
+    Animated.timing(position, {
+      toValue: { x: toX, y: toY },
+      duration: 280,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (!finished) {
+        position.setValue({ x: 0, y: 0 });
+        swipingRef.current = false;
+        return;
+      }
+      onSwipeComplete(direction);
+    });
+  }, [height, onSwipeComplete, position, width]);
+
+  forceSwipeRef.current = forceSwipe;
+
+  const layoutRef = useRef({ width, height });
+  layoutRef.current = { width, height };
+  const resetPositionRef = useRef(resetPosition);
+  resetPositionRef.current = resetPosition;
+
+  // PanResponder raz — zawsze przez refy (bez stale closure na offers).
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        if (swipingRef.current) return false;
+        return Math.abs(gestureState.dx) > 8 || Math.abs(gestureState.dy) > 8;
+      },
+      onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+        if (swipingRef.current) return false;
+        return Math.abs(gestureState.dx) > 12;
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const newY = gestureState.dy > 0 ? gestureState.dy * 0.15 : gestureState.dy;
+        position.setValue({ x: gestureState.dx, y: newY });
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        const { width: w, height: h } = layoutRef.current;
+        const thresholdX = w * 0.28;
+        const thresholdY = -h * 0.18;
+        if (gestureState.dy < thresholdY && Math.abs(gestureState.dx) < thresholdX) {
+          forceSwipeRef.current?.('up');
+        } else if (gestureState.dx > thresholdX) {
+          forceSwipeRef.current?.('right');
+        } else if (gestureState.dx < -thresholdX) {
+          forceSwipeRef.current?.('left');
+        } else {
+          resetPositionRef.current?.();
+        }
+      },
+      onPanResponderTerminate: () => {
+        resetPositionRef.current?.();
+      },
+    }),
+  ).current;
 
   const undoLastDecision = useCallback(() => {
     if (!undoOffer) return;
@@ -1029,21 +1088,6 @@ export default function EstateDiscoveryMode({ navigation }: any) {
           setGalleryVisible(false);
         }}
       />
-      <DiscoverySaveAffirmationSheet
-        visible={!!saveOffer}
-        onSave={() => {
-          if (saveOffer) {
-            void sendDiscoveryEvent('DISCOVERY_SAVE', saveOffer);
-            void mutateDiscoveryTrope(token, { offerId: Number(saveOffer.id), action: 'SAVE' });
-          }
-          setSaveOffer(null);
-        }}
-        onContinue={() => setSaveOffer(null)}
-        onUndo={() => {
-          setSaveOffer(null);
-          undoLastDecision();
-        }}
-      />
       <DiscoveryDislikeReasonSheet
         visible={!!pendingDislikeOffer}
         reasons={DISCOVERY_DISLIKE_REASONS as readonly DislikeReason[]}
@@ -1086,7 +1130,11 @@ export default function EstateDiscoveryMode({ navigation }: any) {
         onResume={() => setPauseVisible(false)}
       />
       <DiscoveryContradictionCareSheet
-        visible={Boolean(!careDismissed && (foundationProfile?.contradictionIndex || 0) >= 0.55)}
+        visible={Boolean(
+          !careDismissed
+          && (foundationProfile?.contradictionIndex || 0) >= 0.72
+          && (foundationProfile?.interactions || 0) >= 12,
+        )}
         onSlow={() => setCareDismissed(true)}
         onShift={() => {
           setCareDismissed(true);
