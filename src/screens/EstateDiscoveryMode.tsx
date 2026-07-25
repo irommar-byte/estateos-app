@@ -29,6 +29,7 @@ import {
   fetchDiscoveryFeed,
   flushDiscoveryEventQueue,
   getOrCreateDiscoverySession,
+  mutateDiscoveryTrope,
   trackDiscoveryEvent,
 } from '../services/discoveryService';
 import { useDiscoveryStore } from '../store/useDiscoveryStore';
@@ -42,6 +43,7 @@ import DiscoveryInsightBubble from '../components/discovery/DiscoveryInsightBubb
 import DiscoveryEndDeck from '../components/discovery/DiscoveryEndDeck';
 import DiscoveryErrorRecovery from '../components/discovery/DiscoveryErrorRecovery';
 import DiscoveryPauseSheet from '../components/discovery/DiscoveryPauseSheet';
+import DiscoveryContradictionCareSheet from '../components/discovery/DiscoveryContradictionCareSheet';
 import { shouldAskDiscoveryDislikeReason } from '../utils/discoveryExperienceState';
 
 // === LUKSUSOWA PALETA ===
@@ -282,6 +284,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   const hydrateDiscoveryStore = useDiscoveryStore((s) => s.hydrate);
   const persistDiscoveryStore = useDiscoveryStore((s) => s.persist);
   const mergeServerDiscoveryProfile = useDiscoveryStore((s) => s.mergeServerProfile);
+  const foundationProfile = useDiscoveryStore((s) => s.profile);
   const { formatOffer } = useMoneyContext();
   const isTablet = width >= 768;
   
@@ -323,6 +326,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   const [priorityOffer, setPriorityOffer] = useState<DiscoveryOffer | null>(null);
   const [insightVisible, setInsightVisible] = useState(false);
   const [pauseVisible, setPauseVisible] = useState(false);
+  const [careDismissed, setCareDismissed] = useState(false);
   const [undoOffer, setUndoOffer] = useState<DiscoveryOffer | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dislikeCountRef = useRef(0);
@@ -708,9 +712,11 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     if (!offer) return;
     setPriorityOffer(null);
     if (mode === 'priority') {
+      void mutateDiscoveryTrope(token, { offerId: Number(offer.id), action: 'PRIORITIZE' });
       commitDecision('up', offer);
     } else {
       void sendDiscoveryEvent('DISCOVERY_SAVE', offer);
+      void mutateDiscoveryTrope(token, { offerId: Number(offer.id), action: 'SAVE' });
       setSaveOffer(offer);
     }
   }
@@ -847,9 +853,9 @@ export default function EstateDiscoveryMode({ navigation }: any) {
         <DiscoveryEndDeck
           onWiden={() => setFeedRefreshKey((key) => key + 1)}
           onChangeDirection={() => {
-            void Haptics.selectionAsync();
-            setFeedRefreshKey((key) => key + 1);
+            navigation?.navigate?.('DiscoveryLifeShift');
           }}
+          onTropes={() => navigation?.navigate?.('DiscoveryTropes')}
           onPause={() => setPauseVisible(true)}
         />
       );
@@ -1026,7 +1032,10 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       <DiscoverySaveAffirmationSheet
         visible={!!saveOffer}
         onSave={() => {
-          if (saveOffer) void sendDiscoveryEvent('DISCOVERY_SAVE', saveOffer);
+          if (saveOffer) {
+            void sendDiscoveryEvent('DISCOVERY_SAVE', saveOffer);
+            void mutateDiscoveryTrope(token, { offerId: Number(saveOffer.id), action: 'SAVE' });
+          }
           setSaveOffer(null);
         }}
         onContinue={() => setSaveOffer(null)}
@@ -1072,9 +1081,21 @@ export default function EstateDiscoveryMode({ navigation }: any) {
           const offer = offers[0];
           if (offer) void sendDiscoveryEvent('DISCOVERY_PAUSE', offer);
           setPauseVisible(false);
-          navigation?.goBack?.();
+          navigation?.replace?.('DiscoveryResume');
         }}
         onResume={() => setPauseVisible(false)}
+      />
+      <DiscoveryContradictionCareSheet
+        visible={Boolean(!careDismissed && (foundationProfile?.contradictionIndex || 0) >= 0.55)}
+        onSlow={() => setCareDismissed(true)}
+        onShift={() => {
+          setCareDismissed(true);
+          navigation?.navigate?.('DiscoveryLifeShift');
+        }}
+        onPause={() => {
+          setCareDismissed(true);
+          setPauseVisible(true);
+        }}
       />
     </View>
   );

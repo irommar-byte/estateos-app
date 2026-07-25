@@ -4,9 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import ApplePressable from '../ApplePressable';
 import { DISCOVERY_COLORS } from './discoveryMotion';
 
-type Props = { onWiden: () => void; onChangeDirection: () => void; onPause: () => void };
+type Props = { onWiden: () => void; onChangeDirection: () => void; onTropes: () => void; onPause: () => void };
 
-export default function DiscoveryEndDeck({ onWiden, onChangeDirection, onPause }: Props) {
+export default function DiscoveryEndDeck({ onWiden, onChangeDirection, onTropes, onPause }: Props) {
   return (
     <View style={styles.root}>
       <View style={styles.icon}><Ionicons name="compass" size={29} color={DISCOVERY_COLORS.gold} /></View>
@@ -14,6 +14,7 @@ export default function DiscoveryEndDeck({ onWiden, onChangeDirection, onPause }
       <Text style={styles.text}>To jest postęp. Możesz poszerzyć trop, zmienić go albo spokojnie wrócić później.</Text>
       <ApplePressable onPress={onWiden} haptic="light" style={styles.primary}><Text style={styles.primaryText}>Poszerz kierunek</Text></ApplePressable>
       <ApplePressable onPress={onChangeDirection} haptic="none" style={styles.secondary}><Text style={styles.secondaryText}>Zmień kierunek</Text></ApplePressable>
+      <ApplePressable onPress={onTropes} haptic="none" style={styles.secondary}><Text style={styles.secondaryText}>Zapisane tropy</Text></ApplePressable>
       <ApplePressable onPress={onPause} haptic="none" style={styles.pause}><Text style={styles.pauseText}>Zakończ na dziś</Text></ApplePressable>
     </View>
   );

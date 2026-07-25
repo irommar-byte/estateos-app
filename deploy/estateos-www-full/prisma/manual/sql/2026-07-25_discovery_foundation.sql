@@ -114,6 +114,22 @@ CREATE TABLE IF NOT EXISTS `DiscoveryGalleryPlan` (
   INDEX `DiscoveryGalleryPlan_status_updated_idx` (`status`, `updatedAt`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `DiscoveryTrope` (
+  `id` VARCHAR(64) NOT NULL,
+  `userId` INT NOT NULL,
+  `offerId` INT NOT NULL,
+  `status` VARCHAR(32) NOT NULL DEFAULT 'SAVED',
+  `priority` BOOLEAN NOT NULL DEFAULT FALSE,
+  `visitOutcome` VARCHAR(32) NULL,
+  `note` VARCHAR(512) NULL,
+  `savedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `DiscoveryTrope_user_offer_key` (`userId`, `offerId`),
+  INDEX `DiscoveryTrope_user_status_updated_idx` (`userId`, `status`, `updatedAt`),
+  CONSTRAINT `DiscoveryTrope_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE INDEX IF NOT EXISTS `DiscoveryEvent_user_session_created_idx`
   ON `DiscoveryEvent` (`userId`, `sessionId`, `createdAt`);
 CREATE UNIQUE INDEX IF NOT EXISTS `DiscoveryEvent_idempotencyKey_key`

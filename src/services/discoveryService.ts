@@ -26,6 +26,15 @@ export type DiscoveryFeedResponse = {
   session: { id: string; tempoMode?: string } | null;
 };
 
+export type DiscoveryTrope = {
+  id: string;
+  offerId: number;
+  status: 'SAVED' | 'SERIOUS' | 'VISITED';
+  priority: boolean;
+  visitOutcome: 'YES' | 'NO' | 'DIFFERENT' | null;
+  offer: any | null;
+};
+
 function createId(prefix: string): string {
   const uuid = globalThis.crypto?.randomUUID?.();
   return uuid ? `${prefix}_${uuid}` : `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`;
@@ -154,4 +163,38 @@ export async function fetchDiscoveryFeed(token: string | null, sessionId?: strin
     profile: parseDiscoveryFeedProfile(json),
     session: json?.session?.id ? { id: String(json.session.id), tempoMode: String(json.session.tempoMode || '') } : null,
   };
+}
+
+export async function fetchDiscoveryTropes(token: string | null): Promise<DiscoveryTrope[]> {
+  if (!token) return [];
+  const response = await fetch(`${API_URL}/api/mobile/v1/discovery/tropes`, { headers: headers(token) });
+  if (!response.ok) throw new Error(`DISCOVERY_TROPES_${response.status}`);
+  const json = await response.json().catch(() => ({}));
+  return Array.isArray(json?.items) ? json.items as DiscoveryTrope[] : [];
+}
+
+export async function mutateDiscoveryTrope(
+  token: string | null,
+  input: { offerId: number; action: 'SAVE' | 'PRIORITIZE' | 'UNPRIORITIZE' | 'REMOVE' | 'SERIOUS' },
+): Promise<void> {
+  if (!token) return;
+  const response = await fetch(`${API_URL}/api/mobile/v1/discovery/tropes`, {
+    method: 'POST',
+    headers: headers(token),
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error(`DISCOVERY_TROPE_${response.status}`);
+}
+
+export async function submitDiscoveryVisitFeedback(
+  token: string | null,
+  input: { offerId: number; visitOutcome: 'YES' | 'NO' | 'DIFFERENT' },
+): Promise<void> {
+  if (!token) return;
+  const response = await fetch(`${API_URL}/api/mobile/v1/discovery/tropes`, {
+    method: 'PATCH',
+    headers: headers(token),
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error(`DISCOVERY_VISIT_${response.status}`);
 }

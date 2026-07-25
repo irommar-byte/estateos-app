@@ -95,6 +95,11 @@ import FloatingChatsDock from './src/components/messaging/FloatingChatsDock';
 import AgencyPendingGate from './src/components/agency/AgencyPendingGate';
 import EstateDiscoveryMode from './src/screens/EstateDiscoveryMode';
 import DiscoveryEntryScreen from './src/screens/DiscoveryEntryScreen';
+import DiscoveryResumeScreen from './src/screens/DiscoveryResumeScreen';
+import DiscoveryLifeShiftScreen from './src/screens/DiscoveryLifeShiftScreen';
+import DiscoveryTropesScreen from './src/screens/DiscoveryTropesScreen';
+import DiscoveryJourneyHonorScreen from './src/screens/DiscoveryJourneyHonorScreen';
+import DiscoveryBridgeScreen from './src/screens/DiscoveryBridgeScreen';
 import { useDiscoveryStore } from './src/store/useDiscoveryStore';
 import AdminNativeImportScreen from './src/screens/AdminNativeImportScreen';
 import AdminKeiAmerScreen from './src/screens/AdminKeiAmerScreen';
@@ -1806,6 +1811,11 @@ export default function App() {
               component={DiscoveryEntryScreen}
               options={{ animation: 'fade', animationDuration: 260 }}
             />
+            <AppStack.Screen name="DiscoveryResume" component={DiscoveryResumeScreen} options={{ animation: 'fade' }} />
+            <AppStack.Screen name="DiscoveryLifeShift" component={DiscoveryLifeShiftScreen} options={{ animation: 'fade' }} />
+            <AppStack.Screen name="DiscoveryTropes" component={DiscoveryTropesScreen} options={{ animation: 'slide_from_right' }} />
+            <AppStack.Screen name="DiscoveryJourneyHonor" component={DiscoveryJourneyHonorScreen} options={{ animation: 'fade' }} />
+            <AppStack.Screen name="DiscoveryBridge" component={DiscoveryBridgeScreen} options={{ animation: 'slide_from_bottom' }} />
             <AppStack.Screen name="EstateDiscovery" component={EstateDiscoveryMode} />
             <AppStack.Screen name="AdminNativeImport" component={AdminNativeImportScreen} />
             <AppStack.Screen
