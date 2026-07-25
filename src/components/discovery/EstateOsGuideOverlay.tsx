@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import ApplePressable from '../ApplePressable';
 import { DISCOVERY_COLORS } from './discoveryMotion';
 import { useDiscoveryStore } from '../../store/useDiscoveryStore';
+import { fetchEstateOsGuideContext, type EstateOsGuideContext } from '../../services/discoveryService';
+import { useAuthStore } from '../../store/useAuthStore';
 
 type Props = { navigation: any };
 
@@ -12,9 +14,12 @@ export default function EstateOsGuideOverlay({ navigation }: Props) {
   const [open, setOpen] = useState(false);
   const profile = useDiscoveryStore((state) => state.profile);
   const firstEntrySeen = useDiscoveryStore((state) => state.firstEntrySeen);
-  const lead = profile?.confidence && profile.confidence > 0.35
+  const token = useAuthStore((state) => state.token);
+  const [guide, setGuide] = useState<EstateOsGuideContext | null>(null);
+  useEffect(() => { void fetchEstateOsGuideContext(token).then(setGuide); }, [token]);
+  const lead = guide?.nextStep?.title || (profile?.confidence && profile.confidence > 0.35
     ? 'Widzę Twój kierunek. Zobaczmy, co teraz najbardziej go wzmacnia.'
-    : 'Zacznijmy od tego, co jest dla Ciebie ważne.';
+    : 'Zacznijmy od tego, co jest dla Ciebie ważne.');
 
   return (
     <View pointerEvents="box-none" style={styles.root}>

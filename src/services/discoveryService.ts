@@ -26,6 +26,14 @@ export type DiscoveryFeedResponse = {
   session: { id: string; tempoMode?: string } | null;
 };
 
+export type EstateOsGuideContext = {
+  confidence: number;
+  contradictionIndex: number;
+  searchPhase: string;
+  tropes: Array<{ offerId: number; status: string; priority: boolean }>;
+  nextStep: { key: string; title: string; action: 'DISCOVERY' | 'TROPES' | 'PROFILE'; offerId?: number };
+};
+
 export type DiscoveryTrope = {
   id: string;
   offerId: number;
@@ -171,6 +179,14 @@ export async function fetchDiscoveryTropes(token: string | null): Promise<Discov
   if (!response.ok) throw new Error(`DISCOVERY_TROPES_${response.status}`);
   const json = await response.json().catch(() => ({}));
   return Array.isArray(json?.items) ? json.items as DiscoveryTrope[] : [];
+}
+
+export async function fetchEstateOsGuideContext(token: string | null): Promise<EstateOsGuideContext | null> {
+  if (!token) return null;
+  const response = await fetch(`${API_URL}/api/guide/context`, { headers: headers(token) });
+  if (!response.ok) return null;
+  const json = await response.json().catch(() => null);
+  return json?.guide || null;
 }
 
 export async function mutateDiscoveryTrope(
