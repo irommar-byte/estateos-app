@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,12 +11,15 @@ import { useAuthStore } from '../../store/useAuthStore';
 
 type Props = { navigation: any };
 
+type Sparkle = { id: number; left: number; top: number; size: number; delay: number };
+
 /**
  * Guide tylko na Mapy+Radar, po LEWEJ pod chrome —
- * nie nachodzi na Live Radar ani tytuł Market.
+ * z mikro-błyskami gwiazdek i hover/stylus zoom.
  */
 export default function EstateOsGuideOverlay({ navigation }: Props) {
   const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const profile = useDiscoveryStore((state) => state.profile);
@@ -26,9 +29,80 @@ export default function EstateOsGuideOverlay({ navigation }: Props) {
   const compact = width < 420;
   const iconOnly = width < 360;
 
+  const hoverScale = useRef(new Animated.Value(1)).current;
+  const hoverGlow = useRef(new Animated.Value(0)).current;
+  const sparkleOpacity = useRef(new Animated.Value(0)).current;
+  const sparkleSpin = useRef(new Animated.Value(0)).current;
+  const sparkles = useMemo<Sparkle[]>(
+    () => [
+      { id: 1, left: 6, top: -4, size: 10, delay: 0 },
+      { id: 2, left: 38, top: -8, size: 8, delay: 180 },
+      { id: 3, left: 72, top: 2, size: 11, delay: 320 },
+      { id: 4, left: 18, top: 34, size: 7, delay: 480 },
+      { id: 5, left: 58, top: 36, size: 9, delay: 640 },
+    ],
+    [],
+  );
+
   useEffect(() => {
     void fetchEstateOsGuideContext(token).then(setGuide);
   }, [token]);
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(hoverScale, {
+        toValue: hovered ? 1.08 : 1,
+        friction: 6,
+        tension: 160,
+        useNativeDriver: true,
+      }),
+      Animated.timing(hoverGlow, {
+        toValue: hovered ? 1 : 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [hovered, hoverGlow, hoverScale]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+
+    const burst = () => {
+      if (cancelled || open) return;
+      sparkleOpacity.setValue(0);
+      sparkleSpin.setValue(0);
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(sparkleOpacity, {
+            toValue: 1,
+            duration: 280,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(sparkleSpin, {
+            toValue: 1,
+            duration: 900,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.timing(sparkleOpacity, {
+          toValue: 0,
+          duration: 420,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start();
+      timeout = setTimeout(burst, 5200 + Math.floor(Math.random() * 2400));
+    };
+
+    timeout = setTimeout(burst, 1600);
+    return () => {
+      cancelled = true;
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [open, sparkleOpacity, sparkleSpin]);
 
   const lead =
     guide?.nextStep?.title ||
@@ -36,7 +110,8 @@ export default function EstateOsGuideOverlay({ navigation }: Props) {
       ? 'Widzę Twój kierunek. Zobaczmy, co teraz najbardziej go wzmacnia.'
       : 'Zacznijmy od tego, co jest dla Ciebie ważne.');
 
-  const topOffset = Math.max(insets.top, Platform.OS === 'ios' ? 48 : 28) + (compact ? 52 : 56);
+  // Niżej, żeby nie nachodził na Live Radar / Moje·Ulubione / zarządzanie.
+  const topOffset = Math.max(insets.top, Platform.OS === 'ios' ? 48 : 28) + (compact ? 118 : 128);
 
   return (
     <View
@@ -100,22 +175,81 @@ export default function EstateOsGuideOverlay({ navigation }: Props) {
           </ApplePressable>
         </BlurView>
       ) : (
-        <ApplePressable onPress={() => setOpen(true)} style={styles.pill} accessibilityLabel="Otwórz EstateOS Guide">
-          <BlurView intensity={64} tint="dark" style={[styles.pillBlur, iconOnly && styles.pillIconOnly]}>
-            <View style={styles.guideMark}>
-              <Ionicons name="sparkles" size={14} color={DISCOVERY_COLORS.gold} />
-            </View>
-            {!iconOnly ? (
-              <View style={styles.pillCopy}>
-                <Text style={styles.name}>Guide</Text>
-                <Text style={styles.pillSub} numberOfLines={1}>
-                  {profile?.confidence ? 'Twój kierunek' : 'Poznaj kierunek'}
-                </Text>
+        <Animated.View
+          style={{
+            transform: [{ scale: hoverScale }],
+          }}
+        >
+          <ApplePressable
+            onPress={() => setOpen(true)}
+            style={styles.pill}
+            accessibilityLabel="Otwórz EstateOS Guide"
+            // Hover / Apple Pencil proximity (RN pointer events on supported platforms)
+            onHoverIn={() => setHovered(true)}
+            onHoverOut={() => setHovered(false)}
+          >
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.hoverAura,
+                {
+                  opacity: hoverGlow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.9] }),
+                  transform: [
+                    {
+                      scale: hoverGlow.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.18] }),
+                    },
+                  ],
+                },
+              ]}
+            />
+            <BlurView intensity={64} tint="dark" style={[styles.pillBlur, iconOnly && styles.pillIconOnly, hovered && styles.pillHovered]}>
+              <View style={styles.guideMark}>
+                <Ionicons name="sparkles" size={14} color={DISCOVERY_COLORS.gold} />
               </View>
-            ) : null}
-            {!iconOnly ? <Ionicons name="chevron-forward" size={14} color={DISCOVERY_COLORS.ivory} /> : null}
-          </BlurView>
-        </ApplePressable>
+              {!iconOnly ? (
+                <View style={styles.pillCopy}>
+                  <Text style={styles.name}>Guide</Text>
+                  <Text style={styles.pillSub} numberOfLines={1}>
+                    {profile?.confidence ? 'Twój kierunek' : 'Poznaj kierunek'}
+                  </Text>
+                </View>
+              ) : null}
+              {!iconOnly ? <Ionicons name="chevron-forward" size={14} color={DISCOVERY_COLORS.ivory} /> : null}
+            </BlurView>
+            <View pointerEvents="none" style={styles.sparkleLayer}>
+              {sparkles.map((sparkle) => {
+                const twinkle = sparkleOpacity.interpolate({
+                  inputRange: [0, 0.35, 0.7, 1],
+                  outputRange: [0, 1, 0.55, 0],
+                });
+                const drift = sparkleSpin.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, -10 - sparkle.delay * 0.01],
+                });
+                const spin = sparkleSpin.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0deg', `${12 + sparkle.id * 8}deg`],
+                });
+                return (
+                  <Animated.View
+                    key={sparkle.id}
+                    style={[
+                      styles.sparkle,
+                      {
+                        left: sparkle.left,
+                        top: sparkle.top,
+                        opacity: twinkle,
+                        transform: [{ translateY: drift }, { rotate: spin }, { scale: hovered ? 1.15 : 1 }],
+                      },
+                    ]}
+                  >
+                    <Ionicons name="sparkles" size={sparkle.size} color={DISCOVERY_COLORS.gold} />
+                  </Animated.View>
+                );
+              })}
+            </View>
+          </ApplePressable>
+        </Animated.View>
       )}
     </View>
   );
@@ -125,18 +259,21 @@ const styles = StyleSheet.create({
   root: {
     position: 'absolute',
     left: 12,
-    zIndex: 40,
+    zIndex: 35,
     alignItems: 'flex-start',
   },
   pill: {
     borderRadius: 22,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.28)',
+    overflow: 'visible',
+  },
+  hoverAura: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 24,
+    backgroundColor: 'rgba(212,175,55,0.22)',
     shadowColor: '#D4AF37',
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.55,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 0 },
   },
   pillBlur: {
     minHeight: 44,
@@ -147,6 +284,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 6,
     backgroundColor: 'rgba(11,12,14,0.78)',
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.28)',
+  },
+  pillHovered: {
+    borderColor: 'rgba(212,175,55,0.72)',
+    backgroundColor: 'rgba(24,20,12,0.88)',
   },
   pillIconOnly: {
     maxWidth: 44,
@@ -155,6 +300,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pillCopy: { flexShrink: 1 },
+  sparkleLayer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'visible',
+  },
+  sparkle: {
+    position: 'absolute',
+  },
   panel: {
     width: 300,
     maxWidth: '100%',

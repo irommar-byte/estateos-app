@@ -1271,6 +1271,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [areaSummary, setAreaSummary] = useState<string>('');
   const isTablet = width >= 768;
   const isNarrowChrome = width < 420;
+  const favoritesCenterMaxWidth = Math.min(Math.max(width - (isNarrowChrome ? 96 : 118), 200), 340);
   const topBarTop = useMemo(
     () => insets.top + (isTablet ? 14 : 8),
     [insets.top, isTablet]
@@ -4882,10 +4883,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           )}
           <ChromeIconButton
             icon={showOnlyFavorites ? 'heart' : 'heart-outline'}
-            color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'}
+            color={showOnlyFavorites ? mineUiAccent : isDark ? '#FFF' : '#1C1C1E'}
             isDark={isDark}
             lightChrome={isGalleryLightChrome}
-            activeBg={showOnlyFavorites ? favoritesScopeBg : undefined}
+            activeBg={showOnlyFavorites ? mineUiBg : undefined}
             accessibilityLabel={t('radar.home.favoritesTab')}
             accessibilityState={{ selected: showOnlyFavorites }}
             haptic="medium"
@@ -4904,12 +4905,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             style={[
               styles.topBarCenterStack,
               {
+                maxWidth: favoritesCenterMaxWidth,
                 opacity: modeIslandOpacity,
                 transform: [{ translateY: modeIslandTranslateY }, { scale: modeIslandScale }],
               },
             ]}
           >
-            <View style={styles.favoritesScopeRailOuter}>
+            <View style={[styles.favoritesScopeRailOuter, { maxWidth: favoritesCenterMaxWidth }]}>
               {tabSurface === 'market' ? <VerticalSegmentRail isDark={isDark} mode="switch" /> : null}
               {tabSurface === 'market' ? <View style={{ height: 8 }} /> : null}
               <BlurView
@@ -4949,6 +4951,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                         { color: favoritesMapScope === 'MINE' ? (isDark ? '#C9F9E7' : '#0B5B43') : '#8E8E93' },
                       ]}
                       numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.85}
                     >
                       {t('radar.home.mineTab')}
                     </Text>
@@ -4979,6 +4983,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                         { color: favoritesMapScope === 'FAVORITES' ? (isDark ? '#FFD4E7' : '#5E1C3F') : '#8E8E93' },
                       ]}
                       numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.85}
                     >
                       {t('radar.home.favoritesTab')}
                     </Text>
@@ -5022,10 +5028,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                         />
                       </Animated.View>
                       <View style={styles.radarPillTextWrap}>
-                        <Text style={[styles.radarTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]}>
+                        <Text style={[styles.radarTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]} numberOfLines={1}>
                           {t('radar.home.favorBrand')}
                         </Text>
-                        <Text style={styles.radarStatus}>
+                        <Text style={styles.radarStatus} numberOfLines={1}>
                           {isFavoritesRadarEnabled ? t('radar.home.statusLoveLive') : t('radar.home.statusInactive')}
                         </Text>
                       </View>
@@ -5045,11 +5051,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                     >
                       <Ionicons name="home" size={18} color="#10b981" />
                       <View style={styles.radarPillTextWrap}>
-                        <Text style={[styles.radarTitle, { color: isDark ? '#C9F9E7' : '#0B5B43' }]}>
-                          {t('radar.home.manageMyPropertiesTitle')}
+                        <Text style={[styles.radarTitle, { color: isDark ? '#C9F9E7' : '#0B5B43' }]} numberOfLines={1}>
+                          {isNarrowChrome ? 'Moje ogłoszenia' : t('radar.home.manageMyPropertiesTitle')}
                         </Text>
-                        <Text style={[styles.radarStatus, { color: isDark ? 'rgba(201,249,231,0.72)' : 'rgba(11,91,67,0.72)' }]}>
-                          {t('radar.home.manageMyPropertiesSubtitle')}
+                        <Text style={[styles.radarStatus, { color: isDark ? 'rgba(201,249,231,0.72)' : 'rgba(11,91,67,0.72)' }]} numberOfLines={1}>
+                          {isNarrowChrome ? 'Edycja i publikacja' : t('radar.home.manageMyPropertiesSubtitle')}
                         </Text>
                       </View>
                     </BlurView>
@@ -6607,7 +6613,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minWidth: 0,
     paddingHorizontal: 2,
-    maxWidth: 168,
+    maxWidth: 220,
     alignSelf: 'center',
     zIndex: 1,
     overflow: 'visible',
@@ -6615,7 +6621,7 @@ const styles = StyleSheet.create({
   topBarCenterStackGallery: {
     justifyContent: 'center',
     paddingTop: 2,
-    maxWidth: 196,
+    maxWidth: 240,
   },
   topBarToolsRow: {
     flexDirection: 'row',
@@ -6631,7 +6637,6 @@ const styles = StyleSheet.create({
   },
   favoritesScopeRailOuter: {
     width: '100%',
-    maxWidth: 300,
     alignSelf: 'center',
     marginBottom: 10,
     paddingHorizontal: 2,
@@ -6651,9 +6656,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7,
+    gap: 6,
     paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
+    minWidth: 88,
   },
   favoritesScopeHalfActiveFav: {
     backgroundColor: 'rgba(247,119,178,0.16)',
@@ -6676,6 +6682,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.15,
+    flexShrink: 1,
   },
   searchGlass: {
     flex: 1,

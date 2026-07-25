@@ -62,7 +62,6 @@ import { loadCarFavoriteIds } from '../utils/carFavoritesStorage';
 import { useI18n } from '../i18n';
 
 const CAR_ACCENT = '#0EA5E9';
-const FAV_ACCENT = '#F777B2';
 const NEARBY_RADIUS_KM = 25;
 
 function distanceKm(aLat: number, aLng: number, bLat: number, bLng: number) {
@@ -144,6 +143,9 @@ export default function CarsCatalogScreen({
   const [myCars, setMyCars] = useState<CarListing[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
+  const [favoritesCarsScope, setFavoritesCarsScope] = useState<'MINE' | 'FAVORITES'>('MINE');
+  const isNarrowChrome = screenWidth < 420;
+  const favoritesCenterMaxWidth = Math.min(Math.max(screenWidth - (isNarrowChrome ? 96 : 118), 200), 340);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,10 +224,23 @@ export default function CarsCatalogScreen({
   );
 
   const filtered = useMemo(() => {
-    const base = showOnlyFavorites ? favoriteCars : cars;
+    const base = showOnlyFavorites
+      ? favoritesCarsScope === 'MINE'
+        ? myCars
+        : favoriteCars
+      : cars;
     const filters = isCarRadarActive ? carRadarFilters : advancedFilters;
     return applyCarsAdvancedFilters(base, filters);
-  }, [cars, favoriteCars, advancedFilters, carRadarFilters, isCarRadarActive, showOnlyFavorites]);
+  }, [
+    cars,
+    favoriteCars,
+    myCars,
+    advancedFilters,
+    carRadarFilters,
+    isCarRadarActive,
+    showOnlyFavorites,
+    favoritesCarsScope,
+  ]);
 
   const marketRailSections = useMemo(() => {
     const toListing = (car: CarListing) => ({
@@ -575,7 +590,101 @@ export default function CarsCatalogScreen({
   };
 
   const centerChrome =
-    browseMode === 'MAP' || surface === 'explore' ? (
+    showOnlyFavorites ? (
+      <View style={{ width: '100%', maxWidth: favoritesCenterMaxWidth, alignItems: 'center', gap: 8 }}>
+        {surface === 'market' ? <VerticalSegmentRail isDark={isDark} mode="switch" /> : null}
+        <BlurView
+          intensity={isDark ? 85 : 92}
+          tint={isDark ? 'dark' : 'light'}
+          style={{
+            width: '100%',
+            borderRadius: 14,
+            overflow: 'hidden',
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+            backgroundColor: isDark ? 'rgba(28,28,30,0.72)' : 'rgba(255,255,255,0.82)',
+          }}
+        >
+          <View style={{ flexDirection: 'row', minHeight: 44 }}>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: favoritesCarsScope === 'MINE' }}
+              onPress={() => {
+                if (favoritesCarsScope === 'MINE') return;
+                void Haptics.selectionAsync();
+                setFavoritesCarsScope('MINE');
+              }}
+              style={{
+                flex: 1,
+                minWidth: 88,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                paddingHorizontal: 10,
+                backgroundColor: favoritesCarsScope === 'MINE' ? 'rgba(14,165,233,0.16)' : 'transparent',
+              }}
+            >
+              <Ionicons
+                name={favoritesCarsScope === 'MINE' ? 'car-sport' : 'car-sport-outline'}
+                size={16}
+                color={favoritesCarsScope === 'MINE' ? CAR_ACCENT : '#8E8E93'}
+              />
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+                style={{
+                  fontSize: 13,
+                  fontWeight: '700',
+                  color: favoritesCarsScope === 'MINE' ? (isDark ? '#BAE6FD' : '#075985') : '#8E8E93',
+                }}
+              >
+                {t('radar.home.mineTab')}
+              </Text>
+            </Pressable>
+            <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)', marginVertical: 6 }} />
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: favoritesCarsScope === 'FAVORITES' }}
+              onPress={() => {
+                if (favoritesCarsScope === 'FAVORITES') return;
+                void Haptics.selectionAsync();
+                setFavoritesCarsScope('FAVORITES');
+              }}
+              style={{
+                flex: 1,
+                minWidth: 88,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                paddingHorizontal: 10,
+                backgroundColor: favoritesCarsScope === 'FAVORITES' ? 'rgba(14,165,233,0.16)' : 'transparent',
+              }}
+            >
+              <Ionicons
+                name={favoritesCarsScope === 'FAVORITES' ? 'heart' : 'heart-outline'}
+                size={16}
+                color={favoritesCarsScope === 'FAVORITES' ? CAR_ACCENT : '#8E8E93'}
+              />
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+                style={{
+                  fontSize: 13,
+                  fontWeight: '700',
+                  color: favoritesCarsScope === 'FAVORITES' ? (isDark ? '#BAE6FD' : '#075985') : '#8E8E93',
+                }}
+              >
+                {t('radar.home.favoritesTab')}
+              </Text>
+            </Pressable>
+          </View>
+        </BlurView>
+      </View>
+    ) : browseMode === 'MAP' || surface === 'explore' ? (
       <LiveRadarControlPill
         isDark={isDark}
         isActive={isCarRadarActive}
@@ -894,15 +1003,19 @@ export default function CarsCatalogScreen({
           )}
           <ChromeIconButton
             icon={showOnlyFavorites ? 'heart' : 'heart-outline'}
-            color={showOnlyFavorites ? FAV_ACCENT : isDark ? '#FFF' : '#1C1C1E'}
+            color={showOnlyFavorites ? CAR_ACCENT : isDark ? '#FFF' : '#1C1C1E'}
             isDark={isDark}
             lightChrome={isGalleryLightChrome}
-            activeBg={showOnlyFavorites ? 'rgba(247,119,178,0.22)' : undefined}
+            activeBg={showOnlyFavorites ? 'rgba(14,165,233,0.22)' : undefined}
             accessibilityLabel="Ulubione"
             accessibilityState={{ selected: showOnlyFavorites }}
             haptic="medium"
             onPress={() => {
-              setShowOnlyFavorites((prev) => !prev);
+              setShowOnlyFavorites((prev) => {
+                const next = !prev;
+                if (next) setFavoritesCarsScope('MINE');
+                return next;
+              });
             }}
           />
         </View>
@@ -911,6 +1024,7 @@ export default function CarsCatalogScreen({
           style={[
             styles.topBarCenter,
             browseMode === 'GALLERY' && styles.topBarCenterGallery,
+            showOnlyFavorites && { maxWidth: favoritesCenterMaxWidth },
           ]}
         >
           {centerChrome}
