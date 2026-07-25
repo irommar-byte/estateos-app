@@ -65,6 +65,12 @@ export async function POST(req: Request) {
     if (event.offerId && !offer) {
       return NextResponse.json({ error: 'Oferta nie istnieje' }, { status: 404 });
     }
+    const embedding = offer
+      ? await prisma.discoveryEmbeddingJob.findFirst({
+          where: { offerId: offer.id, status: 'READY' },
+          select: { vector: true },
+        })
+      : null;
 
     const created = await prisma.$transaction(async (tx) => {
       if (event.sessionId) {
@@ -109,7 +115,14 @@ export async function POST(req: Request) {
         propertyStats: existingProfile?.propertyStats,
         reasonStats: existingProfile?.reasonStats,
       });
-      const candidate = offer as DiscoveryCandidate | null;
+      const candidate = offer
+        ? {
+            ...offer,
+            embeddingVector: Array.isArray(embedding?.vector)
+              ? embedding.vector.map(Number).filter(Number.isFinite)
+              : null,
+          } as DiscoveryCandidate
+        : null;
       const nextProfile = profileEvent.legacyReasonOnly || !candidate
         ? profile
         : updateDiscoveryProfileFromEvent({ existing: profile, event: profileEvent, candidate });

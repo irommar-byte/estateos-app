@@ -6,6 +6,12 @@ export const OPENAI_MODEL_FALLBACK = 'o4-mini';
 export const OPENAI_MODEL_LEGACY = 'gpt-4o-mini';
 
 type OpenAiClient = {
+  embeddings: {
+    create: (args: Record<string, unknown>) => Promise<{
+      data: Array<{ embedding: number[] }>;
+      usage?: { total_tokens?: number };
+    }>;
+  };
   responses: { create: (args: Record<string, unknown>) => Promise<{ output_text?: string }> };
   chat: {
     completions: {
@@ -164,4 +170,20 @@ export async function callOpenAiText(params: {
 
 export function getOpenAiApiKey(): string | null {
   return process.env.OPENAI_API_KEY?.trim()?.replace(/^"|"$/g, '') || null;
+}
+
+export const OPENAI_DISCOVERY_EMBEDDING_MODEL = 'text-embedding-3-small';
+
+export async function createOpenAiEmbedding(params: {
+  apiKey: string;
+  input: string;
+  model?: string;
+}): Promise<{ vector: number[]; tokens: number; model: string }> {
+  const { default: OpenAI } = await import('openai');
+  const model = params.model || process.env.OPENAI_DISCOVERY_EMBEDDING_MODEL?.trim() || OPENAI_DISCOVERY_EMBEDDING_MODEL;
+  const client = new OpenAI({ apiKey: params.apiKey }) as unknown as OpenAiClient;
+  const response = await client.embeddings.create({ model, input: params.input, encoding_format: 'float' });
+  const vector = response.data[0]?.embedding;
+  if (!Array.isArray(vector) || vector.length === 0) throw new Error('OpenAI embeddings zwróciło pusty wektor.');
+  return { vector, tokens: Math.max(0, Number(response.usage?.total_tokens || 0)), model };
 }

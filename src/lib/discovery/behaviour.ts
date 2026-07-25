@@ -90,6 +90,15 @@ export function updateDiscoveryProfileFromEvent(input: {
     );
   }
 
+  if (candidate.embeddingVector?.length && isPositive(event)) {
+    const previous = taste.semantic.mu;
+    const alpha = Math.min(0.28, 0.12 + 0.04 * Math.abs(weight));
+    taste.semantic.mu = previous && previous.length === candidate.embeddingVector.length
+      ? candidate.embeddingVector.map((value, index) => (1 - alpha) * previous[index] + alpha * value)
+      : [...candidate.embeddingVector];
+    taste.semantic.count += 1;
+  }
+
   if (event.eventType === 'DISCOVERY_CORRECTION' && event.correctionTarget) {
     const [dimension, ...keyParts] = event.correctionTarget.split(':');
     const key = keyParts.join(':');

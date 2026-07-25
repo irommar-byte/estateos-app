@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS `DiscoveryEmbeddingJob` (
   `inputHash` VARCHAR(128) NULL,
   `vector` JSON NULL,
   `errorCode` VARCHAR(128) NULL,
+  `inputTokens` INT NOT NULL DEFAULT 0,
+  `costMicrousd` INT NOT NULL DEFAULT 0,
   `requestedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `processedAt` DATETIME(3) NULL,
   `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -97,6 +99,23 @@ CREATE TABLE IF NOT EXISTS `DiscoveryEmbeddingJob` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `DiscoveryEmbeddingJob_offer_model_key` (`offerId`, `modelVersion`),
   INDEX `DiscoveryEmbeddingJob_status_requested_idx` (`status`, `requestedAt`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `DiscoveryEmbeddingJob`
+  ADD COLUMN IF NOT EXISTS `inputTokens` INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS `costMicrousd` INT NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS `DiscoveryAiUsage` (
+  `id` VARCHAR(64) NOT NULL,
+  `periodKey` VARCHAR(7) NOT NULL,
+  `inputTokens` INT NOT NULL DEFAULT 0,
+  `costMicrousd` INT NOT NULL DEFAULT 0,
+  `jobsComplete` INT NOT NULL DEFAULT 0,
+  `jobsFailed` INT NOT NULL DEFAULT 0,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `DiscoveryAiUsage_periodKey_key` (`periodKey`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `DiscoveryGalleryPlan` (

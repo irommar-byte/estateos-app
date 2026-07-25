@@ -72,6 +72,10 @@ export type TasteVector = {
     medianDecisionLatencyMs: number | null;
     hesitationRate: number;
   };
+  semantic: {
+    mu: number[] | null;
+    count: number;
+  };
 };
 
 export type PreferenceVector = {
@@ -86,6 +90,7 @@ export type PreferenceVector = {
 };
 
 export type DiscoveryReasonCode =
+  | 'EMBEDDING_NEAR_LIKED'
   | 'CITY_AFFINITY'
   | 'DISTRICT_AFFINITY'
   | 'PROPERTY_TYPE_AFFINITY'
@@ -123,6 +128,7 @@ export type DiscoveryScoreComponents = {
   priceAffinity: number;
   spaceAffinity: number;
   amenityAffinity: number;
+  embeddingAffinity: number;
   visitPattern: number;
   explorationBonus: number;
   penalty: number;
@@ -151,6 +157,7 @@ export type DiscoveryCandidate = {
   expiresAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  embeddingVector?: number[] | null;
 };
 
 export type DiscoveryScoredCandidate = DiscoveryCandidate & {

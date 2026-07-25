@@ -123,7 +123,19 @@ export async function GET(req: Request) {
       });
     }
 
-    const activePublicationIds = await activePublicationOfferIds(offers.map((offer) => offer.id));
+    const [activePublicationIds, readyEmbeddingRows] = await Promise.all([
+      activePublicationOfferIds(offers.map((offer) => offer.id)),
+      prisma.discoveryEmbeddingJob.findMany({
+        where: { offerId: { in: offers.map((offer) => offer.id) }, status: 'READY' },
+        select: { offerId: true, vector: true },
+      }),
+    ]);
+    const embeddingByOfferId = new Map(
+      readyEmbeddingRows.map((row) => [
+        row.offerId,
+        Array.isArray(row.vector) ? row.vector.map(Number).filter(Number.isFinite) : null,
+      ]),
+    );
     const dislikedOfferIds = new Set(
       recentEvents
         .filter((event) => event.eventType === 'DISCOVERY_DISLIKE' ||
@@ -147,7 +159,7 @@ export async function GET(req: Request) {
       .filter((offer) => canShowOfferOnPublicMarket(offer, activePublicationIds))
       .map((offer) =>
         scoreDiscoveryCandidate({
-          candidate: offer,
+          candidate: { ...offer, embeddingVector: embeddingByOfferId.get(offer.id) || null },
           profile: profileSnapshot,
           recentShown,
           recentDisliked: dislikedOfferIds,
