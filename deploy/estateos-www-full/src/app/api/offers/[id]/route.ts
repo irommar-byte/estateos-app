@@ -261,6 +261,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     let sellerReviewsData = { totalReviews: 0, averageRating: 0 };
     let sellerIsOnline = false;
+    let sellerLastSeenAt: string | null = null;
     if (sellerUserId > 0) {
       const [reviewAgg, sellerPresence] = await Promise.all([
         prisma.review.aggregate({
@@ -278,6 +279,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         totalReviews > 0 && reviewAgg._avg.rating != null ? Number(reviewAgg._avg.rating) : 0;
       sellerReviewsData = { totalReviews, averageRating };
       sellerIsOnline = isSellerOnlineFromLastLogin(sellerPresence?.lastLoginAt);
+      sellerLastSeenAt = sellerPresence?.lastLoginAt ? sellerPresence.lastLoginAt.toISOString() : null;
     }
 
     const userWithAvatar =
@@ -289,6 +291,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
               ...enrichedUserFinal,
               reviewsData: sellerReviewsData,
               isOnline: sellerIsOnline,
+              lastSeenAt: sellerLastSeenAt,
               companyLogoUrl: branding.companyLogoUrl,
               agentPhotoUrl: branding.agentPhotoUrl,
             };
@@ -302,7 +305,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             };
           })()
         : enrichedUserFinal
-          ? { ...enrichedUserFinal, reviewsData: sellerReviewsData, isOnline: sellerIsOnline }
+          ? {
+              ...enrichedUserFinal,
+              reviewsData: sellerReviewsData,
+              isOnline: sellerIsOnline,
+              lastSeenAt: sellerLastSeenAt,
+            }
           : enrichedUserFinal;
 
     return NextResponse.json(
@@ -313,6 +321,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       sellerPersonName,
       servicingCompanyName,
       sellerIsOnline,
+      sellerLastSeenAt,
       sellerReviewsData,
       servicingCompanyLogoUrl: branding.companyLogoUrl,
       agentPhotoUrl: branding.agentPhotoUrl || presentingAgent?.image || null,

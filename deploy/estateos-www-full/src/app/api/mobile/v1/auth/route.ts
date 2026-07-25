@@ -11,6 +11,8 @@ import {
   extractPhoneFromBody,
   normalizePhoneE164,
 } from '@/lib/phoneE164';
+import { getClientIp } from '@/lib/observability';
+import { recordUserLogin } from '@/lib/recordUserLogin';
 
 function parseUserIdFromAuthToken(token: string): number | null {
   const verified = verifyMobileToken(token) as Record<string, unknown> | null;
@@ -34,7 +36,7 @@ function extractTokenFromRequest(req: Request): string | null {
   return raw;
 }
 
-async function performMobileLogin(emailRaw: unknown, passwordRaw: unknown) {
+async function performMobileLogin(emailRaw: unknown, passwordRaw: unknown, req?: Request) {
   const email = String(emailRaw || '').trim().toLowerCase();
   const password = String(passwordRaw || '');
 
@@ -58,6 +60,10 @@ async function performMobileLogin(emailRaw: unknown, passwordRaw: unknown) {
     select: MOBILE_USER_SELECT,
   });
   const hasPasskey = await userHasRegisteredPasskey(user.id);
+
+  if (req) {
+    await recordUserLogin(user.id, getClientIp(req));
+  }
 
   return NextResponse.json({
     success: true,
@@ -88,6 +94,8 @@ export async function GET(req: Request) {
     }
 
     const hasPasskey = await userHasRegisteredPasskey(userId);
+    // Sesja przywrócona z tokenu = użytkownik aktywny w aplikacji → ONLINE od razu.
+    await recordUserLogin(userId, getClientIp(req));
     return NextResponse.json({ success: true, user: { ...shapeMobileUser(user), hasPasskey } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Błąd serwera';
@@ -126,7 +134,7 @@ export async function POST(req: Request) {
         !!credentialEmail &&
         !!credentialPassword)
     ) {
-      return await performMobileLogin(credentialEmail, credentialPassword);
+      return await performMobileLogin(credentialEmail, credentialPassword, req);
     }
 
     if (normalizedAction === 'register') {

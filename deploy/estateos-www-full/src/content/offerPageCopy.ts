@@ -88,6 +88,7 @@ export type OfferPageCopy = {
   askSeller: string;
   sellerOnline: string;
   sellerOffline: string;
+  sellerLastSeenPrefix: string;
   guestAsk: {
     title: string;
     subtitle: string;
@@ -273,6 +274,7 @@ const PL: OfferPageCopy = {
   askSeller: "Zapytaj",
   sellerOnline: "Online",
   sellerOffline: "Offline",
+  sellerLastSeenPrefix: "Ostatnio online",
   guestAsk: {
     title: "Zapytaj wystawcę",
     subtitle:
@@ -465,6 +467,7 @@ const EN: OfferPageCopy = {
   askSeller: "Ask",
   sellerOnline: "Online",
   sellerOffline: "Offline",
+  sellerLastSeenPrefix: "Last seen",
   guestAsk: {
     title: "Ask the seller",
     subtitle:

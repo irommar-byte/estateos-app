@@ -23,8 +23,6 @@ import {
   X,
 } from "lucide-react";
 import ContactAttachmentBubble from "@/components/contact/ContactAttachmentBubble";
-import { useLocale } from "@/contexts/LocaleContext";
-import { getContactInboxDictionary } from "@/i18n/contactInboxDictionary";
 import {
   formatContactBytes,
   isAllowedContactAttachment,
@@ -54,8 +52,6 @@ const ACCEPTED_FILE_TYPES =
   "image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar,.7z,.gif,.mp3,.mp4,.mov,.webm";
 
 export default function ContactInboxClient({ currentUser }: { currentUser: CurrentUser }) {
-  const { locale } = useLocale();
-  const d = getContactInboxDictionary(locale);
   const router = useRouter();
   const searchParams = useSearchParams();
   const [threads, setThreads] = useState<ContactThreadRow[]>([]);
@@ -89,6 +85,29 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
     () => threads.find((t) => t.id === activeThreadId) ?? null,
     [threads, activeThreadId]
   );
+
+  const showMobileChat = activeThreadId != null;
+
+  const handlePageBack = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/moje-konto");
+  }, [router]);
+
+  const handleMobileChatBack = useCallback(() => {
+    const from = searchParams.get("from");
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    if (from) {
+      router.push(from);
+      return;
+    }
+    router.replace("/moje-konto/wiadomosci");
+  }, [router, searchParams]);
 
   const usageBytes = attachmentsInfo?.usageBytes ?? 0;
   const limitBytes = attachmentsInfo?.limitBytes ?? MAX_CONTACT_THREAD_BYTES;
@@ -158,6 +177,16 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
     [loadAttachmentsInfo, loadThreads]
   );
 
+  const navigateToThread = useCallback(
+    (threadId: number, peerUserId: number, opts?: { replace?: boolean }) => {
+      const url = `/moje-konto/wiadomosci?thread=${threadId}&peer=${peerUserId}`;
+      if (opts?.replace) router.replace(url);
+      else router.push(url);
+      void openThread(threadId);
+    },
+    [openThread, router]
+  );
+
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
     const prevHtmlOverflow = document.documentElement.style.overflow;
@@ -197,7 +226,11 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
         } catch {
           /* handled on write button path */
         }
+        return;
       }
+      setActiveThreadId(null);
+      setMessages([]);
+      setAttachmentsInfo(null);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -244,11 +277,11 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       return;
     }
     if (!isAllowedContactAttachment(file.type, file.name)) {
-      window.alert(d.invalidFileType);
+      window.alert("Niedozwolony typ pliku.");
       return;
     }
     if (usageBytes + file.size > limitBytes) {
-      window.alert(d.attachmentLimit);
+      window.alert("Przekroczono łączny limit 100 MB załączników w tej rozmowie.");
       return;
     }
     setPendingFile(file);
@@ -292,7 +325,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       setDraft(content);
       if (fileSnapshot) setPendingFile(fileSnapshot);
-      window.alert(err instanceof Error ? err.message : d.sendFail);
+      window.alert(err instanceof Error ? err.message : "Nie udało się wysłać wiadomości.");
     } finally {
       setSending(false);
       setUploading(false);
@@ -304,22 +337,21 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
     setFindError(null);
     const peerId = Number(findUserId.trim());
     if (!Number.isFinite(peerId) || peerId <= 0) {
-      setFindError(d.invalidUserId);
+      setFindError("Podaj prawidłowe ID użytkownika.");
       return;
     }
     if (peerId === currentUser.id) {
-      setFindError(d.cannotMessageSelf);
+      setFindError("Nie możesz napisać do siebie.");
       return;
     }
     setFindLoading(true);
     try {
       const thread = await initContactThreadWeb(peerId);
       await loadThreads();
-      router.replace(`/moje-konto/wiadomosci?thread=${thread.id}&peer=${peerId}`);
-      await openThread(thread.id);
+      navigateToThread(thread.id, peerId);
       setFindUserId("");
     } catch (err: unknown) {
-      setFindError(err instanceof Error ? err.message : d.findUserFail);
+      setFindError(err instanceof Error ? err.message : "Nie udało się znaleźć użytkownika.");
     } finally {
       setFindLoading(false);
     }
@@ -327,21 +359,21 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
 
   const handleDeleteThread = async () => {
     if (!activeThreadId) return;
-    if (!window.confirm(d.deleteThreadConfirm)) return;
+    if (!window.confirm("Usunąć tę rozmowę z listy?")) return;
     try {
       const res = await fetch(`/api/contact/threads/${activeThreadId}`, {
         method: "DELETE",
         credentials: "include",
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(String(json?.error || d.deleteThreadFail));
+      if (!res.ok) throw new Error(String(json?.error || "Nie udało się usunąć wątku."));
       setActiveThreadId(null);
       setMessages([]);
       setAttachmentsInfo(null);
       router.replace("/moje-konto/wiadomosci");
       await loadThreads();
     } catch (err: unknown) {
-      window.alert(err instanceof Error ? err.message : d.deleteError);
+      window.alert(err instanceof Error ? err.message : "Błąd usuwania.");
     }
   };
 
@@ -359,20 +391,24 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       <div className="flex shrink-0 items-center gap-3">
         <button
           type="button"
-          onClick={() => router.push("/moje-konto/crm")}
+          onClick={handlePageBack}
           className="rounded-full border border-[var(--eos-border)] p-2 text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
-          aria-label={d.back}
+          aria-label="Wróć"
         >
           <ArrowLeft className="size-5" />
         </button>
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">{d.eyebrow}</p>
-          <h1 className="text-xl font-black tracking-tight text-[var(--eos-text)] md:text-2xl">{d.title}</h1>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">EstateOS™ Contact</p>
+          <h1 className="text-xl font-black tracking-tight text-[var(--eos-text)] md:text-2xl">Wiadomości bezpośrednie</h1>
         </div>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-strong)] md:grid-cols-[minmax(0,320px)_1fr]">
-        <aside className="flex min-h-0 flex-col border-b border-[var(--eos-border)] md:border-b-0 md:border-r">
+        <aside
+          className={`min-h-0 flex-col border-b border-[var(--eos-border)] md:border-b-0 md:border-r ${
+            showMobileChat ? "hidden md:flex" : "flex"
+          }`}
+        >
           <form onSubmit={handleFindUser} className="shrink-0 border-b border-[var(--eos-border)] p-3">
             <label className="mb-1.5 block text-[9px] font-black uppercase tracking-[0.18em] text-[var(--eos-muted)]">
               Napisz po ID użytkownika
@@ -392,7 +428,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                 disabled={findLoading}
                 className="rounded-xl bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-60"
               >
-                {findLoading ? <Loader2 className="size-4 animate-spin" /> : d.add}
+                {findLoading ? <Loader2 className="size-4 animate-spin" /> : "Dodaj"}
               </button>
             </div>
             {findError ? <p className="mt-2 text-xs text-red-400">{findError}</p> : null}
@@ -416,19 +452,26 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     key={thread.id}
                     type="button"
                     onClick={() => {
-                      router.replace(`/moje-konto/wiadomosci?thread=${thread.id}&peer=${thread.peerUserId}`);
-                      void openThread(thread.id);
+                      navigateToThread(thread.id, thread.peerUserId);
                     }}
                     className={`flex w-full items-center gap-3 border-b border-[var(--eos-border)] px-4 py-3 text-left transition-colors ${
                       selected ? "bg-emerald-500/10" : "hover:bg-[var(--eos-input)]"
                     }`}
                   >
-                    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-bg)]">
-                      {thread.peer?.image ? (
-                        <img src={thread.peer.image} alt="" className="size-full object-cover" />
-                      ) : (
-                        <User className="size-4 text-[var(--eos-subtle)]" />
-                      )}
+                    <div className="relative size-10 shrink-0 overflow-visible">
+                      <div className="flex size-10 items-center justify-center overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-bg)]">
+                        {thread.peer?.image ? (
+                          <img src={thread.peer.image} alt="" className="size-full object-cover" />
+                        ) : (
+                          <User className="size-4 text-[var(--eos-subtle)]" />
+                        )}
+                      </div>
+                      {Boolean(thread.peerIsOnline ?? thread.peer?.isOnline) ? (
+                        <span
+                          className="absolute bottom-0 right-0 size-3 rounded-full border-2 border-[var(--eos-card)] bg-emerald-500"
+                          aria-label="Online"
+                        />
+                      ) : null}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
@@ -439,12 +482,33 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                           </span>
                         ) : null}
                       </div>
+                      <p
+                        className={`truncate text-[11px] font-semibold ${
+                          thread.peerIsOnline ?? thread.peer?.isOnline
+                            ? "text-emerald-500"
+                            : "text-[var(--eos-subtle)]"
+                        }`}
+                      >
+                        {(() => {
+                          const online = Boolean(thread.peerIsOnline ?? thread.peer?.isOnline);
+                          if (online) return "Online";
+                          const iso = thread.peerLastSeenAt ?? thread.peer?.lastSeenAt;
+                          if (!iso) return "Offline";
+                          const d = new Date(iso);
+                          if (!Number.isFinite(d.getTime())) return "Offline";
+                          const when = `${d.toLocaleDateString("pl-PL")} ${d.toLocaleTimeString("pl-PL", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}`;
+                          return `Ostatnio online ${when}`;
+                        })()}
+                      </p>
                       <p className="truncate text-xs text-[var(--eos-muted)]">
                         {(() => {
                           const raw = String(thread.lastMessage || "");
-                          if (!raw) return d.noMessages;
+                          if (!raw) return "Brak wiadomości";
                           if (raw.includes(CONTACT_ATTACHMENT_PREFIX)) {
-                            return formatContactLastMessagePreview({ content: raw }) || d.noMessages;
+                            return formatContactLastMessagePreview({ content: raw }) || "Brak wiadomości";
                           }
                           return raw;
                         })()}
@@ -458,19 +522,58 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
           </div>
         </aside>
 
-        <section className="eos-contact-panel relative flex min-h-0 min-w-0 flex-col">
+        <motion.section
+          key={activeThreadId ?? "inbox-empty"}
+          initial={{ x: "100%", opacity: 0.98 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ type: "tween", duration: 0.28, ease: "easeOut" }}
+          className={`eos-contact-panel relative flex min-h-0 min-w-0 flex-col md:!transform-none md:!opacity-100 ${
+            showMobileChat
+              ? "fixed inset-0 z-30 flex bg-[var(--eos-card)] md:relative md:inset-auto md:z-auto"
+              : "hidden md:flex"
+          }`}
+        >
           {!activeThread ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-white/50">
               <MessageCircle className="size-10 text-emerald-500/50" />
-              <p className="text-sm">{d.selectThread}</p>
+              <p className="text-sm">Wybierz rozmowę z listy lub znajdź użytkownika po ID.</p>
             </div>
           ) : (
             <>
               <div className="shrink-0 border-b border-white/10 px-4 py-3 md:px-5">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-black text-white">{activeThread.peerUserName}</p>
-                    <p className="text-[10px] uppercase tracking-widest text-white/40">ID {activeThread.peerUserId}</p>
+                  <div className="flex min-w-0 flex-1 items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={handleMobileChatBack}
+                      className="mt-0.5 shrink-0 rounded-full p-1.5 text-white/70 hover:bg-white/10 md:hidden"
+                      aria-label="Wróć do listy rozmów"
+                    >
+                      <ArrowLeft className="size-5" />
+                    </button>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-white">{activeThread.peerUserName}</p>
+                      <p
+                        className={`text-[10px] font-semibold uppercase tracking-widest ${
+                          activeThread.peerIsOnline ?? activeThread.peer?.isOnline
+                            ? "text-emerald-400"
+                            : "text-white/40"
+                        }`}
+                      >
+                        {(() => {
+                          const online = Boolean(activeThread.peerIsOnline ?? activeThread.peer?.isOnline);
+                          if (online) return "Online";
+                          const iso = activeThread.peerLastSeenAt ?? activeThread.peer?.lastSeenAt;
+                          if (!iso) return "Offline";
+                          const d = new Date(iso);
+                          if (!Number.isFinite(d.getTime())) return "Offline";
+                          return `Ostatnio online ${d.toLocaleDateString("pl-PL")} ${d.toLocaleTimeString("pl-PL", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}`;
+                        })()}
+                      </p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="hidden items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400 sm:flex">
@@ -480,7 +583,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                       type="button"
                       onClick={() => void handleDeleteThread()}
                       className="rounded-full p-2 text-white/40 hover:bg-red-500/10 hover:text-red-400"
-                      aria-label={d.removeThread}
+                      aria-label="Usuń rozmowę"
                     >
                       <Trash2 className="size-4" />
                     </button>
@@ -490,7 +593,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <div className="min-w-[180px] flex-1">
                     <div className="mb-1 flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-white/45">
-                      <span>{d.threadAttachments}</span>
+                      <span>Załączniki rozmowy</span>
                       <span>
                         {formatContactBytes(usageBytes)} / {formatContactBytes(limitBytes)}
                       </span>
@@ -534,7 +637,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                           <Loader2 className="size-4 animate-spin" /> Ładowanie…
                         </div>
                       ) : !attachmentsInfo?.attachments?.length ? (
-                        <p className="text-xs text-white/35">{d.noAttachments}</p>
+                        <p className="text-xs text-white/35">Brak załączników w tej rozmowie.</p>
                       ) : (
                         <div className="grid gap-2 sm:grid-cols-2">
                           {attachmentsInfo.attachments.map((att) => (
@@ -693,7 +796,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                         if (fileInputRef.current) fileInputRef.current.value = "";
                       }}
                       className="rounded-full p-1.5 text-white/50 hover:bg-white/10 hover:text-white"
-                      aria-label={d.removeAttachment}
+                      aria-label="Usuń załącznik"
                     >
                       <X className="size-4" />
                     </button>
@@ -715,7 +818,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     onClick={() => fileInputRef.current?.click()}
                     disabled={sending || uploading}
                     className="flex size-11 shrink-0 items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-emerald-400 disabled:opacity-40"
-                    aria-label={d.addAttachment}
+                    aria-label="Dodaj załącznik"
                   >
                     {uploading ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-5" />}
                   </button>
@@ -723,14 +826,14 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     ref={draftInputRef}
                     value={draft}
                     onChange={(e) => onDraftChange(e.target.value)}
-                    placeholder={d.writePlaceholder}
+                    placeholder="Napisz wiadomość…"
                     className="min-w-0 flex-1 bg-transparent px-2 py-3 text-sm text-white outline-none placeholder:text-white/30"
                   />
                   <button
                     type="submit"
                     disabled={(!draft.trim() && !pendingFile) || sending || uploading}
                     className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-black transition hover:bg-emerald-400 disabled:opacity-40"
-                    aria-label={d.send}
+                    aria-label="Wyślij"
                   >
                     {sending ? <Loader2 className="size-5 animate-spin" /> : <Send className="size-5" />}
                   </button>
@@ -738,7 +841,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
               </form>
             </>
           )}
-        </section>
+        </motion.section>
       </div>
     </div>
   );

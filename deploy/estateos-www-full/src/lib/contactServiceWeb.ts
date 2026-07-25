@@ -2,7 +2,16 @@ export type ContactThreadRow = {
   id: number;
   peerUserId: number;
   peerUserName: string;
-  peer?: { id: number; name: string; email?: string | null; image?: string | null };
+  peer?: {
+    id: number;
+    name: string;
+    email?: string | null;
+    image?: string | null;
+    isOnline?: boolean;
+    lastSeenAt?: string | null;
+  };
+  peerIsOnline?: boolean;
+  peerLastSeenAt?: string | null;
   lastMessage?: string;
   time?: string;
   unread?: number;

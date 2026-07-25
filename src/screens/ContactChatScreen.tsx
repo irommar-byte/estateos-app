@@ -32,6 +32,8 @@ import ContactChatAttachmentsBar from '../components/messaging/ContactChatAttach
 import { getChatTheme } from '../components/messaging/chatTheme';
 import { MAX_CONTACT_FILE_BYTES, MAX_CONTACT_THREAD_BYTES, CONTACT_ATTACHMENT_PREFIX } from '../utils/contactAttachment';
 import type { ContactPendingFile } from '../utils/contactAttachMenu';
+import { formatPresenceSubtitle } from '../utils/formatLastSeen';
+import { API_URL } from '../config/network';
 
 const TYPING_PULSE_MS = 1500;
 
@@ -48,6 +50,10 @@ export default function ContactChatScreen() {
   const threadId = Number(route.params?.threadId || 0);
   const peerUserId = Number(route.params?.peerUserId || 0);
   const peerName = String(route.params?.peerName || t('contact.peerFallback', { id: peerUserId || '?' }));
+  const [peerIsOnline, setPeerIsOnline] = useState(Boolean(route.params?.peerIsOnline));
+  const [peerLastSeenAt, setPeerLastSeenAt] = useState<string | null>(
+    route.params?.peerLastSeenAt ? String(route.params.peerLastSeenAt) : null,
+  );
 
   const [messages, setMessages] = useState<ContactMessageRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,12 +106,29 @@ export default function ContactChatScreen() {
       void load();
       void loadAttachments();
       const poll = setInterval(() => void load(), 2500);
+
+      const refreshPresence = async () => {
+        if (!peerUserId) return;
+        try {
+          const res = await fetch(`${API_URL}/api/presence/status?userId=${peerUserId}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          setPeerIsOnline(Boolean(data?.isOnline));
+          if (data?.lastSeenAt) setPeerLastSeenAt(String(data.lastSeenAt));
+        } catch {
+          /* ignore */
+        }
+      };
+      void refreshPresence();
+      const presencePoll = setInterval(() => void refreshPresence(), 30_000);
+
       return () => {
         clearInterval(poll);
+        clearInterval(presencePoll);
         setActiveContactThread(null);
         useFloatingChatsStore.getState().setDockSuppressed(false);
       };
-    }, [threadId, load, loadAttachments]),
+    }, [threadId, peerUserId, load, loadAttachments]),
   );
 
   useEffect(() => {
@@ -299,6 +322,23 @@ export default function ContactChatScreen() {
           <Text style={styles.headerSubtitle}>{t('contact.chat.eyebrow')}</Text>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {peerName}
+          </Text>
+          <Text
+            style={{
+              marginTop: 2,
+              fontSize: 11,
+              fontWeight: '600',
+              color: peerIsOnline ? '#34C759' : colors.textMuted,
+            }}
+            numberOfLines={1}
+          >
+            {formatPresenceSubtitle({
+              isOnline: peerIsOnline,
+              lastSeenAt: peerLastSeenAt,
+              onlineLabel: t('contact.presence.online'),
+              offlineLabel: t('contact.presence.offline'),
+              lastSeenPrefix: t('contact.presence.lastSeen'),
+            })}
           </Text>
         </View>
         <View style={styles.headerSpacer} />

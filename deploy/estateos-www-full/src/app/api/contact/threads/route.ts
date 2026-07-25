@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { resolveContactUserId } from '@/lib/contactRequestAuth';
 import { contactThreadPair, contactPeerId } from '@/lib/contactThreadPair';
 import { formatContactLastMessagePreview } from '@/lib/contactAttachmentShared';
+import { isSellerOnlineFromLastLogin } from '@/lib/offerGuestInquiry';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -16,6 +17,7 @@ const USER_SELECT = {
   planType: true,
   isPro: true,
   role: true,
+  lastLoginAt: true,
 } as const;
 
 async function isBlocked(a: number, b: number): Promise<boolean> {
@@ -34,8 +36,8 @@ function formatThreadRow(
     userLowId: number;
     userHighId: number;
     updatedAt: Date;
-    userLow: { id: number; name: string | null; email: string | null; image: string | null };
-    userHigh: { id: number; name: string | null; email: string | null; image: string | null };
+    userLow: { id: number; name: string | null; email: string | null; image: string | null; lastLoginAt?: Date | null };
+    userHigh: { id: number; name: string | null; email: string | null; image: string | null; lastLoginAt?: Date | null };
     messages: Array<{ id: number; content: string; attachment?: string | null; createdAt: Date; senderId: number }>;
   },
   viewerId: number,
@@ -48,6 +50,8 @@ function formatThreadRow(
     peer?.name?.trim() ||
     (peer?.email ? String(peer.email).split('@')[0] : null) ||
     `Użytkownik #${peerId}`;
+  const peerIsOnline = isSellerOnlineFromLastLogin(peer?.lastLoginAt);
+  const peerLastSeenAt = peer?.lastLoginAt ? peer.lastLoginAt.toISOString() : null;
   return {
     id: thread.id,
     peerUserId: peerId,
@@ -57,7 +61,11 @@ function formatThreadRow(
       name: peerName,
       email: peer?.email || null,
       image: peer?.image || null,
+      isOnline: peerIsOnline,
+      lastSeenAt: peerLastSeenAt,
     },
+    peerIsOnline,
+    peerLastSeenAt,
     lastMessage: lastMsg ? formatContactLastMessagePreview(lastMsg) : '',
     time: (lastMsg?.createdAt || thread.updatedAt).toISOString(),
     unread,

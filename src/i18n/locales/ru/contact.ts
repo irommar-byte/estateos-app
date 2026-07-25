@@ -6,6 +6,11 @@ export const contact = {
   write: 'Написать',
   writeA11y: 'Написать {{name}}',
   peerFallback: 'Пользователь #{{id}}',
+  presence: {
+    online: 'Онлайн',
+    offline: 'Офлайн',
+    lastSeen: 'Был онлайн',
+  },
   empty: {
     title: 'Личные диалоги',
     subtitle: 'Здесь появятся чаты 1:1 с другими пользователями EstateOS™ — без привязки к объявлению.',

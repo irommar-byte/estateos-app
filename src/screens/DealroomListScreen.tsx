@@ -2471,6 +2471,8 @@ export default function DealroomListScreen() {
                 threadId: thread.id,
                 peerUserId: thread.peerUserId,
                 peerName: getContactDisplayName(thread.id, thread.peerUserName),
+                peerIsOnline: Boolean(thread.peerIsOnline ?? thread.peer?.isOnline),
+                peerLastSeenAt: thread.peerLastSeenAt ?? thread.peer?.lastSeenAt ?? null,
               });
             }}
             onThreadsChanged={loadContactThreads}

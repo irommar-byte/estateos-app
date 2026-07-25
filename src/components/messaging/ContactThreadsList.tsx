@@ -23,6 +23,7 @@ import {
 import { useFloatingChatsStore } from '../../store/useFloatingChatsStore';
 import ContactPeerAvatar from './ContactPeerAvatar';
 import { formatContactLastMessagePreview } from '../../utils/contactAttachment';
+import { formatPresenceSubtitle } from '../../utils/formatLastSeen';
 
 type Colors = Record<string, string>;
 
@@ -53,6 +54,8 @@ function syncFloatingFromVisible(visible: ContactThreadRow[], getDisplayName: (i
     peerImage: thread.peer?.image ?? null,
     unread: Math.max(0, Number(thread.unread ?? thread.unreadCount ?? 0)),
     lastPreview: threadPreview(thread.lastMessage),
+    peerIsOnline: Boolean(thread.peerIsOnline ?? thread.peer?.isOnline),
+    peerLastSeenAt: thread.peerLastSeenAt ?? thread.peer?.lastSeenAt ?? null,
   }));
   useFloatingChatsStore.getState().syncEntries(entries);
 }
@@ -83,6 +86,14 @@ const ThreadCard = React.memo(function ThreadCard({
   const { t } = useI18n();
   const unread = Math.max(0, Number(thread.unread ?? thread.unreadCount ?? 0));
   const cardBg = isDark ? 'rgba(28,28,30,0.92)' : 'rgba(255,255,255,0.98)';
+  const isOnline = Boolean(thread.peerIsOnline ?? thread.peer?.isOnline);
+  const presenceLine = formatPresenceSubtitle({
+    isOnline,
+    lastSeenAt: thread.peerLastSeenAt ?? thread.peer?.lastSeenAt,
+    onlineLabel: t('contact.presence.online'),
+    offlineLabel: t('contact.presence.offline'),
+    lastSeenPrefix: t('contact.presence.lastSeen'),
+  });
 
   return (
     <View style={[styles.cardWrap, isActive && styles.cardDragging]}>
@@ -92,7 +103,13 @@ const ThreadCard = React.memo(function ThreadCard({
             <GripVertical size={18} color={colors.textMuted} />
           </Pressable>
         ) : null}
-        <ContactPeerAvatar name={displayName} peer={thread.peer} size={46} isDark={isDark} />
+        <ContactPeerAvatar
+          name={displayName}
+          peer={thread.peer}
+          size={46}
+          isDark={isDark}
+          isOnline={isOnline}
+        />
         <Pressable style={styles.body} disabled={!editMode} onPress={onRename}>
           <View style={styles.titleRow}>
             <Text style={[styles.name, { color: colors.textMain }]} numberOfLines={1}>
@@ -102,6 +119,12 @@ const ThreadCard = React.memo(function ThreadCard({
               <Text style={styles.directPillText}>{t('contact.list.directBadge')}</Text>
             </View>
           </View>
+          <Text
+            style={[styles.presence, { color: isOnline ? '#34C759' : colors.textMuted }]}
+            numberOfLines={1}
+          >
+            {presenceLine}
+          </Text>
           <Text style={[styles.preview, { color: colors.textMuted }]} numberOfLines={2}>
             {threadPreview(thread.lastMessage)}
           </Text>
@@ -416,6 +439,7 @@ const styles = StyleSheet.create({
   body: { flex: 1, minWidth: 0 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   name: { fontSize: 16, fontWeight: '700', flexShrink: 1 },
+  presence: { fontSize: 11, fontWeight: '600', marginBottom: 2 },
   directPill: {
     paddingHorizontal: 7,
     paddingVertical: 2,

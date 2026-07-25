@@ -46,6 +46,7 @@ function ChatRows({
               peer={{ name: entry.peerName, image: entry.peerImage }}
               size={34}
               isDark={isDark}
+              isOnline={Boolean(entry.peerIsOnline)}
             />
             <View style={styles.rowText}>
               <Text style={[styles.rowName, { color: nameColor }]} numberOfLines={1}>

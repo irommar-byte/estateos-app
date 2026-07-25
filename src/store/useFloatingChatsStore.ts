@@ -7,6 +7,8 @@ export type FloatingChatEntry = {
   peerImage?: string | null;
   unread?: number;
   lastPreview?: string;
+  peerIsOnline?: boolean;
+  peerLastSeenAt?: string | null;
 };
 
 type State = {
@@ -68,7 +70,9 @@ export const useFloatingChatsStore = create<State>((set) => ({
             e.peerName === n.peerName &&
             (e.peerImage ?? null) === (n.peerImage ?? null) &&
             (e.unread ?? 0) === (n.unread ?? 0) &&
-            (e.lastPreview ?? '') === (n.lastPreview ?? '')
+            (e.lastPreview ?? '') === (n.lastPreview ?? '') &&
+            Boolean(e.peerIsOnline) === Boolean(n.peerIsOnline) &&
+            (e.peerLastSeenAt ?? null) === (n.peerLastSeenAt ?? null)
           );
         })
       ) {

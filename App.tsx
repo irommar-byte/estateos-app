@@ -19,6 +19,7 @@ import CircularLabelRing from './src/components/CircularLabelRing';
 import { IAPManager } from './src/services/iapManager';
 import { API_URL } from './src/config/network';
 import { stopRadarLiveActivity } from './src/services/radarLiveActivityService';
+import { pingPresence } from './src/services/presenceService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -1517,6 +1518,27 @@ export default function App() {
   useEffect(() => {
     bootstrapFxRateRefresh();
   }, []);
+
+  /** Heartbeat ONLINE — bez tego oferta/WWW pokazuje OFFLINE mimo zalogowanej aplikacji. */
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    const beat = () => {
+      if (cancelled) return;
+      if (AppState.currentState !== 'active') return;
+      void pingPresence(token);
+    };
+    beat();
+    const id = setInterval(beat, 3 * 60 * 1000);
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') beat();
+    });
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      sub.remove();
+    };
+  }, [token]);
 
   /** Kurs EUR/PLN (NBP): odświeżanie codziennie od 08:00 Europe/Warsaw + przy wejściu w aplikację. */
   useEffect(() => {

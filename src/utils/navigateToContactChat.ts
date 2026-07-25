@@ -5,6 +5,8 @@ export type ContactChatParams = {
   threadId: number;
   peerUserId: number;
   peerName: string;
+  peerIsOnline?: boolean;
+  peerLastSeenAt?: string | null;
 };
 
 type NavigationLike = {
