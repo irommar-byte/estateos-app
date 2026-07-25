@@ -25,7 +25,7 @@ import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, Pressable, Animated, Alert, useColorScheme, ScrollView, PanResponder, Linking, AppState } from 'react-native';
+import { StyleSheet, Text, View, Pressable, Animated, Alert, useColorScheme, ScrollView, PanResponder, Linking, AppState, useWindowDimensions } from 'react-native';
 
 import * as Notifications from "expo-notifications";
 
@@ -184,6 +184,13 @@ function parseAddOfferStepFromTabNavState(navState: any): number | null {
 // ======================================================================
 const FloatingNextButton = (props: any) => {
   const { onPress, style, children: _tabChildren, ...tabBarProps } = props;
+  const { width: windowWidth } = useWindowDimensions();
+  const compactChrome = windowWidth < 420;
+  const plusSize = compactChrome ? 58 : 80;
+  const ringSize = compactChrome ? 78 : 108;
+  const shadowSize = compactChrome ? 72 : 98;
+  const plusTop = compactChrome ? -22 : -35;
+  const plusIconSize = compactChrome ? 30 : 40;
   const draft = useOfferStore((s) => s.draft);
   const currentStep = useOfferStore((s) => s.currentStep);
   const setCurrentStep = useOfferStore((s) => s.setCurrentStep);
@@ -528,7 +535,7 @@ const FloatingNextButton = (props: any) => {
 
   return (
     <View
-      style={[tabBarStyle, { top: -35, justifyContent: 'center', alignItems: 'center', zIndex: 110, elevation: 110 }]}
+      style={[tabBarStyle, { top: plusTop, justifyContent: 'center', alignItems: 'center', zIndex: 110, elevation: 110 }]}
       {...tabBarProps}
     >
       {/*
@@ -540,16 +547,16 @@ const FloatingNextButton = (props: any) => {
       <View
         style={{
           position: 'absolute',
-          width: 108,
-          height: 108,
-          borderRadius: 54,
+          width: ringSize,
+          height: ringSize,
+          borderRadius: ringSize / 2,
           backgroundColor: 'transparent',
-          borderWidth: 1.2,
+          borderWidth: compactChrome ? 1 : 1.2,
           borderColor: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(255,255,255,0.95)',
           overflow: 'hidden',
           shadowColor: '#FFFFFF',
           shadowOpacity: isDark ? 0.22 : 0.6,
-          shadowRadius: 18,
+          shadowRadius: compactChrome ? 12 : 18,
           shadowOffset: { width: 0, height: 0 },
           elevation: 4,
         }}
@@ -568,10 +575,10 @@ const FloatingNextButton = (props: any) => {
         <View
           style={{
             position: 'absolute',
-            top: 5,
-            left: 18,
-            right: 18,
-            height: 12,
+            top: compactChrome ? 4 : 5,
+            left: compactChrome ? 14 : 18,
+            right: compactChrome ? 14 : 18,
+            height: compactChrome ? 9 : 12,
             borderRadius: 12,
             backgroundColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.7)',
             opacity: 0.85,
@@ -585,28 +592,28 @@ const FloatingNextButton = (props: any) => {
       <View
         style={{
           position: 'absolute',
-          width: 98,
-          height: 98,
-          borderRadius: 49,
+          width: shadowSize,
+          height: shadowSize,
+          borderRadius: shadowSize / 2,
           backgroundColor: 'transparent',
           shadowColor: '#000',
           shadowOpacity: isDark ? 0.32 : 0.22,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 7 },
+          shadowRadius: compactChrome ? 10 : 14,
+          shadowOffset: { width: 0, height: compactChrome ? 5 : 7 },
           elevation: 6,
         }}
       />
       <View ref={buttonRef} collapsable={false} {...panResponder.panHandlers} onLayout={() => { requestAnimationFrame(() => { buttonRef.current?.measureInWindow((x, y, w, h) => { const anchor = { x: x + w / 2, y: y + h / 2 }; buttonLayoutRef.current = anchor; setPlusAnchor(anchor); if (__DEV__) console.log('[PLUS] measureInWindow', { x, y, w, h, ...anchor }); }); }); }}>
         <Animated.View style={{
           transform: [{ scale: Animated.multiply(pulseAnim, holdScale) }],
-          width: 80,
-          height: 80,
-          borderRadius: 40,
+          width: plusSize,
+          height: plusSize,
+          borderRadius: plusSize / 2,
           backgroundColor: isReady ? plusFillColor : (isDark ? '#222' : '#e5e5e5'),
           justifyContent: 'center',
           alignItems: 'center'
         }}>
-          <Ionicons name={isArrow ? "arrow-forward" : "add"} size={40} color="#fff" />
+          <Ionicons name={isArrow ? "arrow-forward" : "add"} size={plusIconSize} color="#fff" />
 
           {/*
             ╔══════════════════════════════════════════════════════════╗
@@ -627,46 +634,50 @@ const FloatingNextButton = (props: any) => {
             ║  z gestami pan-responder / long-press.                   ║
             ╚══════════════════════════════════════════════════════════╝
           */}
-          <Animated.View
-            pointerEvents="none"
-            style={{ position: 'absolute', opacity: plusLabelOpacity }}
-          >
-            <CircularLabelRing
-              text="DODAJ OFERTĘ"
-              arcPosition="top"
-              buttonDiameter={108}
-              gap={17}
-              fontSize={11.8}
-              letterSpacing={2.2}
-              arcFraction={0.62}
-              color={circularLabelColor}
-              strokeColor={circularLabelStroke}
-              strokeWidth={0.85}
-              submerge
-              submergeMidpoint={0.56}
-              verticalOffset={60}
-            />
-          </Animated.View>
-          <Animated.View
-            pointerEvents="none"
-            style={{ position: 'absolute', opacity: arrowLabelOpacity }}
-          >
-            <CircularLabelRing
-              text="DALEJ"
-              arcPosition="bottom"
-              buttonDiameter={108}
-              gap={8}
-              fontSize={11}
-              letterSpacing={3.4}
-              arcFraction={0.42}
-              color={circularLabelColor}
-              strokeColor={circularLabelStroke}
-              strokeWidth={0.55}
-              submerge
-              submergeMidpoint={0.5}
-              verticalOffset={-40}
-            />
-          </Animated.View>
+          {!compactChrome ? (
+            <>
+              <Animated.View
+                pointerEvents="none"
+                style={{ position: 'absolute', opacity: plusLabelOpacity }}
+              >
+                <CircularLabelRing
+                  text="DODAJ OFERTĘ"
+                  arcPosition="top"
+                  buttonDiameter={108}
+                  gap={17}
+                  fontSize={11.8}
+                  letterSpacing={2.2}
+                  arcFraction={0.62}
+                  color={circularLabelColor}
+                  strokeColor={circularLabelStroke}
+                  strokeWidth={0.85}
+                  submerge
+                  submergeMidpoint={0.56}
+                  verticalOffset={60}
+                />
+              </Animated.View>
+              <Animated.View
+                pointerEvents="none"
+                style={{ position: 'absolute', opacity: arrowLabelOpacity }}
+              >
+                <CircularLabelRing
+                  text="DALEJ"
+                  arcPosition="bottom"
+                  buttonDiameter={108}
+                  gap={8}
+                  fontSize={11}
+                  letterSpacing={3.4}
+                  arcFraction={0.42}
+                  color={circularLabelColor}
+                  strokeColor={circularLabelStroke}
+                  strokeWidth={0.55}
+                  submerge
+                  submergeMidpoint={0.5}
+                  verticalOffset={-40}
+                />
+              </Animated.View>
+            </>
+          ) : null}
         </Animated.View>
       </View>
       {isQuickMenuOpen && (

@@ -12,17 +12,19 @@ import { useAuthStore } from '../../store/useAuthStore';
 type Props = { navigation: any };
 
 /**
- * Guide siedzi po LEWEJ, pod przyciskami warstw/ulubionych —
- * nigdy na środku nad Live Radar.
+ * Guide tylko na Mapy+Radar, po LEWEJ pod chrome —
+ * nie nachodzi na Live Radar ani tytuł Market.
  */
 export default function EstateOsGuideOverlay({ navigation }: Props) {
   const [open, setOpen] = useState(false);
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const profile = useDiscoveryStore((state) => state.profile);
   const firstEntrySeen = useDiscoveryStore((state) => state.firstEntrySeen);
   const token = useAuthStore((state) => state.token);
   const [guide, setGuide] = useState<EstateOsGuideContext | null>(null);
+  const compact = width < 420;
+  const iconOnly = width < 360;
 
   useEffect(() => {
     void fetchEstateOsGuideContext(token).then(setGuide);
@@ -34,7 +36,7 @@ export default function EstateOsGuideOverlay({ navigation }: Props) {
       ? 'Widzę Twój kierunek. Zobaczmy, co teraz najbardziej go wzmacnia.'
       : 'Zacznijmy od tego, co jest dla Ciebie ważne.');
 
-  const topOffset = Math.max(insets.top, Platform.OS === 'ios' ? 48 : 28) + 56;
+  const topOffset = Math.max(insets.top, Platform.OS === 'ios' ? 48 : 28) + (compact ? 52 : 56);
 
   return (
     <View
@@ -43,12 +45,13 @@ export default function EstateOsGuideOverlay({ navigation }: Props) {
         styles.root,
         {
           top: topOffset,
-          maxHeight: Math.max(280, height - topOffset - 120),
+          maxHeight: Math.max(240, height - topOffset - 140),
+          maxWidth: Math.min(300, width - 24),
         },
       ]}
     >
       {open ? (
-        <BlurView intensity={72} tint="dark" style={styles.panel}>
+        <BlurView intensity={72} tint="dark" style={[styles.panel, compact && styles.panelCompact]}>
           <View style={styles.panelHead}>
             <View style={styles.guideMark}>
               <Ionicons name="sparkles" size={16} color={DISCOVERY_COLORS.gold} />
@@ -61,7 +64,7 @@ export default function EstateOsGuideOverlay({ navigation }: Props) {
               <Ionicons name="close" size={18} color="#FFF" />
             </ApplePressable>
           </View>
-          <Text style={styles.lead}>{lead}</Text>
+          <Text style={[styles.lead, compact && styles.leadCompact]}>{lead}</Text>
           <ApplePressable
             onPress={() => {
               setOpen(false);
@@ -98,17 +101,19 @@ export default function EstateOsGuideOverlay({ navigation }: Props) {
         </BlurView>
       ) : (
         <ApplePressable onPress={() => setOpen(true)} style={styles.pill} accessibilityLabel="Otwórz EstateOS Guide">
-          <BlurView intensity={64} tint="dark" style={styles.pillBlur}>
+          <BlurView intensity={64} tint="dark" style={[styles.pillBlur, iconOnly && styles.pillIconOnly]}>
             <View style={styles.guideMark}>
               <Ionicons name="sparkles" size={14} color={DISCOVERY_COLORS.gold} />
             </View>
-            <View style={styles.pillCopy}>
-              <Text style={styles.name}>Guide</Text>
-              <Text style={styles.pillSub} numberOfLines={1}>
-                {profile?.confidence ? 'Twój kierunek' : 'Poznaj kierunek'}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={14} color={DISCOVERY_COLORS.ivory} />
+            {!iconOnly ? (
+              <View style={styles.pillCopy}>
+                <Text style={styles.name}>Guide</Text>
+                <Text style={styles.pillSub} numberOfLines={1}>
+                  {profile?.confidence ? 'Twój kierunek' : 'Poznaj kierunek'}
+                </Text>
+              </View>
+            ) : null}
+            {!iconOnly ? <Ionicons name="chevron-forward" size={14} color={DISCOVERY_COLORS.ivory} /> : null}
           </BlurView>
         </ApplePressable>
       )}
@@ -120,10 +125,8 @@ const styles = StyleSheet.create({
   root: {
     position: 'absolute',
     left: 12,
-    right: undefined,
     zIndex: 40,
     alignItems: 'flex-start',
-    maxWidth: 300,
   },
   pill: {
     borderRadius: 22,
@@ -131,9 +134,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(212,175,55,0.28)',
     shadowColor: '#D4AF37',
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
   },
   pillBlur: {
     minHeight: 44,
@@ -145,6 +148,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     backgroundColor: 'rgba(11,12,14,0.78)',
   },
+  pillIconOnly: {
+    maxWidth: 44,
+    minWidth: 44,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+  },
   pillCopy: { flexShrink: 1 },
   panel: {
     width: 300,
@@ -155,6 +164,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.18)',
     padding: 15,
     backgroundColor: 'rgba(11,12,14,0.88)',
+  },
+  panelCompact: {
+    padding: 12,
   },
   panelHead: { flexDirection: 'row', alignItems: 'center' },
   guideMark: {
@@ -171,6 +183,7 @@ const styles = StyleSheet.create({
   pillSub: { color: DISCOVERY_COLORS.textMuted, fontSize: 10, marginTop: 1, maxWidth: 110 },
   close: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   lead: { color: '#FFF', fontSize: 17, lineHeight: 23, fontWeight: '700', marginTop: 14, marginBottom: 12 },
+  leadCompact: { fontSize: 15, lineHeight: 21 },
   action: {
     minHeight: 48,
     borderRadius: 15,

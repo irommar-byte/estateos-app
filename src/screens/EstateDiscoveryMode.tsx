@@ -44,7 +44,7 @@ import DiscoveryErrorRecovery from '../components/discovery/DiscoveryErrorRecove
 import DiscoveryPauseSheet from '../components/discovery/DiscoveryPauseSheet';
 import DiscoveryContradictionCareSheet from '../components/discovery/DiscoveryContradictionCareSheet';
 import { shouldAskDiscoveryDislikeReason } from '../utils/discoveryExperienceState';
-import { DISCOVERY_EASE_OUT, DISCOVERY_MOTION } from '../components/discovery/discoveryMotion';
+import { DISCOVERY_EASE_OUT } from '../components/discovery/discoveryMotion';
 
 // === LUKSUSOWA PALETA ===
 const RR_BLACK = '#040405';
@@ -296,8 +296,6 @@ export default function EstateDiscoveryMode({ navigation }: any) {
 
   const [offers, setOffers] = useState<DiscoveryOffer[]>([]);
   const position = useRef(new Animated.ValueXY()).current;
-  const enterProgress = useRef(new Animated.Value(1)).current;
-  const exitOpacity = useRef(new Animated.Value(1)).current;
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const topOfferId = offers[0]?.id;
   const topOfferRef = useRef<DiscoveryOffer | null>(null);
@@ -574,23 +572,14 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       trackedOfferRef.current = top.id;
       void sendDiscoveryEventRef.current?.('DISCOVERY_VIEW_CARD', top);
     }
-    // Po zmianie karty: najpierw nowa karta jest już na wierzchu, dopiero wtedy zerujemy pozycję.
-    // Dzięki temu stara karta nie „miga” wracając na środek.
+    // Po zmianie talii: zeruj pozycję DOPIERO gdy nowa karta już jest topką —
+    // bez springów skali/opacity (to powodowało mryganie i podskoki).
     if (pendingResetRef.current) {
       pendingResetRef.current = false;
       position.setValue({ x: 0, y: 0 });
-      exitOpacity.setValue(1);
-      enterProgress.setValue(0);
-      Animated.spring(enterProgress, {
-        toValue: 1,
-        friction: 7,
-        tension: 68,
-        useNativeDriver: false,
-      }).start(() => {
-        swipingRef.current = false;
-      });
+      swipingRef.current = false;
     }
-  }, [enterProgress, exitOpacity, position, topOfferId]);
+  }, [position, topOfferId]);
 
   useEffect(() => {
     const top = offers[0];
@@ -605,22 +594,15 @@ export default function EstateDiscoveryMode({ navigation }: any) {
 
   const resetPosition = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Animated.parallel([
-      Animated.spring(position, {
-        toValue: { x: 0, y: 0 },
-        friction: 6,
-        tension: 48,
-        useNativeDriver: false,
-      }),
-      Animated.timing(exitOpacity, {
-        toValue: 1,
-        duration: 160,
-        useNativeDriver: false,
-      }),
-    ]).start(() => {
+    Animated.spring(position, {
+      toValue: { x: 0, y: 0 },
+      friction: 6,
+      tension: 48,
+      useNativeDriver: false,
+    }).start(() => {
       swipingRef.current = false;
     });
-  }, [exitOpacity, position]);
+  }, [position]);
 
   const armUndo = useCallback((offer: DiscoveryOffer) => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
@@ -633,7 +615,6 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   const showSaveAffirmationBriefly = useCallback((offer: DiscoveryOffer) => {
     if (saveAffirmTimerRef.current) clearTimeout(saveAffirmTimerRef.current);
     setSaveOffer(offer);
-    // Tylko island — bez Modal, żeby talia nie stawała po każdym like.
     saveAffirmTimerRef.current = setTimeout(() => {
       setSaveOffer(null);
     }, 2200);
@@ -686,32 +667,28 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
-    // Karta zostaje poza ekranem do re-renderu — dopiero potem zerujemy pozycję (bez mignięcia).
     pendingResetRef.current = true;
-    exitOpacity.setValue(0);
     setOffers((prev) => prev.slice(1));
     setActivePhotoIndex(0);
     armUndo(top);
     if (direction === 'right') showSaveAffirmationBriefly(top);
-  }, [armUndo, exitOpacity, showSaveAffirmationBriefly]);
+  }, [armUndo, showSaveAffirmationBriefly]);
 
   const onSwipeComplete = useCallback((direction: 'right' | 'left' | 'up') => {
     const top = offersRef.current[0];
     if (!top) {
       position.setValue({ x: 0, y: 0 });
-      exitOpacity.setValue(1);
       swipingRef.current = false;
       return;
     }
     if (direction === 'up') {
       position.setValue({ x: 0, y: 0 });
-      exitOpacity.setValue(1);
       swipingRef.current = false;
       setPriorityOffer(top);
       return;
     }
     commitDecision(direction, top);
-  }, [commitDecision, exitOpacity, position]);
+  }, [commitDecision, position]);
 
   // === ANIMACJE KARTY ===
   const forceSwipe = useCallback((direction: 'right' | 'left' | 'up') => {
@@ -725,29 +702,20 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     if (direction === 'left') toX = -width * 1.35;
     if (direction === 'up') toY = -height * 1.25;
 
-    Animated.parallel([
-      Animated.timing(position, {
-        toValue: { x: toX, y: toY },
-        duration: DISCOVERY_MOTION.commit,
-        easing: DISCOVERY_EASE_OUT,
-        useNativeDriver: false,
-      }),
-      Animated.timing(exitOpacity, {
-        toValue: 0.15,
-        duration: DISCOVERY_MOTION.commit,
-        easing: DISCOVERY_EASE_OUT,
-        useNativeDriver: false,
-      }),
-    ]).start(({ finished }) => {
+    Animated.timing(position, {
+      toValue: { x: toX, y: toY },
+      duration: 260,
+      easing: DISCOVERY_EASE_OUT,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
       if (!finished) {
         position.setValue({ x: 0, y: 0 });
-        exitOpacity.setValue(1);
         swipingRef.current = false;
         return;
       }
       onSwipeComplete(direction);
     });
-  }, [exitOpacity, height, onSwipeComplete, position, width]);
+  }, [height, onSwipeComplete, position, width]);
 
   forceSwipeRef.current = forceSwipe;
 
@@ -800,13 +768,12 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     if (!undoOffer) return;
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     pendingResetRef.current = true;
-    exitOpacity.setValue(1);
     setOffers((prev) => [undoOffer, ...prev]);
     setActivePhotoIndex(0);
     void sendDiscoveryEvent('DISCOVERY_UNDO', undoOffer);
     setUndoOffer(null);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [exitOpacity, sendDiscoveryEvent, undoOffer]);
+  }, [sendDiscoveryEvent, undoOffer]);
 
   function confirmPriority(mode: 'priority' | 'save') {
     const offer = priorityOffer;
@@ -955,34 +922,15 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   });
 
   const nextCardScale = position.x.interpolate({
-    inputRange: [-width / 2, 0, width / 2],
-    outputRange: [0.985, 0.93, 0.985],
+    inputRange: [-width * 0.28, 0, width * 0.28],
+    outputRange: [1, 0.945, 1],
     extrapolate: 'clamp',
   });
   const nextCardLift = position.x.interpolate({
-    inputRange: [-width / 2, 0, width / 2],
-    outputRange: [10, 0, 10],
+    inputRange: [-width * 0.28, 0, width * 0.28],
+    outputRange: [0, 8, 0],
     extrapolate: 'clamp',
   });
-  const enterLift = enterProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [22, 0],
-  });
-  const enterScale = enterProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.92, 1],
-  });
-  const enterGlow = enterProgress.interpolate({
-    inputRange: [0, 0.4, 1],
-    outputRange: [0.5, 0.22, 0],
-  });
-  const topCardOpacity = Animated.multiply(
-    exitOpacity,
-    enterProgress.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.78, 1],
-    }),
-  );
 
   // === RENDEROWANIE KART ===
   const renderCards = () => {
@@ -1027,17 +975,14 @@ export default function EstateDiscoveryMode({ navigation }: any) {
             styles.cardContainer,
             { width: CARD_WIDTH, height: CARD_HEIGHT },
             isFirst && {
-              opacity: topCardOpacity,
               transform: [
                 { translateX: position.x },
-                { translateY: Animated.add(position.y, enterLift) },
+                { translateY: position.y },
                 { rotate },
-                { scale: enterScale },
               ],
               zIndex: 10,
             },
             isSecond && {
-              opacity: 0.94,
               transform: [{ translateY: nextCardLift }, { scale: nextCardScale }],
               zIndex: 1,
             },
@@ -1068,15 +1013,6 @@ export default function EstateDiscoveryMode({ navigation }: any) {
             locations={[0.18, 0.58, 1]}
             style={styles.cardGradient}
           />
-          {isFirst ? (
-            <Animated.View pointerEvents="none" style={[styles.cardEnterGlow, { opacity: enterGlow }]}>
-              <LinearGradient
-                colors={['rgba(212,175,55,0.0)', 'rgba(212,175,55,0.28)', 'rgba(244,232,204,0.12)']}
-                locations={[0, 0.55, 1]}
-                style={StyleSheet.absoluteFillObject}
-              />
-            </Animated.View>
-          ) : null}
           {isFirst && (
             <View style={styles.photoPagerOverlay} pointerEvents="box-none">
               <View style={styles.photoCounterBadge}>
@@ -1309,11 +1245,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  cardEnterGlow: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 32,
-    overflow: 'hidden',
   },
   emptyContainer: {
     alignItems: 'center',

@@ -52,7 +52,9 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
           route={{ ...(route || {}), params: homeParams }}
         />
       )}
-      {activeVertical === 'home' ? <EstateOsGuideOverlay navigation={navigation} /> : null}
+      {activeVertical === 'home' && surface === 'explore' ? (
+        <EstateOsGuideOverlay navigation={navigation} />
+      ) : null}
     </View>
   );
 }

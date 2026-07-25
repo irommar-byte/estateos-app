@@ -1270,6 +1270,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const areaHaloOpacity = useRef(new Animated.Value(0.28)).current;
   const [areaSummary, setAreaSummary] = useState<string>('');
   const isTablet = width >= 768;
+  const isNarrowChrome = width < 420;
   const topBarTop = useMemo(
     () => insets.top + (isTablet ? 14 : 8),
     [insets.top, isTablet]
@@ -1283,8 +1284,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   );
   const bottomCardsInset = useMemo(() => {
     const tabBase = Platform.OS === 'ios' ? 18 : 14;
-    return tabBase + insets.bottom;
-  }, [insets.bottom]);
+    // Plus wystaje nad tab bar — na wąskim oknie (Stage Manager) potrzeba większego luzu.
+    const plusClearance = isNarrowChrome ? 78 : 56;
+    return tabBase + insets.bottom + plusClearance;
+  }, [insets.bottom, isNarrowChrome]);
   const liveBannerAnchorRef = useRef<View>(null);
   const setOfferPillTopY = useOpenHouseLiveStore((s) => s.setOfferPillTopY);
   const measureLiveBannerAnchor = useCallback(() => {
