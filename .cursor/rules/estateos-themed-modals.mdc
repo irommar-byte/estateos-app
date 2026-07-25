@@ -1,0 +1,20 @@
+---
+description: WWW modals must use EosModal / theme tokens — never hardcoded dark panels
+globs: src/components/**/*.tsx,src/app/**/*.tsx
+alwaysApply: false
+---
+
+# EstateOS WWW — themed modals only
+
+When adding or editing a modal / dialog / sheet on estateos.pl:
+
+## Required
+
+1. Use **`EosModal`** (`src/components/ui/EosModal.tsx`) or **`BaseModal`** (includes `eos-themed-modal`).
+2. Colors and inputs use **`var(--eos-*)`** (`--eos-card`, `--eos-text`, `--eos-muted`, `--eos-input`, `--eos-border`, `--eos-subtle`).
+3. Form fields: class `eos-modal-field` or children of `.eos-themed-modal`.
+
+## Forbidden
+
+- Hardcoded dark panels: `bg-[#0c0c0e]`, `bg-[#0a0a0a]`, `bg-[#111]` with `text-white` input stacks that ignore `html.light`.
+- One-off `createPortal` dialogs without `eos-modal-surface` / `eos-themed-modal`.
