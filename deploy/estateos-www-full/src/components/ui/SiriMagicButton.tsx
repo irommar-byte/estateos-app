@@ -38,9 +38,11 @@ export default function SiriMagicButton({
       onClick={onClick}
       disabled={disabled || busy}
       aria-busy={busy}
-      className={`siri-magic-btn group relative inline-flex min-h-[48px] items-center justify-center overflow-hidden rounded-full px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.14em] text-white disabled:cursor-not-allowed disabled:opacity-55 ${className}`}
+      className={`siri-magic-btn group relative inline-flex min-h-[48px] items-center justify-center overflow-hidden rounded-full px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.14em] disabled:cursor-not-allowed disabled:opacity-55 ${className}`}
       style={{
         ["--siri-shift" as string]: `${shift}deg`,
+        color: "#ffffff",
+        WebkitTextFillColor: "#ffffff",
       }}
     >
       <span className="siri-magic-btn__glow" aria-hidden />

@@ -603,7 +603,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         >
           <div className="mx-auto flex max-w-5xl flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3 pointer-events-auto">
-              <Link href="/odkryj-mape" className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl backdrop-blur-2xl transition-all hover:bg-white hover:text-black">
+              <Link href="/odkryj-mape" className="flex items-center gap-2 rounded-full border border-white/35 bg-black/45 px-5 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl transition-all hover:border-white/60 hover:bg-white hover:text-black">
                 {t.backToMap}
               </Link>
               <OfferFavoriteButton
