@@ -851,18 +851,20 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   }, [offers, profile]);
 
   const profileHint = useMemo(() => {
+    if (profile.interactions <= 0) return 'Przesuń kartę — uczymy się Twojego gustu';
     const topCity = Object.entries(profile.likedLocations).sort((a, b) => b[1] - a[1])[0]?.[0];
-    const bits: string[] = [];
-    if (topCity) bits.push(topCity);
-    if (profile.medianLikedPrice)
-      bits.push(`~${new Intl.NumberFormat('pl-PL').format(profile.medianLikedPrice)} PLN`);
-    if (profile.medianLikedArea) bits.push(`~${profile.medianLikedArea} m²`);
-    if (!bits.length) {
-      return profile.interactions > 0
-        ? `${profile.interactions} swipe’ów — profil się uczy`
-        : 'Przesuń w prawo lub lewo — uczymy się Twojego gustu';
+    if (topCity) {
+      const pretty = topCity.charAt(0).toUpperCase() + topCity.slice(1);
+      return `Kierunek: ${pretty}`;
     }
-    return bits.join(' · ');
+    if (profile.medianLikedPrice) {
+      const short = new Intl.NumberFormat('pl-PL', {
+        notation: 'compact',
+        maximumFractionDigits: 1,
+      }).format(profile.medianLikedPrice);
+      return `Budżet ~${short} zł`;
+    }
+    return 'Profil się uczy';
   }, [profile]);
 
   const islandState = useMemo<DiscoveryIslandState>(() => {

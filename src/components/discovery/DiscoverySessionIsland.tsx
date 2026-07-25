@@ -168,6 +168,7 @@ const styles = StyleSheet.create({
     color: DISCOVERY_COLORS.textMuted,
     fontSize: 11,
     fontWeight: '600',
-    maxWidth: 158,
+    flexShrink: 1,
+    maxWidth: 160,
   },
 });
