@@ -32,6 +32,17 @@ import {
   trackDiscoveryEvent,
 } from '../services/discoveryService';
 import { useDiscoveryStore } from '../store/useDiscoveryStore';
+import DiscoverySessionIsland, { type DiscoveryIslandState } from '../components/discovery/DiscoverySessionIsland';
+import DiscoveryGlassOrb from '../components/discovery/DiscoveryGlassOrb';
+import DiscoverySmartGallery from '../components/discovery/DiscoverySmartGallery';
+import DiscoverySaveAffirmationSheet from '../components/discovery/DiscoverySaveAffirmationSheet';
+import DiscoveryDislikeReasonSheet, { type DislikeReason } from '../components/discovery/DiscoveryDislikeReasonSheet';
+import DiscoveryPrioritySheet from '../components/discovery/DiscoveryPrioritySheet';
+import DiscoveryInsightBubble from '../components/discovery/DiscoveryInsightBubble';
+import DiscoveryEndDeck from '../components/discovery/DiscoveryEndDeck';
+import DiscoveryErrorRecovery from '../components/discovery/DiscoveryErrorRecovery';
+import DiscoveryPauseSheet from '../components/discovery/DiscoveryPauseSheet';
+import { shouldAskDiscoveryDislikeReason } from '../utils/discoveryExperienceState';
 
 // === LUKSUSOWA PALETA ===
 const RR_BLACK = '#040405';
@@ -283,7 +294,6 @@ export default function EstateDiscoveryMode({ navigation }: any) {
 
   const [offers, setOffers] = useState<DiscoveryOffer[]>([]);
   const position = useRef(new Animated.ValueXY()).current;
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const topOfferId = offers[0]?.id;
   const topOfferRef = useRef<DiscoveryOffer | null>(null);
@@ -295,6 +305,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     score?: number;
     dwellMs?: number;
     decisionLatencyMs?: number;
+    correctionTarget?: string;
   }) => Promise<void>) | null>(null);
   const [profile, setProfile] = useState<DiscoveryProfile>({
     likedLocations: {},
@@ -305,6 +316,16 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   });
   const [pendingDislikeOffer, setPendingDislikeOffer] = useState<DiscoveryOffer | null>(null);
   const [loadingFeed, setLoadingFeed] = useState(true);
+  const [feedError, setFeedError] = useState(false);
+  const [feedRefreshKey, setFeedRefreshKey] = useState(0);
+  const [galleryVisible, setGalleryVisible] = useState(false);
+  const [saveOffer, setSaveOffer] = useState<DiscoveryOffer | null>(null);
+  const [priorityOffer, setPriorityOffer] = useState<DiscoveryOffer | null>(null);
+  const [insightVisible, setInsightVisible] = useState(false);
+  const [pauseVisible, setPauseVisible] = useState(false);
+  const [undoOffer, setUndoOffer] = useState<DiscoveryOffer | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dislikeCountRef = useRef(0);
 
   const mapRawOffersToDiscovery = useCallback((list: any[]): DiscoveryOffer[] => {
     return list
@@ -374,6 +395,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
         score?: number;
         dwellMs?: number;
         decisionLatencyMs?: number;
+        correctionTarget?: string;
       }
     ) => {
       await trackDiscoveryEvent({
@@ -386,6 +408,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
         reasonCode: extra?.reasonCode || null,
         dwellMs: extra?.dwellMs ?? null,
         decisionLatencyMs: extra?.decisionLatencyMs ?? null,
+        correctionTarget: extra?.correctionTarget ?? null,
       });
     },
     [activePhotoIndex, discoverySession?.id, token]
@@ -437,9 +460,16 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   }, [discoverySession?.id, token]);
 
   useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     let mounted = true;
     const fetchOffers = async () => {
       setLoadingFeed(true);
+      setFeedError(false);
       try {
         await flushDiscoveryQueue();
         const feedJson = await fetchDiscoveryFeed(token, discoverySession?.id);
@@ -504,7 +534,10 @@ export default function EstateDiscoveryMode({ navigation }: any) {
 
         if (mounted) setOffers(mapped);
       } catch {
-        if (mounted) setOffers([]);
+        if (mounted) {
+          setOffers([]);
+          setFeedError(true);
+        }
       } finally {
         if (mounted) setLoadingFeed(false);
       }
@@ -513,7 +546,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     return () => {
       mounted = false;
     };
-  }, [discoverySession?.id, flushDiscoveryQueue, mapRawOffersToDiscovery, mergeServerDiscoveryProfile, token]);
+  }, [discoverySession?.id, feedRefreshKey, flushDiscoveryQueue, mapRawOffersToDiscovery, mergeServerDiscoveryProfile, token]);
 
   useEffect(() => {
     setActivePhotoIndex(0);
@@ -535,15 +568,6 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     if (preload.length === 0) return;
     void Image.prefetch(preload);
   }, [offers, activePhotoIndex]);
-
-  // === SYSTEM POWIADOMIEŃ (TOAST) ===
-  const showToast = (message: string) => {
-    setToastMessage(message);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3000);
-  };
 
   // === FIZYKA PAN RESPONDERA ===
   const panResponder = useRef(
@@ -594,8 +618,15 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     }).start();
   }, [position]);
 
-  function onSwipeComplete(direction: 'right' | 'left' | 'up') {
-    const top = offers[0];
+  function armUndo(offer: DiscoveryOffer, direction: 'right' | 'left' | 'up') {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoOffer(offer);
+    undoTimerRef.current = setTimeout(() => {
+      setUndoOffer(null);
+    }, 7000);
+  }
+
+  function commitDecision(direction: 'right' | 'left' | 'up', top: DiscoveryOffer) {
     if (top) {
       const price = parsePriceNumber(top.price);
       const area = parsePriceNumber(top.area);
@@ -619,8 +650,12 @@ export default function EstateDiscoveryMode({ navigation }: any) {
         }
         return next;
       });
-      if (direction === 'left') setPendingDislikeOffer(top);
-      else setPendingDislikeOffer(null);
+      if (direction === 'left') {
+        dislikeCountRef.current += 1;
+        if (shouldAskDiscoveryDislikeReason(dislikeCountRef.current)) setPendingDislikeOffer(top);
+      } else {
+        setPendingDislikeOffer(null);
+      }
       void sendDiscoveryEvent(
         direction === 'right'
           ? 'DISCOVERY_LIKE'
@@ -637,12 +672,47 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     } else if (direction === 'left') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     } else if (direction === 'up') {
-      showToast('Dodano do ulubionych i wysłano do Agenta ⚡');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
     setOffers((prev) => prev.slice(1));
     setActivePhotoIndex(0);
     position.setValue({ x: 0, y: 0 });
+    armUndo(top, direction);
+    if (direction === 'right') setSaveOffer(top);
+  }
+
+  function onSwipeComplete(direction: 'right' | 'left' | 'up') {
+    const top = offers[0];
+    if (!top) return;
+    if (direction === 'up') {
+      position.setValue({ x: 0, y: 0 });
+      setPriorityOffer(top);
+      return;
+    }
+    commitDecision(direction, top);
+  }
+
+  const undoLastDecision = useCallback(() => {
+    if (!undoOffer) return;
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setOffers((prev) => [undoOffer, ...prev]);
+    setActivePhotoIndex(0);
+    void sendDiscoveryEvent('DISCOVERY_UNDO', undoOffer);
+    setUndoOffer(null);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [sendDiscoveryEvent, undoOffer]);
+
+  function confirmPriority(mode: 'priority' | 'save') {
+    const offer = priorityOffer;
+    if (!offer) return;
+    setPriorityOffer(null);
+    if (mode === 'priority') {
+      commitDecision('up', offer);
+    } else {
+      void sendDiscoveryEvent('DISCOVERY_SAVE', offer);
+      setSaveOffer(offer);
+    }
   }
 
   const handleTopCardImageTap = useCallback((zone: 'left' | 'right') => {
@@ -721,6 +791,22 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     return bits.join(' · ');
   }, [profile]);
 
+  const islandState = useMemo<DiscoveryIslandState>(() => {
+    if (undoOffer) return { kind: 'undo', onUndo: undoLastDecision };
+    if (saveOffer) return { kind: 'saved' };
+    if (offers[0]?.matchReason) {
+      return {
+        kind: 'insight',
+        onOpen: () => {
+          const offer = offers[0];
+          if (offer) void sendDiscoveryEvent('DISCOVERY_INSIGHT_OPEN', offer);
+          setInsightVisible(true);
+        },
+      };
+    }
+    return { kind: 'idle', hint: profileHint };
+  }, [offers, profileHint, saveOffer, sendDiscoveryEvent, undoLastDecision, undoOffer]);
+
   // === INTERPOLACJE IKON NA ŚRODKU ===
   const rotate = position.x.interpolate({ inputRange: [-width / 2, 0, width / 2], outputRange: ['-10deg', '0deg', '10deg'], extrapolate: 'clamp' });
   
@@ -748,12 +834,24 @@ export default function EstateDiscoveryMode({ navigation }: any) {
         </View>
       );
     }
+    if (feedError) {
+      return (
+        <DiscoveryErrorRecovery
+          onRetry={() => setFeedRefreshKey((key) => key + 1)}
+          onExit={() => navigation?.goBack?.()}
+        />
+      );
+    }
     if (offers.length === 0) {
       return (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>Katalog Przejrzany</Text>
-          <Text style={styles.emptySub}>Radar uczy się Twoich preferencji — wróć za chwilę.</Text>
-        </View>
+        <DiscoveryEndDeck
+          onWiden={() => setFeedRefreshKey((key) => key + 1)}
+          onChangeDirection={() => {
+            void Haptics.selectionAsync();
+            setFeedRefreshKey((key) => key + 1);
+          }}
+          onPause={() => setPauseVisible(true)}
+        />
       );
     }
 
@@ -794,7 +892,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
           </View>
           <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)', '#000']} locations={[0.2, 0.65, 1]} style={styles.cardGradient} />
           {isFirst && (
-            <View style={styles.photoPagerOverlay} pointerEvents="none">
+            <View style={styles.photoPagerOverlay} pointerEvents="box-none">
               <View style={styles.photoCounterBadge}>
                 <Text style={styles.photoCounterText}>
                   {Math.min((activePhotoIndex + 1), Math.max(1, offer.images?.length || 1))}/{Math.max(1, offer.images?.length || 1)}
@@ -806,6 +904,16 @@ export default function EstateDiscoveryMode({ navigation }: any) {
                   return <View key={`${offer.id}-dot-${idx}-${img}`} style={[styles.photoDot, active && styles.photoDotActive]} />;
                 })}
               </View>
+              <Pressable
+                onPress={() => setGalleryVisible(true)}
+                style={styles.galleryOpenButton}
+                accessibilityRole="button"
+                accessibilityLabel="Otwórz galerię zdjęć"
+              >
+                <BlurView intensity={45} tint="dark" style={styles.galleryOpenGlass}>
+                  <Ionicons name="expand-outline" size={16} color="#FFF" />
+                </BlurView>
+              </Pressable>
             </View>
           )}
 
@@ -855,10 +963,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
               
               <PriceHistoryChart data={offer.priceHistory} width={CARD_WIDTH - 64} />
               {isFirst ? (
-                <View style={styles.smartInsightRow}>
-                  <Text style={styles.smartInsightBadge}>SMART MATCH {topOfferInsight.score}%</Text>
-                  <Text style={styles.smartInsightText}>{topOfferInsight.reason}</Text>
-                </View>
+                <Text style={styles.discoveryQuietHint}>Dopasowanie wyjaśnimy na Twoje życzenie.</Text>
               ) : null}
             </BlurView>
 
@@ -884,79 +989,93 @@ export default function EstateDiscoveryMode({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      {/* TOAST NOTIFICATION (Fast Track) */}
-      {toastMessage && (
-        <Animated.View style={styles.toastContainer}>
-          <BlurView intensity={80} tint="dark" style={styles.toastBlur}>
-            <Zap size={18} color={RR_GOLD} />
-            <Text style={styles.toastText}>{toastMessage}</Text>
-          </BlurView>
-        </Animated.View>
-      )}
+      <DiscoverySessionIsland state={islandState} onBack={() => setPauseVisible(true)} />
 
-      {/* NAGŁÓWEK */}
-      <View style={styles.header}>
-        <Pressable onPress={() => navigation?.goBack()} style={styles.backBtn} hitSlop={20}>
-          <Ionicons name="chevron-back" size={28} color="#FFF" />
-        </Pressable>
-        <View style={{ alignItems: 'center', maxWidth: width * 0.72 }}>
-          <Text style={styles.headerTitle}>EstateOS™ Discovery</Text>
-          <Text style={styles.headerSubtitle}>KATALOG SELEKCJI</Text>
-          <Text style={styles.headerProfileHint} numberOfLines={1}>
-            {profileHint}
-          </Text>
-        </View>
-      </View>
-
-      {/* KARTY */}
       <View style={styles.cardsWrapper}>
         {renderCards()}
       </View>
 
-      {/* PRZYCISKI AKCJI NA DOLE */}
       {offers.length > 0 && (
         <View style={styles.actionButtonsRow}>
-          <Pressable onPress={() => forceSwipe('left')} style={({ pressed }) => [styles.actionBtnBlur, pressed && { transform: [{scale: 0.9}]}]}>
-            <BlurView intensity={40} tint="dark" style={styles.btnGlass}>
-              <X size={28} color="#A0A0A5" />
-            </BlurView>
-          </Pressable>
-
-          <Pressable onPress={() => forceSwipe('up')} style={({ pressed }) => [styles.actionBtnBlur, styles.actionBtnFastTrack, pressed && { transform: [{scale: 0.9}]}]}>
-            <BlurView intensity={60} tint="dark" style={styles.btnGlass}>
-              <Zap size={32} color={RR_GOLD} />
-            </BlurView>
-          </Pressable>
-
-          <Pressable onPress={() => forceSwipe('right')} style={({ pressed }) => [styles.actionBtnBlur, pressed && { transform: [{scale: 0.9}]}]}>
-            <BlurView intensity={40} tint="dark" style={styles.btnGlass}>
-              <Heart size={28} color={RR_GREEN} />
-            </BlurView>
-          </Pressable>
+          <DiscoveryGlassOrb onPress={() => forceSwipe('left')} accessibilityLabel="Pomiń ofertę">
+            <X size={28} color="#D0D0D4" />
+          </DiscoveryGlassOrb>
+          <DiscoveryGlassOrb onPress={() => forceSwipe('up')} accessibilityLabel="Nadaj priorytet ofercie" size={66} tint="rgba(212,175,55,0.16)">
+            <Zap size={32} color={RR_GOLD} />
+          </DiscoveryGlassOrb>
+          <DiscoveryGlassOrb onPress={() => forceSwipe('right')} accessibilityLabel="Wybierz ofertę">
+            <Heart size={28} color={RR_GREEN} />
+          </DiscoveryGlassOrb>
         </View>
       )}
-      {pendingDislikeOffer && (
-        <View style={styles.dislikeReasonWrap}>
-          <BlurView intensity={55} tint="dark" style={styles.dislikeReasonGlass}>
-            <Text style={styles.dislikeReasonTitle}>Dlaczego pomijasz tę ofertę?</Text>
-            <View style={styles.dislikeReasonRow}>
-              {DISCOVERY_DISLIKE_REASONS.map((reason) => (
-                <Pressable
-                  key={reason.key}
-                  onPress={() => {
-                    void sendDiscoveryEvent('DISCOVERY_DISLIKE', pendingDislikeOffer, { reasonCode: reason.key });
-                    setPendingDislikeOffer(null);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  style={({ pressed }) => [styles.dislikeReasonChip, pressed && { opacity: 0.75 }]}
-                >
-                  <Text style={styles.dislikeReasonChipText}>{reason.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </BlurView>
-        </View>
-      )}
+      <DiscoverySmartGallery
+        visible={galleryVisible}
+        images={offers[0]?.images || []}
+        index={activePhotoIndex}
+        onChangeIndex={(index) => {
+          setActivePhotoIndex(index);
+          const offer = offers[0];
+          if (offer) void sendDiscoveryEvent('DISCOVERY_PHOTO_VIEW', offer, { photoIndex: index });
+        }}
+        onClose={(dwellMs) => {
+          const offer = offers[0];
+          if (offer) void sendDiscoveryEvent('DISCOVERY_PHOTO_VIEW', offer, { dwellMs, photoIndex: activePhotoIndex });
+          setGalleryVisible(false);
+        }}
+      />
+      <DiscoverySaveAffirmationSheet
+        visible={!!saveOffer}
+        onSave={() => {
+          if (saveOffer) void sendDiscoveryEvent('DISCOVERY_SAVE', saveOffer);
+          setSaveOffer(null);
+        }}
+        onContinue={() => setSaveOffer(null)}
+        onUndo={() => {
+          setSaveOffer(null);
+          undoLastDecision();
+        }}
+      />
+      <DiscoveryDislikeReasonSheet
+        visible={!!pendingDislikeOffer}
+        reasons={DISCOVERY_DISLIKE_REASONS as readonly DislikeReason[]}
+        onChoose={(reason) => {
+          if (pendingDislikeOffer) void sendDiscoveryEvent('DISCOVERY_DISLIKE', pendingDislikeOffer, { reasonCode: reason.key });
+          setPendingDislikeOffer(null);
+        }}
+        onSkip={() => setPendingDislikeOffer(null)}
+      />
+      <DiscoveryPrioritySheet
+        visible={!!priorityOffer}
+        onConfirm={() => confirmPriority('priority')}
+        onSaveContinue={() => confirmPriority('save')}
+        onCancel={() => setPriorityOffer(null)}
+      />
+      <DiscoveryInsightBubble
+        visible={insightVisible}
+        reason={topOfferInsight.reason}
+        onClose={() => setInsightVisible(false)}
+        onReject={() => {
+          const offer = offers[0];
+          if (offer) {
+            void sendDiscoveryEvent('DISCOVERY_CORRECTION', offer, {
+              score: topOfferInsight.score,
+              correctionTarget: `city:${offer.location.split(',').pop()?.trim() || 'unknown'}`,
+            });
+          }
+          setInsightVisible(false);
+          setFeedRefreshKey((key) => key + 1);
+        }}
+      />
+      <DiscoveryPauseSheet
+        visible={pauseVisible}
+        onPause={() => {
+          const offer = offers[0];
+          if (offer) void sendDiscoveryEvent('DISCOVERY_PAUSE', offer);
+          setPauseVisible(false);
+          navigation?.goBack?.();
+        }}
+        onResume={() => setPauseVisible(false)}
+      />
     </View>
   );
 }
@@ -1085,6 +1204,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
+  galleryOpenButton: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  galleryOpenGlass: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
   photoDot: {
     width: 6,
     height: 6,
@@ -1183,18 +1319,9 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     overflow: 'hidden',
   },
-  smartInsightRow: {
+  discoveryQuietHint: {
     marginTop: 10,
-    gap: 5,
-  },
-  smartInsightBadge: {
-    color: RR_GREEN,
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.9,
-  },
-  smartInsightText: {
-    color: '#D7D7DB',
+    color: 'rgba(215,215,219,0.68)',
     fontSize: 12,
     fontWeight: '600',
     lineHeight: 16,

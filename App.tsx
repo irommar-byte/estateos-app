@@ -94,6 +94,8 @@ import DealroomListScreen from './src/screens/DealroomListScreen';
 import FloatingChatsDock from './src/components/messaging/FloatingChatsDock';
 import AgencyPendingGate from './src/components/agency/AgencyPendingGate';
 import EstateDiscoveryMode from './src/screens/EstateDiscoveryMode';
+import DiscoveryEntryScreen from './src/screens/DiscoveryEntryScreen';
+import { useDiscoveryStore } from './src/store/useDiscoveryStore';
 import AdminNativeImportScreen from './src/screens/AdminNativeImportScreen';
 import AdminKeiAmerScreen from './src/screens/AdminKeiAmerScreen';
 import AgencyOfficeScreen from './src/screens/AgencyOfficeScreen';
@@ -193,6 +195,12 @@ const FloatingNextButton = (props: any) => {
   const isLoggedIn = !!user;
   const navigation = useNavigation<any>();
   const activeVertical = useEcosystemStore((state) => state.activeVertical);
+  const discoveryEntrySeen = useDiscoveryStore((state) => state.firstEntrySeen);
+  const hydrateDiscoveryExperience = useDiscoveryStore((state) => state.hydrate);
+
+  useEffect(() => {
+    void hydrateDiscoveryExperience(user?.id);
+  }, [hydrateDiscoveryExperience, user?.id]);
   
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const holdScale = useRef(new Animated.Value(1)).current;
@@ -323,7 +331,7 @@ const FloatingNextButton = (props: any) => {
         distance: 90,
         tint: '#D4AF37',
         glassBg: resolvedDark ? 'rgba(212,175,55,0.28)' : 'rgba(212,175,55,0.2)',
-        target: () => navigation.navigate('EstateDiscovery'),
+        target: () => navigation.navigate(discoveryEntrySeen ? 'EstateDiscovery' : 'DiscoveryEntry'),
       },
       {
         key: 'VERTICAL_SWITCH',
@@ -352,7 +360,7 @@ const FloatingNextButton = (props: any) => {
         target: () => openLivePanel(),
       },
     ],
-    [navigation, openLivePanel, requestVerticalSwitch, resolvedDark, switchToCar],
+    [discoveryEntrySeen, navigation, openLivePanel, requestVerticalSwitch, resolvedDark, switchToCar],
   );
 
   const clearLongPressTimer = useCallback(() => {
@@ -1792,6 +1800,11 @@ export default function App() {
               name="ContactChat"
               component={ContactChatScreen}
               options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="DiscoveryEntry"
+              component={DiscoveryEntryScreen}
+              options={{ animation: 'fade', animationDuration: 260 }}
             />
             <AppStack.Screen name="EstateDiscovery" component={EstateDiscoveryMode} />
             <AppStack.Screen name="AdminNativeImport" component={AdminNativeImportScreen} />

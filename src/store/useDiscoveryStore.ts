@@ -4,6 +4,7 @@ import type { DiscoveryFeedProfile } from '../contracts/discoveryContracts';
 import type { DiscoverySession } from '../services/discoveryService';
 
 const PROFILE_KEY_PREFIX = '@estateos_discovery_profile_v2';
+const EXPERIENCE_KEY_PREFIX = '@estateos_discovery_experience_v1';
 
 type DiscoveryLocalProfile = {
   preferredBudgetPln: number | null;
@@ -19,6 +20,8 @@ type DiscoveryState = {
   session: DiscoverySession | null;
   profile: DiscoveryLocalProfile | null;
   hydratedForUserId: string | null;
+  firstEntrySeen: boolean;
+  setFirstEntrySeen: (seen: boolean) => void;
   setSession: (session: DiscoverySession | null) => void;
   mergeServerProfile: (profile: DiscoveryFeedProfile | null) => void;
   hydrate: (userId: string | number | null | undefined) => Promise<void>;
@@ -28,6 +31,10 @@ type DiscoveryState = {
 
 function key(userId: string | number | null | undefined) {
   return `${PROFILE_KEY_PREFIX}:${userId || 'guest'}`;
+}
+
+function experienceKey(userId: string | number | null | undefined) {
+  return `${EXPERIENCE_KEY_PREFIX}:${userId || 'guest'}`;
 }
 
 function normalize(profile: DiscoveryFeedProfile | DiscoveryLocalProfile | null): DiscoveryLocalProfile | null {
@@ -47,7 +54,9 @@ export const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
   session: null,
   profile: null,
   hydratedForUserId: null,
+  firstEntrySeen: false,
   setSession: (session) => set({ session }),
+  setFirstEntrySeen: (firstEntrySeen) => set({ firstEntrySeen }),
   mergeServerProfile: (profile) => {
     const next = normalize(profile);
     if (!next) return;
@@ -55,17 +64,27 @@ export const useDiscoveryStore = create<DiscoveryState>((set, get) => ({
   },
   hydrate: async (userId) => {
     try {
-      const raw = await AsyncStorage.getItem(key(userId));
+      const [raw, experienceRaw] = await Promise.all([
+        AsyncStorage.getItem(key(userId)),
+        AsyncStorage.getItem(experienceKey(userId)),
+      ]);
       const profile = raw ? normalize(JSON.parse(raw)) : null;
-      set({ profile, hydratedForUserId: String(userId || 'guest') });
+      set({
+        profile,
+        firstEntrySeen: experienceRaw === '1',
+        hydratedForUserId: String(userId || 'guest'),
+      });
     } catch {
       set({ hydratedForUserId: String(userId || 'guest') });
     }
   },
   persist: async (userId) => {
     const profile = get().profile;
-    if (!profile) return;
-    await AsyncStorage.setItem(key(userId), JSON.stringify(profile));
+    const writes: Promise<void>[] = [
+      AsyncStorage.setItem(experienceKey(userId), get().firstEntrySeen ? '1' : '0'),
+    ];
+    if (profile) writes.push(AsyncStorage.setItem(key(userId), JSON.stringify(profile)));
+    await Promise.all(writes);
   },
   clear: () => set({ session: null, profile: null, hydratedForUserId: null }),
 }));
