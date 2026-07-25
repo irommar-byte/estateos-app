@@ -972,6 +972,8 @@ model DiscoveryEmbeddingJob {
   inputHash    String?  @db.VarChar(128)
   vector       Json?
   errorCode    String?  @db.VarChar(128)
+  inputTokens  Int      @default(0)
+  costMicrousd Int      @default(0)
   requestedAt  DateTime @default(now())
   processedAt  DateTime?
   createdAt    DateTime @default(now())
@@ -979,6 +981,17 @@ model DiscoveryEmbeddingJob {
 
   @@unique([offerId, modelVersion], map: "DiscoveryEmbeddingJob_offer_model_key")
   @@index([status, requestedAt], map: "DiscoveryEmbeddingJob_status_requested_idx")
+}
+
+model DiscoveryAiUsage {
+  id           String   @id @db.VarChar(64)
+  periodKey    String   @unique @db.VarChar(7)
+  inputTokens  Int      @default(0)
+  costMicrousd Int      @default(0)
+  jobsComplete Int      @default(0)
+  jobsFailed   Int      @default(0)
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
 }
 
 model DiscoveryGalleryPlan {

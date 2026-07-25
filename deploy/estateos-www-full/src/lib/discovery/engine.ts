@@ -47,6 +47,7 @@ export function emptyTasteVector(): TasteVector {
       medianDecisionLatencyMs: null,
       hesitationRate: 0,
     },
+    semantic: { mu: null, count: 0 },
   };
 }
 
@@ -114,6 +115,9 @@ export function parseTasteVector(raw: unknown): TasteVector {
   const behavioural = value.behavioural && typeof value.behavioural === 'object'
     ? value.behavioural as Record<string, unknown>
     : {};
+  const semantic = value.semantic && typeof value.semantic === 'object'
+    ? value.semantic as Record<string, unknown>
+    : {};
 
   return {
     ...emptyTasteVector(),
@@ -146,6 +150,12 @@ export function parseTasteVector(raw: unknown): TasteVector {
       medianDecisionLatencyMs:
         behavioural.medianDecisionLatencyMs == null ? null : numberOr(behavioural.medianDecisionLatencyMs),
       hesitationRate: Math.max(0, Math.min(1, numberOr(behavioural.hesitationRate))),
+    },
+    semantic: {
+      mu: Array.isArray(semantic.mu) && semantic.mu.every((value) => Number.isFinite(Number(value)))
+        ? semantic.mu.map(Number)
+        : null,
+      count: Math.max(0, Math.round(numberOr(semantic.count))),
     },
   };
 }
@@ -269,10 +279,21 @@ export function scoreDiscoveryCandidate(input: {
     priceAffinity: 0,
     spaceAffinity: 0,
     amenityAffinity: 0,
+    embeddingAffinity: 0,
     visitPattern: 0,
     explorationBonus: 0,
     penalty: 0,
   };
+  if (candidate.embeddingVector?.length && taste.semantic.mu?.length === candidate.embeddingVector.length) {
+    const dot = candidate.embeddingVector.reduce((sum, value, index) => sum + value * (taste.semantic.mu?.[index] || 0), 0);
+    const norm = Math.sqrt(candidate.embeddingVector.reduce((sum, value) => sum + value * value, 0)) *
+      Math.sqrt(taste.semantic.mu.reduce((sum, value) => sum + value * value, 0));
+    const cosine = norm > 0 ? dot / norm : 0;
+    components.embeddingAffinity = capComponent(Math.max(0, cosine) * 18);
+    if (components.embeddingAffinity >= 5) {
+      pushReason(reasons, 'EMBEDDING_NEAR_LIKED' as DiscoveryReasonAtom['code'], components.embeddingAffinity, 'opis i charakter miejsca są bliskie ofertom, które wybierałeś', null);
+    }
+  }
   const priorWeight = preference.strength * (1 - profile.confidence);
   const effectiveCity = affinity(taste.affinity.city, candidate.city) * (1 - priorWeight) +
     affinity(preference.cityPrior, candidate.city) * priorWeight;
