@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken } from '@/lib/jwtMobile';
+import {
+  DISCOVERY_META,
+  asStatMap,
+  bumpMeta,
+} from '@/lib/discoveryInsights';
 
 const EVENT_TYPES = new Set([
   'DISCOVERY_LIKE',
@@ -89,11 +94,23 @@ export async function POST(req: Request) {
 
     const offer = await prisma.offer.findUnique({
       where: { id: offerId },
-      select: { id: true, city: true, district: true, propertyType: true },
+      select: {
+        id: true,
+        city: true,
+        district: true,
+        propertyType: true,
+        transactionType: true,
+        price: true,
+        pricePln: true,
+        area: true,
+      },
     });
     if (!offer) {
       return NextResponse.json({ error: 'Oferta nie istnieje' }, { status: 404 });
     }
+
+    const offerPrice = Number(offer.pricePln ?? offer.price ?? 0);
+    const offerArea = Number(offer.area ?? 0);
 
     const created = await prisma.$transaction(async (tx) => {
       const evt = await tx.discoveryEvent.create({
@@ -111,22 +128,41 @@ export async function POST(req: Request) {
       });
 
       const existingProfile = await tx.discoveryProfile.findUnique({ where: { userId } });
-      const reasonStats = (existingProfile?.reasonStats as Record<string, number> | null) || {};
-      const cityStats = (existingProfile?.cityStats as Record<string, number> | null) || {};
-      const districtStats = (existingProfile?.districtStats as Record<string, number> | null) || {};
-      const propertyStats = (existingProfile?.propertyStats as Record<string, number> | null) || {};
+      const reasonStats = asStatMap(existingProfile?.reasonStats);
+      const cityStats = asStatMap(existingProfile?.cityStats);
+      const districtStats = asStatMap(existingProfile?.districtStats);
+      const propertyStats = asStatMap(existingProfile?.propertyStats);
 
-      const delta = eventType === 'DISCOVERY_LIKE' || eventType === 'DISCOVERY_FAST_TRACK'
-        ? 1
-        : eventType === 'DISCOVERY_DISLIKE' || eventType === 'DISCOVERY_DISLIKE_REASON'
-          ? -1
-          : 0;
+      const delta =
+        eventType === 'DISCOVERY_LIKE' || eventType === 'DISCOVERY_FAST_TRACK'
+          ? 1
+          : eventType === 'DISCOVERY_DISLIKE' || eventType === 'DISCOVERY_DISLIKE_REASON'
+            ? -1
+            : 0;
 
       if (delta !== 0) {
         incStat(cityStats, offer.city, delta);
         incStat(districtStats, offer.district, delta);
         incStat(propertyStats, String(offer.propertyType), delta);
       }
+
+      if (eventType === 'DISCOVERY_LIKE' || eventType === 'DISCOVERY_FAST_TRACK') {
+        bumpMeta(reasonStats, DISCOVERY_META.priceLikedSum, DISCOVERY_META.priceLikedN, offerPrice);
+        bumpMeta(reasonStats, DISCOVERY_META.areaLikedSum, DISCOVERY_META.areaLikedN, offerArea);
+        if (String(offer.transactionType) === 'RENT') {
+          reasonStats[DISCOVERY_META.txRent] = Number(reasonStats[DISCOVERY_META.txRent] || 0) + 1;
+        } else {
+          reasonStats[DISCOVERY_META.txSell] = Number(reasonStats[DISCOVERY_META.txSell] || 0) + 1;
+        }
+      } else if (eventType === 'DISCOVERY_DISLIKE' || eventType === 'DISCOVERY_DISLIKE_REASON') {
+        bumpMeta(
+          reasonStats,
+          DISCOVERY_META.priceDislikedSum,
+          DISCOVERY_META.priceDislikedN,
+          offerPrice,
+        );
+      }
+
       if (reasonCode) {
         incStat(reasonStats, reasonCode, 1);
       }
@@ -136,7 +172,8 @@ export async function POST(req: Request) {
         create: {
           userId,
           likesCount: eventType === 'DISCOVERY_LIKE' ? 1 : 0,
-          dislikesCount: eventType === 'DISCOVERY_DISLIKE' || eventType === 'DISCOVERY_DISLIKE_REASON' ? 1 : 0,
+          dislikesCount:
+            eventType === 'DISCOVERY_DISLIKE' || eventType === 'DISCOVERY_DISLIKE_REASON' ? 1 : 0,
           fastTrackCount: eventType === 'DISCOVERY_FAST_TRACK' ? 1 : 0,
           opensCount: eventType === 'DISCOVERY_OPEN' ? 1 : 0,
           reasonStats,
@@ -146,7 +183,10 @@ export async function POST(req: Request) {
         },
         update: {
           likesCount: { increment: eventType === 'DISCOVERY_LIKE' ? 1 : 0 },
-          dislikesCount: { increment: eventType === 'DISCOVERY_DISLIKE' || eventType === 'DISCOVERY_DISLIKE_REASON' ? 1 : 0 },
+          dislikesCount: {
+            increment:
+              eventType === 'DISCOVERY_DISLIKE' || eventType === 'DISCOVERY_DISLIKE_REASON' ? 1 : 0,
+          },
           fastTrackCount: { increment: eventType === 'DISCOVERY_FAST_TRACK' ? 1 : 0 },
           opensCount: { increment: eventType === 'DISCOVERY_OPEN' ? 1 : 0 },
           reasonStats,

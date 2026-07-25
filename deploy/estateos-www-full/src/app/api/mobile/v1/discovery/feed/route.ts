@@ -5,6 +5,13 @@ import { verifyMobileToken } from '@/lib/jwtMobile';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
 import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
 import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
+import {
+  DISCOVERY_META,
+  areaAffinityDelta,
+  asStatMap,
+  metaAvg,
+  priceAffinityDelta,
+} from '@/lib/discoveryInsights';
 
 function parseUserIdFromAuthHeader(authHeader: string | null): number | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
@@ -65,9 +72,13 @@ export async function GET(req: Request) {
           id: true,
           title: true,
           price: true,
+          pricePln: true,
+          priceCurrency: true,
+          listPricePln: true,
           city: true,
           district: true,
           propertyType: true,
+          transactionType: true,
           area: true,
           rooms: true,
           hasBalcony: true,
@@ -75,6 +86,9 @@ export async function GET(req: Request) {
           isFurnished: true,
           status: true,
           expiresAt: true,
+          images: true,
+          createdAt: true,
+          updatedAt: true,
         },
       }),
     ]);
@@ -94,10 +108,20 @@ export async function GET(req: Request) {
         .map((e) => Number(e.offerId))
     );
 
-    const cityStats = (profile?.cityStats as ProfileMap | null) || {};
-    const districtStats = (profile?.districtStats as ProfileMap | null) || {};
-    const propertyStats = (profile?.propertyStats as ProfileMap | null) || {};
-    const reasonStats = (profile?.reasonStats as ProfileMap | null) || {};
+    const cityStats = asStatMap(profile?.cityStats);
+    const districtStats = asStatMap(profile?.districtStats);
+    const propertyStats = asStatMap(profile?.propertyStats);
+    const reasonStats = asStatMap(profile?.reasonStats);
+
+    const likedAvgPrice = metaAvg(reasonStats, DISCOVERY_META.priceLikedSum, DISCOVERY_META.priceLikedN);
+    const dislikedAvgPrice = metaAvg(
+      reasonStats,
+      DISCOVERY_META.priceDislikedSum,
+      DISCOVERY_META.priceDislikedN,
+    );
+    const likedAvgArea = metaAvg(reasonStats, DISCOVERY_META.areaLikedSum, DISCOVERY_META.areaLikedN);
+    const sellPref = Number(reasonStats[DISCOVERY_META.txSell] || 0);
+    const rentPref = Number(reasonStats[DISCOVERY_META.txRent] || 0);
 
     const priceTooHighPenalty = Number(reasonStats.PRICE_TOO_HIGH || 0);
     const locationPenalty = Number(reasonStats.LOCATION_MISMATCH || 0);
@@ -110,6 +134,7 @@ export async function GET(req: Request) {
       .map((offer) => {
         let raw = 55;
         const reasons: string[] = [];
+        const price = Number(offer.pricePln ?? offer.price ?? 0);
 
         const cityAffinity = statValue(cityStats, offer.city);
         const districtAffinity = statValue(districtStats, offer.district);
@@ -126,11 +151,33 @@ export async function GET(req: Request) {
           if (typeLabel) reasons.push(`preferowany typ: ${typeLabel}`);
         }
 
+        const priceDelta = priceAffinityDelta(price, likedAvgPrice, dislikedAvgPrice);
+        raw += priceDelta;
+        if (priceDelta >= 10) reasons.push('cena w Twoim zakresie');
+        else if (priceDelta <= -8) reasons.push('cena poza preferowanym zakresem');
+
+        const areaDelta = areaAffinityDelta(Number(offer.area || 0), likedAvgArea);
+        raw += areaDelta;
+        if (areaDelta >= 8) reasons.push('metraż zbliżony do lubianych');
+
+        if (sellPref + rentPref >= 3) {
+          const isRent = String(offer.transactionType) === 'RENT';
+          if (isRent && rentPref > sellPref) {
+            raw += 8;
+            reasons.push('wynajem — zgodnie z Twoimi swipe’ami');
+          } else if (!isRent && sellPref > rentPref) {
+            raw += 8;
+            reasons.push('sprzedaż — zgodnie z Twoimi swipe’ami');
+          } else if ((isRent && sellPref > rentPref * 2) || (!isRent && rentPref > sellPref * 2)) {
+            raw -= 10;
+          }
+        }
+
         if (dislikedOfferIds.has(Number(offer.id))) {
           raw -= 45;
-          reasons.push('podobna do odrzuconych');
+          reasons.push('już odrzucona');
         }
-        if (priceTooHighPenalty > 0 && Number(offer.price || 0) > 0) {
+        if (priceTooHighPenalty > 0 && price > 0) {
           raw -= Math.min(18, priceTooHighPenalty * 0.9);
         }
         if (locationPenalty > 0) {
@@ -146,7 +193,11 @@ export async function GET(req: Request) {
         const score = Math.max(0, Math.min(100, Math.round(raw)));
         const reason =
           reasons[0] ||
-          (score >= 70 ? 'dopasowanie do historii interakcji' : score >= 50 ? 'neutralne dopasowanie' : 'niskie dopasowanie');
+          (score >= 70
+            ? 'dopasowanie do historii interakcji'
+            : score >= 50
+              ? 'neutralne dopasowanie'
+              : 'niskie dopasowanie');
 
         return {
           id: offer.id,
@@ -157,12 +208,35 @@ export async function GET(req: Request) {
           title: offer.title,
           city: offer.city,
           district: offer.district,
+          propertyType: offer.propertyType,
+          transactionType: offer.transactionType,
+          price: offer.price,
+          pricePln: offer.pricePln,
+          priceCurrency: offer.priceCurrency,
+          listPricePln: offer.listPricePln,
+          area: offer.area,
+          rooms: offer.rooms,
+          images: offer.images,
+          status: offer.status,
+          expiresAt: offer.expiresAt,
+          createdAt: offer.createdAt,
+          updatedAt: offer.updatedAt,
+          hasBalcony: offer.hasBalcony,
+          hasParking: offer.hasParking,
+          isFurnished: offer.isFurnished,
         };
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
 
-    return NextResponse.json({ items: ranked });
+    return NextResponse.json({
+      items: ranked,
+      profile: {
+        preferredBudgetPln: likedAvgPrice,
+        preferredAreaM2: likedAvgArea,
+        interactions: recentEvents.length,
+      },
+    });
   } catch (error) {
     console.error('[DISCOVERY FEED ERROR]', error);
     // Backward compatibility: app fallback na standardowy feed.

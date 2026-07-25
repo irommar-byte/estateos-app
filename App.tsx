@@ -103,6 +103,7 @@ import CarsCatalogScreen from './src/screens/CarsCatalogScreen';
 import CarDetailScreen from './src/screens/CarDetailScreen';
 import AddCarListingScreen from './src/screens/AddCarListingScreen';
 import MarketExploreShell from './src/navigation/MarketExploreShell';
+import EcosystemVerticalTransition from './src/components/ecosystem/EcosystemVerticalTransition';
 import { extractIdFromDeeplink } from './src/utils/deeplinkParse';
 import {
   extractPushDealAndOfferIds,
@@ -206,8 +207,6 @@ const FloatingNextButton = (props: any) => {
   const plusLabelOpacity = useRef(new Animated.Value(1)).current;
   const arrowLabelOpacity = useRef(new Animated.Value(0)).current;
   
-  const themeMode = useThemeStore(s => s.themeMode);
-  const setThemeMode = useThemeStore((s) => s.setThemeMode);
   const resolvedDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const isDark = resolvedDark;
   
@@ -308,9 +307,11 @@ const FloatingNextButton = (props: any) => {
     }
   };
 
-  // Kąty: 180° lewo = Discovery, 270° góra = Live, 0° prawo = jasny motyw
+  // Kąty: 180° lewo = Discovery, 270° góra = Home↔Car, 0° prawo = Live
   const openLivePanel = useOpenHouseLiveStore((s) => s.openPanel);
   const setPlusAnchor = useOpenHouseLiveStore((s) => s.setPlusAnchor);
+  const requestVerticalSwitch = useEcosystemStore((s) => s.requestVerticalSwitch);
+  const switchToCar = activeVertical !== 'car';
 
   const quickActions = useMemo(
     () => [
@@ -325,27 +326,33 @@ const FloatingNextButton = (props: any) => {
         target: () => navigation.navigate('EstateDiscovery'),
       },
       {
+        key: 'VERTICAL_SWITCH',
+        label: switchToCar ? 'EstateOS™Car' : 'EstateOS™Home',
+        icon: switchToCar ? 'car-sport' : 'home',
+        angleDeg: 270,
+        distance: 112,
+        tint: switchToCar ? '#0EA5E9' : '#10B981',
+        glassBg: switchToCar
+          ? resolvedDark
+            ? 'rgba(14,165,233,0.32)'
+            : 'rgba(14,165,233,0.18)'
+          : resolvedDark
+            ? 'rgba(16,185,129,0.32)'
+            : 'rgba(16,185,129,0.18)',
+        target: () => requestVerticalSwitch(switchToCar ? 'car' : 'home'),
+      },
+      {
         key: 'LIVE',
         label: 'Live',
         icon: 'radio',
-        angleDeg: 270,
-        distance: 105,
+        angleDeg: 0,
+        distance: 118,
         tint: '#F59E0B',
         glassBg: resolvedDark ? 'rgba(245,158,11,0.32)' : 'rgba(245,158,11,0.22)',
         target: () => openLivePanel(),
       },
-      {
-        key: 'THEME_LIGHT',
-        label: 'Jasny',
-        icon: 'sunny',
-        angleDeg: 0,
-        distance: 130,
-        tint: '#FBBF24',
-        glassBg: resolvedDark ? 'rgba(251,191,36,0.28)' : 'rgba(251,191,36,0.2)',
-        target: () => setThemeMode('light'),
-      },
     ],
-    [navigation, resolvedDark, setThemeMode, openLivePanel],
+    [navigation, openLivePanel, requestVerticalSwitch, resolvedDark, switchToCar],
   );
 
   const clearLongPressTimer = useCallback(() => {
@@ -400,8 +407,7 @@ const FloatingNextButton = (props: any) => {
     }
 
     if (!best) return null;
-    const limit = best.key === 'THEME_LIGHT' ? 8 : 35;
-    if (best.diff > limit) return null;
+    if (best.diff > 35) return null;
 
     return best.key;
   }, [isQuickMenuOpen, quickActions]);
@@ -701,8 +707,9 @@ const FloatingNextButton = (props: any) => {
               >
                 <View
                   style={{
-                    minWidth: 84,
-                    paddingHorizontal: 16,
+                    minWidth: item.key === 'VERTICAL_SWITCH' ? 128 : 84,
+                    maxWidth: 168,
+                    paddingHorizontal: item.key === 'VERTICAL_SWITCH' ? 12 : 16,
                     paddingVertical: 10,
                     borderRadius: 20,
                     flexDirection: 'row',
@@ -721,7 +728,16 @@ const FloatingNextButton = (props: any) => {
                   }}
                 >
                   <Ionicons name={item.icon as any} size={15} color={isHovered ? item.tint : (resolvedDark ? '#FFF' : '#1C1C1E')} />
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: isHovered ? item.tint : (resolvedDark ? '#FFF' : '#1C1C1E') }}>{item.label}</Text>
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      fontSize: item.key === 'VERTICAL_SWITCH' ? 11 : 13,
+                      fontWeight: '800',
+                      color: isHovered ? item.tint : (resolvedDark ? '#FFF' : '#1C1C1E'),
+                    }}
+                  >
+                    {item.label}
+                  </Text>
                 </View>
               </Animated.View>
             );
@@ -1112,7 +1128,8 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
     </Tab.Navigator>
     {splashDone ? <OpenHouseLiveOrchestrator enabled /> : null}
     {splashDone ? <TabBarTickerEngine /> : null}
-    </View>
+    <EcosystemVerticalTransition />
+  </View>
   );
 }
 

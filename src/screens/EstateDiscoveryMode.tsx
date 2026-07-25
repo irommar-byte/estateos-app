@@ -47,6 +47,8 @@ type DiscoveryOffer = {
   priceHistory: number[];
   images: string[];
   image: string;
+  matchScore?: number | null;
+  matchReason?: string | null;
 };
 
 type DiscoveryProfile = {
@@ -58,6 +60,7 @@ type DiscoveryProfile = {
 };
 
 const DISCOVERY_EVENT_QUEUE_KEY = 'discovery_event_queue_v1';
+const DISCOVERY_PROFILE_KEY = 'discovery_local_profile_v1';
 const DISCOVERY_DISLIKE_REASONS = [
   { key: 'PRICE_TOO_HIGH', label: 'Za drogo' },
   { key: 'LOCATION_MISMATCH', label: 'Lokalizacja' },
@@ -202,6 +205,65 @@ async function enqueueDiscoveryEvent(payload: any) {
   }
 }
 
+async function loadLocalDiscoveryProfile(userId: string | number | null | undefined): Promise<DiscoveryProfile | null> {
+  try {
+    const key = `${DISCOVERY_PROFILE_KEY}:${userId || 'guest'}`;
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DiscoveryProfile;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      likedLocations: parsed.likedLocations || {},
+      dislikedLocations: parsed.dislikedLocations || {},
+      medianLikedPrice: parsed.medianLikedPrice ?? null,
+      medianLikedArea: parsed.medianLikedArea ?? null,
+      interactions: Number(parsed.interactions || 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function saveLocalDiscoveryProfile(
+  userId: string | number | null | undefined,
+  profile: DiscoveryProfile,
+) {
+  try {
+    const key = `${DISCOVERY_PROFILE_KEY}:${userId || 'guest'}`;
+    await AsyncStorage.setItem(key, JSON.stringify(profile));
+  } catch {
+    // noop
+  }
+}
+
+function extractOffersArray(json: any): any[] | null {
+  if (Array.isArray(json)) return json;
+  if (Array.isArray(json?.offers)) return json.offers;
+  if (Array.isArray(json?.items)) return json.items;
+  return null;
+}
+
+function orderByRankedIds(fullList: any[], rankedIds: Array<string | number>): any[] {
+  if (!rankedIds.length) return fullList;
+  const byId = new Map(fullList.map((o) => [String(o?.id), o]));
+  const ordered: any[] = [];
+  const seen = new Set<string>();
+  for (const id of rankedIds) {
+    const key = String(id);
+    const hit = byId.get(key);
+    if (!hit || seen.has(key)) continue;
+    ordered.push(hit);
+    seen.add(key);
+  }
+  for (const item of fullList) {
+    const key = String(item?.id);
+    if (!key || seen.has(key)) continue;
+    ordered.push(item);
+    seen.add(key);
+  }
+  return ordered;
+}
+
 // === KOMPONENT WYKRESU (APPLE STOCKS STYLE) ===
 const PriceHistoryChart = ({ data, width }: { data: number[], width: number }) => {
   const chartHeight = 50;
@@ -242,6 +304,7 @@ const PriceHistoryChart = ({ data, width }: { data: number[], width: number }) =
 export default function EstateDiscoveryMode({ navigation }: any) {
   const { width, height } = useWindowDimensions();
   const token = useAuthStore((s: any) => s.token);
+  const userId = useAuthStore((s: any) => s.user?.id);
   const { formatOffer } = useMoneyContext();
   const isTablet = width >= 768;
   
@@ -265,6 +328,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     interactions: 0,
   });
   const [pendingDislikeOffer, setPendingDislikeOffer] = useState<DiscoveryOffer | null>(null);
+  const [loadingFeed, setLoadingFeed] = useState(true);
 
   const mapRawOffersToDiscovery = useCallback((list: any[]): DiscoveryOffer[] => {
     return list
@@ -291,6 +355,8 @@ export default function EstateDiscoveryMode({ navigation }: any) {
         const daysOnMarket = Math.max(1, Math.round((Date.now() - createdAtMs) / (1000 * 60 * 60 * 24)));
         const location = [district, city].filter(Boolean).join(', ') || 'Polska';
         const images = extractImagesFromOffer(raw);
+        const scoreRaw = raw?.score ?? raw?.matchScore;
+        const scoreNum = scoreRaw == null ? null : Number(scoreRaw);
         return {
           id: String(raw?.id ?? `${title}-${city}-${Math.random()}`),
           title,
@@ -307,6 +373,11 @@ export default function EstateDiscoveryMode({ navigation }: any) {
           priceHistory: buildPriceHistory(listing.plnAmount, prevPln),
           images,
           image: images[0] || extractImageFromOffer(raw),
+          matchScore:
+            typeof scoreNum === 'number' && Number.isFinite(scoreNum)
+              ? Math.max(0, Math.min(100, Math.round(scoreNum)))
+              : null,
+          matchReason: raw?.reason == null ? null : String(raw.reason),
         };
       })
       .filter(Boolean) as DiscoveryOffer[];
@@ -376,49 +447,91 @@ export default function EstateDiscoveryMode({ navigation }: any) {
 
   useEffect(() => {
     let mounted = true;
+    void loadLocalDiscoveryProfile(userId).then((saved) => {
+      if (mounted && saved) setProfile(saved);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    void saveLocalDiscoveryProfile(userId, profile);
+  }, [profile, userId]);
+
+  useEffect(() => {
+    let mounted = true;
     const fetchOffers = async () => {
+      setLoadingFeed(true);
       try {
         await flushDiscoveryQueue();
-        // 1) Prefer feed "for you" from backend
         const feedRes = await fetch(`${API_URL}/api/mobile/v1/discovery/feed?mode=for_you&limit=40`, {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         });
         const feedJson = await feedRes.json().catch(() => ({}));
         const feedList = parseDiscoveryFeedItems(feedJson);
+        const rankedIds = feedList.map((item) => item.id);
 
-        // Wszędzie, gdzie dostajemy listę ofert, filtrujemy zamknięte
-        // (ARCHIVED / SOLD / EXPIRED / itp.) zanim trafią do Discovery.
-        // Żadnego swipe'a po wycofanej nieruchomości — to było jedno
-        // z największych UX-owych nieporozumień w starym przepływie.
+        // Prefer full payloads from personalized feed (now includes price/images).
         let mapped = mapRawOffersToDiscovery(feedList.filter((o: any) => !isOfferClosed(o)));
-        if (mapped.length === 0) {
+
+        // If feed was slim or incomplete, hydrate from catalog and keep ranking order.
+        if (mapped.length < Math.min(8, rankedIds.length || 8)) {
           const res = await fetch(`${API_URL}/api/mobile/v1/offers`, {
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
           });
           const json = await res.json().catch(() => ({}));
-          const list = Array.isArray(json)
-            ? json
-            : Array.isArray(json?.offers)
-              ? json.offers
-              : Array.isArray(json?.items)
-                ? json.items
-                : null;
-          if (res.ok && Array.isArray(list)) {
-            mapped = mapRawOffersToDiscovery(list.filter((o: any) => !isOfferClosed(o)));
-          } else {
+          let list = extractOffersArray(json);
+          if (!res.ok || !list) {
             const webRes = await fetch(`${API_URL}/api/offers`);
             if (webRes.ok) {
               const webJson = await webRes.json().catch(() => null);
-              if (Array.isArray(webJson)) {
-                mapped = mapRawOffersToDiscovery(webJson.filter((o: any) => !isOfferClosed(o)));
-              }
+              list = extractOffersArray(webJson);
             }
           }
+          if (Array.isArray(list)) {
+            const ordered = orderByRankedIds(
+              list.filter((o: any) => !isOfferClosed(o)),
+              rankedIds,
+            );
+            const hydrated = mapRawOffersToDiscovery(ordered);
+            if (hydrated.length > mapped.length) {
+              // Preserve server matchScore/reason when available.
+              const scoreById = new Map(
+                feedList.map((item) => [String(item.id), { score: item.score, reason: item.reason }]),
+              );
+              mapped = hydrated.map((offer) => {
+                const meta = scoreById.get(String(offer.id));
+                if (!meta) return offer;
+                return {
+                  ...offer,
+                  matchScore: meta.score ?? offer.matchScore,
+                  matchReason: meta.reason ?? offer.matchReason,
+                };
+              });
+            }
+          }
+        }
+
+        if (feedJson?.profile?.preferredBudgetPln > 0 || feedJson?.profile?.preferredAreaM2 > 0) {
+          setProfile((prev) => ({
+            ...prev,
+            medianLikedPrice:
+              prev.medianLikedPrice == null && Number(feedJson.profile.preferredBudgetPln) > 0
+                ? Math.round(Number(feedJson.profile.preferredBudgetPln))
+                : prev.medianLikedPrice,
+            medianLikedArea:
+              prev.medianLikedArea == null && Number(feedJson.profile.preferredAreaM2) > 0
+                ? Math.round(Number(feedJson.profile.preferredAreaM2))
+                : prev.medianLikedArea,
+          }));
         }
 
         if (mounted) setOffers(mapped);
       } catch {
         if (mounted) setOffers([]);
+      } finally {
+        if (mounted) setLoadingFeed(false);
       }
     };
     void fetchOffers();
@@ -565,10 +678,13 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   const topOfferInsight = useMemo(() => {
     const top = offers[0];
     if (!top) return { score: 50, reason: 'Budujemy Twój profil preferencji' };
+    if (top.matchScore != null && top.matchReason) {
+      return { score: top.matchScore, reason: top.matchReason };
+    }
     const locationKey = top.location.split(',')[0]?.trim().toLowerCase() || top.location.toLowerCase();
     const price = parsePriceNumber(top.price);
     const area = parsePriceNumber(top.area);
-    let score = 50;
+    let score = top.matchScore ?? 50;
     const reasons: string[] = [];
 
     const likedLoc = profile.likedLocations[locationKey] || 0;
@@ -603,9 +719,24 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     score = Math.max(35, Math.min(98, Math.round(score)));
     return {
       score,
-      reason: reasons[0] || 'algorytm testuje nowe warianty pod Twój gust',
+      reason: reasons[0] || top.matchReason || 'algorytm testuje nowe warianty pod Twój gust',
     };
   }, [offers, profile]);
+
+  const profileHint = useMemo(() => {
+    const topCity = Object.entries(profile.likedLocations).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const bits: string[] = [];
+    if (topCity) bits.push(topCity);
+    if (profile.medianLikedPrice)
+      bits.push(`~${new Intl.NumberFormat('pl-PL').format(profile.medianLikedPrice)} PLN`);
+    if (profile.medianLikedArea) bits.push(`~${profile.medianLikedArea} m²`);
+    if (!bits.length) {
+      return profile.interactions > 0
+        ? `${profile.interactions} swipe’ów — profil się uczy`
+        : 'Przesuń w prawo lub lewo — uczymy się Twojego gustu';
+    }
+    return bits.join(' · ');
+  }, [profile]);
 
   // === INTERPOLACJE IKON NA ŚRODKU ===
   const rotate = position.x.interpolate({ inputRange: [-width / 2, 0, width / 2], outputRange: ['-10deg', '0deg', '10deg'], extrapolate: 'clamp' });
@@ -626,11 +757,19 @@ export default function EstateDiscoveryMode({ navigation }: any) {
 
   // === RENDEROWANIE KART ===
   const renderCards = () => {
+    if (loadingFeed) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>Dobieramy oferty</Text>
+          <Text style={styles.emptySub}>Uczymy się Twojego gustu…</Text>
+        </View>
+      );
+    }
     if (offers.length === 0) {
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>Katalog Przejrzany</Text>
-          <Text style={styles.emptySub}>Radar uczy się Twoich preferencji.</Text>
+          <Text style={styles.emptySub}>Radar uczy się Twoich preferencji — wróć za chwilę.</Text>
         </View>
       );
     }
@@ -777,9 +916,12 @@ export default function EstateDiscoveryMode({ navigation }: any) {
         <Pressable onPress={() => navigation?.goBack()} style={styles.backBtn} hitSlop={20}>
           <Ionicons name="chevron-back" size={28} color="#FFF" />
         </Pressable>
-        <View style={{ alignItems: 'center' }}>
+        <View style={{ alignItems: 'center', maxWidth: width * 0.72 }}>
           <Text style={styles.headerTitle}>EstateOS™ Discovery</Text>
           <Text style={styles.headerSubtitle}>KATALOG SELEKCJI</Text>
+          <Text style={styles.headerProfileHint} numberOfLines={1}>
+            {profileHint}
+          </Text>
         </View>
       </View>
 
@@ -867,6 +1009,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 4,
     marginTop: 2,
+  },
+  headerProfileHint: {
+    color: 'rgba(244,232,204,0.72)',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 6,
+    textAlign: 'center',
   },
   cardsWrapper: {
     flex: 1,

@@ -3,7 +3,6 @@ import { StyleSheet, View } from 'react-native';
 import { useEcosystemStore } from '../store/useEcosystemStore';
 import RadarHomeScreen from '../screens/RadarHomeScreen';
 import CarsCatalogScreen from '../screens/CarsCatalogScreen';
-import EcosystemVerticalTransition from '../components/ecosystem/EcosystemVerticalTransition';
 
 export type MarketSurface = 'market' | 'explore';
 
@@ -16,6 +15,7 @@ type Props = {
 
 /**
  * Shell tabów Market i Mapy+Radar — Homes|Cars z ecosystem store.
+ * Animacja przełączenia Home↔Car jest montowana raz w MainTabs.
  */
 export default function MarketExploreShell({ splashDone = true, surface, navigation, route }: Props) {
   const activeVertical = useEcosystemStore((s) => s.activeVertical);
@@ -51,7 +51,6 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
           route={{ ...(route || {}), params: homeParams }}
         />
       )}
-      <EcosystemVerticalTransition />
     </View>
   );
 }
