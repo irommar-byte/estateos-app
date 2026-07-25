@@ -194,6 +194,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     (Number(currentUser.id) === Number(offer.userId) ||
       currentUser.email === offer.user?.email ||
       currentUser.email === offer.contactEmail);
+  const isAdminViewer = String(currentUser?.role || "").toUpperCase() === "ADMIN";
+  const canManageOffer = isOwner || isAdminViewer;
   const isFormerOwnerViewer =
     !!currentUser &&
     offer.managementStatus === 'AGENCY_MANAGED' &&
@@ -1190,7 +1192,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       Ta nieruchomość jest zarządzana przez agencję. Widzisz wszystkie zmiany na bieżąco — kontakt z kupującymi i umawianie spotkań obsługuje biuro.
                     </p>
                   </div>
-                ) : !isOwner ? (
+                ) : !canManageOffer ? (
                 <div className="flex flex-col gap-3 relative z-10">
                   {isArchived ? (
                   <div className="py-8 text-center flex flex-col items-center justify-center">

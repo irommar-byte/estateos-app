@@ -6,6 +6,7 @@ import { sanitizeCarListingForViewer } from "@/lib/carVehicleDocPrivacy";
 import { resolveUploaderUserId } from "@/lib/upload/resolveUploader";
 import { resolveOfferPriceFromBody } from "@/lib/money/offerPrice.server";
 import { enrichOfferMoneyFields } from "@/lib/money/offerPrice";
+import { prisma } from "@/lib/prisma";
 
 function toSafeNumber(v: unknown, fallback: number): number {
   const n = Number(v);
@@ -108,14 +109,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: "Invalid car listing payload" }, { status: 400 });
     }
 
-    const updated = await updateCarListing(carId, userId, {
-      ...payload,
-      price: money.price,
-      priceCurrency: money.priceCurrency,
-      pricePln: money.pricePln,
-      exchangeRateUsed: money.exchangeRateUsed,
-      exchangeRateDate: money.exchangeRateDate,
+    const actor = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
     });
+    const asAdmin = String(actor?.role || "").toUpperCase() === "ADMIN";
+
+    const updated = await updateCarListing(
+      carId,
+      userId,
+      {
+        ...payload,
+        price: money.price,
+        priceCurrency: money.priceCurrency,
+        pricePln: money.pricePln,
+        exchangeRateUsed: money.exchangeRateUsed,
+        exchangeRateDate: money.exchangeRateDate,
+      },
+      { asAdmin },
+    );
     if (!updated) {
       return NextResponse.json({ error: "Ogłoszenie nie istnieje lub brak uprawnień." }, { status: 403 });
     }

@@ -3163,3 +3163,50 @@ html:not(.light) .eos-btn--danger {
 }
 
 
+
+
+/* Moje ogłoszenia — dignified management panel CTA */
+.eos-mgmt-panel-btn {
+  background: linear-gradient(180deg, #10b981 0%, #047857 55%, #065f46 100%);
+  border: 1px solid rgba(4, 120, 87, 0.45);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.18) inset,
+    0 12px 28px rgba(5, 150, 105, 0.38),
+    0 4px 10px rgba(15, 23, 42, 0.12);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease, filter 0.35s ease;
+}
+.eos-mgmt-panel-btn:hover {
+  transform: translateY(-2px) scale(1.015);
+  filter: brightness(1.05);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.34) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.2) inset,
+    0 18px 40px rgba(5, 150, 105, 0.48),
+    0 8px 16px rgba(15, 23, 42, 0.14);
+}
+.eos-mgmt-panel-btn:active {
+  transform: translateY(0) scale(0.985);
+}
+.eos-mgmt-panel-btn__sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.35) 48%,
+    transparent 62%
+  );
+  transform: translateX(-120%);
+  animation: eos-mgmt-sheen 3.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes eos-mgmt-sheen {
+  0%, 55% { transform: translateX(-120%); }
+  75% { transform: translateX(120%); }
+  100% { transform: translateX(120%); }
+}
+html:not(.light) .eos-mgmt-panel-btn {
+  background: linear-gradient(180deg, #34d399 0%, #059669 55%, #047857 100%);
+  color: #042f1e;
+}

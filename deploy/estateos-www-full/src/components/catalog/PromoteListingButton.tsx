@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Crown, Loader2 } from "lucide-react";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
+import NoCreditsModal from "@/components/publication/NoCreditsModal";
 
 type PromoteListingButtonProps = {
   endpoint: string;
@@ -13,6 +14,17 @@ type PromoteListingButtonProps = {
   buttonClassName?: string;
   disabled?: boolean;
 };
+
+function looksLikeNoCredits(message: string) {
+  const m = message.toLowerCase();
+  return (
+    m.includes("kredyt") ||
+    m.includes("credit") ||
+    m.includes("pakiet") ||
+    m.includes("plus") ||
+    m.includes("brak")
+  );
+}
 
 export default function PromoteListingButton({
   endpoint,
@@ -26,6 +38,7 @@ export default function PromoteListingButton({
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [noCreditsOpen, setNoCreditsOpen] = useState(false);
 
   const promote = async () => {
     if (loading || disabled) return;
@@ -36,7 +49,12 @@ export default function PromoteListingButton({
       const res = await fetch(endpoint, { method: "POST", credentials: "include" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(typeof data?.error === "string" ? data.error : "Nie udało się wyróżnić ogłoszenia.");
+        const msg = typeof data?.error === "string" ? data.error : "Nie udało się wyróżnić ogłoszenia.";
+        if (looksLikeNoCredits(msg) || res.status === 402 || res.status === 409) {
+          setNoCreditsOpen(true);
+          return;
+        }
+        throw new Error(msg);
       }
       setDone(true);
       onPromoted?.();
@@ -59,6 +77,7 @@ export default function PromoteListingButton({
         {done ? successLabel : label}
       </button>
       {error ? <p className="mt-1 text-[10px] text-red-400">{error}</p> : null}
+      <NoCreditsModal open={noCreditsOpen} onClose={() => setNoCreditsOpen(false)} />
     </div>
   );
 }

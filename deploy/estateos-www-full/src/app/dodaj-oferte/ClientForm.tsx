@@ -16,6 +16,8 @@ import { Home,
 } from "lucide-react";
 
 import ProPhotoSessionDialog from '@/components/photoSession/ProPhotoSessionDialog';
+import HomePublishSuccessModal from '@/components/offer/HomePublishSuccessModal';
+import NoCreditsModal from '@/components/publication/NoCreditsModal';
 import PublishAuthGate, { type AuthGateContext } from '@/components/auth/PublishAuthGate';
 import AddOfferStepProgress from '@/components/offers/AddOfferStepProgress';
 import AddOfferPublishSummary from '@/components/offers/AddOfferPublishSummary';
@@ -316,6 +318,7 @@ export default function ClientForm({
   const [aiDetailsNotes, setAiDetailsNotes] = useState("");
   const typewriterCancelRef = useRef<null | (() => void)>(null);
   const [actionModal, setActionModal] = useState<"none" | "limit" | "success" | "error" | "otp" | "payment_success" | "oferta_plus" | "verify">("none");
+  const [successOfferId, setSuccessOfferId] = useState<number | null>(null);
   const [serverErrorMessage, setServerErrorMessage] = useState('');
   const [errorFieldTarget, setErrorFieldTarget] = useState<FormFieldTarget>(null);
   const [walletCoupons, setWalletCoupons] = useState<PublicationCouponOption[]>([]);
@@ -1231,7 +1234,9 @@ export default function ClientForm({
       const draft = readAddOfferDraft();
       const resume = await resolvePendingOfferForPublish(draft?.pendingOfferId);
       if (resume.mode === "already_submitted") {
+        const resumedId = Number(draft?.pendingOfferId || 0);
         clearAddOfferDraft();
+        if (Number.isFinite(resumedId) && resumedId > 0) setSuccessOfferId(resumedId);
         setActionModal("success");
         return;
       }
@@ -1337,6 +1342,7 @@ export default function ClientForm({
         return;
       }
       clearAddOfferDraft();
+      setSuccessOfferId(createdOfferId);
       setActionModal('success');
     } catch {
       setServerErrorMessage(ao.apiConnectionError);
@@ -2740,31 +2746,11 @@ export default function ClientForm({
             </motion.div>
           </div>
         )}
-        {actionModal !== "none" && actionModal !== "payment_success" && actionModal !== "oferta_plus" && actionModal !== "verify" && (
+        {actionModal !== "none" && actionModal !== "payment_success" && actionModal !== "oferta_plus" && actionModal !== "verify" && actionModal !== "success" && actionModal !== "limit" && (
           <div className="fixed inset-0 z-[999999] flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4 bg-black/90 backdrop-blur-xl">
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-10 max-w-lg w-full shadow-2xl relative text-center">
               <button onClick={() => setActionModal("none")} className="absolute top-6 right-6 text-zinc-500 hover:text-white transition-colors"><X size={24} /></button>
-              
-              {actionModal === "success" && (
-                <>
-                  <div className="w-24 h-24 bg-[#10b981]/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#10b981]/30 shadow-[0_0_40px_rgba(16,185,129,0.3)]"><CheckCircle className="text-[#10b981]" size={40} /></div>
-                  <h2 className="text-3xl font-black text-white mb-4">{ao.modalSuccessTitle}</h2>
-                  <p className="text-zinc-400 mb-8 leading-relaxed">
-                    {ao.modalSuccessBody}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      window.location.href = "/moje-konto/crm?tab=my_offers";
-                    }}
-                    className="w-full rounded-2xl border border-emerald-400/45 bg-gradient-to-b from-emerald-400 to-emerald-600 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-[0_12px_32px_rgba(16,185,129,0.22)] transition hover:brightness-105"
-                  >
-                    {ao.modalSuccessPanel}
-                  </button>
-                </>
-              )}
-
-              {actionModal === "error" && (
+{actionModal === "error" && (
                 <>
                   <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/30"><AlertCircle className="text-red-500" size={40} /></div>
                   <h2 className="text-3xl font-black text-white mb-4">{ao.modalErrorTitle}</h2>
@@ -2772,23 +2758,28 @@ export default function ClientForm({
                   <button onClick={handleFixDataFromErrorModal} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-red-500 font-black uppercase tracking-widest rounded-2xl transition-all duration-300">{ao.modalFixData}</button>
                 </>
               )}
-
-              {actionModal === "limit" && (
-                <>
-                  <div className="w-24 h-24 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-blue-500/30 shadow-[0_0_40px_rgba(59,130,246,0.3)]"><Sparkles className="text-blue-400" size={40} /></div>
-                  <h2 className="text-3xl font-black text-white mb-2 tracking-tighter">{ao.modalLimitTitle}</h2>
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-black uppercase tracking-[0.2em] text-blue-400 mb-6 animate-pulse">{ao.modalLimitBadge}</div>
-                  <p className="text-zinc-400 mb-8 leading-relaxed font-medium">{ao.modalLimitBody} <br/><span className="text-zinc-600 line-through text-lg mr-2 decoration-red-500/40">49,99 zł</span><span className="text-white font-black text-3xl">29,99 zł</span></p>
-                  <button onClick={handlePlusPayment} disabled={isProcessingPlus} className="w-full py-5 bg-blue-600 text-white font-black uppercase tracking-[0.2em] rounded-[1.5rem] transition-all duration-300 hover:bg-blue-500 hover:brightness-125 shadow-xl flex flex-col items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
-                    {isProcessingPlus ? <span>{ao.modalCheckoutLoading}</span> : <><span>{ao.modalUnlock}</span><span className="text-[9px] opacity-70 mt-1 font-bold">{ao.modalAutoPublish}</span></>}
-                  </button>
-                  <button onClick={() => setActionModal("none")} className="mt-6 text-[10px] text-zinc-500 uppercase tracking-widest font-bold hover:text-white transition-colors">{ao.modalBackEdit}</button>
-                </>
-              )}
-            </motion.div>
+</motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      <HomePublishSuccessModal
+        offerId={successOfferId}
+        open={actionModal === "success"}
+        onClose={() => {
+          setActionModal("none");
+          setSuccessOfferId(null);
+        }}
+      />
+      <NoCreditsModal
+        open={actionModal === "limit"}
+        onClose={() => setActionModal("none")}
+        title="Brak kredytów na koncie"
+        body={
+          serverErrorMessage ||
+          "Na Twoim koncie nie ma aktywnych kredytów publikacji. Doładuj pakiet, aby opublikować ogłoszenie."
+        }
+      />
 
       {/* 2. RYTUAŁ PRO (ROLLS ROYCE) */}
       {actionModal === "payment_success" && (

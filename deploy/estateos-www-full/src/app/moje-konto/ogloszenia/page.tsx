@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Car, Crown, Home, Loader2, Pencil, Sparkles } from "lucide-react";
+import { Camera, Car, Crown, Home, Loader2, Pencil, Sparkles, LayoutDashboard } from "lucide-react";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
 import EosButton from "@/components/ui/EosButton";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
@@ -147,16 +147,22 @@ export default function AccountListingsPage() {
           <p className="mx-auto mt-3 max-w-2xl text-sm text-[var(--eos-muted)] sm:mx-0">
             Jedno konto EstateOS i dwa brandy operacyjne: EstateOS™Home oraz EstateOS™Car.
           </p>
-          <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
-            <EosButton href="/moje-konto/crm?tab=my_offers" variant="home" size="sm">
-              Panel zarządzania
-            </EosButton>
-            <EosButton href="/moje-konto/sesje-zdjeciowe" variant="secondary" size="sm">
+          <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:items-stretch sm:justify-start">
+            <a
+              href="/moje-konto/crm?tab=my_offers"
+              className="eos-mgmt-panel-btn group relative inline-flex items-center justify-center gap-2.5 overflow-hidden rounded-full px-7 py-3.5 text-[11px] font-black uppercase tracking-[0.18em] text-white"
+            >
+              <span className="eos-mgmt-panel-btn__sheen" aria-hidden />
+              <LayoutDashboard className="relative z-10 size-4 transition duration-500 group-hover:rotate-[-8deg] group-hover:scale-110" aria-hidden />
+              <span className="relative z-10">Panel zarządzania</span>
+            </a>
+            <a
+              href="/moje-konto/sesje-zdjeciowe"
+              className="group relative inline-flex items-center justify-center gap-2.5 overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-6 py-3.5 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--eos-text)] shadow-[0_10px_28px_rgba(15,23,42,0.08),0_1px_0_rgba(255,255,255,0.65)_inset] transition duration-300 hover:-translate-y-0.5 hover:border-emerald-400/40 hover:shadow-[0_16px_36px_rgba(16,185,129,0.14)]"
+            >
+              <Camera className="size-4 text-emerald-600 transition duration-300 group-hover:scale-110 dark:text-emerald-400" aria-hidden />
               Sesje zdjęciowe EstateOS Studio
-            </EosButton>
-            <EosButton href="/moje-konto/wiadomosci" variant="secondary" size="sm">
-              Wiadomości
-            </EosButton>
+            </a>
           </div>
         </header>
 
@@ -233,6 +239,15 @@ export default function AccountListingsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-5">
+            <div className="flex justify-center sm:justify-end">
+              <EosButton
+                href={vertical === "home" ? "/dodaj-oferte" : "/cars/dodaj"}
+                variant={vertical === "home" ? "home" : "car"}
+                size="sm"
+              >
+                {vertical === "home" ? "Dodaj kolejną ofertę" : "Dodaj kolejną ofertę"}
+              </EosButton>
+            </div>
             {vertical === "home"
               ? (homeListings as HomeListing[]).map((offer) => (
                   <article key={`home-${offer.id}`} className={listingCardClass("home")}>

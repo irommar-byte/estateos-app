@@ -23,6 +23,7 @@ import CarRegistrationScanGate, {
 } from "@/components/cars/CarRegistrationScanGate";
 import CarVehicleDocsFields, { type CarVehicleDocsFormState } from "@/components/cars/CarVehicleDocsFields";
 import AppleStyleSwitch from "@/components/ui/AppleStyleSwitch";
+import EosButton from "@/components/ui/EosButton";
 import {
   CarFormField,
   CarFormSection,
@@ -880,24 +881,30 @@ export default function CarListingForm({
           </div>
         ) : null}
 
-        <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-[1.75rem] border border-sky-400/25 bg-[var(--eos-card)]/95 px-5 py-4 shadow-[0_18px_50px_rgba(14,165,233,0.12)] backdrop-blur-md">
-          <p className="text-xs text-[var(--eos-muted)]">
+        <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-[1.75rem] border border-sky-400/30 bg-[var(--eos-card)]/95 px-5 py-4 shadow-[0_22px_60px_rgba(14,165,233,0.18),0_8px_24px_rgba(15,23,42,0.12)] backdrop-blur-md">
+          <p className="max-w-xs text-xs font-medium leading-relaxed text-[var(--eos-muted)] sm:max-w-sm">
             {mode === "create" ? f.footerCreate : f.footerEdit}
           </p>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="submit"
-              disabled={submitting || uploading}
-              className="rounded-full border border-sky-400/45 bg-sky-500/15 px-6 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-sky-800 transition hover:bg-sky-500/25 disabled:cursor-not-allowed disabled:opacity-60 dark:text-sky-200"
-            >
-              {submitting ? f.publishing : mode === "create" ? f.publish : f.saveChanges}
-            </button>
-            <Link
+          <div className="flex flex-wrap items-center gap-2.5">
+            <EosButton type="submit" variant="car" size="md" disabled={submitting || uploading}>
+              {submitting ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                  {f.publishing}
+                </>
+              ) : mode === "create" ? (
+                f.publish
+              ) : (
+                f.saveChanges
+              )}
+            </EosButton>
+            <EosButton
               href={mode === "edit" && carId ? `/cars/${carId}` : "/cars"}
-              className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-6 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-[var(--eos-text)]"
+              variant="secondary"
+              size="md"
             >
               {c.common.cancel}
-            </Link>
+            </EosButton>
           </div>
         </div>
       </form>
