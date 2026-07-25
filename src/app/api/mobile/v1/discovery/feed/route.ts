@@ -145,7 +145,13 @@ export async function GET(req: Request) {
     );
     const likedOfferIds = new Set(
       recentEvents
-        .filter((event) => ['DISCOVERY_LIKE', 'DISCOVERY_PRIORITY', 'DISCOVERY_FAST_TRACK'].includes(event.eventType))
+        .filter((event) => ['DISCOVERY_LIKE', 'DISCOVERY_PRIORITY', 'DISCOVERY_FAST_TRACK', 'DISCOVERY_SAVE'].includes(event.eventType))
+        .map((event) => event.offerId)
+        .filter((offerId): offerId is number => Number.isFinite(offerId)),
+    );
+    const viewedOfferIds = new Set(
+      recentEvents
+        .filter((event) => event.eventType === 'DISCOVERY_VIEW_CARD' || event.eventType === 'DISCOVERY_SKIP')
         .map((event) => event.offerId)
         .filter((offerId): offerId is number => Number.isFinite(offerId)),
     );
@@ -154,8 +160,16 @@ export async function GET(req: Request) {
         ? session.shownOfferIds.map((id) => Number(id)).filter(Number.isFinite)
         : [],
     );
+    // Twarde wykluczenie: już ocenione + niedawno pokazane — talii nie zawracamy w kółko.
+    const excludedOfferIds = new Set<number>([
+      ...dislikedOfferIds,
+      ...likedOfferIds,
+      ...viewedOfferIds,
+      ...recentShown,
+    ]);
 
     const scored = offers
+      .filter((offer) => !excludedOfferIds.has(offer.id))
       .filter((offer) => canShowOfferOnPublicMarket(offer, activePublicationIds))
       .map((offer) =>
         scoreDiscoveryCandidate({
