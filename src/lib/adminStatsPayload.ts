@@ -8,10 +8,14 @@ import {
 } from '@/lib/pageVisitAnalytics';
 import { ensurePageVisitLogTable } from '@/lib/pageVisitLogTable';
 
+const VISIT_SAMPLE = 2500;
+const USER_SAMPLE = 1500;
+
 export async function getAdminStatsPayload() {
+  // Schema ensure is memoized per process — never block stats on repeated DDL.
   await ensurePageVisitLogTable();
 
-  const [usersCount, totalOffers, activeOffers, marketOffersRaw, usersTimelineRaw, visitsRaw] =
+  const [usersCount, totalOffers, activeOffers, marketOffersRaw, usersTimelineRaw, visitsRaw, visitCountRows] =
     await Promise.all([
       prisma.user.count(),
       prisma.offer.count(),
@@ -36,13 +40,17 @@ export async function getAdminStatsPayload() {
       prisma.user.findMany({
         select: { createdAt: true, role: true },
         orderBy: { createdAt: 'desc' },
-        take: 3000,
+        take: USER_SAMPLE,
       }),
+      // No userAgent — large and unused by analytics UI.
       prisma.$queryRawUnsafe<RawPageVisit[]>(`
-        SELECT ip, country, city, regionName, isp, geoSource, deviceType, path, userAgent, createdAt
+        SELECT ip, country, city, regionName, isp, geoSource, deviceType, path, createdAt
         FROM PageVisitLog
         ORDER BY createdAt DESC
-        LIMIT 3000
+        LIMIT ${VISIT_SAMPLE}
+      `),
+      prisma.$queryRawUnsafe<Array<{ c: number | bigint }>>(`
+        SELECT COUNT(*) AS c FROM PageVisitLog
       `),
     ]);
 
@@ -57,7 +65,7 @@ export async function getAdminStatsPayload() {
     return acc + (Number.isFinite(price) && price > 0 ? price : 0);
   }, 0);
 
-  const pageViews = visitsRaw.length;
+  const pageViewsTotal = Number(visitCountRows?.[0]?.c ?? visitsRaw.length);
   const uniqueViews = new Set(visitsRaw.map((v) => String(v.ip || ''))).size;
 
   const timeline = {
@@ -75,13 +83,9 @@ export async function getAdminStatsPayload() {
       localityCountryCode: o.localityCountryCode,
       createdAt: serializeDbDateTime(o.createdAt) ?? String(o.createdAt),
     })),
+    // Charts need only ip + createdAt; drop heavy geo/path from this array.
     visits: visitsRaw.map((v) => ({
       ip: v.ip,
-      country: v.country,
-      city: v.city,
-      regionName: v.regionName,
-      path: v.path,
-      deviceType: v.deviceType,
       createdAt: serializeDbDateTime(v.createdAt) ?? String(v.createdAt),
     })),
     visitors: visitors.map((v) => ({
@@ -113,7 +117,7 @@ export async function getAdminStatsPayload() {
       offers: totalOffers,
       active: activeOffers,
       totalValue,
-      pageViews,
+      pageViews: pageViewsTotal,
       uniqueViews,
     },
     timeline,
