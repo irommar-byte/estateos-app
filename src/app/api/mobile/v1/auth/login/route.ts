@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     });
     const hasPasskey = await userHasRegisteredPasskey(user.id);
 
-    void recordUserLogin(user.id, ip);
+    await recordUserLogin(user.id, ip);
 
     return NextResponse.json({
       success: true,

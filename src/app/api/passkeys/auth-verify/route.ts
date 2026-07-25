@@ -6,6 +6,7 @@ import { encryptSession } from '@/lib/sessionUtils';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { getPasskeyExpectedOrigins, getPasskeyRpId } from '@/lib/env.server';
+import { recordUserLogin } from '@/lib/recordUserLogin';
 
 export async function POST(req: Request) {
   const ip = getClientIp(req);
@@ -95,6 +96,8 @@ export async function POST(req: Request) {
     } as const;
     cookieStore.set('estateos_session', sessionPayload, cookieOptions);
     cookieStore.set('luxestate_user', sessionPayload, cookieOptions);
+
+    await recordUserLogin(user.id, ip);
 
     return NextResponse.json({ success: true, role: user.role });
   } catch (error) {

@@ -1413,6 +1413,41 @@ function SingleOfferPageInner({ params }: { params: Promise<{ id: string }> }) {
     void fetchUserAndOffer();
   }, [resolvedParams, searchParams]);
 
+  useEffect(() => {
+    if (loadState !== "ready" || !offer) return;
+    const sellerId = Number(offer?.user?.id || offer?.userId || 0);
+    if (!Number.isFinite(sellerId) || sellerId <= 0) return;
+
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const res = await fetch(`/api/presence/status?userId=${sellerId}`, { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const online = Boolean(data?.isOnline);
+        setOffer((prev: any) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            sellerIsOnline: online,
+            user: prev.user ? { ...prev.user, isOnline: online } : prev.user,
+          };
+        });
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const id = window.setInterval(() => void refresh(), 30_000);
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [loadState, offer?.user?.id, offer?.userId]);
+
   if (loadState === "loading") return <OfferPageLoading />;
 
   if (loadState === "error" || !offer) {

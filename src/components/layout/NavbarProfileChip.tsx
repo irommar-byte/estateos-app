@@ -33,7 +33,7 @@ export default function NavbarProfileChip({ user }: Props) {
       type="button"
       onClick={() => router.push("/moje-konto")}
       aria-label={`Profil: ${label}`}
-      className="group relative flex h-11 max-w-[92px] shrink-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-full border border-emerald-500/25 bg-black/55 px-2 py-1 text-emerald-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] transition-all hover:border-emerald-400/45 hover:bg-black/70 sm:max-w-[108px] sm:px-2.5"
+      className="group relative flex h-10 max-w-[72px] shrink flex-col items-center justify-center gap-0.5 overflow-hidden rounded-full border border-emerald-500/25 bg-black/55 px-1.5 py-1 text-emerald-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] transition-all hover:border-emerald-400/45 hover:bg-black/70 xl:max-w-[96px] xl:px-2.5"
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/70 to-transparent opacity-80" />
       <div className="relative flex items-center gap-1">

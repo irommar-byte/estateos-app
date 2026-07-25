@@ -1,5 +1,6 @@
 import { verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { NextResponse } from 'next/server';
+import { recordUserLogin } from '@/lib/recordUserLogin';
 import { prisma } from '@/lib/prisma';
 import { signMobileToken } from '@/lib/jwtMobile';
 import { clearLoginPasskeyChallenge, getLoginPasskeyChallenge } from '../_challengeStore';
@@ -100,6 +101,8 @@ export async function POST(req: Request) {
       select: MOBILE_USER_SELECT,
     });
     const hasPasskey = await userHasRegisteredPasskey(user.id);
+
+    await recordUserLogin(user.id, ip);
 
     return NextResponse.json({
       success: true,
