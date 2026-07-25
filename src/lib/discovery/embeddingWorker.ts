@@ -178,5 +178,5 @@ export async function processDiscoveryEmbeddingBatch(limit = 20): Promise<Discov
       failed += 1;
     }
   }
-  return { processed, skippedBudget: Math.max(0, cappedLimit - jobs.length), failed, spentMicrousd, periodKey: usage.periodKey };
+  return { processed, skippedBudget: 0, failed, spentMicrousd, periodKey: usage.periodKey };
 }
