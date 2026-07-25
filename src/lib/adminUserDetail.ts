@@ -1,6 +1,7 @@
 import { shapeRadarPreference, type RadarPreferenceDto } from '@/lib/radarPreferenceShape';
 import { radarIntelligenceLabel } from '@/lib/radarCalibrationWeb';
 import type { WalletSnapshot } from '@/lib/walletLedger';
+import { buildDiscoveryBuyerBrief } from '@/lib/discoveryInsights';
 
 export type AdminUserDeviceRow = {
   id: string;
@@ -82,6 +83,16 @@ export type AdminUserDetail = {
     cityStats: unknown;
     districtStats: unknown;
     propertyStats: unknown;
+    reasonStats: unknown;
+    preferredBudgetPln: number | null;
+    avoidedBudgetPln: number | null;
+    preferredAreaM2: number | null;
+    preferredTransaction: 'SELL' | 'RENT' | 'MIXED' | null;
+    topCities: Array<{ key: string; value: number }>;
+    topDistricts: Array<{ key: string; value: number }>;
+    topPropertyTypes: Array<{ key: string; value: number }>;
+    dislikeReasons: Array<{ key: string; value: number }>;
+    summaryLine: string;
     updatedAt: string | null;
   } | null;
   devices: AdminUserDeviceRow[];
@@ -216,6 +227,7 @@ export function shapeAdminUserDetail(user: {
     cityStats: unknown;
     districtStats: unknown;
     propertyStats: unknown;
+    reasonStats: unknown;
     updatedAt: Date;
   } | null;
   devices: Array<{
@@ -305,16 +317,38 @@ export function shapeAdminUserDetail(user: {
     radar,
     radarHistory,
     discovery: user.discoveryProfile
-      ? {
-          likesCount: user.discoveryProfile.likesCount,
-          dislikesCount: user.discoveryProfile.dislikesCount,
-          fastTrackCount: user.discoveryProfile.fastTrackCount,
-          opensCount: user.discoveryProfile.opensCount,
-          cityStats: user.discoveryProfile.cityStats,
-          districtStats: user.discoveryProfile.districtStats,
-          propertyStats: user.discoveryProfile.propertyStats,
-          updatedAt: user.discoveryProfile.updatedAt.toISOString(),
-        }
+      ? (() => {
+          const brief = buildDiscoveryBuyerBrief({
+            likesCount: user.discoveryProfile.likesCount,
+            dislikesCount: user.discoveryProfile.dislikesCount,
+            fastTrackCount: user.discoveryProfile.fastTrackCount,
+            opensCount: user.discoveryProfile.opensCount,
+            cityStats: user.discoveryProfile.cityStats,
+            districtStats: user.discoveryProfile.districtStats,
+            propertyStats: user.discoveryProfile.propertyStats,
+            reasonStats: user.discoveryProfile.reasonStats,
+          });
+          return {
+            likesCount: brief.likesCount,
+            dislikesCount: brief.dislikesCount,
+            fastTrackCount: brief.fastTrackCount,
+            opensCount: brief.opensCount,
+            cityStats: user.discoveryProfile.cityStats,
+            districtStats: user.discoveryProfile.districtStats,
+            propertyStats: user.discoveryProfile.propertyStats,
+            reasonStats: user.discoveryProfile.reasonStats,
+            preferredBudgetPln: brief.preferredBudgetPln,
+            avoidedBudgetPln: brief.avoidedBudgetPln,
+            preferredAreaM2: brief.preferredAreaM2,
+            preferredTransaction: brief.preferredTransaction,
+            topCities: brief.topCities,
+            topDistricts: brief.topDistricts,
+            topPropertyTypes: brief.topPropertyTypes,
+            dislikeReasons: brief.dislikeReasons,
+            summaryLine: brief.summaryLine,
+            updatedAt: user.discoveryProfile.updatedAt.toISOString(),
+          };
+        })()
       : null,
     devices,
     passkeysCount: user._count.Authenticator,

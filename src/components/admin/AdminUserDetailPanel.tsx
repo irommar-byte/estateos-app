@@ -477,11 +477,78 @@ export default function AdminUserDetailPanel({
       </Section>
 
       {user.discovery ? (
-        <Section title="Odkrywaj (Discovery)" icon={<Activity size={12} className="text-emerald-500" />}>
+        <Section title="Odkrywaj (Discovery) — profil gustu" icon={<Activity size={12} className="text-emerald-500" />}>
+          <InfoRow label="Skrót profilu" value={user.discovery.summaryLine || "—"} />
           <InfoRow label="Polubienia" value={String(user.discovery.likesCount)} />
           <InfoRow label="Odrzucenia" value={String(user.discovery.dislikesCount)} />
           <InfoRow label="Fast track" value={String(user.discovery.fastTrackCount)} />
-          <InfoRow label="Otwarcia" value={String(user.discovery.opensCount)} />
+          <InfoRow label="Otwarcia kart" value={String(user.discovery.opensCount)} />
+          <InfoRow
+            label="Preferowany budżet"
+            value={
+              user.discovery.preferredBudgetPln
+                ? `~${formatMoney(user.discovery.preferredBudgetPln)}`
+                : "—"
+            }
+          />
+          <InfoRow
+            label="Unika budżetu ok."
+            value={
+              user.discovery.avoidedBudgetPln ? `~${formatMoney(user.discovery.avoidedBudgetPln)}` : "—"
+            }
+          />
+          <InfoRow
+            label="Preferowany metraż"
+            value={
+              user.discovery.preferredAreaM2 != null ? `~${user.discovery.preferredAreaM2} m²` : "—"
+            }
+          />
+          <InfoRow
+            label="Transakcja"
+            value={
+              user.discovery.preferredTransaction === "SELL"
+                ? "Sprzedaż"
+                : user.discovery.preferredTransaction === "RENT"
+                  ? "Wynajem"
+                  : user.discovery.preferredTransaction === "MIXED"
+                    ? "Mieszane"
+                    : "—"
+            }
+          />
+          <InfoRow
+            label="Gdzie szuka (miasta)"
+            value={
+              user.discovery.topCities?.length
+                ? user.discovery.topCities.map((c) => `${c.key} (${c.value > 0 ? "+" : ""}${c.value})`).join(" · ")
+                : "—"
+            }
+          />
+          <InfoRow
+            label="Dzielnice"
+            value={
+              user.discovery.topDistricts?.length
+                ? user.discovery.topDistricts.map((c) => `${c.key} (${c.value > 0 ? "+" : ""}${c.value})`).join(" · ")
+                : "—"
+            }
+          />
+          <InfoRow
+            label="Co szuka (typy)"
+            value={
+              user.discovery.topPropertyTypes?.length
+                ? user.discovery.topPropertyTypes
+                    .map((c) => `${labelPropertyType(c.key)} (${c.value > 0 ? "+" : ""}${c.value})`)
+                    .join(" · ")
+                : "—"
+            }
+          />
+          <InfoRow
+            label="Powody odrzuceń"
+            value={
+              user.discovery.dislikeReasons?.length
+                ? user.discovery.dislikeReasons.map((c) => `${c.key}: ${c.value}`).join(" · ")
+                : "—"
+            }
+          />
           <InfoRow label="Ostatnia aktualizacja" value={formatDate(user.discovery.updatedAt)} />
         </Section>
       ) : null}
