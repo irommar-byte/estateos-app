@@ -367,6 +367,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         } catch (e) {
           if (__DEV__) console.warn('[auth] radar restore after login', e);
         }
+        try {
+          const { useCarRadarStore } = await import('./useCarRadarStore');
+          const { restoreCarRadarSessionFromServer } = await import('../utils/carRadarSessionRestore');
+          const carRadar = useCarRadarStore.getState();
+          await restoreCarRadarSessionFromServer({
+            userId: Number(grantUser.id),
+            token: get().token,
+            setCarRadarActive: carRadar.setCarRadarActive,
+            commitCarRadarFilters: carRadar.commitCarRadarFilters,
+          });
+        } catch (e) {
+          if (__DEV__) console.warn('[auth] car radar restore after login', e);
+        }
       }
       return true;
     } catch (err: any) {
@@ -1043,6 +1056,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             });
           } catch (e) {
             if (__DEV__) console.warn('[auth] radar restore after session', e);
+          }
+          try {
+            const { useCarRadarStore } = await import('./useCarRadarStore');
+            const { restoreCarRadarSessionFromServer } = await import('../utils/carRadarSessionRestore');
+            const carRadar = useCarRadarStore.getState();
+            await carRadar.hydrate();
+            await restoreCarRadarSessionFromServer({
+              userId: uid,
+              token: get().token,
+              setCarRadarActive: carRadar.setCarRadarActive,
+              commitCarRadarFilters: carRadar.commitCarRadarFilters,
+            });
+          } catch (e) {
+            if (__DEV__) console.warn('[auth] car radar restore after session', e);
           }
         }
       }

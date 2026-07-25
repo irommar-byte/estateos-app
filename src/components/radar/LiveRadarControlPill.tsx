@@ -469,11 +469,19 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 164,
     alignSelf: 'center',
+    overflow: 'visible',
+    /** Zapas pod pulse nad pillą — bez tego ucina górną krawędź w top barze. */
+    paddingTop: 8,
   },
   pulseLayer: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: -6,
+    left: -24,
+    right: -24,
+    bottom: -6,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
   pulseWave: {
     position: 'absolute',
@@ -486,6 +494,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     width: '100%',
     maxWidth: 164,
+    overflow: 'visible',
   },
   calibrationBtn: {
     borderWidth: 1.5,

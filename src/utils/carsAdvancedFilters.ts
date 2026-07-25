@@ -30,6 +30,10 @@ export type CarsAdvancedFilters = {
   maxMileage: string;
   sort: CarsSortKey;
   mapBounds: CarsMapBounds | null;
+  /** Próg dopasowania radaru (50–100). */
+  matchThreshold: number;
+  /** Czy radar aut ma wysyłać push. */
+  pushNotifications: boolean;
 };
 
 export const EMPTY_CARS_ADVANCED_FILTERS: CarsAdvancedFilters = {
@@ -54,6 +58,8 @@ export const EMPTY_CARS_ADVANCED_FILTERS: CarsAdvancedFilters = {
   maxMileage: '',
   sort: 'newest',
   mapBounds: null,
+  matchThreshold: 70,
+  pushNotifications: true,
 };
 
 function normalizeLabel(value: string) {

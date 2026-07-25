@@ -359,8 +359,10 @@ export default function CarsCatalogScreen({
     if (carRadarFilters.city.trim()) bits.push(carRadarFilters.city.trim());
     if (carRadarFilters.maxPrice.trim()) bits.push(`do ${carRadarFilters.maxPrice} zł`);
     if (carRadarFilters.mapBounds) bits.push(`${Math.round(carRadarFilters.mapBounds.radiusKm)} km`);
-    return bits.slice(0, 3).join(' · ') || t('radar.home.statusLive');
-  }, [isCarRadarActive, carRadarFilters, t]);
+    const thr = Math.max(50, Math.min(100, Number(carRadarFilters.matchThreshold) || 70));
+    bits.push(`${thr}%`);
+    return bits.slice(0, 4).join(' · ') || 'Live Radar · Car';
+  }, [isCarRadarActive, carRadarFilters]);
 
   const mapReason = useMemo(() => {
     const count = mapCars.length;
@@ -368,7 +370,7 @@ export default function CarsCatalogScreen({
     if (isCarRadarActive) {
       if (count === 0) {
         return {
-          title: t('radar.home.radarBrand'),
+          title: 'Live Radar · Car',
           subtitle: t('radar.home.reason.databaseEmptySubtitle'),
           accent: CAR_ACCENT,
           actionLabel: t('radar.home.reason.showAllMap'),
@@ -377,7 +379,7 @@ export default function CarsCatalogScreen({
         };
       }
       return {
-        title: t('radar.home.radarBrand'),
+        title: 'Live Radar · Car',
         subtitle: t('radar.home.reason.allOffersSubtitle', {
           count: String(count),
           offers: offersWord,
@@ -444,14 +446,15 @@ export default function CarsCatalogScreen({
     async (filters: CarsAdvancedFilters, enabled: boolean) => {
       const userId = Number(user?.id || 0);
       if (!token || !(userId > 0)) return;
+      const pushOn = enabled && filters.pushNotifications !== false;
       const dto = buildCanonicalCarRadarPreferencesDto({
         userId,
         filters,
         enabled,
-        pushNotifications: enabled,
+        pushNotifications: pushOn,
       });
       const ok = await postCarRadarPreferencesToBackend({ apiUrl: API_URL, token, dto });
-      if (enabled && ok) {
+      if (pushOn && ok) {
         const pushOk = await registerPushNotifications(token, { showPrompt: true });
         if (!pushOk) {
           Alert.alert(
@@ -577,7 +580,7 @@ export default function CarsCatalogScreen({
         isDark={isDark}
         isActive={isCarRadarActive}
         activeAccent={CAR_ACCENT}
-        brandLabel={t('radar.home.radarBrand')}
+        brandLabel="EstateOS™Car"
         statusLive={t('radar.home.statusLive')}
         statusInactive={t('radar.home.statusInactive')}
         hintDisable={t('radar.home.calibrationHoldKeepHint')}
@@ -1130,6 +1133,7 @@ export default function CarsCatalogScreen({
         isDark={isDark}
         cars={cars}
         draft={draftAdvancedFilters}
+        mode={radarCalibrateOpen ? 'radar' : 'search'}
         onChangeDraft={setDraftAdvancedFilters}
         onClose={() => {
           setShowAdvancedSearch(false);
@@ -1156,11 +1160,16 @@ export default function CarsCatalogScreen({
           setShowCarMapAreaPicker(true);
         }}
         onApply={() => {
-          setAdvancedFilters(draftAdvancedFilters);
+          const next = {
+            ...draftAdvancedFilters,
+            matchThreshold: draftAdvancedFilters.matchThreshold || 70,
+            pushNotifications: draftAdvancedFilters.pushNotifications !== false,
+          };
+          setAdvancedFilters(next);
           setShowAdvancedSearch(false);
           if (radarCalibrateOpen || isCarRadarActive) {
-            void commitCarRadarFilters(draftAdvancedFilters, true).then(() => {
-              void syncCarRadarToBackend(draftAdvancedFilters, true);
+            void commitCarRadarFilters(next, true).then(() => {
+              void syncCarRadarToBackend(next, true);
             });
             setNearbyModeEnabled(false);
             pendingFitAllRef.current = true;
@@ -1317,7 +1326,7 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
       position: 'absolute',
       left: 14,
       right: 14,
-      zIndex: 20,
+      zIndex: 50,
       flexDirection: 'row',
       alignItems: 'flex-start',
       justifyContent: 'space-between',
@@ -1336,7 +1345,8 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
       maxWidth: 168,
       alignSelf: 'center',
       zIndex: 1,
-      overflow: 'hidden',
+      /** Pulse Live Radar wychodzi poza pill — nie ucinać górnej krawędzi. */
+      overflow: 'visible',
     },
     topBarCenterGallery: {
       maxWidth: 196,

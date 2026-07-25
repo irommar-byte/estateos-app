@@ -73,6 +73,8 @@ type Props = {
   matchingOffersCount: number;
   onComplete: () => void;
   onFlyAwayBegin?: () => void;
+  /** Nadpisuje kolor skanu (np. radar aut = niebieski EstateOS™Car). */
+  accentColor?: string;
 };
 
 function polar(cx: number, cy: number, r: number, deg: number) {
@@ -505,6 +507,7 @@ export default function RadarCalibrationRitualOverlay({
   matchingOffersCount,
   onComplete,
   onFlyAwayBegin,
+  accentColor,
 }: Props) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -533,7 +536,7 @@ export default function RadarCalibrationRitualOverlay({
   } = layout;
 
   const cx = radarSize / 2;
-  const themeColor = transactionType === 'RENT' ? RENT_COLOR : SELL_COLOR;
+  const themeColor = accentColor || (transactionType === 'RENT' ? RENT_COLOR : SELL_COLOR);
   const cityText = (cityLabel || '').trim() || 'Wybrana metropolia';
   const brandBlockTop = trenchTop + trenchSize + 24;
 

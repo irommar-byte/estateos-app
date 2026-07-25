@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   useWindowDimensions,
@@ -14,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import AdvancedFilterSegment from '../AdvancedFilterSegment';
 import { CAR_EXTERIOR_COLORS } from '../../constants/carColors';
 import { BODY_TYPE_OPTIONS } from '../../services/carCatalogApi';
@@ -26,6 +28,7 @@ import {
   type CarsSortKey,
 } from '../../utils/carsAdvancedFilters';
 import { VEHICLE_TYPE_OPTIONS } from '../../utils/vehicleTypes';
+import RadarCalibrationRitualOverlay from '../RadarCalibrationRitualOverlay';
 
 const CAR_ACCENT = '#0EA5E9';
 
@@ -39,6 +42,8 @@ type Props = {
   onApply: () => void;
   onReset: () => void;
   onPickMapArea?: () => void;
+  /** Kalibracja Live Radar aut (niebieska) vs zwykłe filtry katalogu. */
+  mode?: 'search' | 'radar';
 };
 
 function Chip({
@@ -78,10 +83,13 @@ export default function CarsAdvancedSearchModal({
   onApply,
   onReset,
   onPickMapArea,
+  mode = 'search',
 }: Props) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const [keyboardInset, setKeyboardInset] = useState(0);
+  const [showApplyRitual, setShowApplyRitual] = useState(false);
+  const isRadarMode = mode === 'radar';
 
   const sheetMaxHeight = useMemo(
     () => Math.round(height - insets.top - Math.max(insets.bottom, 10) - 6),
@@ -89,6 +97,25 @@ export default function CarsAdvancedSearchModal({
   );
 
   const matchCount = useMemo(() => countCarsAdvancedMatches(cars, draft), [cars, draft]);
+  const threshold = Math.max(50, Math.min(100, Number(draft.matchThreshold) || 70));
+
+  useEffect(() => {
+    if (!visible) setShowApplyRitual(false);
+  }, [visible]);
+
+  const handleApplyPress = () => {
+    if (isRadarMode && draft.pushNotifications !== false) {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setShowApplyRitual(true);
+      return;
+    }
+    onApply();
+  };
+
+  const finalizeRitual = () => {
+    setShowApplyRitual(false);
+    onApply();
+  };
 
   const sheetPan = useMemo(
     () =>
@@ -244,8 +271,14 @@ export default function CarsAdvancedSearchModal({
             </Text>
             <View style={styles.header}>
               <View style={styles.headerTitleRow}>
-                <Ionicons name="options-outline" size={22} color={CAR_ACCENT} />
-                <Text style={[styles.title, { color: isDark ? '#FFF' : '#1C1C1E' }]}>Filtry i wyszukiwanie</Text>
+                <Ionicons
+                  name={isRadarMode ? 'radio-outline' : 'options-outline'}
+                  size={22}
+                  color={CAR_ACCENT}
+                />
+                <Text style={[styles.title, { color: isDark ? '#FFF' : '#1C1C1E' }]}>
+                  {isRadarMode ? 'Live Radar · EstateOS™Car' : 'Filtry i wyszukiwanie'}
+                </Text>
               </View>
               <Pressable onPress={onReset}>
                 <Text style={[styles.reset, { color: CAR_ACCENT }]}>Wyczyść</Text>
@@ -259,11 +292,90 @@ export default function CarsAdvancedSearchModal({
               keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
               contentContainerStyle={{ paddingBottom: 16, flexGrow: 1 }}
             >
-              <Text style={[styles.sectionLead, { color: isDark ? '#FFF' : '#1C1C1E' }]}>Czego szukasz?</Text>
-              <Text style={styles.hint}>
-                Wpisz frazę z tytułu lub opisu ogłoszenia — np. „SUV rodzinny”, „diesel”, „Warszawa”.
-                Łączymy to z filtrami poniżej (marka, nadwozie, lokalizacja).
-              </Text>
+              {isRadarMode ? (
+                <>
+                  <Text style={[styles.sectionLead, { color: isDark ? '#FFF' : '#1C1C1E' }]}>
+                    Kalibracja radaru aut
+                  </Text>
+                  <Text style={styles.hint}>
+                    Ustaw parametry jak w radarze nieruchomości. Po zapisie radar zostaje aktywny
+                    do ręcznego wyłączenia — także po wylogowaniu i ponownym logowaniu.
+                  </Text>
+
+                  <View
+                    style={[
+                      styles.radarCard,
+                      {
+                        borderColor: isDark ? 'rgba(14,165,233,0.35)' : 'rgba(14,165,233,0.28)',
+                        backgroundColor: isDark ? 'rgba(14,165,233,0.12)' : 'rgba(14,165,233,0.08)',
+                      },
+                    ]}
+                  >
+                    <View style={styles.radarCardRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.radarCardTitle, { color: isDark ? '#FFF' : '#0F172A' }]}>
+                          Powiadomienia push
+                        </Text>
+                        <Text style={styles.hint}>Nowe auta dopasowane do filtrów</Text>
+                      </View>
+                      <Switch
+                        value={draft.pushNotifications !== false}
+                        onValueChange={(pushNotifications) =>
+                          onChangeDraft({ ...draft, pushNotifications })
+                        }
+                        trackColor={{ false: '#767577', true: CAR_ACCENT }}
+                        thumbColor="#FFF"
+                      />
+                    </View>
+                    <Text style={[styles.section, { marginTop: 12 }]}>
+                      Próg dopasowania · {threshold}%
+                    </Text>
+                    <View style={styles.thresholdRow}>
+                      {[50, 60, 70, 80, 90, 100].map((step) => {
+                        const active = threshold === step;
+                        return (
+                          <Pressable
+                            key={step}
+                            onPress={() => {
+                              void Haptics.selectionAsync();
+                              onChangeDraft({ ...draft, matchThreshold: step });
+                            }}
+                            style={[
+                              styles.thresholdChip,
+                              active && {
+                                borderColor: CAR_ACCENT,
+                                backgroundColor: isDark
+                                  ? 'rgba(14,165,233,0.28)'
+                                  : 'rgba(14,165,233,0.18)',
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.thresholdChipText,
+                                active && { color: CAR_ACCENT, fontWeight: '900' },
+                              ]}
+                            >
+                              {step}%
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.sectionLead, { color: isDark ? '#FFF' : '#1C1C1E' }]}>
+                    Czego szukasz?
+                  </Text>
+                  <Text style={styles.hint}>
+                    Wpisz frazę z tytułu lub opisu ogłoszenia — np. „SUV rodzinny”, „diesel”, „Warszawa”.
+                    Łączymy to z filtrami poniżej (marka, nadwozie, lokalizacja).
+                  </Text>
+                </>
+              )}
+
               <TextInput
                 value={draft.query}
                 onChangeText={(query) => onChangeDraft({ ...draft, query })}
@@ -547,14 +659,39 @@ export default function CarsAdvancedSearchModal({
               />
             </ScrollView>
 
-            <Pressable style={[styles.applyBtn, { backgroundColor: CAR_ACCENT }]} onPress={onApply}>
+            <Pressable
+              style={[styles.applyBtn, { backgroundColor: CAR_ACCENT, opacity: showApplyRitual ? 0.6 : 1 }]}
+              disabled={showApplyRitual}
+              onPress={handleApplyPress}
+            >
               <Text style={styles.applyText}>
-                {matchCount > 0 ? `Pokaż ${matchCount} ogłoszeń` : 'Brak dopasowań'}
+                {isRadarMode
+                  ? draft.pushNotifications !== false
+                    ? matchCount > 0
+                      ? `Uruchom radar · ${matchCount} aut`
+                      : 'Uruchom Live Radar'
+                    : 'Zapisz i wyłącz push'
+                  : matchCount > 0
+                    ? `Pokaż ${matchCount} ogłoszeń`
+                    : 'Brak dopasowań'}
               </Text>
             </Pressable>
           </View>
         </View>
       </View>
+
+      {showApplyRitual ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none" collapsable={false}>
+          <RadarCalibrationRitualOverlay
+            visible={showApplyRitual}
+            cityLabel={draft.city || (draft.mapBounds ? 'Obszar mapy' : 'Cała Polska')}
+            transactionType="RENT"
+            accentColor={CAR_ACCENT}
+            matchingOffersCount={matchCount}
+            onComplete={finalizeRitual}
+          />
+        </View>
+      ) : null}
     </Modal>
   );
 }
@@ -691,5 +828,40 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textTransform: 'uppercase',
     letterSpacing: 0.9,
+  },
+  radarCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+  },
+  radarCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  radarCardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  thresholdRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  thresholdChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(150,150,150,0.25)',
+    backgroundColor: 'rgba(150,150,150,0.1)',
+  },
+  thresholdChipText: {
+    color: '#8E8E93',
+    fontWeight: '700',
+    fontSize: 12,
   },
 });
