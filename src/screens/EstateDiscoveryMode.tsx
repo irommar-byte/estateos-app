@@ -44,6 +44,7 @@ import DiscoveryErrorRecovery from '../components/discovery/DiscoveryErrorRecove
 import DiscoveryPauseSheet from '../components/discovery/DiscoveryPauseSheet';
 import DiscoveryContradictionCareSheet from '../components/discovery/DiscoveryContradictionCareSheet';
 import { shouldAskDiscoveryDislikeReason } from '../utils/discoveryExperienceState';
+import { DISCOVERY_EASE_OUT, DISCOVERY_MOTION } from '../components/discovery/discoveryMotion';
 
 // === LUKSUSOWA PALETA ===
 const RR_BLACK = '#040405';
@@ -295,11 +296,14 @@ export default function EstateDiscoveryMode({ navigation }: any) {
 
   const [offers, setOffers] = useState<DiscoveryOffer[]>([]);
   const position = useRef(new Animated.ValueXY()).current;
+  const enterProgress = useRef(new Animated.Value(1)).current;
+  const exitOpacity = useRef(new Animated.Value(1)).current;
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const topOfferId = offers[0]?.id;
   const topOfferRef = useRef<DiscoveryOffer | null>(null);
   const offersRef = useRef<DiscoveryOffer[]>([]);
   const swipingRef = useRef(false);
+  const pendingResetRef = useRef(false);
   const cardShownAtRef = useRef(Date.now());
   const trackedOfferRef = useRef<string | null>(null);
   const saveAffirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -570,7 +574,23 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       trackedOfferRef.current = top.id;
       void sendDiscoveryEventRef.current?.('DISCOVERY_VIEW_CARD', top);
     }
-  }, [topOfferId]);
+    // Po zmianie karty: najpierw nowa karta jest już na wierzchu, dopiero wtedy zerujemy pozycję.
+    // Dzięki temu stara karta nie „miga” wracając na środek.
+    if (pendingResetRef.current) {
+      pendingResetRef.current = false;
+      position.setValue({ x: 0, y: 0 });
+      exitOpacity.setValue(1);
+      enterProgress.setValue(0);
+      Animated.spring(enterProgress, {
+        toValue: 1,
+        friction: 7,
+        tension: 68,
+        useNativeDriver: false,
+      }).start(() => {
+        swipingRef.current = false;
+      });
+    }
+  }, [enterProgress, exitOpacity, position, topOfferId]);
 
   useEffect(() => {
     const top = offers[0];
@@ -585,15 +605,22 @@ export default function EstateDiscoveryMode({ navigation }: any) {
 
   const resetPosition = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Animated.spring(position, {
-      toValue: { x: 0, y: 0 },
-      friction: 6,
-      tension: 40,
-      useNativeDriver: false,
-    }).start(() => {
+    Animated.parallel([
+      Animated.spring(position, {
+        toValue: { x: 0, y: 0 },
+        friction: 6,
+        tension: 48,
+        useNativeDriver: false,
+      }),
+      Animated.timing(exitOpacity, {
+        toValue: 1,
+        duration: 160,
+        useNativeDriver: false,
+      }),
+    ]).start(() => {
       swipingRef.current = false;
     });
-  }, [position]);
+  }, [exitOpacity, position]);
 
   const armUndo = useCallback((offer: DiscoveryOffer) => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
@@ -659,29 +686,32 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
+    // Karta zostaje poza ekranem do re-renderu — dopiero potem zerujemy pozycję (bez mignięcia).
+    pendingResetRef.current = true;
+    exitOpacity.setValue(0);
     setOffers((prev) => prev.slice(1));
     setActivePhotoIndex(0);
-    position.setValue({ x: 0, y: 0 });
-    swipingRef.current = false;
     armUndo(top);
     if (direction === 'right') showSaveAffirmationBriefly(top);
-  }, [armUndo, position, showSaveAffirmationBriefly]);
+  }, [armUndo, exitOpacity, showSaveAffirmationBriefly]);
 
   const onSwipeComplete = useCallback((direction: 'right' | 'left' | 'up') => {
     const top = offersRef.current[0];
     if (!top) {
       position.setValue({ x: 0, y: 0 });
+      exitOpacity.setValue(1);
       swipingRef.current = false;
       return;
     }
     if (direction === 'up') {
       position.setValue({ x: 0, y: 0 });
+      exitOpacity.setValue(1);
       swipingRef.current = false;
       setPriorityOffer(top);
       return;
     }
     commitDecision(direction, top);
-  }, [commitDecision, position]);
+  }, [commitDecision, exitOpacity, position]);
 
   // === ANIMACJE KARTY ===
   const forceSwipe = useCallback((direction: 'right' | 'left' | 'up') => {
@@ -691,23 +721,33 @@ export default function EstateDiscoveryMode({ navigation }: any) {
 
     let toX = 0;
     let toY = 0;
-    if (direction === 'right') toX = width * 1.5;
-    if (direction === 'left') toX = -width * 1.5;
-    if (direction === 'up') toY = -height * 1.5;
+    if (direction === 'right') toX = width * 1.35;
+    if (direction === 'left') toX = -width * 1.35;
+    if (direction === 'up') toY = -height * 1.25;
 
-    Animated.timing(position, {
-      toValue: { x: toX, y: toY },
-      duration: 280,
-      useNativeDriver: false,
-    }).start(({ finished }) => {
+    Animated.parallel([
+      Animated.timing(position, {
+        toValue: { x: toX, y: toY },
+        duration: DISCOVERY_MOTION.commit,
+        easing: DISCOVERY_EASE_OUT,
+        useNativeDriver: false,
+      }),
+      Animated.timing(exitOpacity, {
+        toValue: 0.15,
+        duration: DISCOVERY_MOTION.commit,
+        easing: DISCOVERY_EASE_OUT,
+        useNativeDriver: false,
+      }),
+    ]).start(({ finished }) => {
       if (!finished) {
         position.setValue({ x: 0, y: 0 });
+        exitOpacity.setValue(1);
         swipingRef.current = false;
         return;
       }
       onSwipeComplete(direction);
     });
-  }, [height, onSwipeComplete, position, width]);
+  }, [exitOpacity, height, onSwipeComplete, position, width]);
 
   forceSwipeRef.current = forceSwipe;
 
@@ -759,12 +799,14 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   const undoLastDecision = useCallback(() => {
     if (!undoOffer) return;
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    pendingResetRef.current = true;
+    exitOpacity.setValue(1);
     setOffers((prev) => [undoOffer, ...prev]);
     setActivePhotoIndex(0);
     void sendDiscoveryEvent('DISCOVERY_UNDO', undoOffer);
     setUndoOffer(null);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [sendDiscoveryEvent, undoOffer]);
+  }, [exitOpacity, sendDiscoveryEvent, undoOffer]);
 
   function confirmPriority(mode: 'priority' | 'save') {
     const offer = priorityOffer;
@@ -873,21 +915,74 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   }, [offers, profileHint, saveOffer, sendDiscoveryEvent, undoLastDecision, undoOffer]);
 
   // === INTERPOLACJE IKON NA ŚRODKU ===
-  const rotate = position.x.interpolate({ inputRange: [-width / 2, 0, width / 2], outputRange: ['-10deg', '0deg', '10deg'], extrapolate: 'clamp' });
-  
-  // Zielone Serce
-  const likeOpacity = position.x.interpolate({ inputRange: [20, SWIPE_THRESHOLD_X], outputRange: [0, 1], extrapolate: 'clamp' });
-  const likeScale = position.x.interpolate({ inputRange: [20, SWIPE_THRESHOLD_X], outputRange: [0.5, 1.5], extrapolate: 'clamp' });
+  const rotate = position.x.interpolate({
+    inputRange: [-width / 2, 0, width / 2],
+    outputRange: ['-12deg', '0deg', '12deg'],
+    extrapolate: 'clamp',
+  });
 
-  // Smutna Buźka
-  const nopeOpacity = position.x.interpolate({ inputRange: [-SWIPE_THRESHOLD_X, -20], outputRange: [1, 0], extrapolate: 'clamp' });
-  const nopeScale = position.x.interpolate({ inputRange: [-SWIPE_THRESHOLD_X, -20], outputRange: [1.5, 0.5], extrapolate: 'clamp' });
+  const likeOpacity = position.x.interpolate({
+    inputRange: [20, SWIPE_THRESHOLD_X],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+  const likeScale = position.x.interpolate({
+    inputRange: [20, SWIPE_THRESHOLD_X],
+    outputRange: [0.55, 1.35],
+    extrapolate: 'clamp',
+  });
 
-  // Złoty Piorun
-  const fastTrackOpacity = position.y.interpolate({ inputRange: [SWIPE_THRESHOLD_Y, -20], outputRange: [1, 0], extrapolate: 'clamp' });
-  const fastTrackScale = position.y.interpolate({ inputRange: [SWIPE_THRESHOLD_Y, -20], outputRange: [1.5, 0.5], extrapolate: 'clamp' });
+  const nopeOpacity = position.x.interpolate({
+    inputRange: [-SWIPE_THRESHOLD_X, -20],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+  const nopeScale = position.x.interpolate({
+    inputRange: [-SWIPE_THRESHOLD_X, -20],
+    outputRange: [1.35, 0.55],
+    extrapolate: 'clamp',
+  });
 
-  const nextCardScale = position.x.interpolate({ inputRange: [-width / 2, 0, width / 2], outputRange: [1, 0.94, 1], extrapolate: 'clamp' });
+  const fastTrackOpacity = position.y.interpolate({
+    inputRange: [SWIPE_THRESHOLD_Y, -20],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+  const fastTrackScale = position.y.interpolate({
+    inputRange: [SWIPE_THRESHOLD_Y, -20],
+    outputRange: [1.35, 0.55],
+    extrapolate: 'clamp',
+  });
+
+  const nextCardScale = position.x.interpolate({
+    inputRange: [-width / 2, 0, width / 2],
+    outputRange: [0.985, 0.93, 0.985],
+    extrapolate: 'clamp',
+  });
+  const nextCardLift = position.x.interpolate({
+    inputRange: [-width / 2, 0, width / 2],
+    outputRange: [10, 0, 10],
+    extrapolate: 'clamp',
+  });
+  const enterLift = enterProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [22, 0],
+  });
+  const enterScale = enterProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.92, 1],
+  });
+  const enterGlow = enterProgress.interpolate({
+    inputRange: [0, 0.4, 1],
+    outputRange: [0.5, 0.22, 0],
+  });
+  const topCardOpacity = Animated.multiply(
+    exitOpacity,
+    enterProgress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.78, 1],
+    }),
+  );
 
   // === RENDEROWANIE KART ===
   const renderCards = () => {
@@ -931,8 +1026,21 @@ export default function EstateDiscoveryMode({ navigation }: any) {
           style={[
             styles.cardContainer,
             { width: CARD_WIDTH, height: CARD_HEIGHT },
-            isFirst && { transform: [{ translateX: position.x }, { translateY: position.y }, { rotate }], zIndex: 10 },
-            isSecond && { transform: [{ scale: nextCardScale }], zIndex: 1 },
+            isFirst && {
+              opacity: topCardOpacity,
+              transform: [
+                { translateX: position.x },
+                { translateY: Animated.add(position.y, enterLift) },
+                { rotate },
+                { scale: enterScale },
+              ],
+              zIndex: 10,
+            },
+            isSecond && {
+              opacity: 0.94,
+              transform: [{ translateY: nextCardLift }, { scale: nextCardScale }],
+              zIndex: 1,
+            },
           ]}
           {...(isFirst ? panResponder.panHandlers : {})}
         >
@@ -945,7 +1053,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
               }}
               style={styles.cardImage}
               contentFit="cover"
-              transition={120}
+              transition={0}
               cachePolicy="memory-disk"
             />
             {isFirst ? (
@@ -955,7 +1063,20 @@ export default function EstateDiscoveryMode({ navigation }: any) {
               </View>
             ) : null}
           </View>
-          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)', '#000']} locations={[0.2, 0.65, 1]} style={styles.cardGradient} />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.92)']}
+            locations={[0.18, 0.58, 1]}
+            style={styles.cardGradient}
+          />
+          {isFirst ? (
+            <Animated.View pointerEvents="none" style={[styles.cardEnterGlow, { opacity: enterGlow }]}>
+              <LinearGradient
+                colors={['rgba(212,175,55,0.0)', 'rgba(212,175,55,0.28)', 'rgba(244,232,204,0.12)']}
+                locations={[0, 0.55, 1]}
+                style={StyleSheet.absoluteFillObject}
+              />
+            </Animated.View>
+          ) : null}
           {isFirst && (
             <View style={styles.photoPagerOverlay} pointerEvents="box-none">
               <View style={styles.photoCounterBadge}>
@@ -964,7 +1085,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
                 </Text>
               </View>
               <View style={styles.photoDotsRow}>
-                {(offer.images || [offer.image]).map((img, idx) => {
+                {(offer.images || [offer.image]).slice(0, 8).map((img, idx) => {
                   const active = idx === activePhotoIndex;
                   return <View key={`${offer.id}-dot-${idx}-${img}`} style={[styles.photoDot, active && styles.photoDotActive]} />;
                 })}
@@ -982,7 +1103,6 @@ export default function EstateDiscoveryMode({ navigation }: any) {
             </View>
           )}
 
-          {/* === GIGANTYCZNE IKONY NA ŚRODKU (Aktywne tylko na 1 karcie) === */}
           {isFirst && (
             <View style={styles.centerIconOverlay} pointerEvents="none">
               <Animated.View style={[styles.centerIconWrap, { opacity: likeOpacity, transform: [{ scale: likeScale }] }]}>
@@ -997,15 +1117,14 @@ export default function EstateDiscoveryMode({ navigation }: any) {
             </View>
           )}
 
-          {/* === INFORMACJE O OFERCIE === */}
           <View style={styles.offerInfoWrap}>
             <View style={styles.locationRow}>
               <MapPin size={14} color={RR_GOLD} />
               <Text style={styles.offerLocation}>{offer.location}</Text>
             </View>
-            
+
             <Text style={styles.offerTitle} numberOfLines={1}>{offer.title}</Text>
-            
+
             <View style={styles.specsRow}>
               <Text style={styles.offerPrice}>{offer.price}</Text>
               <View style={styles.specDivider} />
@@ -1013,7 +1132,6 @@ export default function EstateDiscoveryMode({ navigation }: any) {
               <Text style={styles.offerArea}>{offer.area}</Text>
             </View>
 
-            {/* === MINIDASHBOARD Z WYKRESEM === */}
             <BlurView intensity={50} tint="dark" style={styles.miniDashboard}>
               <View style={styles.dashHeaderRow}>
                 <View>
@@ -1025,13 +1143,12 @@ export default function EstateDiscoveryMode({ navigation }: any) {
                   <Text style={styles.dashValue}>{offer.daysOnMarket} dni</Text>
                 </View>
               </View>
-              
+
               <PriceHistoryChart data={offer.priceHistory} width={CARD_WIDTH - 64} />
               {isFirst ? (
                 <Text style={styles.discoveryQuietHint}>Dopasowanie wyjaśnimy na Twoje życzenie.</Text>
               ) : null}
             </BlurView>
-
           </View>
           {isFirst ? (
             <Pressable
@@ -1192,6 +1309,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  cardEnterGlow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
+    overflow: 'hidden',
   },
   emptyContainer: {
     alignItems: 'center',
