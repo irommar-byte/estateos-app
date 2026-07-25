@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { useEcosystemStore } from '../store/useEcosystemStore';
 import RadarHomeScreen from '../screens/RadarHomeScreen';
 import CarsCatalogScreen from '../screens/CarsCatalogScreen';
+import EstateOsGuideOverlay from '../components/discovery/EstateOsGuideOverlay';
 
 export type MarketSurface = 'market' | 'explore';
 
@@ -51,6 +52,7 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
           route={{ ...(route || {}), params: homeParams }}
         />
       )}
+      {activeVertical === 'home' ? <EstateOsGuideOverlay navigation={navigation} /> : null}
     </View>
   );
 }
