@@ -640,6 +640,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 averageRating={Number(offer?.user?.reviewsData?.averageRating ?? offer?.sellerReviewsData?.averageRating ?? 0)}
                 totalReviews={Number(offer?.user?.reviewsData?.totalReviews ?? offer?.sellerReviewsData?.totalReviews ?? 0)}
                 isOnline={Boolean(offer?.user?.isOnline ?? offer?.sellerIsOnline)}
+                lastSeenAt={
+                  offer?.user?.lastSeenAt ?? offer?.sellerLastSeenAt ?? null
+                }
                 isOwner={isOwner}
                 canAsk={canContactSeller && Boolean(offer?.user?.id || offer?.userId)}
                 views={Number(offer?.views || 0)}
@@ -654,6 +657,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 themeTextActive={themeColors.textActive}
                 themeBgActiveSoft={themeColors.bgActiveSoft}
                 themeBorderActive={themeColors.borderActive}
+                locale={locale}
                 labels={{
                   ask: t.askSeller,
                   views: t.views,
@@ -661,6 +665,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   listedSince: t.listedSince,
                   online: t.sellerOnline,
                   offline: t.sellerOffline,
+                  lastSeenPrefix: t.sellerLastSeenPrefix,
                   legalVerifiedKw: t.legalVerifiedKw,
                   legalUnverifiedKw: t.legalUnverifiedKw,
                   legalVerifiedKwSublabel: t.legalVerifiedKwSublabel,
@@ -1425,12 +1430,20 @@ function SingleOfferPageInner({ params }: { params: Promise<{ id: string }> }) {
         if (!res.ok || cancelled) return;
         const data = await res.json();
         const online = Boolean(data?.isOnline);
+        const lastSeenAt = data?.lastSeenAt ? String(data.lastSeenAt) : null;
         setOffer((prev: any) => {
           if (!prev) return prev;
           return {
             ...prev,
             sellerIsOnline: online,
-            user: prev.user ? { ...prev.user, isOnline: online } : prev.user,
+            sellerLastSeenAt: lastSeenAt ?? prev.sellerLastSeenAt ?? null,
+            user: prev.user
+              ? {
+                  ...prev.user,
+                  isOnline: online,
+                  lastSeenAt: lastSeenAt ?? prev.user.lastSeenAt ?? null,
+                }
+              : prev.user,
           };
         });
       } catch {

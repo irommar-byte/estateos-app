@@ -458,12 +458,20 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                       selected ? "bg-emerald-500/10" : "hover:bg-[var(--eos-input)]"
                     }`}
                   >
-                    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-bg)]">
-                      {thread.peer?.image ? (
-                        <img src={thread.peer.image} alt="" className="size-full object-cover" />
-                      ) : (
-                        <User className="size-4 text-[var(--eos-subtle)]" />
-                      )}
+                    <div className="relative size-10 shrink-0 overflow-visible">
+                      <div className="flex size-10 items-center justify-center overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-bg)]">
+                        {thread.peer?.image ? (
+                          <img src={thread.peer.image} alt="" className="size-full object-cover" />
+                        ) : (
+                          <User className="size-4 text-[var(--eos-subtle)]" />
+                        )}
+                      </div>
+                      {Boolean(thread.peerIsOnline ?? thread.peer?.isOnline) ? (
+                        <span
+                          className="absolute bottom-0 right-0 size-3 rounded-full border-2 border-[var(--eos-card)] bg-emerald-500"
+                          aria-label="Online"
+                        />
+                      ) : null}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
@@ -474,6 +482,27 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                           </span>
                         ) : null}
                       </div>
+                      <p
+                        className={`truncate text-[11px] font-semibold ${
+                          thread.peerIsOnline ?? thread.peer?.isOnline
+                            ? "text-emerald-500"
+                            : "text-[var(--eos-subtle)]"
+                        }`}
+                      >
+                        {(() => {
+                          const online = Boolean(thread.peerIsOnline ?? thread.peer?.isOnline);
+                          if (online) return "Online";
+                          const iso = thread.peerLastSeenAt ?? thread.peer?.lastSeenAt;
+                          if (!iso) return "Offline";
+                          const d = new Date(iso);
+                          if (!Number.isFinite(d.getTime())) return "Offline";
+                          const when = `${d.toLocaleDateString("pl-PL")} ${d.toLocaleTimeString("pl-PL", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}`;
+                          return `Ostatnio online ${when}`;
+                        })()}
+                      </p>
                       <p className="truncate text-xs text-[var(--eos-muted)]">
                         {(() => {
                           const raw = String(thread.lastMessage || "");
@@ -524,7 +553,26 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     </button>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-black text-white">{activeThread.peerUserName}</p>
-                      <p className="text-[10px] uppercase tracking-widest text-white/40">ID {activeThread.peerUserId}</p>
+                      <p
+                        className={`text-[10px] font-semibold uppercase tracking-widest ${
+                          activeThread.peerIsOnline ?? activeThread.peer?.isOnline
+                            ? "text-emerald-400"
+                            : "text-white/40"
+                        }`}
+                      >
+                        {(() => {
+                          const online = Boolean(activeThread.peerIsOnline ?? activeThread.peer?.isOnline);
+                          if (online) return "Online";
+                          const iso = activeThread.peerLastSeenAt ?? activeThread.peer?.lastSeenAt;
+                          if (!iso) return "Offline";
+                          const d = new Date(iso);
+                          if (!Number.isFinite(d.getTime())) return "Offline";
+                          return `Ostatnio online ${d.toLocaleDateString("pl-PL")} ${d.toLocaleTimeString("pl-PL", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}`;
+                        })()}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

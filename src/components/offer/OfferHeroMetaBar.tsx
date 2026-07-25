@@ -10,6 +10,8 @@ type Props = {
   averageRating: number;
   totalReviews: number;
   isOnline: boolean;
+  /** ISO last activity — shown when offline */
+  lastSeenAt?: string | null;
   isOwner: boolean;
   canAsk: boolean;
   views: number;
@@ -27,29 +29,49 @@ type Props = {
     listedSince: string;
     online: string;
     offline: string;
+    lastSeenPrefix: string;
     legalVerifiedKw: string;
     legalUnverifiedKw: string;
     legalVerifiedKwSublabel: string;
     newOfferBadge: string;
     noData: string;
   };
+  locale?: string;
   onOpenProfile: () => void;
   onAsk: () => void;
 };
+
+function formatLastSeenLabel(iso: string | null | undefined, locale: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return null;
+  const loc = locale === "en" ? "en-GB" : "pl-PL";
+  const date = d.toLocaleDateString(loc, { day: "2-digit", month: "2-digit", year: "numeric" });
+  const time = d.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" });
+  return `${date}, ${time}`;
+}
 
 function PresenceDot({
   online,
   onlineLabel,
   offlineLabel,
+  lastSeenAt,
+  lastSeenPrefix,
+  locale,
 }: {
   online: boolean;
   onlineLabel: string;
   offlineLabel: string;
+  lastSeenAt?: string | null;
+  lastSeenPrefix: string;
+  locale: string;
 }) {
+  const when = !online ? formatLastSeenLabel(lastSeenAt, locale) : null;
+  const label = online ? onlineLabel : when ? `${lastSeenPrefix} ${when}` : offlineLabel;
   return (
     <span className={`eos-presence ${online ? "eos-presence--on" : "eos-presence--off"}`}>
       <span className="eos-presence__dot" aria-hidden />
-      <span className="eos-presence__label">{online ? onlineLabel : offlineLabel}</span>
+      <span className="eos-presence__label">{label}</span>
     </span>
   );
 }
@@ -62,6 +84,7 @@ export default function OfferHeroMetaBar({
   averageRating,
   totalReviews,
   isOnline,
+  lastSeenAt,
   isOwner,
   canAsk,
   views,
@@ -70,6 +93,7 @@ export default function OfferHeroMetaBar({
   isLegalKwVerified,
   isNewListing,
   labels,
+  locale = "pl",
   onOpenProfile,
   onAsk,
 }: Props) {
@@ -101,7 +125,14 @@ export default function OfferHeroMetaBar({
           <span className="eos-offer-hero-bar__seller-copy">
             <span className="eos-offer-hero-bar__seller-row">
               <span className="eos-offer-hero-bar__name">{sellerLabel}</span>
-              <PresenceDot online={isOnline} onlineLabel={labels.online} offlineLabel={labels.offline} />
+              <PresenceDot
+                online={isOnline}
+                onlineLabel={labels.online}
+                offlineLabel={labels.offline}
+                lastSeenAt={lastSeenAt}
+                lastSeenPrefix={labels.lastSeenPrefix}
+                locale={locale}
+              />
             </span>
             {sellerPersonLine ? (
               <span className="eos-offer-hero-bar__person">{sellerPersonLine}</span>

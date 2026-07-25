@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { getClientIp } from "@/lib/observability";
 import { recordUserLogin } from "@/lib/recordUserLogin";
 import { getAuthedUserIdFromRequest } from "@/lib/sessionAuth";
+import { parseMobileUserIdFromAuthHeader } from "@/lib/mobileAuthUserId";
 
-/** Heartbeat: marks current user as online (updates lastLoginAt). */
+/** Heartbeat: marks current user as online (updates lastLoginAt). WWW cookie + mobile Bearer. */
 export async function POST(req: Request) {
-  const userId = await getAuthedUserIdFromRequest(req);
+  let userId = await getAuthedUserIdFromRequest(req);
+  if (!userId) {
+    userId = parseMobileUserIdFromAuthHeader(req.headers.get("authorization"));
+  }
   if (!userId) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }

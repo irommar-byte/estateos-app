@@ -6,13 +6,15 @@ import { isSellerOnlineFromLastLogin } from "@/lib/offerGuestInquiry";
 export async function GET(req: Request) {
   const userId = Number(new URL(req.url).searchParams.get("userId") || 0);
   if (!Number.isFinite(userId) || userId <= 0) {
-    return NextResponse.json({ isOnline: false }, { status: 400 });
+    return NextResponse.json({ isOnline: false, lastSeenAt: null }, { status: 400 });
   }
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { lastLoginAt: true },
   });
+  const lastSeenAt = user?.lastLoginAt ? user.lastLoginAt.toISOString() : null;
   return NextResponse.json({
     isOnline: isSellerOnlineFromLastLogin(user?.lastLoginAt),
+    lastSeenAt,
   });
 }
