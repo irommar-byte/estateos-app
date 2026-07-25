@@ -1456,14 +1456,14 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
       alignItems: 'center',
       minWidth: 0,
       paddingHorizontal: 2,
-      maxWidth: 168,
+      maxWidth: 220,
       alignSelf: 'center',
       zIndex: 1,
       /** Pulse Live Radar wychodzi poza pill — nie ucinać górnej krawędzi. */
       overflow: 'visible',
     },
     topBarCenterGallery: {
-      maxWidth: 196,
+      maxWidth: 240,
       paddingTop: 2,
     },
     topBarSearchSlot: {
