@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Loader2, Pencil, Trash2 } from "lucide-react";
@@ -12,9 +11,15 @@ type CarOwnerActionsProps = {
   carId: number;
   ownerUserId: number | null;
   currentUserId: number | null;
+  isAdmin?: boolean;
 };
 
-export default function CarOwnerActions({ carId, ownerUserId, currentUserId }: CarOwnerActionsProps) {
+export default function CarOwnerActions({
+  carId,
+  ownerUserId,
+  currentUserId,
+  isAdmin = false,
+}: CarOwnerActionsProps) {
   const router = useRouter();
   const { dict } = useLocale();
   const o = dict.cars.owner;
@@ -22,7 +27,9 @@ export default function CarOwnerActions({ carId, ownerUserId, currentUserId }: C
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!currentUserId || !ownerUserId || currentUserId !== ownerUserId) return null;
+  const isOwner = Boolean(currentUserId && ownerUserId && currentUserId === ownerUserId);
+  const canEdit = isOwner || isAdmin;
+  if (!canEdit) return null;
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -55,10 +62,12 @@ export default function CarOwnerActions({ carId, ownerUserId, currentUserId }: C
           <Pencil className="size-3.5" aria-hidden />
           {o.edit}
         </EosButton>
-        <EosButton type="button" variant="danger" size="sm" onClick={() => setConfirmOpen(true)} disabled={deleting}>
-          {deleting ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Trash2 className="size-3.5" aria-hidden />}
-          {deleting ? o.deleting : o.delete}
-        </EosButton>
+        {isOwner ? (
+          <EosButton type="button" variant="danger" size="sm" onClick={() => setConfirmOpen(true)} disabled={deleting}>
+            {deleting ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Trash2 className="size-3.5" aria-hidden />}
+            {deleting ? o.deleting : o.delete}
+          </EosButton>
+        ) : null}
         {error ? <p className={`w-full ${carAlertErrorClass}`}>{error}</p> : null}
       </div>
 

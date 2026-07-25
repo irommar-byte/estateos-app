@@ -417,10 +417,14 @@ export async function updateCarListing(
   id: number,
   userId: number,
   input: CarListingUpdateInput,
+  options?: { asAdmin?: boolean },
 ): Promise<CarListingRecord | null> {
   await ensureCarsStorage();
   const existing = await findCarById(id);
-  if (!existing || existing.userId !== userId) return null;
+  if (!existing) return null;
+  const asAdmin = Boolean(options?.asAdmin);
+  if (!asAdmin && existing.userId !== userId) return null;
+  const ownerUserId = existing.userId;
 
   const imageList = Array.isArray(input.images)
     ? input.images.map((item) => String(item || "").trim()).filter(Boolean)
@@ -479,7 +483,7 @@ export async function updateCarListing(
     input.restrictVehicleDocs == null ? (existing.restrictVehicleDocs ? 1 : 0) : input.restrictVehicleDocs ? 1 : 0,
     input.showContactPhone == null ? (existing.showContactPhone ? 1 : 0) : input.showContactPhone ? 1 : 0,
     id,
-    userId,
+    ownerUserId,
   );
 
   return findCarById(id);

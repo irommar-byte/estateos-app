@@ -1,6 +1,8 @@
 import { normalizeVehicleType } from "@/lib/vehicleTypes";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { findCarById } from "@/lib/carsStorage";
+import { prisma } from "@/lib/prisma";
+import { getAuthedUserIdFromRequest } from "@/lib/sessionAuth";
 import EditCarPageClient from "./EditCarPageClient";
 
 function parseCarImages(car: { images: string; imageUrl: string }): string[] {
@@ -20,6 +22,17 @@ export default async function EditCarPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const car = await findCarById(Number(id));
   if (!car) notFound();
+
+  const currentUserId = await getAuthedUserIdFromRequest();
+  if (!currentUserId) redirect(`/cars/${car.id}`);
+  const actor = await prisma.user.findUnique({
+    where: { id: currentUserId },
+    select: { role: true },
+  });
+  const isAdmin = String(actor?.role || "").toUpperCase() === "ADMIN";
+  if (car.userId !== currentUserId && !isAdmin) {
+    redirect(`/cars/${car.id}`);
+  }
 
   return (
     <EditCarPageClient

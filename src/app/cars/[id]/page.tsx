@@ -5,6 +5,7 @@ import { carShareMetadata, loadCarShareMeta } from "@/lib/carShareLanding";
 import { findCarById } from "@/lib/carsStorage";
 import { resolveCarPublicContactPhone } from "@/lib/carContactPhone";
 import { sanitizeCarListingForViewer } from "@/lib/carVehicleDocPrivacy";
+import { prisma } from "@/lib/prisma";
 import { getAuthedUserIdFromRequest } from "@/lib/sessionAuth";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -26,7 +27,22 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
   if (!car) notFound();
 
   const currentUserId = await getAuthedUserIdFromRequest();
+  let isAdmin = false;
+  if (currentUserId) {
+    const user = await prisma.user.findUnique({
+      where: { id: currentUserId },
+      select: { role: true },
+    });
+    isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
+  }
   const publicCar = sanitizeCarListingForViewer(car);
   const sellerPhone = await resolveCarPublicContactPhone(car);
-  return <CarDetailClient car={publicCar} currentUserId={currentUserId} sellerPhone={sellerPhone} />;
+  return (
+    <CarDetailClient
+      car={publicCar}
+      currentUserId={currentUserId}
+      isAdmin={isAdmin}
+      sellerPhone={sellerPhone}
+    />
+  );
 }

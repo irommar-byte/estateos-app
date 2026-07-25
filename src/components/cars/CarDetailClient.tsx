@@ -16,6 +16,7 @@ import type { CarListingRecord } from "@/lib/carsStorage";
 type CarDetailClientProps = {
   car: CarListingRecord;
   currentUserId: number | null;
+  isAdmin?: boolean;
   sellerPhone?: string | null;
 };
 
@@ -31,7 +32,7 @@ function SpecItem({ icon: Icon, label, value }: { icon: typeof Fuel; label: stri
   );
 }
 
-export default function CarDetailClient({ car, currentUserId, sellerPhone = null }: CarDetailClientProps) {
+export default function CarDetailClient({ car, currentUserId, isAdmin = false, sellerPhone = null }: CarDetailClientProps) {
   const { dict, locale } = useLocale();
   const { formatOffer } = useFormatOfferPrice();
   const d = dict.cars.detail;
@@ -91,8 +92,6 @@ export default function CarDetailClient({ car, currentUserId, sellerPhone = null
                 ) : null}
               </div>
 
-              <CarOwnerActions carId={car.id} ownerUserId={car.userId} currentUserId={currentUserId} />
-
               <div>
                 <h2 className="text-sm font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">{d.specs}</h2>
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -136,6 +135,8 @@ export default function CarDetailClient({ car, currentUserId, sellerPhone = null
                 restrictVehicleDocs={car.restrictVehicleDocs}
                 loggedIn={currentUserId !== null}
               />
+
+              <CarOwnerActions carId={car.id} ownerUserId={car.userId} currentUserId={currentUserId} isAdmin={isAdmin} />
             </div>
 
             <aside className="lg:sticky lg:top-28 lg:self-start">
