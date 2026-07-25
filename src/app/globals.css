@@ -2170,10 +2170,30 @@ html.light .eos-pro-ticker [class*="to-black"] {
 
 .eos-themed-modal input,
 .eos-themed-modal select,
-.eos-themed-modal textarea {
-  background-color: var(--eos-input);
-  border-color: var(--eos-border);
-  color: var(--eos-text);
+.eos-themed-modal textarea,
+.eos-modal-field {
+  background-color: var(--eos-input) !important;
+  border-color: var(--eos-border) !important;
+  color: var(--eos-text) !important;
+  -webkit-text-fill-color: var(--eos-text) !important;
+  caret-color: var(--eos-text);
+}
+
+.eos-themed-modal input::placeholder,
+.eos-themed-modal select::placeholder,
+.eos-themed-modal textarea::placeholder,
+.eos-modal-field::placeholder {
+  color: var(--eos-subtle) !important;
+  -webkit-text-fill-color: var(--eos-subtle) !important;
+  opacity: 1;
+}
+
+.eos-themed-modal input:-webkit-autofill,
+.eos-themed-modal textarea:-webkit-autofill,
+.eos-modal-field:-webkit-autofill {
+  -webkit-text-fill-color: var(--eos-text) !important;
+  box-shadow: 0 0 0 1000px var(--eos-input) inset !important;
+  transition: background-color 99999s ease-out 0s;
 }
 
 .eos-modal-backdrop {

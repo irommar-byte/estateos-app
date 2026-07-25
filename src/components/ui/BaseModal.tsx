@@ -41,7 +41,7 @@ export default function BaseModal({ isOpen, onClose, children, title, maxWidth =
         onClick={onClose}
       />
       <div
-        className={`eos-modal-surface eos-modal-shell relative z-10 my-auto flex w-full ${maxWidth} max-h-[90vh] flex-col overflow-hidden rounded-2xl pointer-events-auto`}
+        className={`eos-modal-surface eos-modal-shell eos-themed-modal relative z-10 my-auto flex w-full ${maxWidth} max-h-[90vh] flex-col overflow-hidden rounded-2xl pointer-events-auto`}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
