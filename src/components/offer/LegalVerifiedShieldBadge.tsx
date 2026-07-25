@@ -40,7 +40,7 @@ export default function LegalVerifiedShieldBadge({
       : "text-[9px] font-black uppercase tracking-[0.14em] text-emerald-50 drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)] sm:text-[10px]"
     : isCard
       ? "text-[10px] font-semibold tracking-tight text-zinc-300"
-      : "text-[10px] font-semibold tracking-tight text-zinc-400";
+      : "text-[9px] font-bold uppercase tracking-[0.08em] text-zinc-300 sm:text-[10px]";
 
   const subClass = active
     ? isCard

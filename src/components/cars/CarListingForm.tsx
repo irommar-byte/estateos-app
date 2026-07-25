@@ -881,12 +881,18 @@ export default function CarListingForm({
           </div>
         ) : null}
 
-        <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-[1.75rem] border border-sky-400/30 bg-[var(--eos-card)]/95 px-5 py-4 shadow-[0_22px_60px_rgba(14,165,233,0.18),0_8px_24px_rgba(15,23,42,0.12)] backdrop-blur-md">
-          <p className="max-w-xs text-xs font-medium leading-relaxed text-[var(--eos-muted)] sm:max-w-sm">
+        <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-[1.85rem] border border-sky-400/35 bg-[var(--eos-card)] px-5 py-4 shadow-[0_28px_70px_rgba(14,165,233,0.22),0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur-xl">
+          <p className="max-w-xs text-xs font-semibold leading-relaxed text-[var(--eos-muted)] sm:max-w-sm">
             {mode === "create" ? f.footerCreate : f.footerEdit}
           </p>
           <div className="flex flex-wrap items-center gap-2.5">
-            <EosButton type="submit" variant="car" size="md" disabled={submitting || uploading}>
+            <EosButton
+              type="submit"
+              variant="car"
+              size="md"
+              disabled={submitting || uploading}
+              className="eos-car-form-publish"
+            >
               {submitting ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin" aria-hidden />
@@ -902,6 +908,7 @@ export default function CarListingForm({
               href={mode === "edit" && carId ? `/cars/${carId}` : "/cars"}
               variant="secondary"
               size="md"
+              className="eos-car-form-cancel"
             >
               {c.common.cancel}
             </EosButton>
