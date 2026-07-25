@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { sendTransactionalEmail, isEmailDeliveryEnabled, buildOfferGuestInquiryEmail } from '@/lib/email/transactional';
 import { notificationService } from '@/lib/services/notification.service';
 
-const ONLINE_MS = 20 * 60 * 1000;
+export const ONLINE_MS = 25 * 60 * 1000;
 
 export function isSellerOnlineFromLastLogin(lastLoginAt: Date | string | null | undefined): boolean {
   if (!lastLoginAt) return false;

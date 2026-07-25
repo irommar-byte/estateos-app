@@ -98,6 +98,25 @@ export default function Navbar() {
   }, [pathname]);
 
   useEffect(() => {
+    if (!loggedIn) return;
+    let cancelled = false;
+    const ping = () => {
+      void fetch("/api/presence/ping", { method: "POST", credentials: "include" }).catch(() => {});
+    };
+    ping();
+    const id = window.setInterval(ping, 3 * 60 * 1000);
+    const onFocus = () => {
+      if (!cancelled) ping();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [loggedIn]);
+
+  useEffect(() => {
     let cancelled = false;
 
     void (async () => {
@@ -332,8 +351,8 @@ export default function Navbar() {
           </div>
         </div>
 
-        <div className="relative z-20 flex min-w-0 items-center justify-end gap-1 sm:gap-1.5">
-          <div className="hidden min-w-0 items-center justify-end gap-1 lg:flex lg:gap-1.5 2xl:gap-2">
+        <div className="relative z-20 flex min-w-0 items-center justify-end gap-1 overflow-hidden sm:gap-1.5">
+          <div className="hidden min-w-0 max-w-full items-center justify-end gap-1 overflow-hidden lg:flex lg:gap-1.5 xl:gap-2">
             {user && (
               <>
                 <div className="hidden 2xl:block">
@@ -346,16 +365,15 @@ export default function Navbar() {
             )}
 
             {user ? (
-              <div className="ml-0.5 flex min-w-0 items-center gap-1 2xl:gap-2">
+              <div className="ml-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden xl:gap-2">
                 <NavbarProfileChip user={user} />
                 {isAdmin && (
                   <button
                     type="button"
                     onClick={() => router.push("/centrala")}
-                    className="eos-nav-admin shrink-0 rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black lg:px-3 2xl:px-5 2xl:py-2.5 2xl:text-[10px] 2xl:tracking-[0.18em]"
+                    className="eos-nav-admin shrink-0 rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black xl:px-3.5 xl:text-[10px] xl:tracking-[0.14em]"
                   >
-                    <span className="2xl:hidden">{manageLabelShort}</span>
-                    <span className="hidden 2xl:inline">{manageLabel}</span>
+                    {manageLabelShort}
                   </button>
                 )}
                 <button
