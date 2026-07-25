@@ -21,6 +21,12 @@ const skipMobileRecon = ['0', 'false', 'no'].includes(
 const coreChecks = [
   { name: 'health', url: '/api/health', expectStatus: [200, 503] },
   { name: 'mobile discovery feed requires auth', url: '/api/mobile/v1/discovery/feed', expectStatus: [401] },
+  {
+    name: 'mobile discovery events requires signed auth',
+    url: '/api/mobile/v1/discovery/events',
+    method: 'POST',
+    expectStatus: [401],
+  },
   { name: 'offers catalog', url: '/api/offers', expectStatus: [200] },
   { name: 'fx eur-pln', url: '/api/fx/eur-pln', expectStatus: [200] },
   {

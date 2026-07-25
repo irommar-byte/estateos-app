@@ -16,18 +16,22 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../config/network';
 import { useAuthStore } from '../store/useAuthStore';
 import { isOfferClosed } from '../utils/offerLifecycle';
 import { useMoneyContext } from '../money/useMoneyContext';
 import { resolveOfferListingPrice } from '../money/offerPrice';
 import {
-  buildDiscoveryEventPayload,
-  parseDiscoveryFeedItems,
   type DiscoveryEventType,
   type DiscoveryDislikeReasonCode,
 } from '../contracts/discoveryContracts';
+import {
+  fetchDiscoveryFeed,
+  flushDiscoveryEventQueue,
+  getOrCreateDiscoverySession,
+  trackDiscoveryEvent,
+} from '../services/discoveryService';
+import { useDiscoveryStore } from '../store/useDiscoveryStore';
 
 // === LUKSUSOWA PALETA ===
 const RR_BLACK = '#040405';
@@ -49,6 +53,7 @@ type DiscoveryOffer = {
   image: string;
   matchScore?: number | null;
   matchReason?: string | null;
+  galleryPlan?: { orderedAssets: string[]; assetRoles?: Array<{ asset: string; role: string }> } | null;
 };
 
 type DiscoveryProfile = {
@@ -59,8 +64,6 @@ type DiscoveryProfile = {
   interactions: number;
 };
 
-const DISCOVERY_EVENT_QUEUE_KEY = 'discovery_event_queue_v1';
-const DISCOVERY_PROFILE_KEY = 'discovery_local_profile_v1';
 const DISCOVERY_DISLIKE_REASONS = [
   { key: 'PRICE_TOO_HIGH', label: 'Za drogo' },
   { key: 'LOCATION_MISMATCH', label: 'Lokalizacja' },
@@ -194,48 +197,6 @@ const buildPriceHistory = (priceNow: number, previousMaybe: number): number[] =>
   ];
 };
 
-async function enqueueDiscoveryEvent(payload: any) {
-  try {
-    const raw = await AsyncStorage.getItem(DISCOVERY_EVENT_QUEUE_KEY);
-    const queue = raw ? (JSON.parse(raw) as any[]) : [];
-    queue.push(payload);
-    await AsyncStorage.setItem(DISCOVERY_EVENT_QUEUE_KEY, JSON.stringify(queue.slice(-120)));
-  } catch {
-    // noop
-  }
-}
-
-async function loadLocalDiscoveryProfile(userId: string | number | null | undefined): Promise<DiscoveryProfile | null> {
-  try {
-    const key = `${DISCOVERY_PROFILE_KEY}:${userId || 'guest'}`;
-    const raw = await AsyncStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as DiscoveryProfile;
-    if (!parsed || typeof parsed !== 'object') return null;
-    return {
-      likedLocations: parsed.likedLocations || {},
-      dislikedLocations: parsed.dislikedLocations || {},
-      medianLikedPrice: parsed.medianLikedPrice ?? null,
-      medianLikedArea: parsed.medianLikedArea ?? null,
-      interactions: Number(parsed.interactions || 0),
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function saveLocalDiscoveryProfile(
-  userId: string | number | null | undefined,
-  profile: DiscoveryProfile,
-) {
-  try {
-    const key = `${DISCOVERY_PROFILE_KEY}:${userId || 'guest'}`;
-    await AsyncStorage.setItem(key, JSON.stringify(profile));
-  } catch {
-    // noop
-  }
-}
-
 function extractOffersArray(json: any): any[] | null {
   if (Array.isArray(json)) return json;
   if (Array.isArray(json?.offers)) return json.offers;
@@ -305,6 +266,11 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   const { width, height } = useWindowDimensions();
   const token = useAuthStore((s: any) => s.token);
   const userId = useAuthStore((s: any) => s.user?.id);
+  const discoverySession = useDiscoveryStore((s) => s.session);
+  const setDiscoverySession = useDiscoveryStore((s) => s.setSession);
+  const hydrateDiscoveryStore = useDiscoveryStore((s) => s.hydrate);
+  const persistDiscoveryStore = useDiscoveryStore((s) => s.persist);
+  const mergeServerDiscoveryProfile = useDiscoveryStore((s) => s.mergeServerProfile);
   const { formatOffer } = useMoneyContext();
   const isTablet = width >= 768;
   
@@ -320,6 +286,16 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const topOfferId = offers[0]?.id;
+  const topOfferRef = useRef<DiscoveryOffer | null>(null);
+  const cardShownAtRef = useRef(Date.now());
+  const trackedOfferRef = useRef<string | null>(null);
+  const sendDiscoveryEventRef = useRef<((eventType: DiscoveryEventType, offer: DiscoveryOffer, extra?: {
+    reasonCode?: DiscoveryDislikeReasonCode;
+    photoIndex?: number;
+    score?: number;
+    dwellMs?: number;
+    decisionLatencyMs?: number;
+  }) => Promise<void>) | null>(null);
   const [profile, setProfile] = useState<DiscoveryProfile>({
     likedLocations: {},
     dislikedLocations: {},
@@ -354,7 +330,11 @@ export default function EstateDiscoveryMode({ navigation }: any) {
         const createdAtMs = raw?.createdAt ? new Date(raw.createdAt).getTime() : Date.now();
         const daysOnMarket = Math.max(1, Math.round((Date.now() - createdAtMs) / (1000 * 60 * 60 * 24)));
         const location = [district, city].filter(Boolean).join(', ') || 'Polska';
-        const images = extractImagesFromOffer(raw);
+        const extractedImages = extractImagesFromOffer(raw);
+        const plannedImages = Array.isArray(raw?.galleryPlan?.orderedAssets)
+          ? raw.galleryPlan.orderedAssets.filter((image: unknown) => typeof image === 'string' && image.trim())
+          : [];
+        const images = plannedImages.length ? plannedImages : extractedImages;
         const scoreRaw = raw?.score ?? raw?.matchScore;
         const scoreNum = scoreRaw == null ? null : Number(scoreRaw);
         return {
@@ -378,6 +358,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
               ? Math.max(0, Math.min(100, Math.round(scoreNum)))
               : null,
           matchReason: raw?.reason == null ? null : String(raw.reason),
+          galleryPlan: raw?.galleryPlan || null,
         };
       })
       .filter(Boolean) as DiscoveryOffer[];
@@ -387,77 +368,73 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     async (
       eventType: DiscoveryEventType,
       offer: DiscoveryOffer,
-      extra?: { reasonCode?: DiscoveryDislikeReasonCode; photoIndex?: number; score?: number }
+      extra?: {
+        reasonCode?: DiscoveryDislikeReasonCode;
+        photoIndex?: number;
+        score?: number;
+        dwellMs?: number;
+        decisionLatencyMs?: number;
+      }
     ) => {
-      const payload = buildDiscoveryEventPayload({
+      await trackDiscoveryEvent({
+        token,
         eventType,
         offerId: Number(offer.id),
+        sessionId: discoverySession?.id,
         photoIndex: extra?.photoIndex ?? activePhotoIndex,
         score: extra?.score ?? null,
         reasonCode: extra?.reasonCode || null,
-        platform: Platform.OS,
-        at: new Date().toISOString(),
+        dwellMs: extra?.dwellMs ?? null,
+        decisionLatencyMs: extra?.decisionLatencyMs ?? null,
       });
-      if (!payload) return;
-      try {
-        const res = await fetch(`${API_URL}/api/mobile/v1/discovery/events`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          await enqueueDiscoveryEvent(payload);
-        }
-      } catch {
-        await enqueueDiscoveryEvent(payload);
-      }
     },
-    [activePhotoIndex, token]
+    [activePhotoIndex, discoverySession?.id, token]
   );
 
-  const flushDiscoveryQueue = useCallback(async () => {
-    try {
-      const raw = await AsyncStorage.getItem(DISCOVERY_EVENT_QUEUE_KEY);
-      const queue = raw ? (JSON.parse(raw) as any[]) : [];
-      if (!queue.length) return;
-      const nextQueue: any[] = [];
-      for (const payload of queue) {
-        try {
-          const res = await fetch(`${API_URL}/api/mobile/v1/discovery/events`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify(payload),
-          });
-          if (!res.ok) nextQueue.push(payload);
-        } catch {
-          nextQueue.push(payload);
-        }
-      }
-      await AsyncStorage.setItem(DISCOVERY_EVENT_QUEUE_KEY, JSON.stringify(nextQueue.slice(-120)));
-    } catch {
-      // noop
-    }
-  }, [token]);
+  const flushDiscoveryQueue = useCallback(
+    async () => flushDiscoveryEventQueue(token),
+    [token],
+  );
+
+  useEffect(() => {
+    sendDiscoveryEventRef.current = sendDiscoveryEvent;
+  }, [sendDiscoveryEvent]);
+
+  useEffect(() => {
+    topOfferRef.current = offers[0] || null;
+  }, [offers]);
 
   useEffect(() => {
     let mounted = true;
-    void loadLocalDiscoveryProfile(userId).then((saved) => {
-      if (mounted && saved) setProfile(saved);
+    void hydrateDiscoveryStore(userId);
+    void getOrCreateDiscoverySession().then((session) => {
+      if (!mounted) return;
+      setDiscoverySession(session);
+      void trackDiscoveryEvent({
+        token,
+        eventType: 'DISCOVERY_OPEN_SESSION',
+        sessionId: session.id,
+      });
     });
     return () => {
       mounted = false;
     };
-  }, [userId]);
+  }, [hydrateDiscoveryStore, setDiscoverySession, token, userId]);
 
   useEffect(() => {
-    void saveLocalDiscoveryProfile(userId, profile);
-  }, [profile, userId]);
+    void persistDiscoveryStore(userId);
+  }, [persistDiscoveryStore, profile, userId]);
+
+  useEffect(() => {
+    return () => {
+      if (!discoverySession?.id) return;
+      void trackDiscoveryEvent({
+        token,
+        eventType: 'DISCOVERY_PAUSE',
+        sessionId: discoverySession.id,
+      });
+    };
+  }, [discoverySession?.id, token]);
 
   useEffect(() => {
     let mounted = true;
@@ -465,11 +442,8 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       setLoadingFeed(true);
       try {
         await flushDiscoveryQueue();
-        const feedRes = await fetch(`${API_URL}/api/mobile/v1/discovery/feed?mode=for_you&limit=40`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
-        const feedJson = await feedRes.json().catch(() => ({}));
-        const feedList = parseDiscoveryFeedItems(feedJson);
+        const feedJson = await fetchDiscoveryFeed(token, discoverySession?.id);
+        const feedList = feedJson.items;
         const rankedIds = feedList.map((item) => item.id);
 
         // Prefer full payloads from personalized feed (now includes price/images).
@@ -513,16 +487,17 @@ export default function EstateDiscoveryMode({ navigation }: any) {
           }
         }
 
-        if (feedJson?.profile?.preferredBudgetPln > 0 || feedJson?.profile?.preferredAreaM2 > 0) {
+        if (feedJson.profile) {
+          mergeServerDiscoveryProfile(feedJson.profile);
           setProfile((prev) => ({
             ...prev,
             medianLikedPrice:
-              prev.medianLikedPrice == null && Number(feedJson.profile.preferredBudgetPln) > 0
-                ? Math.round(Number(feedJson.profile.preferredBudgetPln))
+              prev.medianLikedPrice == null && Number(feedJson.profile?.preferredBudgetPln) > 0
+                ? Math.round(Number(feedJson.profile?.preferredBudgetPln))
                 : prev.medianLikedPrice,
             medianLikedArea:
-              prev.medianLikedArea == null && Number(feedJson.profile.preferredAreaM2) > 0
-                ? Math.round(Number(feedJson.profile.preferredAreaM2))
+              prev.medianLikedArea == null && Number(feedJson.profile?.preferredAreaM2) > 0
+                ? Math.round(Number(feedJson.profile?.preferredAreaM2))
                 : prev.medianLikedArea,
           }));
         }
@@ -538,10 +513,16 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     return () => {
       mounted = false;
     };
-  }, [token, flushDiscoveryQueue, mapRawOffersToDiscovery]);
+  }, [discoverySession?.id, flushDiscoveryQueue, mapRawOffersToDiscovery, mergeServerDiscoveryProfile, token]);
 
   useEffect(() => {
     setActivePhotoIndex(0);
+    cardShownAtRef.current = Date.now();
+    const top = topOfferRef.current;
+    if (top && trackedOfferRef.current !== top.id) {
+      trackedOfferRef.current = top.id;
+      void sendDiscoveryEventRef.current?.('DISCOVERY_VIEW_CARD', top);
+    }
   }, [topOfferId]);
 
   useEffect(() => {
@@ -645,8 +626,9 @@ export default function EstateDiscoveryMode({ navigation }: any) {
           ? 'DISCOVERY_LIKE'
           : direction === 'left'
             ? 'DISCOVERY_DISLIKE'
-            : 'DISCOVERY_FAST_TRACK',
-        top
+            : 'DISCOVERY_PRIORITY',
+        top,
+        { decisionLatencyMs: Date.now() - cardShownAtRef.current },
       );
     }
 
@@ -670,10 +652,11 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     if (total <= 1) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setActivePhotoIndex((prev) => {
-      if (zone === 'left') return (prev - 1 + total) % total;
-      return (prev + 1) % total;
+      const nextIndex = zone === 'left' ? (prev - 1 + total) % total : (prev + 1) % total;
+      void sendDiscoveryEvent('DISCOVERY_PHOTO_VIEW', top, { photoIndex: nextIndex });
+      return nextIndex;
     });
-  }, [offers]);
+  }, [offers, sendDiscoveryEvent]);
 
   const topOfferInsight = useMemo(() => {
     const top = offers[0];
@@ -883,7 +866,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
           {isFirst ? (
             <Pressable
               onPress={() => {
-                void sendDiscoveryEvent('DISCOVERY_OPEN', offer, { score: topOfferInsight.score });
+                void sendDiscoveryEvent('DISCOVERY_DEPTH_OPEN', offer, { score: topOfferInsight.score });
                 navigation?.navigate?.('OfferDetail', { offerId: Number(offer.id) || offer.id });
               }}
               style={styles.infoChevronBtn}
@@ -961,7 +944,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
                 <Pressable
                   key={reason.key}
                   onPress={() => {
-                    void sendDiscoveryEvent('DISCOVERY_DISLIKE_REASON', pendingDislikeOffer, { reasonCode: reason.key });
+                    void sendDiscoveryEvent('DISCOVERY_DISLIKE', pendingDislikeOffer, { reasonCode: reason.key });
                     setPendingDislikeOffer(null);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}

@@ -21,6 +21,7 @@ test('discovery event payload validates canonical fields', () => {
   assert.equal(payload?.photoIndex, 1);
   assert.equal(payload?.score, 87);
   assert.equal(payload?.source, 'mobile_discovery');
+  assert.ok(payload?.idempotencyKey);
 });
 
 test('discovery dislike reason event requires reasonCode', () => {
@@ -57,4 +58,62 @@ test('discovery feed parser supports offers/items payload', () => {
   assert.equal(fromItems.length, 1);
   assert.equal(fromItems[0].id, 7);
   assert.equal(fromItems[0].score, 74);
+});
+
+test('discovery foundation validates session lifecycle events without an offer', () => {
+  const payload = buildDiscoveryEventPayload({
+    eventType: 'DISCOVERY_OPEN_SESSION',
+    sessionId: 'ds_test_session_123',
+    platform: 'ios',
+  });
+  assert.ok(payload);
+  assert.equal(payload?.offerId, null);
+  assert.equal(payload?.eventType, 'DISCOVERY_OPEN_SESSION');
+});
+
+test('discovery foundation requires visit outcome and correction target', () => {
+  assert.equal(
+    buildDiscoveryEventPayload({
+      eventType: 'DISCOVERY_VISIT_FEEDBACK',
+      offerId: 20,
+      platform: 'ios',
+    }),
+    null,
+  );
+  assert.equal(
+    buildDiscoveryEventPayload({
+      eventType: 'DISCOVERY_CORRECTION',
+      offerId: 20,
+      platform: 'ios',
+    }),
+    null,
+  );
+  assert.ok(
+    buildDiscoveryEventPayload({
+      eventType: 'DISCOVERY_VISIT_FEEDBACK',
+      offerId: 20,
+      visitOutcome: 'YES',
+      platform: 'ios',
+    }),
+  );
+});
+
+test('discovery feed parser preserves structured reasons and gallery plan', () => {
+  const items = parseDiscoveryFeedItems({
+    items: [{
+      id: 1,
+      score: 84,
+      reason: 'miasto',
+      reasons: [{ code: 'CITY_AFFINITY', strength: 7, message: 'pasuje do miasta: Warszawa' }],
+      galleryPlan: {
+        algorithmVersion: 'gallery-foundation-v1',
+        sourceHash: 'abc',
+        orderedAssets: ['/a.jpg'],
+        assetRoles: [{ asset: '/a.jpg', role: 'HERO' }],
+        status: 'READY',
+      },
+    }],
+  });
+  assert.equal(items[0].reasons?.[0]?.code, 'CITY_AFFINITY');
+  assert.equal(items[0].galleryPlan?.orderedAssets[0], '/a.jpg');
 });
