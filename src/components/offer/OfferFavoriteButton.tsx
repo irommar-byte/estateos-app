@@ -1,28 +1,27 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Heart } from 'lucide-react';
-import { useFavorites } from '@/hooks/useFavorites';
+import { useState } from "react";
+import { Heart } from "lucide-react";
+import { useFavorites } from "@/hooks/useFavorites";
 
 type Props = {
   offerId: number | string;
   className?: string;
   size?: number;
-  variant?: 'icon' | 'pill';
+  variant?: "icon" | "pill";
   labelAdd?: string;
   labelRemove?: string;
-  /** Gdy false — tylko wizualizacja (np. gość bez logowania). */
   interactive?: boolean;
   onRequireAuth?: () => void;
 };
 
 export default function OfferFavoriteButton({
   offerId,
-  className = '',
+  className = "",
   size = 20,
-  variant = 'icon',
-  labelAdd = 'Ulubione',
-  labelRemove = 'W ulubionych',
+  variant = "icon",
+  labelAdd = "Ulubione",
+  labelRemove = "W ulubionych",
   interactive = true,
   onRequireAuth,
 }: Props) {
@@ -53,33 +52,20 @@ export default function OfferFavoriteButton({
   return (
     <button
       type="button"
-      aria-label={active ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}
+      aria-label={active ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
       aria-pressed={active}
       disabled={busy}
       onClick={handleClick}
-      className={`group/heart inline-flex items-center gap-2 rounded-full border backdrop-blur-md transition-all duration-300 hover:scale-[1.03] disabled:opacity-60 ${
-        variant === 'pill'
-          ? `px-4 py-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.45)] ${
-              active
-                ? 'border-emerald-400/60 bg-emerald-500/20'
-                : 'border-white/20 bg-black/55 hover:border-emerald-400/40 hover:bg-black/70'
-            }`
-          : 'border-white/10 bg-black/40 p-2.5 hover:scale-110'
+      className={`eos-fav-btn ${variant === "pill" ? "eos-fav-btn--pill" : "eos-fav-btn--icon"} ${
+        active ? "is-active" : ""
       } ${className}`}
     >
       <Heart
         size={size}
-        className={`shrink-0 transition-all duration-500 ${
-          active
-            ? 'scale-110 fill-emerald-500 text-emerald-500 drop-shadow-[0_0_12px_rgba(16,185,129,0.8)]'
-            : 'text-white/70 group-hover/heart:text-emerald-400'
-        }`}
+        className={`eos-fav-btn__icon shrink-0 ${active ? "is-active" : ""}`}
+        aria-hidden
       />
-      {variant === 'pill' ? (
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/90">
-          {label}
-        </span>
-      ) : null}
+      {variant === "pill" ? <span className="eos-fav-btn__label">{label}</span> : null}
     </button>
   );
 }
