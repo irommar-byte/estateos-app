@@ -59,7 +59,7 @@ export default function PresentationOutcomeModal({ open, data, t, onClose, onSuc
       setDone(true);
       setTimeout(() => {
         onSuccess();
-      }, 1200);
+      }, 900);
     } catch {
       setError("Network error");
     } finally {
@@ -76,146 +76,167 @@ export default function PresentationOutcomeModal({ open, data, t, onClose, onSuc
     icon: typeof CalendarCheck;
     border: string;
     active: string;
+    iconColor: string;
   }[] = [
     {
       id: "COMPLETED",
       title: o.completedTitle,
       desc: o.completedDesc,
       icon: CalendarCheck,
-      border: "border-emerald-500/30",
-      active: "ring-emerald-500/50 bg-emerald-500/10",
+      border: "border-emerald-500/35",
+      active: "ring-emerald-500/45 bg-emerald-500/[0.12]",
+      iconColor: "text-emerald-500",
     },
     {
       id: "NO_SHOW",
       title: o.noShowTitle,
       desc: o.noShowDesc,
       icon: AlertCircle,
-      border: "border-red-500/30",
-      active: "ring-red-500/50 bg-red-500/10",
+      border: "border-red-500/35",
+      active: "ring-red-500/45 bg-red-500/[0.10]",
+      iconColor: "text-red-500",
     },
     {
       id: "CANCELLED",
       title: o.cancelledTitle,
       desc: o.cancelledDesc,
       icon: CalendarX,
-      border: "border-amber-500/30",
-      active: "ring-amber-500/50 bg-amber-500/10",
+      border: "border-amber-500/35",
+      active: "ring-amber-500/45 bg-amber-500/[0.10]",
+      iconColor: "text-amber-500",
     },
   ];
 
+  const footer =
+    done ? null : (
+      <div className="space-y-2">
+        {error ? <p className="text-center text-[11px] font-bold text-red-500">{error}</p> : null}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg)] py-3 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--eos-muted)] transition hover:text-[var(--eos-text)]"
+          >
+            {o.dismiss}
+          </button>
+          <button
+            type="button"
+            disabled={!choice || submitting}
+            onClick={submit}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-400/40 bg-gradient-to-b from-emerald-400 to-emerald-600 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-black shadow-[0_10px_28px_rgba(16,185,129,0.25)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
+            {submitting ? o.submitting : o.submit}
+          </button>
+        </div>
+      </div>
+    );
+
   return (
-    <PresentationFlowModalShell open={open} onClose={onClose} dismissLabel={o.dismiss}>
-      <div className="space-y-6 p-6 sm:p-8">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500 mb-2">{o.badge}</p>
-              <h2 className="text-2xl font-black tracking-tight">{o.title}</h2>
-              <p className="text-sm text-[var(--eos-muted)] mt-2 leading-relaxed">{o.subtitle}</p>
-            </div>
+    <PresentationFlowModalShell open={open} onClose={onClose} dismissLabel={o.dismiss} footer={footer}>
+      <div className="space-y-3 p-4 pr-12 sm:p-5 sm:pr-14">
+        <div>
+          <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-500">{o.badge}</p>
+          <h2 className="text-lg font-semibold tracking-tight sm:text-xl">{o.title}</h2>
+          <p className="mt-1 text-[12px] leading-snug text-[var(--eos-muted)]">{o.subtitle}</p>
+        </div>
 
-            <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg)]/80 p-4 space-y-3 text-sm">
-              {data.offer ? (
-                <div className="flex gap-3">
-                  {data.offer.imageUrl ? (
-                    <img src={data.offer.imageUrl} alt="" className="w-14 h-14 rounded-xl object-cover shrink-0" />
-                  ) : null}
-                  <div className="min-w-0">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">{o.offerLabel}</p>
-                    <p className="font-bold truncate">{data.offer.title}</p>
-                    <p className="text-[11px] text-[var(--eos-muted)] flex items-center gap-1 mt-0.5">
-                      <MapPin size={12} /> {data.offer.district || data.offer.city}
-                    </p>
-                  </div>
-                </div>
+        <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-3 text-sm">
+          {data.offer ? (
+            <div className="flex gap-2.5">
+              {data.offer.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={data.offer.imageUrl}
+                  alt=""
+                  className="size-11 shrink-0 rounded-lg object-cover"
+                />
               ) : null}
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[var(--eos-border)]">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">{o.dateLabel}</p>
-                  <p className="font-bold">{dateStr}</p>
-                </div>
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">{o.counterpartyLabel}</p>
-                  <p className="font-bold flex items-center gap-1">
-                    <User size={12} /> {data.counterparty.name}
-                  </p>
-                </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-semibold">{data.offer.title}</p>
+                <p className="mt-0.5 flex items-center gap-1 text-[11px] text-[var(--eos-muted)]">
+                  <MapPin size={11} /> {data.offer.district || data.offer.city}
+                </p>
               </div>
             </div>
+          ) : null}
+          <div className="mt-2.5 grid grid-cols-2 gap-2 border-t border-[var(--eos-border)] pt-2.5 text-[11px]">
+            <div>
+              <p className="text-[8px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">{o.dateLabel}</p>
+              <p className="font-semibold">{dateStr}</p>
+            </div>
+            <div>
+              <p className="text-[8px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">{o.counterpartyLabel}</p>
+              <p className="flex items-center gap-1 font-semibold">
+                <User size={11} /> <span className="truncate">{data.counterparty.name}</span>
+              </p>
+            </div>
+          </div>
+        </div>
 
-            <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 flex gap-3">
-              <Info size={20} className="text-blue-400 shrink-0 mt-0.5" />
+        <div className="flex gap-2 rounded-xl border border-sky-500/25 bg-sky-500/[0.07] px-3 py-2.5 dark:border-sky-400/20 dark:bg-sky-500/[0.08]">
+          <Info size={15} className="mt-0.5 shrink-0 text-sky-600 dark:text-sky-400" />
+          <p className="text-[11px] leading-snug text-[var(--eos-muted)]">
+            <span className="font-semibold text-sky-700 dark:text-sky-300">{o.instructionTitle}. </span>
+            {o.instructionBody}
+          </p>
+        </div>
+
+        {done ? (
+          <div className="py-6 text-center">
+            <CalendarCheck size={40} className="mx-auto mb-2 text-emerald-500" />
+            <p className="text-base font-semibold">{o.successTitle}</p>
+            <p className="mt-1 text-[12px] text-[var(--eos-muted)]">
+              {choice === "CANCELLED"
+                ? "Wizyta oznaczona jako odwołana — bez oceny kontrahenta."
+                : o.successBody}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              {options.map((opt) => {
+                const Icon = opt.icon;
+                const selected = choice === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setChoice(opt.id)}
+                    className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${opt.border} ${
+                      selected
+                        ? `ring-2 ${opt.active}`
+                        : "bg-[var(--eos-surface)] hover:bg-[var(--eos-bg)]"
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <Icon size={18} className={`mt-0.5 shrink-0 ${selected ? opt.iconColor : "text-[var(--eos-subtle)]"}`} />
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-semibold leading-tight">{opt.title}</p>
+                        <p className="mt-0.5 text-[11px] leading-snug text-[var(--eos-muted)]">{opt.desc}</p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {choice ? (
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">{o.instructionTitle}</p>
-                <p className="text-xs text-[var(--eos-muted)] leading-relaxed">{o.instructionBody}</p>
+                <label className="text-[8px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
+                  {o.noteLabel}
+                </label>
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder={o.notePlaceholder}
+                  rows={2}
+                  className="mt-1.5 w-full resize-none rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-[13px] text-[var(--eos-text)] outline-none placeholder:text-[var(--eos-muted)] focus:border-emerald-500/45 focus:ring-2 focus:ring-emerald-500/15"
+                />
               </div>
-            </div>
-
-            {done ? (
-              <div className="text-center py-6">
-                <CalendarCheck size={48} className="mx-auto text-emerald-500 mb-3" />
-                <p className="font-black text-lg">{o.successTitle}</p>
-                <p className="text-sm text-[var(--eos-muted)] mt-2">{o.successBody}</p>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  {options.map((opt) => {
-                    const Icon = opt.icon;
-                    const selected = choice === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setChoice(opt.id)}
-                        className={`w-full text-left p-4 rounded-2xl border transition-all ${opt.border} ${
-                          selected ? `ring-2 ${opt.active}` : "bg-[var(--eos-bg)] hover:border-[var(--eos-muted)]"
-                        }`}
-                      >
-                        <div className="flex gap-3">
-                          <Icon size={22} className={selected ? "text-[var(--eos-text)]" : "text-[var(--eos-subtle)]"} />
-                          <div>
-                            <p className="font-black text-sm">{opt.title}</p>
-                            <p className="text-xs text-[var(--eos-muted)] mt-1 leading-snug">{opt.desc}</p>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {choice ? (
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">{o.noteLabel}</label>
-                    <textarea
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      placeholder={o.notePlaceholder}
-                      className="mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 text-sm text-[var(--eos-text)] placeholder:text-[var(--eos-muted)] outline-none focus:border-emerald-500/50 min-h-[80px] resize-none"
-                    />
-                  </div>
-                ) : null}
-
-                {error ? <p className="text-xs text-red-400 font-bold">{error}</p> : null}
-
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="flex-1 py-3.5 rounded-2xl border border-[var(--eos-border)] text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]"
-                  >
-                    {o.dismiss}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!choice || submitting}
-                    onClick={submit}
-                    className="flex-1 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest disabled:opacity-40 flex items-center justify-center gap-2"
-                  >
-                    {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
-                    {submitting ? o.submitting : o.submit}
-                  </button>
-                </div>
-              </>
-            )}
+            ) : null}
+          </>
+        )}
       </div>
     </PresentationFlowModalShell>
   );

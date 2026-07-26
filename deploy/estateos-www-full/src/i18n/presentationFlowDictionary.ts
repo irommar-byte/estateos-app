@@ -106,7 +106,7 @@ const pl: PresentationFlowDictionary = {
     counterpartyLabel: 'Kontrahent',
     instructionTitle: 'Jak to działa',
     instructionBody:
-      'Po upływie buforu od planowanej godziny prosimy o domknięcie wizyty. Następnie obie strony mogą wystawić krótką ocenę (gwiazdki + komentarz). Odwołanie przed spotkaniem nie liczy się jako nieobecność.',
+      'Po buforze od terminu domknij wizytę. Potem obie strony wystawiają krótką ocenę (gwiazdki + komentarz). Odwołanie przed spotkaniem nie jest nieobecnością.',
     completedTitle: 'Prezentacja odbyła się',
     completedDesc: 'Spotkanie na miejscu lub online się odbyło.',
     noShowTitle: 'Druga strona nie przyszła',
@@ -226,89 +226,8 @@ const en: PresentationFlowDictionary = {
   },
 };
 
-
-const uk: PresentationFlowDictionary = {
-  profile: {
-    title: 'Профіль користувача',
-    loading: 'Завантаження профілю…',
-    loadError: 'Не вдалося завантажити профіль.',
-    reviewsNone: 'Немає відгуків',
-    reviewsCount: '{n} відгуків',
-    presentationHistory: 'Історія презентацій',
-    held: 'Відбулися',
-    heldHint: 'Зустрічі, що відбулися за домовленим часом',
-    noShow: 'Неявка',
-    noShowHint: 'Узгоджений час минув — друга сторона не прийшла',
-    scheduledOf: 'з {n} завершених бронювань',
-    otherOffers: 'Інші оголошення ({n})',
-    reviewsSection: 'Відгуки після угод',
-    reviewsSectionHint:
-      'Відгуки можна залишити лише після узгодження ціни та підтвердження зняття оголошення — не після самих переглядів.',
-    reviewsPolicyHint:
-      'Оцінки в профілі стосуються завершених угод (ціна узгоджена, оголошення знято), а не візитів на презентацію.',
-    noReviewsUser:
-      "Ще немає відгуків після угод. Вони з'являються лише після узгодження ціни та зняття оголошення.",
-    reviewNoComment: 'Без коментаря',
-    reviewerFallback: 'Користувач #{id}',
-    backToProfile: 'Назад до попереднього профілю',
-  },
-  outcome: {
-    badge: 'Підсумок візиту',
-    title: 'Як завершилася презентація?',
-    subtitle: 'Це впливає на репутацію обох сторін. Оберіть результат, що відповідає дійсності.',
-    offerLabel: 'Нерухомість',
-    dateLabel: 'Час',
-    counterpartyLabel: 'Контрагент',
-    instructionTitle: 'Як це працює',
-    instructionBody:
-      'Через 2 години після запланованого часу ми просимо закрити візит. Потім кожна сторона може залишити коротку оцінку (зірки + коментар). Скасування до зустрічі не вважається неявкою.',
-    completedTitle: 'Презентація відбулася',
-    completedDesc: 'Зустріч на місці або онлайн відбулася.',
-    noShowTitle: 'Контрагент не прийшов',
-    noShowDesc: "Час був узгоджений, але друга сторона не з'явилася.",
-    cancelledTitle: 'Скасовано до візиту',
-    cancelledDesc: 'Візит не відбувся — скасовано або перенесено вчасно.',
-    noteLabel: "Нотатка (необов'язково)",
-    notePlaceholder: 'Напр. чекав 20 хв за адресою…',
-    submit: 'Зберегти результат візиту',
-    submitting: 'Зберігаю…',
-    successTitle: 'Результат збережено',
-    successBody: 'Далі запросимо коротку оцінку вашого контрагента.',
-    tooEarlyTitle: 'Занадто рано',
-    tooEarlyBody: 'Закрити візит можна через 2 години після запланованого часу.',
-    dismiss: 'Нагадати пізніше',
-  },
-  review: {
-    badge: 'Оцінка після візиту',
-    title: 'Оцініть контрагента',
-    subtitle: "Оцініть досвід співпраці з {name}. Відгук з'явиться в профілі.",
-    instructionTitle: 'Порада',
-    instructionBody:
-      'Оцінюйте комунікацію, пунктуальність і надійність — не саму нерухомість. Одна пара відгуків на завершений візит.',
-    starsRequired: 'Оберіть оцінку зірками (1–5).',
-    commentLabel: 'Коментар',
-    commentPlaceholder: 'Напр. пунктуальний, зрозумілий, зустрінемося знову…',
-    commentHint: 'До ~500 символів. Без чутливих даних і образ.',
-    submit: 'Опублікувати відгук',
-    submitting: 'Публікую…',
-    successTitle: 'Дякуємо',
-    successBody: 'Відгук збережено та доповнює профіль контрагента.',
-    dismiss: 'Закрити',
-  },
-  hints: {
-    navbarPending: 'У вас є незавершене підсумкування візиту або оцінка контрагента.',
-    crmBanner: 'Завершіть результат презентації — це впливає на статистику та відгуки.',
-    crmBannerOpen: 'Відкрити форму результату презентації',
-    dealRoomBanner: 'Після часу презентації закрийте візит і оцініть контрагента.',
-    dealRoomBannerOpen: 'Відкрити підсумок візиту',
-  },
-};
-
-
 export function getPresentationFlowDictionary(locale: Locale): PresentationFlowDictionary {
-  if (locale === 'en') return en;
-  if (locale === 'uk') return uk;
-  return pl;
+  return locale === 'en' ? en : pl;
 }
 
 export function fmtPresentation(s: string, vars: Record<string, string | number>): string {
