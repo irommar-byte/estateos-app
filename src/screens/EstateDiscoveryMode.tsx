@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -287,16 +287,38 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   const foundationProfile = useDiscoveryStore((s) => s.profile);
   const { formatOffer } = useMoneyContext();
   const isTablet = width >= 768;
-  
-  // Responsywne wyliczanie wielkości karty
-  const CARD_WIDTH = isTablet ? Math.min(width * 0.75, 540) : width * 0.94;
-  const CARD_HEIGHT = isTablet ? Math.min(height * 0.75, 780) : height * 0.72;
-  const SWIPE_THRESHOLD_X = CARD_WIDTH * 0.28;
-  const SWIPE_THRESHOLD_Y = -CARD_HEIGHT * 0.18;
+  const [deckSize, setDeckSize] = useState({ w: width, h: Math.max(420, height * 0.62) });
+
+  // Karta wypełnia stage, ale z lekkim marginesem (nie „na styk”).
+  const cardMetrics = useMemo(() => {
+    const hPad = isTablet ? Math.max(28, deckSize.w * 0.055) : Math.max(14, deckSize.w * 0.04);
+    const vPad = isTablet ? 14 : 8;
+    const availW = Math.max(280, deckSize.w - hPad * 2);
+    const availH = Math.max(360, deckSize.h - vPad * 2);
+    const fill = isTablet ? 0.9 : 0.94;
+    let cardW = Math.round(availW * fill);
+    let cardH = Math.round(availH * fill);
+    const maxAspect = isTablet ? 0.86 : 0.78;
+    if (cardW / cardH > maxAspect) {
+      cardW = Math.round(cardH * maxAspect);
+    }
+    return {
+      CARD_WIDTH: cardW,
+      CARD_HEIGHT: cardH,
+      SWIPE_THRESHOLD_X: cardW * 0.28,
+      SWIPE_THRESHOLD_Y: -cardH * 0.18,
+    };
+  }, [deckSize.h, deckSize.w, isTablet]);
+  const { CARD_WIDTH, CARD_HEIGHT, SWIPE_THRESHOLD_X, SWIPE_THRESHOLD_Y } = cardMetrics;
 
   const [offers, setOffers] = useState<DiscoveryOffer[]>([]);
   const position = useRef(new Animated.ValueXY()).current;
+  /** Tylko gaszenie przy wylocie — NIGDY nie ustawiaj z powrotem na 1, póki w slocie jest jeszcze stara oferta. */
+  const topCardOpacity = useRef(new Animated.Value(1)).current;
+  const pendingRevealRef = useRef(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const activePhotoIndexRef = useRef(0);
+  activePhotoIndexRef.current = activePhotoIndex;
   const topOfferId = offers[0]?.id;
   const topOfferRef = useRef<DiscoveryOffer | null>(null);
   const offersRef = useRef<DiscoveryOffer[]>([]);
@@ -305,7 +327,10 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   const cardShownAtRef = useRef(Date.now());
   const trackedOfferRef = useRef<string | null>(null);
   const saveAffirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const forceSwipeRef = useRef<((direction: 'right' | 'left' | 'up') => void) | null>(null);
+  const forceSwipeRef = useRef<((
+    direction: 'right' | 'left' | 'up',
+    velocity?: { vx?: number; vy?: number },
+  ) => void) | null>(null);
   const sendDiscoveryEventRef = useRef<((eventType: DiscoveryEventType, offer: DiscoveryOffer, extra?: {
     reasonCode?: DiscoveryDislikeReasonCode;
     photoIndex?: number;
@@ -360,10 +385,13 @@ export default function EstateDiscoveryMode({ navigation }: any) {
         const daysOnMarket = Math.max(1, Math.round((Date.now() - createdAtMs) / (1000 * 60 * 60 * 24)));
         const location = [district, city].filter(Boolean).join(', ') || 'Polska';
         const extractedImages = extractImagesFromOffer(raw);
+        // galleryPlan zwraca ścieżki względne (`/uploads/...`) — bez API_URL Image jest czarny.
         const plannedImages = Array.isArray(raw?.galleryPlan?.orderedAssets)
-          ? raw.galleryPlan.orderedAssets.filter((image: unknown) => typeof image === 'string' && image.trim())
+          ? raw.galleryPlan.orderedAssets
+              .map((image: unknown) => (typeof image === 'string' ? normalizeMediaUrl(image) : null))
+              .filter((url: string | null): url is string => Boolean(url))
           : [];
-        const images = plannedImages.length ? plannedImages : extractedImages;
+        const images = plannedImages.length > 0 ? plannedImages : extractedImages;
         const scoreRaw = raw?.score ?? raw?.matchScore;
         const scoreNum = scoreRaw == null ? null : Number(scoreRaw);
         return {
@@ -387,7 +415,9 @@ export default function EstateDiscoveryMode({ navigation }: any) {
               ? Math.max(0, Math.min(100, Math.round(scoreNum)))
               : null,
           matchReason: raw?.reason == null ? null : String(raw.reason),
-          galleryPlan: raw?.galleryPlan || null,
+          galleryPlan: raw?.galleryPlan
+            ? { ...raw.galleryPlan, orderedAssets: images }
+            : null,
         };
       })
       .filter(Boolean) as DiscoveryOffer[];
@@ -572,14 +602,22 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       trackedOfferRef.current = top.id;
       void sendDiscoveryEventRef.current?.('DISCOVERY_VIEW_CARD', top);
     }
-    // Po zmianie talii: zeruj pozycję DOPIERO gdy nowa karta już jest topką —
-    // bez springów skali/opacity (to powodowało mryganie i podskoki).
     if (pendingResetRef.current) {
       pendingResetRef.current = false;
-      position.setValue({ x: 0, y: 0 });
-      swipingRef.current = false;
     }
-  }, [position, topOfferId]);
+  }, [topOfferId]);
+
+  /**
+   * Reveal nowej karty DOPIERO gdy topOfferId się zmienił (stara treść już nie jest w slocie).
+   * Wcześniejsze `opacity.setValue(1)` przy starej ofercie = duch na środku.
+   */
+  useLayoutEffect(() => {
+    if (!pendingRevealRef.current) return;
+    pendingRevealRef.current = false;
+    position.setValue({ x: 0, y: 0 });
+    topCardOpacity.setValue(1);
+    swipingRef.current = false;
+  }, [topOfferId, position, topCardOpacity]);
 
   useEffect(() => {
     const top = offers[0];
@@ -596,9 +634,11 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Animated.spring(position, {
       toValue: { x: 0, y: 0 },
-      friction: 6,
-      tension: 48,
-      useNativeDriver: false,
+      friction: 7,
+      tension: 68,
+      useNativeDriver: true,
+      restDisplacementThreshold: 0.5,
+      restSpeedThreshold: 0.5,
     }).start(() => {
       swipingRef.current = false;
     });
@@ -678,44 +718,70 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     const top = offersRef.current[0];
     if (!top) {
       position.setValue({ x: 0, y: 0 });
+      topCardOpacity.setValue(1);
       swipingRef.current = false;
       return;
     }
     if (direction === 'up') {
       position.setValue({ x: 0, y: 0 });
+      topCardOpacity.setValue(1);
       swipingRef.current = false;
       setPriorityOffer(top);
       return;
     }
-    commitDecision(direction, top);
-  }, [commitDecision, position]);
+
+    // 1) Zgaś slot (native). 2) Podmień ofertę. 3) Reveal dopiero w useLayoutEffect po nowym topOfferId.
+    Animated.timing(topCardOpacity, {
+      toValue: 0,
+      duration: 16,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished) {
+        topCardOpacity.setValue(1);
+        position.setValue({ x: 0, y: 0 });
+        swipingRef.current = false;
+        return;
+      }
+      pendingRevealRef.current = true;
+      // Position zostaje OFF-SCREEN aż do layout effect — przy opacity 0 i tak niewidoczne,
+      // ale NIE przywracamy opacity=1 przy starej ofercie (to był duch).
+      commitDecision(direction, top);
+    });
+  }, [commitDecision, position, topCardOpacity]);
 
   // === ANIMACJE KARTY ===
-  const forceSwipe = useCallback((direction: 'right' | 'left' | 'up') => {
+  const forceSwipe = useCallback((
+    direction: 'right' | 'left' | 'up',
+    velocity?: { vx?: number; vy?: number },
+  ) => {
     if (swipingRef.current) return;
     if (!offersRef.current[0]) return;
     swipingRef.current = true;
 
     let toX = 0;
     let toY = 0;
-    if (direction === 'right') toX = width * 1.35;
-    if (direction === 'left') toX = -width * 1.35;
-    if (direction === 'up') toY = -height * 1.25;
+    if (direction === 'right') toX = width + CARD_WIDTH + 120;
+    if (direction === 'left') toX = -(width + CARD_WIDTH + 120);
+    if (direction === 'up') toY = -(height + CARD_HEIGHT + 120);
+
+    const speed = direction === 'up' ? Math.abs(velocity?.vy ?? 0) : Math.abs(velocity?.vx ?? 0);
+    const duration = speed > 1.2 ? 190 : speed > 0.7 ? 230 : 280;
 
     Animated.timing(position, {
       toValue: { x: toX, y: toY },
-      duration: 260,
+      duration,
       easing: DISCOVERY_EASE_OUT,
-      useNativeDriver: false,
+      useNativeDriver: true,
     }).start(({ finished }) => {
       if (!finished) {
         position.setValue({ x: 0, y: 0 });
+        topCardOpacity.setValue(1);
         swipingRef.current = false;
         return;
       }
       onSwipeComplete(direction);
     });
-  }, [height, onSwipeComplete, position, width]);
+  }, [CARD_HEIGHT, CARD_WIDTH, height, onSwipeComplete, position, topCardOpacity, width]);
 
   forceSwipeRef.current = forceSwipe;
 
@@ -730,30 +796,34 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) => {
         if (swipingRef.current) return false;
-        return Math.abs(gestureState.dx) > 8 || Math.abs(gestureState.dy) > 8;
+        return Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 8;
       },
       onMoveShouldSetPanResponderCapture: (_, gestureState) => {
         if (swipingRef.current) return false;
-        return Math.abs(gestureState.dx) > 12;
+        return Math.abs(gestureState.dx) > 10;
       },
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       },
       onPanResponderMove: (_, gestureState) => {
-        const newY = gestureState.dy > 0 ? gestureState.dy * 0.15 : gestureState.dy;
+        const newY = gestureState.dy > 0 ? gestureState.dy * 0.22 : gestureState.dy;
         position.setValue({ x: gestureState.dx, y: newY });
       },
       onPanResponderRelease: (_, gestureState) => {
         const { width: w, height: h } = layoutRef.current;
-        const thresholdX = w * 0.28;
-        const thresholdY = -h * 0.18;
-        if (gestureState.dy < thresholdY && Math.abs(gestureState.dx) < thresholdX) {
-          forceSwipeRef.current?.('up');
-        } else if (gestureState.dx > thresholdX) {
-          forceSwipeRef.current?.('right');
-        } else if (gestureState.dx < -thresholdX) {
-          forceSwipeRef.current?.('left');
+        const thresholdX = w * 0.22;
+        const thresholdY = -h * 0.16;
+        const { dx, dy, vx, vy } = gestureState;
+        const flungRight = dx > thresholdX || (vx > 1.05 && dx > 36);
+        const flungLeft = dx < -thresholdX || (vx < -1.05 && dx < -36);
+        const flungUp = dy < thresholdY && Math.abs(dx) < thresholdX * 1.15;
+        if (flungUp) {
+          forceSwipeRef.current?.('up', { vx, vy });
+        } else if (flungRight) {
+          forceSwipeRef.current?.('right', { vx, vy });
+        } else if (flungLeft) {
+          forceSwipeRef.current?.('left', { vx, vy });
         } else {
           resetPositionRef.current?.();
         }
@@ -768,12 +838,16 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     if (!undoOffer) return;
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
     pendingResetRef.current = true;
+    pendingRevealRef.current = false;
+    position.setValue({ x: 0, y: 0 });
+    topCardOpacity.setValue(1);
+    swipingRef.current = false;
     setOffers((prev) => [undoOffer, ...prev]);
     setActivePhotoIndex(0);
     void sendDiscoveryEvent('DISCOVERY_UNDO', undoOffer);
     setUndoOffer(null);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [sendDiscoveryEvent, undoOffer]);
+  }, [position, sendDiscoveryEvent, topCardOpacity, undoOffer]);
 
   function confirmPriority(mode: 'priority' | 'save') {
     const offer = priorityOffer;
@@ -886,7 +960,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   // === INTERPOLACJE IKON NA ŚRODKU ===
   const rotate = position.x.interpolate({
     inputRange: [-width / 2, 0, width / 2],
-    outputRange: ['-12deg', '0deg', '12deg'],
+    outputRange: ['-10deg', '0deg', '10deg'],
     extrapolate: 'clamp',
   });
 
@@ -923,16 +997,108 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     extrapolate: 'clamp',
   });
 
-  const nextCardScale = position.x.interpolate({
-    inputRange: [-width * 0.28, 0, width * 0.28],
-    outputRange: [1, 0.945, 1],
-    extrapolate: 'clamp',
-  });
-  const nextCardLift = position.x.interpolate({
-    inputRange: [-width * 0.28, 0, width * 0.28],
-    outputRange: [0, 8, 0],
-    extrapolate: 'clamp',
-  });
+  const cardBox = {
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+    left: Math.max(0, (deckSize.w - CARD_WIDTH) / 2),
+    top: Math.max(0, (deckSize.h - CARD_HEIGHT) / 2),
+  };
+
+  const renderCardFace = (
+    offer: DiscoveryOffer,
+    opts: { photoIndex: number; showChrome: boolean },
+  ) => (
+    <>
+      <View style={styles.cardImageTapLayer}>
+        <Image
+          source={{ uri: offer.images?.[opts.photoIndex] || offer.image }}
+          style={styles.cardImage}
+          contentFit="cover"
+          transition={0}
+          cachePolicy="memory-disk"
+        />
+        {opts.showChrome ? (
+          <View style={styles.tapZonesLayer} pointerEvents="box-none">
+            <Pressable style={styles.tapZoneLeft} onPress={() => handleTopCardImageTap('left')} />
+            <Pressable style={styles.tapZoneRight} onPress={() => handleTopCardImageTap('right')} />
+          </View>
+        ) : null}
+      </View>
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.92)']}
+        locations={[0.18, 0.58, 1]}
+        style={styles.cardGradient}
+      />
+      {opts.showChrome ? (
+        <View style={styles.photoPagerOverlay} pointerEvents="box-none">
+          <View style={styles.photoCounterBadge}>
+            <Text style={styles.photoCounterText}>
+              {Math.min(opts.photoIndex + 1, Math.max(1, offer.images?.length || 1))}/{Math.max(1, offer.images?.length || 1)}
+            </Text>
+          </View>
+          <View style={styles.photoDotsRow}>
+            {(offer.images || [offer.image]).slice(0, 8).map((img, idx) => {
+              const active = idx === opts.photoIndex;
+              return <View key={`${offer.id}-dot-${idx}-${img}`} style={[styles.photoDot, active && styles.photoDotActive]} />;
+            })}
+          </View>
+          <Pressable
+            onPress={() => setGalleryVisible(true)}
+            style={styles.galleryOpenButton}
+            accessibilityRole="button"
+            accessibilityLabel="Otwórz galerię zdjęć"
+          >
+            <BlurView intensity={45} tint="dark" style={styles.galleryOpenGlass}>
+              <Ionicons name="expand-outline" size={16} color="#FFF" />
+            </BlurView>
+          </Pressable>
+        </View>
+      ) : null}
+      <View style={styles.offerInfoWrap}>
+        <View style={styles.locationRow}>
+          <MapPin size={14} color={RR_GOLD} />
+          <Text style={styles.offerLocation}>{offer.location}</Text>
+        </View>
+        <Text style={styles.offerTitle} numberOfLines={1}>{offer.title}</Text>
+        <View style={styles.specsRow}>
+          <Text style={styles.offerPrice}>{offer.price}</Text>
+          <View style={styles.specDivider} />
+          <Maximize size={14} color="#888" style={{ marginRight: 6 }} />
+          <Text style={styles.offerArea}>{offer.area}</Text>
+        </View>
+        <BlurView intensity={50} tint="dark" style={styles.miniDashboard}>
+          <View style={styles.dashHeaderRow}>
+            <View>
+              <Text style={styles.dashLabel}>CENA STARTOWA</Text>
+              <Text style={styles.dashValueMuted}>{offer.originalPrice}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.dashLabel}>NA RYNKU OD</Text>
+              <Text style={styles.dashValue}>{offer.daysOnMarket} dni</Text>
+            </View>
+          </View>
+          <PriceHistoryChart data={offer.priceHistory} width={CARD_WIDTH - 64} />
+          {opts.showChrome ? (
+            <Text style={styles.discoveryQuietHint}>Dopasowanie wyjaśnimy na Twoje życzenie.</Text>
+          ) : null}
+        </BlurView>
+      </View>
+      {opts.showChrome ? (
+        <Pressable
+          onPress={() => {
+            void sendDiscoveryEvent('DISCOVERY_DEPTH_OPEN', offer, { score: topOfferInsight.score });
+            navigation?.navigate?.('OfferDetail', { offerId: Number(offer.id) || offer.id });
+          }}
+          style={styles.infoChevronBtn}
+          hitSlop={14}
+        >
+          <BlurView intensity={45} tint="dark" style={styles.infoChevronGlass}>
+            <Ionicons name="chevron-forward" size={20} color="#FFF" />
+          </BlurView>
+        </Pressable>
+      ) : null}
+    </>
+  );
 
   // === RENDEROWANIE KART ===
   const renderCards = () => {
@@ -965,83 +1131,39 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       );
     }
 
-    return offers.map((offer, index) => {
-      const isFirst = index === 0;
-      const isSecond = index === 1;
-      if (!isFirst && !isSecond) return null;
-
-      return (
-        <Animated.View
-          key={offer.id}
-          style={[
-            styles.cardContainer,
-            { width: CARD_WIDTH, height: CARD_HEIGHT },
-            isFirst && {
-              transform: [
-                { translateX: position.x },
-                { translateY: position.y },
-                { rotate },
-              ],
-              zIndex: 10,
-            },
-            isSecond && {
-              transform: [{ translateY: nextCardLift }, { scale: nextCardScale }],
-              zIndex: 1,
-            },
-          ]}
-          {...(isFirst ? panResponder.panHandlers : {})}
-        >
-          <View style={styles.cardImageTapLayer}>
-            <Image
-              source={{
-                uri: isFirst
-                  ? (offer.images?.[activePhotoIndex] || offer.image)
-                  : offer.image,
-              }}
-              style={styles.cardImage}
-              contentFit="cover"
-              transition={0}
-              cachePolicy="memory-disk"
-            />
-            {isFirst ? (
-              <View style={styles.tapZonesLayer} pointerEvents="box-none">
-                <Pressable style={styles.tapZoneLeft} onPress={() => handleTopCardImageTap('left')} />
-                <Pressable style={styles.tapZoneRight} onPress={() => handleTopCardImageTap('right')} />
-              </View>
-            ) : null}
+    const under = offers[1];
+    const top = offers[0];
+    return (
+      <>
+        {under ? (
+          <View
+            key="discovery-under-slot"
+            style={[styles.cardContainer, cardBox, { zIndex: 1 }]}
+            pointerEvents="none"
+          >
+            {renderCardFace(under, { photoIndex: 0, showChrome: false })}
           </View>
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.92)']}
-            locations={[0.18, 0.58, 1]}
-            style={styles.cardGradient}
-          />
-          {isFirst && (
-            <View style={styles.photoPagerOverlay} pointerEvents="box-none">
-              <View style={styles.photoCounterBadge}>
-                <Text style={styles.photoCounterText}>
-                  {Math.min((activePhotoIndex + 1), Math.max(1, offer.images?.length || 1))}/{Math.max(1, offer.images?.length || 1)}
-                </Text>
-              </View>
-              <View style={styles.photoDotsRow}>
-                {(offer.images || [offer.image]).slice(0, 8).map((img, idx) => {
-                  const active = idx === activePhotoIndex;
-                  return <View key={`${offer.id}-dot-${idx}-${img}`} style={[styles.photoDot, active && styles.photoDotActive]} />;
-                })}
-              </View>
-              <Pressable
-                onPress={() => setGalleryVisible(true)}
-                style={styles.galleryOpenButton}
-                accessibilityRole="button"
-                accessibilityLabel="Otwórz galerię zdjęć"
-              >
-                <BlurView intensity={45} tint="dark" style={styles.galleryOpenGlass}>
-                  <Ionicons name="expand-outline" size={16} color="#FFF" />
-                </BlurView>
-              </Pressable>
-            </View>
-          )}
+        ) : null}
 
-          {isFirst && (
+        {top ? (
+          <Animated.View
+            key="discovery-top-slot"
+            style={[
+              styles.cardContainer,
+              cardBox,
+              {
+                zIndex: 10,
+                opacity: topCardOpacity,
+                transform: [
+                  { translateX: position.x },
+                  { translateY: position.y },
+                  { rotate },
+                ],
+              },
+            ]}
+            {...panResponder.panHandlers}
+          >
+            {renderCardFace(top, { photoIndex: activePhotoIndex, showChrome: true })}
             <View style={styles.centerIconOverlay} pointerEvents="none">
               <Animated.View style={[styles.centerIconWrap, { opacity: likeOpacity, transform: [{ scale: likeScale }] }]}>
                 <Ionicons name="heart" size={100} color={RR_GREEN} style={styles.iconShadow} />
@@ -1053,70 +1175,29 @@ export default function EstateDiscoveryMode({ navigation }: any) {
                 <Ionicons name="flash" size={110} color={RR_GOLD} style={styles.iconShadow} />
               </Animated.View>
             </View>
-          )}
-
-          <View style={styles.offerInfoWrap}>
-            <View style={styles.locationRow}>
-              <MapPin size={14} color={RR_GOLD} />
-              <Text style={styles.offerLocation}>{offer.location}</Text>
-            </View>
-
-            <Text style={styles.offerTitle} numberOfLines={1}>{offer.title}</Text>
-
-            <View style={styles.specsRow}>
-              <Text style={styles.offerPrice}>{offer.price}</Text>
-              <View style={styles.specDivider} />
-              <Maximize size={14} color="#888" style={{ marginRight: 6 }} />
-              <Text style={styles.offerArea}>{offer.area}</Text>
-            </View>
-
-            <BlurView intensity={50} tint="dark" style={styles.miniDashboard}>
-              <View style={styles.dashHeaderRow}>
-                <View>
-                  <Text style={styles.dashLabel}>CENA STARTOWA</Text>
-                  <Text style={styles.dashValueMuted}>{offer.originalPrice}</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.dashLabel}>NA RYNKU OD</Text>
-                  <Text style={styles.dashValue}>{offer.daysOnMarket} dni</Text>
-                </View>
-              </View>
-
-              <PriceHistoryChart data={offer.priceHistory} width={CARD_WIDTH - 64} />
-              {isFirst ? (
-                <Text style={styles.discoveryQuietHint}>Dopasowanie wyjaśnimy na Twoje życzenie.</Text>
-              ) : null}
-            </BlurView>
-          </View>
-          {isFirst ? (
-            <Pressable
-              onPress={() => {
-                void sendDiscoveryEvent('DISCOVERY_DEPTH_OPEN', offer, { score: topOfferInsight.score });
-                navigation?.navigate?.('OfferDetail', { offerId: Number(offer.id) || offer.id });
-              }}
-              style={styles.infoChevronBtn}
-              hitSlop={14}
-            >
-              <BlurView intensity={45} tint="dark" style={styles.infoChevronGlass}>
-                <Ionicons name="chevron-forward" size={20} color="#FFF" />
-              </BlurView>
-            </Pressable>
-          ) : null}
-        </Animated.View>
-      );
-    }).reverse();
+          </Animated.View>
+        ) : null}
+      </>
+    );
   };
 
   return (
     <View style={styles.container}>
       <DiscoverySessionIsland state={islandState} onBack={() => setPauseVisible(true)} />
 
-      <View style={styles.cardsWrapper}>
+      <View
+        style={styles.cardsWrapper}
+        onLayout={(e) => {
+          const { width: w, height: h } = e.nativeEvent.layout;
+          if (w < 40 || h < 40) return;
+          setDeckSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+        }}
+      >
         {renderCards()}
       </View>
 
       {offers.length > 0 && (
-        <View style={styles.actionButtonsRow}>
+        <View style={[styles.actionButtonsRow, isTablet && styles.actionButtonsRowTablet]}>
           <DiscoveryGlassOrb onPress={() => forceSwipe('left')} accessibilityLabel="Pomiń ofertę">
             <X size={28} color="#D0D0D4" />
           </DiscoveryGlassOrb>
@@ -1247,6 +1328,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
   emptyContainer: {
     alignItems: 'center',
@@ -1269,7 +1351,9 @@ const styles = StyleSheet.create({
   cardContainer: {
     position: 'absolute',
     borderRadius: 32,
-    backgroundColor: '#111',
+    backgroundColor: '#0A0A0B',
+    overflow: 'hidden',
+    opacity: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 20 },
     shadowOpacity: 0.8,
@@ -1281,7 +1365,7 @@ const styles = StyleSheet.create({
   cardImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 32,
+    backgroundColor: '#0A0A0B',
   },
   cardImageTapLayer: {
     width: '100%',
@@ -1499,6 +1583,11 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 40 : 20,
     paddingHorizontal: 40,
     marginTop: 10,
+  },
+  actionButtonsRowTablet: {
+    paddingBottom: Platform.OS === 'ios' ? 28 : 18,
+    paddingHorizontal: 72,
+    marginTop: 6,
   },
   dislikeReasonWrap: {
     position: 'absolute',
