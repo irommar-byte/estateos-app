@@ -106,7 +106,7 @@ const pl: PresentationFlowDictionary = {
     counterpartyLabel: 'Kontrahent',
     instructionTitle: 'Jak to działa',
     instructionBody:
-      'Po upływie buforu od planowanej godziny prosimy o domknięcie wizyty. Następnie obie strony mogą wystawić krótką ocenę (gwiazdki + komentarz). Odwołanie przed spotkaniem nie liczy się jako nieobecność.',
+      'Po buforze od terminu domknij wizytę. Potem obie strony wystawiają krótką ocenę (gwiazdki + komentarz). Odwołanie przed spotkaniem nie jest nieobecnością.',
     completedTitle: 'Prezentacja odbyła się',
     completedDesc: 'Spotkanie na miejscu lub online się odbyło.',
     noShowTitle: 'Druga strona nie przyszła',

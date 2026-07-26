@@ -300,7 +300,7 @@ export default function Navbar() {
           </button>
         </div>
 
-        <div className="relative z-30 flex min-w-0 items-center justify-center overflow-hidden px-0.5">
+        <div className="relative z-10 flex min-w-0 items-center justify-center overflow-hidden px-0.5">
           <div
             className={`flex shrink-0 items-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] shadow-[var(--eos-shadow-soft)] ${
               switchDensity === "mini" ? "p-0.5" : "p-0.5 sm:p-1"
@@ -351,8 +351,8 @@ export default function Navbar() {
           </div>
         </div>
 
-        <div className="relative z-20 flex min-w-0 items-center justify-end gap-1 overflow-hidden sm:gap-1.5">
-          <div className="hidden min-w-0 max-w-full items-center justify-end gap-1 overflow-hidden lg:flex lg:gap-1.5 xl:gap-2">
+        <div className="relative z-40 flex min-w-0 items-center justify-end gap-1 sm:gap-1.5">
+          <div className="hidden min-w-0 max-w-full items-center justify-end gap-1 lg:flex lg:gap-1.5 xl:gap-2">
             {user && (
               <>
                 <div className="hidden 2xl:block">
@@ -365,7 +365,7 @@ export default function Navbar() {
             )}
 
             {user ? (
-              <div className="ml-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden xl:gap-2">
+              <div className="ml-0.5 flex min-w-0 items-center gap-1.5 xl:gap-2">
                 <NavbarProfileChip user={user} />
                 {isAdmin && (
                   <button

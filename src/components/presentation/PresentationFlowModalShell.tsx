@@ -9,14 +9,21 @@ type PresentationFlowModalShellProps = {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  /** Sticky footer (CTA) — always visible without scrolling the body. */
+  footer?: ReactNode;
   maxWidth?: string;
   dismissLabel?: string;
 };
 
+/**
+ * Presentation outcome/review shell.
+ * Important: scroll child needs `min-h-0` or flex refuses to shrink and overflow-y never scrolls.
+ */
 export default function PresentationFlowModalShell({
   open,
   onClose,
   children,
+  footer,
   maxWidth = "max-w-lg",
   dismissLabel = "Zamknij",
 }: PresentationFlowModalShellProps) {
@@ -50,14 +57,14 @@ export default function PresentationFlowModalShell({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.18 }}
-        className="fixed inset-0 z-[999999] flex items-end justify-center sm:items-center sm:p-6"
+        className="fixed inset-0 z-[999999] flex items-end justify-center sm:items-center sm:p-4"
         role="presentation"
       >
         <button
           type="button"
           tabIndex={-1}
           aria-label={dismissLabel}
-          className="absolute inset-0 cursor-default border-0 bg-black/60 p-0 backdrop-blur-md"
+          className="absolute inset-0 cursor-default border-0 bg-black/55 p-0 backdrop-blur-sm dark:bg-black/65"
           onClick={onClose}
         />
 
@@ -68,20 +75,27 @@ export default function PresentationFlowModalShell({
           transition={{ type: "spring", stiffness: 420, damping: 34 }}
           role="dialog"
           aria-modal="true"
-          className={`theme-aware-dashboard pointer-events-auto relative z-10 flex max-h-[min(92dvh,920px)] w-full flex-col overflow-hidden rounded-t-[2rem] border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] shadow-2xl text-[var(--eos-text)] sm:rounded-[2rem] ${maxWidth}`}
+          className={`theme-aware-dashboard pointer-events-auto relative z-10 flex max-h-[min(88dvh,720px)] w-full flex-col overflow-hidden rounded-t-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)] shadow-[var(--eos-shadow-strong)] sm:rounded-[1.75rem] ${maxWidth}`}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-4 right-4 z-20 flex size-9 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-bg)] text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
+            className="absolute right-3 top-3 z-20 flex size-8 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
             aria-label={dismissLabel}
           >
-            <X size={18} />
+            <X size={16} />
           </button>
 
-          <div className="custom-scrollbar flex-1 overflow-y-auto">{children}</div>
+          {/* min-h-0 is required for overflow scroll inside a flex column */}
+          <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
+
+          {footer ? (
+            <div className="shrink-0 border-t border-[var(--eos-border)] bg-[var(--eos-surface)]/95 px-4 py-3 backdrop-blur-md sm:px-5">
+              {footer}
+            </div>
+          ) : null}
         </motion.div>
       </motion.div>
     </AnimatePresence>,
