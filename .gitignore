@@ -77,3 +77,7 @@ lineage-launcher/
 # CDA-HD runtime (Cloudflare session + catalog cache)
 video-downloader/data/cda-hd-session.json
 video-downloader/data/cda-hd-catalog-cache.json
+
+# StoreKit local config for IAP debugging
+!ios/StoreKit/
+!ios/StoreKit/**

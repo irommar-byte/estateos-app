@@ -1,0 +1,95 @@
+{
+  "identifier" : "A1B2C3D4",
+  "nonRenewingSubscriptions" : [
+  ],
+  "products" : [
+    {
+      "displayPrice" : "49.99",
+      "familyShareable" : false,
+      "internalID" : "PLUS30D001",
+      "localizations" : [
+        {
+          "description" : "Jedna dodatkowa publikacja ogłoszenia na 30 dni.",
+          "displayName" : "Pakiet Plus 30 dni",
+          "locale" : "pl_PL"
+        },
+        {
+          "description" : "One additional 30-day listing publication.",
+          "displayName" : "Plus Package 30 days",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "pl.estateos.app.pakiet_plus_30d",
+      "referenceName" : "Pakiet Plus 30D",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "0",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 0,
+    "_locale" : "pl_PL",
+    "_storefront" : "POL",
+    "_storeKitErrors" : [
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "INVESTORPROGRP",
+      "localizations" : [
+        {
+          "locale" : "pl_PL",
+          "name" : "Investor Pro"
+        },
+        {
+          "locale" : "en_US",
+          "name" : "Investor Pro"
+        }
+      ],
+      "name" : "Investor Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+          ],
+          "codeOffers" : [
+          ],
+          "displayPrice" : "99.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "INVPROMONTH",
+          "introductoryOffer" : {
+            "displayPrice" : "0",
+            "internalID" : "INVPROTRIAL",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P3D"
+          },
+          "localizations" : [
+            {
+              "description" : "Import z portali, podgląd off-market i narzędzia Pro. Odnowienie co miesiąc.",
+              "displayName" : "Investor Pro Monthly",
+              "locale" : "pl_PL"
+            },
+            {
+              "description" : "Portal import, off-market preview and Pro tools. Auto-renews monthly.",
+              "displayName" : "Investor Pro Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "pl.estateos.app.investor_pro_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Investor Pro Monthly",
+          "subscriptionGroupID" : "INVESTORPROGRP",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

@@ -54,15 +54,35 @@ export const IAP_PRODUCT_IDS = {
   INVESTOR_PRO: 'pl.estateos.app.investor_pro_monthly',
 } as const;
 
-export type IapProductId = (typeof IAP_PRODUCT_IDS)[keyof typeof IAP_PRODUCT_IDS];
+/** Legacy Product ID — starsze wpisy w ASC / Play; StoreKit może zwracać tylko ten. */
+export const IAP_INVESTOR_PRO_LEGACY_ID = 'pl.estateos.app.pakiet_investor_pro' as const;
+
+/** Wszystkie SKU Investor Pro do probe'owania w sklepie (kolejność: kanoniczny → legacy). */
+export const IAP_INVESTOR_PRO_STORE_SKUS = [
+  IAP_PRODUCT_IDS.INVESTOR_PRO,
+  IAP_INVESTOR_PRO_LEGACY_ID,
+] as const;
+
+export type IapProductId =
+  | (typeof IAP_PRODUCT_IDS)[keyof typeof IAP_PRODUCT_IDS]
+  | typeof IAP_INVESTOR_PRO_LEGACY_ID;
 
 /** Logiczna nazwa produktu — używana do mapowania backend → UI. */
 export type IapProductKind = 'PAKIET_PLUS_30D' | 'INVESTOR_PRO';
 
 export function getProductKind(productId: string): IapProductKind | null {
   if (productId === IAP_PRODUCT_IDS.PAKIET_PLUS_30D) return 'PAKIET_PLUS_30D';
-  if (productId === IAP_PRODUCT_IDS.INVESTOR_PRO) return 'INVESTOR_PRO';
+  if (
+    productId === IAP_PRODUCT_IDS.INVESTOR_PRO ||
+    productId === IAP_INVESTOR_PRO_LEGACY_ID
+  ) {
+    return 'INVESTOR_PRO';
+  }
   return null;
+}
+
+export function isInvestorProStoreSku(productId: string): boolean {
+  return (IAP_INVESTOR_PRO_STORE_SKUS as readonly string[]).includes(productId);
 }
 
 // ---------------------------------------------------------------------------

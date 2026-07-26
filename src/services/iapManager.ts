@@ -31,7 +31,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Platform, type AppStateStatus } from 'react-native';
 import {
   IAP_ENDPOINTS,
+  IAP_INVESTOR_PRO_LEGACY_ID,
+  IAP_INVESTOR_PRO_STORE_SKUS,
   IAP_PRODUCT_IDS,
+  isInvestorProStoreSku,
   type IapProductId,
   type IapVerifyRequest,
   type IapVerifyResponse,
@@ -466,10 +469,33 @@ class IAPManagerImpl {
   }
 
   private isInvestorProProductId(productId: string): boolean {
-    return (
-      productId === IAP_PRODUCT_IDS.INVESTOR_PRO ||
-      productId === 'pl.estateos.app.pakiet_investor_pro'
-    );
+    return isInvestorProStoreSku(productId);
+  }
+
+  /** SKU do zapytania sklepu — Investor Pro: kanoniczny + legacy (ASC może mieć tylko jeden). */
+  private storeSkusForPurchase(productId: IapProductId, storeType: 'in-app' | 'subs'): string[] {
+    if (storeType === 'subs' && this.isInvestorProProductId(productId)) {
+      return Array.from(new Set([productId, ...IAP_INVESTOR_PRO_STORE_SKUS]));
+    }
+    return [productId];
+  }
+
+  private pickFetchedProductId(
+    requested: IapProductId,
+    products: unknown[] | null | undefined,
+  ): IapProductId | null {
+    if (!products?.length) return null;
+    const ids = products
+      .map((p) => {
+        const raw = p as Record<string, unknown>;
+        return String(raw.productId ?? raw.id ?? raw.productIdentifier ?? '').trim();
+      })
+      .filter(Boolean);
+    if (ids.includes(requested)) return requested;
+    const preferred = IAP_INVESTOR_PRO_STORE_SKUS.find((sku) => ids.includes(sku));
+    if (preferred) return preferred as IapProductId;
+    const first = ids[0];
+    return first ? (first as IapProductId) : null;
   }
 
   private resultFromInvestorProVerify(
@@ -503,10 +529,19 @@ class IAPManagerImpl {
     if (!connected || !this.iap) return null;
 
     try {
-      const products = await this.iap.fetchProducts({ skus: [productId], type: 'subs' });
-      const raw = products?.[0] as Record<string, unknown> | undefined;
+      const skus = this.storeSkusForPurchase(productId, 'subs');
+      const products = await this.iap.fetchProducts({ skus, type: 'subs' });
+      const resolvedId = this.pickFetchedProductId(productId, products);
+      if (!resolvedId || !products?.length) return null;
+      const raw =
+        (products.find((p) => {
+          const r = p as Record<string, unknown>;
+          const id = String(r.productId ?? r.id ?? r.productIdentifier ?? '');
+          return id === resolvedId;
+        }) as Record<string, unknown> | undefined) ??
+        (products[0] as Record<string, unknown> | undefined);
       if (!raw) return null;
-      return parseSubscriptionStoreListing(productId, raw);
+      return parseSubscriptionStoreListing(resolvedId, raw);
     } catch (e) {
       if (__DEV__) console.log('[IAP] getSubscriptionListing failed:', e);
       return null;
@@ -554,19 +589,27 @@ class IAPManagerImpl {
     }
 
     try {
+      const skus = this.storeSkusForPurchase(productId, storeType);
       const products = await this.withTimeout(
-        iap.fetchProducts({ skus: [productId], type: storeType }),
+        iap.fetchProducts({ skus, type: storeType }),
         15_000,
         storeType === 'subs'
           ? 'Sklep nie zwrócił subskrypcji Investor Pro. Sprawdź App Store Connect (Subscription + Intro Offer) i spróbuj ponownie.'
           : 'Sklep nie zwrócił produktu Pakiet Plus. Sprawdź, czy produkt IAP jest dodany do tej wersji w App Store Connect i spróbuj ponownie.',
       );
-      if (!products?.length) {
+      const resolvedProductId = this.pickFetchedProductId(productId, products);
+      if (!resolvedProductId) {
+        const skuList = skus.join(', ');
         return {
           ok: false,
-          message: `Produkt „${productId}" nie jest skonfigurowany w sklepie. Sprawdź App Store Connect / Play Console.`,
+          message:
+            Platform.OS === 'ios'
+              ? `Subskrypcja Investor Pro (${skuList}) nie jest dostępna w App Store na tym koncie. W App Store Connect: produkt „pl.estateos.app.investor_pro_monthly” musi być Ready to Submit, z ceną i lokalizacją, a Paid Apps Agreement Active. Na urządzeniu testowym użyj konta Sandbox (Settings → App Store → Sandbox Account).`
+              : `Produkt „${productId}" nie jest skonfigurowany w sklepie. Sprawdź Play Console.`,
         };
       }
+      // Dalej używamy SKU faktycznie zwróconego przez sklep (może być legacy).
+      productId = resolvedProductId;
     } catch (e) {
       return {
         ok: false,
@@ -965,7 +1008,10 @@ class IAPManagerImpl {
   }
 
   private isKnownProductId(productId: string): productId is IapProductId {
-    return Object.values(IAP_PRODUCT_IDS).includes(productId as IapProductId);
+    return (
+      Object.values(IAP_PRODUCT_IDS).includes(productId as IapProductId) ||
+      productId === IAP_INVESTOR_PRO_LEGACY_ID
+    );
   }
 
   private isConsumable(productId: IapProductId): boolean {
