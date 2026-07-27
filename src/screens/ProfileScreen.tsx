@@ -3842,16 +3842,20 @@ function ProfileScreenLoggedIn({
       const result = await purchasePakietPlusConsumable(API_URL, token);
       if (result.cancelled) return;
       if (!result.ok) {
+        const msg = result.message || t('profile.shop.alerts.purchaseFailed');
+        const catalogMiss = /nie zwraca tego produktu|nie jest dostępny w App Store/i.test(msg);
         Alert.alert(
           t('profile.shop.alerts.purchaseTitle'),
-          result.message || t('profile.shop.alerts.purchaseFailed'),
-          [
-            { text: 'OK', style: 'cancel' },
-            {
-              text: t('profile.shop.restorePurchases'),
-              onPress: () => void handleRestorePurchases(),
-            },
-          ],
+          msg,
+          catalogMiss
+            ? [{ text: 'OK', style: 'cancel' }]
+            : [
+                { text: 'OK', style: 'cancel' },
+                {
+                  text: t('profile.shop.restorePurchases'),
+                  onPress: () => void handleRestorePurchases(),
+                },
+              ],
         );
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
