@@ -33,6 +33,7 @@ import type { SubscriptionStoreListing } from '../services/iapManager';
 import * as Notifications from 'expo-notifications';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 import ProfileProExtrasSection from '../components/profile/ProfileProExtrasSection';
+import IntelligenceToggleIcon from '../components/profile/IntelligenceToggleIcon';
 import { hasActiveInvestorProMembership, buildProMembershipCountdown, userAfterInvestorProPurchase } from '../utils/investorProMembership';
 import DeleteAccountSheet from '../components/DeleteAccountSheet';
 import EditNameSheet from '../components/profile/EditNameSheet';
@@ -3062,7 +3063,11 @@ function ProfileScreenLoggedIn({
   }, [hydrateIntelligence, token, user?.id]);
 
   const toggleIntelligence = async (nextValue: boolean) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (nextValue) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
     await setIntelligenceEnabledRemote(token, nextValue);
   };
 
@@ -3837,7 +3842,17 @@ function ProfileScreenLoggedIn({
       const result = await purchasePakietPlusConsumable(API_URL, token);
       if (result.cancelled) return;
       if (!result.ok) {
-        Alert.alert(t('profile.shop.alerts.purchaseTitle'), result.message || t('profile.shop.alerts.purchaseFailed'));
+        Alert.alert(
+          t('profile.shop.alerts.purchaseTitle'),
+          result.message || t('profile.shop.alerts.purchaseFailed'),
+          [
+            { text: 'OK', style: 'cancel' },
+            {
+              text: t('profile.shop.restorePurchases'),
+              onPress: () => void handleRestorePurchases(),
+            },
+          ],
+        );
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
       }
@@ -4330,25 +4345,8 @@ function ProfileScreenLoggedIn({
           <Text style={styles.sectionTitle}>{t('profile.intelligence.sectionTitle')}</Text>
           <ProfileCardShell isDark={isDark}>
             <View style={[styles.listItem, { paddingVertical: 12 }]}>
-              <View
-                style={[
-                  styles.listIconBox,
-                  {
-                    backgroundColor: intelligenceEnabled
-                      ? '#6366F1'
-                      : isDark
-                        ? '#3A3A3C'
-                        : '#E5E5EA',
-                  },
-                ]}
-              >
-                <Ionicons
-                  name="sparkles"
-                  size={20}
-                  color={intelligenceEnabled ? '#FFF' : '#8E8E93'}
-                />
-              </View>
-              <View style={{ flex: 1, paddingRight: 10 }}>
+              <IntelligenceToggleIcon enabled={intelligenceEnabled} size={36} />
+              <View style={{ flex: 1, paddingRight: 10, marginLeft: 2 }}>
                 <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>
                   {t('profile.intelligence.title')}
                 </Text>
@@ -4362,7 +4360,9 @@ function ProfileScreenLoggedIn({
                 value={intelligenceEnabled}
                 disabled={!intelligenceHydrated}
                 onValueChange={(value) => void toggleIntelligence(value)}
-                trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#6366F1' }}
+                trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#BF5AF2' }}
+                thumbColor={intelligenceEnabled ? '#F5F5F7' : undefined}
+                ios_backgroundColor={isDark ? '#3A3A3C' : '#E5E5EA'}
               />
             </View>
           </ProfileCardShell>

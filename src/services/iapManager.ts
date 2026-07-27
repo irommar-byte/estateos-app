@@ -527,6 +527,20 @@ class IAPManagerImpl {
     );
     if (primary?.length) return primary;
 
+    // Alias 'inapp' (bez myślnika) — niektóre buildy Nitro wolą ten wariant.
+    if (storeType === 'in-app') {
+      try {
+        const inapp = await this.withTimeout(
+          iap.fetchProducts({ skus, type: 'inapp' as 'in-app' }),
+          12_000,
+          timeoutMsg,
+        );
+        if (inapp?.length) return inapp;
+      } catch (e) {
+        if (__DEV__) console.log('[IAP] fetchProducts(type=inapp) fallback failed:', e);
+      }
+    }
+
     try {
       const all = await this.withTimeout(
         iap.fetchProducts({ skus, type: 'all' }),
@@ -574,24 +588,30 @@ class IAPManagerImpl {
   }
 
   private productUnavailableMessage(productId: IapProductId, skus: string[], storeType: 'in-app' | 'subs'): string {
-    const skuList = skus.join(', ');
     if (Platform.OS !== 'ios') {
-      return `Produkt „${productId}" nie jest skonfigurowany w sklepie. Sprawdź Play Console.`;
+      return (
+        `Produkt „${productId}" nie jest teraz dostępny w sklepie. ` +
+        `Spróbuj ponownie za chwilę albo użyj „Przywróć zakupy”.`
+      );
+    }
+    if (__DEV__) {
+      console.warn('[IAP] product unavailable', { productId, skus, storeType });
     }
     if (storeType === 'subs' || this.isInvestorProProductId(productId)) {
       return (
-        `Subskrypcja Investor Pro (${skuList}) nie jest dostępna w App Store na tym koncie. ` +
-        `W App Store Connect: produkt „${IAP_PRODUCT_IDS.INVESTOR_PRO}” musi być Ready to Submit ` +
-        `(Auto-Renewable Subscription), z ceną, lokalizacją i Introductory Offer (3-day free trial), ` +
-        `a Paid Apps Agreement Active. Na urządzeniu testowym użyj konta Sandbox ` +
-        `(Settings → App Store → Sandbox Account).`
+        'Subskrypcja Investor Pro nie jest teraz dostępna w App Store na tym koncie.\n\n' +
+        'Spróbuj:\n' +
+        '• Przywróć zakupy\n' +
+        '• Ustawienia → App Store → konto Sandbox (przy testach)\n' +
+        '• Połączenie z internetem i ponowna próba za chwilę'
       );
     }
     return (
-      `Pakiet Plus (${skuList}) nie jest dostępny w App Store na tym koncie. ` +
-      `W App Store Connect: produkt „${IAP_PRODUCT_IDS.PAKIET_PLUS_30D}” musi być Ready to Submit ` +
-      `(Consumable), z ceną i lokalizacją, a Paid Apps Agreement Active. ` +
-      `Na urządzeniu testowym użyj konta Sandbox (Settings → App Store → Sandbox Account).`
+      'Pakiet Plus nie jest teraz dostępny w App Store na tym koncie.\n\n' +
+      'Spróbuj:\n' +
+      '• Przywróć zakupy\n' +
+      '• Ustawienia → App Store → konto Sandbox (przy testach)\n' +
+      '• Połączenie z internetem i ponowna próba za chwilę'
     );
   }
 
@@ -704,10 +724,16 @@ class IAPManagerImpl {
         purchaseType = this.resolvePurchaseStoreType(storeType, products, resolvedProductId);
         resolvedFromStore = true;
         this.activePurchaseContext = { productId, storeType: purchaseType, skus };
-      } else if (__DEV__) {
-        console.log('[IAP] fetchProducts empty — attempting requestPurchase with SKU', productId, skus);
+      } else {
+        // Bez produktu w katalogu sklepu sheet i tak padnie — nie pokazujemy ASC-wall oferty.
+        if (__DEV__) {
+          console.log('[IAP] fetchProducts empty after retries — aborting purchase', productId, skus);
+        }
+        return {
+          ok: false,
+          message: this.productUnavailableMessage(productId, skus, storeType),
+        };
       }
-      // Pusta lista ≠ natychmiastowy fail: StoreKit 2 czasem otwiera sheet po samym SKU.
     } catch (e) {
       return {
         ok: false,
@@ -741,7 +767,11 @@ class IAPManagerImpl {
       // Wystrzeliwujemy natywny sheet StoreKit / Play.
       const req =
         Platform.OS === 'ios'
-          ? { apple: { sku: productId } }
+          ? {
+              // apple = kanoniczne API RN-IAP 14; ios = alias dla starszych buildów.
+              apple: { sku: productId },
+              ios: { sku: productId },
+            }
           : { google: { skus: [productId] } };
 
       this.iap!.requestPurchase({ request: req, type: purchaseType }).catch((err) => {
