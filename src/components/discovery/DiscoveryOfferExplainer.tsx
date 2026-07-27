@@ -57,7 +57,7 @@ export default function DiscoveryOfferExplainer({ offerId }: Props) {
     >
       <p className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-emerald-500/90 dark:text-emerald-300/85">
         <Sparkles size={11} aria-hidden />
-        EstateOS™ Inteligence
+        EstateOS™ Intelligence
       </p>
       <p className="mt-1.5 text-sm leading-relaxed text-[var(--eos-text)]/80">{reason}</p>
     </motion.div>

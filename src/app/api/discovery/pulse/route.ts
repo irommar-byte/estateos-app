@@ -10,7 +10,7 @@ export async function GET(req: Request) {
     const userId = await resolveWebUserId(req);
     if (!userId) {
       return NextResponse.json(
-        { success: false, error: "Zaloguj się, aby zobaczyć EstateOS™ Inteligence Pulse." },
+        { success: false, error: "Zaloguj się, aby zobaczyć EstateOS™ Intelligence Pulse." },
         { status: 401 },
       );
     }

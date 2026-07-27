@@ -886,7 +886,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               <div className="flex flex-col gap-3">
                 {galleryPersonalized ? (
                   <p className="px-1 text-[10px] font-medium tracking-[0.04em] text-white/45 sm:text-[11px]">
-                    Zdjęcia ułożone pod Twój kierunek · EstateOS™ Inteligence
+                    Zdjęcia ułożone pod Twój kierunek · EstateOS™ Intelligence
                   </p>
                 ) : null}
                 <div className={`grid grid-cols-4 auto-rows-[72px] gap-0.5 overflow-hidden rounded-[1.5rem] border border-white/5 bg-black/20 shadow-2xl backdrop-blur-3xl sm:auto-rows-[110px] sm:gap-1 sm:rounded-[2.5rem] md:auto-rows-[150px] ${isArchived ? "grayscale opacity-50" : ""}`}>

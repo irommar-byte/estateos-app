@@ -1,7 +1,7 @@
 import { formatOfferPropertyType } from "@/lib/offerDisplayLabels";
 import type { Locale } from "@/i18n/config";
 
-/** Human labels for Discovery / Inteligence UI — never show raw enums like FLAT. */
+/** Human labels for Discovery / Intelligence UI — never show raw enums like FLAT. */
 
 const REASON_LABELS_PL: Record<string, string> = {
   PRICE_TOO_HIGH: "Cena",

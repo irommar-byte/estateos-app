@@ -691,21 +691,21 @@ const pl: Dictionary = {
   prefsDock: {
     introTitle: "Ustawienia wyświetlania",
     introBody:
-      "Tu zmienisz motyw, język, walutę cen i EstateOS™ Inteligence. Panel chowa się sam — otwórz go ponownie ikoną koła zębatego.",
+      "Tu zmienisz motyw, język, walutę cen i EstateOS™ Intelligence. Panel chowa się sam — otwórz go ponownie ikoną koła zębatego.",
     showSettings: "Pokaż ustawienia",
     hideSettings: "Schowaj ustawienia",
   },
   intelligence: {
-    prefTitle: "EstateOS™ Inteligence",
+    prefTitle: "EstateOS™ Intelligence",
     prefOnHint: "Cichy asystent kierunku jest włączony",
     prefOffHint: "Włącz spokojne podpowiedzi kierunku",
-    sheetTitle: "Włącz Inteligence",
+    sheetTitle: "Włącz Intelligence",
     sheetBody:
       "Spokojny system, który uczy się z Twoich decyzji i podpowiada tropy — bez hałasu, jak prywatny asystent na iOS.",
     sheetFeature1: "Pulse z żywym mózgiem — kiedy kierunek się wyostrza",
     sheetFeature2: "Sugestie „bliżej Twojego kierunku” w katalogu i na mapie",
     sheetFeature3: "Szepty przed kontaktem i wizytą — tylko gdy mają sens",
-    sheetEnable: "Włącz EstateOS™ Inteligence",
+    sheetEnable: "Włącz EstateOS™ Intelligence",
     sheetLater: "Nie teraz",
   },
   currency: {
@@ -1454,21 +1454,21 @@ const en: Dictionary = {
   prefsDock: {
     introTitle: "Display settings",
     introBody:
-      "Adjust theme, language, price currency, and EstateOS™ Inteligence. The panel auto-hides — reopen it with the gear icon.",
+      "Adjust theme, language, price currency, and EstateOS™ Intelligence. The panel auto-hides — reopen it with the gear icon.",
     showSettings: "Show settings",
     hideSettings: "Hide settings",
   },
   intelligence: {
-    prefTitle: "EstateOS™ Inteligence",
+    prefTitle: "EstateOS™ Intelligence",
     prefOnHint: "Quiet direction assistant is on",
     prefOffHint: "Turn on calm direction cues",
-    sheetTitle: "Turn on Inteligence",
+    sheetTitle: "Turn on Intelligence",
     sheetBody:
       "A calm system that learns from your decisions and surfaces leads — quietly, like a private iOS assistant.",
     sheetFeature1: "Pulse with a living brain when your direction sharpens",
     sheetFeature2: "Closer-to-you suggestions in the catalog and on the map",
     sheetFeature3: "Whispers before contact and visits — only when useful",
-    sheetEnable: "Turn on EstateOS™ Inteligence",
+    sheetEnable: "Turn on EstateOS™ Intelligence",
     sheetLater: "Not now",
   },
   currency: {

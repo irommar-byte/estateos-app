@@ -99,7 +99,7 @@ export default function DiscoveryForYouRail({ transactionMode = "all", formatPri
             <div className="min-w-0 max-w-xl">
               <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300/80">
                 <Sparkles size={12} aria-hidden />
-                EstateOS™ Inteligence
+                EstateOS™ Intelligence
               </p>
               <h2 className="mt-2 text-lg font-medium tracking-tight text-white sm:text-xl">
                 Bliżej Twojego kierunku
@@ -129,7 +129,7 @@ export default function DiscoveryForYouRail({ transactionMode = "all", formatPri
         <div>
           <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-500/90 dark:text-emerald-300/80">
             <Sparkles size={12} aria-hidden />
-            EstateOS™ Inteligence
+            EstateOS™ Intelligence
           </p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">
             Bliżej Twojego kierunku

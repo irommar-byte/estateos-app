@@ -1,5 +1,5 @@
 /**
- * Soft monastery-bowl style chime for EstateOS™ Inteligence.
+ * Soft monastery-bowl style chime for EstateOS™ Intelligence.
  * Very quiet, long decay — never spammy.
  */
 let audioCtx: AudioContext | null = null;
