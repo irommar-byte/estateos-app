@@ -117,7 +117,7 @@ export default function IntelligenceEnableSheet() {
               className="pointer-events-none absolute -bottom-20 -right-10 h-40 w-40 rounded-full bg-emerald-400/20 blur-3xl"
             />
 
-            <div className="relative mx-auto flex h-20 w-20 items-center justify-center">
+            <div className="group relative mx-auto flex h-20 w-20 cursor-default items-center justify-center">
               {!reduceMotion ? (
                 <motion.span
                   aria-hidden
@@ -128,8 +128,23 @@ export default function IntelligenceEnableSheet() {
               ) : (
                 <span className="absolute inset-0 rounded-[1.6rem] border border-white/15 bg-white/[0.06]" />
               )}
-              <span className="relative flex h-[4.25rem] w-[4.25rem] items-center justify-center rounded-[1.35rem] bg-gradient-to-br from-sky-400/30 via-emerald-400/20 to-white/10 text-sky-100 shadow-[0_0_40px_rgba(56,189,248,0.35)]">
-                <Brain size={34} strokeWidth={1.6} aria-hidden />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-[-12px] rounded-[1.8rem] bg-[radial-gradient(circle,rgba(125,211,252,0.45),transparent_70%)] opacity-40 blur-md transition-opacity duration-300 group-hover:opacity-100"
+              />
+              <span className="relative flex h-[4.25rem] w-[4.25rem] items-center justify-center overflow-hidden rounded-[1.35rem] bg-gradient-to-br from-sky-400/30 via-emerald-400/20 to-white/10 text-sky-100 shadow-[0_0_40px_rgba(56,189,248,0.35)] transition-all duration-300 group-hover:scale-105 group-hover:brightness-125 group-hover:shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_48px_rgba(125,211,252,0.65),0_0_80px_rgba(52,211,153,0.35)]">
+                {!reduceMotion ? (
+                  <span
+                    aria-hidden
+                    className="eos-brain-flare absolute inset-y-[-30%] left-[-55%] w-[40%] skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/85 to-transparent opacity-70"
+                  />
+                ) : null}
+                <Brain
+                  size={34}
+                  strokeWidth={1.6}
+                  aria-hidden
+                  className="relative z-[1] drop-shadow-[0_0_12px_rgba(186,230,253,0.85)] transition duration-300 group-hover:drop-shadow-[0_0_22px_rgba(255,255,255,0.95)]"
+                />
               </span>
             </div>
 

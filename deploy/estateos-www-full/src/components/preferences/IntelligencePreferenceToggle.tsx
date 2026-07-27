@@ -18,13 +18,13 @@ export default function IntelligencePreferenceToggle({ className = "" }: { class
       aria-checked={enabled}
       disabled={!hydrated}
       onClick={() => setEnabled(!enabled)}
-      className={`flex w-full items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-left transition hover:border-[var(--eos-border-strong)] disabled:opacity-60 ${className}`}
+      className={`group flex w-full items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-left transition hover:border-[var(--eos-border-strong)] hover:brightness-110 disabled:opacity-60 ${className}`}
     >
       <span
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition duration-300 group-hover:scale-110 group-hover:brightness-125 ${
           enabled
-            ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-400"
-            : "border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-muted)]"
+            ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.35)] group-hover:shadow-[0_0_28px_rgba(52,211,153,0.65)]"
+            : "border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-muted)] group-hover:text-[var(--eos-text)]"
         }`}
       >
         <Brain size={15} strokeWidth={1.75} aria-hidden />
