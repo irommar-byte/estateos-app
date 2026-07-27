@@ -302,10 +302,31 @@ class IAPManagerImpl {
     // Drenuj wszystko co czeka z poprzednich sesji.
     await this.drainPending();
     await this.syncActiveInvestorProSubscriptions({ silent: true });
+    // Rozgrzewka katalogu — Plus + Investor Pro, żeby pierwszy tap nie trafiał w zimny StoreKit.
+    void this.prefetchStoreCatalog();
 
     this.initialized = true;
     if (__DEV__) console.log('[IAP] init OK');
     return true;
+  }
+
+  /** Ciche pobranie SKU — zmniejsza „product unavailable” przy pierwszym tapnięciu. */
+  private async prefetchStoreCatalog(): Promise<void> {
+    if (!this.iap) return;
+    try {
+      await this.fetchProductsForPurchase(
+        this.iap,
+        [IAP_PRODUCT_IDS.PAKIET_PLUS_30D],
+        'in-app',
+      );
+      await this.fetchProductsForPurchase(
+        this.iap,
+        this.storeSkusForPurchase(IAP_PRODUCT_IDS.INVESTOR_PRO, 'subs'),
+        'subs',
+      );
+    } catch (e) {
+      if (__DEV__) console.log('[IAP] prefetchStoreCatalog soft-fail:', e);
+    }
   }
 
   /**
@@ -597,21 +618,25 @@ class IAPManagerImpl {
     if (__DEV__) {
       console.warn('[IAP] product unavailable', { productId, skus, storeType });
     }
+    const sandboxHint = __DEV__
+      ? '\n• Ustawienia → App Store → konto Sandbox (testy z Xcode)\n• Scheme EstateOS musi mieć StoreKit Configuration.storekit'
+      : '';
     if (storeType === 'subs' || this.isInvestorProProductId(productId)) {
       return (
         'Subskrypcja Investor Pro nie jest teraz dostępna w App Store na tym koncie.\n\n' +
         'Spróbuj:\n' +
         '• Przywróć zakupy\n' +
-        '• Ustawienia → App Store → konto Sandbox (przy testach)\n' +
-        '• Połączenie z internetem i ponowna próba za chwilę'
+        '• Połączenie z internetem i ponowna próba za chwilę' +
+        sandboxHint
       );
     }
     return (
       'Pakiet Plus nie jest teraz dostępny w App Store na tym koncie.\n\n' +
       'Spróbuj:\n' +
       '• Przywróć zakupy\n' +
-      '• Ustawienia → App Store → konto Sandbox (przy testach)\n' +
-      '• Połączenie z internetem i ponowna próba za chwilę'
+      '• Połączenie z internetem i ponowna próba za chwilę\n' +
+      '• Jeśli masz kupon powitalny — użyj go przy publikacji oferty' +
+      sandboxHint
     );
   }
 
@@ -711,10 +736,19 @@ class IAPManagerImpl {
     this.activePurchaseContext = { productId, storeType, skus };
 
     try {
-      // StoreKit bywa „zimny” tuż po init — jedna krótka ponowna próba.
+      // StoreKit bywa „zimny” tuż po init — kilka prób z rosnącym backoffiem.
       let products = await this.fetchProductsForPurchase(iap, skus, storeType);
-      if (!products?.length) {
-        await new Promise((r) => setTimeout(r, 700));
+      for (const waitMs of [500, 1200, 2200]) {
+        if (products?.length) break;
+        await new Promise((r) => setTimeout(r, waitMs));
+        // Czasem pomaga świeże połączenie przed kolejnym fetch.
+        if (waitMs >= 1200) {
+          try {
+            await this.ensureConnected();
+          } catch {
+            // ignore
+          }
+        }
         products = await this.fetchProductsForPurchase(iap, skus, storeType);
       }
       const resolvedProductId = this.pickFetchedProductId(productId, products);
@@ -724,11 +758,13 @@ class IAPManagerImpl {
         purchaseType = this.resolvePurchaseStoreType(storeType, products, resolvedProductId);
         resolvedFromStore = true;
         this.activePurchaseContext = { productId, storeType: purchaseType, skus };
-      } else {
-        // Bez produktu w katalogu sklepu sheet i tak padnie — nie pokazujemy ASC-wall oferty.
-        if (__DEV__) {
-          console.log('[IAP] fetchProducts empty after retries — aborting purchase', productId, skus);
-        }
+      } else if (__DEV__) {
+        // StoreKit Testing / Sandbox: sheet czasem otwiera się po samym SKU mimo pustego katalogu.
+        console.log('[IAP] fetchProducts empty — attempting requestPurchase with SKU', productId, skus);
+      }
+      // iOS: nie abortujemy przy pustym katalogu — StoreKit 2 potrafi sprzedać po SKU.
+      // Android: bez produktu w Play Billing sheet niemal zawsze pada.
+      if (!resolvedProductId && Platform.OS === 'android') {
         return {
           ok: false,
           message: this.productUnavailableMessage(productId, skus, storeType),

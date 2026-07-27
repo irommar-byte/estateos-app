@@ -80,6 +80,9 @@
             ReferencedContainer = "container:EstateOS.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <StoreKitConfigurationFileReference
+         identifier = "StoreKit/Configuration.storekit">
+      </StoreKitConfigurationFileReference>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">
