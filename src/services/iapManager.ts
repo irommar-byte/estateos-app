@@ -677,21 +677,27 @@ class IAPManagerImpl {
       return { ok: false, message: 'Sklep In-App nie jest dostępny.' };
     }
 
+    const skus = this.storeSkusForPurchase(productId, storeType);
     let purchaseType = storeType;
+    let resolvedFromStore = false;
+
     try {
-      const skus = this.storeSkusForPurchase(productId, storeType);
-      const products = await this.fetchProductsForPurchase(iap, skus, storeType);
-      const resolvedProductId = this.pickFetchedProductId(productId, products);
-      if (!resolvedProductId) {
-        return {
-          ok: false,
-          message: this.productUnavailableMessage(productId, skus, storeType),
-        };
+      // StoreKit bywa „zimny” tuż po init — jedna krótka ponowna próba.
+      let products = await this.fetchProductsForPurchase(iap, skus, storeType);
+      if (!products?.length) {
+        await new Promise((r) => setTimeout(r, 700));
+        products = await this.fetchProductsForPurchase(iap, skus, storeType);
       }
-      // Dalej używamy SKU faktycznie zwróconego przez sklep (może być legacy)
-      // i typu z metadanych produktu (ASC czasem ma inny bucket niż oczekujemy).
-      productId = resolvedProductId;
-      purchaseType = this.resolvePurchaseStoreType(storeType, products, resolvedProductId);
+      const resolvedProductId = this.pickFetchedProductId(productId, products);
+      if (resolvedProductId) {
+        // SKU faktycznie zwrócone przez sklep (może być legacy) + typ z metadanych.
+        productId = resolvedProductId;
+        purchaseType = this.resolvePurchaseStoreType(storeType, products, resolvedProductId);
+        resolvedFromStore = true;
+      } else if (__DEV__) {
+        console.log('[IAP] fetchProducts empty — attempting requestPurchase with SKU', productId, skus);
+      }
+      // Pusta lista ≠ natychmiastowy fail: StoreKit 2 czasem otwiera sheet po samym SKU.
     } catch (e) {
       return {
         ok: false,
@@ -743,9 +749,17 @@ class IAPManagerImpl {
         }
         if (this.waiters.delete(waiterKey)) {
           clearTimeout(timeout);
+          const raw = this.toUserPurchaseMessage(err, 'Zakup nie powiódł się.', purchaseType);
+          const looksMissing =
+            !resolvedFromStore ||
+            /not available|nie jest dostępny|couldn't be found|cannot be found|invalid.?product|no product|unknown product|sku/i.test(
+              raw,
+            );
           resolve({
             ok: false,
-            message: this.toUserPurchaseMessage(err, 'Zakup nie powiódł się.', purchaseType),
+            message: looksMissing
+              ? this.productUnavailableMessage(productId, skus, storeType)
+              : raw,
           });
         }
       });
