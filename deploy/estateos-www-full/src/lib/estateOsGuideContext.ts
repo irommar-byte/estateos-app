@@ -1,35 +1,207 @@
 import { prisma } from '@/lib/prisma';
+import { buildDiscoveryBuyerBrief } from '@/lib/discoveryInsights';
 
-export async function buildEstateOsGuideContext(userId: number) {
+export type GuideIntentStage = 'EXPLORE' | 'FOCUS' | 'READY' | 'COMPLETE';
+
+export type GuideActionKey =
+  | 'DISCOVERY'
+  | 'TROPES'
+  | 'MAP'
+  | 'DIRECTION'
+  | 'PROFILE'
+  | 'CONTACT';
+
+export type GuideCta = {
+  label: string;
+  href: string;
+  action: GuideActionKey;
+};
+
+export type EstateOsGuideContext = {
+  confidence: number;
+  contradictionIndex: number;
+  searchPhase: string;
+  intentStage: GuideIntentStage;
+  intentLabel: string;
+  body: string;
+  summaryLine: string;
+  decisionCount: number;
+  tropes: Array<{
+    offerId: number;
+    status: string;
+    priority: boolean;
+    visitOutcome: string | null;
+    updatedAt: Date;
+  }>;
+  nextStep: {
+    key: string;
+    title: string;
+    action: GuideActionKey;
+    offerId?: number | null;
+  };
+  primaryCta: GuideCta;
+  secondaryCta: GuideCta;
+  stageProgress: number;
+};
+
+const STAGE_LABEL: Record<GuideIntentStage, string> = {
+  EXPLORE: 'Odkrywanie',
+  FOCUS: 'Fokus',
+  READY: 'Gotowość',
+  COMPLETE: 'Domknięte',
+};
+
+function resolveHref(action: GuideActionKey, offerId?: number | null): string {
+  switch (action) {
+    case 'TROPES':
+      return offerId ? `/oferta/${offerId}` : '/moj-kierunek';
+    case 'MAP':
+      return '/odkryj-mape';
+    case 'DIRECTION':
+    case 'PROFILE':
+      return '/moj-kierunek';
+    case 'CONTACT':
+      return '/moje-konto/wiadomosci';
+    case 'DISCOVERY':
+    default:
+      return '/oferty';
+  }
+}
+
+function buildCta(label: string, action: GuideActionKey, offerId?: number | null): GuideCta {
+  return { label, action, href: resolveHref(action, offerId) };
+}
+
+/**
+ * Guide 2.0 — stage-aware copy from Discovery profile + tropes.
+ * Never throws for cold start; always returns a usable next step.
+ */
+export async function buildEstateOsGuideContext(userId: number): Promise<EstateOsGuideContext> {
   const [profile, tropes] = await Promise.all([
-    prisma.discoveryProfile.findUnique({
-      where: { userId },
-      select: { confidence: true, contradictionIndex: true, searchPhase: true, updatedAt: true },
-    }),
+    prisma.discoveryProfile.findUnique({ where: { userId } }),
     prisma.discoveryTrope.findMany({
       where: { userId },
-      orderBy: { updatedAt: 'desc' },
-      take: 3,
+      orderBy: [{ priority: 'desc' }, { updatedAt: 'desc' }],
+      take: 5,
       select: { offerId: true, status: true, priority: true, visitOutcome: true, updatedAt: true },
     }),
   ]);
+
+  const brief = buildDiscoveryBuyerBrief({
+    likesCount: profile?.likesCount || 0,
+    dislikesCount: profile?.dislikesCount || 0,
+    fastTrackCount: profile?.fastTrackCount || 0,
+    opensCount: profile?.opensCount || 0,
+    cityStats: profile?.cityStats,
+    districtStats: profile?.districtStats,
+    propertyStats: profile?.propertyStats,
+    reasonStats: profile?.reasonStats,
+  });
+
+  const confidence = profile?.confidence || 0;
+  const contradictionIndex = profile?.contradictionIndex || 0;
+  const searchPhase = profile?.searchPhase || 'ACTIVE';
+  const decisionCount = brief.likesCount + brief.dislikesCount + brief.fastTrackCount;
   const priority = tropes.find((trope) => trope.status === 'SERIOUS' || trope.priority);
-  const nextStep =
-    profile?.searchPhase === 'COMPLETED'
-      ? { key: 'JOURNEY_COMPLETE', title: 'Twoja faza poszukiwania jest domknięta.', action: 'PROFILE' }
-      : priority
-        ? { key: 'SERIOUS_TROPE', title: 'Masz ważny trop, który warto spokojnie pogłębić.', action: 'TROPES', offerId: priority.offerId }
-        : (profile?.contradictionIndex || 0) >= 0.55
-          ? { key: 'CONTRADICTION_CARE', title: 'Możemy zwolnić i spokojnie uporządkować kierunek.', action: 'DISCOVERY' }
-          : (profile?.confidence || 0) >= 0.35
-            ? { key: 'CONTINUE_DISCOVERY', title: 'Twój kierunek jest coraz wyraźniejszy.', action: 'DISCOVERY' }
-            : { key: 'START_DISCOVERY', title: 'Zacznijmy od miejsc, które coś w Tobie poruszą.', action: 'DISCOVERY' };
+  const topCity = brief.topCities[0]?.key || null;
+
+  let intentStage: GuideIntentStage = 'EXPLORE';
+  if (searchPhase === 'COMPLETED') intentStage = 'COMPLETE';
+  else if (priority || confidence >= 0.55 || brief.fastTrackCount >= 2) intentStage = 'READY';
+  else if (decisionCount >= 4 || confidence >= 0.22) intentStage = 'FOCUS';
+
+  let nextStep: EstateOsGuideContext['nextStep'];
+  let body: string;
+  let primaryCta: GuideCta;
+  let secondaryCta: GuideCta;
+
+  if (intentStage === 'COMPLETE') {
+    nextStep = {
+      key: 'JOURNEY_COMPLETE',
+      title: 'Ta faza poszukiwania jest domknięta.',
+      action: 'DIRECTION',
+    };
+    body = 'Możesz wrócić do kierunku, gdy pojawi się nowa potrzeba — bez zaczynania od zera.';
+    primaryCta = buildCta('Zobacz mój kierunek', 'DIRECTION');
+    secondaryCta = buildCta('Przeglądaj oferty', 'DISCOVERY');
+  } else if (priority) {
+    nextStep = {
+      key: 'SERIOUS_TROPE',
+      title: 'Masz trop, który warto spokojnie pogłębić.',
+      action: 'TROPES',
+      offerId: priority.offerId,
+    };
+    body = topCity
+      ? `Jeden sygnał „na poważnie” w okolicy ${topCity}. Otwórz ofertę albo porównaj z lustrem kierunku.`
+      : 'Jeden sygnał „na poważnie”. Otwórz ofertę albo porównaj z lustrem kierunku — bez pośpiechu.';
+    primaryCta = buildCta('Otwórz trop', 'TROPES', priority.offerId);
+    secondaryCta = buildCta('Mój kierunek', 'DIRECTION');
+  } else if (contradictionIndex >= 0.55) {
+    nextStep = {
+      key: 'CONTRADICTION_CARE',
+      title: 'Zwolnijmy — kierunek się miesza.',
+      action: 'DIRECTION',
+    };
+    body =
+      'Twoje „pasuje” i „nie dla mnie” trochę się ścierają. Kilka spokojnych decyzji albo podgląd kierunku pomogą to ułożyć.';
+    primaryCta = buildCta('Uporządkuj kierunek', 'DIRECTION');
+    secondaryCta = buildCta('Oceń oferty', 'DISCOVERY');
+  } else if (intentStage === 'READY') {
+    nextStep = {
+      key: 'READY_NEXT',
+      title: topCity ? `Kierunek wokół ${topCity} jest już wyraźny.` : 'Kierunek jest już wyraźny.',
+      action: 'DISCOVERY',
+    };
+    body =
+      brief.summaryLine && !brief.summaryLine.includes('Za mało')
+        ? `${brief.summaryLine}. Czas doprecyzować albo oznaczyć coś „na poważnie”.`
+        : 'Masz wystarczająco sygnałów, by iść w głąb — albo oznaczyć ofertę „na poważnie”.';
+    primaryCta = buildCta('Doprecyzuj w katalogu', 'DISCOVERY');
+    secondaryCta = buildCta('Mój kierunek', 'DIRECTION');
+  } else if (intentStage === 'FOCUS') {
+    nextStep = {
+      key: 'CONTINUE_DISCOVERY',
+      title: topCity ? `Zarys wokół ${topCity} się wyłania.` : 'Twój kierunek robi się wyraźniejszy.',
+      action: 'DISCOVERY',
+    };
+    body =
+      'Kilka kolejnych cichych decyzji — zwłaszcza „nie dla mnie” z powodem — mocno ostrzy gust.';
+    primaryCta = buildCta('Kontynuuj ocenianie', 'DISCOVERY');
+    secondaryCta = buildCta('Zobacz lustro', 'DIRECTION');
+  } else {
+    nextStep = {
+      key: 'START_DISCOVERY',
+      title: 'Zacznijmy od tego, co coś w Tobie poruszy.',
+      action: 'DISCOVERY',
+    };
+    body =
+      'Bez formularza. Na kartach ofert wybierz Pasuje, Nie dla mnie albo Na poważnie — Guide nauczy się z tego sam.';
+    primaryCta = buildCta('Oceń pierwsze oferty', 'DISCOVERY');
+    secondaryCta = buildCta('Odkryj na mapie', 'MAP');
+  }
+
+  const stageProgress =
+    intentStage === 'COMPLETE'
+      ? 1
+      : intentStage === 'READY'
+        ? 0.82
+        : intentStage === 'FOCUS'
+          ? Math.min(0.65, 0.28 + decisionCount * 0.05)
+          : Math.min(0.22, decisionCount * 0.04);
 
   return {
-    confidence: profile?.confidence || 0,
-    contradictionIndex: profile?.contradictionIndex || 0,
-    searchPhase: profile?.searchPhase || 'ACTIVE',
+    confidence,
+    contradictionIndex,
+    searchPhase,
+    intentStage,
+    intentLabel: STAGE_LABEL[intentStage],
+    body,
+    summaryLine: brief.summaryLine,
+    decisionCount,
     tropes,
     nextStep,
+    primaryCta,
+    secondaryCta,
+    stageProgress,
   };
 }
