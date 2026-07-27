@@ -26,6 +26,7 @@ import { normalizeTransactionType } from "@/lib/transactionType";
 import { formatPublicOfferLocation } from "@/lib/publicOfferLocation";
 import { useLocale } from "@/contexts/LocaleContext";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
+import OfferDiscoveryActions from "@/components/discovery/OfferDiscoveryActions";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 import OfferNewBadge from "@/components/offer/OfferNewBadge";
 import OfferTransactionBadge from "@/components/offer/OfferTransactionBadge";
@@ -467,6 +468,17 @@ export default function CatalogPage() {
             variant="icon"
             size={18}
             className="absolute right-3 top-3 z-20"
+            onRequireAuth={() => {
+              window.location.href = `/login?redirect=${encodeURIComponent(`/oferta/${offer.id}`)}`;
+            }}
+          />
+          <OfferDiscoveryActions
+            offerId={offer.id}
+            variant="compact"
+            source="web_catalog_rail"
+            className={`absolute z-20 ${
+              opts?.showDistance && distance != null ? "bottom-12 left-1/2 -translate-x-1/2" : "bottom-3 left-1/2 -translate-x-1/2"
+            }`}
             onRequireAuth={() => {
               window.location.href = `/login?redirect=${encodeURIComponent(`/oferta/${offer.id}`)}`;
             }}

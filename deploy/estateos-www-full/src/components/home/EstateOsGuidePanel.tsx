@@ -1,17 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Compass, Bookmark, Sparkles, ArrowRight } from "lucide-react";
+import { DISCOVERY_UPDATED_EVENT } from "@/lib/discovery/clientEvents";
 
 export default function EstateOsGuidePanel() {
   const [guide, setGuide] = useState<{ nextStep?: { title?: string; action?: string }; confidence?: number } | null>(null);
-  useEffect(() => {
-    void fetch("/api/guide/context", { credentials: "include" })
-      .then((response) => response.ok ? response.json() : null)
+
+  const refreshGuide = useCallback(() => {
+    void fetch("/api/guide/context", { credentials: "include", cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
       .then((payload) => setGuide(payload?.guide || null))
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    refreshGuide();
+    const onDiscoveryUpdated = () => refreshGuide();
+    window.addEventListener(DISCOVERY_UPDATED_EVENT, onDiscoveryUpdated);
+    return () => window.removeEventListener(DISCOVERY_UPDATED_EVENT, onDiscoveryUpdated);
+  }, [refreshGuide]);
+
   const title = guide?.nextStep?.title || "Zacznijmy od tego, co jest dla Ciebie ważne.";
   return (
     <section className="relative z-30 mx-auto -mt-8 mb-10 w-[calc(100%-2rem)] max-w-6xl sm:-mt-10 sm:w-[calc(100%-3rem)]">
@@ -29,8 +39,8 @@ export default function EstateOsGuidePanel() {
             </div>
             <h2 className="mt-5 max-w-xl text-2xl font-semibold tracking-tight text-white sm:text-3xl">{title}</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-white/65">
-              Guide pomaga odkrywać miejsca, zapamiętywać ważne tropy i rozumieć kolejny krok — bez formularza, presji i udawanej pewności.
-              Pełne Discovery™ (przesuwanie kart i uczenie gustu) działa w aplikacji mobilnej EstateOS — tutaj na www prowadzimy Cię dalej przez mapę, oferty i konto.
+              Guide uczy się z Twoich cichych decyzji na ofertach — pasuje, nie dla mnie, na poważnie — i podpowiada kolejny krok bez formularza i presji.
+              Głębsze Discovery™ (przesuwanie kart) zostaje w aplikacji mobilnej; na www gust buduje się naturalnie przy przeglądaniu.
             </p>
           </div>
           <div className="grid w-full gap-2 sm:grid-cols-3 lg:w-[34rem] lg:grid-cols-1">

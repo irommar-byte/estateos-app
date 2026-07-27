@@ -25,6 +25,7 @@ import OfferOwnerPublishPanel from "@/components/offer/OfferOwnerPublishPanel";
 import OfferDiscountPriceHero from "@/components/offer/OfferDiscountPriceHero";
 import OfferPriceHistoryProSection from "@/components/offer/OfferPriceHistoryProSection";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
+import OfferDiscoveryActions from "@/components/discovery/OfferDiscoveryActions";
 import OfferGalleryLightbox from "@/components/offer/OfferGalleryLightbox";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -606,18 +607,33 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               <Link href="/odkryj-mape" className="eos-offer-hero-back">
                 {t.backToMap}
               </Link>
-              <OfferFavoriteButton
-                offerId={offer.id}
-                variant="pill"
-                size={22}
-                labelAdd={favoriteLabels.add}
-                labelRemove={favoriteLabels.remove}
-                className="shrink-0"
-                onRequireAuth={() => {
-                  window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
-                }}
-              />
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <OfferFavoriteButton
+                  offerId={offer.id}
+                  variant="pill"
+                  size={22}
+                  labelAdd={favoriteLabels.add}
+                  labelRemove={favoriteLabels.remove}
+                  className="shrink-0"
+                  onRequireAuth={() => {
+                    window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+                  }}
+                />
+              </div>
             </div>
+            {!isArchived && !isLocked ? (
+              <div className="pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+                <OfferDiscoveryActions
+                  offerId={offer.id}
+                  variant="full"
+                  trackOpen
+                  source="web_offer_detail"
+                  onRequireAuth={() => {
+                    window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+                  }}
+                />
+              </div>
+            ) : null}
 
             {!isArchived ? (
             <div

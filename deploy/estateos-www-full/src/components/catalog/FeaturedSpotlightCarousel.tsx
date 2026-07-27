@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Crown, Sparkles } from "lucide-react";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
+import OfferDiscoveryActions from "@/components/discovery/OfferDiscoveryActions";
 import CarFavoriteButton from "@/components/cars/CarFavoriteButton";
 
 export type SpotlightItem = {
@@ -130,15 +131,26 @@ export default function FeaturedSpotlightCarousel({
                     />
                   </div>
                 ) : (
-                  <OfferFavoriteButton
-                    offerId={item.id}
-                    variant="icon"
-                    size={18}
-                    className="absolute right-3 top-3 z-20"
-                    onRequireAuth={() => {
-                      window.location.href = `/login?redirect=${encodeURIComponent(item.href)}`;
-                    }}
-                  />
+                  <>
+                    <OfferFavoriteButton
+                      offerId={item.id}
+                      variant="icon"
+                      size={18}
+                      className="absolute right-3 top-3 z-20"
+                      onRequireAuth={() => {
+                        window.location.href = `/login?redirect=${encodeURIComponent(item.href)}`;
+                      }}
+                    />
+                    <OfferDiscoveryActions
+                      offerId={item.id}
+                      variant="compact"
+                      source="web_spotlight"
+                      className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2"
+                      onRequireAuth={() => {
+                        window.location.href = `/login?redirect=${encodeURIComponent(item.href)}`;
+                      }}
+                    />
+                  </>
                 )}
               </div>
               <div className="space-y-1 p-4">
