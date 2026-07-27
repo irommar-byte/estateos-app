@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
+import { Brain } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import ApplePressable from '../ApplePressable';
@@ -28,6 +29,8 @@ type Props = {
 
 type Mood = 'calm' | 'active' | 'alert';
 
+const BUBBLE = 48;
+
 function resolveMood(progress: number, confidence: number, contradiction: number): Mood {
   if (contradiction >= 0.55) return 'alert';
   if (progress >= 35 || confidence >= 0.35) return 'active';
@@ -36,7 +39,7 @@ function resolveMood(progress: number, confidence: number, contradiction: number
 
 const MOOD: Record<Mood, { accent: string; soft: string; ring: string }> = {
   calm: { accent: '#34D399', soft: 'rgba(52,211,153,0.35)', ring: 'rgba(52,211,153,0.55)' },
-  active: { accent: '#5AC8FA', soft: 'rgba(90,200,250,0.38)', ring: 'rgba(90,200,250,0.6)' },
+  active: { accent: '#5AC8FA', soft: 'rgba(90,200,250,0.45)', ring: 'rgba(90,200,250,0.65)' },
   alert: { accent: '#FBBF24', soft: 'rgba(251,191,36,0.4)', ring: 'rgba(251,191,36,0.65)' },
 };
 
@@ -64,8 +67,8 @@ function navigatePulseAction(navigation: any, action: string | undefined, firstE
 }
 
 /**
- * Compact Inteligence island — below app chrome, never in the status-bar /
- * system Dynamic Island band, and never over bottom offer previews.
+ * Round brain affordance (same visual language as the chat bubble) —
+ * opens Inteligence sheet. Never covers bottom offer previews.
  */
 export default function IntelligencePulseTape({ navigation, surface = 'explore' }: Props) {
   const insets = useSafeAreaInsets();
@@ -87,13 +90,13 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
       Animated.sequence([
         Animated.timing(breathe, {
           toValue: 1,
-          duration: 2600,
+          duration: 2800,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(breathe, {
           toValue: 0,
-          duration: 2600,
+          duration: 2800,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -130,51 +133,44 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
 
   if (!ready || !pulse) return null;
 
-  // Below Homes/Cars (market) or Live Radar row (explore) — never status-bar DI slot.
+  // Top-right under chrome — same corner language as the green chat bubble.
   const chromeBelowSafe =
     surface === 'market'
       ? Platform.OS === 'ios'
-        ? 52
-        : 48
+        ? 50
+        : 46
       : Platform.OS === 'ios'
-        ? 102
-        : 96;
+        ? 54
+        : 50;
   const top = insets.top + chromeBelowSafe;
+  const right = 16;
   const sheetWidth = Math.min(340, width - 28);
-  const glowOpacity = breathe.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.85] });
-  const glowScale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+  const glowOpacity = breathe.interpolate({ inputRange: [0, 1], outputRange: [0.28, 0.75] });
+  const glowScale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] });
 
   return (
     <>
-      <View pointerEvents="box-none" style={[styles.root, { top }]}>
+      <View pointerEvents="box-none" style={[styles.root, { top, right }]}>
         <ApplePressable
           onPress={open}
-          style={styles.islandHit}
+          style={styles.bubbleHit}
           accessibilityLabel="EstateOS Inteligence"
           haptic="none"
         >
-          <View style={styles.islandOuter}>
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.islandAura,
-                {
-                  backgroundColor: colors.soft,
-                  opacity: glowOpacity,
-                  transform: [{ scale: glowScale }],
-                },
-              ]}
-            />
-            <BlurView intensity={90} tint="dark" style={[styles.island, { borderColor: colors.ring }]}>
-              <View style={styles.orb}>
-                <Ionicons name="sparkles" size={12} color={colors.accent} />
-              </View>
-              <Text style={styles.islandLabel} numberOfLines={1}>
-                Inteligence
-              </Text>
-              <View style={[styles.progressDot, { backgroundColor: colors.accent }]} />
-            </BlurView>
-          </View>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.aura,
+              {
+                backgroundColor: colors.soft,
+                opacity: glowOpacity,
+                transform: [{ scale: glowScale }],
+              },
+            ]}
+          />
+          <BlurView intensity={90} tint="dark" style={[styles.bubble, { borderColor: colors.ring }]}>
+            <Brain size={22} color={colors.accent} strokeWidth={2.15} />
+          </BlurView>
         </ApplePressable>
       </View>
 
@@ -190,7 +186,7 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
             style={[
               styles.sheetWrap,
               {
-                top: top + 44,
+                top: top + BUBBLE + 10,
                 left: (width - sheetWidth) / 2,
                 width: sheetWidth,
                 opacity: pop,
@@ -210,7 +206,7 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
                 <View style={[styles.sheetGlow, { backgroundColor: colors.soft }]} />
                 <View style={styles.sheetHead}>
                   <View style={[styles.orbLg, { borderColor: colors.accent }]}>
-                    <Ionicons name="sparkles" size={16} color={colors.accent} />
+                    <Brain size={18} color={colors.accent} strokeWidth={2.2} />
                   </View>
                   <View style={styles.sheetHeadCopy}>
                     <Text style={styles.sheetKicker}>EstateOS™ Inteligence</Text>
@@ -258,55 +254,30 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
 const styles = StyleSheet.create({
   root: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 60,
-    alignItems: 'center',
+    zIndex: 62,
+    elevation: 62,
   },
-  islandHit: {
-    alignItems: 'center',
-  },
-  islandOuter: {
+  bubbleHit: {
+    width: BUBBLE,
+    height: BUBBLE,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  islandAura: {
+  aura: {
     position: 'absolute',
-    width: 148,
-    height: 40,
-    borderRadius: 20,
+    width: BUBBLE + 10,
+    height: BUBBLE + 10,
+    borderRadius: (BUBBLE + 10) / 2,
   },
-  island: {
-    minWidth: 126,
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 17,
+  bubble: {
+    width: BUBBLE,
+    height: BUBBLE,
+    borderRadius: BUBBLE / 2,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  orb: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    backgroundColor: 'rgba(10,10,12,0.82)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  islandLabel: {
-    color: '#F5F5F7',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-  },
-  progressDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginLeft: 2,
   },
   backdrop: {
     flex: 1,
