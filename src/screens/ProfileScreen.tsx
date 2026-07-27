@@ -8,6 +8,11 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/useAuthStore';
 import { PasskeyService } from '../services/passkeyService';
+import {
+  fetchIntelligencePreference,
+  readLocalIntelligencePreference,
+  setIntelligencePreference,
+} from '../services/intelligencePreferenceService';
 import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { API_URL } from '../config/network';
 import { ESTATEOS_CONTACT_EMAIL, mailtoEstateosSubject } from '../constants/appContact';
@@ -3035,6 +3040,8 @@ function ProfileScreenLoggedIn({
   // --- LOGIKA KLAWISZA PASSKEY (Z PAMIĘCIĄ LOCALSTORAGE) ---
   const [isPasskeyActive, setIsPasskeyActive] = useState(false);
   const [passkeyHardwareSupported, setPasskeyHardwareSupported] = useState(Platform.OS === 'ios');
+  const [intelligenceEnabled, setIntelligenceEnabled] = useState(false);
+  const [intelligenceHydrated, setIntelligenceHydrated] = useState(false);
   /**
    * „Przywróć zakupy" — App Store Review Guideline 3.1.1 wymaga
    * widocznego przycisku w każdej aplikacji oferującej IAP. Przycisk
@@ -3051,6 +3058,31 @@ function ProfileScreenLoggedIn({
   /** Zapobiega nakładaniu się dwóch Modal z listą użytkowników i kartą profilu (iOS psuje dotyk). */
   const adminUsersReturnRef = useRef(false);
   const adminPhotoSessionsReturnRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateIntelligence = async () => {
+      const local = await readLocalIntelligencePreference();
+      if (cancelled) return;
+      setIntelligenceEnabled(local.enabled);
+      setIntelligenceHydrated(true);
+      if (!token) return;
+      const remote = await fetchIntelligencePreference(token);
+      if (cancelled || !remote) return;
+      setIntelligenceEnabled(remote.enabled);
+    };
+    void hydrateIntelligence();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user?.id]);
+
+  const toggleIntelligence = async (nextValue: boolean) => {
+    setIntelligenceEnabled(nextValue);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    const saved = await setIntelligencePreference(token, nextValue);
+    setIntelligenceEnabled(saved.enabled);
+  };
 
   useEffect(() => {
     const checkServerPasskeyStatus = async () => {
@@ -4310,6 +4342,49 @@ function ProfileScreenLoggedIn({
           <Text style={styles.sectionFooter}>
             {t('profile.notifications.sectionFooter')}
           </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('profile.intelligence.sectionTitle')}</Text>
+          <ProfileCardShell isDark={isDark}>
+            <View style={[styles.listItem, { paddingVertical: 12 }]}>
+              <View
+                style={[
+                  styles.listIconBox,
+                  {
+                    backgroundColor: intelligenceEnabled
+                      ? '#6366F1'
+                      : isDark
+                        ? '#3A3A3C'
+                        : '#E5E5EA',
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="sparkles"
+                  size={20}
+                  color={intelligenceEnabled ? '#FFF' : '#8E8E93'}
+                />
+              </View>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>
+                  {t('profile.intelligence.title')}
+                </Text>
+                <Text style={styles.listSubtitle}>
+                  {intelligenceEnabled
+                    ? t('profile.intelligence.subtitleOn')
+                    : t('profile.intelligence.subtitleOff')}
+                </Text>
+              </View>
+              <Switch
+                value={intelligenceEnabled}
+                disabled={!intelligenceHydrated}
+                onValueChange={(value) => void toggleIntelligence(value)}
+                trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#6366F1' }}
+              />
+            </View>
+          </ProfileCardShell>
+          <Text style={styles.sectionFooter}>{t('profile.intelligence.footer')}</Text>
         </View>
 
         {/* --- SEKCJA BEZPIECZEŃSTWA PASSKEY --- */}

@@ -203,6 +203,14 @@ export const profile = {
       timelineCollapse: 'Hide negotiation history',
     },
   },
+  intelligence: {
+    sectionTitle: 'EstateOS™ Inteligence',
+    title: 'Inteligence',
+    subtitleOn: 'Discovery personalization and suggestions on',
+    subtitleOff: 'Discovery personalization and suggestions',
+    footer:
+      'Same preference as on estateos.pl — enables personalization on your account.',
+  },
   security: {
     sectionTitle: 'Security',
     passkeyTitle: 'Passkey',

@@ -203,6 +203,14 @@ export const profile = {
       timelineCollapse: 'Свернуть историю переговоров',
     },
   },
+  intelligence: {
+    sectionTitle: 'EstateOS™ Inteligence',
+    title: 'Inteligence',
+    subtitleOn: 'Персонализация Discovery и подсказки включены',
+    subtitleOff: 'Персонализация Discovery и подсказки',
+    footer:
+      'Та же настройка, что на estateos.pl — включает персонализацию на аккаунте.',
+  },
   security: {
     sectionTitle: 'Безопасность',
     passkeyTitle: 'Ключ доступа',
