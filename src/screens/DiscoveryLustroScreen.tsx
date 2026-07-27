@@ -12,7 +12,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Compass, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react-native';
 import ApplePressable from '../components/ApplePressable';
-import { DISCOVERY_COLORS } from '../components/discovery/discoveryMotion';
+import DiscoveryScreenChrome from '../components/discovery/DiscoveryScreenChrome';
+import {
+  discoveryCard,
+  discoveryTheme,
+  type DiscoveryTheme,
+} from '../components/discovery/discoveryTheme';
 import { useDiscoveryProfile } from '../hooks/useDiscoveryProfile';
 import {
   discoveryDisplayLabel,
@@ -20,6 +25,7 @@ import {
   discoveryReasonLabel,
 } from '../lib/discovery/displayLabels';
 import { useAuthStore } from '../store/useAuthStore';
+import { useIsDarkTheme } from '../store/useThemeStore';
 
 function eventMeta(type: string) {
   switch (type) {
@@ -28,18 +34,18 @@ function eventMeta(type: string) {
       return { label: discoveryEventLabel(type) || 'Pasuje', Icon: ThumbsUp, tone: '#34D399' };
     case 'DISCOVERY_DISLIKE':
     case 'DISLIKE':
-      return { label: discoveryEventLabel(type) || 'Nie dla mnie', Icon: ThumbsDown, tone: '#FDA4AF' };
+      return { label: discoveryEventLabel(type) || 'Nie dla mnie', Icon: ThumbsDown, tone: '#FB7185' };
     case 'DISCOVERY_PRIORITY':
     case 'SERIOUS':
-      return { label: discoveryEventLabel(type) || 'Na poważnie', Icon: Sparkles, tone: '#FCD34D' };
+      return { label: discoveryEventLabel(type) || 'Na poważnie', Icon: Sparkles, tone: '#F59E0B' };
     case 'DISCOVERY_DEPTH_OPEN':
     case 'OPEN':
-      return { label: discoveryEventLabel(type) || 'Otwarto', Icon: Compass, tone: '#7DD3FC' };
+      return { label: discoveryEventLabel(type) || 'Otwarto', Icon: Compass, tone: '#38BDF8' };
     default:
       return {
         label: discoveryDisplayLabel(type.replace(/^DISCOVERY_/, '')),
         Icon: Compass,
-        tone: 'rgba(255,255,255,0.6)',
+        tone: '#94A3B8',
       };
   }
 }
@@ -49,25 +55,35 @@ function formatMoney(n: number | null) {
   return `${Math.round(n).toLocaleString('pl-PL')} PLN`;
 }
 
+function goBackOrDirection(navigation: any) {
+  if (navigation?.canGoBack?.()) {
+    navigation.goBack();
+    return;
+  }
+  navigation?.navigate?.('DiscoveryDirection');
+}
+
 function InsightBlock({
   title,
   items,
+  theme,
 }: {
   title: string;
   items: Array<{ key: string; value: number }>;
+  theme: DiscoveryTheme;
 }) {
   return (
-    <View style={styles.insight}>
-      <Text style={styles.insightTitle}>{title}</Text>
+    <View style={[styles.insight, discoveryCard(theme)]}>
+      <Text style={[styles.insightTitle, { color: theme.textMuted }]}>{title}</Text>
       {items.length === 0 ? (
-        <Text style={styles.muted}>—</Text>
+        <Text style={[styles.muted, { color: theme.textMuted }]}>—</Text>
       ) : (
         items.slice(0, 4).map((item) => (
           <View key={item.key} style={styles.insightRow}>
-            <Text style={styles.insightKey} numberOfLines={1}>
+            <Text style={[styles.insightKey, { color: theme.text }]} numberOfLines={1}>
               {discoveryDisplayLabel(item.key)}
             </Text>
-            <Text style={styles.insightVal}>{item.value}</Text>
+            <Text style={[styles.insightVal, { color: theme.textMuted }]}>{item.value}</Text>
           </View>
         ))
       )}
@@ -75,9 +91,11 @@ function InsightBlock({
   );
 }
 
-/** Deep preference mirror — analytics only, Apple Intelligence calm. */
+/** Deep preference mirror — analytics only, calm Intelligence UI. */
 export default function DiscoveryLustroScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
+  const isDark = useIsDarkTheme();
+  const theme = useMemo(() => discoveryTheme(isDark), [isDark]);
   const token = useAuthStore((s) => s.token);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -98,44 +116,61 @@ export default function DiscoveryLustroScreen({ navigation }: any) {
 
   if (auth === 'loading') {
     return (
-      <View style={[styles.root, styles.center]}>
-        <ActivityIndicator color={DISCOVERY_COLORS.gold} />
+      <View style={[styles.root, { backgroundColor: theme.bg }, styles.center]}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     );
   }
 
   if (auth === 'guest' || !token) {
     return (
-      <View style={[styles.root, { paddingTop: insets.top + 48, paddingHorizontal: 24 }]}>
-        <Text style={styles.eyebrow}>EstateOS™</Text>
-        <Text style={styles.h1}>Lustro preferencji</Text>
-        <Text style={styles.lead}>
+      <View
+        style={[
+          styles.root,
+          {
+            backgroundColor: theme.bg,
+            paddingTop: insets.top + 12,
+            paddingHorizontal: 18,
+            paddingBottom: insets.bottom + 24,
+          },
+        ]}
+      >
+        <DiscoveryScreenChrome theme={theme} onBack={() => goBackOrDirection(navigation)} />
+        <Text style={[styles.eyebrow, { color: theme.eyebrow }]}>EstateOS™</Text>
+        <Text style={[styles.h1, { color: theme.text }]}>Lustro preferencji</Text>
+        <Text style={[styles.lead, { color: theme.textMuted }]}>
           Zaloguj się, aby zobaczyć głęboką analizę gustu zbudowaną z Twoich cichych decyzji.
         </Text>
         <ApplePressable
-          style={styles.primary}
+          style={[styles.primary, { backgroundColor: theme.primaryBtn, flex: undefined }]}
           onPress={() => navigation?.navigate?.('Login')}
           haptic="medium"
         >
-          <Text style={styles.primaryText}>Zaloguj się</Text>
-        </ApplePressable>
-        <ApplePressable style={styles.back} onPress={() => navigation?.goBack?.()} haptic="none">
-          <Text style={styles.backText}>Wróć</Text>
+          <Text style={[styles.primaryText, { color: theme.primaryBtnText }]}>Zaloguj się</Text>
         </ApplePressable>
       </View>
     );
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: theme.bg }]}>
       {toast ? (
-        <View style={[styles.toast, { top: insets.top + 10 }]}>
-          <Text style={styles.toastText}>{toast}</Text>
+        <View
+          style={[
+            styles.toast,
+            {
+              top: insets.top + 10,
+              backgroundColor: theme.toastBg,
+              borderColor: theme.toastBorder,
+            },
+          ]}
+        >
+          <Text style={[styles.toastText, { color: theme.toastText }]}>{toast}</Text>
         </View>
       ) : null}
       <ScrollView
         contentContainerStyle={{
-          paddingTop: insets.top + 20,
+          paddingTop: insets.top + 10,
           paddingBottom: insets.bottom + 40,
           paddingHorizontal: 18,
         }}
@@ -143,50 +178,65 @@ export default function DiscoveryLustroScreen({ navigation }: any) {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => void reload({ force: true })}
-            tintColor={DISCOVERY_COLORS.gold}
+            tintColor={theme.accent}
           />
         }
       >
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.eyebrow}>EstateOS™ Intelligence</Text>
-            <Text style={styles.h1}>Lustro preferencji</Text>
-            <Text style={styles.lead}>
-              {profile?.summaryLine && !profile.summaryLine.includes('Za mało')
-                ? profile.summaryLine
-                : 'Głęboka analiza gustu — aktualizuje się po każdej decyzji.'}
-            </Text>
+        <DiscoveryScreenChrome
+          theme={theme}
+          onBack={() => goBackOrDirection(navigation)}
+          right={
             <ApplePressable
-              style={styles.linkBtn}
-              onPress={() => navigation.navigate('DiscoveryDirection')}
-              haptic="none"
+              style={[
+                styles.refreshBtnCompact,
+                { backgroundColor: theme.navBtnBg, borderColor: theme.navBtnBorder },
+              ]}
+              onPress={() => void reload({ force: true })}
+              haptic="selection"
+              accessibilityLabel="Odśwież"
             >
-              <Text style={styles.link}>← Wróć do kierunku</Text>
+              <Ionicons name="refresh" size={16} color={theme.navBtnIcon} />
             </ApplePressable>
-          </View>
-        </View>
+          }
+        />
+
+        <Text style={[styles.eyebrow, { color: theme.eyebrow }]}>EstateOS™ Intelligence</Text>
+        <Text style={[styles.h1, { color: theme.text }]}>Lustro preferencji</Text>
+        <Text style={[styles.lead, { color: theme.textMuted }]}>
+          {profile?.summaryLine && !profile.summaryLine.includes('Za mało')
+            ? profile.summaryLine
+            : 'Głęboka analiza gustu — aktualizuje się po każdej decyzji.'}
+        </Text>
 
         <View style={styles.ctaRow}>
           <ApplePressable
-            style={styles.primary}
+            style={[styles.primary, { backgroundColor: theme.primaryBtn }]}
             onPress={() => navigation.navigate('MainTabs', { screen: 'Market' })}
             haptic="medium"
           >
-            <Text style={styles.primaryText}>Oceń oferty</Text>
+            <Text style={[styles.primaryText, { color: theme.primaryBtnText }]}>Oceń oferty</Text>
           </ApplePressable>
           <ApplePressable
-            style={styles.refreshBtn}
-            onPress={() => void reload({ force: true })}
+            style={[
+              styles.refreshBtn,
+              { backgroundColor: theme.navBtnBg, borderColor: theme.navBtnBorder },
+            ]}
+            onPress={() => navigation.navigate('DiscoveryDirection')}
             haptic="selection"
-            accessibilityLabel="Odśwież"
+            accessibilityLabel="Mój kierunek"
           >
-            <Ionicons name="refresh" size={18} color="rgba(245,245,247,0.7)" />
+            <Text style={[styles.directionBtnText, { color: theme.navBtnIcon }]}>Kierunek</Text>
           </ApplePressable>
         </View>
 
         {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+          <View
+            style={[
+              styles.errorBox,
+              { backgroundColor: theme.dangerBg, borderColor: theme.dangerBorder },
+            ]}
+          >
+            <Text style={[styles.errorText, { color: theme.dangerText }]}>{error}</Text>
           </View>
         ) : null}
 
@@ -197,30 +247,36 @@ export default function DiscoveryLustroScreen({ navigation }: any) {
             { label: 'Na poważnie', value: profile?.fastTrackCount ?? 0 },
             { label: 'Otwarcia', value: profile?.opensCount ?? 0 },
           ].map((stat) => (
-            <View key={stat.label} style={styles.stat}>
-              <Text style={styles.statLabel}>{stat.label}</Text>
-              <Text style={styles.statValue}>{stat.value}</Text>
+            <View key={stat.label} style={[styles.stat, discoveryCard(theme)]}>
+              <Text style={[styles.statLabel, { color: theme.textMuted }]}>{stat.label}</Text>
+              <Text style={[styles.statValue, { color: theme.text }]}>{stat.value}</Text>
             </View>
           ))}
         </View>
 
-        <Text style={styles.sectionTitle}>Co EstateOS już wie</Text>
-        <Text style={styles.sectionSub}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Co EstateOS już wie</Text>
+        <Text style={[styles.sectionSub, { color: theme.textMuted }]}>
           {decisions === 0 ? 'Start — pierwsze decyzje tu zaskoczą.' : 'Sygnały z Twoich ocen.'}
         </Text>
         <View style={styles.insightGrid}>
-          <InsightBlock title="Miasta" items={profile?.topCities || []} />
-          <InsightBlock title="Dzielnice" items={profile?.topDistricts || []} />
-          <InsightBlock title="Typ" items={profile?.topPropertyTypes || []} />
+          <InsightBlock theme={theme} title="Miasta" items={profile?.topCities || []} />
+          <InsightBlock theme={theme} title="Dzielnice" items={profile?.topDistricts || []} />
+          <InsightBlock theme={theme} title="Typ" items={profile?.topPropertyTypes || []} />
         </View>
 
         {(profile?.dislikeReasons?.length || 0) > 0 ? (
           <View style={{ marginTop: 14 }}>
-            <Text style={styles.chipLabel}>Powody „nie dla mnie”</Text>
+            <Text style={[styles.chipLabel, { color: theme.textMuted }]}>Powody „nie dla mnie”</Text>
             <View style={styles.chipRow}>
               {profile!.dislikeReasons.map((r) => (
-                <View key={r.key} style={styles.reasonChip}>
-                  <Text style={styles.reasonChipText}>
+                <View
+                  key={r.key}
+                  style={[
+                    styles.reasonChip,
+                    { backgroundColor: theme.dangerBg, borderColor: theme.dangerBorder },
+                  ]}
+                >
+                  <Text style={[styles.reasonChipText, { color: theme.dangerText }]}>
                     {discoveryReasonLabel(r.key) || discoveryDisplayLabel(r.key)} · {r.value}
                   </Text>
                 </View>
@@ -231,18 +287,37 @@ export default function DiscoveryLustroScreen({ navigation }: any) {
 
         <View style={styles.chipRow}>
           {formatMoney(profile?.preferredBudgetPln ?? null) ? (
-            <View style={styles.pill}>
-              <Text style={styles.pillText}>Budżet ~{formatMoney(profile?.preferredBudgetPln ?? null)}</Text>
+            <View
+              style={[
+                styles.pill,
+                { backgroundColor: theme.pillBg, borderColor: theme.pillBorder },
+              ]}
+            >
+              <Text style={[styles.pillText, { color: theme.textMuted }]}>
+                Budżet ~{formatMoney(profile?.preferredBudgetPln ?? null)}
+              </Text>
             </View>
           ) : null}
           {profile?.preferredAreaM2 ? (
-            <View style={styles.pill}>
-              <Text style={styles.pillText}>~{profile.preferredAreaM2} m²</Text>
+            <View
+              style={[
+                styles.pill,
+                { backgroundColor: theme.pillBg, borderColor: theme.pillBorder },
+              ]}
+            >
+              <Text style={[styles.pillText, { color: theme.textMuted }]}>
+                ~{profile.preferredAreaM2} m²
+              </Text>
             </View>
           ) : null}
           {profile?.preferredTransaction ? (
-            <View style={styles.pill}>
-              <Text style={styles.pillText}>
+            <View
+              style={[
+                styles.pill,
+                { backgroundColor: theme.pillBg, borderColor: theme.pillBorder },
+              ]}
+            >
+              <Text style={[styles.pillText, { color: theme.textMuted }]}>
                 {profile.preferredTransaction === 'SELL'
                   ? 'Sprzedaż'
                   : profile.preferredTransaction === 'RENT'
@@ -253,11 +328,20 @@ export default function DiscoveryLustroScreen({ navigation }: any) {
           ) : null}
         </View>
 
-        <Text style={[styles.sectionTitle, { marginTop: 28 }]}>Ostatnie decyzje</Text>
-        <Text style={styles.sectionSub}>Najnowsze na górze.</Text>
+        <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>
+          Ostatnie decyzje
+        </Text>
+        <Text style={[styles.sectionSub, { color: theme.textMuted }]}>Najnowsze na górze.</Text>
         {recent.length === 0 ? (
-          <View style={styles.emptyBox}>
-            <Text style={styles.muted}>Brak decyzji. Oceń oferty w katalogu.</Text>
+          <View
+            style={[
+              styles.emptyBox,
+              { borderColor: theme.cardBorder },
+            ]}
+          >
+            <Text style={[styles.muted, { color: theme.textMuted }]}>
+              Brak decyzji. Oceń oferty w katalogu.
+            </Text>
           </View>
         ) : (
           recent.map((ev) => {
@@ -269,18 +353,18 @@ export default function DiscoveryLustroScreen({ navigation }: any) {
             return (
               <ApplePressable
                 key={ev.id}
-                style={styles.eventRow}
+                style={[styles.eventRow, discoveryCard(theme)]}
                 haptic="none"
                 onPress={() => {
                   if (ev.offer?.id) navigation.navigate('OfferDetail', { offerId: ev.offer.id });
                   else navigation.navigate('MainTabs', { screen: 'Market' });
                 }}
               >
-                <View style={styles.thumb}>
+                <View style={[styles.thumb, { backgroundColor: theme.track }]}>
                   {ev.offer?.imageUrl ? (
                     <Image source={{ uri: ev.offer.imageUrl }} style={styles.thumbImg} />
                   ) : (
-                    <Icon size={18} color="rgba(255,255,255,0.35)" />
+                    <Icon size={18} color={theme.textMuted} />
                   )}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -288,16 +372,16 @@ export default function DiscoveryLustroScreen({ navigation }: any) {
                     {meta.label}
                     {reason ? ` · ${reason}` : ''}
                   </Text>
-                  <Text style={styles.eventTitle} numberOfLines={1}>
+                  <Text style={[styles.eventTitle, { color: theme.text }]} numberOfLines={1}>
                     {ev.offer?.title || 'Oferta'}
                   </Text>
-                  <Text style={styles.eventMeta} numberOfLines={1}>
+                  <Text style={[styles.eventMeta, { color: theme.textMuted }]} numberOfLines={1}>
                     {[ev.offer?.city, new Date(ev.at).toLocaleString('pl-PL')]
                       .filter(Boolean)
                       .join(' · ')}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.35)" />
+                <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
               </ApplePressable>
             );
           })
@@ -305,26 +389,34 @@ export default function DiscoveryLustroScreen({ navigation }: any) {
 
         {tropes.length > 0 ? (
           <>
-            <Text style={[styles.sectionTitle, { marginTop: 28 }]}>Tropy na poważnie</Text>
+            <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 28 }]}>
+              Tropy na poważnie
+            </Text>
             {tropes.map((t) => (
               <ApplePressable
                 key={`${t.offerId}-${t.updatedAt}`}
-                style={styles.tropeRow}
+                style={[
+                  styles.tropeRow,
+                  {
+                    backgroundColor: isDark ? 'rgba(251,191,36,0.08)' : 'rgba(245,158,11,0.1)',
+                    borderColor: isDark ? 'rgba(251,191,36,0.3)' : 'rgba(217,119,6,0.28)',
+                  },
+                ]}
                 haptic="none"
                 onPress={() => navigation.navigate('OfferDetail', { offerId: t.offerId })}
               >
-                <View style={styles.thumb}>
+                <View style={[styles.thumb, { backgroundColor: theme.track }]}>
                   {t.offer?.imageUrl ? (
                     <Image source={{ uri: t.offer.imageUrl }} style={styles.thumbImg} />
                   ) : null}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.tropeBadge}>
+                  <Text style={[styles.tropeBadge, { color: isDark ? '#FCD34D' : '#B45309' }]}>
                     {t.priority || t.status === 'SERIOUS'
                       ? 'Na poważnie'
                       : discoveryDisplayLabel(t.status)}
                   </Text>
-                  <Text style={styles.eventTitle} numberOfLines={1}>
+                  <Text style={[styles.eventTitle, { color: theme.text }]} numberOfLines={1}>
                     {t.offer?.title || `Oferta #${t.offerId}`}
                   </Text>
                 </View>
@@ -338,7 +430,7 @@ export default function DiscoveryLustroScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#040405' },
+  root: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
   toast: {
     position: 'absolute',
@@ -346,14 +438,11 @@ const styles = StyleSheet.create({
     zIndex: 20,
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(52,211,153,0.3)',
-    backgroundColor: 'rgba(16,185,129,0.18)',
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
-  toastText: { color: '#D1FAE5', fontSize: 13, fontWeight: '700' },
+  toastText: { fontSize: 13, fontWeight: '700' },
   eyebrow: {
-    color: 'rgba(251,191,36,0.9)',
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 2.4,
@@ -361,51 +450,48 @@ const styles = StyleSheet.create({
   },
   h1: {
     marginTop: 10,
-    color: '#FFF',
     fontSize: 30,
     fontWeight: '700',
     letterSpacing: -0.6,
   },
   lead: {
     marginTop: 8,
-    color: DISCOVERY_COLORS.textMuted,
     fontSize: 15,
     lineHeight: 22,
   },
-  headerRow: { flexDirection: 'row', gap: 12 },
-  linkBtn: { marginTop: 10, alignSelf: 'flex-start' },
-  link: { color: '#34D399', fontSize: 14, fontWeight: '800' },
   ctaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 18 },
   primary: {
     flex: 1,
     height: 48,
     borderRadius: 18,
-    backgroundColor: '#10B981',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+  primaryText: { fontSize: 13, fontWeight: '800' },
   refreshBtn: {
-    width: 48,
     height: 48,
+    paddingHorizontal: 14,
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.14)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  back: { marginTop: 16, alignSelf: 'flex-start', padding: 8 },
-  backText: { color: DISCOVERY_COLORS.textMuted, fontWeight: '700' },
+  refreshBtnCompact: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  directionBtnText: { fontSize: 13, fontWeight: '800' },
   errorBox: {
     marginTop: 16,
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(251,113,133,0.3)',
-    backgroundColor: 'rgba(244,63,94,0.12)',
     padding: 12,
   },
-  errorText: { color: '#FECDD3', fontSize: 13 },
+  errorText: { fontSize: 13 },
   statsGrid: {
     marginTop: 22,
     flexDirection: 'row',
@@ -417,13 +503,10 @@ const styles = StyleSheet.create({
     minHeight: 76,
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
   statLabel: {
-    color: 'rgba(245,245,247,0.5)',
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 1.2,
@@ -431,32 +514,26 @@ const styles = StyleSheet.create({
   },
   statValue: {
     marginTop: 8,
-    color: '#FFF',
     fontSize: 24,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   sectionTitle: {
     marginTop: 28,
-    color: '#FFF',
     fontSize: 18,
     fontWeight: '700',
   },
   sectionSub: {
     marginTop: 4,
-    color: DISCOVERY_COLORS.textMuted,
     fontSize: 13,
   },
   insightGrid: { marginTop: 12, gap: 10 },
   insight: {
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
     padding: 14,
   },
   insightTitle: {
-    color: 'rgba(245,245,247,0.5)',
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1.6,
@@ -468,12 +545,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
-  insightKey: { flex: 1, color: '#FFF', fontSize: 13, fontWeight: '600' },
-  insightVal: { color: DISCOVERY_COLORS.textMuted, fontVariant: ['tabular-nums'] },
-  muted: { marginTop: 10, color: DISCOVERY_COLORS.textMuted, fontSize: 13 },
+  insightKey: { flex: 1, fontSize: 13, fontWeight: '600' },
+  insightVal: { fontVariant: ['tabular-nums'] },
+  muted: { marginTop: 10, fontSize: 13 },
   chipLabel: {
     marginBottom: 8,
-    color: 'rgba(245,245,247,0.5)',
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1.4,
@@ -483,27 +559,22 @@ const styles = StyleSheet.create({
   reasonChip: {
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(251,113,133,0.28)',
-    backgroundColor: 'rgba(244,63,94,0.12)',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  reasonChipText: { color: '#FFE4E6', fontSize: 13 },
+  reasonChipText: { fontSize: 13 },
   pill: {
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  pillText: { color: DISCOVERY_COLORS.textMuted, fontSize: 13 },
+  pillText: { fontSize: 13 },
   emptyBox: {
     marginTop: 12,
     borderRadius: 20,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: 'rgba(255,255,255,0.14)',
     padding: 24,
     alignItems: 'center',
   },
@@ -514,8 +585,6 @@ const styles = StyleSheet.create({
     gap: 12,
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
     padding: 10,
   },
   thumb: {
@@ -523,7 +592,6 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -534,8 +602,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
-  eventTitle: { marginTop: 2, color: '#FFF', fontSize: 14, fontWeight: '700' },
-  eventMeta: { marginTop: 2, color: DISCOVERY_COLORS.textMuted, fontSize: 12 },
+  eventTitle: { marginTop: 2, fontSize: 14, fontWeight: '700' },
+  eventMeta: { marginTop: 2, fontSize: 12 },
   tropeRow: {
     marginTop: 8,
     flexDirection: 'row',
@@ -543,15 +611,12 @@ const styles = StyleSheet.create({
     gap: 12,
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(251,191,36,0.28)',
-    backgroundColor: 'rgba(251,191,36,0.07)',
     padding: 10,
   },
   tropeBadge: {
-    color: '#FCD34D',
     fontSize: 10,
     fontWeight: '900',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
 });

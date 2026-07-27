@@ -1825,8 +1825,8 @@ export default function App() {
             <AppStack.Screen name="DiscoveryJourneyHonor" component={DiscoveryJourneyHonorScreen} options={{ animation: 'fade' }} />
             <AppStack.Screen name="DiscoveryBridge" component={DiscoveryBridgeScreen} options={{ animation: 'slide_from_bottom' }} />
             <AppStack.Screen name="EstateDiscovery" component={EstateDiscoveryMode} />
-            <AppStack.Screen name="DiscoveryLustro" component={DiscoveryLustroScreen} options={{ animation: 'slide_from_right' }} />
-            <AppStack.Screen name="DiscoveryDirection" component={DiscoveryDirectionScreen} options={{ animation: 'slide_from_right' }} />
+            <AppStack.Screen name="DiscoveryLustro" component={DiscoveryLustroScreen} options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true }} />
+            <AppStack.Screen name="DiscoveryDirection" component={DiscoveryDirectionScreen} options={{ headerShown: false, animation: 'slide_from_right', gestureEnabled: true }} />
             <AppStack.Screen name="AdminNativeImport" component={AdminNativeImportScreen} />
             <AppStack.Screen
               name="AdminKeiAmer"

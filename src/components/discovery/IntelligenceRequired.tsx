@@ -1,12 +1,12 @@
-import React, { useEffect, type ReactNode } from 'react';
+import React, { useEffect, useMemo, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { LinearGradient } from 'expo-linear-gradient';
 import ApplePressable from '../ApplePressable';
-import { DISCOVERY_COLORS } from './discoveryMotion';
+import { discoveryTheme } from './discoveryTheme';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../../store/useIntelligencePreferenceStore';
+import { useIsDarkTheme } from '../../store/useThemeStore';
 import { useI18n } from '../../i18n';
 
 type Props = {
@@ -20,6 +20,8 @@ type Props = {
  */
 export default function IntelligenceRequired({ navigation, children }: Props) {
   const { t } = useI18n();
+  const isDark = useIsDarkTheme();
+  const theme = useMemo(() => discoveryTheme(isDark), [isDark]);
   const token = useAuthStore((s) => s.token);
   const enabled = useIntelligencePreferenceStore((s) => s.enabled);
   const hydrated = useIntelligencePreferenceStore((s) => s.hydrated);
@@ -32,26 +34,33 @@ export default function IntelligenceRequired({ navigation, children }: Props) {
 
   if (!hydrated) {
     return (
-      <View style={styles.loading}>
-        <LinearGradient colors={['#0F1014', '#040405', '#11100D']} style={StyleSheet.absoluteFill} />
-        <ActivityIndicator color={DISCOVERY_COLORS.gold} />
+      <View style={[styles.loading, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     );
   }
 
   if (!enabled) {
     return (
-      <View style={styles.root}>
-        <LinearGradient colors={['#0F1014', '#040405', '#11100D']} style={StyleSheet.absoluteFill} />
-        <View style={styles.card}>
-          <View style={styles.iconWrap}>
-            <Ionicons name="sparkles" size={28} color={DISCOVERY_COLORS.gold} />
+      <View style={[styles.root, { backgroundColor: theme.bg }]}>
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <View
+            style={[
+              styles.iconWrap,
+              { backgroundColor: theme.accentSoft, borderColor: theme.cardAccentBorder },
+            ]}
+          >
+            <Ionicons name="sparkles" size={28} color={theme.accent} />
           </View>
-          <Text style={styles.kicker}>ESTATEOS™</Text>
-          <Text style={styles.title}>{t('profile.intelligence.gateTitle')}</Text>
-          <Text style={styles.body}>{t('profile.intelligence.gateBody')}</Text>
+          <Text style={[styles.kicker, { color: theme.eyebrow }]}>ESTATEOS™</Text>
+          <Text style={[styles.title, { color: theme.text }]}>
+            {t('profile.intelligence.gateTitle')}
+          </Text>
+          <Text style={[styles.body, { color: theme.textSecondary }]}>
+            {t('profile.intelligence.gateBody')}
+          </Text>
           <ApplePressable
-            style={styles.primary}
+            style={[styles.primary, { backgroundColor: theme.primaryBtn }]}
             haptic="medium"
             accessibilityLabel={t('profile.intelligence.gateEnable')}
             onPress={() => {
@@ -59,7 +68,9 @@ export default function IntelligenceRequired({ navigation, children }: Props) {
               void setEnabled(token, true);
             }}
           >
-            <Text style={styles.primaryText}>{t('profile.intelligence.gateEnable')}</Text>
+            <Text style={[styles.primaryText, { color: theme.primaryBtnText }]}>
+              {t('profile.intelligence.gateEnable')}
+            </Text>
           </ApplePressable>
           <ApplePressable
             style={styles.secondary}
@@ -70,7 +81,9 @@ export default function IntelligenceRequired({ navigation, children }: Props) {
               else navigation?.navigate?.('MainTabs');
             }}
           >
-            <Text style={styles.secondaryText}>{t('profile.intelligence.gateLater')}</Text>
+            <Text style={[styles.secondaryText, { color: theme.textMuted }]}>
+              {t('profile.intelligence.gateLater')}
+            </Text>
           </ApplePressable>
         </View>
       </View>
@@ -83,21 +96,25 @@ export default function IntelligenceRequired({ navigation, children }: Props) {
 const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   root: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  card: { width: '100%', maxWidth: 420, alignItems: 'center' },
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    alignItems: 'center',
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 24,
+  },
   iconWrap: {
     width: 72,
     height: 72,
     borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(212,175,55,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.4)',
     marginBottom: 24,
   },
-  kicker: { color: DISCOVERY_COLORS.gold, fontSize: 11, fontWeight: '900', letterSpacing: 3.2 },
+  kicker: { fontSize: 11, fontWeight: '900', letterSpacing: 3.2 },
   title: {
-    color: '#FFF',
     fontSize: 28,
     fontWeight: '800',
     letterSpacing: -0.8,
@@ -105,24 +122,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   body: {
-    color: DISCOVERY_COLORS.ivory,
     fontSize: 16,
     lineHeight: 24,
     textAlign: 'center',
     marginTop: 14,
-    opacity: 0.9,
   },
   primary: {
     marginTop: 32,
     minWidth: 220,
     height: 52,
     borderRadius: 26,
-    backgroundColor: DISCOVERY_COLORS.gold,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 22,
   },
-  primaryText: { color: '#060606', fontSize: 16, fontWeight: '900' },
+  primaryText: { fontSize: 16, fontWeight: '900' },
   secondary: { marginTop: 14, padding: 10 },
-  secondaryText: { color: DISCOVERY_COLORS.textMuted, fontSize: 14, fontWeight: '600' },
+  secondaryText: { fontSize: 14, fontWeight: '600' },
 });
