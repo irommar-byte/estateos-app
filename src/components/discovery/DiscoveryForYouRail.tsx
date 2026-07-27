@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { ArrowRight, Brain } from 'lucide-react-native';
 import OfferDiscoveryActions from './OfferDiscoveryActions';
 import { subscribeDiscoveryUpdated } from '../../lib/discovery/clientEvents';
@@ -194,7 +194,12 @@ export default function DiscoveryForYouRail({
             >
               <View style={styles.imageWrap}>
                 {item.imageUrl ? (
-                  <Image source={{ uri: item.imageUrl }} style={styles.image} />
+                  <Image
+                    source={{ uri: item.imageUrl }}
+                    style={styles.image}
+                    contentFit="cover"
+                    transition={180}
+                  />
                 ) : (
                   <View style={[styles.image, styles.imageFallback]} />
                 )}
@@ -350,7 +355,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(56,189,248,0.18)',
     backgroundColor: 'rgba(10,16,28,0.95)',
   },
-  imageWrap: { aspectRatio: 16 / 10, backgroundColor: 'rgba(0,0,0,0.35)' },
+  imageWrap: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: 16 / 10,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    overflow: 'hidden',
+  },
   image: { width: '100%', height: '100%' },
   imageFallback: { backgroundColor: 'rgba(255,255,255,0.06)' },
   actionsOverlay: {

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { API_URL } from '../config/network';
+import { resolveMediaUrl } from '../utils/userAvatar';
 import {
   buildDiscoveryEventPayload,
   parseDiscoveryFeedItems,
@@ -249,6 +250,46 @@ export type DiscoveryOfferBrief = {
   imageUrl: string | null;
 };
 
+function absolutizeDiscoveryImage(raw: unknown): string | null {
+  return resolveMediaUrl(raw);
+}
+
+function mapOfferBrief(raw: any): DiscoveryOfferBrief | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = Number(raw.id);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  return {
+    id,
+    title: String(raw.title || `Oferta #${id}`),
+    city: raw.city == null ? null : String(raw.city),
+    imageUrl: absolutizeDiscoveryImage(raw.imageUrl),
+  };
+}
+
+function mapForYouItem(raw: any): ForYouRailItem | null {
+  const offerId = Number(raw?.offerId ?? raw?.id);
+  if (!Number.isFinite(offerId) || offerId <= 0) return null;
+  return {
+    id: Number(raw?.id) || offerId,
+    offerId,
+    title: String(raw?.title || `Oferta #${offerId}`),
+    city: String(raw?.city || ''),
+    district: String(raw?.district || ''),
+    price: Number(raw?.price) || 0,
+    pricePln: raw?.pricePln == null ? null : Number(raw.pricePln),
+    priceCurrency: String(raw?.priceCurrency || 'PLN'),
+    listPricePln: raw?.listPricePln == null ? null : Number(raw.listPricePln),
+    propertyType: String(raw?.propertyType || ''),
+    transactionType: String(raw?.transactionType || ''),
+    area: Number(raw?.area) || 0,
+    imageUrl: absolutizeDiscoveryImage(raw?.imageUrl),
+    score: Number(raw?.score) || 0,
+    reason: String(raw?.reason || ''),
+    exploreFlag: Boolean(raw?.exploreFlag),
+    createdAt: String(raw?.createdAt || ''),
+  };
+}
+
 export type DiscoveryProfilePayload = {
   likesCount: number;
   dislikesCount: number;
@@ -332,11 +373,28 @@ export async function fetchDiscoveryProfile(token: string | null): Promise<Disco
       };
     }
     const data = await response.json().catch(() => ({}));
+    const tropesRaw = Array.isArray(data?.tropes) ? data.tropes : [];
+    const recentRaw = Array.isArray(data?.recent) ? data.recent : [];
     return {
       auth: 'user',
       profile: (data?.profile || null) as DiscoveryProfilePayload | null,
-      tropes: Array.isArray(data?.tropes) ? data.tropes : [],
-      recent: Array.isArray(data?.recent) ? data.recent : [],
+      tropes: tropesRaw.map((row: any) => ({
+        offerId: Number(row?.offerId) || 0,
+        status: String(row?.status || ''),
+        priority: Boolean(row?.priority),
+        visitOutcome: row?.visitOutcome ?? null,
+        updatedAt: String(row?.updatedAt || ''),
+        offer: mapOfferBrief(row?.offer),
+      })),
+      recent: recentRaw.map((row: any) => ({
+        id: String(row?.id || ''),
+        eventType: String(row?.eventType || ''),
+        reasonCode: row?.reasonCode == null ? null : String(row.reasonCode),
+        source: row?.source,
+        platform: row?.platform,
+        at: String(row?.at || ''),
+        offer: mapOfferBrief(row?.offer),
+      })),
       guide: (data?.guide || null) as DiscoveryGuidePayload | null,
       error: null,
     };
@@ -411,9 +469,10 @@ export async function fetchDiscoveryForYou(
       return { auth: 'user', items: [], profile: null, explain: null };
     }
     const data = await response.json().catch(() => ({}));
+    const itemsRaw = Array.isArray(data?.items) ? data.items : [];
     return {
       auth: 'user',
-      items: Array.isArray(data?.items) ? data.items : [],
+      items: itemsRaw.map(mapForYouItem).filter((item: ForYouRailItem | null): item is ForYouRailItem => Boolean(item)),
       profile: data?.profile
         ? {
             confidence: Number(data.profile.confidence) || 0,
