@@ -136,7 +136,9 @@ export default function ContactChatScreen() {
       threadId,
       peerUserId,
       peerName,
+      unread: 0,
     });
+    useFloatingChatsStore.getState().clearUnread(threadId);
   }, [threadId, peerUserId, peerName]);
 
   const onDraftChange = (text: string) => {

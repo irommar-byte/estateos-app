@@ -14,8 +14,10 @@ import { navigateToContactChat } from '../../utils/navigateToContactChat';
 import { useFloatingChatsStore } from '../../store/useFloatingChatsStore';
 import { useFloatingChatsLayoutStore } from '../../store/useFloatingChatsLayoutStore';
 import { useThemeStore } from '../../store/useThemeStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import { useI18n } from '../../i18n';
 import ContactPeerAvatar from './ContactPeerAvatar';
+import { fetchContactThreads } from '../../services/contactService';
 
 const BUBBLE_SIZE = 52;
 const DOCK_SPRING = { damping: 22, stiffness: 320, mass: 0.82 };
@@ -82,12 +84,67 @@ export default function FloatingChatsDock() {
   const dockSuppressed = useFloatingChatsStore((s) => s.dockSuppressed);
   const setMinimized = useFloatingChatsStore((s) => s.setMinimized);
   const removeThread = useFloatingChatsStore((s) => s.removeThread);
+  const upsertThread = useFloatingChatsStore((s) => s.upsertThread);
   const anchor = useFloatingChatsLayoutStore((s) => s.anchor);
+  const token = useAuthStore((s) => s.token);
 
-  const dockVisible = entries.length > 0 && !dockSuppressed;
-  const totalUnread = entries.reduce((acc, e) => acc + (e.unread ?? 0), 0);
+  // Chmurka tylko przy nieprzeczytanej — szybka odpowiedź, nie stały dock.
+  const unreadEntries = useMemo(
+    () => entries.filter((e) => (e.unread ?? 0) > 0),
+    [entries],
+  );
+  const dockVisible = unreadEntries.length > 0 && !dockSuppressed;
+  const totalUnread = unreadEntries.reduce((acc, e) => acc + (e.unread ?? 0), 0);
   const expanded = !minimized;
   const isRadarFilter = anchor.mode === 'radarFilter';
+
+  // Podciągnij nieprzeczytane wątki, żeby chmurka pojawiła się też bez wcześniejszego otwarcia czatu.
+  useEffect(() => {
+    if (!token || dockSuppressed) return;
+    let cancelled = false;
+    const syncUnread = async () => {
+      try {
+        const threads = await fetchContactThreads(token);
+        if (cancelled) return;
+        const unread = threads
+          .filter((t) => Math.max(0, Number(t.unread ?? t.unreadCount ?? 0)) > 0)
+          .sort((a, b) => {
+            const ta = Date.parse(String(a.updatedAt || 0)) || 0;
+            const tb = Date.parse(String(b.updatedAt || 0)) || 0;
+            return tb - ta;
+          })
+          .slice(0, 4);
+        for (const thread of unread) {
+          upsertThread({
+            threadId: Number(thread.id),
+            peerUserId: Number(thread.peerUserId),
+            peerName: String(thread.peerUserName || thread.peer?.name || 'Wiadomość'),
+            peerImage: thread.peer?.image ?? null,
+            unread: Math.max(0, Number(thread.unread ?? thread.unreadCount ?? 0)),
+            lastPreview: thread.lastMessage ? String(thread.lastMessage) : undefined,
+            peerIsOnline: Boolean(thread.peerIsOnline ?? thread.peer?.isOnline),
+            peerLastSeenAt: thread.peerLastSeenAt ?? thread.peer?.lastSeenAt ?? null,
+          });
+        }
+        // Wyczyść unread na wpisach, których już nie ma w nieprzeczytanych.
+        const unreadIds = new Set(unread.map((t) => Number(t.id)));
+        const current = useFloatingChatsStore.getState().entries;
+        for (const entry of current) {
+          if ((entry.unread ?? 0) > 0 && !unreadIds.has(entry.threadId)) {
+            useFloatingChatsStore.getState().clearUnread(entry.threadId);
+          }
+        }
+      } catch {
+        /* quiet */
+      }
+    };
+    void syncUnread();
+    const id = setInterval(() => void syncUnread(), 18_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [token, dockSuppressed, upsertThread]);
 
   const themeStyles = useMemo(
     () => ({
@@ -150,7 +207,7 @@ export default function FloatingChatsDock() {
     transform: [{ scale: 0.6 + dockProgress.value * 0.4 }],
   }));
 
-  if (!entries.length && !dockSuppressed) return null;
+  if (!unreadEntries.length && !dockSuppressed) return null;
 
   const wrapStyle = isRadarFilter
     ? { top: anchor.top, right: anchor.right }
@@ -176,8 +233,8 @@ export default function FloatingChatsDock() {
           setMinimized(true);
           return;
         }
-        if (entries.length === 1) {
-          openEntry(entries[0]);
+        if (unreadEntries.length === 1) {
+          openEntry(unreadEntries[0]);
           return;
         }
         setMinimized(false);
@@ -231,7 +288,7 @@ export default function FloatingChatsDock() {
         </Pressable>
       </View>
       <ChatRows
-        entries={entries}
+        entries={unreadEntries}
         isDark={isDark}
         onOpen={openEntry}
         onRemove={(threadId) => {
