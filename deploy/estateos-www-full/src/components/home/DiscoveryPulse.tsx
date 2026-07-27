@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Brain, ChevronDown } from "lucide-react";
 import { subscribeDiscoveryUpdated } from "@/lib/discovery/clientEvents";
 import { playIntelligenceChime } from "@/lib/discovery/intelligenceChime";
+import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 
 type PulsePayload = {
   stageLabel: string;
@@ -189,6 +190,8 @@ function IntelligenceBrain({
 
 export default function DiscoveryPulse() {
   const reduceMotion = useReducedMotion();
+  const { enabled: intelligenceEnabled, hydrated: intelligenceHydrated } =
+    useIntelligencePreference();
   const [pulse, setPulse] = useState<PulsePayload | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [auth, setAuth] = useState<"unknown" | "guest" | "user">("unknown");
@@ -239,6 +242,7 @@ export default function DiscoveryPulse() {
 
   const presentGently = useCallback(
     (kind: PresentReason) => {
+      if (!intelligenceEnabled) return;
       if (kind === "manual") {
         setPresentReason(null);
         setExpanded(true);
@@ -252,7 +256,7 @@ export default function DiscoveryPulse() {
       scheduleHide(kind === "contradiction" ? 9000 : kind === "ready_peek" ? 7500 : 8200);
       window.setTimeout(() => setSpectacle(false), 2400);
     },
-    [scheduleHide],
+    [intelligenceEnabled, scheduleHide],
   );
 
   const load = useCallback(
@@ -325,6 +329,7 @@ export default function DiscoveryPulse() {
 
   // One motivated session peek — only when direction is already meaningful
   useEffect(() => {
+    if (!intelligenceEnabled) return;
     if (auth !== "user" || !pulse || bootPeekDoneRef.current || expanded) return;
     const meaningful = pulse.progress >= 40 || pulse.confidence >= 0.32;
     if (!meaningful) return;
@@ -347,9 +352,17 @@ export default function DiscoveryPulse() {
       presentGently(pulse.contradictionIndex >= 0.55 ? "contradiction" : "ready_peek");
     }, 2200);
     return () => window.clearTimeout(t);
-  }, [auth, pulse, expanded, presentGently]);
+  }, [auth, pulse, expanded, intelligenceEnabled, presentGently]);
 
-  if (auth === "guest" || auth === "unknown" || !pulse) return null;
+  if (
+    !intelligenceHydrated ||
+    !intelligenceEnabled ||
+    auth === "guest" ||
+    auth === "unknown" ||
+    !pulse
+  ) {
+    return null;
+  }
 
   const progress = Math.max(0, Math.min(100, pulse.progress || 0));
   const displayProgress = Math.max(0, Math.min(100, progress + fillBoost * 8));

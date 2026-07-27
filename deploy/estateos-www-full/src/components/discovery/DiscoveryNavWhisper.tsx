@@ -2,6 +2,7 @@
 
 import DiscoveryIntelligenceWhisper from "@/components/discovery/DiscoveryIntelligenceWhisper";
 import { useDiscoveryPulseLite } from "@/hooks/useDiscoveryPulseLite";
+import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 
 type Props = {
   variant?: "nav" | "drawer";
@@ -10,8 +11,9 @@ type Props = {
 
 /** Navbar / drawer ambient direction — hides when nothing useful to say. */
 export default function DiscoveryNavWhisper({ variant = "nav", className }: Props) {
+  const { enabled, hydrated } = useIntelligencePreference();
   const { pulse, auth } = useDiscoveryPulseLite();
-  if (auth !== "user" || !pulse) return null;
+  if (!hydrated || !enabled || auth !== "user" || !pulse) return null;
 
   const line =
     pulse.confidence >= 0.12

@@ -17,6 +17,7 @@ import SkipToContent from "@/components/layout/SkipToContent";
 import LocaleDocumentMeta from "@/components/layout/LocaleDocumentMeta";
 import Tracker from "@/components/Tracker";
 import { DisplayCurrencyProvider } from "@/contexts/DisplayCurrencyContext";
+import { IntelligencePreferenceProvider } from "@/contexts/IntelligencePreferenceContext";
 import { FxRateProvider } from "@/contexts/FxRateContext";
 import { LocaleProvider } from "@/contexts/LocaleContext";
 import { ThemeInitScript, ThemeProvider } from "@/contexts/ThemeContext";
@@ -26,6 +27,7 @@ import { EcosystemProvider } from "@/contexts/EcosystemContext";
 import EcosystemThemeBridge from "@/components/ecosystem/EcosystemThemeBridge";
 import EcosystemAmbientBackground from "@/components/ecosystem/EcosystemAmbientBackground";
 import EcosystemVerticalTransition from "@/components/ecosystem/EcosystemVerticalTransition";
+import IntelligenceEnableSheet from "@/components/discovery/IntelligenceEnableSheet";
 import { LOCALE_COOKIE, resolveLocale } from "@/i18n/config";
 import { ESTATEOS_SITE_URL, ESTATEOS_TAGLINE_PL } from "@/lib/estateOsPublicFacts";
 import { FREE_LISTING_KEYWORDS } from "@/lib/seo/freeListingContent";
@@ -107,6 +109,7 @@ export default async function RootLayout({
         <ThemeProvider>
           <LocaleProvider initialLocale={locale}>
             <DisplayCurrencyProvider>
+              <IntelligencePreferenceProvider>
               <FxRateProvider>
                 <LocaleDocumentMeta />
                 <UserModeProvider>
@@ -123,6 +126,7 @@ export default async function RootLayout({
                     <FloatingPreferencesDock />
                     <RadarLiveCounter />
                     <DiscoveryPulse />
+                    <IntelligenceEnableSheet />
                     <WebNotificationPrompt />
                     <PresentationFlowOrchestrator />
                     <div id="main-content" tabIndex={-1} className="relative z-10 outline-none">
@@ -134,6 +138,7 @@ export default async function RootLayout({
                 <UpgradeModal />
                 <ModeTransition />
               </FxRateProvider>
+              </IntelligencePreferenceProvider>
             </DisplayCurrencyProvider>
           </LocaleProvider>
         </ThemeProvider>

@@ -2,6 +2,7 @@
 
 import DiscoveryIntelligenceWhisper from "@/components/discovery/DiscoveryIntelligenceWhisper";
 import { useDiscoveryPulseLite } from "@/hooks/useDiscoveryPulseLite";
+import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 
 type Props = {
   /** When true, prefer discourage tone for contact/visit. */
@@ -13,8 +14,9 @@ type Props = {
  * Calm pre-contact / pre-visit whisper from pulse suggestion.
  */
 export default function DiscoveryContactWhisper({ beforeContact = true, className }: Props) {
+  const { enabled, hydrated } = useIntelligencePreference();
   const { pulse, auth } = useDiscoveryPulseLite();
-  if (auth !== "user" || !pulse) return null;
+  if (!hydrated || !enabled || auth !== "user" || !pulse) return null;
   if (pulse.confidence < 0.1 && pulse.progress < 15) return null;
 
   const contradiction = pulse.contradictionIndex >= 0.55;

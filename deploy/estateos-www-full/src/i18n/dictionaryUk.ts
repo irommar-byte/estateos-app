@@ -44,9 +44,22 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
     prefsDock: {
       introTitle: "Налаштування відображення",
       introBody:
-        "Тут змінюється тема (світла / темна / авто), мова (PL / EN / UA) та валюта цін (PLN, EUR або валюта оголошення). Панель ховається сама — відкрийте її знову іконкою шестерні.",
+        "Тут змінюється тема, мова, валюта цін і EstateOS™ Inteligence. Панель ховається сама — відкрийте її знову іконкою шестерні.",
       showSettings: "Показати налаштування",
       hideSettings: "Сховати налаштування",
+    },
+    intelligence: {
+      prefTitle: "EstateOS™ Inteligence",
+      prefOnHint: "Тихий помічник напрямку увімкнено",
+      prefOffHint: "Увімкніть спокійні підказки напрямку",
+      sheetTitle: "Увімкнути Inteligence",
+      sheetBody:
+        "Спокійна система, яка вчиться з ваших рішень і підказує тропи — без шуму, як приватний асистент на iOS.",
+      sheetFeature1: "Pulse з живим мозком, коли напрямок загострюється",
+      sheetFeature2: "Підказки «ближче до вашого напрямку» в каталозі та на карті",
+      sheetFeature3: "Шепіт перед контактом і візитом — лише коли це має сенс",
+      sheetEnable: "Увімкнути EstateOS™ Inteligence",
+      sheetLater: "Не зараз",
     },
     currency: {
       sectionTitle: "Валюта цін",
