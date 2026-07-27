@@ -59,14 +59,14 @@ export default function WebNotificationPrompt() {
               type="button"
               disabled={busy}
               onClick={() => void handleEnable()}
-              className="rounded-full bg-[var(--eos-accent)] px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="eos-btn eos-btn--primary eos-btn--sm disabled:opacity-60"
             >
               {dict.webNotifications.enable}
             </button>
             <button
               type="button"
               onClick={handleDismiss}
-              className="rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)] hover:bg-[var(--eos-input)]"
+              className="eos-btn eos-btn--secondary eos-btn--sm"
             >
               {dict.webNotifications.later}
             </button>

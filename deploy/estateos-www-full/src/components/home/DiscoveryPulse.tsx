@@ -492,20 +492,20 @@ export default function DiscoveryPulse() {
               </div>
             </div>
 
-            <div className="relative mt-4 flex flex-wrap gap-2">
-              <Link
-                href={pulse.primaryCta.href}
-                className="inline-flex items-center rounded-full bg-white px-3.5 py-2 text-[11px] font-semibold tracking-wide text-black transition hover:bg-white/90"
-              >
-                {pulse.primaryCta.label}
-              </Link>
-              <Link
-                href={pulse.secondaryCta.href}
-                className="inline-flex items-center rounded-full border border-white/14 bg-white/[0.04] px-3.5 py-2 text-[11px] font-semibold tracking-wide text-white/75 transition hover:bg-white/[0.08]"
-              >
-                {pulse.secondaryCta.label}
-              </Link>
-            </div>
+              <div className="relative mt-4 flex flex-wrap gap-2">
+                <Link
+                  href={pulse.primaryCta.href}
+                  className="eos-btn eos-btn--primary eos-btn--sm !normal-case !tracking-wide !text-[11px] !font-semibold"
+                >
+                  {pulse.primaryCta.label}
+                </Link>
+                <Link
+                  href={pulse.secondaryCta.href}
+                  className="eos-btn eos-btn--secondary eos-btn--sm !normal-case !tracking-wide !text-[11px] !font-semibold"
+                >
+                  {pulse.secondaryCta.label}
+                </Link>
+              </div>
           </motion.div>
         ) : null}
       </AnimatePresence>
