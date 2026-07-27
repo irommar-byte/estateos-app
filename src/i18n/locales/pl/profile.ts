@@ -268,18 +268,23 @@ export const profile = {
     investorProValidUntil: 'Ważne do {{date}}',
     investorProDaysLeft: 'Pozostało {{days}} {{daysLabel}} w bieżącym okresie',
     investorProSubscriptionMeta:
-      'Subskrypcja miesięczna — odnawia się automatycznie w App Store (trial 3 dni, potem płatność).',
+      '3 dni za darmo, potem automatyczna płatność miesięczna w App Store. Subskrypcja odnawia się automatycznie, dopóki jej nie anulujesz.',
     buyInvestorPro: 'Wypróbuj 3 dni za darmo',
     buyInvestorProExtend: 'Zarządzaj subskrypcją',
     buyInvestorProSubtitle: 'Pełny dostęp Pro — anuluj w dowolnym momencie w App Store',
-    buyInvestorProTrialSubtitle: '3 dni za darmo, potem subskrypcja w App Store',
+    buyInvestorProTrialSubtitle:
+      '3 dni za darmo. Po trialu Apple automatycznie pobierze opłatę miesięczną. Anuluj wcześniej w Ustawienia → Apple ID → Subskrypcje.',
     investorProTrialBadge: '3 DNI ZA DARMO',
-    investorProTrialPriceAfter: 'potem {{price}}/mies.',
-    investorProTrialPriceFallback: 'potem subskrypcja miesięczna w App Store',
+    investorProTrialPriceAfter:
+      'Po 3 dniach: {{price}}/miesiąc, pobierane automatycznie. Subskrypcja odnawia się co miesiąc, aż ją anulujesz.',
+    investorProTrialPriceFallback:
+      'Po 3 dniach: opłata miesięczna według ceny w App Store, pobierana automatycznie. Subskrypcja odnawia się co miesiąc, aż ją anulujesz.',
     investorProTrialIntroTitle: 'Wypróbuj Investor Pro',
     investorProTrialIntroBody:
-      'Import z portali, podgląd off-market i narzędzia premium — 3 dni za darmo, bez zobowiązań. Anuluj w App Store przed końcem trialu, jeśli nie chcesz płacić.',
-    investorProTrialIntroCta: 'Rozpocznij 3-dniowy trial',
+      'Import z portali, podgląd off-market i narzędzia premium — 3 dni za darmo. Po zakończeniu okresu próbnego Apple automatycznie rozpocznie płatną subskrypcję miesięczną według ceny poniżej. Jeśli nie chcesz płacić, anuluj co najmniej 24 godziny przed końcem trialu w Ustawienia → Apple ID → Subskrypcje.',
+    investorProTrialLegal:
+      'Okres próbny: 3 dni. Następnie płatność automatyczna za kolejny okres (miesiąc). Odnowienie automatyczne do anulowania w App Store.',
+    investorProTrialIntroCta: 'Rozpocznij 3-dniowy okres próbny',
     investorProTrialIntroLater: 'Później',
     investorProTrialAscHint:
       'Jeśli w oknie Apple nie widać trialu: w App Store Connect dodaj Introductory Offer (Free Trial 3 days) i użyj nowego konta Sandbox.',
@@ -311,7 +316,7 @@ export const profile = {
       },
     },
     investorProFooter:
-      'Investor Pro to subskrypcja: import z OtoDom/OLX/Nieruchomosci-Online, podgląd off-market i strefa narzędzi Pro. Po 3 dniach trialu Apple pobiera opłatę zgodnie z cennikiem. Anuluj w Ustawienia → Apple ID → Subskrypcje. To nie jest Pakiet Plus (publikacja ogłoszeń). Przy problemie z płatnością użyj „Przywróć zakupy”.',
+      'Investor Pro to auto-odnawialna subskrypcja miesięczna: import z OtoDom/OLX/Nieruchomosci-Online, podgląd off-market i strefa narzędzi Pro. Okres próbny: 3 dni. Po jego zakończeniu Apple automatycznie pobierze opłatę za kolejny miesiąc według ceny w App Store. Anuluj w Ustawienia → Apple ID → Subskrypcje (najlepiej ≥24 h przed końcem okresu). To nie jest Pakiet Plus (publikacja ogłoszeń). Przy problemie z płatnością użyj „Przywróć zakupy”.',
     plusSlotOne: '1 publikacja Plus do wykorzystania',
     plusSlotsMany: '{{count}} publikacji Plus do wykorzystania',
     noPackages: 'Brak pakietów — kup przed kolejną płatną publikacją',

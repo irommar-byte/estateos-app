@@ -4468,6 +4468,7 @@ function ProfileScreenLoggedIn({
             expiryLabel: investorProExpiryLine,
             trialBadge: investorProTrialBadge,
             priceLine: investorProPriceLine,
+            legalLine: !hasInvestorProActive ? t('profile.shop.investorProTrialLegal') : null,
             buyLabel: hasInvestorProActive
               ? t('profile.shop.buyInvestorProExtend')
               : t('profile.shop.buyInvestorPro'),

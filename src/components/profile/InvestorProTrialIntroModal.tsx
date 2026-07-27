@@ -52,7 +52,10 @@ export default function InvestorProTrialIntroModal({
         </View>
         <Text style={[styles.title, { color: text }]}>{t('profile.shop.investorProTrialIntroTitle')}</Text>
         <Text style={[styles.body, { color: sub }]}>{t('profile.shop.investorProTrialIntroBody')}</Text>
-        {priceLine ? <Text style={[styles.price, { color: text }]}>{priceLine}</Text> : null}
+        <Text style={[styles.price, { color: text }]}>
+          {priceLine || t('profile.shop.investorProTrialPriceFallback')}
+        </Text>
+        <Text style={[styles.legal, { color: sub }]}>{t('profile.shop.investorProTrialLegal')}</Text>
         <Pressable
           style={[styles.cta, buying && styles.ctaDisabled]}
           disabled={buying}
@@ -126,6 +129,12 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     fontWeight: '700',
+  },
+  legal: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '500',
   },
   cta: {
     marginTop: 20,

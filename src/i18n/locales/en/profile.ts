@@ -268,17 +268,22 @@ export const profile = {
     investorProValidUntil: 'Valid until {{date}}',
     investorProDaysLeft: '{{days}} {{daysLabel}} left in current billing period',
     investorProSubscriptionMeta:
-      'Monthly subscription — auto-renews in the App Store (3-day trial, then billing).',
+      '3 days free, then automatic monthly billing in the App Store. Auto-renews until you cancel.',
     buyInvestorPro: 'Try 3 days free',
     buyInvestorProExtend: 'Manage subscription',
     buyInvestorProSubtitle: 'Full Pro access — cancel anytime in the App Store',
-    buyInvestorProTrialSubtitle: '3 days free, then App Store subscription',
+    buyInvestorProTrialSubtitle:
+      '3 days free. After the trial, Apple automatically charges the monthly price. Cancel earlier in Settings → Apple ID → Subscriptions.',
     investorProTrialBadge: '3 DAYS FREE',
-    investorProTrialPriceAfter: 'then {{price}}/mo',
-    investorProTrialPriceFallback: 'then monthly subscription in the App Store',
+    investorProTrialPriceAfter:
+      'After 3 days: {{price}}/month, charged automatically. Renews monthly until you cancel.',
+    investorProTrialPriceFallback:
+      'After 3 days: monthly App Store price, charged automatically. Renews monthly until you cancel.',
     investorProTrialIntroTitle: 'Try Investor Pro',
     investorProTrialIntroBody:
-      'Portal import, off-market preview and premium tools — 3 days free, no commitment. Cancel in the App Store before the trial ends if you do not want to pay.',
+      'Portal import, off-market preview and premium tools — 3 days free. When the free trial ends, Apple automatically starts the paid monthly subscription at the price shown below. To avoid being charged, cancel at least 24 hours before the trial ends in Settings → Apple ID → Subscriptions.',
+    investorProTrialLegal:
+      'Free trial: 3 days. Then automatic payment for the next billing period (1 month). Auto-renews until canceled in the App Store.',
     investorProTrialIntroCta: 'Start 3-day free trial',
     investorProTrialIntroLater: 'Later',
     investorProTrialAscHint:
@@ -309,7 +314,7 @@ export const profile = {
       },
     },
     investorProFooter:
-      'Investor Pro is a subscription: portal import, off-market preview and Pro tools. After the 3-day trial Apple charges per App Store pricing. Cancel in Settings → Apple ID → Subscriptions. Separate from Plus Package (listing publication). If payment did not register, use Restore purchases.',
+      'Investor Pro is an auto-renewable monthly subscription: portal import, off-market preview and Pro tools. Free trial: 3 days. When it ends, Apple automatically charges for the next month at the App Store price. Cancel in Settings → Apple ID → Subscriptions (ideally ≥24 hours before the period ends). Separate from Plus Package (listing publication). If payment did not register, use Restore purchases.',
     plusSlotOne: '1 Plus publication available',
     plusSlotsMany: '{{count}} Plus publications available',
     noPackages: 'No packages — buy before the next paid publication',

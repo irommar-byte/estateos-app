@@ -19,6 +19,7 @@ type Props = {
   expiryLabel: string | null;
   trialBadge?: string | null;
   priceLine?: string | null;
+  legalLine?: string | null;
   buyLabel: string;
   buySubtitle: string;
   restoreLabel: string;
@@ -49,6 +50,7 @@ export default function InvestorProShopPanel({
   expiryLabel,
   trialBadge,
   priceLine,
+  legalLine,
   buyLabel,
   buySubtitle,
   restoreLabel,
@@ -113,7 +115,7 @@ export default function InvestorProShopPanel({
           <Ionicons name="gift" size={18} color="#FFFFFF" />
           <View style={styles.trialCopy}>
             <Text style={styles.trialBadgeText}>{trialBadge}</Text>
-            {priceLine ? <Text style={styles.trialPriceText}>{priceLine}</Text> : null}
+            <Text style={styles.trialPriceText}>{priceLine || legalLine}</Text>
           </View>
           {buying ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
@@ -229,6 +231,16 @@ export default function InvestorProShopPanel({
                     {buyLabel}
                   </Text>
                   <Text style={[styles.actionSubtitle, compactEmbedded && styles.actionSubtitleCompact]}>{buySubtitle}</Text>
+                  {priceLine ? (
+                    <Text style={[styles.actionLegal, { color: isDark ? 'rgba(235,235,245,0.7)' : '#6B7280' }]}>
+                      {priceLine}
+                    </Text>
+                  ) : null}
+                  {legalLine ? (
+                    <Text style={[styles.actionLegal, { color: isDark ? 'rgba(235,235,245,0.55)' : '#8E8E93' }]}>
+                      {legalLine}
+                    </Text>
+                  ) : null}
                 </View>
                 {!buying && <Ionicons name="chevron-forward" size={compactEmbedded ? 18 : 20} color="#C7C7CC" />}
               </Pressable>
@@ -438,6 +450,11 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     marginTop: 2,
     lineHeight: 16,
+  },
+  actionLegal: {
+    fontSize: 11,
+    marginTop: 6,
+    lineHeight: 15,
   },
   actionSubtitleCompact: {
     fontSize: 11,

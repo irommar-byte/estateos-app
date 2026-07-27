@@ -44,7 +44,10 @@ export default function InvestorProUpsellModal({
           <Text style={[styles.title, { color: text }]}>{t(titleKey)}</Text>
           <Text style={[styles.body, { color: sub }]}>{t(bodyKey)}</Text>
           <Text style={[styles.creditsLine, { color: text }]}>{t('profile.shop.investorProUpsell.creditsLine')}</Text>
-          {priceLine ? <Text style={[styles.price, { color: sub }]}>{priceLine}</Text> : null}
+          <Text style={[styles.price, { color: text }]}>
+            {priceLine || t('profile.shop.investorProTrialPriceFallback')}
+          </Text>
+          <Text style={[styles.legal, { color: sub }]}>{t('profile.shop.investorProTrialLegal')}</Text>
           <Pressable style={[styles.cta, buying && styles.ctaDisabled]} disabled={buying} onPress={onSubscribe}>
             <Text style={styles.ctaText}>
               {buying ? t('profile.shop.restoring') : t('profile.shop.investorProUpsell.cta')}
@@ -109,6 +112,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 13,
     fontWeight: '600',
+  },
+  legal: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '500',
   },
   cta: {
     marginTop: 20,

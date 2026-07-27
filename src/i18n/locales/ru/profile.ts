@@ -268,18 +268,23 @@ export const profile = {
     investorProValidUntil: 'Действует до {{date}}',
     investorProDaysLeft: 'В текущем периоде осталось {{days}} {{daysLabel}}',
     investorProSubscriptionMeta:
-      'Месячная подписка — автопродление в App Store (3 дня trial, затем оплата).',
+      '3 дня бесплатно, затем автоматическая ежемесячная оплата в App Store. Автопродление, пока вы не отмените.',
     buyInvestorPro: '3 дня бесплатно',
     buyInvestorProExtend: 'Управление подпиской',
     buyInvestorProSubtitle: 'Полный Pro-доступ — отмена в App Store в любой момент',
-    buyInvestorProTrialSubtitle: '3 дня бесплатно, затем подписка в App Store',
+    buyInvestorProTrialSubtitle:
+      '3 дня бесплатно. После trial Apple автоматически спишет ежемесячную оплату. Отмените раньше: Настройки → Apple ID → Подписки.',
     investorProTrialBadge: '3 ДНЯ БЕСПЛАТНО',
-    investorProTrialPriceAfter: 'затем {{price}}/мес',
-    investorProTrialPriceFallback: 'затем месячная подписка в App Store',
+    investorProTrialPriceAfter:
+      'Через 3 дня: {{price}}/мес., списывается автоматически. Продлевается каждый месяц, пока не отмените.',
+    investorProTrialPriceFallback:
+      'Через 3 дня: ежемесячная цена App Store, списывается автоматически. Продлевается каждый месяц, пока не отмените.',
     investorProTrialIntroTitle: 'Попробуйте Investor Pro',
     investorProTrialIntroBody:
-      'Импорт с порталов, off-market и Pro-инструменты — 3 дня бесплатно. Отмените в App Store до конца trial, если не хотите платить.',
-    investorProTrialIntroCta: 'Начать 3-дневный trial',
+      'Импорт с порталов, off-market и Pro-инструменты — 3 дня бесплатно. По окончании пробного периода Apple автоматически начнёт платную месячную подписку по цене ниже. Чтобы не платить, отмените минимум за 24 часа до конца trial: Настройки → Apple ID → Подписки.',
+    investorProTrialLegal:
+      'Пробный период: 3 дня. Затем автоматическая оплата следующего периода (1 месяц). Автопродление до отмены в App Store.',
+    investorProTrialIntroCta: 'Начать 3-дневный пробный период',
     investorProTrialIntroLater: 'Позже',
     investorProTrialAscHint:
       'Если в окне Apple нет trial: добавьте Introductory Offer (Free Trial 3 days) в App Store Connect и используйте новый Sandbox-аккаунт.',
@@ -309,7 +314,7 @@ export const profile = {
       },
     },
     investorProFooter:
-      'Investor Pro — подписка: импорт с порталов, off-market и Pro-инструменты. После 3-дневного trial Apple списывает оплату по тарифу App Store. Отмена: Настройки → Apple ID → Подписки. Это не Пакет Plus (публикация объявлений). При проблеме с оплатой используйте «Восстановить покупки».',
+      'Investor Pro — автопродлеваемая месячная подписка: импорт с порталов, off-market и Pro-инструменты. Пробный период: 3 дня. После него Apple автоматически спишет оплату за следующий месяц по цене App Store. Отмена: Настройки → Apple ID → Подписки (лучше ≥24 ч до конца периода). Это не Пакет Plus (публикация объявлений). При проблеме с оплатой используйте «Восстановить покупки».',
     plusSlotOne: 'Доступна 1 публикация Plus',
     plusSlotsMany: '{{count}} Плюс доступны публикации',
     noPackages: 'Нет пакетов — купите до следующей платной публикации',
