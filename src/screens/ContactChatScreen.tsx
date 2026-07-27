@@ -28,6 +28,7 @@ import { useFloatingChatsStore } from '../store/useFloatingChatsStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { useI18n } from '../i18n';
 import InstantMessageThread, { type IMThreadMessage } from '../components/messaging/InstantMessageThread';
+import DiscoveryContactWhisper from '../components/discovery/DiscoveryContactWhisper';
 import ContactChatAttachmentsBar from '../components/messaging/ContactChatAttachmentsBar';
 import { getChatTheme } from '../components/messaging/chatTheme';
 import { MAX_CONTACT_FILE_BYTES, MAX_CONTACT_THREAD_BYTES, CONTACT_ATTACHMENT_PREFIX } from '../utils/contactAttachment';
@@ -353,6 +354,10 @@ export default function ContactChatScreen() {
         onToggle={() => setAttachmentsOpen((v) => !v)}
         isDark={isDark}
       />
+
+      <View style={{ paddingHorizontal: 14, paddingTop: 8, paddingBottom: 4 }}>
+        <DiscoveryContactWhisper navigation={navigation} beforeContact />
+      </View>
 
       <InstantMessageThread
         messages={threadMessages}

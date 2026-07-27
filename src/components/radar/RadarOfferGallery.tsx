@@ -31,6 +31,7 @@ import { buildHomeMarketRailSections } from '../catalog/buildMarketRails';
 import type { MarketCatalogContentMode } from '../catalog/MarketCatalogViewToggle';
 import ApplePressable from '../ApplePressable';
 import MarketUnreadQuickReplyBubble from '../messaging/MarketUnreadQuickReplyBubble';
+import DiscoveryForYouRail from '../discovery/DiscoveryForYouRail';
 import { carCardElevation, useCarScreenTheme, type CarScreenColors } from '../../theme/carScreenTheme';
 import { formatLocationLabel } from '../../constants/locationEcosystem';
 
@@ -90,6 +91,7 @@ type Props = {
   onPressRailItem?: (id: number | string) => void;
   /** Katalog siatki vs taśmy Market (przełączane ikoną w top barze). */
   contentMode?: MarketCatalogContentMode;
+  navigation?: any;
 };
 
 const NEAR_ACCENT = '#10b981';
@@ -220,6 +222,7 @@ export default function RadarOfferGallery({
   mineRailItems = [],
   onPressRailItem,
   contentMode = 'catalog',
+  navigation,
 }: Props) {
   const { width } = useWindowDimensions();
   const { colors, elevation, isDark: _carIsDark } = useCarScreenTheme();
@@ -409,6 +412,17 @@ export default function RadarOfferGallery({
               formatPrice={formatPrice}
               onPressOffer={onPressOffer}
               autoRotateEnabled={featuredSpotlightVisible}
+            />
+          </View>
+        ) : null}
+
+        {navigation ? (
+          <View style={{ paddingHorizontal: horizontalPad, marginTop: 4 }}>
+            <DiscoveryForYouRail
+              navigation={navigation}
+              transactionMode={
+                transactionFilter === 'RENT' ? 'rent' : transactionFilter === 'SELL' ? 'sale' : 'all'
+              }
             />
           </View>
         ) : null}

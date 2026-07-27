@@ -101,6 +101,9 @@ import DiscoveryLifeShiftScreen from './src/screens/DiscoveryLifeShiftScreen';
 import DiscoveryTropesScreen from './src/screens/DiscoveryTropesScreen';
 import DiscoveryJourneyHonorScreen from './src/screens/DiscoveryJourneyHonorScreen';
 import DiscoveryBridgeScreen from './src/screens/DiscoveryBridgeScreen';
+import DiscoveryLustroScreen from './src/screens/DiscoveryLustroScreen';
+import DiscoveryDirectionScreen from './src/screens/DiscoveryDirectionScreen';
+import IntelligenceEnableSheet from './src/components/discovery/IntelligenceEnableSheet';
 import { useDiscoveryStore } from './src/store/useDiscoveryStore';
 import AdminNativeImportScreen from './src/screens/AdminNativeImportScreen';
 import AdminKeiAmerScreen from './src/screens/AdminKeiAmerScreen';
@@ -1822,6 +1825,8 @@ export default function App() {
             <AppStack.Screen name="DiscoveryJourneyHonor" component={DiscoveryJourneyHonorScreen} options={{ animation: 'fade' }} />
             <AppStack.Screen name="DiscoveryBridge" component={DiscoveryBridgeScreen} options={{ animation: 'slide_from_bottom' }} />
             <AppStack.Screen name="EstateDiscovery" component={EstateDiscoveryMode} />
+            <AppStack.Screen name="DiscoveryLustro" component={DiscoveryLustroScreen} options={{ animation: 'slide_from_right' }} />
+            <AppStack.Screen name="DiscoveryDirection" component={DiscoveryDirectionScreen} options={{ animation: 'slide_from_right' }} />
             <AppStack.Screen name="AdminNativeImport" component={AdminNativeImportScreen} />
             <AppStack.Screen
               name="AdminKeiAmer"
@@ -1856,6 +1861,7 @@ export default function App() {
             <AppStack.Screen name="AuctionEvent" component={AuctionEventScreen} />
           </AppStack.Navigator>
           {!isSplashVisible ? <FloatingChatsDock /> : null}
+          {!isSplashVisible ? <IntelligenceEnableSheet /> : null}
         </NavigationContainer>
         {!isSplashVisible ? <AppRatingPromptHost /> : null}
         {!isSplashVisible ? <InvestorProUpsellHost /> : null}

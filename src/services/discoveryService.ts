@@ -242,6 +242,239 @@ export async function fetchDiscoveryPulse(token: string | null): Promise<Discove
   }
 }
 
+export type DiscoveryOfferBrief = {
+  id: number;
+  title: string;
+  city: string | null;
+  imageUrl: string | null;
+};
+
+export type DiscoveryProfilePayload = {
+  likesCount: number;
+  dislikesCount: number;
+  fastTrackCount: number;
+  opensCount: number;
+  topCities: Array<{ key: string; value: number }>;
+  topDistricts: Array<{ key: string; value: number }>;
+  topPropertyTypes: Array<{ key: string; value: number }>;
+  dislikeReasons: Array<{ key: string; value: number }>;
+  preferredBudgetPln: number | null;
+  preferredAreaM2: number | null;
+  preferredTransaction: 'SELL' | 'RENT' | 'MIXED' | null;
+  summaryLine: string;
+  confidence: number;
+  contradictionIndex: number;
+  explorationHunger: number;
+  searchPhase: string;
+  engineVersion?: string;
+  hasProfile: boolean;
+  updatedAt: string | null;
+};
+
+export type DiscoveryProfileTrope = {
+  offerId: number;
+  status: string;
+  priority: boolean;
+  visitOutcome?: string | null;
+  updatedAt: string;
+  offer: DiscoveryOfferBrief | null;
+};
+
+export type DiscoveryRecentEvent = {
+  id: string;
+  eventType: string;
+  reasonCode: string | null;
+  source?: string;
+  platform?: string;
+  at: string;
+  offer: DiscoveryOfferBrief | null;
+};
+
+export type DiscoveryGuidePayload = {
+  intentStage?: string;
+  intentLabel?: string;
+  body?: string;
+  stageProgress?: number;
+  nextStep?: { title?: string; action?: string; offerId?: number | null };
+  primaryCta?: { label: string; href: string; action?: string };
+  secondaryCta?: { label: string; href: string; action?: string };
+};
+
+export type DiscoveryProfileResponse = {
+  auth: 'guest' | 'user';
+  profile: DiscoveryProfilePayload | null;
+  tropes: DiscoveryProfileTrope[];
+  recent: DiscoveryRecentEvent[];
+  guide: DiscoveryGuidePayload | null;
+  error?: string | null;
+};
+
+export async function fetchDiscoveryProfile(token: string | null): Promise<DiscoveryProfileResponse> {
+  if (!token) {
+    return { auth: 'guest', profile: null, tropes: [], recent: [], guide: null };
+  }
+  try {
+    const response = await fetch(`${API_URL}/api/discovery/profile`, {
+      headers: headers(token),
+      cache: 'no-store',
+    });
+    if (response.status === 401) {
+      return { auth: 'guest', profile: null, tropes: [], recent: [], guide: null };
+    }
+    if (!response.ok) {
+      return {
+        auth: 'user',
+        profile: null,
+        tropes: [],
+        recent: [],
+        guide: null,
+        error: 'Nie udało się wczytać danych.',
+      };
+    }
+    const data = await response.json().catch(() => ({}));
+    return {
+      auth: 'user',
+      profile: (data?.profile || null) as DiscoveryProfilePayload | null,
+      tropes: Array.isArray(data?.tropes) ? data.tropes : [],
+      recent: Array.isArray(data?.recent) ? data.recent : [],
+      guide: (data?.guide || null) as DiscoveryGuidePayload | null,
+      error: null,
+    };
+  } catch {
+    return {
+      auth: 'user',
+      profile: null,
+      tropes: [],
+      recent: [],
+      guide: null,
+      error: 'Brak połączenia.',
+    };
+  }
+}
+
+export type ForYouRailItem = {
+  id: number;
+  offerId: number;
+  title: string;
+  city: string;
+  district: string;
+  price: number;
+  pricePln: number | null;
+  priceCurrency: string;
+  listPricePln: number | null;
+  propertyType: string;
+  transactionType: string;
+  area: number;
+  imageUrl: string | null;
+  score: number;
+  reason: string;
+  exploreFlag: boolean;
+  createdAt: string;
+};
+
+export type DiscoveryForYouResponse = {
+  auth: 'guest' | 'user';
+  items: ForYouRailItem[];
+  profile: {
+    confidence: number;
+    decisionCount: number;
+    searchPhase: string;
+    engineVersion: string;
+    ready: boolean;
+  } | null;
+  explain: { offerId: number; reason: string; score: number } | null;
+};
+
+export async function fetchDiscoveryForYou(
+  token: string | null,
+  opts?: { limit?: number; transaction?: 'SALE' | 'RENT' | ''; offerId?: number },
+): Promise<DiscoveryForYouResponse> {
+  if (!token) {
+    return { auth: 'guest', items: [], profile: null, explain: null };
+  }
+  try {
+    const qs = new URLSearchParams({
+      limit: String(Math.max(1, Math.min(24, opts?.limit ?? 12))),
+    });
+    if (opts?.transaction) qs.set('transaction', opts.transaction);
+    if (opts?.offerId && Number.isFinite(opts.offerId) && opts.offerId > 0) {
+      qs.set('offerId', String(opts.offerId));
+    }
+    const response = await fetch(`${API_URL}/api/discovery/for-you?${qs}`, {
+      headers: headers(token),
+      cache: 'no-store',
+    });
+    if (response.status === 401) {
+      return { auth: 'guest', items: [], profile: null, explain: null };
+    }
+    if (!response.ok) {
+      return { auth: 'user', items: [], profile: null, explain: null };
+    }
+    const data = await response.json().catch(() => ({}));
+    return {
+      auth: 'user',
+      items: Array.isArray(data?.items) ? data.items : [],
+      profile: data?.profile
+        ? {
+            confidence: Number(data.profile.confidence) || 0,
+            decisionCount: Number(data.profile.decisionCount) || 0,
+            searchPhase: String(data.profile.searchPhase || ''),
+            engineVersion: String(data.profile.engineVersion || ''),
+            ready: Boolean(data.profile.ready),
+          }
+        : null,
+      explain: data?.explain
+        ? {
+            offerId: Number(data.explain.offerId) || 0,
+            reason: String(data.explain.reason || ''),
+            score: Number(data.explain.score) || 0,
+          }
+        : null,
+    };
+  } catch {
+    return { auth: 'user', items: [], profile: null, explain: null };
+  }
+}
+
+export type DiscoveryTasteAction = 'LIKE' | 'DISLIKE' | 'SERIOUS' | 'OPEN';
+
+/** WWW-parity taste events via /api/discovery/events (Bearer OK). */
+export async function postDiscoveryTasteEvent(params: {
+  token: string | null;
+  offerId: number;
+  eventType: DiscoveryTasteAction;
+  reasonCode?: string | null;
+  source?: string;
+}): Promise<{ ok: boolean; authRequired?: boolean }> {
+  if (!params.token) return { ok: false, authRequired: true };
+  const id = Number(params.offerId);
+  if (!Number.isFinite(id) || id <= 0) return { ok: false };
+
+  const idempotencyKey =
+    params.eventType === 'OPEN'
+      ? `mobile-open-${id}-${new Date().toISOString().slice(0, 10)}`
+      : `mobile-${params.eventType.toLowerCase()}-${id}-${Date.now()}`;
+
+  try {
+    const response = await fetch(`${API_URL}/api/discovery/events`, {
+      method: 'POST',
+      headers: headers(params.token),
+      body: JSON.stringify({
+        eventType: params.eventType,
+        offerId: id,
+        reasonCode: params.reasonCode || undefined,
+        source: (params.source || 'mobile_offer_card').slice(0, 32),
+        idempotencyKey,
+      }),
+    });
+    if (response.status === 401) return { ok: false, authRequired: true };
+    if (!response.ok) return { ok: false };
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function mutateDiscoveryTrope(
   token: string | null,
   input: { offerId: number; action: 'SAVE' | 'PRIORITIZE' | 'UNPRIORITIZE' | 'REMOVE' | 'SERIOUS' },

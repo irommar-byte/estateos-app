@@ -78,6 +78,10 @@ import {
   toggleFavoriteId,
 } from '../utils/favoritesStorage';
 import { normalizeListingCurrency } from '../money/convert';
+import DiscoveryOfferExplainer from '../components/discovery/DiscoveryOfferExplainer';
+import DiscoveryVisitHint from '../components/discovery/DiscoveryVisitHint';
+import OfferDiscoveryActions from '../components/discovery/OfferDiscoveryActions';
+import DiscoveryContactWhisper from '../components/discovery/DiscoveryContactWhisper';
 import { formatAmountWithCurrency, formatOfferSecondaryAmount, resolveOfferDisplayAmount } from '../money/format';
 import { resolveOfferListingPrice } from '../money/offerPrice';
 import { formatListedPriceLabel, resolveOfferPriceDiscount } from '../utils/offerPriceDiscount';
@@ -1651,6 +1655,21 @@ export default function OfferDetail({ route, navigation }: any) {
             </View>
           </View>
 
+          {offer?.id ? (
+            <>
+              <DiscoveryOfferExplainer offerId={offer.id} />
+              <View style={{ marginBottom: 16 }}>
+                <OfferDiscoveryActions
+                  offerId={offer.id}
+                  variant="full"
+                  source="mobile_offer_detail"
+                  trackOpen
+                  onRequireAuth={() => navigation?.navigate?.('Login')}
+                />
+              </View>
+            </>
+          ) : null}
+
           <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
           <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.keyParameters')}</Text>
           <View style={[styles.detailsContainer, { backgroundColor: isDark ? '#1c1c1e' : '#f5f6f8', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.05)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
@@ -1940,7 +1959,14 @@ export default function OfferDetail({ route, navigation }: any) {
       </AnimatedScrollView>
 
       {/* --- NOWY, LUKSUSOWY BOTTOM BAR APPLE-STYLE --- */}
-      <View
+              {offer?.id ? (
+          <View style={{ paddingHorizontal: 20, marginBottom: 10 }}>
+            <DiscoveryVisitHint navigation={navigation} offerId={offer.id} style={{ marginBottom: 10 }} />
+            <DiscoveryContactWhisper navigation={navigation} beforeContact style={{ marginBottom: 8 }} />
+          </View>
+        ) : null}
+
+        <View
         style={styles.bottomBarContainer}
         pointerEvents="box-none"
         onLayout={(e) => {

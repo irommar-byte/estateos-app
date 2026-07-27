@@ -91,6 +91,8 @@ import CurrencySegmentControl from '../components/CurrencySegmentControl';
 import AdvancedFilterSegment from '../components/AdvancedFilterSegment';
 import PolandScopeNote from '../components/PolandScopeNote';
 import JellyReveal from '../components/JellyReveal';
+import DiscoveryIntelligenceWhisper from '../components/discovery/DiscoveryIntelligenceWhisper';
+import { useDiscoveryMapIntelligence } from '../hooks/useDiscoveryMapIntelligence';
 import RadarOfferGallery, {
   type GalleryCountryFilter,
   type GalleryOffer,
@@ -1076,6 +1078,16 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return 'GALLERY';
   });
   const [galleryTransactionFilter, setGalleryTransactionFilter] = useState<GalleryTransactionFilter>('SELL');
+  const mapIntelTx =
+    galleryTransactionFilter === 'RENT'
+      ? 'RENT'
+      : galleryTransactionFilter === 'SELL'
+        ? 'SALE'
+        : '';
+  const { forYouIds: discoveryForYouIds, whisperBody: discoveryMapWhisper } = useDiscoveryMapIntelligence({
+    transaction: mapIntelTx,
+    enabled: tabSurface === 'explore' || radarBrowseMode === 'RADAR',
+  });
   const [galleryCountryFilter, setGalleryCountryFilter] = useState<GalleryCountryFilter>('ALL');
   const [galleryPropertyFilter, setGalleryPropertyFilter] = useState<GalleryPropertyFilter>('ALL');
   const [gallerySortFilter, setGallerySortFilter] = useState<GallerySortFilter>('NEWEST');
@@ -4482,7 +4494,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
     offersForMapPins.forEach((offer, idx) => {
       const isSelected = selectedOfferId != null && String(offer.id) === String(selectedOfferId);
-      const markerAccent = offerMarkerAccent(offer.raw);
+      const isForYou = discoveryForYouIds.has(Number(offer.id));
+      const markerAccent = isForYou ? '#34D399' : offerMarkerAccent(offer.raw);
       const luxColors = markerLuxuryGradient(markerAccent);
       const lat = Number(offer.lat);
       const lng = Number(offer.lng);
@@ -4542,7 +4555,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             <OfferMapMarkerPin
               label={markerPriceLabel}
               luxColors={luxColors}
-              selected={isSelected}
+              selected={isSelected || isForYou}
               accent={markerAccent}
             />
           </Marker>
@@ -4552,7 +4565,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             coordinate={pinCoord}
             label={markerPriceLabel}
             color={markerAccent}
-            selected={isSelected}
+            selected={isSelected || isForYou}
             onPress={() => {
               Haptics.selectionAsync();
               focusOfferById(offer.id ?? offerKey);
@@ -4563,7 +4576,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     });
 
     return { circles, markers };
-  }, [offersForMapPins, activeOffers, activeIndex, rate, preference, focusOfferById, showMapPrivacyCircles]);
+  }, [offersForMapPins, activeOffers, activeIndex, rate, preference, focusOfferById, showMapPrivacyCircles, discoveryForYouIds]);
 
   const mapPinChildrenReady = Platform.OS !== 'ios' || (iosMapPinsReady && !loading);
 
@@ -4812,6 +4825,26 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       </View>
 
       <View style={styles.mapUiChrome} pointerEvents="box-none" collapsable={false}>
+
+      {discoveryMapWhisper ? (
+        <View
+          pointerEvents="box-none"
+          style={{
+            position: 'absolute',
+            left: 12,
+            right: 12,
+            top: Math.max(insets.top, 12) + 56,
+            zIndex: 40,
+          }}
+        >
+          <DiscoveryIntelligenceWhisper
+            navigation={navigation}
+            variant="map"
+            body={discoveryMapWhisper}
+            href="/moj-kierunek"
+          />
+        </View>
+      ) : null}
 
       {showOnlyFavorites && favoritesMapScope === 'FAVORITES' && (
         <View pointerEvents="none" style={styles.favoritesMapDecorLayer}>
@@ -5355,6 +5388,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         >
           <View style={[styles.galleryOverlayInner, { paddingTop: browseChromeTop }]}>
           <RadarOfferGallery
+            navigation={navigation}
             offers={galleryOffers}
             featuredOffers={galleryFeaturedOffers}
             favoriteRailItems={galleryFavoriteRailItems}

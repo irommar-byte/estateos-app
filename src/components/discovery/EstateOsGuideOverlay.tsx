@@ -165,12 +165,23 @@ export default function EstateOsGuideOverlay({ navigation }: Props) {
           <ApplePressable
             onPress={() => {
               setOpen(false);
-              navigation.navigate('DiscoveryResume');
+              navigation.navigate('DiscoveryDirection');
             }}
             style={styles.action}
           >
             <Ionicons name="navigate-outline" size={17} color={DISCOVERY_COLORS.gold} />
             <Text style={styles.actionText}>Podpowiedz mi kolejny krok</Text>
+            <Ionicons name="arrow-forward" size={15} color={DISCOVERY_COLORS.gold} />
+          </ApplePressable>
+          <ApplePressable
+            onPress={() => {
+              setOpen(false);
+              navigation.navigate('DiscoveryLustro');
+            }}
+            style={styles.action}
+          >
+            <Ionicons name="sparkles-outline" size={17} color={DISCOVERY_COLORS.gold} />
+            <Text style={styles.actionText}>Lustro preferencji</Text>
             <Ionicons name="arrow-forward" size={15} color={DISCOVERY_COLORS.gold} />
           </ApplePressable>
         </BlurView>

@@ -18,8 +18,11 @@ import * as Haptics from 'expo-haptics';
 import ApplePressable from '../ApplePressable';
 import CircularLabelRing from '../CircularLabelRing';
 import { DISCOVERY_COLORS } from './discoveryMotion';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDiscoveryPulse } from '../../hooks/useDiscoveryPulse';
 import { useDiscoveryStore } from '../../store/useDiscoveryStore';
+import { playIntelligenceChime } from '../../lib/discovery/intelligenceChime';
+import { navigateDiscoveryHref } from '../../lib/discovery/navigateDiscoveryHref';
 import { resolveDiscoveryEntryRoute } from '../../utils/discoveryExperienceState';
 
 type Props = {
@@ -27,14 +30,38 @@ type Props = {
   surface?: 'market' | 'explore';
 };
 
-type Mood = 'calm' | 'active' | 'alert';
+type Mood = 'calm' | 'active' | 'alert' | 'celebrate';
+type PresentReason = 'progress' | 'milestone' | 'contradiction' | 'ready_peek' | 'manual';
 
 const CORE = 66;
 const RING_GAP = 12;
 const HIT = CORE + RING_GAP * 2 + 26;
 const BRAIN = 40;
+const SESSION_PEEK_KEY = 'eos_intel_peek_v1';
+const SESSION_MILESTONE_KEY = 'eos_intel_milestones_v1';
 
-function resolveMood(progress: number, confidence: number, contradiction: number): Mood {
+const REASON_COPY: Record<Exclude<PresentReason, 'manual'>, { badge: string; lead: string }> = {
+  progress: { badge: 'Postęp', lead: 'Kierunek się właśnie wyostrzył.' },
+  milestone: { badge: 'Gotowość', lead: 'Twój profil przekroczył nowy próg.' },
+  contradiction: {
+    badge: 'Korekta',
+    lead: 'Sygnały się mieszają — warto spokojnie doprecyzować.',
+  },
+  ready_peek: {
+    badge: 'Trop',
+    lead: 'Masz wystarczająco wyraźny kierunek, by na chwilę zajrzeć.',
+  },
+};
+
+const MILESTONES = [25, 50, 75, 90];
+
+function resolveMood(
+  progress: number,
+  confidence: number,
+  contradiction: number,
+  spectacle: boolean,
+): Mood {
+  if (spectacle) return 'celebrate';
   if (contradiction >= 0.55) return 'alert';
   if (progress >= 35 || confidence >= 0.35) return 'active';
   return 'calm';
@@ -44,29 +71,50 @@ const MOOD: Record<Mood, { accent: string; soft: string; ring: string }> = {
   calm: { accent: '#34D399', soft: 'rgba(52,211,153,0.35)', ring: 'rgba(52,211,153,0.55)' },
   active: { accent: '#5AC8FA', soft: 'rgba(90,200,250,0.45)', ring: 'rgba(90,200,250,0.65)' },
   alert: { accent: '#FBBF24', soft: 'rgba(251,191,36,0.4)', ring: 'rgba(251,191,36,0.65)' },
+  celebrate: { accent: '#A78BFA', soft: 'rgba(167,139,250,0.45)', ring: 'rgba(167,139,250,0.7)' },
 };
 
-function navigatePulseAction(navigation: any, action: string | undefined, firstEntrySeen: boolean) {
-  const discoveryRoute = resolveDiscoveryEntryRoute(firstEntrySeen);
-  switch (String(action || 'DISCOVERY').toUpperCase()) {
-    case 'TROPES':
-      navigation?.navigate?.('DiscoveryTropes');
-      return;
-    case 'DIRECTION':
-    case 'LUSTRO':
-    case 'PROFILE':
-      navigation?.navigate?.('DiscoveryResume');
-      return;
-    case 'MAP':
-      navigation?.navigate?.('MainTabs', { screen: 'Explore' });
-      return;
-    case 'CONTACT':
-      navigation?.navigate?.('MainTabs', { screen: 'Wiadomości' });
-      return;
-    case 'DISCOVERY':
-    default:
-      navigation?.navigate?.(discoveryRoute);
+function crossedMilestone(prev: number | null, next: number): number | null {
+  if (typeof prev !== 'number') return null;
+  for (const gate of MILESTONES) {
+    if (prev < gate && next >= gate) return gate;
   }
+  return null;
+}
+
+async function readMilestones(): Promise<number[]> {
+  try {
+    const raw = await AsyncStorage.getItem(SESSION_MILESTONE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeMilestones(next: number[]) {
+  try {
+    await AsyncStorage.setItem(SESSION_MILESTONE_KEY, JSON.stringify(next));
+  } catch {
+    // quiet
+  }
+}
+
+function navigatePulseAction(navigation: any, action: string | undefined, firstEntrySeen: boolean) {
+  const act = String(action || 'DISCOVERY').toUpperCase();
+  if (act === 'DIRECTION') {
+    navigation?.navigate?.('DiscoveryDirection');
+    return;
+  }
+  if (act === 'LUSTRO' || act === 'PROFILE') {
+    navigation?.navigate?.('DiscoveryLustro');
+    return;
+  }
+  if (act === 'DISCOVERY' || !action) {
+    navigation?.navigate?.(resolveDiscoveryEntryRoute(firstEntrySeen));
+    return;
+  }
+  navigateDiscoveryHref(navigation, null, action);
 }
 
 /** Tight orbits — neurons stay inside the brain silhouette. */
@@ -192,18 +240,172 @@ function LivingBrain({ accent, size = BRAIN }: { accent: string; size?: number }
 export default function IntelligencePulseTape({ navigation, surface = 'explore' }: Props) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
-  const { pulse, ready } = useDiscoveryPulse();
   const firstEntrySeen = useDiscoveryStore((s) => s.firstEntrySeen);
   const [sheetVisible, setSheetVisible] = useState(false);
+  const [presentReason, setPresentReason] = useState<PresentReason | null>(null);
+  const [spectacle, setSpectacle] = useState(false);
   const genie = useRef(new Animated.Value(0)).current;
   const aura = useRef(new Animated.Value(0)).current;
   const closingRef = useRef(false);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spectacleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bootPeekDoneRef = useRef(false);
+  const sheetVisibleRef = useRef(false);
+
+  const clearHide = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
+
+  const runGenieOut = useCallback(
+    (after?: () => void) => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      clearHide();
+      Animated.timing(genie, {
+        toValue: 0,
+        duration: 420,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!finished) return;
+        setSheetVisible(false);
+        sheetVisibleRef.current = false;
+        setPresentReason(null);
+        setSpectacle(false);
+        closingRef.current = false;
+        after?.();
+      });
+    },
+    [clearHide, genie],
+  );
+
+  const runGenieIn = useCallback(() => {
+    closingRef.current = false;
+    setSheetVisible(true);
+    sheetVisibleRef.current = true;
+    genie.setValue(0);
+    Animated.spring(genie, {
+      toValue: 1,
+      friction: 7,
+      tension: 68,
+      useNativeDriver: true,
+    }).start();
+  }, [genie]);
+
+  const scheduleHide = useCallback(
+    (ms: number) => {
+      clearHide();
+      hideTimerRef.current = setTimeout(() => {
+        runGenieOut();
+      }, ms);
+    },
+    [clearHide, runGenieOut],
+  );
+
+  const presentGently = useCallback(
+    (kind: PresentReason) => {
+      if (kind === 'manual') {
+        setPresentReason(null);
+        runGenieIn();
+        scheduleHide(9000);
+        return;
+      }
+      setPresentReason(kind);
+      setSpectacle(kind === 'progress' || kind === 'milestone');
+      void playIntelligenceChime(kind === 'progress' || kind === 'milestone' ? 'progress' : 'suggest');
+      runGenieIn();
+      scheduleHide(kind === 'contradiction' ? 9000 : kind === 'ready_peek' ? 7500 : 8200);
+      if (spectacleTimerRef.current) clearTimeout(spectacleTimerRef.current);
+      spectacleTimerRef.current = setTimeout(() => setSpectacle(false), 2400);
+    },
+    [runGenieIn, scheduleHide],
+  );
+
+  const onPulseChange = useCallback(
+    async ({
+      previous,
+      next,
+      silent,
+    }: {
+      previous: import('../../services/discoveryService').DiscoveryPulsePayload | null;
+      next: import('../../services/discoveryService').DiscoveryPulsePayload;
+      silent: boolean;
+    }) => {
+      const prevProgress = previous?.progress ?? null;
+      const prevContra = previous?.contradictionIndex ?? null;
+      const increased = typeof prevProgress === 'number' && next.progress > prevProgress + 0.5;
+      const milestone = crossedMilestone(prevProgress, next.progress);
+      const contraRising =
+        typeof prevContra === 'number' && prevContra < 0.55 && next.contradictionIndex >= 0.55;
+
+      if (!silent || increased || milestone != null || contraRising) {
+        if (contraRising) {
+          presentGently('contradiction');
+        } else if (milestone != null) {
+          const seen = await readMilestones();
+          if (!seen.includes(milestone)) {
+            await writeMilestones([...seen, milestone]);
+            presentGently('milestone');
+          } else if (increased) {
+            presentGently('progress');
+          }
+        } else if (increased) {
+          presentGently('progress');
+        }
+      }
+    },
+    [presentGently],
+  );
+
+  const { pulse, ready } = useDiscoveryPulse({ onPulseChange });
+
+  useEffect(() => {
+    if (!ready || !pulse || bootPeekDoneRef.current || sheetVisibleRef.current) return;
+    const meaningful = pulse.progress >= 40 || pulse.confidence >= 0.32;
+    if (!meaningful) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const seen = await AsyncStorage.getItem(SESSION_PEEK_KEY);
+        if (seen === '1') {
+          bootPeekDoneRef.current = true;
+          return;
+        }
+      } catch {
+        // quiet
+      }
+      bootPeekDoneRef.current = true;
+      setTimeout(() => {
+        if (cancelled) return;
+        void AsyncStorage.setItem(SESSION_PEEK_KEY, '1').catch(() => {});
+        presentGently(pulse.contradictionIndex >= 0.55 ? 'contradiction' : 'ready_peek');
+      }, 2200);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [presentGently, pulse, ready]);
+
+  useEffect(
+    () => () => {
+      clearHide();
+      if (spectacleTimerRef.current) clearTimeout(spectacleTimerRef.current);
+    },
+    [clearHide],
+  );
 
   const mood = useMemo(() => {
     if (!pulse) return 'calm' as Mood;
-    return resolveMood(pulse.progress, pulse.confidence, pulse.contradictionIndex);
-  }, [pulse]);
+    return resolveMood(pulse.progress, pulse.confidence, pulse.contradictionIndex, spectacle);
+  }, [pulse, spectacle]);
   const colors = MOOD[mood];
+  const reasonMeta =
+    presentReason && presentReason !== 'manual' ? REASON_COPY[presentReason] : null;
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -226,41 +428,10 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
     return () => loop.stop();
   }, [aura]);
 
-  const runGenieIn = useCallback(() => {
-    closingRef.current = false;
-    setSheetVisible(true);
-    genie.setValue(0);
-    Animated.spring(genie, {
-      toValue: 1,
-      friction: 7,
-      tension: 68,
-      useNativeDriver: true,
-    }).start();
-  }, [genie]);
-
-  const runGenieOut = useCallback(
-    (after?: () => void) => {
-      if (closingRef.current) return;
-      closingRef.current = true;
-      Animated.timing(genie, {
-        toValue: 0,
-        duration: 420,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (!finished) return;
-        setSheetVisible(false);
-        closingRef.current = false;
-        after?.();
-      });
-    },
-    [genie],
-  );
-
   const open = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    runGenieIn();
-  }, [runGenieIn]);
+    presentGently('manual');
+  }, [presentGently]);
 
   const close = useCallback(() => {
     void Haptics.selectionAsync();
@@ -270,9 +441,19 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
   const runPrimary = useCallback(() => {
     runGenieOut(() => {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      navigatePulseAction(navigation, pulse?.primaryCta?.action, firstEntrySeen);
+      const action = pulse?.primaryCta?.action;
+      const href = pulse?.primaryCta?.href;
+      if (href) navigateDiscoveryHref(navigation, href, action);
+      else navigatePulseAction(navigation, action, firstEntrySeen);
     });
-  }, [firstEntrySeen, navigation, pulse?.primaryCta?.action, runGenieOut]);
+  }, [firstEntrySeen, navigation, pulse?.primaryCta?.action, pulse?.primaryCta?.href, runGenieOut]);
+
+  const runSecondary = useCallback(() => {
+    runGenieOut(() => {
+      const href = pulse?.secondaryCta?.href || '/lustro';
+      navigateDiscoveryHref(navigation, href, pulse?.secondaryCta?.action || 'LUSTRO');
+    });
+  }, [navigation, pulse?.secondaryCta?.action, pulse?.secondaryCta?.href, runGenieOut]);
 
   if (!ready || !pulse) return null;
 
@@ -398,6 +579,13 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
                   </ApplePressable>
                 </View>
 
+                {reasonMeta ? (
+                  <View style={styles.reasonBadge}>
+                    <Text style={[styles.reasonBadgeText, { color: colors.accent }]}>{reasonMeta.badge}</Text>
+                    <Text style={styles.reasonLead}>{reasonMeta.lead}</Text>
+                  </View>
+                ) : null}
+
                 <Text style={styles.direction} numberOfLines={2}>
                   {pulse.directionLine || pulse.suggestion}
                 </Text>
@@ -422,6 +610,11 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
                 <ApplePressable style={[styles.cta, { backgroundColor: colors.accent }]} onPress={runPrimary} haptic="medium">
                   <Text style={styles.ctaText}>{pulse.primaryCta?.label || 'Kontynuuj Discovery'}</Text>
                   <Ionicons name="arrow-forward" size={16} color="#061018" />
+                </ApplePressable>
+                <ApplePressable style={styles.secondaryCta} onPress={runSecondary} haptic="none">
+                  <Text style={styles.secondaryCtaText}>
+                    {pulse.secondaryCta?.label || 'Lustro preferencji'}
+                  </Text>
                 </ApplePressable>
               </BlurView>
             </Pressable>
@@ -562,6 +755,27 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 12,
   },
+  reasonBadge: {
+    marginTop: 12,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  reasonBadgeText: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  reasonLead: {
+    marginTop: 4,
+    color: 'rgba(245,245,247,0.78)',
+    fontSize: 13,
+    lineHeight: 18,
+  },
   cta: {
     marginTop: 16,
     height: 46,
@@ -572,4 +786,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   ctaText: { color: '#061018', fontSize: 14, fontWeight: '900' },
+  secondaryCta: {
+    marginTop: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  secondaryCtaText: {
+    color: 'rgba(245,245,247,0.7)',
+    fontSize: 13,
+    fontWeight: '800',
+  },
 });
