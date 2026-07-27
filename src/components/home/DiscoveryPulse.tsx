@@ -130,7 +130,7 @@ function IntelligenceBrain({
         <>
           <motion.span
             aria-hidden
-            className="absolute inset-[-6px] rounded-full"
+            className="absolute inset-[-6px] rounded-full transition-opacity duration-300 group-hover:opacity-100"
             style={{ boxShadow: `0 0 0 1px ${colors.glow}` }}
             animate={
               absorbing
@@ -143,6 +143,21 @@ function IntelligenceBrain({
               ease: "easeOut",
             }}
           />
+          {/* Hover dazzle bloom */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-[-10px] rounded-full opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+            style={{
+              background: `radial-gradient(circle, ${colors.glow} 0%, transparent 70%)`,
+              filter: "blur(6px)",
+            }}
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-[-2px] overflow-hidden rounded-full opacity-0 group-hover:opacity-100"
+          >
+            <span className="eos-brain-flare absolute inset-y-[-20%] left-[-60%] w-[45%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/80 to-transparent" />
+          </span>
           <motion.span
             aria-hidden
             className="absolute h-1 w-1 rounded-full bg-white/70"
@@ -167,7 +182,7 @@ function IntelligenceBrain({
         </>
       ) : null}
       <motion.span
-        className={`relative z-[1] ${colors.core}`}
+        className={`relative z-[1] ${colors.core} transition-[filter,transform] duration-300 group-hover:scale-110 group-hover:brightness-125`}
         style={{ filter: `drop-shadow(0 0 10px ${colors.glow})` }}
         animate={
           reduceMotion
@@ -520,7 +535,7 @@ export default function DiscoveryPulse() {
           scale: absorbing ? [1, 1.14, 1] : 1,
         }}
         transition={reduceMotion ? { duration: 0.12 } : spring}
-        className={`pointer-events-auto group relative flex h-12 w-12 items-center justify-center rounded-full border ${colors.ring} bg-[rgba(8,10,14,0.78)] shadow-[0_12px_40px_rgba(0,0,0,0.45),0_0_1px_rgba(255,255,255,0.12)_inset] backdrop-blur-2xl transition-transform hover:scale-[1.06] active:scale-[0.96]`}
+        className={`pointer-events-auto group relative flex h-12 w-12 items-center justify-center rounded-full border ${colors.ring} bg-[rgba(8,10,14,0.78)] shadow-[0_12px_40px_rgba(0,0,0,0.45),0_0_1px_rgba(255,255,255,0.12)_inset] backdrop-blur-2xl transition-all duration-300 hover:scale-[1.1] hover:brightness-125 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_28px_rgba(255,255,255,0.28),0_16px_40px_rgba(0,0,0,0.5)] active:scale-[0.96]`}
         aria-label={`EstateOS Inteligence · ${pulse.stageLabel} ${progress}%`}
         aria-expanded={expanded}
         title={`${pulse.stageLabel} · ${progress}%`}
