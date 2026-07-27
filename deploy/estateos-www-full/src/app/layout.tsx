@@ -7,6 +7,7 @@ import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import OpenInSystemBrowserGate from "@/components/layout/OpenInSystemBrowserGate";
 import FloatingPreferencesDock from "@/components/layout/FloatingPreferencesDock";
+import DiscoveryPulse from "@/components/home/DiscoveryPulse";
 import WebNotificationPrompt from "@/components/layout/WebNotificationPrompt";
 import PresentationFlowOrchestrator from "@/components/presentation/PresentationFlowOrchestrator";
 import CampaignAttributionBoundary from "@/components/marketing/CampaignAttributionBoundary";
@@ -119,6 +120,7 @@ export default async function RootLayout({
                     <OpenInSystemBrowserGate />
                     <EcosystemVerticalTransition />
                     <FloatingPreferencesDock />
+                    <DiscoveryPulse />
                     <WebNotificationPrompt />
                     <PresentationFlowOrchestrator />
                     <div id="main-content" tabIndex={-1} className="relative z-10 outline-none">

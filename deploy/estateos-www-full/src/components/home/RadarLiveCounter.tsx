@@ -175,8 +175,9 @@ export default function RadarLiveCounter() {
         ))}
       </AnimatePresence>
 
+      {/* Bottom-right stack: above FloatingPreferencesDock (bottom-4 right-4) */}
       <div
-        className="pointer-events-none fixed bottom-6 left-4 z-[55] sm:bottom-8 sm:left-6"
+        className="pointer-events-none fixed bottom-[4.75rem] right-4 z-[45] flex flex-col items-end sm:bottom-[5.25rem] sm:right-5"
         aria-live="polite"
       >
         <motion.div
@@ -194,9 +195,9 @@ export default function RadarLiveCounter() {
             {expanded ? (
               <motion.div
                 key="expanded"
-                initial={{ opacity: 0, x: -12, scale: 0.96 }}
+                initial={{ opacity: 0, x: 12, scale: 0.96 }}
                 animate={{ opacity: 1, x: 0, scale: 1 }}
-                exit={{ opacity: 0, x: -10, scale: 0.96 }}
+                exit={{ opacity: 0, x: 10, scale: 0.96 }}
                 transition={{ duration: reduceMotion ? 0.12 : 0.32, ease: [0.16, 1, 0.3, 1] }}
                 className="overflow-hidden rounded-2xl border border-emerald-500/25 bg-black/75 shadow-[0_20px_60px_rgba(0,0,0,0.55),0_0_40px_rgba(16,185,129,0.12)] backdrop-blur-2xl"
               >
