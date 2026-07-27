@@ -156,7 +156,7 @@ function IntelligenceBrain({
             aria-hidden
             className="pointer-events-none absolute inset-[-2px] overflow-hidden rounded-full opacity-0 group-hover:opacity-100"
           >
-            <span className="eos-brain-flare absolute inset-y-[-20%] left-[-60%] w-[45%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/80 to-transparent" />
+            <span className="eos-brain-flare absolute inset-y-[-20%] left-[-60%] w-[45%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/50 to-transparent" />
           </span>
           <motion.span
             aria-hidden

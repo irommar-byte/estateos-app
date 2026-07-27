@@ -136,7 +136,7 @@ export default function IntelligenceEnableSheet() {
                 {!reduceMotion ? (
                   <span
                     aria-hidden
-                    className="eos-brain-flare absolute inset-y-[-30%] left-[-55%] w-[40%] skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/85 to-transparent opacity-70"
+                    className="eos-brain-flare absolute inset-y-[-30%] left-[-55%] w-[40%] skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/55 to-transparent"
                   />
                 ) : null}
                 <Brain
@@ -186,7 +186,8 @@ export default function IntelligenceEnableSheet() {
               <button
                 type="button"
                 onClick={handleLater}
-                className="eos-btn eos-btn--ghost eos-btn--block !normal-case !tracking-normal !text-[13px] !font-medium !min-h-0 !py-2.5"
+                className="w-full rounded-full border border-white/15 bg-white/[0.06] px-4 py-3 text-[13px] font-semibold tracking-wide text-white transition hover:border-white/25 hover:bg-white/12 hover:text-white"
+                style={{ color: "#f5f5f7", WebkitTextFillColor: "#f5f5f7" }}
               >
                 {dict.intelligence.sheetLater}
               </button>

@@ -2864,7 +2864,7 @@ html.light .eos-modal-panel {
 
 .eos-btn:hover::before {
   opacity: 1;
-  animation: eos-btn-flare 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: eos-btn-flare 1.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes eos-btn-flare {
@@ -4071,36 +4071,37 @@ a[class*="bg-[var(--eos-accent)]"] * {
   -webkit-text-fill-color: inherit !important;
 }
 
-/* Inteligence brain dazzle / olsnienie */
+/* Inteligence brain dazzle / olsnienie — spokojne, nie migające */
 .eos-brain-flare {
-  animation: eos-brain-flare 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  animation: eos-brain-flare 6.5s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  opacity: 0.45;
 }
 .group:hover .eos-brain-flare {
-  animation-duration: 0.95s;
-  opacity: 1;
+  animation-duration: 2.4s;
+  opacity: 0.85;
 }
 @keyframes eos-brain-flare {
   0% {
-    transform: translateX(-20%) translateY(10%);
+    transform: translateX(-30%) translateY(8%);
     opacity: 0;
   }
-  18% {
-    opacity: 0.95;
+  12% {
+    opacity: 0.55;
   }
-  55% {
-    opacity: 0.35;
+  40% {
+    opacity: 0.2;
   }
   100% {
-    transform: translateX(280%) translateY(-10%);
+    transform: translateX(260%) translateY(-8%);
     opacity: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .eos-brain-flare {
     animation: none;
-    opacity: 0.25;
-    left: 20%;
-    width: 55%;
+    opacity: 0.2;
+    left: 22%;
+    width: 50%;
     transform: none;
   }
 }
