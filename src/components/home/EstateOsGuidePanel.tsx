@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Compass, Bookmark, Sparkles, ArrowRight } from "lucide-react";
 import { subscribeDiscoveryUpdated } from "@/lib/discovery/clientEvents";
 
@@ -28,7 +28,10 @@ const FALLBACK: GuidePayload = {
   stageProgress: 0.08,
 };
 
+const spring = { type: "spring" as const, stiffness: 280, damping: 28 };
+
 export default function EstateOsGuidePanel() {
+  const reduceMotion = useReducedMotion();
   const [guide, setGuide] = useState<GuidePayload | null>(null);
 
   const refreshGuide = useCallback(() => {
@@ -50,10 +53,19 @@ export default function EstateOsGuidePanel() {
   const progress = Math.round(Math.min(1, Math.max(0, g.stageProgress ?? 0.08)) * 100);
   const primary = g.primaryCta || FALLBACK.primaryCta!;
   const secondary = g.secondaryCta || FALLBACK.secondaryCta!;
+  const thirdHref =
+    secondary.href === "/lustro" || primary.href === "/lustro" ? "/moj-kierunek" : "/lustro";
+  const thirdLabel = thirdHref === "/lustro" ? "Lustro preferencji" : "Mój kierunek";
 
   return (
     <section className="relative z-30 mx-auto -mt-8 mb-10 w-[calc(100%-2rem)] max-w-6xl sm:-mt-10 sm:w-[calc(100%-3rem)]">
-      <div className="overflow-hidden rounded-[2rem] border border-white/15 bg-black/55 p-5 backdrop-blur-2xl sm:p-7">
+      <motion.div
+        className="overflow-hidden rounded-[2rem] border border-white/15 bg-black/55 p-5 backdrop-blur-2xl sm:p-7"
+        initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.3 }}
+        transition={spring}
+      >
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-3">
@@ -62,7 +74,7 @@ export default function EstateOsGuidePanel() {
               </span>
               <div>
                 <p className="text-sm font-black text-white">EstateOS Guide</p>
-                <p className="text-xs text-white/55">Przewodnik po Twojej decyzji mieszkaniowej</p>
+                <p className="text-xs text-white/55">Intelligence · spokojny następny krok</p>
               </div>
               <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">
                 {stageLabel}
@@ -80,9 +92,9 @@ export default function EstateOsGuidePanel() {
               <div className="h-1 overflow-hidden rounded-full bg-white/10">
                 <motion.div
                   className="h-full rounded-full bg-gradient-to-r from-amber-300 to-emerald-400"
-                  initial={{ width: 0 }}
+                  initial={false}
                   animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  transition={{ duration: reduceMotion ? 0 : 0.5, ease: "easeOut" }}
                 />
               </div>
             </div>
@@ -90,7 +102,7 @@ export default function EstateOsGuidePanel() {
           <div className="grid w-full gap-2 sm:grid-cols-3 lg:w-[34rem] lg:grid-cols-1">
             <Link
               href={primary.href}
-              className="group flex items-center gap-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 transition hover:bg-amber-300/15"
+              className="group flex items-center gap-3 rounded-2xl border border-amber-300/25 bg-amber-300/10 p-3 transition hover:bg-amber-300/15 active:scale-[0.99]"
             >
               <Compass size={17} className="text-amber-200" />
               <span className="flex-1 text-sm font-semibold text-white">{primary.label}</span>
@@ -98,23 +110,23 @@ export default function EstateOsGuidePanel() {
             </Link>
             <Link
               href={secondary.href}
-              className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 transition hover:bg-white/[0.1]"
+              className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 transition hover:bg-white/[0.1] active:scale-[0.99]"
             >
               <Bookmark size={17} className="text-amber-200" />
               <span className="flex-1 text-sm font-semibold text-white">{secondary.label}</span>
               <ArrowRight size={15} className="text-amber-200 transition group-hover:translate-x-0.5" />
             </Link>
             <Link
-              href="/moj-kierunek"
-              className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 transition hover:bg-white/[0.1]"
+              href={thirdHref}
+              className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 transition hover:bg-white/[0.1] active:scale-[0.99]"
             >
               <Sparkles size={17} className="text-amber-200" />
-              <span className="flex-1 text-sm font-semibold text-white">Lustro preferencji</span>
+              <span className="flex-1 text-sm font-semibold text-white">{thirdLabel}</span>
               <ArrowRight size={15} className="text-amber-200 transition group-hover:translate-x-0.5" />
             </Link>
           </div>
         </div>
-      </div>
+      </motion.div>
     </section>
   );
 }
