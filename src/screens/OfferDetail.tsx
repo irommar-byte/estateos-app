@@ -17,6 +17,7 @@ import Animated, {
   withTiming,
   withSequence,
   withRepeat,
+  runOnJS,
 } from 'react-native-reanimated';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(GHScrollView);
@@ -97,6 +98,8 @@ const IMG_HEIGHT = Math.max(480, Math.round(Math.min(width * (4 / 3), height * 0
 /** Ile białej karty nachodzi na dół zdjęcia (zaokrąglone rogi). */
 const HERO_SHEET_OVERLAP = 28;
 const HERO_TAP_HEIGHT = IMG_HEIGHT - HERO_SHEET_OVERLAP;
+/** Po tylu px scrolla sheetu rozwijamy pełną ramkę prowizji w bottom barze. */
+const AGENT_COMMISSION_EXPAND_Y = 64;
 const GALLERY_CONTENT_WIDTH = width - 48;
 const GALLERY_HERO_HEIGHT = Math.round(GALLERY_CONTENT_WIDTH * 0.62);
 const EVENT_PREFIX = DEAL_EVENT_PREFIX;
@@ -175,7 +178,9 @@ export default function OfferDetail({ route, navigation }: any) {
    * w kolorze karty** na końcu treści (zamiast przezroczystego paddingu) — inaczej
    * przy scrollu widać hero zdjęcia („szczelina" między kartą a bottom barem).
    */
-  const [bottomBarHeight, setBottomBarHeight] = useState(240);
+  const [bottomBarHeight, setBottomBarHeight] = useState(180);
+  /** Duża ramka „Prowizja agenta” — dopiero po pociągnięciu sheetu w górę. */
+  const [agentCommissionExpanded, setAgentCommissionExpanded] = useState(false);
   const heartScale = useSharedValue(1);
   const { user, token } = useAuthStore() as any;
   const isGuest = !user?.id;
@@ -851,7 +856,16 @@ export default function OfferDetail({ route, navigation }: any) {
   const sheetNudge = useSharedValue(0);
   const scrollViewRef = useRef<GHScrollView>(null);
   const touchTapRef = useRef({ x: 0, y: 0, at: 0 });
-  const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { scrollY.value = e.contentOffset.y; } });
+  const setCommissionExpandedSafe = useCallback((next: boolean) => {
+    setAgentCommissionExpanded((prev) => (prev === next ? prev : next));
+  }, []);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      scrollY.value = e.contentOffset.y;
+      const next = e.contentOffset.y >= AGENT_COMMISSION_EXPAND_Y;
+      runOnJS(setCommissionExpandedSafe)(next);
+    },
+  });
 
   const isTapNotScroll = (start: { x: number; y: number; at: number }, end: GestureResponderEvent) => {
     const dx = Math.abs(end.nativeEvent.pageX - start.x);
@@ -1942,6 +1956,12 @@ export default function OfferDetail({ route, navigation }: any) {
               <Text style={styles.negotiationMemoryText}>{dealPresentation.priceNegotiation.body}</Text>
             </View>
           ) : null}
+          {offer?.id ? (
+            <View style={{ marginTop: 8, marginBottom: 4, gap: 10 }}>
+              <DiscoveryVisitHint navigation={navigation} offerId={offer.id} />
+              <DiscoveryContactWhisper navigation={navigation} beforeContact />
+            </View>
+          ) : null}
           {/*
             Stały blok w kolorze karty — rezerwuje miejsce pod fixed bottom bar
             (cena + prowizja + Spotkanie / Negocjuj). Bez tego ScrollView (zIndex 2)
@@ -1959,13 +1979,6 @@ export default function OfferDetail({ route, navigation }: any) {
       </AnimatedScrollView>
 
       {/* --- NOWY, LUKSUSOWY BOTTOM BAR APPLE-STYLE --- */}
-              {offer?.id ? (
-          <View style={{ paddingHorizontal: 20, marginBottom: 10 }}>
-            <DiscoveryVisitHint navigation={navigation} offerId={offer.id} style={{ marginBottom: 10 }} />
-            <DiscoveryContactWhisper navigation={navigation} beforeContact style={{ marginBottom: 8 }} />
-          </View>
-        ) : null}
-
         <View
         style={styles.bottomBarContainer}
         pointerEvents="box-none"
@@ -2209,10 +2222,11 @@ export default function OfferDetail({ route, navigation }: any) {
           </View>
 
           {/*
-            PIGUŁKA PROWIZJI — pełna szerokość tylko dla właściciela (lub gdy brak
-            wizytówki sprzedawcy). Kupujący widzi skrót w małej pigułce obok ceny.
+            PIGUŁKA PROWIZJI — pełna szerokość dopiero po pociągnięciu sheetu w górę,
+            żeby na starcie widać było więcej zdjęcia + tytuł / lokalizację.
+            Skrót prowizji zostaje w małej wizytówce agenta obok ceny.
           */}
-          {agentCommissionInfo ? (
+          {agentCommissionInfo && agentCommissionExpanded ? (
             <View
               style={[
                 styles.agentCommissionPill,
