@@ -30,6 +30,7 @@ import {
   labelTransactionType,
   parseDistrictList,
 } from "@/lib/adminUserDetail";
+import { discoveryReasonLabel, discoveryDisplayLabel } from "@/lib/discovery/displayLabels";
 
 function InfoRow({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
@@ -557,7 +558,12 @@ export default function AdminUserDetailPanel({
             label="Powody odrzuceń"
             value={
               user.discovery.dislikeReasons?.length
-                ? user.discovery.dislikeReasons.map((c) => `${c.key}: ${c.value}`).join(" · ")
+                ? user.discovery.dislikeReasons
+                    .map(
+                      (c) =>
+                        `${discoveryReasonLabel(c.key) || discoveryDisplayLabel(c.key)}: ${c.value}`,
+                    )
+                    .join(" · ")
                 : "—"
             }
           />
