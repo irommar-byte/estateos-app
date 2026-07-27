@@ -3585,6 +3585,106 @@ html:not(.light) .eos-car-form-cancel {
   border-color: rgba(52, 211, 153, 0.55) !important;
   background: rgba(6, 78, 59, 0.78) !important;
 }
+
+/* Discovery taste controls — quiet glass, Apple restraint */
+.eos-discovery-tray {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.28rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 0.28s ease, transform 0.28s ease;
+}
+.group:hover .eos-discovery-tray,
+.group:focus-within .eos-discovery-tray,
+.eos-discovery-tray:focus-within {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .eos-discovery-tray {
+    opacity: 0.94;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+.eos-discovery-bar--full {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.eos-discovery-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+.eos-discovery-btn:hover {
+  transform: translateY(-1px) scale(1.03);
+}
+.eos-discovery-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+.eos-discovery-btn--icon {
+  width: 2.05rem;
+  height: 2.05rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+}
+.eos-discovery-btn--icon:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.eos-discovery-btn--pill {
+  padding: 0.62rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+.eos-discovery-btn__label {
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.eos-discovery-btn__icon {
+  color: inherit;
+}
+.eos-discovery-btn--like.is-active {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(6, 78, 59, 0.72);
+}
+.eos-discovery-btn--dislike.is-active {
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(127, 29, 29, 0.55);
+}
+.eos-discovery-btn--serious.is-active {
+  color: #fcd34d;
+  border-color: rgba(251, 191, 36, 0.5);
+  background: rgba(120, 53, 15, 0.62);
+}
+
 .eos-offer-hero-chrome {
   display: flex;
   flex-wrap: wrap;
