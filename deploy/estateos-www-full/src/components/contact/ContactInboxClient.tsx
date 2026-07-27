@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import ContactAttachmentBubble from "@/components/contact/ContactAttachmentBubble";
+import DiscoveryContactWhisper from "@/components/discovery/DiscoveryContactWhisper";
 import {
   formatContactBytes,
   isAllowedContactAttachment,
@@ -589,6 +590,11 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     </button>
                   </div>
                 </div>
+
+                <DiscoveryContactWhisper
+                  beforeContact={false}
+                  className="mt-3 border-white/10 bg-white/[0.04] text-white/80 [&_a]:text-emerald-300/90 [&_p]:text-white/70"
+                />
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <div className="min-w-[180px] flex-1">

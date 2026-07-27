@@ -8,6 +8,7 @@ import { appointmentDateLocale, getOfferModalsDictionary } from "@/i18n/offerMod
 import { fetchCurrentWebUser } from "@/lib/webSessionClient";
 import { saveOfferShareIntent } from "@/lib/offerShareIntent";
 import OfferShareAuthPrompt from "@/components/offer/OfferShareAuthPrompt";
+import DiscoveryContactWhisper from "@/components/discovery/DiscoveryContactWhisper";
 
 type AppointmentModalProps = {
   isOpen: boolean;
@@ -158,6 +159,12 @@ export default function AppointmentModal({
               </div>
               <button type="button" onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--eos-input)] text-[var(--eos-muted)] transition-colors hover:bg-[var(--eos-border)]"><X size={20} /></button>
             </div>
+
+            {!isSuccess ? (
+              <div className="shrink-0 px-6 pt-4 md:px-8">
+                <DiscoveryContactWhisper beforeContact className="border-emerald-500/10" />
+              </div>
+            ) : null}
             
             <div className="custom-scrollbar relative flex-1 overflow-y-auto p-6 md:p-8">
               <AnimatePresence mode="wait">

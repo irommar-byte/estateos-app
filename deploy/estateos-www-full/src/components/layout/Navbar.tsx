@@ -20,6 +20,7 @@ import NotificationCenter from "@/components/NotificationCenter";
 import ContactMessagesNavButton from "@/components/contact/ContactMessagesNavButton";
 import PublicationWalletNavButton from "@/components/wallet/PublicationWalletNavButton";
 import NavbarProfileChip from "@/components/layout/NavbarProfileChip";
+import DiscoveryNavWhisper from "@/components/discovery/DiscoveryNavWhisper";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useUserMode } from "@/contexts/UserModeContext";
 import { useEcosystem, type EcosystemVertical } from "@/contexts/EcosystemContext";
@@ -362,6 +363,7 @@ export default function Navbar() {
 
             {user ? (
               <div className="ml-0.5 flex min-w-0 items-center gap-1.5 xl:gap-2">
+                <DiscoveryNavWhisper variant="nav" />
                 <NavbarProfileChip user={user} />
                 {isAdmin && (
                   <button
@@ -508,6 +510,7 @@ export default function Navbar() {
 
                 {user ? (
                   <div className="grid gap-2">
+                    <DiscoveryNavWhisper variant="drawer" />
                     <MobileNavButton icon={User} label={dict.nav.profile} onClick={() => handleNavClick("/moje-konto")} />
                     {isAdmin && (
                       <MobileNavButton icon={Shield} label={dict.nav.manageCentral} onClick={() => handleNavClick("/centrala")} />
