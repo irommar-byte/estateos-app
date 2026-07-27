@@ -133,11 +133,20 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
       return raw.split(",").map((s) => s.trim()).filter(Boolean);
     }
   })();
-  const allImages = [offer.imageUrl, ...rawImages].filter((v: string, i: number, a: string[]) => v && v.length > 5 && a.indexOf(v) === i);
+  const plannedImages = Array.isArray(offer?.galleryPlan?.orderedAssets)
+    ? offer.galleryPlan.orderedAssets.map(String).filter((v: string) => v && v.length > 5)
+    : [];
+  const allImages =
+    plannedImages.length > 0
+      ? plannedImages.filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
+      : [offer.imageUrl, ...rawImages].filter(
+          (v: string, i: number, a: string[]) => v && v.length > 5 && a.indexOf(v) === i,
+        );
   const images = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
   const thumbImages = images.slice(1);
   const mosaicCells = offerPhotoMosaicCells(Math.min(thumbImages.length, 6));
   const hiddenThumbCount = Math.max(0, thumbImages.length - mosaicCells.length);
+  const galleryPersonalized = Boolean(offer?.galleryPersonalized);
 
   const offerStatus = String(offer.status || '').toUpperCase();
   const expiredByDate =
@@ -802,7 +811,13 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           
           <div className="xl:w-2/3 flex flex-col gap-10 sm:gap-16">
             {thumbImages.length > 0 && (
-              <div className={`grid grid-cols-4 auto-rows-[72px] gap-0.5 overflow-hidden rounded-[2rem] border border-white/5 bg-black/20 shadow-2xl backdrop-blur-3xl sm:auto-rows-[110px] sm:gap-1 md:auto-rows-[150px] sm:rounded-[2.5rem] ${isArchived ? 'grayscale opacity-50' : ''}`}>
+              <div className="flex flex-col gap-3">
+                {galleryPersonalized ? (
+                  <p className="px-1 text-[10px] font-medium tracking-[0.04em] text-white/45 sm:text-[11px]">
+                    Zdjęcia ułożone pod Twój kierunek · EstateOS™ Inteligence
+                  </p>
+                ) : null}
+                <div className={`grid grid-cols-4 auto-rows-[72px] gap-0.5 overflow-hidden rounded-[2rem] border border-white/5 bg-black/20 shadow-2xl backdrop-blur-3xl sm:auto-rows-[110px] sm:gap-1 md:auto-rows-[150px] sm:rounded-[2.5rem] ${isArchived ? 'grayscale opacity-50' : ''}`}>
                 {thumbImages.slice(0, mosaicCells.length).map((src, idx) => (
                   <div
                     key={`${idx}-${src}`}
@@ -826,6 +841,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     ) : null}
                   </div>
                 ))}
+                </div>
               </div>
             )}
 
