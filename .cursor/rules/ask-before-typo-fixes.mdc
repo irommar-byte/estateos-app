@@ -1,0 +1,15 @@
+---
+description: Ask before fixing typos in brand names and user-facing copy
+alwaysApply: true
+---
+
+# Literówki — najpierw pytaj
+
+Jeśli zauważysz literówkę w nazwie marki, copy UI, i18n lub komentarzach widocznych dla użytkownika (np. `Inteligence` → `Intelligence`):
+
+1. **Zatrzymaj się** — nie poprawiaj od razu.
+2. **Poinformuj** użytkownika, że to literówka / błąd ortograficzny.
+3. **Zapytaj**, czy mam poprawić (i w jakim zakresie: mobilka / www / wszędzie).
+4. Poprawiaj dopiero po wyraźnej zgodzie (albo gdy użytkownik sam napisze „popraw / zamień”).
+
+Wyjątek: oczywiste literówki wyłącznie w świeżo napisanym przez Ciebie kodzie w tej samej turze — możesz poprawić od razu.
