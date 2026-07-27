@@ -133,17 +133,19 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
       return raw.split(",").map((s) => s.trim()).filter(Boolean);
     }
   })();
-  const plannedImages = Array.isArray(offer?.galleryPlan?.orderedAssets)
-    ? offer.galleryPlan.orderedAssets.map(String).filter((v: string) => v && v.length > 5)
+  const plannedImages: string[] = Array.isArray(offer?.galleryPlan?.orderedAssets)
+    ? (offer.galleryPlan.orderedAssets as unknown[])
+        .map((v) => String(v || ""))
+        .filter((v) => v.length > 5)
     : [];
-  const allImages =
+  const allImages: string[] =
     plannedImages.length > 0
-      ? plannedImages.filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
+      ? plannedImages.filter((v, i, a) => a.indexOf(v) === i)
       : [offer.imageUrl, ...rawImages].filter(
           (v: string, i: number, a: string[]) => v && v.length > 5 && a.indexOf(v) === i,
         );
-  const images = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
-  const thumbImages = images.slice(1);
+  const images: string[] = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
+  const thumbImages: string[] = images.slice(1);
   const mosaicCells = offerPhotoMosaicCells(Math.min(thumbImages.length, 6));
   const hiddenThumbCount = Math.max(0, thumbImages.length - mosaicCells.length);
   const galleryPersonalized = Boolean(offer?.galleryPersonalized);
