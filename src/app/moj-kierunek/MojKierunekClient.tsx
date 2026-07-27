@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
@@ -29,6 +29,7 @@ type ProfilePayload = {
   topCities: Array<{ key: string; value: number }>;
   topDistricts: Array<{ key: string; value: number }>;
   topPropertyTypes: Array<{ key: string; value: number }>;
+  dislikeReasons: Array<{ key: string; value: number }>;
   preferredBudgetPln: number | null;
   preferredAreaM2: number | null;
   preferredTransaction: "SELL" | "RENT" | "MIXED" | null;
@@ -58,8 +59,26 @@ type RecentEvent = {
 };
 
 type Guide = {
+  intentStage?: string;
+  intentLabel?: string;
+  body?: string;
+  stageProgress?: number;
   nextStep?: { title?: string; action?: string; offerId?: number | null };
-  confidence?: number;
+  primaryCta?: { label: string; href: string };
+  secondaryCta?: { label: string; href: string };
+};
+
+const STAGES = [
+  { key: "EXPLORE", label: "Odkrywanie" },
+  { key: "FOCUS", label: "Fokus" },
+  { key: "READY", label: "Gotowość" },
+] as const;
+
+const REASON_PL: Record<string, string> = {
+  PRICE_TOO_HIGH: "Cena",
+  LOCATION_MISMATCH: "Lokalizacja",
+  LAYOUT_MISMATCH: "Układ",
+  QUALITY_LOW: "Jakość",
 };
 
 function eventLabel(type: string): { label: string; Icon: typeof ThumbsUp; tone: string } {
@@ -98,6 +117,8 @@ export default function MojKierunekClient() {
   const [pulse, setPulse] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const prevTopEventId = useRef<string | null>(null);
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setRefreshing(true);
@@ -116,10 +137,24 @@ export default function MojKierunekClient() {
         return;
       }
       const data = await res.json();
+      const nextRecent: RecentEvent[] = Array.isArray(data.recent) ? data.recent : [];
+      const topId = nextRecent[0]?.id || null;
+      if (
+        opts?.silent &&
+        topId &&
+        prevTopEventId.current &&
+        topId !== prevTopEventId.current
+      ) {
+        const meta = eventLabel(nextRecent[0].eventType);
+        setToast(`Zapisano: ${meta.label}`);
+        window.setTimeout(() => setToast(null), 2200);
+      }
+      if (topId) prevTopEventId.current = topId;
+
       setAuth("user");
       setProfile(data.profile || null);
       setTropes(Array.isArray(data.tropes) ? data.tropes : []);
-      setRecent(Array.isArray(data.recent) ? data.recent : []);
+      setRecent(nextRecent);
       setGuide(data.guide || null);
       setError(null);
       setPulse((n) => n + 1);
@@ -136,7 +171,6 @@ export default function MojKierunekClient() {
 
   useEffect(() => subscribeDiscoveryUpdated(() => void load({ silent: true })), [load]);
 
-  // Soft poll while visible — reliable live mirror during scoring in another tab.
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState === "visible") void load({ silent: true });
@@ -153,6 +187,12 @@ export default function MojKierunekClient() {
     if (!profile) return 0;
     return profile.likesCount + profile.dislikesCount + profile.fastTrackCount;
   }, [profile]);
+
+  const activeStage = guide?.intentStage || "EXPLORE";
+  const stageIndex = Math.max(
+    0,
+    STAGES.findIndex((s) => s.key === activeStage),
+  );
 
   if (auth === "loading") {
     return (
@@ -186,10 +226,27 @@ export default function MojKierunekClient() {
 
   const confPct = Math.round(Math.min(1, Math.max(0, profile?.confidence ?? 0)) * 100);
   const guideTitle = guide?.nextStep?.title || "Zacznij oceniać oferty — kierunek pojawi się tutaj.";
+  const guideBody =
+    guide?.body ||
+    profile?.summaryLine ||
+    "Za mało decyzji — ocen kilka ofert, a tu pojawi się zarys gustu.";
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[var(--eos-bg)] pb-24 text-[var(--eos-text)]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,_rgba(251,191,36,0.14),_transparent_50%),radial-gradient(ellipse_at_90%_10%,_rgba(16,185,129,0.08),_transparent_45%)]" />
+
+      <AnimatePresence>
+        {toast ? (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="fixed left-1/2 top-20 z-50 -translate-x-1/2 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 backdrop-blur-xl"
+          >
+            {toast}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <div className="relative mx-auto max-w-5xl px-4 pt-10 sm:px-6 sm:pt-14">
         <header className="max-w-2xl">
@@ -205,16 +262,45 @@ export default function MojKierunekClient() {
           </div>
           <h1 className="mt-6 text-4xl font-semibold tracking-tight sm:text-5xl">Mój kierunek</h1>
           <p className="mt-3 text-base leading-7 text-[var(--eos-muted)]">
-            Otwórz tę stronę obok katalogu. Każde <span className="text-[var(--eos-text)]">Pasuje</span>,{" "}
-            <span className="text-[var(--eos-text)]">Nie dla mnie</span> i{" "}
-            <span className="text-[var(--eos-text)]">Na poważnie</span> odświeża ten widok natychmiast.
+            Otwórz obok katalogu. Każda decyzja odświeża ten widok — z toastem i nową pozycją na liście.
           </p>
+
+          <div className="mt-6 grid grid-cols-3 gap-2">
+            {STAGES.map((stage, idx) => {
+              const active = idx === stageIndex || (activeStage === "COMPLETE" && idx === 2);
+              const done = idx < stageIndex || activeStage === "COMPLETE";
+              return (
+                <div
+                  key={stage.key}
+                  className={`rounded-2xl border px-3 py-2.5 text-center ${
+                    active
+                      ? "border-amber-400/40 bg-amber-400/10"
+                      : done
+                        ? "border-emerald-400/25 bg-emerald-400/5"
+                        : "border-[var(--eos-border)] bg-[var(--eos-card)]/60"
+                  }`}
+                >
+                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">
+                    {idx + 1}
+                  </p>
+                  <p
+                    className={`mt-0.5 text-xs font-semibold ${
+                      active ? "text-amber-200" : "text-[var(--eos-text)]"
+                    }`}
+                  >
+                    {stage.label}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
-              href="/oferty"
+              href={guide?.primaryCta?.href || "/oferty"}
               className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-black transition hover:bg-amber-100"
             >
-              Oceń oferty
+              {guide?.primaryCta?.label || "Oceń oferty"}
               <ArrowRight size={15} />
             </Link>
             <button
@@ -242,13 +328,18 @@ export default function MojKierunekClient() {
             className="mt-10 space-y-8"
           >
             <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-black/45 p-6 backdrop-blur-2xl sm:p-8">
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/45">Guide mówi</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-white/45">Guide mówi</p>
+                {guide?.intentLabel ? (
+                  <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-amber-200">
+                    {guide.intentLabel}
+                  </span>
+                ) : null}
+              </div>
               <h2 className="mt-3 max-w-2xl text-2xl font-semibold tracking-tight text-white sm:text-3xl">
                 {guideTitle}
               </h2>
-              <p className="mt-3 text-sm text-white/55">
-                {profile?.summaryLine || "Za mało decyzji — ocen kilka ofert, a tu pojawi się zarys gustu."}
-              </p>
+              <p className="mt-3 text-sm text-white/55">{guideBody}</p>
 
               <div className="mt-7">
                 <div className="mb-2 flex items-end justify-between gap-3">
@@ -299,6 +390,23 @@ export default function MojKierunekClient() {
                 <InsightBlock title="Dzielnice" items={profile?.topDistricts || []} empty="—" />
                 <InsightBlock title="Typ" items={profile?.topPropertyTypes || []} empty="—" />
               </div>
+              {(profile?.dislikeReasons?.length || 0) > 0 ? (
+                <div className="mt-3">
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-muted)]">
+                    Powody „nie dla mnie”
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {profile!.dislikeReasons.map((r) => (
+                      <span
+                        key={r.key}
+                        className="rounded-full border border-rose-400/25 bg-rose-500/10 px-3 py-1.5 text-sm text-rose-100"
+                      >
+                        {REASON_PL[r.key] || r.key} · {r.value}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="mt-3 flex flex-wrap gap-2 text-sm text-[var(--eos-muted)]">
                 {formatMoney(profile?.preferredBudgetPln ?? null) ? (
                   <span className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-1.5">
@@ -345,6 +453,7 @@ export default function MojKierunekClient() {
                   {recent.map((ev) => {
                     const meta = eventLabel(ev.eventType);
                     const Icon = meta.Icon;
+                    const reason = ev.reasonCode ? REASON_PL[ev.reasonCode] || ev.reasonCode : null;
                     return (
                       <li key={ev.id}>
                         <Link
@@ -370,6 +479,7 @@ export default function MojKierunekClient() {
                           <div className="min-w-0 flex-1">
                             <p className={`text-[10px] font-black uppercase tracking-[0.16em] ${meta.tone}`}>
                               {meta.label}
+                              {reason ? ` · ${reason}` : ""}
                             </p>
                             <p className="truncate text-sm font-semibold text-[var(--eos-text)]">
                               {ev.offer?.title || "Oferta"}
