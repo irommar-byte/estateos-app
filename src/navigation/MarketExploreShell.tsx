@@ -4,6 +4,7 @@ import { useEcosystemStore } from '../store/useEcosystemStore';
 import RadarHomeScreen from '../screens/RadarHomeScreen';
 import CarsCatalogScreen from '../screens/CarsCatalogScreen';
 import EstateOsGuideOverlay from '../components/discovery/EstateOsGuideOverlay';
+import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
 
 export type MarketSurface = 'market' | 'explore';
 
@@ -20,6 +21,8 @@ type Props = {
  */
 export default function MarketExploreShell({ splashDone = true, surface, navigation, route }: Props) {
   const activeVertical = useEcosystemStore((s) => s.activeVertical);
+  const intelligenceEnabled = useIntelligencePreferenceStore((s) => s.enabled);
+  const intelligenceHydrated = useIntelligencePreferenceStore((s) => s.hydrated);
   const baseParams = route?.params && typeof route.params === 'object' ? route.params : {};
 
   const openLiveRadar = !!(baseParams.openCalibration || baseParams.radarFocus);
@@ -52,7 +55,10 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
           route={{ ...(route || {}), params: homeParams }}
         />
       )}
-      {activeVertical === 'home' && surface === 'explore' ? (
+      {activeVertical === 'home' &&
+      surface === 'explore' &&
+      intelligenceHydrated &&
+      intelligenceEnabled ? (
         <EstateOsGuideOverlay navigation={navigation} />
       ) : null}
     </View>

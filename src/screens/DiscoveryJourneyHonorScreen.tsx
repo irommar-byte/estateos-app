@@ -5,8 +5,17 @@ import ApplePressable from '../components/ApplePressable';
 import { DISCOVERY_COLORS } from '../components/discovery/discoveryMotion';
 import { useAuthStore } from '../store/useAuthStore';
 import { trackDiscoveryEvent } from '../services/discoveryService';
+import IntelligenceRequired from '../components/discovery/IntelligenceRequired';
 
 export default function DiscoveryJourneyHonorScreen({ navigation, route }: any) {
+  return (
+    <IntelligenceRequired navigation={navigation}>
+      <DiscoveryJourneyHonorInner navigation={navigation} route={route} />
+    </IntelligenceRequired>
+  );
+}
+
+function DiscoveryJourneyHonorInner({ navigation, route }: any) {
   const offerId = Number(route?.params?.offerId || 0);
   const token = useAuthStore((state) => state.token);
   const [confirmed, setConfirmed] = useState(false);

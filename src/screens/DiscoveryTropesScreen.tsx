@@ -5,8 +5,17 @@ import ApplePressable from '../components/ApplePressable';
 import { DISCOVERY_COLORS } from '../components/discovery/discoveryMotion';
 import { fetchDiscoveryTropes, mutateDiscoveryTrope, submitDiscoveryVisitFeedback, type DiscoveryTrope } from '../services/discoveryService';
 import { useAuthStore } from '../store/useAuthStore';
+import IntelligenceRequired from '../components/discovery/IntelligenceRequired';
 
 export default function DiscoveryTropesScreen({ navigation }: any) {
+  return (
+    <IntelligenceRequired navigation={navigation}>
+      <DiscoveryTropesInner navigation={navigation} />
+    </IntelligenceRequired>
+  );
+}
+
+function DiscoveryTropesInner({ navigation }: any) {
   const token = useAuthStore((state) => state.token);
   const [items, setItems] = useState<DiscoveryTrope[]>([]);
   const [loading, setLoading] = useState(true);

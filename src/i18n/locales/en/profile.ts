@@ -210,6 +210,11 @@ export const profile = {
     subtitleOff: 'Discovery personalization and suggestions',
     footer:
       'Same preference as on estateos.pl — enables personalization on your account.',
+    gateTitle: 'Turn on Inteligence',
+    gateBody:
+      'Discovery and tropes work when EstateOS™ Inteligence is enabled on your account.',
+    gateEnable: 'Enable Inteligence',
+    gateLater: 'Not now',
   },
   security: {
     sectionTitle: 'Security',

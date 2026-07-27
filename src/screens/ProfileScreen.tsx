@@ -8,11 +8,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/useAuthStore';
 import { PasskeyService } from '../services/passkeyService';
-import {
-  fetchIntelligencePreference,
-  readLocalIntelligencePreference,
-  setIntelligencePreference,
-} from '../services/intelligencePreferenceService';
+import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
 import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { API_URL } from '../config/network';
 import { ESTATEOS_CONTACT_EMAIL, mailtoEstateosSubject } from '../constants/appContact';
@@ -3040,8 +3036,10 @@ function ProfileScreenLoggedIn({
   // --- LOGIKA KLAWISZA PASSKEY (Z PAMIĘCIĄ LOCALSTORAGE) ---
   const [isPasskeyActive, setIsPasskeyActive] = useState(false);
   const [passkeyHardwareSupported, setPasskeyHardwareSupported] = useState(Platform.OS === 'ios');
-  const [intelligenceEnabled, setIntelligenceEnabled] = useState(false);
-  const [intelligenceHydrated, setIntelligenceHydrated] = useState(false);
+  const intelligenceEnabled = useIntelligencePreferenceStore((s) => s.enabled);
+  const intelligenceHydrated = useIntelligencePreferenceStore((s) => s.hydrated);
+  const hydrateIntelligence = useIntelligencePreferenceStore((s) => s.hydrate);
+  const setIntelligenceEnabledRemote = useIntelligencePreferenceStore((s) => s.setEnabled);
   /**
    * „Przywróć zakupy" — App Store Review Guideline 3.1.1 wymaga
    * widocznego przycisku w każdej aplikacji oferującej IAP. Przycisk
@@ -3060,28 +3058,12 @@ function ProfileScreenLoggedIn({
   const adminPhotoSessionsReturnRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
-    const hydrateIntelligence = async () => {
-      const local = await readLocalIntelligencePreference();
-      if (cancelled) return;
-      setIntelligenceEnabled(local.enabled);
-      setIntelligenceHydrated(true);
-      if (!token) return;
-      const remote = await fetchIntelligencePreference(token);
-      if (cancelled || !remote) return;
-      setIntelligenceEnabled(remote.enabled);
-    };
-    void hydrateIntelligence();
-    return () => {
-      cancelled = true;
-    };
-  }, [token, user?.id]);
+    void hydrateIntelligence(token);
+  }, [hydrateIntelligence, token, user?.id]);
 
   const toggleIntelligence = async (nextValue: boolean) => {
-    setIntelligenceEnabled(nextValue);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    const saved = await setIntelligencePreference(token, nextValue);
-    setIntelligenceEnabled(saved.enabled);
+    await setIntelligenceEnabledRemote(token, nextValue);
   };
 
   useEffect(() => {

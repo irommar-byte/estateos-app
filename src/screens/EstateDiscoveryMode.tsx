@@ -33,6 +33,7 @@ import {
   trackDiscoveryEvent,
 } from '../services/discoveryService';
 import { useDiscoveryStore } from '../store/useDiscoveryStore';
+import IntelligenceRequired from '../components/discovery/IntelligenceRequired';
 import DiscoverySessionIsland, { type DiscoveryIslandState } from '../components/discovery/DiscoverySessionIsland';
 import DiscoveryGlassOrb from '../components/discovery/DiscoveryGlassOrb';
 import DiscoverySmartGallery from '../components/discovery/DiscoverySmartGallery';
@@ -276,6 +277,14 @@ const PriceHistoryChart = ({ data, width }: { data: number[], width: number }) =
 };
 
 export default function EstateDiscoveryMode({ navigation }: any) {
+  return (
+    <IntelligenceRequired navigation={navigation}>
+      <EstateDiscoveryModeInner navigation={navigation} />
+    </IntelligenceRequired>
+  );
+}
+
+function EstateDiscoveryModeInner({ navigation }: any) {
   const { width, height } = useWindowDimensions();
   const token = useAuthStore((s: any) => s.token);
   const userId = useAuthStore((s: any) => s.user?.id);

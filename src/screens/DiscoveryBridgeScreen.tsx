@@ -2,8 +2,17 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import ApplePressable from '../components/ApplePressable';
 import { DISCOVERY_COLORS } from '../components/discovery/discoveryMotion';
+import IntelligenceRequired from '../components/discovery/IntelligenceRequired';
 
 export default function DiscoveryBridgeScreen({ navigation }: any) {
+  return (
+    <IntelligenceRequired navigation={navigation}>
+      <DiscoveryBridgeInner navigation={navigation} />
+    </IntelligenceRequired>
+  );
+}
+
+function DiscoveryBridgeInner({ navigation }: any) {
   const [shareTaste, setShareTaste] = useState(true);
   const [shareTropes, setShareTropes] = useState(false);
   return (

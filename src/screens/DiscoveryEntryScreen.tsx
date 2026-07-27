@@ -5,11 +5,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import ApplePressable from '../components/ApplePressable';
+import IntelligenceRequired from '../components/discovery/IntelligenceRequired';
 import { DISCOVERY_COLORS, DISCOVERY_EASE_OUT, DISCOVERY_MOTION } from '../components/discovery/discoveryMotion';
 import { useDiscoveryStore } from '../store/useDiscoveryStore';
 import { useAuthStore } from '../store/useAuthStore';
 
 export default function DiscoveryEntryScreen({ navigation }: any) {
+  return (
+    <IntelligenceRequired navigation={navigation}>
+      <DiscoveryEntryInner navigation={navigation} />
+    </IntelligenceRequired>
+  );
+}
+
+function DiscoveryEntryInner({ navigation }: any) {
   const [expanded, setExpanded] = useState(false);
   const opacity = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.88)).current;

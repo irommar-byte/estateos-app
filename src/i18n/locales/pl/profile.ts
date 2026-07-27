@@ -210,6 +210,11 @@ export const profile = {
     subtitleOff: 'Personalizacja Discovery i podpowiedzi',
     footer:
       'Ta sama preferencja co na estateos.pl — włącza personalizację na koncie.',
+    gateTitle: 'Włącz Inteligence',
+    gateBody:
+      'Discovery i tropy działają, gdy EstateOS™ Inteligence jest włączone na Twoim koncie.',
+    gateEnable: 'Włącz Inteligence',
+    gateLater: 'Nie teraz',
   },
   security: {
     sectionTitle: 'Bezpieczeństwo',

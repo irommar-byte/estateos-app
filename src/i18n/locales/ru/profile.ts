@@ -210,6 +210,11 @@ export const profile = {
     subtitleOff: 'Персонализация Discovery и подсказки',
     footer:
       'Та же настройка, что на estateos.pl — включает персонализацию на аккаунте.',
+    gateTitle: 'Включите Inteligence',
+    gateBody:
+      'Discovery и тропы работают, когда EstateOS™ Inteligence включён на вашем аккаунте.',
+    gateEnable: 'Включить Inteligence',
+    gateLater: 'Не сейчас',
   },
   security: {
     sectionTitle: 'Безопасность',

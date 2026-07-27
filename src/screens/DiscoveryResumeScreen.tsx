@@ -5,8 +5,17 @@ import { DISCOVERY_COLORS } from '../components/discovery/discoveryMotion';
 import { useAuthStore } from '../store/useAuthStore';
 import { useDiscoveryStore } from '../store/useDiscoveryStore';
 import { trackDiscoveryEvent } from '../services/discoveryService';
+import IntelligenceRequired from '../components/discovery/IntelligenceRequired';
 
 export default function DiscoveryResumeScreen({ navigation }: any) {
+  return (
+    <IntelligenceRequired navigation={navigation}>
+      <DiscoveryResumeInner navigation={navigation} />
+    </IntelligenceRequired>
+  );
+}
+
+function DiscoveryResumeInner({ navigation }: any) {
   const token = useAuthStore((state) => state.token);
   const session = useDiscoveryStore((state) => state.session);
   return (

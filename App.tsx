@@ -56,6 +56,7 @@ import { useBlockedUsersStore } from './src/store/useBlockedUsersStore';
 import { useUnreadBadgeStore } from './src/store/useUnreadBadgeStore';
 import { useProfileTabBadgeStore } from './src/store/useProfileTabBadgeStore';
 import { useEcosystemStore } from './src/store/useEcosystemStore';
+import { useIntelligencePreferenceStore } from './src/store/useIntelligencePreferenceStore';
 import { refreshProfileTabBadgeCounts } from './src/services/profileTabBadgeRefresh';
 import { bootstrapFxRateRefresh } from './src/store/useFxRateStore';
 import { RELEASE_BUILD_FINGERPRINT } from './src/releaseBuildMarker';
@@ -863,6 +864,10 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
   const profilePendingCount = useProfileTabBadgeStore((state) => state.profilePendingCount);
   const activeVertical = useEcosystemStore((state) => state.activeVertical);
   useEffect(() => { restoreSession(); }, []);
+
+  useEffect(() => {
+    void useIntelligencePreferenceStore.getState().hydrate(token);
+  }, [token]);
 
   useEffect(() => {
     if (!token) {

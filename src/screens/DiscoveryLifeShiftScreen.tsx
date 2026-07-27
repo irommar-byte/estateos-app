@@ -2,10 +2,19 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import ApplePressable from '../components/ApplePressable';
 import { DISCOVERY_COLORS } from '../components/discovery/discoveryMotion';
+import IntelligenceRequired from '../components/discovery/IntelligenceRequired';
 
 const HINTS = ['Więcej spokoju', 'Bliżej miasta', 'Inny budżet', 'Wynajem', 'Kupno'];
 
 export default function DiscoveryLifeShiftScreen({ navigation }: any) {
+  return (
+    <IntelligenceRequired navigation={navigation}>
+      <DiscoveryLifeShiftInner navigation={navigation} />
+    </IntelligenceRequired>
+  );
+}
+
+function DiscoveryLifeShiftInner({ navigation }: any) {
   const [selected, setSelected] = useState<string[]>([]);
   const toggle = (hint: string) => setSelected((prev) => prev.includes(hint) ? prev.filter((value) => value !== hint) : [...prev, hint]);
   return (
