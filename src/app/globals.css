@@ -3618,6 +3618,7 @@ html:not(.light) .eos-car-form-cancel {
   }
 }
 .eos-discovery-bar--full {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -3685,9 +3686,6 @@ html:not(.light) .eos-car-form-cancel {
   background: rgba(120, 53, 15, 0.62);
 }
 
-.eos-discovery-bar--full {
-  position: relative;
-}
 .eos-discovery-reasons {
   position: absolute;
   left: 0;
