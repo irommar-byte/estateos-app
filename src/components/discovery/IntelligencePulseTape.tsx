@@ -13,9 +13,11 @@ import {
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { Brain } from 'lucide-react-native';
+import Svg, { Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import ApplePressable from '../ApplePressable';
+import CircularLabelRing from '../CircularLabelRing';
 import { DISCOVERY_COLORS } from './discoveryMotion';
 import { useDiscoveryPulse } from '../../hooks/useDiscoveryPulse';
 import { useDiscoveryStore } from '../../store/useDiscoveryStore';
@@ -23,13 +25,14 @@ import { resolveDiscoveryEntryRoute } from '../../utils/discoveryExperienceState
 
 type Props = {
   navigation: any;
-  /** market = gallery chrome; explore = Live Radar / map chrome */
   surface?: 'market' | 'explore';
 };
 
 type Mood = 'calm' | 'active' | 'alert';
 
-const BUBBLE = 48;
+const CORE = 52;
+const RING_GAP = 11;
+const HIT = CORE + RING_GAP * 2 + 22;
 
 function resolveMood(progress: number, confidence: number, contradiction: number): Mood {
   if (contradiction >= 0.55) return 'alert';
@@ -66,18 +69,118 @@ function navigatePulseAction(navigation: any, action: string | undefined, firstE
   }
 }
 
+const NEURONS = [
+  { id: 'n1', r: 17, size: 2200, size: 0 },
+  { id: 'n2', r: 20, size: 2800, phase: 0.33 },
+  { id: 'n3', r: 15, speed: 3400, phase: 0.66 },
+  { id: 'n4', r: 22, speed: 4000, phase: 0.18 },
+];
+
+function LivingBrain({ accent }: { accent: string }) {
+  const spin = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const orbit = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 7200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    const breathe = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 1600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 1600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    orbit.start();
+    breathe.start();
+    return () => {
+      orbit.stop();
+      breathe.stop();
+    };
+  }, [pulse, spin]);
+
+  const brainScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] });
+
+  return (
+    <View style={styles.brainStage}>
+      <Svg width={44} height={44} style={StyleSheet.absoluteFill}>
+        {NEURONS.map((n, i) => {
+          const a0 = (Math.PI * 2 * n.phase) + i * 0.4;
+          const x1 = 22 + Math.cos(a0) * (n.r * 0.35);
+          const y1 = 22 + Math.sin(a0) * (n.r * 0.35);
+          const x2 = 22 + Math.cos(a0 + 0.9) * n.r;
+          const y2 = 22 + Math.sin(a0 + 0.9) * n.r;
+          return (
+            <Line
+              key={`l-${n.id}`}
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke={accent}
+              strokeOpacity={0.28}
+              strokeWidth={1}
+            />
+          );
+        })}
+      </Svg>
+      {NEURONS.map((n, i) => {
+        const rotate = spin.interpolate({
+          inputRange: [0, 1],
+          outputRange: [`${n.phase * 360}deg`, `${n.phase * 360 + (i % 2 === 0 ? 360 : -360)}deg`],
+        });
+        return (
+          <Animated.View
+            key={n.id}
+            pointerEvents="none"
+            style={[
+              styles.neuronOrbit,
+              {
+                width: n.r * 2,
+                height: n.r * 2,
+                marginLeft: -n.r,
+                marginTop: -n.r,
+                transform: [{ rotate }],
+              },
+            ]}
+          >
+            <View style={[styles.neuron, { backgroundColor: accent, shadowColor: accent }]} />
+          </Animated.View>
+        );
+      })}
+      <Animated.View style={{ transform: [{ scale: brainScale }] }}>
+        <Brain size={20} color={accent} strokeWidth={2.2} />
+      </Animated.View>
+    </View>
+  );
+}
+
 /**
- * Round brain affordance (same visual language as the chat bubble) —
- * opens Inteligence sheet. Never covers bottom offer previews.
+ * EstateOS™ Inteligence launcher — clear of map chrome, genie sheet, living brain.
  */
 export default function IntelligencePulseTape({ navigation, surface = 'explore' }: Props) {
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const { pulse, ready } = useDiscoveryPulse();
   const firstEntrySeen = useDiscoveryStore((s) => s.firstEntrySeen);
-  const [expanded, setExpanded] = useState(false);
-  const breathe = useRef(new Animated.Value(0)).current;
-  const pop = useRef(new Animated.Value(0)).current;
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const genie = useRef(new Animated.Value(0)).current;
+  const aura = useRef(new Animated.Value(0)).current;
+  const closingRef = useRef(false);
 
   const mood = useMemo(() => {
     if (!pulse) return 'calm' as Mood;
@@ -88,15 +191,15 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(breathe, {
+        Animated.timing(aura, {
           toValue: 1,
-          duration: 2800,
+          duration: 2400,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
-        Animated.timing(breathe, {
+        Animated.timing(aura, {
           toValue: 0,
-          duration: 2800,
+          duration: 2400,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -104,56 +207,102 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
     );
     loop.start();
     return () => loop.stop();
-  }, [breathe]);
+  }, [aura]);
 
-  useEffect(() => {
-    Animated.spring(pop, {
-      toValue: expanded ? 1 : 0,
+  const runGenieIn = useCallback(() => {
+    closingRef.current = false;
+    setSheetVisible(true);
+    genie.setValue(0);
+    Animated.spring(genie, {
+      toValue: 1,
       friction: 7,
-      tension: 120,
+      tension: 68,
       useNativeDriver: true,
     }).start();
-  }, [expanded, pop]);
+  }, [genie]);
+
+  const runGenieOut = useCallback(
+    (after?: () => void) => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      Animated.timing(genie, {
+        toValue: 0,
+        duration: 420,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!finished) return;
+        setSheetVisible(false);
+        closingRef.current = false;
+        after?.();
+      });
+    },
+    [genie],
+  );
 
   const open = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setExpanded(true);
-  }, []);
+    runGenieIn();
+  }, [runGenieIn]);
 
   const close = useCallback(() => {
     void Haptics.selectionAsync();
-    setExpanded(false);
-  }, []);
+    runGenieOut();
+  }, [runGenieOut]);
 
   const runPrimary = useCallback(() => {
-    setExpanded(false);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    navigatePulseAction(navigation, pulse?.primaryCta?.action, firstEntrySeen);
-  }, [firstEntrySeen, navigation, pulse?.primaryCta?.action]);
+    runGenieOut(() => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      navigatePulseAction(navigation, pulse?.primaryCta?.action, firstEntrySeen);
+    });
+  }, [firstEntrySeen, navigation, pulse?.primaryCta?.action, runGenieOut]);
 
   if (!ready || !pulse) return null;
 
-  // Top-right under chrome — same corner language as the green chat bubble.
-  const chromeBelowSafe =
+  // Clear of Search / Live Radar / Guide — left under Guide on explore, under Homes chrome on market.
+  const top =
     surface === 'market'
-      ? Platform.OS === 'ios'
-        ? 50
-        : 46
-      : Platform.OS === 'ios'
-        ? 54
-        : 50;
-  const top = insets.top + chromeBelowSafe;
-  const right = 16;
-  const sheetWidth = Math.min(340, width - 28);
-  const glowOpacity = breathe.interpolate({ inputRange: [0, 1], outputRange: [0.28, 0.75] });
-  const glowScale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] });
+      ? insets.top + (Platform.OS === 'ios' ? 108 : 100)
+      : insets.top + (Platform.OS === 'ios' ? 168 : 158);
+  const left = 12;
+  const sheetWidth = Math.min(336, width - 28);
+  const bubbleCenterX = left + HIT / 2;
+  const bubbleCenterY = top + HIT / 2;
+  const sheetTop = Math.min(top + HIT + 8, height * 0.28);
+  const sheetLeft = (width - sheetWidth) / 2;
+  const sheetCenterX = sheetLeft + sheetWidth / 2;
+  const sheetCenterY = sheetTop + 160;
+  const originDX = bubbleCenterX - sheetCenterX;
+  const originDY = bubbleCenterY - sheetCenterY;
+
+  const glowOpacity = aura.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.7] });
+  const glowScale = aura.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] });
+
+  // macOS genie: suck toward the brain bubble (scale + squash + travel).
+  const genieStyle = {
+    opacity: genie.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.85, 1] }),
+    transform: [
+      {
+        translateX: genie.interpolate({ inputRange: [0, 1], outputRange: [originDX, 0] }),
+      },
+      {
+        translateY: genie.interpolate({ inputRange: [0, 1], outputRange: [originDY, 0] }),
+      },
+      {
+        scaleX: genie.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0.12, 0.72, 1] }),
+      },
+      {
+        scaleY: genie.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0.04, 0.88, 1] }),
+      },
+    ],
+  };
 
   return (
     <>
-      <View pointerEvents="box-none" style={[styles.root, { top, right }]}>
+      <View pointerEvents="box-none" style={[styles.root, { top, left, width: HIT, height: HIT }]}>
         <ApplePressable
           onPress={open}
-          style={styles.bubbleHit}
+          style={styles.hit}
           accessibilityLabel="EstateOS Inteligence"
           haptic="none"
         >
@@ -168,37 +317,66 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
               },
             ]}
           />
-          <BlurView intensity={90} tint="dark" style={[styles.bubble, { borderColor: colors.ring }]}>
-            <Brain size={22} color={colors.accent} strokeWidth={2.15} />
+          <View style={styles.ringHost} pointerEvents="none">
+            <CircularLabelRing
+              text="EstateOS™"
+              arcPosition="top"
+              buttonDiameter={CORE}
+              gap={RING_GAP}
+              fontSize={7.5}
+              letterSpacing={1.4}
+              arcFraction={0.5}
+              color={DISCOVERY_COLORS.gold}
+              strokeColor="rgba(0,0,0,0.55)"
+              strokeWidth={0.6}
+            />
+            <CircularLabelRing
+              text="Intelligence"
+              arcPosition="bottom"
+              buttonDiameter={CORE}
+              gap={RING_GAP}
+              fontSize={7.2}
+              letterSpacing={1.1}
+              arcFraction={0.52}
+              color="#F5F5F7"
+              strokeColor="rgba(0,0,0,0.55)"
+              strokeWidth={0.6}
+            />
+          </View>
+          <BlurView intensity={92} tint="dark" style={[styles.core, { borderColor: colors.ring }]}>
+            <LivingBrain accent={colors.accent} />
           </BlurView>
         </ApplePressable>
       </View>
 
       <Modal
-        visible={expanded}
+        visible={sheetVisible}
         transparent
-        animationType="fade"
+        animationType="none"
         statusBarTranslucent
         onRequestClose={close}
       >
-        <Pressable style={styles.backdrop} onPress={close}>
+        <View style={styles.modalRoot} pointerEvents="box-none">
+          <Pressable style={styles.backdrop} onPress={close}>
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFillObject,
+                {
+                  backgroundColor: 'rgba(0,0,0,0.34)',
+                  opacity: genie.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }),
+                },
+              ]}
+            />
+          </Pressable>
           <Animated.View
             style={[
               styles.sheetWrap,
               {
-                top: top + BUBBLE + 10,
-                left: (width - sheetWidth) / 2,
+                top: sheetTop,
+                left: sheetLeft,
                 width: sheetWidth,
-                opacity: pop,
-                transform: [
-                  {
-                    translateY: pop.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }),
-                  },
-                  {
-                    scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
-                  },
-                ],
               },
+              genieStyle,
             ]}
           >
             <Pressable onPress={(e) => e.stopPropagation()}>
@@ -206,7 +384,7 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
                 <View style={[styles.sheetGlow, { backgroundColor: colors.soft }]} />
                 <View style={styles.sheetHead}>
                   <View style={[styles.orbLg, { borderColor: colors.accent }]}>
-                    <Brain size={18} color={colors.accent} strokeWidth={2.2} />
+                    <LivingBrain accent={colors.accent} />
                   </View>
                   <View style={styles.sheetHeadCopy}>
                     <Text style={styles.sheetKicker}>EstateOS™ Inteligence</Text>
@@ -245,7 +423,7 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
               </BlurView>
             </Pressable>
           </Animated.View>
-        </Pressable>
+        </View>
       </Modal>
     </>
   );
@@ -254,34 +432,64 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
 const styles = StyleSheet.create({
   root: {
     position: 'absolute',
-    zIndex: 62,
-    elevation: 62,
+    zIndex: 55,
+    elevation: 55,
   },
-  bubbleHit: {
-    width: BUBBLE,
-    height: BUBBLE,
+  hit: {
+    width: HIT,
+    height: HIT,
     alignItems: 'center',
     justifyContent: 'center',
   },
   aura: {
     position: 'absolute',
-    width: BUBBLE + 10,
-    height: BUBBLE + 10,
-    borderRadius: (BUBBLE + 10) / 2,
+    width: CORE + 16,
+    height: CORE + 16,
+    borderRadius: (CORE + 16) / 2,
   },
-  bubble: {
-    width: BUBBLE,
-    height: BUBBLE,
-    borderRadius: BUBBLE / 2,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(10,10,12,0.82)',
+  ringHost: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backdrop: {
+  core: {
+    width: CORE,
+    height: CORE,
+    borderRadius: CORE / 2,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(8,8,10,0.88)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brainStage: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  neuronOrbit: {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+  },
+  neuron: {
+    position: 'absolute',
+    right: -2,
+    top: '50%',
+    marginTop: -2,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    shadowOpacity: 0.9,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  modalRoot: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.28)',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
   },
   sheetWrap: {
     position: 'absolute',
@@ -290,7 +498,7 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(10,10,12,0.88)',
+    backgroundColor: 'rgba(10,10,12,0.9)',
     padding: 16,
   },
   sheetGlow: {
@@ -303,13 +511,14 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   orbLg: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.35)',
+    overflow: 'hidden',
   },
   sheetHeadCopy: { flex: 1, minWidth: 0 },
   sheetKicker: {
