@@ -28,6 +28,8 @@ import { resolveDiscoveryEntryRoute } from '../../utils/discoveryExperienceState
 type Props = {
   navigation: any;
   surface?: 'market' | 'explore';
+  /** `inline` — in-flow above „Wszystkie oferty”; `float` — absolute BR. */
+  layout?: 'float' | 'inline';
 };
 
 type Mood = 'calm' | 'active' | 'alert' | 'celebrate';
@@ -238,7 +240,11 @@ function LivingBrain({ accent, size = BRAIN }: { accent: string; size?: number }
 /**
  * EstateOS™ Inteligence launcher — clear chrome, genie sheet, living brain.
  */
-export default function IntelligencePulseTape({ navigation, surface = 'explore' }: Props) {
+export default function IntelligencePulseTape({
+  navigation,
+  surface = 'explore',
+  layout = 'float',
+}: Props) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const firstEntrySeen = useDiscoveryStore((s) => s.firstEntrySeen);
@@ -458,14 +464,16 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
 
   if (!ready || !pulse) return null;
 
-  // Bottom-right above tab bar — clear of gallery, search, and offer cards.
+  // Float: bottom-right above tab bar. Inline: parent docks above „Wszystkie oferty”.
   const TAB = 95;
   const bottom = TAB + Math.max(insets.bottom, 8) + (surface === 'market' ? 10 : 18);
   const right = 10;
   const top = height - bottom - HIT;
   const sheetWidth = Math.min(336, width - 28);
-  const bubbleCenterX = width - right - HIT / 2;
-  const bubbleCenterY = top + HIT / 2;
+  const bubbleCenterX =
+    layout === 'inline' ? width - 12 - HIT / 2 : width - right - HIT / 2;
+  const bubbleCenterY =
+    layout === 'inline' ? height - (TAB + Math.max(insets.bottom, 8) + 220) : top + HIT / 2;
   const sheetTop = Math.max(insets.top + 72, Math.min(bubbleCenterY - 220, height * 0.22));
   const sheetLeft = (width - sheetWidth) / 2;
   const sheetCenterX = sheetLeft + sheetWidth / 2;
@@ -486,9 +494,14 @@ export default function IntelligencePulseTape({ navigation, surface = 'explore' 
     ],
   };
 
+  const orbHostStyle =
+    layout === 'inline'
+      ? [styles.rootInline, { width: HIT, height: HIT }]
+      : [styles.root, { top, right, width: HIT, height: HIT }];
+
   return (
     <>
-      <View pointerEvents="box-none" style={[styles.root, { top, right, width: HIT, height: HIT }]}>
+      <View pointerEvents="box-none" style={orbHostStyle}>
         <ApplePressable
           onPress={open}
           style={styles.hit}
@@ -631,6 +644,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     zIndex: 55,
     elevation: 55,
+  },
+  rootInline: {
+    zIndex: 55,
+    elevation: 55,
+    alignSelf: 'flex-end',
+    marginRight: 10,
+    marginBottom: 2,
   },
   hit: {
     width: HIT,

@@ -92,7 +92,9 @@ import AdvancedFilterSegment from '../components/AdvancedFilterSegment';
 import PolandScopeNote from '../components/PolandScopeNote';
 import JellyReveal from '../components/JellyReveal';
 import DiscoveryIntelligenceWhisper from '../components/discovery/DiscoveryIntelligenceWhisper';
+import IntelligencePulseTape from '../components/discovery/IntelligencePulseTape';
 import { useDiscoveryMapIntelligence } from '../hooks/useDiscoveryMapIntelligence';
+import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
 import RadarOfferGallery, {
   type GalleryCountryFilter,
   type GalleryOffer,
@@ -1078,6 +1080,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return 'GALLERY';
   });
   const [galleryTransactionFilter, setGalleryTransactionFilter] = useState<GalleryTransactionFilter>('SELL');
+  const intelligenceEnabled = useIntelligencePreferenceStore((s) => s.enabled);
+  const intelligenceHydrated = useIntelligencePreferenceStore((s) => s.hydrated);
   const mapIntelTx =
     galleryTransactionFilter === 'RENT'
       ? 'RENT'
@@ -1296,9 +1300,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     [isTablet, isCompactViewport]
   );
   const bottomCardsInset = useMemo(() => {
-    const tabBase = Platform.OS === 'ios' ? 18 : 14;
-    // Plus wystaje nad tab bar — na wąskim oknie (Stage Manager) potrzeba większego luzu.
-    const plusClearance = isNarrowChrome ? 78 : 56;
+    const tabBase = Platform.OS === 'ios' ? 10 : 8;
+    // Plus wystaje nad tab bar — trzymaj karty blisko plusa, bez dużej pustki.
+    const plusClearance = isNarrowChrome ? 42 : 28;
     return tabBase + insets.bottom + plusClearance;
   }, [insets.bottom, isNarrowChrome]);
   const liveBannerAnchorRef = useRef<View>(null);
@@ -5441,6 +5445,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
       {(showOnlyFavorites || radarBrowseMode !== 'GALLERY') && !showAreaPicker && (
       <View style={styles.offersPreviewContainer} pointerEvents="auto">
+        {tabSurface === 'explore' && intelligenceHydrated && intelligenceEnabled ? (
+          <View style={styles.intelOrbDock} pointerEvents="box-none">
+            <IntelligencePulseTape navigation={navigation} surface="explore" layout="inline" />
+          </View>
+        ) : null}
         {/* Pasek „Dlaczego widzę te oferty?" — glass-pill w stylu Apple.
             Renderowany ZAWSZE (poza loading) — gdy są oferty, pokazuje tryb
             z parametrami. Gdy brak ofert, ta sama karta zmienia ton (severity
@@ -7168,6 +7177,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 20,
     elevation: 20,
+  },
+  intelOrbDock: {
+    alignItems: 'flex-end',
+    paddingRight: 2,
+    marginBottom: 2,
+    zIndex: 22,
   },
   offerReasonRow: {
     paddingHorizontal: 20,

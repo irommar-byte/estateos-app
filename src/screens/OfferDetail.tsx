@@ -1607,6 +1607,23 @@ export default function OfferDetail({ route, navigation }: any) {
 
           <Text style={[styles.title, isDark && { color: '#ffffff' }]}>{displayOffer.title}</Text>
 
+          {locationLine ? (
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                setIsLocationPreviewOpen(true);
+              }}
+              style={({ pressed }) => [styles.locationRow, pressed && { opacity: 0.72 }]}
+              accessibilityRole="button"
+              accessibilityLabel={locationLine}
+            >
+              <MapPin color={isDark ? '#A1A1AA' : '#86868b'} size={16} />
+              <Text style={[styles.locationText, isDark && { color: '#D4D4D8' }]} numberOfLines={2}>
+                {locationLine}
+              </Text>
+            </Pressable>
+          ) : null}
+
           {auctionEvent ? (
             <AuctionOfferBanner
               event={auctionEvent}
@@ -1625,17 +1642,6 @@ export default function OfferDetail({ route, navigation }: any) {
               }
             />
           ) : null}
-          
-          <Pressable
-            onPress={() => {
-              Haptics.selectionAsync();
-              setIsLocationPreviewOpen(true);
-            }}
-            style={({ pressed }) => [styles.locationRow, pressed && { opacity: 0.72 }]}
-          >
-            <MapPin color={isDark ? "#9ca3af" : "#86868b"} size={16} />
-            <Text style={[styles.locationText, isDark && { color: '#9ca3af' }]}>{locationLine}</Text>
-          </Pressable>
 
           {!isLegalSafeVerified && isOwner && Number(offer?.id) > 0 && isPolandOffer ? (
             <View style={styles.legalVerificationBlock}>
@@ -2077,7 +2083,7 @@ export default function OfferDetail({ route, navigation }: any) {
                     styles.ownerCompactPill,
                     styles.ownerStatsIdentityPill,
                     isDark && { backgroundColor: 'rgba(28,28,30,0.72)' },
-                    agentCommissionInfo?.companyName && {
+                    agentCommissionInfo?.companyName && agentCommissionExpanded && {
                       borderColor: 'rgba(255,159,10,0.55)',
                       borderWidth: 1,
                     },
@@ -2147,7 +2153,7 @@ export default function OfferDetail({ route, navigation }: any) {
                   </View>
                 ) : null}
               </View>
-            ) : (
+            ) : agentCommissionExpanded ? (
               <Pressable 
                 onPress={openOwnerProfileModal} 
                 style={({ pressed }) => [
@@ -2218,7 +2224,7 @@ export default function OfferDetail({ route, navigation }: any) {
                   </View>
                 <ChevronRight size={14} color={isDark ? '#9ca3af' : '#9ca3af'} style={styles.ownerPillChevron} />
               </Pressable>
-            )}
+            ) : null}
           </View>
 
           {/*
@@ -3071,9 +3077,9 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.8,
   },
-  title: { fontSize: 26, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5, marginBottom: 8 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  locationText: { fontSize: 15, color: '#86868b', marginLeft: 6, fontWeight: '500', flexShrink: 1 },
+  title: { fontSize: 24, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5, marginBottom: 6 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+  locationText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#6b7280', letterSpacing: -0.1 },
   locationModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.36)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
   locationModalCard: {
     width: '100%',

@@ -65,8 +65,9 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
       {showIntelligence && surface === 'explore' ? (
         <EstateOsGuideOverlay navigation={navigation} />
       ) : null}
-      {showIntelligence ? (
-        <IntelligencePulseTape navigation={navigation} surface={surface} />
+      {/* Market: floating orb. Explore/map: orb docks above „Wszystkie oferty” inside RadarHomeScreen. */}
+      {showIntelligence && surface === 'market' ? (
+        <IntelligencePulseTape navigation={navigation} surface="market" layout="float" />
       ) : null}
       {showIntelligence && surface === 'market' ? (
         <View style={[styles.navWhisper, { top: insets.top + 6 }]} pointerEvents="box-none">
