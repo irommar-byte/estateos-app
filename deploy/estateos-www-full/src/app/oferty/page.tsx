@@ -46,6 +46,7 @@ import {
   CatalogHeroActionRow,
   CatalogHeroPrimaryLink,
   CatalogHeroSecondaryButton,
+  CatalogHeroSecondaryLink,
 } from "@/components/catalog/CatalogHeroActions";
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import InfiniteHorizontalRail from "@/components/catalog/InfiniteHorizontalRail";
@@ -555,6 +556,7 @@ export default function CatalogPage() {
             <CatalogHeroPrimaryLink brand="home" accent={transactionMode} href="/dodaj-oferte">
               Dodaj ogłoszenie
             </CatalogHeroPrimaryLink>
+            <CatalogHeroSecondaryLink href="/moj-kierunek">Mój kierunek</CatalogHeroSecondaryLink>
             <CatalogHeroSecondaryButton
               onClick={() => setFiltersExpanded((prev) => !prev)}
               aria-expanded={filtersExpanded}

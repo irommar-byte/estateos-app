@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Compass, Bookmark, Sparkles, ArrowRight } from "lucide-react";
-import { DISCOVERY_UPDATED_EVENT } from "@/lib/discovery/clientEvents";
+import { subscribeDiscoveryUpdated } from "@/lib/discovery/clientEvents";
 
 export default function EstateOsGuidePanel() {
   const [guide, setGuide] = useState<{ nextStep?: { title?: string; action?: string }; confidence?: number } | null>(null);
@@ -17,9 +17,7 @@ export default function EstateOsGuidePanel() {
 
   useEffect(() => {
     refreshGuide();
-    const onDiscoveryUpdated = () => refreshGuide();
-    window.addEventListener(DISCOVERY_UPDATED_EVENT, onDiscoveryUpdated);
-    return () => window.removeEventListener(DISCOVERY_UPDATED_EVENT, onDiscoveryUpdated);
+    return subscribeDiscoveryUpdated(refreshGuide);
   }, [refreshGuide]);
 
   const title = guide?.nextStep?.title || "Zacznijmy od tego, co jest dla Ciebie ważne.";
@@ -49,14 +47,14 @@ export default function EstateOsGuidePanel() {
               <span className="flex-1 text-sm font-semibold text-white">Znajdź przestrzeń dla siebie</span>
               <ArrowRight size={15} className="text-amber-200 transition group-hover:translate-x-0.5" />
             </Link>
-            <Link href="/oferty" className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 transition hover:bg-white/[0.1]">
+            <Link href="/moj-kierunek" className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 transition hover:bg-white/[0.1]">
               <Bookmark size={17} className="text-amber-200" />
-              <span className="flex-1 text-sm font-semibold text-white">Poznaj ważne tropy</span>
+              <span className="flex-1 text-sm font-semibold text-white">Zobacz mój kierunek</span>
               <ArrowRight size={15} className="text-amber-200 transition group-hover:translate-x-0.5" />
             </Link>
-            <Link href="/moje-konto/wiadomosci" className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 transition hover:bg-white/[0.1]">
+            <Link href="/oferty" className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 transition hover:bg-white/[0.1]">
               <Sparkles size={17} className="text-amber-200" />
-              <span className="flex-1 text-sm font-semibold text-white">Podpowiedz kolejny krok</span>
+              <span className="flex-1 text-sm font-semibold text-white">Oceń oferty · ucz gust</span>
               <ArrowRight size={15} className="text-amber-200 transition group-hover:translate-x-0.5" />
             </Link>
           </div>
