@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ChevronLeft, Sparkles, TrendingUp } from "lucide-react";
+import { ChevronDown, Sparkles } from "lucide-react";
 import { subscribeDiscoveryUpdated } from "@/lib/discovery/clientEvents";
+import { playIntelligenceChime } from "@/lib/discovery/intelligenceChime";
 
 type PulsePayload = {
   stageLabel: string;
@@ -17,7 +18,7 @@ type PulsePayload = {
   secondaryCta: { label: string; href: string };
 };
 
-const spring = { type: "spring" as const, stiffness: 300, damping: 30 };
+const spring = { type: "spring" as const, stiffness: 380, damping: 32, mass: 0.85 };
 
 function confidenceLabel(c: number) {
   if (c < 0.12) return "Cold start";
@@ -26,15 +27,52 @@ function confidenceLabel(c: number) {
   return "Silny sygnał";
 }
 
+type OrbMood = "calm" | "active" | "alert" | "celebrate";
+
+function resolveMood(pulse: PulsePayload, spectacle: boolean): OrbMood {
+  if (spectacle) return "celebrate";
+  if (pulse.contradictionIndex >= 0.55) return "alert";
+  if (pulse.progress >= 35 || pulse.confidence >= 0.35) return "active";
+  return "calm";
+}
+
+const MOOD_COLORS: Record<OrbMood, { core: string; glow: string; ring: string; speed: number }> = {
+  calm: {
+    core: "bg-emerald-400",
+    glow: "rgba(52,211,153,0.55)",
+    ring: "border-emerald-400/35",
+    speed: 3.6,
+  },
+  active: {
+    core: "bg-sky-400",
+    glow: "rgba(56,189,248,0.55)",
+    ring: "border-sky-400/40",
+    speed: 2.2,
+  },
+  alert: {
+    core: "bg-amber-400",
+    glow: "rgba(251,191,36,0.6)",
+    ring: "border-amber-400/45",
+    speed: 1.35,
+  },
+  celebrate: {
+    core: "bg-[#F9E498]",
+    glow: "rgba(249,228,152,0.75)",
+    ring: "border-[#F9E498]/50",
+    speed: 0.9,
+  },
+};
+
 export default function DiscoveryPulse() {
   const reduceMotion = useReducedMotion();
   const [pulse, setPulse] = useState<PulsePayload | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [auth, setAuth] = useState<"unknown" | "guest" | "user">("unknown");
   const [spectacle, setSpectacle] = useState(false);
+  const [hintFlash, setHintFlash] = useState(false);
   const prevProgressRef = useRef<number | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const whisperTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearHide = useCallback(() => {
     if (hideTimerRef.current) {
@@ -43,21 +81,38 @@ export default function DiscoveryPulse() {
     }
   }, []);
 
-  const scheduleHide = useCallback(() => {
-    clearHide();
-    hideTimerRef.current = setTimeout(() => {
-      setExpanded(false);
-      setSpectacle(false);
-    }, 7000);
-  }, [clearHide]);
+  const scheduleHide = useCallback(
+    (ms = 7800) => {
+      clearHide();
+      hideTimerRef.current = setTimeout(() => {
+        setExpanded(false);
+        setSpectacle(false);
+        setHintFlash(false);
+      }, ms);
+    },
+    [clearHide],
+  );
+
+  const presentGently = useCallback(
+    (kind: "suggest" | "progress") => {
+      setExpanded(true);
+      setSpectacle(kind === "progress");
+      setHintFlash(true);
+      void playIntelligenceChime(kind);
+      scheduleHide(kind === "progress" ? 8200 : 7000);
+      window.setTimeout(() => setSpectacle(false), 2400);
+      window.setTimeout(() => setHintFlash(false), 3200);
+    },
+    [scheduleHide],
+  );
 
   const load = useCallback(
     async (silent = false) => {
-      if (!silent) setLoading(true);
       try {
         const res = await fetch("/api/discovery/pulse", { credentials: "include", cache: "no-store" });
         if (res.status === 401) {
           setAuth("guest");
+          setPulse(null);
           return;
         }
         if (!res.ok) return;
@@ -67,11 +122,11 @@ export default function DiscoveryPulse() {
 
         const prev = prevProgressRef.current;
         const increased = typeof prev === "number" && next.progress > prev;
-        if (increased) {
-          setSpectacle(true);
-          setExpanded(true);
-          scheduleHide();
-          window.setTimeout(() => setSpectacle(false), 2200);
+        if (increased && !silent) {
+          presentGently("progress");
+        } else if (increased && silent) {
+          // Cross-tab / discovery event — still celebrate softly
+          presentGently("progress");
         }
         prevProgressRef.current = next.progress;
 
@@ -79,16 +134,17 @@ export default function DiscoveryPulse() {
         setAuth("user");
       } catch {
         // no-op
-      } finally {
-        setLoading(false);
       }
     },
-    [scheduleHide],
+    [presentGently],
   );
 
   useEffect(() => {
     void load();
-    return () => clearHide();
+    return () => {
+      clearHide();
+      if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
+    };
   }, [load, clearHide]);
 
   useEffect(() => subscribeDiscoveryUpdated(() => void load(true)), [load]);
@@ -101,16 +157,45 @@ export default function DiscoveryPulse() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [load]);
 
-  if (auth === "guest" || !pulse) return null;
+  // Occasional calm whisper — only when collapsed and user is idle with the page
+  useEffect(() => {
+    if (auth !== "user" || !pulse || expanded || reduceMotion) return;
+
+    const scheduleWhisper = () => {
+      if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
+      // 45–90s of quiet life, then a soft suggestion peek
+      const wait = 45_000 + Math.random() * 45_000;
+      whisperTimerRef.current = setTimeout(() => {
+        if (document.visibilityState !== "visible") {
+          scheduleWhisper();
+          return;
+        }
+        presentGently("suggest");
+        scheduleWhisper();
+      }, wait);
+    };
+
+    scheduleWhisper();
+    return () => {
+      if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
+    };
+  }, [auth, pulse, expanded, reduceMotion, presentGently]);
+
+  if (auth === "guest" || auth === "unknown" || !pulse) return null;
 
   const progress = Math.max(0, Math.min(100, pulse.progress || 0));
   const contradiction = pulse.contradictionIndex >= 0.55;
+  const mood = resolveMood(pulse, spectacle);
+  const colors = MOOD_COLORS[mood];
 
   return (
-    <div className="pointer-events-none fixed bottom-6 left-4 z-[56] sm:bottom-8 sm:left-6" aria-live="polite">
+    <div
+      className="pointer-events-none fixed bottom-6 left-4 z-[56] sm:bottom-8 sm:left-6"
+      aria-live="polite"
+    >
       <motion.div
         layout
-        initial={{ opacity: 0, scale: 0.9 }}
+        initial={{ opacity: 0, scale: 0.88 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={spring}
         className="pointer-events-auto"
@@ -119,73 +204,106 @@ export default function DiscoveryPulse() {
           {expanded ? (
             <motion.div
               key="expanded"
-              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -10, scale: 0.97 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -8, scale: 0.97 }}
-              transition={{ duration: reduceMotion ? 0.15 : 0.3 }}
-              className="max-w-[min(90vw,360px)] overflow-hidden rounded-2xl border border-emerald-500/25 bg-black/80 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.55),0_0_40px_rgba(16,185,129,0.12)] backdrop-blur-2xl"
+              layout
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.94 }}
+              transition={reduceMotion ? { duration: 0.15 } : spring}
+              className="relative max-w-[min(90vw,340px)] overflow-hidden rounded-[1.35rem] border border-white/12 bg-[rgba(8,10,14,0.82)] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55),0_0_1px_rgba(255,255,255,0.08)_inset] backdrop-blur-[28px]"
             >
+              {/* soft living aura */}
+              <motion.div
+                aria-hidden
+                className="pointer-events-none absolute -left-10 -top-10 h-28 w-28 rounded-full blur-3xl"
+                style={{ background: colors.glow }}
+                animate={
+                  reduceMotion
+                    ? { opacity: 0.25 }
+                    : { opacity: [0.18, 0.38, 0.18], scale: [1, 1.08, 1] }
+                }
+                transition={{ duration: colors.speed + 1.2, repeat: Infinity, ease: "easeInOut" }}
+              />
+
               <button
                 type="button"
-                onClick={() => setExpanded(false)}
-                className="absolute right-3 top-3 rounded-full p-1 text-white/45 transition hover:bg-white/10 hover:text-white/80"
-                aria-label="Zwiń pulse"
+                onClick={() => {
+                  clearHide();
+                  setExpanded(false);
+                  setSpectacle(false);
+                }}
+                className="absolute right-2.5 top-2.5 z-10 rounded-full p-1.5 text-white/40 transition hover:bg-white/8 hover:text-white/75"
+                aria-label="Zwiń EstateOS Inteligence"
               >
-                <ChevronLeft size={14} />
+                <ChevronDown size={14} />
               </button>
 
-              <div className="mb-2 flex items-center gap-2 pr-6">
-                <Sparkles size={14} className="text-emerald-400" aria-hidden />
-                <span className="text-[9px] font-black uppercase tracking-[0.24em] text-emerald-300/90">
-                  EstateOS™ Inteligence Pulse
+              <div className="relative mb-2.5 flex items-center gap-2 pr-7">
+                <span className="relative flex h-2 w-2">
+                  {!reduceMotion ? (
+                    <motion.span
+                      className={`absolute inline-flex h-full w-full rounded-full ${colors.core} opacity-50`}
+                      animate={{ scale: [1, 1.85, 1], opacity: [0.5, 0, 0.5] }}
+                      transition={{ duration: colors.speed, repeat: Infinity, ease: "easeOut" }}
+                    />
+                  ) : null}
+                  <span
+                    className={`relative inline-flex h-2 w-2 rounded-full ${colors.core}`}
+                    style={{ boxShadow: `0 0 10px ${colors.glow}` }}
+                  />
                 </span>
-                {spectacle ? (
+                <span className="text-[9px] font-semibold uppercase tracking-[0.22em] text-white/55">
+                  EstateOS™ Inteligence
+                </span>
+                {hintFlash ? (
                   <motion.span
-                    initial={{ opacity: 0, scale: 0.8 }}
+                    initial={{ opacity: 0, scale: 0.85 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="ml-auto rounded-full border border-emerald-300/30 bg-emerald-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-emerald-100"
+                    className="ml-auto rounded-full border border-white/12 bg-white/8 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white/70"
                   >
-                    +postęp
+                    {spectacle ? "Postęp" : "Szept"}
                   </motion.span>
                 ) : null}
               </div>
 
-              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-200/90">
-                {pulse.stageLabel} · {progress}%
+              <p className="relative text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
+                {pulse.stageLabel}
+                <span className="mx-1.5 text-white/25">·</span>
+                <span className="tabular-nums text-white/70">{progress}%</span>
               </p>
-              <p className="mt-1 text-sm font-semibold text-white">{pulse.directionLine}</p>
-              <p className="mt-2 text-xs leading-5 text-white/70">{pulse.suggestion}</p>
+              <p className="relative mt-1.5 text-[15px] font-medium leading-snug tracking-tight text-white">
+                {pulse.directionLine}
+              </p>
+              <p className="relative mt-2 text-[12px] leading-relaxed text-white/58">{pulse.suggestion}</p>
 
-              <div className="mt-3">
-                <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-white/60">
+              <div className="relative mt-3.5">
+                <div className="mb-1.5 flex items-center justify-between text-[10px] font-medium text-white/45">
                   <span>{confidenceLabel(pulse.confidence)}</span>
                   <span>{contradiction ? "Wymaga korekty" : "Stabilnie"}</span>
                 </div>
-                <div className="h-1 overflow-hidden rounded-full bg-white/12">
+                <div className="h-[3px] overflow-hidden rounded-full bg-white/10">
                   <motion.div
                     className={`h-full rounded-full ${
                       contradiction
                         ? "bg-gradient-to-r from-amber-300 to-rose-400"
-                        : "bg-gradient-to-r from-emerald-300 to-sky-400"
+                        : "bg-gradient-to-r from-emerald-300 via-teal-300 to-sky-400"
                     }`}
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
-                    transition={{ duration: 0.45, ease: "easeOut" }}
+                    transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
                   />
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="relative mt-4 flex flex-wrap gap-2">
                 <Link
                   href={pulse.primaryCta.href}
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-white transition hover:bg-emerald-400"
+                  className="inline-flex items-center rounded-full bg-white px-3.5 py-2 text-[11px] font-semibold tracking-wide text-black transition hover:bg-white/90"
                 >
                   {pulse.primaryCta.label}
                 </Link>
                 <Link
                   href={pulse.secondaryCta.href}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-white/80 transition hover:bg-white/10"
+                  className="inline-flex items-center rounded-full border border-white/14 bg-white/[0.04] px-3.5 py-2 text-[11px] font-semibold tracking-wide text-white/75 transition hover:bg-white/[0.08]"
                 >
                   {pulse.secondaryCta.label}
                 </Link>
@@ -193,30 +311,85 @@ export default function DiscoveryPulse() {
             </motion.div>
           ) : (
             <motion.button
-              key="collapsed"
+              key="orb"
               type="button"
+              layout
               onClick={() => {
                 setExpanded(true);
-                scheduleHide();
+                scheduleHide(9000);
               }}
-              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -10, scale: 0.95 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -8, scale: 0.95 }}
-              transition={{ duration: reduceMotion ? 0.12 : 0.28 }}
-              className="group flex items-center gap-2 rounded-full border border-emerald-500/25 bg-black/75 px-3 py-2 text-white shadow-[0_14px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.7 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.8 }}
+              transition={reduceMotion ? { duration: 0.12 } : spring}
+              className={`group relative flex h-11 w-11 items-center justify-center rounded-full border ${colors.ring} bg-[rgba(8,10,14,0.72)] shadow-[0_12px_40px_rgba(0,0,0,0.45),0_0_1px_rgba(255,255,255,0.12)_inset] backdrop-blur-2xl transition-transform hover:scale-[1.06] active:scale-[0.96]`}
+              aria-label={`EstateOS Inteligence · ${pulse.stageLabel} ${progress}%`}
+              title={`${pulse.stageLabel} · ${progress}%`}
             >
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              {/* outer breath ring */}
+              {!reduceMotion ? (
+                <motion.span
+                  aria-hidden
+                  className="absolute inset-0 rounded-full"
+                  style={{ boxShadow: `0 0 0 1px ${colors.glow}` }}
+                  animate={{ scale: [1, 1.28, 1], opacity: [0.35, 0, 0.35] }}
+                  transition={{ duration: colors.speed, repeat: Infinity, ease: "easeOut" }}
+                />
+              ) : null}
+
+              <span className="relative flex h-2.5 w-2.5 items-center justify-center">
+                {!reduceMotion ? (
+                  <motion.span
+                    className={`absolute inline-flex h-full w-full rounded-full ${colors.core}`}
+                    animate={{ scale: [1, 2.1, 1], opacity: [0.55, 0, 0.55] }}
+                    transition={{ duration: colors.speed, repeat: Infinity, ease: "easeOut" }}
+                  />
+                ) : null}
+                <motion.span
+                  className={`relative inline-flex h-2.5 w-2.5 rounded-full ${colors.core}`}
+                  style={{ boxShadow: `0 0 14px ${colors.glow}` }}
+                  animate={
+                    reduceMotion
+                      ? undefined
+                      : { scale: [1, 1.12, 1], opacity: [0.85, 1, 0.85] }
+                  }
+                  transition={{ duration: colors.speed * 0.85, repeat: Infinity, ease: "easeInOut" }}
+                />
               </span>
-              <Sparkles size={13} className="text-emerald-300" />
-              <span className="text-[10px] font-black uppercase tracking-[0.13em] text-white/90">
-                {pulse.stageLabel}
+
+              {/* tiny progress crescent */}
+              <svg
+                className="pointer-events-none absolute inset-0.5 -rotate-90 text-white/25"
+                viewBox="0 0 36 36"
+                aria-hidden
+              >
+                <circle
+                  cx="18"
+                  cy="18"
+                  r="15.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.25"
+                  opacity="0.25"
+                />
+                <motion.circle
+                  cx="18"
+                  cy="18"
+                  r="15.5"
+                  fill="none"
+                  stroke={mood === "alert" ? "#fbbf24" : mood === "celebrate" ? "#F9E498" : "#34d399"}
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeDasharray={`${(progress / 100) * 97.4} 97.4`}
+                  initial={false}
+                  animate={{ strokeDasharray: `${(progress / 100) * 97.4} 97.4` }}
+                  transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                />
+              </svg>
+
+              <span className="sr-only">
+                <Sparkles size={12} />
               </span>
-              <span className="rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-black tabular-nums text-white">
-                {progress}%
-              </span>
-              {loading ? <TrendingUp size={12} className="animate-pulse text-emerald-300" /> : null}
             </motion.button>
           )}
         </AnimatePresence>

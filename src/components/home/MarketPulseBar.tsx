@@ -51,7 +51,7 @@ export default function MarketPulseBar() {
       initial={{ opacity: 0, y: reduceMotion ? 0 : -16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reduceMotion ? 0.2 : 0.7, ease: [0.16, 1, 0.3, 1] }}
-      className="relative z-20 -mt-10 flex justify-center px-4 pb-6 sm:-mt-12 sm:pb-8"
+      className="relative z-10 -mt-6 flex justify-center px-4 pb-4 sm:-mt-8 sm:pb-5"
     >
       <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full border border-white/10 bg-black/50 px-5 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
         <span className="relative flex size-2">
