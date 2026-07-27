@@ -141,10 +141,11 @@ function LivingBrain({ accent }: { accent: string }) {
       {NEURONS.map((n, i) => {
         const rotate = spin.interpolate({
           inputRange: [0, 1],
-          outputRange: [`${n.phase * 360}deg`, `${n.phase * 360 + (i % 2 === 0 ? 360 : -360)}deg`],
+          outputRange: i % 2 === 0 ? ['0deg', '360deg'] : ['0deg', '-360deg'],
         });
+        const phaseDeg = `${Math.round(n.phase * 360)}deg`;
         return (
-          <Animated.View
+          <View
             key={n.id}
             pointerEvents="none"
             style={[
@@ -154,12 +155,14 @@ function LivingBrain({ accent }: { accent: string }) {
                 height: n.r * 2,
                 marginLeft: -n.r,
                 marginTop: -n.r,
-                transform: [{ rotate }],
+                transform: [{ rotate: phaseDeg }],
               },
             ]}
           >
-            <View style={[styles.neuron, { backgroundColor: accent, shadowColor: accent }]} />
-          </Animated.View>
+            <Animated.View style={[StyleSheet.absoluteFillObject, { transform: [{ rotate }] }]}>
+              <View style={[styles.neuron, { backgroundColor: accent, shadowColor: accent }]} />
+            </Animated.View>
+          </View>
         );
       })}
       <Animated.View style={{ transform: [{ scale: brainScale }] }}>
