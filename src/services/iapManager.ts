@@ -480,22 +480,111 @@ class IAPManagerImpl {
     return [productId];
   }
 
+  private productIdOf(raw: Record<string, unknown>): string {
+    return String(raw.productId ?? raw.id ?? raw.productIdentifier ?? '').trim();
+  }
+
   private pickFetchedProductId(
     requested: IapProductId,
     products: unknown[] | null | undefined,
   ): IapProductId | null {
     if (!products?.length) return null;
     const ids = products
-      .map((p) => {
-        const raw = p as Record<string, unknown>;
-        return String(raw.productId ?? raw.id ?? raw.productIdentifier ?? '').trim();
-      })
+      .map((p) => this.productIdOf(p as Record<string, unknown>))
       .filter(Boolean);
     if (ids.includes(requested)) return requested;
-    const preferred = IAP_INVESTOR_PRO_STORE_SKUS.find((sku) => ids.includes(sku));
-    if (preferred) return preferred as IapProductId;
+    if (this.isInvestorProProductId(requested)) {
+      const preferred = IAP_INVESTOR_PRO_STORE_SKUS.find((sku) => ids.includes(sku));
+      if (preferred) return preferred as IapProductId;
+    }
     const first = ids[0];
     return first ? (first as IapProductId) : null;
+  }
+
+  /** StoreKit czasem zwraca produkt tylko pod innym `type` — próbujemy preferred → all → drugi bucket. */
+  private async fetchProductsForPurchase(
+    iap: IapModule,
+    skus: string[],
+    storeType: 'in-app' | 'subs',
+  ): Promise<unknown[] | null | undefined> {
+    const timeoutMsg =
+      storeType === 'subs'
+        ? 'Sklep nie zwrócił subskrypcji Investor Pro. Sprawdź App Store Connect (Subscription + Intro Offer) i spróbuj ponownie.'
+        : 'Sklep nie zwrócił produktu Pakiet Plus. Sprawdź, czy produkt IAP jest dodany do tej wersji w App Store Connect i spróbuj ponownie.';
+
+    const primary = await this.withTimeout(
+      iap.fetchProducts({ skus, type: storeType }),
+      15_000,
+      timeoutMsg,
+    );
+    if (primary?.length) return primary;
+
+    try {
+      const all = await this.withTimeout(
+        iap.fetchProducts({ skus, type: 'all' }),
+        12_000,
+        timeoutMsg,
+      );
+      if (all?.length) return all;
+    } catch (e) {
+      if (__DEV__) console.log('[IAP] fetchProducts(type=all) fallback failed:', e);
+    }
+
+    const altType: 'in-app' | 'subs' = storeType === 'subs' ? 'in-app' : 'subs';
+    try {
+      const alt = await this.withTimeout(
+        iap.fetchProducts({ skus, type: altType }),
+        12_000,
+        timeoutMsg,
+      );
+      if (alt?.length) return alt;
+    } catch (e) {
+      if (__DEV__) console.log(`[IAP] fetchProducts(type=${altType}) fallback failed:`, e);
+    }
+
+    return primary;
+  }
+
+  private resolvePurchaseStoreType(
+    requested: 'in-app' | 'subs',
+    products: unknown[] | null | undefined,
+    productId: string,
+  ): 'in-app' | 'subs' {
+    const match = (products || []).find((p) => {
+      const id = this.productIdOf(p as Record<string, unknown>);
+      return id === productId;
+    }) as Record<string, unknown> | undefined;
+    if (!match) return requested;
+
+    const t = String(match.type || '').toLowerCase();
+    if (t === 'subs' || t === 'in-app') return t;
+
+    const typeIOS = String(match.typeIOS || '').toLowerCase();
+    if (typeIOS.includes('subscription')) return 'subs';
+    if (typeIOS === 'consumable' || typeIOS === 'non-consumable') return 'in-app';
+    return requested;
+  }
+
+  private productUnavailableMessage(productId: IapProductId, skus: string[], storeType: 'in-app' | 'subs'): string {
+    const skuList = skus.join(', ');
+    if (Platform.OS !== 'ios') {
+      return `Produkt „${productId}" nie jest skonfigurowany w sklepie. Sprawdź Play Console.`;
+    }
+    if (storeType === 'subs' || this.isInvestorProProductId(productId)) {
+      return (
+        `Subskrypcja Investor Pro (${skuList}) nie jest dostępna w App Store na tym koncie. ` +
+        `W App Store Connect: produkt „${IAP_PRODUCT_IDS.INVESTOR_PRO}” musi być Ready to Submit ` +
+        `(Auto-Renewable Subscription), z ceną, lokalizacją i Introductory Offer (3-day free trial), ` +
+        `a Paid Apps Agreement Active. Na urządzeniu testowym użyj konta Sandbox ` +
+        `(Settings → App Store → Sandbox Account).`
+      );
+    }
+    return (
+      `Pakiet Plus (${skuList}) nie jest dostępny w App Store na tym koncie. ` +
+      `W App Store Connect: produkt „${IAP_PRODUCT_IDS.PAKIET_PLUS_30D}” musi być Ready to Submit ` +
+      `(Consumable), z ceną i lokalizacją, a Paid Apps Agreement Active. ` +
+      `Na urządzeniu testowym użyj konta Sandbox (Settings → App Store → Sandbox Account).`
+    );
   }
 
   private resultFromInvestorProVerify(
@@ -530,7 +619,7 @@ class IAPManagerImpl {
 
     try {
       const skus = this.storeSkusForPurchase(productId, 'subs');
-      const products = await this.iap.fetchProducts({ skus, type: 'subs' });
+      const products = await this.fetchProductsForPurchase(this.iap, skus, 'subs');
       const resolvedId = this.pickFetchedProductId(productId, products);
       if (!resolvedId || !products?.length) return null;
       const raw =
@@ -588,28 +677,21 @@ class IAPManagerImpl {
       return { ok: false, message: 'Sklep In-App nie jest dostępny.' };
     }
 
+    let purchaseType = storeType;
     try {
       const skus = this.storeSkusForPurchase(productId, storeType);
-      const products = await this.withTimeout(
-        iap.fetchProducts({ skus, type: storeType }),
-        15_000,
-        storeType === 'subs'
-          ? 'Sklep nie zwrócił subskrypcji Investor Pro. Sprawdź App Store Connect (Subscription + Intro Offer) i spróbuj ponownie.'
-          : 'Sklep nie zwrócił produktu Pakiet Plus. Sprawdź, czy produkt IAP jest dodany do tej wersji w App Store Connect i spróbuj ponownie.',
-      );
+      const products = await this.fetchProductsForPurchase(iap, skus, storeType);
       const resolvedProductId = this.pickFetchedProductId(productId, products);
       if (!resolvedProductId) {
-        const skuList = skus.join(', ');
         return {
           ok: false,
-          message:
-            Platform.OS === 'ios'
-              ? `Subskrypcja Investor Pro (${skuList}) nie jest dostępna w App Store na tym koncie. W App Store Connect: produkt „pl.estateos.app.investor_pro_monthly” musi być Ready to Submit, z ceną i lokalizacją, a Paid Apps Agreement Active. Na urządzeniu testowym użyj konta Sandbox (Settings → App Store → Sandbox Account).`
-              : `Produkt „${productId}" nie jest skonfigurowany w sklepie. Sprawdź Play Console.`,
+          message: this.productUnavailableMessage(productId, skus, storeType),
         };
       }
-      // Dalej używamy SKU faktycznie zwróconego przez sklep (może być legacy).
+      // Dalej używamy SKU faktycznie zwróconego przez sklep (może być legacy)
+      // i typu z metadanych produktu (ASC czasem ma inny bucket niż oczekujemy).
       productId = resolvedProductId;
+      purchaseType = this.resolvePurchaseStoreType(storeType, products, resolvedProductId);
     } catch (e) {
       return {
         ok: false,
@@ -646,7 +728,7 @@ class IAPManagerImpl {
           ? { apple: { sku: productId } }
           : { google: { skus: [productId] } };
 
-      this.iap!.requestPurchase({ request: req, type: storeType }).catch((err) => {
+      this.iap!.requestPurchase({ request: req, type: purchaseType }).catch((err) => {
         // User cancelled — odróżniamy od błędu.
         if (this.isCancelled(err)) {
           if (this.waiters.delete(waiterKey)) {
@@ -656,14 +738,14 @@ class IAPManagerImpl {
           return;
         }
         if (this.isRecoverablePurchaseError(err)) {
-          void this.recoverExistingPurchase(err, storeType);
+          void this.recoverExistingPurchase(err, purchaseType);
           return;
         }
         if (this.waiters.delete(waiterKey)) {
           clearTimeout(timeout);
           resolve({
             ok: false,
-            message: this.toUserPurchaseMessage(err, 'Zakup nie powiódł się.', storeType),
+            message: this.toUserPurchaseMessage(err, 'Zakup nie powiódł się.', purchaseType),
           });
         }
       });
