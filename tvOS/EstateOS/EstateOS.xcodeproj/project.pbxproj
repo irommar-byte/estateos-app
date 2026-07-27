@@ -7,8 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B1D2E3F4A5B6C7D8E9F0A1B2 /* door.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A1D2E3F4A5B6C7D8E9F0A1B2 /* door.mp3 */; };
-		D1A2B3C4D5E6F708192A3B4C /* AppleSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3C4D5E6F708192A3B4C /* AppleSplashView.swift */; };
 		028BFE5643C64BEAABBE9260 /* EOSTvStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB18F7C7A164CBAB42F11BE /* EOSTvStyle.swift */; };
 		0566C38E13174BC5A2F1EC91 /* ContactQrSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7ABB97FB17944EAA0F49470 /* ContactQrSheet.swift */; };
 		1532BF56224D43CF91CCA44E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37CC71F43E324D02BAE91401 /* HomeView.swift */; };
@@ -28,12 +26,14 @@
 		92B7F0402AE344C280E64768 /* EstateOSTvApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58E205A477BC4DB08E54B074 /* EstateOSTvApp.swift */; };
 		A0262DCD3C5B4699B06CF92E /* TvLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBE9513BF07849A9842830B3 /* TvLocation.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* LocalityCountry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A91C2E4D5F6A7B8C9D0E1F /* LocalityCountry.swift */; };
+		B1D2E3F4A5B6C7D8E9F0A1B2 /* door.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A1D2E3F4A5B6C7D8E9F0A1B2 /* door.mp3 */; };
 		B2C3D4E5F64789A0B1C2D3E4 /* ShelfImageRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F64789A0B1C2D3 /* ShelfImageRenderer.swift */; };
 		B83C9FC50C2D48AA8ED50859 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D4DC801AC9514A4D89D1879B /* Assets.xcassets */; };
 		BC7A62B4A18043E683ABDDE8 /* EstateAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC889D61ADA543BEA4876DFC /* EstateAPIClient.swift */; };
 		C42B3CFC961341E0B64CFD78 /* ContentProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C6CE4D1F5BB4119A689D7E3 /* ContentProvider.swift */; };
 		C63EF7329E1E4DF4803E4587 /* OfferDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CE5DAAE829143F19910A810 /* OfferDetailView.swift */; };
 		CC6DE026B53D422799BB9607 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3343CFA254C45E2BCF86D4F /* SessionStore.swift */; };
+		D1A2B3C4D5E6F708192A3B4C /* AppleSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3C4D5E6F708192A3B4C /* AppleSplashView.swift */; };
 		DD968EE818C74FC48F656C44 /* TvPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D9A63D3156452491ECDC51 /* TvPreferences.swift */; };
 		ECA1622367134FF38CD1A16F /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5159F7E47E643709EE7CCFD /* SearchView.swift */; };
 		ED3BF236363F43E486C89C7D /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57036D9AD16A43B19DE02FBB /* AppConfig.swift */; };
@@ -66,8 +66,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		A1D2E3F4A5B6C7D8E9F0A1B2 /* door.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; name = door.mp3; path = Sounds/door.mp3; sourceTree = "<group>"; };
-		C1A2B3C4D5E6F708192A3B4C /* AppleSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSplashView.swift; sourceTree = "<group>"; };
 		07D9A63D3156452491ECDC51 /* TvPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TvPreferences.swift; sourceTree = "<group>"; };
 		083EA9ABD84D4CF7B478349E /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		14633F28558A4673AD5B6CBF /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -87,9 +85,11 @@
 		70009057F3FF475B8DCA4D22 /* CatalogComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogComponents.swift; sourceTree = "<group>"; };
 		835F3B340DEE4DD4A66D4D59 /* OfferPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfferPresentation.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F64789A0B1C2D3 /* ShelfImageRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfImageRenderer.swift; sourceTree = "<group>"; };
+		A1D2E3F4A5B6C7D8E9F0A1B2 /* door.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; name = door.mp3; path = Sounds/door.mp3; sourceTree = "<group>"; };
 		A7ABB97FB17944EAA0F49470 /* ContactQrSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactQrSheet.swift; sourceTree = "<group>"; };
 		B3343CFA254C45E2BCF86D4F /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		B7A91C2E4D5F6A7B8C9D0E1F /* LocalityCountry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalityCountry.swift; sourceTree = "<group>"; };
+		C1A2B3C4D5E6F708192A3B4C /* AppleSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSplashView.swift; sourceTree = "<group>"; };
 		C64F7C9C8259470AB7B1E60C /* TvDeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TvDeepLink.swift; sourceTree = "<group>"; };
 		CBE9513BF07849A9842830B3 /* TvLocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TvLocation.swift; sourceTree = "<group>"; };
 		D4DC801AC9514A4D89D1879B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -408,7 +408,7 @@
 				CODE_SIGN_ENTITLEMENTS = EstateOSTopShelf/EstateOSTopShelf.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=appletvos*]" = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -458,11 +458,13 @@
 				CODE_SIGN_ENTITLEMENTS = EstateOS/Resources/EstateOS.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=appletvos*]" = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = EstateOS/Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "EstateOS™ tvOS";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -486,7 +488,7 @@
 				CODE_SIGN_ENTITLEMENTS = EstateOSTopShelf/EstateOSTopShelf.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=appletvos*]" = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -518,11 +520,13 @@
 				CODE_SIGN_ENTITLEMENTS = EstateOS/Resources/EstateOS.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=appletvos*]" = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = EstateOS/Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "EstateOS™ tvOS";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

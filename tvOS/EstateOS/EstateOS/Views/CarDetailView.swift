@@ -462,7 +462,7 @@ struct CarDetailView: View {
             .focusSection()
 
             if let descriptionText {
-                EOSScreenFitText(text: descriptionText, maxSize: 40, minSize: 18, lineSpacing: 8)
+                EOSScreenFitText(text: descriptionText, maxSize: 38, minSize: 14, lineSpacing: 7)
                     .padding(.horizontal, 56)
                     .padding(.vertical, 20)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

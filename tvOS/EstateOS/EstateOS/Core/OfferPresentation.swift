@@ -36,8 +36,36 @@ enum OfferPresentation {
         text = text.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
         text = text.replacingOccurrences(of: "\\n{3,}", with: "\n\n", options: .regularExpression)
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        text = softenConcatenatedWords(text)
 
         return text.isEmpty ? nil : text
+    }
+
+    /// Portal / import dumps often glue equipment tokens together
+    /// ("felgiTempomatESP", "dwustrefowa18-calowe"). Re-insert spaces so tvOS
+    /// descriptions remain readable.
+    private static func softenConcatenatedWords(_ input: String) -> String {
+        var text = input
+        // letter → Uppercase (camelCase / PascalCase glue)
+        text = text.replacingOccurrences(
+            of: "([a-ząćęłńóśźż])([A-ZĄĆĘŁŃÓŚŹŻ])",
+            with: "$1 $2",
+            options: .regularExpression
+        )
+        // letter → digit, digit → letter
+        text = text.replacingOccurrences(
+            of: "([A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż])([0-9])",
+            with: "$1 $2",
+            options: .regularExpression
+        )
+        text = text.replacingOccurrences(
+            of: "([0-9])([A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż])",
+            with: "$1 $2",
+            options: .regularExpression
+        )
+        // Collapse accidental double spaces introduced above
+        text = text.replacingOccurrences(of: " {2,}", with: " ", options: .regularExpression)
+        return text
     }
 
     static func parseCreatedAt(_ raw: String?) -> Date {

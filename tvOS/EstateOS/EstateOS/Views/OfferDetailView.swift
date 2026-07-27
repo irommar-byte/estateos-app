@@ -340,7 +340,7 @@ struct OfferDetailView: View {
             .padding(.horizontal, 48).padding(.top, 28).padding(.bottom, 12).focusSection()
 
             if let descriptionText {
-                EOSScreenFitText(text: descriptionText, maxSize: 40, minSize: 18, lineSpacing: 8)
+                EOSScreenFitText(text: descriptionText, maxSize: 38, minSize: 14, lineSpacing: 7)
                     .padding(.horizontal, 56).padding(.vertical, 20)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(Color(white: 0.06).opacity(0.88)))

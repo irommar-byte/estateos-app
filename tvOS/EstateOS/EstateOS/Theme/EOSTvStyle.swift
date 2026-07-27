@@ -525,46 +525,95 @@ extension View {
 }
 
 /// Scales body text so the full string fits in the available frame (TV reading).
+/// Full-screen description: shrinks font until the copy fits. If it still overflows at `minSize`,
+/// slowly scrolls upward in a seamless loop so the whole text stays readable from the couch.
 struct EOSScreenFitText: View {
     let text: String
     var maxSize: CGFloat = 42
-    var minSize: CGFloat = 16
+    var minSize: CGFloat = 14
     var lineSpacing: CGFloat = 6
+    /// Points per second when marquee is active — slow enough to read comfortably on tvOS.
+    var marqueeSpeed: CGFloat = 34
+    /// Brief pause at the top of each loop before scrolling resumes.
+    var marqueeHold: TimeInterval = 2.0
 
     var body: some View {
         GeometryReader { geo in
-            let size = Self.fittingSize(text: text, in: geo.size, max: maxSize, min: minSize, lineSpacing: lineSpacing)
-            Text(text)
-                .font(.system(size: size, weight: .regular, design: .rounded))
-                .foregroundStyle(.white.opacity(0.94))
-                .lineSpacing(lineSpacing * (size / 24))
-                .multilineTextAlignment(.leading)
-                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            let fit = Self.resolve(
+                text: text,
+                in: geo.size,
+                max: maxSize,
+                min: minSize,
+                lineSpacing: lineSpacing
+            )
+            let spacing = lineSpacing * (fit.fontSize / 24)
+
+            Group {
+                if fit.needsMarquee {
+                    EOSVerticalMarqueeText(
+                        text: text,
+                        fontSize: fit.fontSize,
+                        lineSpacing: spacing,
+                        contentHeight: fit.contentHeight,
+                        speed: marqueeSpeed,
+                        hold: marqueeHold
+                    )
+                } else {
+                    Text(text)
+                        .font(.system(size: fit.fontSize, weight: .regular, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.94))
+                        .lineSpacing(spacing)
+                        .multilineTextAlignment(.leading)
+                        .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .clipped()
         }
     }
 
-    private static func fittingSize(text: String, in size: CGSize, max: CGFloat, min: CGFloat, lineSpacing: CGFloat) -> CGFloat {
-        guard size.width > 40, size.height > 40 else { return min }
+    fileprivate struct FitResult {
+        let fontSize: CGFloat
+        let contentHeight: CGFloat
+        let needsMarquee: Bool
+    }
+
+    fileprivate static func resolve(
+        text: String,
+        in size: CGSize,
+        max: CGFloat,
+        min: CGFloat,
+        lineSpacing: CGFloat
+    ) -> FitResult {
+        guard size.width > 40, size.height > 40 else {
+            return FitResult(fontSize: min, contentHeight: size.height, needsMarquee: false)
+        }
         var lo = min
         var hi = max
         var best = min
-        let insetW = size.width
-        let insetH = size.height
         while hi - lo > 0.5 {
             let mid = (lo + hi) / 2
-            let height = measure(text: text, fontSize: mid, width: insetW, lineSpacing: lineSpacing * (mid / 24))
-            if height <= insetH {
+            let height = measure(text: text, fontSize: mid, width: size.width, lineSpacing: lineSpacing * (mid / 24))
+            if height <= size.height {
                 best = mid
                 lo = mid
             } else {
                 hi = mid
             }
         }
-        return best
+        let minHeight = measure(text: text, fontSize: min, width: size.width, lineSpacing: lineSpacing * (min / 24))
+        if minHeight > size.height + 1 {
+            return FitResult(fontSize: min, contentHeight: minHeight, needsMarquee: true)
+        }
+        let bestHeight = measure(text: text, fontSize: best, width: size.width, lineSpacing: lineSpacing * (best / 24))
+        return FitResult(fontSize: best, contentHeight: bestHeight, needsMarquee: false)
     }
 
-    private static func measure(text: String, fontSize: CGFloat, width: CGFloat, lineSpacing: CGFloat) -> CGFloat {
-        let font = UIFont.systemFont(ofSize: fontSize, weight: .regular)
+    fileprivate static func measure(text: String, fontSize: CGFloat, width: CGFloat, lineSpacing: CGFloat) -> CGFloat {
+        var font = UIFont.systemFont(ofSize: fontSize, weight: .regular)
+        if let rounded = font.fontDescriptor.withDesign(.rounded) {
+            font = UIFont(descriptor: rounded, size: fontSize)
+        }
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = lineSpacing
         let attrs: [NSAttributedString.Key: Any] = [
@@ -578,6 +627,52 @@ struct EOSScreenFitText: View {
             context: nil
         )
         return ceil(rect.height)
+    }
+}
+
+/// Continuous vertical marquee — duplicates the block so the loop never flashes empty.
+private struct EOSVerticalMarqueeText: View {
+    let text: String
+    let fontSize: CGFloat
+    let lineSpacing: CGFloat
+    let contentHeight: CGFloat
+    var speed: CGFloat = 34
+    var hold: TimeInterval = 2.0
+    private let loopGap: CGFloat = 56
+
+    var body: some View {
+        let cycle = max(contentHeight + loopGap, 1)
+        let scrollDuration = TimeInterval(cycle / max(speed, 1))
+        let period = hold + scrollDuration
+
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let phase = t.truncatingRemainder(dividingBy: period)
+            let offset: CGFloat = {
+                if phase < hold { return 0 }
+                let progress = (phase - hold) / scrollDuration
+                return -CGFloat(progress) * cycle
+            }()
+
+            VStack(alignment: .leading, spacing: loopGap) {
+                textBlock
+                textBlock
+            }
+            .offset(y: offset)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
+        .accessibilityLabel(text)
+    }
+
+    private var textBlock: some View {
+        Text(text)
+            .font(.system(size: fontSize, weight: .regular, design: .rounded))
+            .foregroundStyle(.white.opacity(0.94))
+            .lineSpacing(lineSpacing)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
 
