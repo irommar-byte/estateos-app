@@ -8,6 +8,7 @@ export type GuideActionKey =
   | 'TROPES'
   | 'MAP'
   | 'DIRECTION'
+  | 'LUSTRO'
   | 'PROFILE'
   | 'CONTACT';
 
@@ -54,12 +55,14 @@ const STAGE_LABEL: Record<GuideIntentStage, string> = {
 function resolveHref(action: GuideActionKey, offerId?: number | null): string {
   switch (action) {
     case 'TROPES':
-      return offerId ? `/oferta/${offerId}` : '/moj-kierunek';
+      return offerId ? `/oferta/${offerId}` : '/lustro';
     case 'MAP':
       return '/odkryj-mape';
     case 'DIRECTION':
-    case 'PROFILE':
       return '/moj-kierunek';
+    case 'LUSTRO':
+    case 'PROFILE':
+      return '/lustro';
     case 'CONTACT':
       return '/moje-konto/wiadomosci';
     case 'DISCOVERY':
@@ -143,9 +146,9 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
       action: 'DIRECTION',
     };
     body =
-      'Twoje „pasuje” i „nie dla mnie” trochę się ścierają. Kilka spokojnych decyzji albo podgląd kierunku pomogą to ułożyć.';
+      'Twoje „pasuje” i „nie dla mnie” trochę się ścierają. Spokojny kierunek albo lustro preferencji pomogą to ułożyć.';
     primaryCta = buildCta('Uporządkuj kierunek', 'DIRECTION');
-    secondaryCta = buildCta('Oceń oferty', 'DISCOVERY');
+    secondaryCta = buildCta('Lustro preferencji', 'LUSTRO');
   } else if (intentStage === 'READY') {
     nextStep = {
       key: 'READY_NEXT',
@@ -157,7 +160,7 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
         ? `${brief.summaryLine}. Czas doprecyzować albo oznaczyć coś „na poważnie”.`
         : 'Masz wystarczająco sygnałów, by iść w głąb — albo oznaczyć ofertę „na poważnie”.';
     primaryCta = buildCta('Doprecyzuj w katalogu', 'DISCOVERY');
-    secondaryCta = buildCta('Mój kierunek', 'DIRECTION');
+    secondaryCta = buildCta('Lustro preferencji', 'LUSTRO');
   } else if (intentStage === 'FOCUS') {
     nextStep = {
       key: 'CONTINUE_DISCOVERY',
@@ -167,7 +170,7 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
     body =
       'Kilka kolejnych cichych decyzji — zwłaszcza „nie dla mnie” z powodem — mocno ostrzy gust.';
     primaryCta = buildCta('Kontynuuj ocenianie', 'DISCOVERY');
-    secondaryCta = buildCta('Zobacz lustro', 'DIRECTION');
+    secondaryCta = buildCta('Zobacz lustro', 'LUSTRO');
   } else {
     nextStep = {
       key: 'START_DISCOVERY',
@@ -177,7 +180,7 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
     body =
       'Bez formularza. Na kartach ofert wybierz Pasuje, Nie dla mnie albo Na poważnie — Guide nauczy się z tego sam.';
     primaryCta = buildCta('Oceń pierwsze oferty', 'DISCOVERY');
-    secondaryCta = buildCta('Odkryj na mapie', 'MAP');
+    secondaryCta = buildCta('Mój kierunek', 'DIRECTION');
   }
 
   const stageProgress =
