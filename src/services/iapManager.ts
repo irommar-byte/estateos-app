@@ -530,7 +530,7 @@ class IAPManagerImpl {
     return first ? (first as IapProductId) : null;
   }
 
-  /** StoreKit czasem zwraca produkt tylko pod innym `type` — próbujemy preferred → all → drugi bucket. */
+  /** Jedno szybkie zapytanie — bez kaskady timeoutów (to tylko wydłużało błąd). */
   private async fetchProductsForPurchase(
     iap: IapModule,
     skus: string[],
@@ -538,54 +538,31 @@ class IAPManagerImpl {
   ): Promise<unknown[] | null | undefined> {
     const timeoutMsg =
       storeType === 'subs'
-        ? 'Sklep nie zwrócił subskrypcji Investor Pro. Sprawdź App Store Connect (Subscription + Intro Offer) i spróbuj ponownie.'
-        : 'Sklep nie zwrócił produktu Pakiet Plus. Sprawdź, czy produkt IAP jest dodany do tej wersji w App Store Connect i spróbuj ponownie.';
-
-    const primary = await this.withTimeout(
-      iap.fetchProducts({ skus, type: storeType }),
-      15_000,
-      timeoutMsg,
-    );
-    if (primary?.length) return primary;
-
-    // Alias 'inapp' (bez myślnika) — niektóre buildy Nitro wolą ten wariant.
-    if (storeType === 'in-app') {
-      try {
-        const inapp = await this.withTimeout(
-          iap.fetchProducts({ skus, type: 'inapp' as 'in-app' }),
-          12_000,
-          timeoutMsg,
-        );
-        if (inapp?.length) return inapp;
-      } catch (e) {
-        if (__DEV__) console.log('[IAP] fetchProducts(type=inapp) fallback failed:', e);
-      }
-    }
+        ? 'Sklep nie zwrócił subskrypcji Investor Pro.'
+        : 'Sklep nie zwrócił produktu Pakiet Plus.';
 
     try {
+      // `all` obejmuje consumable + subskrypcje; unikamy 3–4 kolejnych round-tripów.
       const all = await this.withTimeout(
         iap.fetchProducts({ skus, type: 'all' }),
-        12_000,
+        8_000,
         timeoutMsg,
       );
       if (all?.length) return all;
     } catch (e) {
-      if (__DEV__) console.log('[IAP] fetchProducts(type=all) fallback failed:', e);
+      if (__DEV__) console.log('[IAP] fetchProducts(type=all) failed:', e);
     }
 
-    const altType: 'in-app' | 'subs' = storeType === 'subs' ? 'in-app' : 'subs';
     try {
-      const alt = await this.withTimeout(
-        iap.fetchProducts({ skus, type: altType }),
-        12_000,
+      return await this.withTimeout(
+        iap.fetchProducts({ skus, type: storeType }),
+        6_000,
         timeoutMsg,
       );
-      if (alt?.length) return alt;
     } catch (e) {
-      if (__DEV__) console.log(`[IAP] fetchProducts(type=${altType}) fallback failed:`, e);
+      if (__DEV__) console.log(`[IAP] fetchProducts(type=${storeType}) failed:`, e);
+      return null;
     }
-
-    return primary;
   }
 
   private resolvePurchaseStoreType(
@@ -610,33 +587,30 @@ class IAPManagerImpl {
 
   private productUnavailableMessage(productId: IapProductId, skus: string[], storeType: 'in-app' | 'subs'): string {
     if (Platform.OS !== 'ios') {
-      return (
-        `Produkt „${productId}" nie jest teraz dostępny w sklepie. ` +
-        `Spróbuj ponownie za chwilę albo użyj „Przywróć zakupy”.`
-      );
+      return `Produkt „${productId}" nie jest dostępny w Google Play na tym koncie.`;
     }
     if (__DEV__) {
       console.warn('[IAP] product unavailable', { productId, skus, storeType });
+      return (
+        'App Store nie zwraca tego produktu na tym buildzie.\n\n' +
+        'To nie naprawi się „Przywróć zakupy” ani czekaniem.\n\n' +
+        'Żeby działało lokalnie:\n' +
+        '1) Xcode → Scheme EstateOS → Run → StoreKit Configuration = Configuration.storekit\n' +
+        '2) Pełny rebuild (nie tylko Metro): npx expo run:ios\n' +
+        '3) Albo Sandbox Apple ID + produkt Cleared for Sale w App Store Connect\n\n' +
+        `SKU: ${productId}`
+      );
     }
-    const sandboxHint = __DEV__
-      ? '\n• Ustawienia → App Store → konto Sandbox (testy z Xcode)\n• Scheme EstateOS musi mieć StoreKit Configuration.storekit'
-      : '';
     if (storeType === 'subs' || this.isInvestorProProductId(productId)) {
       return (
-        'Subskrypcja Investor Pro nie jest teraz dostępna w App Store na tym koncie.\n\n' +
-        'Spróbuj:\n' +
-        '• Przywróć zakupy\n' +
-        '• Połączenie z internetem i ponowna próba za chwilę' +
-        sandboxHint
+        'Subskrypcja Investor Pro nie jest dostępna w App Store na tym koncie.\n\n' +
+        'Sprawdź połączenie i spróbuj ponownie. Jeśli problem wraca — produkt może nie być jeszcze aktywny w sklepie.'
       );
     }
     return (
-      'Pakiet Plus nie jest teraz dostępny w App Store na tym koncie.\n\n' +
-      'Spróbuj:\n' +
-      '• Przywróć zakupy\n' +
-      '• Połączenie z internetem i ponowna próba za chwilę\n' +
-      '• Jeśli masz kupon powitalny — użyj go przy publikacji oferty' +
-      sandboxHint
+      'Pakiet Plus nie jest dostępny w App Store na tym koncie.\n\n' +
+      'Jeśli masz kupon powitalny — użyj go przy publikacji oferty.\n' +
+      'W przeciwnym razie spróbuj ponownie później albo napisz do supportu.'
     );
   }
 
@@ -736,35 +710,23 @@ class IAPManagerImpl {
     this.activePurchaseContext = { productId, storeType, skus };
 
     try {
-      // StoreKit bywa „zimny” tuż po init — kilka prób z rosnącym backoffiem.
-      let products = await this.fetchProductsForPurchase(iap, skus, storeType);
-      for (const waitMs of [500, 1200, 2200]) {
-        if (products?.length) break;
-        await new Promise((r) => setTimeout(r, waitMs));
-        // Czasem pomaga świeże połączenie przed kolejnym fetch.
-        if (waitMs >= 1200) {
-          try {
-            await this.ensureConnected();
-          } catch {
-            // ignore
-          }
-        }
-        products = await this.fetchProductsForPurchase(iap, skus, storeType);
-      }
+      const products = await this.fetchProductsForPurchase(iap, skus, storeType);
       const resolvedProductId = this.pickFetchedProductId(productId, products);
       if (resolvedProductId) {
-        // SKU faktycznie zwrócone przez sklep (może być legacy) + typ z metadanych.
         productId = resolvedProductId;
         purchaseType = this.resolvePurchaseStoreType(storeType, products, resolvedProductId);
         resolvedFromStore = true;
         this.activePurchaseContext = { productId, storeType: purchaseType, skus };
-      } else if (__DEV__) {
-        // StoreKit Testing / Sandbox: sheet czasem otwiera się po samym SKU mimo pustego katalogu.
-        console.log('[IAP] fetchProducts empty — attempting requestPurchase with SKU', productId, skus);
-      }
-      // iOS: nie abortujemy przy pustym katalogu — StoreKit 2 potrafi sprzedać po SKU.
-      // Android: bez produktu w Play Billing sheet niemal zawsze pada.
-      if (!resolvedProductId && Platform.OS === 'android') {
+      } else {
+        // Pusty katalog = produkt nie istnieje dla tego konta/buildu.
+        // Dalsze czekanie / requestPurchase nic nie da — fail od razu.
+        if (__DEV__) {
+          const seen = (products || [])
+            .map((p) => this.productIdOf(p as Record<string, unknown>))
+            .filter(Boolean)
+            .join(', ');
+          console.log('[IAP] empty catalog', { asked: skus, seen, count: products?.length || 0 });
+        }
         return {
           ok: false,
           message: this.productUnavailableMessage(productId, skus, storeType),
