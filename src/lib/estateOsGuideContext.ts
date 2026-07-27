@@ -155,10 +155,8 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
       title: topCity ? `Kierunek wokół ${topCity} jest już wyraźny.` : 'Kierunek jest już wyraźny.',
       action: 'DISCOVERY',
     };
-    body =
-      brief.summaryLine && !brief.summaryLine.includes('Za mało')
-        ? `${brief.summaryLine}. Czas doprecyzować albo oznaczyć coś „na poważnie”.`
-        : 'Masz wystarczająco sygnałów, by iść w głąb — albo oznaczyć ofertę „na poważnie”.';
+    // Tip only — structured prefs live in summaryLine / profile fields for UI chips.
+    body = 'Czas doprecyzować katalog albo oznaczyć coś „na poważnie”.';
     primaryCta = buildCta('Doprecyzuj w katalogu', 'DISCOVERY');
     secondaryCta = buildCta('Lustro preferencji', 'LUSTRO');
   } else if (intentStage === 'FOCUS') {
