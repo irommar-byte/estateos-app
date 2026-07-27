@@ -238,6 +238,12 @@ class IAPManagerImpl {
   private purchaseUpdateSub: { remove: () => void } | null = null;
   private purchaseErrorSub: { remove: () => void } | null = null;
   private activePurchaseOptions: PurchaseConsumableOptions | null = null;
+  /** Kontekst bieżącego zakupu — do mapowania błędów StoreKit bez productId. */
+  private activePurchaseContext: {
+    productId: IapProductId;
+    storeType: 'in-app' | 'subs';
+    skus: string[];
+  } | null = null;
   /** Listener'y czekające na konkretną transakcję (np. Step6 podczas zakupu). */
   private waiters = new Map<string, (r: IapPurchaseResult) => void>();
 
@@ -315,6 +321,7 @@ class IAPManagerImpl {
       return await this.purchaseInner(productId, 'in-app');
     } finally {
       this.activePurchaseOptions = null;
+      this.activePurchaseContext = null;
     }
   }
 
@@ -330,6 +337,7 @@ class IAPManagerImpl {
       return await this.purchaseInner(productId, 'subs');
     } finally {
       this.activePurchaseOptions = null;
+      this.activePurchaseContext = null;
     }
   }
 
@@ -680,6 +688,7 @@ class IAPManagerImpl {
     const skus = this.storeSkusForPurchase(productId, storeType);
     let purchaseType = storeType;
     let resolvedFromStore = false;
+    this.activePurchaseContext = { productId, storeType, skus };
 
     try {
       // StoreKit bywa „zimny” tuż po init — jedna krótka ponowna próba.
@@ -694,6 +703,7 @@ class IAPManagerImpl {
         productId = resolvedProductId;
         purchaseType = this.resolvePurchaseStoreType(storeType, products, resolvedProductId);
         resolvedFromStore = true;
+        this.activePurchaseContext = { productId, storeType: purchaseType, skus };
       } else if (__DEV__) {
         console.log('[IAP] fetchProducts empty — attempting requestPurchase with SKU', productId, skus);
       }
@@ -872,12 +882,38 @@ class IAPManagerImpl {
     return this.isRecoverablePurchaseError(err);
   }
 
+  private isSkuNotFoundError(err: unknown): boolean {
+    const code = String((err as { code?: unknown })?.code || '').toLowerCase();
+    const message = String((err as { message?: unknown })?.message || '').toLowerCase();
+    return (
+      code === 'sku-not-found' ||
+      message.includes('sku not found') ||
+      message.includes('sku-not-found') ||
+      message.includes("couldn't be found") ||
+      message.includes('cannot be found') ||
+      message.includes('invalid product')
+    );
+  }
+
   private toUserPurchaseMessage(err: unknown, fallback: string, storeType: 'in-app' | 'subs' = 'in-app'): string {
     const code = String((err as { code?: unknown })?.code || '').toLowerCase();
     const message = String((err as { message?: unknown })?.message || '').toLowerCase();
 
     if (this.isCancelled(err)) {
       return fallback;
+    }
+    if (this.isSkuNotFoundError(err)) {
+      const ctx = this.activePurchaseContext;
+      const productId =
+        (typeof (err as { productId?: unknown })?.productId === 'string' &&
+        (err as { productId: string }).productId
+          ? ((err as { productId: string }).productId as IapProductId)
+          : null) ||
+        ctx?.productId ||
+        (storeType === 'subs' ? IAP_PRODUCT_IDS.INVESTOR_PRO : IAP_PRODUCT_IDS.PAKIET_PLUS_30D);
+      const skus = ctx?.skus?.length ? ctx.skus : [productId];
+      const type = ctx?.storeType || storeType;
+      return this.productUnavailableMessage(productId, skus, type);
     }
     if (code === 'already-owned' || message.includes('already owned') || message.includes('item already owned')) {
       return storeType === 'subs'
@@ -1131,7 +1167,8 @@ class IAPManagerImpl {
     storeType: 'in-app' | 'subs' = 'in-app',
   ): void {
     const productId = (err as { productId?: string })?.productId;
-    const message = this.toUserPurchaseMessage(err, 'Zakup nie powiódł się.', storeType);
+    const effectiveType = this.activePurchaseContext?.storeType || storeType;
+    const message = this.toUserPurchaseMessage(err, 'Zakup nie powiódł się.', effectiveType);
     const result: IapPurchaseResult = cancelled ? { ok: false, cancelled: true } : { ok: false, message };
     if (productId && this.isKnownProductId(productId)) {
       this.resolveWaiterFor(productId, result);
