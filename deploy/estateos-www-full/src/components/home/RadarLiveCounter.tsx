@@ -177,7 +177,7 @@ export default function RadarLiveCounter() {
 
       {/* Bottom-right stack: above FloatingPreferencesDock (bottom-4 right-4) */}
       <div
-        className="pointer-events-none fixed bottom-[4.75rem] right-4 z-[45] flex flex-col items-end sm:bottom-[5.25rem] sm:right-5"
+        className="pointer-events-none fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom,0px))] right-3 z-[45] flex flex-col items-end sm:bottom-[5.25rem] sm:right-5"
         aria-live="polite"
       >
         <motion.div

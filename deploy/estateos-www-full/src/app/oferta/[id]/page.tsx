@@ -603,22 +603,35 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     : "🌍";
 
   return (
-    <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-32 font-sans text-[var(--eos-text)] selection:bg-emerald-500/20">
+    <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-[calc(7.5rem+env(safe-area-inset-bottom,0px))] font-sans text-[var(--eos-text)] selection:bg-emerald-500/20 sm:pb-32">
       
-      <div className="eos-cinematic-dark relative w-full min-h-[64vh] h-[72svh] sm:min-h-[100vh] sm:h-[100dvh] overflow-hidden bg-black">
+      <div className="eos-cinematic-dark relative h-[58svh] min-h-[52svh] w-full overflow-hidden bg-black sm:h-[100dvh] sm:min-h-[100vh]">
         <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center ${isArchived ? 'opacity-25 blur-2xl grayscale' : isLocked ? 'opacity-60 blur-xl' : 'opacity-60'}`} />
         <div className="absolute inset-0 eos-offer-hero-vignette z-10" />
 
         <div
-          className="absolute inset-x-0 z-40 px-4 sm:px-6 pointer-events-none"
+          className="pointer-events-none absolute inset-x-0 z-40 px-3 sm:px-6"
           style={{ top: HERO_BELOW_NAV }}
         >
-          <div className="mx-auto flex max-w-5xl flex-col gap-4">
+          <div className="mx-auto flex max-w-5xl flex-col gap-2.5 sm:gap-4">
             <div className="eos-offer-hero-chrome pointer-events-auto">
               <Link href="/odkryj-mape" className="eos-offer-hero-back">
                 {t.backToMap}
               </Link>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+                {!isArchived && !isLocked ? (
+                  <div className="sm:hidden" onClick={(e) => e.stopPropagation()}>
+                    <OfferDiscoveryActions
+                      offerId={offer.id}
+                      variant="compact"
+                      trackOpen
+                      source="web_offer_detail"
+                      onRequireAuth={() => {
+                        window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+                      }}
+                    />
+                  </div>
+                ) : null}
                 <OfferFavoriteButton
                   offerId={offer.id}
                   variant="pill"
@@ -633,11 +646,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               </div>
             </div>
             {!isArchived && !isLocked ? (
-              <div className="pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="pointer-events-auto hidden sm:block" onClick={(e) => e.stopPropagation()}>
                 <OfferDiscoveryActions
                   offerId={offer.id}
                   variant="full"
-                  trackOpen
                   source="web_offer_detail"
                   onRequireAuth={() => {
                     window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
@@ -648,7 +660,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
             {!isArchived ? (
             <div
-              className="pointer-events-auto flex w-full flex-col gap-3"
+              className="pointer-events-auto hidden w-full flex-col gap-3 md:flex"
               onClick={(e) => e.stopPropagation()}
             >
               {offer.isPresentedByAgent ? (
@@ -809,9 +821,65 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         {isArchived ? (
           <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-30 pb-24" aria-hidden />
         ) : (
-        <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 -mt-20 relative z-30 flex flex-col xl:flex-row gap-8 transition-all duration-1000 ${isLocked ? 'blur-2xl opacity-20 pointer-events-none select-none h-[850px] overflow-hidden' : ''}`}>
+        <div className={`relative z-30 mx-auto flex max-w-[1400px] flex-col gap-6 px-4 transition-all duration-1000 sm:gap-8 sm:px-6 lg:px-8 xl:flex-row ${isLocked ? "h-[850px] select-none overflow-hidden opacity-20 blur-2xl pointer-events-none" : ""} ${isArchived ? "-mt-8 pb-24" : "mt-4 sm:-mt-10 md:-mt-14"}`}>
           
-          <div className="xl:w-2/3 flex flex-col gap-10 sm:gap-16">
+          <div className="flex flex-col gap-8 sm:gap-12 xl:w-2/3 xl:gap-16">
+            {!isArchived ? (
+              <div className="md:hidden">
+                {offer.isPresentedByAgent ? (
+                  <p className="mb-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-[0.18em] text-emerald-300">
+                    {locale === "en" ? "Listing presented by your agent" : "Oferta prowadzona przez Twojego agenta"}
+                    {offer.presentingAgent?.personName || offer.presentingAgent?.displayName
+                      ? ` · ${offer.presentingAgent.personName || offer.presentingAgent.displayName}`
+                      : ""}
+                  </p>
+                ) : null}
+                <OfferHeroMetaBar
+                  sellerLabel={sellerLabel}
+                  sellerPersonLine={sellerPersonLine}
+                  sellerAvatar={sellerAvatar}
+                  sellerIsAgency={sellerIsAgency}
+                  averageRating={Number(offer?.user?.reviewsData?.averageRating ?? offer?.sellerReviewsData?.averageRating ?? 0)}
+                  totalReviews={Number(offer?.user?.reviewsData?.totalReviews ?? offer?.sellerReviewsData?.totalReviews ?? 0)}
+                  isOnline={Boolean(offer?.user?.isOnline ?? offer?.sellerIsOnline)}
+                  lastSeenAt={
+                    offer?.user?.lastSeenAt ?? offer?.sellerLastSeenAt ?? null
+                  }
+                  isOwner={isOwner}
+                  canAsk={canContactSeller && Boolean(offer?.user?.id || offer?.userId)}
+                  views={Number(offer?.views || 0)}
+                  offerId={offer?.id || offer?._id}
+                  listedAtLabel={
+                    offer?.createdAt
+                      ? new Date(offer.createdAt).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB")
+                      : t.noData
+                  }
+                  isLegalKwVerified={isLegalKwVerified}
+                  isNewListing={isNewListing}
+                  themeTextActive={themeColors.textActive}
+                  themeBgActiveSoft={themeColors.bgActiveSoft}
+                  themeBorderActive={themeColors.borderActive}
+                  locale={locale}
+                  labels={{
+                    ask: t.askSeller,
+                    views: t.views,
+                    offerId: t.offerId,
+                    listedSince: t.listedSince,
+                    online: t.sellerOnline,
+                    offline: t.sellerOffline,
+                    lastSeenPrefix: t.sellerLastSeenPrefix,
+                    legalVerifiedKw: t.legalVerifiedKw,
+                    legalUnverifiedKw: t.legalUnverifiedKw,
+                    legalVerifiedKwSublabel: t.legalVerifiedKwSublabel,
+                    newOfferBadge: t.newOfferBadge,
+                    noData: t.noData,
+                  }}
+                  onOpenProfile={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
+                  onAsk={() => setIsGuestAskOpen(true)}
+                />
+              </div>
+            ) : null}
+
             {thumbImages.length > 0 && (
               <div className="flex flex-col gap-3">
                 {galleryPersonalized ? (
@@ -819,7 +887,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     Zdjęcia ułożone pod Twój kierunek · EstateOS™ Inteligence
                   </p>
                 ) : null}
-                <div className={`grid grid-cols-4 auto-rows-[72px] gap-0.5 overflow-hidden rounded-[2rem] border border-white/5 bg-black/20 shadow-2xl backdrop-blur-3xl sm:auto-rows-[110px] sm:gap-1 md:auto-rows-[150px] sm:rounded-[2.5rem] ${isArchived ? 'grayscale opacity-50' : ''}`}>
+                <div className={`grid grid-cols-4 auto-rows-[72px] gap-0.5 overflow-hidden rounded-[1.5rem] border border-white/5 bg-black/20 shadow-2xl backdrop-blur-3xl sm:auto-rows-[110px] sm:gap-1 sm:rounded-[2.5rem] md:auto-rows-[150px] ${isArchived ? "grayscale opacity-50" : ""}`}>
                 {thumbImages.slice(0, mosaicCells.length).map((src, idx) => (
                   <div
                     key={`${idx}-${src}`}
@@ -847,8 +915,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               </div>
             )}
 
-            <div>
-                <div className="mb-4 flex flex-wrap items-center gap-2 sm:hidden">
+            <div className="relative z-10 min-w-0">
+                <div className="mb-3 flex flex-wrap items-center gap-2 sm:mb-4 sm:hidden">
                   <span
                     className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${themeColors.borderActive} ${themeColors.bgActiveSoft} ${themeColors.textActive}`}
                   >
@@ -860,9 +928,14 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     </span>
                   ) : null}
                 </div>
-                <h1 className="mb-7 text-4xl font-light leading-tight tracking-tighter text-[var(--eos-text)] [text-wrap:balance] sm:hidden">
+                <h1 className="mb-2 text-[1.75rem] font-light leading-[1.15] tracking-tight text-[var(--eos-text)] [text-wrap:balance] sm:mb-7 sm:hidden sm:text-4xl sm:leading-tight sm:tracking-tighter">
                   {isLocked ? t.beforeLaunchTitle : offer.title}
                 </h1>
+                {!isLocked && (localityValue || districtValue) ? (
+                  <p className="mb-5 text-sm leading-snug text-[var(--eos-muted)] sm:hidden">
+                    {[localityValue, districtValue].filter(Boolean).join(", ")}
+                  </p>
+                ) : null}
                 {showAuctionBanner && auctionEvent && !isLocked ? (
                   <div className="mb-6 sm:hidden">
                     <AuctionOfferBanner
@@ -903,10 +976,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       discountPercent={discountPercent}
                     />
                   ) : (
-                    <h2 className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-4xl font-light tracking-tighter text-[var(--eos-text)] sm:text-6xl md:text-7xl">
+                    <h2 className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[1.85rem] font-light tracking-tight text-[var(--eos-text)] sm:gap-x-3 sm:text-6xl sm:tracking-tighter md:text-7xl">
                       <span>{priceFormatted.primary}</span>
                       {rentAdminFeeInline ? (
-                        <span className="text-2xl font-normal text-[var(--eos-muted)] sm:text-4xl md:text-5xl">
+                        <span className="text-lg font-normal text-[var(--eos-muted)] sm:text-4xl md:text-5xl">
                           + {rentAdminFeeInline}
                         </span>
                       ) : null}

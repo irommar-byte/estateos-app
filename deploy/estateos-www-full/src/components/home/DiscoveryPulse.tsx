@@ -190,7 +190,7 @@ export default function DiscoveryPulse() {
 
   return (
     <div
-      className="pointer-events-none fixed bottom-6 left-4 z-[56] sm:bottom-8 sm:left-6"
+      className="pointer-events-none fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] left-3 z-[56] sm:bottom-8 sm:left-6"
       aria-live="polite"
     >
       <motion.div

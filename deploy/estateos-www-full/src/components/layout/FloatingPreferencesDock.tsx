@@ -1,8 +1,9 @@
 "use client";
 
 import DisplayCurrencySwitcher from "@/components/preferences/DisplayCurrencySwitcher";
-import CompactThemeSwitcher from "@/components/layout/CompactThemeSwitcher";
+import ThemeSwitcher from "@/components/layout/ThemeSwitcher";
 import LanguageSwitcher from "@/components/layout/LanguageSwitcher";
+import ContactMessagesNavButton from "@/components/contact/ContactMessagesNavButton";
 import { useLocale } from "@/contexts/LocaleContext";
 import { Settings2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -82,7 +83,7 @@ export default function FloatingPreferencesDock() {
 
   return (
     <div
-      className="pointer-events-none fixed bottom-4 right-4 z-40 max-w-[min(100vw-2rem,22rem)]"
+      className="pointer-events-none fixed bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] right-3 z-40 max-w-[min(100vw-2rem,22rem)] sm:bottom-4 sm:right-4"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
@@ -111,7 +112,12 @@ export default function FloatingPreferencesDock() {
                 <p className="px-1 text-[9px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
                   {dict.theme.label}
                 </p>
-                <CompactThemeSwitcher showMessages={isLoggedIn} />
+                <div className="flex items-center gap-1">
+                  <ThemeSwitcher compact className="flex-1" />
+                  {isLoggedIn ? (
+                    <ContactMessagesNavButton compact className="shrink-0 rounded-full border-0 bg-transparent p-1.5 shadow-none" />
+                  ) : null}
+                </div>
               </div>
               <div className="space-y-1">
                 <p className="px-1 text-[9px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">

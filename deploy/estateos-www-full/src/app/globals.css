@@ -3624,6 +3624,35 @@ html:not(.light) .eos-car-form-cancel {
   align-items: center;
   gap: 0.5rem;
 }
+@media (max-width: 640px) {
+  .eos-discovery-bar--full {
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .eos-discovery-bar--full::-webkit-scrollbar {
+    display: none;
+  }
+  .eos-discovery-btn--pill {
+    flex-shrink: 0;
+    padding: 0.5rem 0.72rem;
+  }
+  .eos-discovery-btn__label {
+    font-size: 0.55rem;
+    letter-spacing: 0.1em;
+  }
+  .eos-offer-hero-back {
+    padding: 0.55rem 0.85rem;
+    font-size: 0.55rem;
+    letter-spacing: 0.12em;
+  }
+  .eos-offer-hero-bar__meta {
+    grid-template-columns: 1fr 1fr;
+  }
+}
 .eos-discovery-btn {
   display: inline-flex;
   align-items: center;

@@ -20,7 +20,6 @@ import NotificationCenter from "@/components/NotificationCenter";
 import ContactMessagesNavButton from "@/components/contact/ContactMessagesNavButton";
 import PublicationWalletNavButton from "@/components/wallet/PublicationWalletNavButton";
 import NavbarProfileChip from "@/components/layout/NavbarProfileChip";
-import PremiumModeToggle from "@/components/ui/PremiumModeToggle";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useUserMode } from "@/contexts/UserModeContext";
 import { useEcosystem, type EcosystemVertical } from "@/contexts/EcosystemContext";
@@ -355,9 +354,6 @@ export default function Navbar() {
           <div className="hidden min-w-0 max-w-full items-center justify-end gap-1 lg:flex lg:gap-1.5 xl:gap-2">
             {user && (
               <>
-                <div className="hidden 2xl:block">
-                  <PremiumModeToggle currentUser={user} />
-                </div>
                 <PublicationWalletNavButton />
                 <ContactMessagesNavButton />
                 <NotificationCenter />
@@ -445,17 +441,11 @@ export default function Navbar() {
                 maxHeight: "calc(100dvh - var(--eos-nav-height))",
               }}
             >
-              <div className="space-y-6 p-5 pb-8">
-                {user && (
-                  <div className="flex justify-center rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3">
-                    <PremiumModeToggle currentUser={user} />
-                  </div>
-                )}
-
+              <div className="space-y-4 p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] sm:space-y-5 sm:p-5 sm:pb-8">
                 <div className="grid gap-2">
                   <MobileNavButton
                     icon={Home}
-                    label="EstateOS™Home"
+                    label="EstateOS™ Home"
                     onClick={() => {
                       requestVerticalSwitch("home", "/oferty");
                       setIsOpen(false);
@@ -464,7 +454,7 @@ export default function Navbar() {
                   />
                   <MobileNavButton
                     icon={Car}
-                    label="EstateOS™Car"
+                    label="EstateOS™ Car"
                     onClick={() => {
                       requestVerticalSwitch("car", "/cars");
                       setIsOpen(false);
