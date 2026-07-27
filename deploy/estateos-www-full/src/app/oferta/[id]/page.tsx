@@ -26,6 +26,7 @@ import OfferDiscountPriceHero from "@/components/offer/OfferDiscountPriceHero";
 import OfferPriceHistoryProSection from "@/components/offer/OfferPriceHistoryProSection";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import OfferDiscoveryActions from "@/components/discovery/OfferDiscoveryActions";
+import DiscoveryOfferExplainer from "@/components/discovery/DiscoveryOfferExplainer";
 import OfferGalleryLightbox from "@/components/offer/OfferGalleryLightbox";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -936,6 +937,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     {[localityValue, districtValue].filter(Boolean).join(", ")}
                   </p>
                 ) : null}
+                {!isLocked && !isArchived ? (
+                  <div className="sm:hidden">
+                    <DiscoveryOfferExplainer offerId={offer.id || offer._id} />
+                  </div>
+                ) : null}
                 {showAuctionBanner && auctionEvent && !isLocked ? (
                   <div className="mb-6 sm:hidden">
                     <AuctionOfferBanner
@@ -966,6 +972,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       }}
                       onPress={openOpenHouseModal}
                     />
+                  </div>
+                ) : null}
+                {!isLocked && !isArchived ? (
+                  <div className="hidden sm:block">
+                    <DiscoveryOfferExplainer offerId={offer.id || offer._id} />
                   </div>
                 ) : null}
                 <div className="mb-2">
