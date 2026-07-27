@@ -16,6 +16,8 @@ import {
   normalizeTransactionType,
   transactionModeFromOffers,
 } from "@/lib/transactionType";
+import DiscoveryIntelligenceWhisper from "@/components/discovery/DiscoveryIntelligenceWhisper";
+import { useDiscoveryPulseLite } from "@/hooks/useDiscoveryPulseLite";
 
 function parseOfferPrice(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -153,6 +155,21 @@ function offerPinColorClasses(transactionType: unknown) {
   return `${OFFER_PIN_BASE} bg-emerald-500/80 text-black border-emerald-400/40 hover:bg-emerald-400 hover:scale-110 shadow-[0_10px_30px_rgba(16,185,129,0.3)]`;
 }
 
+const AFFINITY_PIN_GLOW =
+  " ring-2 ring-white/70 shadow-[0_0_28px_rgba(255,255,255,0.35),0_10px_30px_rgba(16,185,129,0.35)] scale-[1.04]";
+
+function resolveOfferPinClass(
+  offer: { transactionType?: unknown; mapKind?: string },
+  mapMarket: "home" | "car",
+  affinity: boolean,
+) {
+  const base =
+    mapMarket === "car" || offer.mapKind === "car"
+      ? `${OFFER_PIN_BASE} bg-sky-500/85 text-white border-sky-300/45 hover:bg-sky-400 hover:scale-110 shadow-[0_10px_30px_rgba(14,165,233,0.35)]`
+      : offerPinColorClasses(offer.transactionType);
+  return affinity ? `${base}${AFFINITY_PIN_GLOW}` : base;
+}
+
 type Props = {
   /** Pełny ekran pod nawigacją — bez formularzy i nagłówków sekcji. */
   immersive?: boolean;
@@ -254,7 +271,9 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [showTeaser, setShowTeaser] = useState(false);
   const [activeHoverPinId, setActiveHoverPinId] = useState<number | null>(null);
   const [showMapGuide, setShowMapGuide] = useState(false);
+  const [forYouIds, setForYouIds] = useState<Set<number>>(() => new Set());
   const sliderChangingRef = useRef(false);
+  const { pulse, auth: pulseAuth } = useDiscoveryPulseLite();
 
   const priceLocale = numberFormatLocale(locale);
   const maxPriceLabel =
@@ -342,6 +361,41 @@ export default function InteractiveMap({ immersive = false }: Props) {
       })
       .catch(() => setIsLoggedIn(false));
   }, []);
+
+  useEffect(() => {
+    if (!isLoggedIn || mapMarket === "car") {
+      setForYouIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    const tx = transactionMode === "rent" ? "RENT" : "SALE";
+    void fetch(`/api/discovery/for-you?limit=24&transaction=${tx}`, {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (res) => {
+        if (res.status === 401 || !res.ok) return null;
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled || !data?.items?.length) {
+          if (!cancelled) setForYouIds(new Set());
+          return;
+        }
+        const next = new Set<number>();
+        for (const item of data.items) {
+          const id = Number(item.offerId ?? item.id);
+          if (Number.isFinite(id) && id > 0) next.add(id);
+        }
+        setForYouIds(next);
+      })
+      .catch(() => {
+        if (!cancelled) setForYouIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, mapMarket, transactionMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -495,10 +549,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
         outerEl.className = "z-30 relative";
         const innerEl = document.createElement("div");
         const tx = normalizeTransactionType(offer.transactionType);
-        innerEl.className =
-          mapMarket === "car" || offer.mapKind === "car"
-            ? `${OFFER_PIN_BASE} bg-sky-500/85 text-white border-sky-300/45 hover:bg-sky-400 hover:scale-110 shadow-[0_10px_30px_rgba(14,165,233,0.35)]`
-            : offerPinColorClasses(offer.transactionType);
+        const affinity = forYouIds.has(Number(offer.id));
+        innerEl.className = resolveOfferPinClass(offer, mapMarket, affinity);
         innerEl.innerText = formatPinLabel(offer, tx === "rent");
           innerEl.onclick = (e) => {
             e.stopPropagation();
@@ -535,10 +587,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
         const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
         if (pinEl) {
           const tx = normalizeTransactionType(offer.transactionType);
-          pinEl.className =
-            mapMarket === "car" || offer.mapKind === "car"
-              ? `${OFFER_PIN_BASE} bg-sky-500/85 text-white border-sky-300/45 hover:bg-sky-400 hover:scale-110 shadow-[0_10px_30px_rgba(14,165,233,0.35)]`
-              : offerPinColorClasses(offer.transactionType);
+          const affinity = forYouIds.has(Number(offer.id));
+          pinEl.className = resolveOfferPinClass(offer, mapMarket, affinity);
           pinEl.innerText = formatPinLabel(offer, mapMarket === "car" ? false : tx === "rent");
           pinEl.onmouseenter = () => {
             if (sliderChangingRef.current) return;
@@ -567,7 +617,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
         delete markersRef.current[id];
       }
     }
-  }, [filteredOffers, focusPin, formatPinLabel, transactionMode, mapMarket]);
+  }, [filteredOffers, focusPin, formatPinLabel, forYouIds, transactionMode, mapMarket]);
 
   useEffect(() => {
     updateMarkersRef.current = updateMarkers;
@@ -819,6 +869,20 @@ export default function InteractiveMap({ immersive = false }: Props) {
 
       <div className="interactive-map-galaxy pointer-events-none absolute inset-0 z-[1]" />
       <div className="interactive-map-vignette pointer-events-none absolute inset-0 z-[1]" />
+
+      {pulseAuth === "user" && pulse && (pulse.directionLine || pulse.suggestion) && forYouIds.size > 0 ? (
+        <div className="pointer-events-auto absolute left-4 top-4 z-30 w-[min(92vw,320px)] sm:left-6 sm:top-5">
+          <DiscoveryIntelligenceWhisper
+            variant="map"
+            body={
+              forYouIds.size === 1
+                ? pulse.suggestion || pulse.directionLine
+                : `${pulse.directionLine || pulse.suggestion} · ${forYouIds.size} tropów na mapie`
+            }
+            href="/moj-kierunek"
+          />
+        </div>
+      ) : null}
 
       {showMapGuide && (
         <motion.aside

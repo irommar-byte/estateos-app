@@ -27,6 +27,7 @@ import OfferPriceHistoryProSection from "@/components/offer/OfferPriceHistoryPro
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import OfferDiscoveryActions from "@/components/discovery/OfferDiscoveryActions";
 import DiscoveryOfferExplainer from "@/components/discovery/DiscoveryOfferExplainer";
+import DiscoveryVisitHint from "@/components/discovery/DiscoveryVisitHint";
 import OfferGalleryLightbox from "@/components/offer/OfferGalleryLightbox";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -1324,6 +1325,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </div>
                 ) : (
                   <>
+                    <DiscoveryVisitHint
+                      offerId={offer.id || offer._id}
+                      className="mb-1 border-emerald-500/20 bg-emerald-500/[0.08]"
+                    />
                     <button
                     onClick={openBidFlow}
                     className={`relative overflow-hidden w-full group flex flex-col items-center justify-center gap-1.5 rounded-[2rem] px-4 py-6 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer ${themeColors.primaryBg} ${themeColors.primaryText} ${themeColors.primaryShadow}`}
