@@ -22,6 +22,8 @@ import { resolveDiscoveryEntryRoute } from '../../utils/discoveryExperienceState
 
 type Props = {
   navigation: any;
+  /** market = gallery chrome; explore = Live Radar / map chrome */
+  surface?: 'market' | 'explore';
 };
 
 type Mood = 'calm' | 'active' | 'alert';
@@ -62,10 +64,10 @@ function navigatePulseAction(navigation: any, action: string | undefined, firstE
 }
 
 /**
- * Dynamic Island–style Inteligence pill at the top.
- * Stays clear of map offer previews / bottom chrome.
+ * Compact Inteligence island — below app chrome, never in the status-bar /
+ * system Dynamic Island band, and never over bottom offer previews.
  */
-export default function IntelligencePulseTape({ navigation }: Props) {
+export default function IntelligencePulseTape({ navigation, surface = 'explore' }: Props) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { pulse, ready } = useDiscoveryPulse();
@@ -128,8 +130,16 @@ export default function IntelligencePulseTape({ navigation }: Props) {
 
   if (!ready || !pulse) return null;
 
-  // Sit in the status-bar / Dynamic Island band — never the bottom offer stack.
-  const top = Math.max(insets.top - (Platform.OS === 'ios' ? 2 : 0), 8) + 2;
+  // Below Homes/Cars (market) or Live Radar row (explore) — never status-bar DI slot.
+  const chromeBelowSafe =
+    surface === 'market'
+      ? Platform.OS === 'ios'
+        ? 52
+        : 48
+      : Platform.OS === 'ios'
+        ? 102
+        : 96;
+  const top = insets.top + chromeBelowSafe;
   const sheetWidth = Math.min(340, width - 28);
   const glowOpacity = breathe.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.85] });
   const glowScale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
@@ -156,8 +166,8 @@ export default function IntelligencePulseTape({ navigation }: Props) {
               ]}
             />
             <BlurView intensity={90} tint="dark" style={[styles.island, { borderColor: colors.ring }]}>
-              <View style={[styles.orb, { shadowColor: colors.accent }]}>
-                <Ionicons name="sparkles" size={13} color={colors.accent} />
+              <View style={styles.orb}>
+                <Ionicons name="sparkles" size={12} color={colors.accent} />
               </View>
               <Text style={styles.islandLabel} numberOfLines={1}>
                 Inteligence

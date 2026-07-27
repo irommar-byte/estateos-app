@@ -62,7 +62,9 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
       {showIntelligence && surface === 'explore' ? (
         <EstateOsGuideOverlay navigation={navigation} />
       ) : null}
-      {showIntelligence ? <IntelligencePulseTape navigation={navigation} /> : null}
+      {showIntelligence ? (
+        <IntelligencePulseTape navigation={navigation} surface={surface} />
+      ) : null}
     </View>
   );
 }
