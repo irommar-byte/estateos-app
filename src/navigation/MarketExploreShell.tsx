@@ -4,6 +4,7 @@ import { useEcosystemStore } from '../store/useEcosystemStore';
 import RadarHomeScreen from '../screens/RadarHomeScreen';
 import CarsCatalogScreen from '../screens/CarsCatalogScreen';
 import EstateOsGuideOverlay from '../components/discovery/EstateOsGuideOverlay';
+import IntelligencePulseTape from '../components/discovery/IntelligencePulseTape';
 import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
 
 export type MarketSurface = 'market' | 'explore';
@@ -41,6 +42,9 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
           exploreLive: openLiveRadar || baseParams.exploreLive === true,
         };
 
+  const showIntelligence =
+    activeVertical === 'home' && intelligenceHydrated && intelligenceEnabled;
+
   return (
     <View style={styles.root}>
       {activeVertical === 'car' ? (
@@ -55,12 +59,10 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
           route={{ ...(route || {}), params: homeParams }}
         />
       )}
-      {activeVertical === 'home' &&
-      surface === 'explore' &&
-      intelligenceHydrated &&
-      intelligenceEnabled ? (
+      {showIntelligence && surface === 'explore' ? (
         <EstateOsGuideOverlay navigation={navigation} />
       ) : null}
+      {showIntelligence ? <IntelligencePulseTape navigation={navigation} /> : null}
     </View>
   );
 }

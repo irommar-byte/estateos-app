@@ -189,6 +189,59 @@ export async function fetchEstateOsGuideContext(token: string | null): Promise<E
   return json?.guide || null;
 }
 
+export type DiscoveryPulseCta = {
+  label: string;
+  href?: string;
+  action?: string;
+};
+
+export type DiscoveryPulsePayload = {
+  stage?: string;
+  stageLabel: string;
+  progress: number;
+  confidence: number;
+  contradictionIndex: number;
+  directionLine: string;
+  summaryLine?: string;
+  suggestion: string;
+  decisionCount?: number;
+  primaryCta?: DiscoveryPulseCta | null;
+  secondaryCta?: DiscoveryPulseCta | null;
+  updatedAt?: string | null;
+};
+
+export async function fetchDiscoveryPulse(token: string | null): Promise<DiscoveryPulsePayload | null> {
+  if (!token) return null;
+  try {
+    const response = await fetch(`${API_URL}/api/discovery/pulse`, {
+      headers: headers(token),
+      cache: 'no-store',
+    });
+    if (response.status === 401 || !response.ok) return null;
+    const json = (await response.json().catch(() => null)) as {
+      success?: boolean;
+      pulse?: DiscoveryPulsePayload;
+    } | null;
+    if (!json?.success || !json.pulse) return null;
+    return {
+      stage: json.pulse.stage,
+      stageLabel: String(json.pulse.stageLabel || 'Odkrywanie'),
+      progress: Math.round(Math.min(100, Math.max(0, Number(json.pulse.progress) || 0))),
+      confidence: Number(json.pulse.confidence) || 0,
+      contradictionIndex: Number(json.pulse.contradictionIndex) || 0,
+      directionLine: String(json.pulse.directionLine || ''),
+      summaryLine: json.pulse.summaryLine ? String(json.pulse.summaryLine) : undefined,
+      suggestion: String(json.pulse.suggestion || ''),
+      decisionCount: Number(json.pulse.decisionCount) || 0,
+      primaryCta: json.pulse.primaryCta || null,
+      secondaryCta: json.pulse.secondaryCta || null,
+      updatedAt: json.pulse.updatedAt ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function mutateDiscoveryTrope(
   token: string | null,
   input: { offerId: number; action: 'SAVE' | 'PRIORITIZE' | 'UNPRIORITIZE' | 'REMOVE' | 'SERIOUS' },
