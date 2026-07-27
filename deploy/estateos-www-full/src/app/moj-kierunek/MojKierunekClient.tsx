@@ -65,7 +65,7 @@ export default function MojKierunekClient() {
           <p className="text-[11px] font-black uppercase tracking-[0.28em] text-amber-400/90">EstateOS™</p>
           <h1 className="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">Mój kierunek</h1>
           <p className="mt-4 max-w-md text-base leading-7 text-[var(--eos-muted)]">
-            Spokojny przewodnik po Twojej decyzji — jak Apple Intelligence, bez formularza.
+            Spokojny przewodnik po Twojej decyzji — jako EstateOS™ Inteligence, bez formularza.
           </p>
           <Link
             href={`/login?redirect=${encodeURIComponent("/moj-kierunek")}`}
@@ -121,7 +121,7 @@ export default function MojKierunekClient() {
             </span>
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.26em] text-amber-400/90">
-                EstateOS™ Intelligence
+                EstateOS™ Inteligence
               </p>
               <p className="text-xs text-[var(--eos-muted)]">
                 {refreshing ? "Aktualizacja…" : "Twój spokojny następny krok"}
