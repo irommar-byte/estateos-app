@@ -37,7 +37,7 @@ export default function robots(): MetadataRoute.Robots {
           '/cennik',
           '/start',
         ],
-        disallow: ['/centrala', '/api/', '/moje-konto'],
+        disallow: ['/centrala', '/api/', '/moje-konto', '/moj-kierunek'],
       },
     ],
     sitemap: `${ESTATEOS_SITE_URL}/sitemap.xml`,
