@@ -18,6 +18,7 @@ import {
 } from "@/lib/transactionType";
 import DiscoveryIntelligenceWhisper from "@/components/discovery/DiscoveryIntelligenceWhisper";
 import { useDiscoveryPulseLite } from "@/hooks/useDiscoveryPulseLite";
+import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 
 function parseOfferPrice(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -274,6 +275,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [forYouIds, setForYouIds] = useState<Set<number>>(() => new Set());
   const sliderChangingRef = useRef(false);
   const { pulse, auth: pulseAuth } = useDiscoveryPulseLite();
+  const { enabled: intelligenceEnabled, hydrated: intelligenceHydrated } =
+    useIntelligencePreference();
 
   const priceLocale = numberFormatLocale(locale);
   const maxPriceLabel =
@@ -363,7 +366,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!isLoggedIn || mapMarket === "car") {
+    if (!isLoggedIn || mapMarket === "car" || !intelligenceEnabled) {
       setForYouIds(new Set());
       return;
     }
@@ -395,7 +398,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn, mapMarket, transactionMode]);
+  }, [isLoggedIn, mapMarket, transactionMode, intelligenceEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -870,7 +873,12 @@ export default function InteractiveMap({ immersive = false }: Props) {
       <div className="interactive-map-galaxy pointer-events-none absolute inset-0 z-[1]" />
       <div className="interactive-map-vignette pointer-events-none absolute inset-0 z-[1]" />
 
-      {pulseAuth === "user" && pulse && (pulse.directionLine || pulse.suggestion) && forYouIds.size > 0 ? (
+      {intelligenceHydrated &&
+      intelligenceEnabled &&
+      pulseAuth === "user" &&
+      pulse &&
+      (pulse.directionLine || pulse.suggestion) &&
+      forYouIds.size > 0 ? (
         <div className="pointer-events-auto absolute left-4 top-4 z-30 w-[min(92vw,320px)] sm:left-6 sm:top-5">
           <DiscoveryIntelligenceWhisper
             variant="map"

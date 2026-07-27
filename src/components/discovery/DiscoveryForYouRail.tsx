@@ -7,6 +7,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight, Sparkles } from "lucide-react";
 import OfferDiscoveryActions from "@/components/discovery/OfferDiscoveryActions";
 import { subscribeDiscoveryUpdated } from "@/lib/discovery/clientEvents";
+import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 
 export type ForYouRailItem = {
   id: number;
@@ -35,6 +36,8 @@ const spring = { type: "spring" as const, stiffness: 280, damping: 28 };
  */
 export default function DiscoveryForYouRail({ transactionMode = "all", formatPrice }: Props) {
   const reduceMotion = useReducedMotion();
+  const { enabled: intelligenceEnabled, hydrated: intelligenceHydrated } =
+    useIntelligencePreference();
   const [items, setItems] = useState<ForYouRailItem[]>([]);
   const [ready, setReady] = useState(false);
   const [auth, setAuth] = useState<"unknown" | "guest" | "user">("unknown");
@@ -80,6 +83,7 @@ export default function DiscoveryForYouRail({ transactionMode = "all", formatPri
     };
   }, [transactionMode]);
 
+  if (!intelligenceHydrated || !intelligenceEnabled) return null;
   if (auth === "guest" || auth === "unknown") return null;
   if (loading) return null;
   if (!ready) {

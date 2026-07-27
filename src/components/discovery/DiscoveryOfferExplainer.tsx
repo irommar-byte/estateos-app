@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Sparkles } from "lucide-react";
+import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 
 type Props = {
   offerId: number | string;
@@ -13,9 +14,14 @@ type Props = {
  */
 export default function DiscoveryOfferExplainer({ offerId }: Props) {
   const reduceMotion = useReducedMotion();
+  const { enabled, hydrated } = useIntelligencePreference();
   const [reason, setReason] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!hydrated || !enabled) {
+      setReason(null);
+      return;
+    }
     const id = Number(offerId);
     if (!Number.isFinite(id) || id <= 0) return;
     let cancelled = false;
@@ -38,9 +44,9 @@ export default function DiscoveryOfferExplainer({ offerId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [offerId]);
+  }, [offerId, enabled, hydrated]);
 
-  if (!reason) return null;
+  if (!hydrated || !enabled || !reason) return null;
 
   return (
     <motion.div

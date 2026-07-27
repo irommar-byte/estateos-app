@@ -49,6 +49,18 @@ export type Dictionary = {
     showSettings: string;
     hideSettings: string;
   };
+  intelligence: {
+    prefTitle: string;
+    prefOnHint: string;
+    prefOffHint: string;
+    sheetTitle: string;
+    sheetBody: string;
+    sheetFeature1: string;
+    sheetFeature2: string;
+    sheetFeature3: string;
+    sheetEnable: string;
+    sheetLater: string;
+  };
   currency: {
     sectionTitle: string;
     labelPln: string;
@@ -679,9 +691,22 @@ const pl: Dictionary = {
   prefsDock: {
     introTitle: "Ustawienia wyświetlania",
     introBody:
-      "Tu zmienisz motyw (jasny / ciemny / auto), język (PL / EN / UA) i walutę cen (PLN, EUR lub waluta oferty). Panel chowa się sam — otwórz go ponownie ikoną koła zębatego.",
+      "Tu zmienisz motyw, język, walutę cen i EstateOS™ Inteligence. Panel chowa się sam — otwórz go ponownie ikoną koła zębatego.",
     showSettings: "Pokaż ustawienia",
     hideSettings: "Schowaj ustawienia",
+  },
+  intelligence: {
+    prefTitle: "EstateOS™ Inteligence",
+    prefOnHint: "Cichy asystent kierunku jest włączony",
+    prefOffHint: "Włącz spokojne podpowiedzi kierunku",
+    sheetTitle: "Włącz Inteligence",
+    sheetBody:
+      "Spokojny system, który uczy się z Twoich decyzji i podpowiada tropy — bez hałasu, jak prywatny asystent na iOS.",
+    sheetFeature1: "Pulse z żywym mózgiem — kiedy kierunek się wyostrza",
+    sheetFeature2: "Sugestie „bliżej Twojego kierunku” w katalogu i na mapie",
+    sheetFeature3: "Szepty przed kontaktem i wizytą — tylko gdy mają sens",
+    sheetEnable: "Włącz EstateOS™ Inteligence",
+    sheetLater: "Nie teraz",
   },
   currency: {
     sectionTitle: "Waluta cen",
@@ -1429,9 +1454,22 @@ const en: Dictionary = {
   prefsDock: {
     introTitle: "Display settings",
     introBody:
-      "Adjust theme (light / dark / auto), language (PL / EN / UA), and price currency (PLN, EUR, or listing currency). The panel auto-hides — reopen it with the gear icon.",
+      "Adjust theme, language, price currency, and EstateOS™ Inteligence. The panel auto-hides — reopen it with the gear icon.",
     showSettings: "Show settings",
     hideSettings: "Hide settings",
+  },
+  intelligence: {
+    prefTitle: "EstateOS™ Inteligence",
+    prefOnHint: "Quiet direction assistant is on",
+    prefOffHint: "Turn on calm direction cues",
+    sheetTitle: "Turn on Inteligence",
+    sheetBody:
+      "A calm system that learns from your decisions and surfaces leads — quietly, like a private iOS assistant.",
+    sheetFeature1: "Pulse with a living brain when your direction sharpens",
+    sheetFeature2: "Closer-to-you suggestions in the catalog and on the map",
+    sheetFeature3: "Whispers before contact and visits — only when useful",
+    sheetEnable: "Turn on EstateOS™ Inteligence",
+    sheetLater: "Not now",
   },
   currency: {
     sectionTitle: "Price currency",

@@ -1,6 +1,7 @@
 "use client";
 
 import DisplayCurrencySwitcher from "@/components/preferences/DisplayCurrencySwitcher";
+import IntelligencePreferenceToggle from "@/components/preferences/IntelligencePreferenceToggle";
 import ThemeSwitcher from "@/components/layout/ThemeSwitcher";
 import LanguageSwitcher from "@/components/layout/LanguageSwitcher";
 import ContactMessagesNavButton from "@/components/contact/ContactMessagesNavButton";
@@ -132,6 +133,14 @@ export default function FloatingPreferencesDock() {
                 <DisplayCurrencySwitcher />
                 <p className="px-1 text-[9px] leading-snug text-[var(--eos-subtle)]">{dict.currency.footer}</p>
               </div>
+              {isLoggedIn ? (
+                <div className="space-y-1">
+                  <p className="px-1 text-[9px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+                    {dict.intelligence.prefTitle}
+                  </p>
+                  <IntelligencePreferenceToggle />
+                </div>
+              ) : null}
             </motion.div>
           )}
         </AnimatePresence>

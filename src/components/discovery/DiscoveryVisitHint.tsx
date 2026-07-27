@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import DiscoveryIntelligenceWhisper from "@/components/discovery/DiscoveryIntelligenceWhisper";
+import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 
 type Props = {
   offerId: number | string;
@@ -12,9 +13,14 @@ type Props = {
  * Soft suggest / discourage visit — one line near offer CTAs.
  */
 export default function DiscoveryVisitHint({ offerId, className }: Props) {
+  const { enabled, hydrated } = useIntelligencePreference();
   const [hint, setHint] = useState<{ body: string; href: string } | null>(null);
 
   useEffect(() => {
+    if (!hydrated || !enabled) {
+      setHint(null);
+      return;
+    }
     const id = Number(offerId);
     if (!Number.isFinite(id) || id <= 0) return;
     let cancelled = false;
@@ -55,9 +61,9 @@ export default function DiscoveryVisitHint({ offerId, className }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [offerId]);
+  }, [offerId, enabled, hydrated]);
 
-  if (!hint) return null;
+  if (!hydrated || !enabled || !hint) return null;
 
   return (
     <DiscoveryIntelligenceWhisper
