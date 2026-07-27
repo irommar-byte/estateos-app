@@ -51,6 +51,7 @@ import {
 import FeaturedSpotlightCarousel from "@/components/catalog/FeaturedSpotlightCarousel";
 import InfiniteHorizontalRail from "@/components/catalog/InfiniteHorizontalRail";
 import PromoteListingButton from "@/components/catalog/PromoteListingButton";
+import DiscoveryForYouRail from "@/components/discovery/DiscoveryForYouRail";
 import { useFavorites } from "@/hooks/useFavorites";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useUserLocation } from "@/hooks/useUserLocation";
@@ -666,6 +667,28 @@ export default function CatalogPage() {
                 />
               </RailSection>
             ) : null}
+
+            <DiscoveryForYouRail
+              transactionMode={transactionMode === "rent" ? "rent" : "sale"}
+              formatPrice={(item) =>
+                formatPriceLabel(
+                  {
+                    id: item.id,
+                    title: item.title,
+                    price: item.price,
+                    pricePln: item.pricePln,
+                    priceCurrency: item.priceCurrency,
+                    transactionType: item.transactionType,
+                    city: item.city,
+                    district: item.district,
+                    area: item.area,
+                    imageUrl: item.imageUrl,
+                  },
+                  formatOffer,
+                  dict.homePremium.pricePerMonth,
+                )
+              }
+            />
 
             <RailSection title={nearestCopy.title} icon={Navigation}>
               {location && nearestOffers.length > 0 ? (
