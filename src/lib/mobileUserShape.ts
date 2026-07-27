@@ -15,6 +15,8 @@ export type MobileUserCore = {
   plusExpiresAt?: Date | null;
   companyName?: string | null;
   pendingEmail?: string | null;
+  intelligenceEnabled?: boolean | null;
+  intelligenceDecidedAt?: Date | null;
 };
 
 export function computeIsProActive(user: { role: string; isPro: boolean; proExpiresAt: Date | null }) {
@@ -78,6 +80,8 @@ export function shapeMobileUser(user: MobileUserCore, opts?: { displayImage?: st
     identityNameLocked: lockedRole,
     companyName: user.companyName ?? null,
     pendingEmail: user.pendingEmail ?? null,
+    intelligenceEnabled: Boolean(user.intelligenceEnabled),
+    intelligenceDecided: Boolean(user.intelligenceDecidedAt),
   };
 }
 
@@ -98,4 +102,6 @@ export const MOBILE_USER_SELECT = {
   plusExpiresAt: true,
   companyName: true,
   pendingEmail: true,
+  intelligenceEnabled: true,
+  intelligenceDecidedAt: true,
 } as const;

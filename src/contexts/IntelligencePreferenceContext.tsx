@@ -12,6 +12,7 @@ import {
 
 const ENABLED_KEY = "estateos_intelligence_enabled";
 const DECIDED_KEY = "estateos_intelligence_decided_v1";
+const API_PATH = "/api/discovery/intelligence-preference";
 
 type IntelligencePreferenceContextValue = {
   enabled: boolean;
@@ -45,6 +46,25 @@ function writeBool(key: string, value: boolean) {
   }
 }
 
+function persistLocal(enabled: boolean, decided: boolean) {
+  writeBool(ENABLED_KEY, enabled);
+  writeBool(DECIDED_KEY, decided);
+}
+
+async function patchServer(enabled: boolean): Promise<void> {
+  try {
+    await fetch(API_PATH, {
+      method: "PATCH",
+      credentials: "include",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+  } catch {
+    /* best-effort — local cache remains */
+  }
+}
+
 export function IntelligencePreferenceProvider({ children }: { children: ReactNode }) {
   const [enabled, setEnabledState] = useState(false);
   const [decided, setDecided] = useState(false);
@@ -56,20 +76,46 @@ export function IntelligencePreferenceProvider({ children }: { children: ReactNo
     setEnabledState(savedEnabled === true);
     setDecided(savedDecided);
     setHydrated(true);
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(API_PATH, { credentials: "include", cache: "no-store" });
+        if (cancelled || res.status === 401) return;
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          success?: boolean;
+          enabled?: boolean;
+          decided?: boolean;
+        };
+        if (!data?.success || cancelled) return;
+        const nextEnabled = data.enabled === true;
+        const nextDecided = data.decided === true;
+        setEnabledState(nextEnabled);
+        setDecided(nextDecided);
+        persistLocal(nextEnabled, nextDecided);
+      } catch {
+        /* keep localStorage */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const setEnabled = useCallback((next: boolean) => {
     setEnabledState(next);
-    writeBool(ENABLED_KEY, next);
-    writeBool(DECIDED_KEY, true);
     setDecided(true);
+    persistLocal(next, true);
+    void patchServer(next);
   }, []);
 
   const decide = useCallback((enable: boolean) => {
     setEnabledState(enable);
-    writeBool(ENABLED_KEY, enable);
-    writeBool(DECIDED_KEY, true);
     setDecided(true);
+    persistLocal(enable, true);
+    void patchServer(enable);
   }, []);
 
   const value = useMemo(
