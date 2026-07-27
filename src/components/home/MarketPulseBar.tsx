@@ -51,14 +51,14 @@ export default function MarketPulseBar() {
       initial={{ opacity: 0, y: reduceMotion ? 0 : -16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reduceMotion ? 0.2 : 0.7, ease: [0.16, 1, 0.3, 1] }}
-      className="relative z-10 -mt-6 flex justify-center px-4 pb-4 sm:-mt-8 sm:pb-5"
+      className="relative z-10 mt-3 flex justify-center px-4 pb-5 sm:mt-4 sm:pb-6"
     >
-      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full border border-white/10 bg-black/50 px-5 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
-        <span className="relative flex size-2">
+      <div className="isolate flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full border border-white/10 bg-black/70 px-5 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+        <span className="relative flex size-2 shrink-0">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
           <span className="relative inline-flex size-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.85)]" />
         </span>
-        <span className="text-[9px] font-black uppercase tracking-[0.18em] text-white/85">
+        <span className="whitespace-normal text-center text-[9px] font-black uppercase tracking-[0.18em] text-white/85">
           {dict.pulse.liveFrom}:{" "}
           {activeOffers != null ? (
             <span className="text-emerald-400/95">

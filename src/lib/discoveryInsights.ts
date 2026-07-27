@@ -1,3 +1,5 @@
+import { discoveryDisplayLabel, discoveryPropertyTypeLabel } from "@/lib/discovery/displayLabels";
+
 /** Reserved numeric keys inside DiscoveryProfile.reasonStats for budget/metraż learning. */
 export const DISCOVERY_META = {
   priceLikedSum: '__priceLikedSum',
@@ -134,7 +136,10 @@ export function buildDiscoveryBuyerBrief(input: {
 
   const bits: string[] = [];
   if (topCities[0]) bits.push(`szuka w: ${topCities[0].key}`);
-  if (topPropertyTypes[0]) bits.push(`typ: ${topPropertyTypes[0].key}`);
+  if (topPropertyTypes[0]) {
+    const typeLabel = discoveryPropertyTypeLabel(topPropertyTypes[0].key) || discoveryDisplayLabel(topPropertyTypes[0].key);
+    bits.push(`typ: ${typeLabel}`);
+  }
   if (preferredBudgetPln) bits.push(`budżet ~${preferredBudgetPln.toLocaleString('pl-PL')} PLN`);
   if (preferredAreaM2) bits.push(`~${preferredAreaM2} m²`);
   if (preferredTransaction === 'SELL') bits.push('transakcja: sprzedaż');

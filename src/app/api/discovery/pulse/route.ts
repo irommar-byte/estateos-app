@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveWebUserId } from "@/lib/webSessionAuth";
 import { buildEstateOsGuideContext } from "@/lib/estateOsGuideContext";
 import { buildDiscoveryBuyerBrief } from "@/lib/discoveryInsights";
+import { discoveryPropertyTypeLabel } from "@/lib/discovery/displayLabels";
 
 export async function GET(req: Request) {
   try {
@@ -31,7 +32,8 @@ export async function GET(req: Request) {
     });
 
     const topCity = brief.topCities[0]?.key || null;
-    const topType = brief.topPropertyTypes[0]?.key || null;
+    const topTypeRaw = brief.topPropertyTypes[0]?.key || null;
+    const topType = topTypeRaw ? discoveryPropertyTypeLabel(topTypeRaw) : null;
     const confidence = profile?.confidence ?? 0;
     const contradictionIndex = profile?.contradictionIndex ?? 0;
     const progress = Math.round(Math.min(1, Math.max(0, guide.stageProgress || 0)) * 100);

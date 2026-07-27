@@ -58,7 +58,7 @@ export default function EstateOsGuidePanel() {
   const thirdLabel = thirdHref === "/lustro" ? "Lustro preferencji" : "Mój kierunek";
 
   return (
-    <section className="relative z-10 mx-auto mt-2 mb-10 w-[calc(100%-2rem)] max-w-6xl sm:mt-3 sm:w-[calc(100%-3rem)]">
+    <section className="relative z-10 mx-auto mt-4 mb-12 w-[calc(100%-2rem)] max-w-6xl sm:mt-5 sm:w-[calc(100%-3rem)]">
       <motion.div
         className="overflow-hidden rounded-[2rem] border border-white/15 bg-black/55 p-5 backdrop-blur-2xl sm:p-7"
         initial={reduceMotion ? false : { opacity: 0, y: 12 }}
