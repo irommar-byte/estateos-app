@@ -41,7 +41,18 @@ export type DiscoveryTrope = {
   status: 'SAVED' | 'SERIOUS' | 'VISITED';
   priority: boolean;
   visitOutcome: 'YES' | 'NO' | 'DIFFERENT' | null;
-  offer: any | null;
+  offer: {
+    id?: number;
+    title?: string | null;
+    city?: string | null;
+    district?: string | null;
+    images?: unknown;
+    imageUrl?: string | null;
+    userId?: number | null;
+    ownerName?: string | null;
+    ownerImage?: string | null;
+    [key: string]: unknown;
+  } | null;
 };
 
 function createId(prefix: string): string {
@@ -179,7 +190,46 @@ export async function fetchDiscoveryTropes(token: string | null): Promise<Discov
   const response = await fetch(`${API_URL}/api/mobile/v1/discovery/tropes`, { headers: headers(token) });
   if (!response.ok) throw new Error(`DISCOVERY_TROPES_${response.status}`);
   const json = await response.json().catch(() => ({}));
-  return Array.isArray(json?.items) ? json.items as DiscoveryTrope[] : [];
+  const items = Array.isArray(json?.items) ? json.items : [];
+  return items.map((raw: any) => {
+    const offer = raw?.offer && typeof raw.offer === 'object' ? { ...raw.offer } : null;
+    if (offer) {
+      offer.imageUrl = resolveTropeOfferImage(offer);
+    }
+    return {
+      ...raw,
+      offer,
+    } as DiscoveryTrope;
+  });
+}
+
+/** First usable photo URL from a trope/offer payload (images JSON, imageUrl, relative /uploads). */
+export function resolveTropeOfferImage(offer: any): string | null {
+  if (!offer || typeof offer !== 'object') return null;
+  const direct = absolutizeDiscoveryImage(offer.imageUrl);
+  if (direct) return direct;
+
+  let images: unknown = offer.images;
+  if (typeof images === 'string') {
+    const trimmed = images.trim();
+    if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('/')) {
+      return absolutizeDiscoveryImage(trimmed);
+    }
+    try {
+      images = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!Array.isArray(images) || images.length === 0) return null;
+  const first = images[0];
+  if (typeof first === 'string') return absolutizeDiscoveryImage(first);
+  if (first && typeof first === 'object') {
+    const obj = first as Record<string, unknown>;
+    return absolutizeDiscoveryImage(obj.url ?? obj.src ?? obj.uri ?? obj.path ?? obj.image);
+  }
+  return null;
 }
 
 export async function fetchEstateOsGuideContext(token: string | null): Promise<EstateOsGuideContext | null> {
