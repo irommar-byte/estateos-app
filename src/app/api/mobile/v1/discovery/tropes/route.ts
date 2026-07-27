@@ -19,10 +19,42 @@ export async function GET(req: Request) {
   const offers = offerIds.length
     ? await prisma.offer.findMany({
         where: { id: { in: offerIds } },
-        select: { id: true, title: true, city: true, district: true, price: true, pricePln: true, priceCurrency: true, area: true, images: true, status: true },
+        select: {
+          id: true,
+          title: true,
+          city: true,
+          district: true,
+          price: true,
+          pricePln: true,
+          priceCurrency: true,
+          area: true,
+          images: true,
+          status: true,
+          userId: true,
+          user: { select: { id: true, name: true, image: true } },
+        },
       })
     : [];
-  const byId = new Map(offers.map((offer) => [offer.id, offer]));
+  const byId = new Map(
+    offers.map((offer) => [
+      offer.id,
+      {
+        id: offer.id,
+        title: offer.title,
+        city: offer.city,
+        district: offer.district,
+        price: offer.price,
+        pricePln: offer.pricePln,
+        priceCurrency: offer.priceCurrency,
+        area: offer.area,
+        images: offer.images,
+        status: offer.status,
+        userId: offer.userId,
+        ownerName: offer.user?.name ?? null,
+        ownerImage: offer.user?.image ?? null,
+      },
+    ]),
+  );
   return NextResponse.json({
     items: tropes.map((trope) => ({ ...trope, offer: byId.get(trope.offerId) || null })),
   });
