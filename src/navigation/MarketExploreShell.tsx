@@ -1,12 +1,10 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEcosystemStore } from '../store/useEcosystemStore';
 import RadarHomeScreen from '../screens/RadarHomeScreen';
 import CarsCatalogScreen from '../screens/CarsCatalogScreen';
 import EstateOsGuideOverlay from '../components/discovery/EstateOsGuideOverlay';
 import IntelligencePulseTape from '../components/discovery/IntelligencePulseTape';
-import DiscoveryNavWhisper from '../components/discovery/DiscoveryNavWhisper';
 import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
 
 export type MarketSurface = 'market' | 'explore';
@@ -23,7 +21,6 @@ type Props = {
  * Animacja przełączenia Home↔Car jest montowana raz w MainTabs.
  */
 export default function MarketExploreShell({ splashDone = true, surface, navigation, route }: Props) {
-  const insets = useSafeAreaInsets();
   const activeVertical = useEcosystemStore((s) => s.activeVertical);
   const intelligenceEnabled = useIntelligencePreferenceStore((s) => s.enabled);
   const intelligenceHydrated = useIntelligencePreferenceStore((s) => s.hydrated);
@@ -65,14 +62,9 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
       {showIntelligence && surface === 'explore' ? (
         <EstateOsGuideOverlay navigation={navigation} />
       ) : null}
-      {/* Market: floating orb. Explore/map: orb docks above „Wszystkie oferty” inside RadarHomeScreen. */}
+      {/* Market: floating orb — komunikaty Inteligence tylko z mózgu (bez paska u góry). */}
       {showIntelligence && surface === 'market' ? (
         <IntelligencePulseTape navigation={navigation} surface="market" layout="float" />
-      ) : null}
-      {showIntelligence && surface === 'market' ? (
-        <View style={[styles.navWhisper, { top: insets.top + 6 }]} pointerEvents="box-none">
-          <DiscoveryNavWhisper navigation={navigation} variant="nav" />
-        </View>
       ) : null}
     </View>
   );
@@ -80,10 +72,4 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  navWhisper: {
-    position: 'absolute',
-    left: 14,
-    right: 120,
-    zIndex: 40,
-  },
 });

@@ -91,7 +91,6 @@ import CurrencySegmentControl from '../components/CurrencySegmentControl';
 import AdvancedFilterSegment from '../components/AdvancedFilterSegment';
 import PolandScopeNote from '../components/PolandScopeNote';
 import JellyReveal from '../components/JellyReveal';
-import DiscoveryIntelligenceWhisper from '../components/discovery/DiscoveryIntelligenceWhisper';
 import IntelligencePulseTape from '../components/discovery/IntelligencePulseTape';
 import { useDiscoveryMapIntelligence } from '../hooks/useDiscoveryMapIntelligence';
 import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
@@ -1088,7 +1087,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       : galleryTransactionFilter === 'SELL'
         ? 'SALE'
         : '';
-  const { forYouIds: discoveryForYouIds, whisperBody: discoveryMapWhisper } = useDiscoveryMapIntelligence({
+  const { forYouIds: discoveryForYouIds } = useDiscoveryMapIntelligence({
     transaction: mapIntelTx,
     enabled: tabSurface === 'explore' || radarBrowseMode === 'RADAR',
   });
@@ -4829,26 +4828,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       </View>
 
       <View style={styles.mapUiChrome} pointerEvents="box-none" collapsable={false}>
-
-      {discoveryMapWhisper ? (
-        <View
-          pointerEvents="box-none"
-          style={{
-            position: 'absolute',
-            left: 12,
-            right: 12,
-            top: Math.max(insets.top, 12) + 56,
-            zIndex: 40,
-          }}
-        >
-          <DiscoveryIntelligenceWhisper
-            navigation={navigation}
-            variant="map"
-            body={discoveryMapWhisper}
-            href="/moj-kierunek"
-          />
-        </View>
-      ) : null}
 
       {showOnlyFavorites && favoritesMapScope === 'FAVORITES' && (
         <View pointerEvents="none" style={styles.favoritesMapDecorLayer}>

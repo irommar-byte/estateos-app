@@ -16,7 +16,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import type { GalleryOffer } from './RadarOfferGallery';
 import { formatLocationLabel } from '../../constants/locationEcosystem';
-import OfferDiscoveryActions from '../discovery/OfferDiscoveryActions';
 
 type Props = {
   offers: GalleryOffer[];
@@ -133,13 +132,6 @@ function SpotlightCard({
           <View style={styles.badge}>
             <Ionicons name="sparkles" size={10} color="#000" />
             <Text style={styles.badgeText}>{badgeLabel}</Text>
-          </View>
-          <View style={styles.tasteOverlay} pointerEvents="box-none">
-            <OfferDiscoveryActions
-              offerId={item.id}
-              variant="compact"
-              source="mobile_catalog_rail"
-            />
           </View>
         </View>
         <View style={styles.body}>
@@ -570,13 +562,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: '#FBBF24',
-  },
-  tasteOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 8,
-    alignItems: 'center',
   },
   badgeText: {
     color: '#000',

@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
+  Easing,
   Image,
   Pressable,
   ScrollView,
@@ -7,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { ArrowRight, Sparkles } from 'lucide-react-native';
+import { ArrowRight, Brain } from 'lucide-react-native';
 import OfferDiscoveryActions from './OfferDiscoveryActions';
 import { subscribeDiscoveryUpdated } from '../../lib/discovery/clientEvents';
 import { fetchDiscoveryForYou, type ForYouRailItem } from '../../services/discoveryService';
@@ -27,7 +29,7 @@ function defaultFormatPrice(item: ForYouRailItem): string {
 }
 
 /**
- * Apple Intelligence–quiet catalog rail: soft suggestions, one calm reason line.
+ * Living Inteligence rail for the signed-in client profile — brain-led, not sparkles.
  */
 export default function DiscoveryForYouRail({
   navigation,
@@ -41,6 +43,7 @@ export default function DiscoveryForYouRail({
   const [ready, setReady] = useState(false);
   const [auth, setAuth] = useState<'unknown' | 'guest' | 'user'>('unknown');
   const [loading, setLoading] = useState(true);
+  const livePulse = useRef(new Animated.Value(0)).current;
 
   const tx = useMemo(
     () => (transactionMode === 'sale' ? 'SALE' : transactionMode === 'rent' ? 'RENT' : '') as
@@ -49,6 +52,27 @@ export default function DiscoveryForYouRail({
       | '',
     [transactionMode],
   );
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(livePulse, {
+          toValue: 1,
+          duration: 2800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(livePulse, {
+          toValue: 0,
+          duration: 2800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [livePulse]);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,15 +118,30 @@ export default function DiscoveryForYouRail({
   if (auth === 'guest' || auth === 'unknown') return null;
   if (loading) return null;
 
+  const glowOpacity = livePulse.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0.55] });
+  const brainGlow = livePulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] });
+
+  const eyebrow = (
+    <View style={styles.eyebrowRow}>
+      <Animated.View style={[styles.brainBadge, { opacity: brainGlow }]}>
+        <Brain size={13} color="#7DD3FC" strokeWidth={2.2} />
+      </Animated.View>
+      <Text style={styles.eyebrow}>EstateOS™ Inteligence</Text>
+      <View style={styles.liveDotWrap}>
+        <Animated.View style={[styles.liveDotPulse, { opacity: glowOpacity }]} />
+        <View style={styles.liveDot} />
+      </View>
+      <Text style={styles.liveLabel}>dla Twojego profilu</Text>
+    </View>
+  );
+
   if (!ready) {
     return (
       <View style={styles.section}>
-        <View style={styles.coldCard}>
+        <View style={styles.shell}>
+          <Animated.View style={[styles.shellGlow, { opacity: glowOpacity }]} />
           <View style={styles.coldCopy}>
-            <View style={styles.eyebrowRow}>
-              <Sparkles size={12} color="rgba(52,211,153,0.85)" />
-              <Text style={styles.eyebrow}>EstateOS™ Inteligence</Text>
-            </View>
+            {eyebrow}
             <Text style={styles.h2}>Bliżej Twojego kierunku</Text>
             <Text style={styles.coldBody}>
               Oceń kilka ofert spokojnie — tu pojawią się sugestie dopasowane do Ciebie.
@@ -113,7 +152,7 @@ export default function DiscoveryForYouRail({
             onPress={() => navigation?.navigate?.('DiscoveryDirection')}
           >
             <Text style={styles.directionChipText}>Mój kierunek</Text>
-            <ArrowRight size={14} color="rgba(255,255,255,0.8)" />
+            <ArrowRight size={14} color="rgba(125,211,252,0.9)" />
           </Pressable>
         </View>
       </View>
@@ -124,86 +163,96 @@ export default function DiscoveryForYouRail({
 
   return (
     <View style={styles.section}>
-      <View style={styles.header}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={styles.eyebrowRow}>
-            <Sparkles size={12} color="rgba(52,211,153,0.9)" />
-            <Text style={styles.eyebrow}>EstateOS™ Inteligence</Text>
+      <View style={styles.shell}>
+        <Animated.View style={[styles.shellGlow, { opacity: glowOpacity }]} />
+        <View style={styles.header}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            {eyebrow}
+            <Text style={styles.h2}>Bliżej Twojego kierunku</Text>
           </View>
-          <Text style={styles.h2}>Bliżej Twojego kierunku</Text>
-        </View>
-        <Pressable
-          style={styles.linkRow}
-          onPress={() => navigation?.navigate?.('DiscoveryDirection')}
-        >
-          <Text style={styles.link}>Mój kierunek</Text>
-          <ArrowRight size={13} color="rgba(245,245,247,0.55)" />
-        </Pressable>
-      </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.rail}
-      >
-        {items.map((item) => (
           <Pressable
-            key={item.offerId}
-            style={styles.card}
-            onPress={() =>
-              navigation?.navigate?.('OfferDetail', { offerId: Number(item.offerId) })
-            }
+            style={styles.linkRow}
+            onPress={() => navigation?.navigate?.('DiscoveryDirection')}
           >
-            <View style={styles.imageWrap}>
-              {item.imageUrl ? (
-                <Image source={{ uri: item.imageUrl }} style={styles.image} />
-              ) : (
-                <View style={[styles.image, styles.imageFallback]} />
-              )}
-              <View style={styles.actionsOverlay} pointerEvents="box-none">
-                <OfferDiscoveryActions
-                  offerId={item.offerId}
-                  variant="compact"
-                  source="mobile_catalog_for_you"
-                  onRequireAuth={() => navigation?.navigate?.('Login')}
-                />
-              </View>
-            </View>
-            <View style={styles.cardBody}>
-              <Text style={styles.meta} numberOfLines={1}>
-                {[item.city, item.district].filter(Boolean).join(' · ') || 'Polska'}
-                {item.area > 0 ? ` · ${Math.round(item.area)} m²` : ''}
-              </Text>
-              <Text style={styles.title} numberOfLines={2}>
-                {item.title}
-              </Text>
-              <Text style={styles.price}>{formatPrice(item)}</Text>
-              {item.reason ? (
-                <Text style={styles.reason} numberOfLines={2}>
-                  <Text style={styles.reasonLead}>Sugestia · </Text>
-                  {item.reason}
-                </Text>
-              ) : null}
-            </View>
+            <Text style={styles.link}>Mój kierunek</Text>
+            <ArrowRight size={13} color="rgba(125,211,252,0.7)" />
           </Pressable>
-        ))}
-      </ScrollView>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.rail}
+        >
+          {items.map((item) => (
+            <Pressable
+              key={item.offerId}
+              style={styles.card}
+              onPress={() =>
+                navigation?.navigate?.('OfferDetail', { offerId: Number(item.offerId) })
+              }
+            >
+              <View style={styles.imageWrap}>
+                {item.imageUrl ? (
+                  <Image source={{ uri: item.imageUrl }} style={styles.image} />
+                ) : (
+                  <View style={[styles.image, styles.imageFallback]} />
+                )}
+                <View style={styles.actionsOverlay} pointerEvents="box-none">
+                  <OfferDiscoveryActions
+                    offerId={item.offerId}
+                    variant="compact"
+                    source="mobile_catalog_for_you"
+                    onRequireAuth={() => navigation?.navigate?.('Login')}
+                  />
+                </View>
+              </View>
+              <View style={styles.cardBody}>
+                <Text style={styles.meta} numberOfLines={1}>
+                  {[item.city, item.district].filter(Boolean).join(' · ') || 'Polska'}
+                  {item.area > 0 ? ` · ${Math.round(item.area)} m²` : ''}
+                </Text>
+                <Text style={styles.title} numberOfLines={2}>
+                  {item.title}
+                </Text>
+                <Text style={styles.price}>{formatPrice(item)}</Text>
+                {item.reason ? (
+                  <Text style={styles.reason} numberOfLines={2}>
+                    <Text style={styles.reasonLead}>Inteligence · </Text>
+                    {item.reason}
+                  </Text>
+                ) : null}
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   section: { marginTop: 18, marginBottom: 8 },
-  coldCard: {
+  shell: {
     borderRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(8,10,14,0.55)',
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    gap: 14,
+    borderColor: 'rgba(56,189,248,0.28)',
+    backgroundColor: 'rgba(6,12,22,0.72)',
+    paddingHorizontal: 14,
+    paddingTop: 16,
+    paddingBottom: 14,
+    overflow: 'hidden',
   },
-  coldCopy: { gap: 6 },
+  shellGlow: {
+    position: 'absolute',
+    top: -40,
+    right: -20,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(56,189,248,0.18)',
+  },
+  coldCopy: { gap: 6, paddingHorizontal: 4, marginBottom: 12 },
   coldBody: {
     color: 'rgba(255,255,255,0.55)',
     fontSize: 13,
@@ -216,13 +265,14 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.14)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(56,189,248,0.28)',
+    backgroundColor: 'rgba(56,189,248,0.1)',
     paddingHorizontal: 14,
     paddingVertical: 8,
+    marginHorizontal: 4,
   },
   directionChipText: {
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(186,230,253,0.95)',
     fontSize: 11,
     fontWeight: '800',
   },
@@ -232,37 +282,73 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     marginBottom: 12,
-    paddingHorizontal: 2,
+    paddingHorizontal: 4,
   },
   eyebrowRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexWrap: 'wrap',
+  },
+  brainBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(56,189,248,0.16)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(125,211,252,0.45)',
   },
   eyebrow: {
-    color: 'rgba(52,211,153,0.9)',
+    color: 'rgba(125,211,252,0.95)',
     fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 1.8,
+    letterSpacing: 1.6,
     textTransform: 'uppercase',
   },
+  liveDotWrap: {
+    width: 10,
+    height: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveDotPulse: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(56,189,248,0.45)',
+  },
+  liveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#38BDF8',
+  },
+  liveLabel: {
+    color: 'rgba(186,230,253,0.55)',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
   h2: {
-    marginTop: 4,
+    marginTop: 6,
     color: '#FFF',
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: -0.3,
   },
   linkRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  link: { color: 'rgba(245,245,247,0.55)', fontSize: 12, fontWeight: '700' },
-  rail: { gap: 12, paddingRight: 8 },
+  link: { color: 'rgba(186,230,253,0.7)', fontSize: 12, fontWeight: '700' },
+  rail: { gap: 12, paddingRight: 4, paddingBottom: 2 },
   card: {
     width: 272,
     borderRadius: 22,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(18,18,22,0.92)',
+    borderColor: 'rgba(56,189,248,0.18)',
+    backgroundColor: 'rgba(10,16,28,0.95)',
   },
   imageWrap: { aspectRatio: 16 / 10, backgroundColor: 'rgba(0,0,0,0.35)' },
   image: { width: '100%', height: '100%' },
@@ -276,7 +362,7 @@ const styles = StyleSheet.create({
   },
   cardBody: { padding: 14, gap: 6 },
   meta: {
-    color: 'rgba(245,245,247,0.5)',
+    color: 'rgba(186,230,253,0.55)',
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.6,
@@ -285,5 +371,5 @@ const styles = StyleSheet.create({
   title: { color: '#FFF', fontSize: 15, fontWeight: '700', lineHeight: 20 },
   price: { color: '#FFF', fontSize: 16, fontWeight: '800', fontVariant: ['tabular-nums'] },
   reason: { color: 'rgba(245,245,247,0.55)', fontSize: 12, lineHeight: 17 },
-  reasonLead: { color: 'rgba(52,211,153,0.9)', fontWeight: '700' },
+  reasonLead: { color: 'rgba(125,211,252,0.95)', fontWeight: '700' },
 });

@@ -22,6 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDiscoveryPulse } from '../../hooks/useDiscoveryPulse';
 import { useDiscoveryStore } from '../../store/useDiscoveryStore';
 import { playIntelligenceChime } from '../../lib/discovery/intelligenceChime';
+import { subscribeIntelligenceLearn } from '../../lib/discovery/clientEvents';
 import { navigateDiscoveryHref } from '../../lib/discovery/navigateDiscoveryHref';
 import { resolveDiscoveryEntryRoute } from '../../utils/discoveryExperienceState';
 
@@ -253,6 +254,9 @@ export default function IntelligencePulseTape({
   const [spectacle, setSpectacle] = useState(false);
   const genie = useRef(new Animated.Value(0)).current;
   const aura = useRef(new Animated.Value(0)).current;
+  const splashA = useRef(new Animated.Value(0)).current;
+  const splashB = useRef(new Animated.Value(0)).current;
+  const splashC = useRef(new Animated.Value(0)).current;
   const closingRef = useRef(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spectacleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -435,6 +439,32 @@ export default function IntelligencePulseTape({
     return () => loop.stop();
   }, [aura]);
 
+  /** Water-splash ripples when like / dislike / serious teach the model. */
+  useEffect(() => {
+    const runSplash = (ring: Animated.Value, delayMs: number) => {
+      ring.setValue(0);
+      return Animated.sequence([
+        Animated.delay(delayMs),
+        Animated.timing(ring, {
+          toValue: 1,
+          duration: 780,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]);
+    };
+
+    return subscribeIntelligenceLearn((detail) => {
+      if (!detail?.kind || detail.kind === 'open' || detail.kind === 'other') return;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Animated.parallel([
+        runSplash(splashA, 0),
+        runSplash(splashB, 90),
+        runSplash(splashC, 180),
+      ]).start();
+    });
+  }, [splashA, splashB, splashC]);
+
   const open = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     presentGently('manual');
@@ -484,6 +514,15 @@ export default function IntelligencePulseTape({
   const glowOpacity = aura.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.7] });
   const glowScale = aura.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] });
 
+  const splashStyle = (ring: Animated.Value, peak: number) => ({
+    opacity: ring.interpolate({ inputRange: [0, 0.18, 1], outputRange: [0, 0.75, 0] }),
+    transform: [
+      {
+        scale: ring.interpolate({ inputRange: [0, 1], outputRange: [0.85, peak] }),
+      },
+    ],
+  });
+
   const genieStyle = {
     opacity: genie.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.85, 1] }),
     transform: [
@@ -518,6 +557,18 @@ export default function IntelligencePulseTape({
                 transform: [{ scale: glowScale }],
               },
             ]}
+          />
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.splashRing, { borderColor: colors.accent }, splashStyle(splashA, 1.55)]}
+          />
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.splashRing, { borderColor: colors.accent }, splashStyle(splashB, 1.85)]}
+          />
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.splashRing, { borderColor: colors.ring }, splashStyle(splashC, 2.15)]}
           />
           <View style={styles.ringHost} pointerEvents="none">
             <CircularLabelRing
@@ -663,6 +714,14 @@ const styles = StyleSheet.create({
     width: CORE + 16,
     height: CORE + 16,
     borderRadius: (CORE + 16) / 2,
+  },
+  splashRing: {
+    position: 'absolute',
+    width: CORE + 10,
+    height: CORE + 10,
+    borderRadius: (CORE + 10) / 2,
+    borderWidth: 2,
+    backgroundColor: 'transparent',
   },
   ringHost: {
     ...StyleSheet.absoluteFillObject,
