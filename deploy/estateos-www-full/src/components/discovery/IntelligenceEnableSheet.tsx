@@ -9,7 +9,7 @@ import { useLocale } from "@/contexts/LocaleContext";
 import { playIntelligenceChime } from "@/lib/discovery/intelligenceChime";
 
 /**
- * iOS-style first-login proposal to turn on EstateOS™ Inteligence.
+ * iOS-style first-login proposal to turn on EstateOS™ Intelligence.
  */
 export default function IntelligenceEnableSheet() {
   const reduceMotion = useReducedMotion();
@@ -149,7 +149,7 @@ export default function IntelligenceEnableSheet() {
             </div>
 
             <p className="relative mt-5 text-center text-[10px] font-semibold uppercase tracking-[0.24em] text-white/50">
-              EstateOS™ Inteligence
+              EstateOS™ Intelligence
             </p>
             <h2
               id="eos-intel-sheet-title"

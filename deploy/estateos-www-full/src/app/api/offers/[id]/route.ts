@@ -222,7 +222,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       legalOffer as Record<string, unknown>,
     );
 
-    // EstateOS™ Inteligence — Smart Gallery plan (seller hero kept; soft taste reorder when ready)
+    // EstateOS™ Intelligence — Smart Gallery plan (seller hero kept; soft taste reorder when ready)
     let galleryTaste: { confidence: number; dislikeReasons: Array<{ key: string; value: number }> } | null =
       null;
     try {

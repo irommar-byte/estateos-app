@@ -16,7 +16,7 @@ import { useIntelligencePreferenceStore } from '../../store/useIntelligencePrefe
 import { DISCOVERY_COLORS } from './discoveryMotion';
 
 /**
- * iOS-style first-login proposal to turn on EstateOS™ Inteligence.
+ * iOS-style first-login proposal to turn on EstateOS™ Intelligence.
  */
 export default function IntelligenceEnableSheet() {
   const token = useAuthStore((s) => s.token);
@@ -69,8 +69,8 @@ export default function IntelligenceEnableSheet() {
               <Brain size={34} color="#E0F2FE" strokeWidth={1.6} />
             </View>
           </View>
-          <Text style={styles.eyebrow}>EstateOS™ Inteligence</Text>
-          <Text style={styles.title}>Włącz Inteligence</Text>
+          <Text style={styles.eyebrow}>EstateOS™ Intelligence</Text>
+          <Text style={styles.title}>Włącz Intelligence</Text>
           <Text style={styles.body}>
             Spokojny system, który uczy się z Twoich decyzji i podpowiada tropy — bez hałasu, jak prywatny
             asystent na iOS.
@@ -86,7 +86,7 @@ export default function IntelligenceEnableSheet() {
             ))}
           </View>
           <ApplePressable style={styles.enable} onPress={handleEnable} haptic="medium">
-            <Text style={styles.enableText}>Włącz EstateOS™ Inteligence</Text>
+            <Text style={styles.enableText}>Włącz EstateOS™ Intelligence</Text>
           </ApplePressable>
           <ApplePressable style={styles.later} onPress={handleLater} haptic="none">
             <Text style={styles.laterText}>Nie teraz</Text>

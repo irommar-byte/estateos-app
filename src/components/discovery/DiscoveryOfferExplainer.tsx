@@ -50,7 +50,7 @@ export default function DiscoveryOfferExplainer({ offerId }: Props) {
     <View style={styles.wrap}>
       <View style={styles.eyebrowRow}>
         <Sparkles size={11} color="rgba(52,211,153,0.9)" />
-        <Text style={styles.eyebrow}>EstateOS™ Inteligence</Text>
+        <Text style={styles.eyebrow}>EstateOS™ Intelligence</Text>
       </View>
       <Text style={styles.body}>{reason}</Text>
     </View>

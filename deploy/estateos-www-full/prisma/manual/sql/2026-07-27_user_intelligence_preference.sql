@@ -1,4 +1,4 @@
--- EstateOS Inteligence account preference (WWW + mobile sync)
+-- EstateOS Intelligence account preference (WWW + mobile sync)
 -- Idempotent: skip columns that already exist.
 
 SET @db := DATABASE();

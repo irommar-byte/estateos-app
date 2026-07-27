@@ -445,7 +445,7 @@ export default function DiscoveryPulse() {
               type="button"
               onClick={collapseToOrb}
               className="absolute right-2.5 top-2.5 z-10 rounded-full p-1.5 text-white/40 transition hover:bg-white/8 hover:text-white/75"
-              aria-label="Zwiń EstateOS Inteligence"
+              aria-label="Zwiń EstateOS Intelligence"
             >
               <ChevronDown size={14} />
             </button>
@@ -455,7 +455,7 @@ export default function DiscoveryPulse() {
                 <IntelligenceBrain mood={mood} reduceMotion={reduceMotion} absorbing={false} size={14} />
               </span>
               <span className="text-[9px] font-semibold uppercase tracking-[0.22em] text-white/55">
-                EstateOS™ Inteligence
+                EstateOS™ Intelligence
               </span>
               {reasonMeta ? (
                 <motion.span
@@ -536,7 +536,7 @@ export default function DiscoveryPulse() {
         }}
         transition={reduceMotion ? { duration: 0.12 } : spring}
         className={`pointer-events-auto group relative flex h-12 w-12 items-center justify-center rounded-full border ${colors.ring} bg-[rgba(8,10,14,0.78)] shadow-[0_12px_40px_rgba(0,0,0,0.45),0_0_1px_rgba(255,255,255,0.12)_inset] backdrop-blur-2xl transition-all duration-300 hover:scale-[1.1] hover:brightness-125 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_28px_rgba(255,255,255,0.28),0_16px_40px_rgba(0,0,0,0.5)] active:scale-[0.96]`}
-        aria-label={`EstateOS Inteligence · ${pulse.stageLabel} ${progress}%`}
+        aria-label={`EstateOS Intelligence · ${pulse.stageLabel} ${progress}%`}
         aria-expanded={expanded}
         title={`${pulse.stageLabel} · ${progress}%`}
       >

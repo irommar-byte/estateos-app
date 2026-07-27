@@ -43,7 +43,7 @@ export function subscribeDiscoveryUpdated(handler: (detail?: DiscoveryUpdatedDet
   return () => sub.remove();
 }
 
-/** Water-splash cue for the Inteligence orb when the algorithm learns a taste signal. */
+/** Water-splash cue for the Intelligence orb when the algorithm learns a taste signal. */
 export function subscribeIntelligenceLearn(handler: (detail?: IntelligenceLearnDetail) => void) {
   const sub = DeviceEventEmitter.addListener(INTELLIGENCE_LEARN_EVENT, handler);
   return () => sub.remove();

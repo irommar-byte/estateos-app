@@ -15,10 +15,10 @@ type Props = {
 };
 
 /**
- * EstateOS™ Inteligence — quiet frosted whisper. One thought, no badge circus.
+ * EstateOS™ Intelligence — quiet frosted whisper. One thought, no badge circus.
  */
 export default function DiscoveryIntelligenceWhisper({
-  title = "EstateOS™ Inteligence",
+  title = "EstateOS™ Intelligence",
   body,
   href = "/moj-kierunek",
   variant = "inline",

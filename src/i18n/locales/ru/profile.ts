@@ -204,16 +204,16 @@ export const profile = {
     },
   },
   intelligence: {
-    sectionTitle: 'EstateOS™ Inteligence',
-    title: 'Inteligence',
+    sectionTitle: 'EstateOS™ Intelligence',
+    title: 'Intelligence',
     subtitleOn: 'Персонализация Discovery и подсказки включены',
     subtitleOff: 'Персонализация Discovery и подсказки',
     footer:
       'Та же настройка, что на estateos.pl — включает персонализацию на аккаунте.',
-    gateTitle: 'Включите Inteligence',
+    gateTitle: 'Включите Intelligence',
     gateBody:
-      'Discovery и тропы работают, когда EstateOS™ Inteligence включён на вашем аккаунте.',
-    gateEnable: 'Включить Inteligence',
+      'Discovery и тропы работают, когда EstateOS™ Intelligence включён на вашем аккаунте.',
+    gateEnable: 'Включить Intelligence',
     gateLater: 'Не сейчас',
   },
   security: {

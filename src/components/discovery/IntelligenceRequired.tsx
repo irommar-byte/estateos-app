@@ -15,7 +15,7 @@ type Props = {
 };
 
 /**
- * Mounts Discovery surfaces only when EstateOS™ Inteligence is enabled.
+ * Mounts Discovery surfaces only when EstateOS™ Intelligence is enabled.
  * When off, shows an enable gate instead of loading feed/tropes.
  */
 export default function IntelligenceRequired({ navigation, children }: Props) {

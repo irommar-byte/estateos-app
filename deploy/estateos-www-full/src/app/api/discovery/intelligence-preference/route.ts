@@ -17,7 +17,7 @@ function shapePreference(user: {
 }
 
 /**
- * Account-scoped EstateOS™ Inteligence opt-in.
+ * Account-scoped EstateOS™ Intelligence opt-in.
  * Cookie session (WWW) or Bearer JWT (mobile). Guests get 401 — clients keep local cache.
  */
 export async function GET(req: Request) {
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     const userId = await resolveWebUserId(req);
     if (!userId) {
       return NextResponse.json(
-        { success: false, error: "Zaloguj się, aby odczytać preferencję Inteligence." },
+        { success: false, error: "Zaloguj się, aby odczytać preferencję Intelligence." },
         { status: 401 },
       );
     }
@@ -53,7 +53,7 @@ export async function PATCH(req: Request) {
     const userId = await resolveWebUserId(req);
     if (!userId) {
       return NextResponse.json(
-        { success: false, error: "Zaloguj się, aby zapisać preferencję Inteligence." },
+        { success: false, error: "Zaloguj się, aby zapisać preferencję Intelligence." },
         { status: 401 },
       );
     }

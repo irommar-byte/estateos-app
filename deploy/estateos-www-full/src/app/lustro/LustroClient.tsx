@@ -129,7 +129,7 @@ export default function LustroClient() {
         >
           <div className="min-w-0 max-w-xl">
             <p className="text-[10px] font-black uppercase tracking-[0.26em] text-amber-400/90">
-              EstateOS™ Inteligence
+              EstateOS™ Intelligence
             </p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Lustro preferencji</h1>
             <p className="mt-2 text-[15px] leading-6 text-[var(--eos-muted)]">

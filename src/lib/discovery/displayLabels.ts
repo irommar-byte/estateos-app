@@ -1,4 +1,4 @@
-/** Human labels for Discovery / Inteligence UI — never show raw enums. */
+/** Human labels for Discovery / Intelligence UI — never show raw enums. */
 
 const REASON_LABELS_PL: Record<string, string> = {
   PRICE_TOO_HIGH: 'Cena',

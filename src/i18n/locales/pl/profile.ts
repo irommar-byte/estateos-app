@@ -204,16 +204,16 @@ export const profile = {
     },
   },
   intelligence: {
-    sectionTitle: 'EstateOS™ Inteligence',
-    title: 'Inteligence',
+    sectionTitle: 'EstateOS™ Intelligence',
+    title: 'Intelligence',
     subtitleOn: 'Personalizacja Discovery i podpowiedzi włączone',
     subtitleOff: 'Personalizacja Discovery i podpowiedzi',
     footer:
       'Ta sama preferencja co na estateos.pl — włącza personalizację na koncie.',
-    gateTitle: 'Włącz Inteligence',
+    gateTitle: 'Włącz Intelligence',
     gateBody:
-      'Discovery i tropy działają, gdy EstateOS™ Inteligence jest włączone na Twoim koncie.',
-    gateEnable: 'Włącz Inteligence',
+      'Discovery i tropy działają, gdy EstateOS™ Intelligence jest włączone na Twoim koncie.',
+    gateEnable: 'Włącz Intelligence',
     gateLater: 'Nie teraz',
   },
   security: {

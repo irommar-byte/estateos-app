@@ -62,7 +62,7 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
       {showIntelligence && surface === 'explore' ? (
         <EstateOsGuideOverlay navigation={navigation} />
       ) : null}
-      {/* Market: floating orb — komunikaty Inteligence tylko z mózgu (bez paska u góry). */}
+      {/* Market: floating orb — komunikaty Intelligence tylko z mózgu (bez paska u góry). */}
       {showIntelligence && surface === 'market' ? (
         <IntelligencePulseTape navigation={navigation} surface="market" layout="float" />
       ) : null}

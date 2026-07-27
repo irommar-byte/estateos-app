@@ -11,7 +11,7 @@ const STAGES = [
   {
     key: "EXPLORE",
     label: "Odkrywanie",
-    meaning: "Oceń oferty (pasuje / nie dla mnie). Inteligence dopiero poznaje Twój gust.",
+    meaning: "Oceń oferty (pasuje / nie dla mnie). Intelligence dopiero poznaje Twój gust.",
     youAreHere: "Zbieramy pierwsze sygnały — bez formularza, tylko z Twoich ocen.",
   },
   {
@@ -24,7 +24,7 @@ const STAGES = [
     key: "READY",
     label: "Gotowość",
     meaning: "Profil jest wystarczająco wyraźny, by doprecyzować wybór albo iść „na poważnie”.",
-    youAreHere: "Inteligence dobrze Cię czyta — czas zawęzić oferty albo oznaczyć trop.",
+    youAreHere: "Intelligence dobrze Cię czyta — czas zawęzić oferty albo oznaczyć trop.",
   },
 ] as const;
 
@@ -144,11 +144,11 @@ export default function MojKierunekClient() {
           style={{ paddingTop: "calc(var(--eos-nav-height) + 3rem)" }}
         >
           <p className="text-[11px] font-black uppercase tracking-[0.28em] text-sky-300/90">
-            EstateOS™ Inteligence
+            EstateOS™ Intelligence
           </p>
           <h1 className="mt-5 text-4xl font-semibold tracking-tight sm:text-5xl">Mój kierunek</h1>
           <p className="mt-4 max-w-md text-base leading-7 text-[var(--eos-muted)]">
-            Tu zobaczysz, na jakim etapie jesteś i co Inteligence już o Tobie wie — po zalogowaniu.
+            Tu zobaczysz, na jakim etapie jesteś i co Intelligence już o Tobie wie — po zalogowaniu.
           </p>
           <Link
             href={`/login?redirect=${encodeURIComponent("/moj-kierunek")}`}
@@ -196,7 +196,7 @@ export default function MojKierunekClient() {
             </span>
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.26em] text-sky-300/90">
-                EstateOS™ Inteligence
+                EstateOS™ Intelligence
               </p>
               <p className="text-xs text-[var(--eos-muted)]">
                 {refreshing ? "Aktualizacja…" : "Twój spokojny przewodnik po decyzji"}
@@ -288,7 +288,7 @@ export default function MojKierunekClient() {
           <p className="mt-3 max-w-xl text-[15px] leading-6 text-white/60">{tip}</p>
 
           <div className="mt-6">
-            <p className="mb-3 text-[13px] font-extrabold text-white/80">Co Inteligence już wie</p>
+            <p className="mb-3 text-[13px] font-extrabold text-white/80">Co Intelligence już wie</p>
             {knownChips.length > 0 ? (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {knownChips.map((chip) => (

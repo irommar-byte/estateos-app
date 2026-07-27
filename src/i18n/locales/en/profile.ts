@@ -204,16 +204,16 @@ export const profile = {
     },
   },
   intelligence: {
-    sectionTitle: 'EstateOS™ Inteligence',
-    title: 'Inteligence',
+    sectionTitle: 'EstateOS™ Intelligence',
+    title: 'Intelligence',
     subtitleOn: 'Discovery personalization and suggestions on',
     subtitleOff: 'Discovery personalization and suggestions',
     footer:
       'Same preference as on estateos.pl — enables personalization on your account.',
-    gateTitle: 'Turn on Inteligence',
+    gateTitle: 'Turn on Intelligence',
     gateBody:
-      'Discovery and tropes work when EstateOS™ Inteligence is enabled on your account.',
-    gateEnable: 'Enable Inteligence',
+      'Discovery and tropes work when EstateOS™ Intelligence is enabled on your account.',
+    gateEnable: 'Enable Intelligence',
     gateLater: 'Not now',
   },
   security: {

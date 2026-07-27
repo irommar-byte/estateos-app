@@ -5,7 +5,7 @@ import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceCont
 import { useLocale } from "@/contexts/LocaleContext";
 
 /**
- * Compact on/off control for EstateOS™ Inteligence in display settings.
+ * Compact on/off control for EstateOS™ Intelligence in display settings.
  */
 export default function IntelligencePreferenceToggle({ className = "" }: { className?: string }) {
   const { enabled, setEnabled, hydrated } = useIntelligencePreference();

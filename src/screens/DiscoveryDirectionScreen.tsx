@@ -26,7 +26,7 @@ const STAGES: Array<{
   {
     key: 'EXPLORE',
     label: 'Odkrywanie',
-    meaning: 'Oceń oferty (pasuje / nie dla mnie). Inteligence dopiero poznaje Twój gust.',
+    meaning: 'Oceń oferty (pasuje / nie dla mnie). Intelligence dopiero poznaje Twój gust.',
     youAreHere: 'Zbieramy pierwsze sygnały — bez formularza, tylko z Twoich ocen.',
   },
   {
@@ -39,7 +39,7 @@ const STAGES: Array<{
     key: 'READY',
     label: 'Gotowość',
     meaning: 'Profil jest wystarczająco wyraźny, by doprecyzować wybór albo iść „na poważnie”.',
-    youAreHere: 'Inteligence dobrze Cię czyta — czas zawęzić oferty albo oznaczyć trop.',
+    youAreHere: 'Intelligence dobrze Cię czyta — czas zawęzić oferty albo oznaczyć trop.',
   },
 ];
 
@@ -100,7 +100,7 @@ function humanTip(body: string | undefined, summaryLine: string | undefined) {
   return raw;
 }
 
-/** EstateOS™ Inteligence — clear journey + what we already know about you. */
+/** EstateOS™ Intelligence — clear journey + what we already know about you. */
 export default function DiscoveryDirectionScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const token = useAuthStore((s) => s.token);
@@ -166,10 +166,10 @@ export default function DiscoveryDirectionScreen({ navigation }: any) {
   if (auth === 'guest' || !token) {
     return (
       <View style={[styles.root, { paddingTop: insets.top + 48, paddingHorizontal: 24 }]}>
-        <Text style={styles.eyebrow}>EstateOS™ Inteligence</Text>
+        <Text style={styles.eyebrow}>EstateOS™ Intelligence</Text>
         <Text style={styles.h1}>Mój kierunek</Text>
         <Text style={styles.lead}>
-          Tu zobaczysz, na jakim etapie jesteś i co Inteligence już o Tobie wie — po zalogowaniu.
+          Tu zobaczysz, na jakim etapie jesteś i co Intelligence już o Tobie wie — po zalogowaniu.
         </Text>
         <ApplePressable
           style={styles.primary}
@@ -204,7 +204,7 @@ export default function DiscoveryDirectionScreen({ navigation }: any) {
             <Brain size={18} color="#7DD3FC" strokeWidth={2.2} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.eyebrow}>EstateOS™ Inteligence</Text>
+            <Text style={styles.eyebrow}>EstateOS™ Intelligence</Text>
             <Text style={styles.headSub}>
               {refreshing ? 'Aktualizacja…' : 'Twój spokojny przewodnik po decyzji'}
             </Text>
@@ -280,7 +280,7 @@ export default function DiscoveryDirectionScreen({ navigation }: any) {
 
           {knownChips.length > 0 ? (
             <View style={styles.knownBlock}>
-              <Text style={styles.knownTitle}>Co Inteligence już wie</Text>
+              <Text style={styles.knownTitle}>Co Intelligence już wie</Text>
               <View style={styles.chipWrap}>
                 {knownChips.map((chip) => (
                   <View key={`${chip.label}-${chip.value}`} style={styles.chip}>
@@ -292,7 +292,7 @@ export default function DiscoveryDirectionScreen({ navigation }: any) {
             </View>
           ) : (
             <View style={styles.knownBlock}>
-              <Text style={styles.knownTitle}>Co Inteligence już wie</Text>
+              <Text style={styles.knownTitle}>Co Intelligence już wie</Text>
               <Text style={styles.knownEmpty}>
                 Jeszcze za mało ocen — po kilku „pasuje / nie dla mnie” pojawią się tu miasto, typ i
                 budżet.

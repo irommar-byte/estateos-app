@@ -49,7 +49,7 @@ model User {
   buyerType             String?
   searchTransactionType String?
   searchAmenities       String?
-  /// EstateOS Inteligence opt-in (WWW + app)
+  /// EstateOS Intelligence opt-in (WWW + app)
   intelligenceEnabled   Boolean                 @default(false)
   intelligenceDecidedAt DateTime?
   createdAt            DateTime                 @default(now())

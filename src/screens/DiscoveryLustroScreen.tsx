@@ -149,7 +149,7 @@ export default function DiscoveryLustroScreen({ navigation }: any) {
       >
         <View style={styles.headerRow}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.eyebrow}>EstateOS™ Inteligence</Text>
+            <Text style={styles.eyebrow}>EstateOS™ Intelligence</Text>
             <Text style={styles.h1}>Lustro preferencji</Text>
             <Text style={styles.lead}>
               {profile?.summaryLine && !profile.summaryLine.includes('Za mało')

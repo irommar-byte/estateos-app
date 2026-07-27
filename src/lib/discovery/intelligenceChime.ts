@@ -2,7 +2,7 @@ import { Audio } from 'expo-av';
 import { AccessibilityInfo, Platform } from 'react-native';
 
 /**
- * Soft temple-bowl style chime for EstateOS™ Inteligence.
+ * Soft temple-bowl style chime for EstateOS™ Intelligence.
  * Debounced 12s — silence is part of the craft.
  * Uses a tiny generated WAV via expo-av (no asset file).
  */

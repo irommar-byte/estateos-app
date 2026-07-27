@@ -4071,7 +4071,7 @@ a[class*="bg-[var(--eos-accent)]"] * {
   -webkit-text-fill-color: inherit !important;
 }
 
-/* Inteligence brain dazzle / olsnienie — spokojne, nie migające */
+/* Intelligence brain dazzle / olsnienie — spokojne, nie migające */
 .eos-brain-flare {
   animation: eos-brain-flare 6.5s cubic-bezier(0.22, 1, 0.36, 1) infinite;
   opacity: 0.45;

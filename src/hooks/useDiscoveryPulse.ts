@@ -14,8 +14,8 @@ type PulseChangeMeta = {
 };
 
 /**
- * Lite pulse for Inteligence tape — same /api/discovery/pulse as WWW.
- * Quiet when Inteligence is off or user is logged out.
+ * Lite pulse for Intelligence tape — same /api/discovery/pulse as WWW.
+ * Quiet when Intelligence is off or user is logged out.
  */
 export function useDiscoveryPulse(opts?: {
   onPulseChange?: (meta: PulseChangeMeta) => void;

@@ -29,7 +29,7 @@ function defaultFormatPrice(item: ForYouRailItem): string {
 }
 
 /**
- * Living Inteligence rail for the signed-in client profile — brain-led, not sparkles.
+ * Living Intelligence rail for the signed-in client profile — brain-led, not sparkles.
  */
 export default function DiscoveryForYouRail({
   navigation,
@@ -126,7 +126,7 @@ export default function DiscoveryForYouRail({
       <Animated.View style={[styles.brainBadge, { opacity: brainGlow }]}>
         <Brain size={13} color="#7DD3FC" strokeWidth={2.2} />
       </Animated.View>
-      <Text style={styles.eyebrow}>EstateOS™ Inteligence</Text>
+      <Text style={styles.eyebrow}>EstateOS™ Intelligence</Text>
       <View style={styles.liveDotWrap}>
         <Animated.View style={[styles.liveDotPulse, { opacity: glowOpacity }]} />
         <View style={styles.liveDot} />
@@ -223,7 +223,7 @@ export default function DiscoveryForYouRail({
                 <Text style={styles.price}>{formatPrice(item)}</Text>
                 {item.reason ? (
                   <Text style={styles.reason} numberOfLines={2}>
-                    <Text style={styles.reasonLead}>Inteligence · </Text>
+                    <Text style={styles.reasonLead}>Intelligence · </Text>
                     {item.reason}
                   </Text>
                 ) : null}

@@ -239,7 +239,7 @@ function LivingBrain({ accent, size = BRAIN }: { accent: string; size?: number }
 }
 
 /**
- * EstateOS™ Inteligence launcher — clear chrome, genie sheet, living brain.
+ * EstateOS™ Intelligence launcher — clear chrome, genie sheet, living brain.
  */
 export default function IntelligencePulseTape({
   navigation,
@@ -544,7 +544,7 @@ export default function IntelligencePulseTape({
         <ApplePressable
           onPress={open}
           style={styles.hit}
-          accessibilityLabel="EstateOS Inteligence"
+          accessibilityLabel="EstateOS Intelligence"
           haptic="none"
         >
           <Animated.View
@@ -636,7 +636,7 @@ export default function IntelligencePulseTape({
                     <LivingBrain accent={colors.accent} size={28} />
                   </View>
                   <View style={styles.sheetHeadCopy}>
-                    <Text style={styles.sheetKicker}>EstateOS™ Inteligence</Text>
+                    <Text style={styles.sheetKicker}>EstateOS™ Intelligence</Text>
                     <Text style={styles.sheetStage}>{pulse.stageLabel}</Text>
                   </View>
                   <ApplePressable onPress={close} haptic="none" style={styles.closeBtn} accessibilityLabel="Zamknij">
