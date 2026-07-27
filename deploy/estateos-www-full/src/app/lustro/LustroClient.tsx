@@ -14,28 +14,30 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import { useDiscoveryProfile } from "@/hooks/useDiscoveryProfile";
-
-const REASON_PL: Record<string, string> = {
-  PRICE_TOO_HIGH: "Cena",
-  LOCATION_MISMATCH: "Lokalizacja",
-  LAYOUT_MISMATCH: "Układ",
-  QUALITY_LOW: "Jakość",
-};
+import {
+  discoveryDisplayLabel,
+  discoveryEventLabel,
+  discoveryReasonLabel,
+} from "@/lib/discovery/displayLabels";
 
 const spring = { type: "spring" as const, stiffness: 280, damping: 28 };
 
 function eventLabel(type: string): { label: string; Icon: typeof ThumbsUp; tone: string } {
   switch (type) {
     case "DISCOVERY_LIKE":
-      return { label: "Pasuje", Icon: ThumbsUp, tone: "text-emerald-400" };
+      return { label: discoveryEventLabel(type) || "Pasuje", Icon: ThumbsUp, tone: "text-emerald-400" };
     case "DISCOVERY_DISLIKE":
-      return { label: "Nie dla mnie", Icon: ThumbsDown, tone: "text-rose-300" };
+      return { label: discoveryEventLabel(type) || "Nie dla mnie", Icon: ThumbsDown, tone: "text-rose-300" };
     case "DISCOVERY_PRIORITY":
-      return { label: "Na poważnie", Icon: Sparkles, tone: "text-amber-300" };
+      return { label: discoveryEventLabel(type) || "Na poważnie", Icon: Sparkles, tone: "text-amber-300" };
     case "DISCOVERY_DEPTH_OPEN":
-      return { label: "Otwarto", Icon: Compass, tone: "text-sky-300" };
+      return { label: discoveryEventLabel(type) || "Otwarto", Icon: Compass, tone: "text-sky-300" };
     default:
-      return { label: type.replace("DISCOVERY_", ""), Icon: Compass, tone: "text-white/60" };
+      return {
+        label: discoveryDisplayLabel(type.replace(/^DISCOVERY_/, "")),
+        Icon: Compass,
+        tone: "text-white/60",
+      };
   }
 }
 
@@ -195,7 +197,7 @@ export default function LustroClient() {
         <section className="mt-10">
           <h2 className="text-lg font-semibold tracking-tight">Co EstateOS już wie</h2>
           <p className="mt-1 text-sm text-[var(--eos-muted)]">
-            {decisions === 0 ? "Cold start — pierwsze decyzje tu zaskoczą." : "Sygnały z Twoich ocen."}
+            {decisions === 0 ? "Start — pierwsze decyzje tu zaskoczą." : "Sygnały z Twoich ocen."}
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <InsightBlock title="Miasta" items={profile?.topCities || []} />
@@ -213,7 +215,7 @@ export default function LustroClient() {
                     key={r.key}
                     className="rounded-full border border-rose-400/25 bg-rose-500/10 px-3 py-1.5 text-sm text-rose-100"
                   >
-                    {REASON_PL[r.key] || r.key} · {r.value}
+                    {discoveryReasonLabel(r.key) || discoveryDisplayLabel(r.key)} · {r.value}
                   </span>
                 ))}
               </div>
@@ -258,7 +260,9 @@ export default function LustroClient() {
               {recent.map((ev) => {
                 const meta = eventLabel(ev.eventType);
                 const Icon = meta.Icon;
-                const reason = ev.reasonCode ? REASON_PL[ev.reasonCode] || ev.reasonCode : null;
+                const reason = ev.reasonCode
+                  ? discoveryReasonLabel(ev.reasonCode) || discoveryDisplayLabel(ev.reasonCode)
+                  : null;
                 return (
                   <li key={ev.id}>
                     <Link
@@ -327,7 +331,9 @@ export default function LustroClient() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-300">
-                      {t.priority || t.status === "SERIOUS" ? "Na poważnie" : t.status}
+                      {t.priority || t.status === "SERIOUS"
+                        ? "Na poważnie"
+                        : discoveryDisplayLabel(t.status)}
                     </p>
                     <p className="truncate text-sm font-semibold">{t.offer?.title || `Oferta #${t.offerId}`}</p>
                   </div>
@@ -357,7 +363,7 @@ function InsightBlock({
         <ul className="mt-3 space-y-1.5">
           {items.slice(0, 4).map((item) => (
             <li key={item.key} className="flex items-center justify-between gap-2 text-sm">
-              <span className="truncate font-medium">{item.key}</span>
+              <span className="truncate font-medium">{discoveryDisplayLabel(item.key)}</span>
               <span className="tabular-nums text-[var(--eos-muted)]">{item.value}</span>
             </li>
           ))}

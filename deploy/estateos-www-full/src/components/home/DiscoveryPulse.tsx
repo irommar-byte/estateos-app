@@ -21,7 +21,7 @@ type PulsePayload = {
 const spring = { type: "spring" as const, stiffness: 380, damping: 32, mass: 0.85 };
 
 function confidenceLabel(c: number) {
-  if (c < 0.12) return "Cold start";
+  if (c < 0.12) return "Start";
   if (c < 0.35) return "Zarys";
   if (c < 0.6) return "Wyraźny kierunek";
   return "Silny sygnał";
@@ -337,7 +337,7 @@ export default function DiscoveryPulse() {
                 />
               ) : null}
 
-              <span className="relative flex h-2.5 w-2.5 items-center justify-center">
+              <span className="relative z-[1] flex h-2.5 w-2.5 items-center justify-center">
                 {!reduceMotion ? (
                   <motion.span
                     className={`absolute inline-flex h-full w-full rounded-full ${colors.core}`}
@@ -357,32 +357,31 @@ export default function DiscoveryPulse() {
                 />
               </span>
 
-              {/* tiny progress crescent */}
+              {/* Progress ring — perfectly centered in the orb */}
               <svg
-                className="pointer-events-none absolute inset-0.5 -rotate-90 text-white/25"
-                viewBox="0 0 36 36"
+                className="pointer-events-none absolute left-1/2 top-1/2 size-10 -translate-x-1/2 -translate-y-1/2 -rotate-90"
+                viewBox="0 0 40 40"
                 aria-hidden
               >
                 <circle
-                  cx="18"
-                  cy="18"
-                  r="15.5"
+                  cx="20"
+                  cy="20"
+                  r="17"
                   fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.25"
-                  opacity="0.25"
+                  stroke="rgba(255,255,255,0.14)"
+                  strokeWidth="1.5"
                 />
                 <motion.circle
-                  cx="18"
-                  cy="18"
-                  r="15.5"
+                  cx="20"
+                  cy="20"
+                  r="17"
                   fill="none"
                   stroke={mood === "alert" ? "#fbbf24" : mood === "celebrate" ? "#F9E498" : "#34d399"}
-                  strokeWidth="1.5"
+                  strokeWidth="1.75"
                   strokeLinecap="round"
-                  strokeDasharray={`${(progress / 100) * 97.4} 97.4`}
+                  strokeDasharray={`${(progress / 100) * 106.76} 106.76`}
                   initial={false}
-                  animate={{ strokeDasharray: `${(progress / 100) * 97.4} 97.4` }}
+                  animate={{ strokeDasharray: `${(progress / 100) * 106.76} 106.76` }}
                   transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
                 />
               </svg>
