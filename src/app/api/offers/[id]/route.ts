@@ -41,6 +41,9 @@ import {
   resolvePresentingAgent,
 } from '@/lib/offerPresentingAgent';
 import { isSellerOnlineFromLastLogin } from '@/lib/offerGuestInquiry';
+import { planDiscoveryGallery, isPersonalizedGalleryPlan } from '@/lib/discovery/gallery';
+import { topStatEntries } from '@/lib/discoveryInsights';
+import { resolveWebUserId } from '@/lib/webSessionAuth';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -219,6 +222,36 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       legalOffer as Record<string, unknown>,
     );
 
+    // EstateOS™ Inteligence — Smart Gallery plan (seller hero kept; soft taste reorder when ready)
+    let galleryTaste: { confidence: number; dislikeReasons: Array<{ key: string; value: number }> } | null =
+      null;
+    try {
+      const viewerId = await resolveWebUserId(req);
+      if (viewerId) {
+        const discoveryProfile = await prisma.discoveryProfile.findUnique({
+          where: { userId: viewerId },
+          select: { confidence: true, reasonStats: true },
+        });
+        if (discoveryProfile) {
+          galleryTaste = {
+            confidence: Number(discoveryProfile.confidence || 0),
+            dislikeReasons: topStatEntries(discoveryProfile.reasonStats, 4),
+          };
+        }
+      }
+    } catch {
+      galleryTaste = null;
+    }
+
+    const gallerySourceImages = (() => {
+      const raw = (moneyOffer as { images?: unknown }).images;
+      if (Array.isArray(raw)) return raw.map(String);
+      if (typeof raw === 'string') return raw;
+      return null;
+    })();
+    const galleryPlan = planDiscoveryGallery(gallerySourceImages, galleryTaste);
+    const galleryPersonalized = isPersonalizedGalleryPlan(galleryPlan);
+
     const offerUser = (legalOffer as { user?: Record<string, unknown> }).user;
     let sellerDisplayName = offerUser ? resolveSellerDisplayName(offerUser) : '';
     let sellerPersonName = offerUser ? resolveSellerPersonName(offerUser) : null;
@@ -361,6 +394,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       _viewerIsPro: isRealPro,
       views: viewsCount,
       viewsCount,
+      galleryPlan,
+      galleryPersonalized,
     }),
     );
   } catch (error) {
