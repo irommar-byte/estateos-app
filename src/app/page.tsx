@@ -9,6 +9,7 @@ import FeaturedGallery from "@/components/home/FeaturedGallery";
 import FeaturedCarsGallery from "@/components/home/FeaturedCarsGallery";
 import MarketPulseBar from "@/components/home/MarketPulseBar";
 import RadarLiveCounter from "@/components/home/RadarLiveCounter";
+import DiscoveryPulse from "@/components/home/DiscoveryPulse";
 import EstateOsGuidePanel from "@/components/home/EstateOsGuidePanel";
 import Footer from "@/components/layout/Footer";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -40,6 +41,7 @@ export default function Home() {
           <FeaturedGallery />
           <FeaturedCarsGallery />
           <RadarLiveCounter />
+          <DiscoveryPulse />
 
           <div
             id="map-section"

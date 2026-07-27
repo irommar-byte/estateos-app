@@ -74,7 +74,7 @@ export default function EstateOsGuidePanel() {
               </span>
               <div>
                 <p className="text-sm font-black text-white">EstateOS Guide</p>
-                <p className="text-xs text-white/55">Intelligence · spokojny następny krok</p>
+                <p className="text-xs text-white/55">EstateOS™ Inteligence · spokojny następny krok</p>
               </div>
               <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">
                 {stageLabel}
