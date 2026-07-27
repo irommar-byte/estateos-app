@@ -110,7 +110,8 @@ button {
   appearance: none;
   outline: none;
   font: inherit;
-  color: inherit;
+  /* Nie ustawiaj `color: inherit` — unlayered inherit przebija Tailwind
+     (text-black / text-white) i daje niewidoczny tekst na CTA. */
 }
 
 /* Autofill: zachowaj czytelne tło i wyraźną ramkę (Chrome maluje insetem cały input) */
@@ -3832,3 +3833,166 @@ html.light .eos-cinematic-dark .eos-offer-hero-back {
   -webkit-text-fill-color: #ffffff !important;
 }
 
+
+/* ==========================================================================
+   CTA CONTRAST SHIELD — light + dark
+   Gwarantuje czytelny atrament na solidnych wypełnieniach. Tailwind utilities
+   bywały przebijane przez starsze reguły / inherit; te selektory zamykają lukę.
+   ========================================================================== */
+
+/* Jawne utility kolorów tekstu na button/a — zawsze wygrywają */
+button[class~="text-black"],
+a[class~="text-black"],
+button[class~="text-zinc-950"],
+a[class~="text-zinc-950"],
+button[class~="text-neutral-950"],
+a[class~="text-neutral-950"] {
+  color: #0a0a0a !important;
+  -webkit-text-fill-color: #0a0a0a !important;
+}
+
+button[class~="text-white"],
+a[class~="text-white"] {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* Solidne białe CTA → ciemny atrament (nie mylić z bg-white/5 szkłem) */
+button[class~="bg-white"],
+a[class~="bg-white"],
+button[class~="bg-white/90"],
+a[class~="bg-white/90"],
+button[class~="bg-white/92"],
+a[class~="bg-white/92"],
+button[class~="bg-white/95"],
+a[class~="bg-white/95"],
+button[class~="bg-white/80"],
+a[class~="bg-white/80"],
+button[class~="hover:bg-white"]:hover,
+a[class~="hover:bg-white"]:hover {
+  color: #0a0a0a !important;
+  -webkit-text-fill-color: #0a0a0a !important;
+}
+
+button[class~="bg-white"] *,
+a[class~="bg-white"] *,
+button[class~="bg-white/90"] *,
+a[class~="bg-white/90"] *,
+button[class~="bg-white/92"] *,
+a[class~="bg-white/92"] *,
+button[class~="bg-white/95"] *,
+a[class~="bg-white/95"] * {
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+}
+
+/* Solidne czarne / near-black CTA → biały atrament */
+button[class~="bg-black"],
+a[class~="bg-black"],
+button[class~="bg-zinc-950"],
+a[class~="bg-zinc-950"],
+button[class~="bg-neutral-950"],
+a[class~="bg-neutral-950"],
+button[class~="bg-[#141416]"],
+a[class~="bg-[#141416]"],
+button[class~="bg-[#0a0a0a]"],
+a[class~="bg-[#0a0a0a]"],
+button[class~="bg-[#111]"],
+a[class~="bg-[#111]"],
+button[class~="bg-[#111111]"],
+a[class~="bg-[#111111]"] {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+button[class~="bg-black"] *,
+a[class~="bg-black"] *,
+button[class~="bg-zinc-950"] *,
+a[class~="bg-zinc-950"] *,
+button[class~="bg-[#141416]"] *,
+a[class~="bg-[#141416]"] *,
+button[class~="bg-[#111]"] *,
+a[class~="bg-[#111]"] * {
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+}
+
+/* Akcenty ekosystemu — ciemny atrament na jasnym fill (Apple-style) */
+button[class~="bg-emerald-500"],
+a[class~="bg-emerald-500"],
+button[class~="bg-emerald-400"],
+a[class~="bg-emerald-400"],
+button[class~="bg-[#10b981]"],
+a[class~="bg-[#10b981]"] {
+  color: #042f1e !important;
+  -webkit-text-fill-color: #042f1e !important;
+}
+
+button[class~="bg-emerald-600"],
+a[class~="bg-emerald-600"],
+button[class~="bg-emerald-700"],
+a[class~="bg-emerald-700"] {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+button[class~="bg-sky-500"],
+a[class~="bg-sky-500"],
+button[class~="bg-sky-400"],
+a[class~="bg-sky-400"] {
+  color: #082f49 !important;
+  -webkit-text-fill-color: #082f49 !important;
+}
+
+button[class~="bg-sky-600"],
+a[class~="bg-sky-600"],
+button[class~="bg-sky-700"],
+a[class~="bg-sky-700"] {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+button[class~="bg-amber-400"],
+a[class~="bg-amber-400"],
+button[class~="bg-amber-500"],
+a[class~="bg-amber-500"],
+button[class~="bg-orange-500"],
+a[class~="bg-orange-500"] {
+  color: #451a03 !important;
+  -webkit-text-fill-color: #451a03 !important;
+}
+
+button[class~="bg-rose-500"],
+a[class~="bg-rose-500"],
+button[class~="bg-red-500"],
+a[class~="bg-red-500"] {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+html:not(.light) button[class~="bg-rose-400"],
+html:not(.light) a[class~="bg-rose-400"],
+html:not(.light) button[class~="bg-red-400"],
+html:not(.light) a[class~="bg-red-400"] {
+  color: #4c0519 !important;
+  -webkit-text-fill-color: #4c0519 !important;
+}
+
+/* Token CSS accent — czytelny atrament na --eos-accent */
+button[class*="bg-[var(--eos-accent)]"],
+a[class*="bg-[var(--eos-accent)]"] {
+  color: #0a0a0a !important;
+  -webkit-text-fill-color: #0a0a0a !important;
+}
+
+button[class~="bg-emerald-500"] *,
+a[class~="bg-emerald-500"] *,
+button[class~="bg-emerald-400"] *,
+a[class~="bg-emerald-400"] *,
+button[class~="bg-sky-500"] *,
+a[class~="bg-sky-500"] *,
+button[class*="bg-[var(--eos-accent)]"] *,
+a[class*="bg-[var(--eos-accent)]"] * {
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+}

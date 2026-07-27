@@ -164,14 +164,14 @@ export default function IntelligenceEnableSheet() {
               <button
                 type="button"
                 onClick={handleEnable}
-                className="w-full rounded-full bg-white px-4 py-3.5 text-[14px] font-semibold tracking-wide text-black transition hover:bg-white/92 active:scale-[0.99]"
+                className="eos-btn eos-btn--primary eos-btn--block !normal-case !tracking-wide !text-[14px] !font-semibold"
               >
                 {dict.intelligence.sheetEnable}
               </button>
               <button
                 type="button"
                 onClick={handleLater}
-                className="w-full rounded-full px-4 py-2.5 text-[13px] font-medium text-white/55 transition hover:text-white/85"
+                className="eos-btn eos-btn--ghost eos-btn--block !normal-case !tracking-normal !text-[13px] !font-medium !min-h-0 !py-2.5"
               >
                 {dict.intelligence.sheetLater}
               </button>
