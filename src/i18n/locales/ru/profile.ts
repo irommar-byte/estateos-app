@@ -74,8 +74,11 @@ export const profile = {
       confirmTitle: 'Выделить объявление?',
       confirmBody:
         'Будет списан 1 кредит публикации Пакета Плюс. Объявление появится в разделе «Выделенные» на 7 дней.',
+      confirmBodySingle: 'Продлить выделение на 7 дней за 1 кредит Пакета Плюс?',
       confirmBodyStepper:
         'Каждый кредит даёт 7 дней в «Выделенных». Спишется {{credits}} {{creditsWord}} — всего {{days}} дней продвижения.',
+      singleCostTitle: '7 дней в галерее',
+      singleCostHint: '1 монета · Пакет Плюс',
       creditsWordOne: 'кредит',
       creditsWordFew: 'кредита',
       creditsWordMany: 'кредитов',

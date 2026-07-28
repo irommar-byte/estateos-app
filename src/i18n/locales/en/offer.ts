@@ -229,6 +229,7 @@ export const offer = {
       featureTopUp: 'Top up',
       featuredCelebrationTitle: 'listing featured',
       featuredCelebrationSubtitle: 'Your offer is glowing in the gallery for the next days',
+      featuredCelebrationDays: '7 days',
       count: '{{count}} views',
       countZero: '0 views',
     },

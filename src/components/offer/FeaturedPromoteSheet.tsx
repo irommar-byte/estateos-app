@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -8,14 +8,12 @@ import {
   View,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { Minus, Plus, Star } from 'lucide-react-native';
+import { Star } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import ApplePressable from '../ApplePressable';
+import EosCreditCoin from '../profile/EosCreditCoin';
 import { useI18n } from '../../i18n';
 import { useIsDarkTheme } from '../../store/useThemeStore';
-
-const DAYS_PER_CREDIT = 7;
-const MAX_CREDITS = 12;
 
 type Props = {
   visible: boolean;
@@ -28,7 +26,7 @@ type Props = {
 };
 
 /**
- * Apple-style featured promotion confirm — credit stepper + balance.
+ * Apple-style featured promotion confirm — always 1 credit / 7 days + coin.
  */
 export default function FeaturedPromoteSheet({
   visible,
@@ -41,53 +39,25 @@ export default function FeaturedPromoteSheet({
 }: Props) {
   const { t } = useI18n();
   const isDark = useIsDarkTheme();
-  const maxSelectable = Math.max(1, Math.min(MAX_CREDITS, Math.max(1, creditBalance || 1)));
-  const [credits, setCredits] = useState(1);
 
-  useEffect(() => {
-    if (!visible) return;
-    setCredits(hasCredits ? 1 : 1);
-  }, [visible, hasCredits, creditBalance]);
-
-  const days = credits * DAYS_PER_CREDIT;
-  const canDecrease = hasCredits && credits > 1 && !loading;
-  const canIncrease = hasCredits && credits < maxSelectable && !loading;
-
-  const creditsLabel = useMemo(() => {
-    if (creditBalance === 1) return t('profile.shop.creditsOnAccountCreditOne');
-    if (creditBalance >= 2 && creditBalance <= 4) return t('profile.shop.creditsOnAccountCreditFew');
-    return t('profile.shop.creditsOnAccountCreditMany');
-  }, [creditBalance, t]);
+  const creditsLabel =
+    creditBalance === 1
+      ? t('profile.shop.creditsOnAccountCreditOne')
+      : creditBalance >= 2 && creditBalance <= 4
+        ? t('profile.shop.creditsOnAccountCreditFew')
+        : t('profile.shop.creditsOnAccountCreditMany');
 
   const balanceText = hasCredits
     ? t('profile.shop.creditsOnAccountCount', { count: creditBalance, creditsLabel })
     : t('profile.shop.creditsOnAccountEmpty');
-
-  const creditsWord =
-    credits === 1
-      ? t('profile.myOffers.promote.creditsWordOne')
-      : credits >= 2 && credits <= 4
-        ? t('profile.myOffers.promote.creditsWordFew')
-        : t('profile.myOffers.promote.creditsWordMany');
 
   const sheetBg = isDark ? 'rgba(28,28,30,0.94)' : 'rgba(255,255,255,0.97)';
   const border = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(60,60,67,0.14)';
   const titleColor = isDark ? '#FFFFFF' : '#000000';
   const muted = isDark ? 'rgba(235,235,245,0.62)' : 'rgba(60,60,67,0.72)';
   const rowBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(120,120,128,0.12)';
-  const stepperBtnBg = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(120,120,128,0.18)';
-  const stepperIcon = isDark ? '#FFFFFF' : '#000000';
   const cancelBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(120,120,128,0.14)';
   const cancelText = isDark ? '#FFFFFF' : '#000000';
-
-  const bump = (delta: number) => {
-    if (!hasCredits || loading) return;
-    setCredits((prev) => {
-      const next = Math.max(1, Math.min(maxSelectable, prev + delta));
-      if (next !== prev) void Haptics.selectionAsync();
-      return next;
-    });
-  };
 
   const handlePrimary = () => {
     if (loading) return;
@@ -96,7 +66,7 @@ export default function FeaturedPromoteSheet({
       onTopUp();
       return;
     }
-    onConfirm(credits);
+    onConfirm(1);
   };
 
   return (
@@ -106,7 +76,11 @@ export default function FeaturedPromoteSheet({
           style={[styles.backdrop, { backgroundColor: isDark ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.38)' }]}
           onPress={loading ? undefined : onClose}
         />
-        <BlurView intensity={isDark ? 92 : 84} tint={isDark ? 'dark' : 'light'} style={[styles.sheet, { backgroundColor: sheetBg, borderColor: border }]}>
+        <BlurView
+          intensity={isDark ? 92 : 84}
+          tint={isDark ? 'dark' : 'light'}
+          style={[styles.sheet, { backgroundColor: sheetBg, borderColor: border }]}
+        >
           <View style={styles.iconAura}>
             <View style={styles.iconCore}>
               <Star size={22} color="#000" fill="#000" strokeWidth={0} />
@@ -114,53 +88,23 @@ export default function FeaturedPromoteSheet({
           </View>
 
           <Text style={[styles.title, { color: titleColor }]}>{t('profile.myOffers.promote.confirmTitle')}</Text>
-          <Text style={[styles.body, { color: muted }]}>
-            {t('profile.myOffers.promote.confirmBodyStepper', {
-              credits,
-              days,
-              creditsWord,
-            })}
-          </Text>
+          <Text style={[styles.body, { color: muted }]}>{t('profile.myOffers.promote.confirmBodySingle')}</Text>
 
-          <View style={[styles.stepperCard, { backgroundColor: rowBg }]}>
-            <View style={styles.stepperCopy}>
-              <Text style={[styles.stepperTitle, { color: titleColor }]}>
-                {t('profile.myOffers.promote.creditsStepperLabel')}
+          <View style={[styles.costCard, { backgroundColor: rowBg }]}>
+            <EosCreditCoin size={44} lit={hasCredits} autoSpin={hasCredits} />
+            <View style={styles.costCopy}>
+              <Text style={[styles.costTitle, { color: titleColor }]}>
+                {t('profile.myOffers.promote.singleCostTitle')}
               </Text>
-              <Text style={[styles.stepperHint, { color: muted }]}>
-                {t('profile.myOffers.promote.creditsStepperHint', { days })}
+              <Text style={[styles.costHint, { color: muted }]}>
+                {t('profile.myOffers.promote.singleCostHint')}
               </Text>
             </View>
-            <View style={styles.stepperControls}>
-              <Pressable
-                onPress={() => bump(-1)}
-                disabled={!canDecrease}
-                style={({ pressed }) => [
-                  styles.stepperBtn,
-                  { backgroundColor: stepperBtnBg },
-                  pressed && canDecrease && { opacity: 0.7 },
-                  !canDecrease && { opacity: 0.35 },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={t('profile.myOffers.promote.creditsDecreaseA11y')}
-              >
-                <Minus size={16} color={stepperIcon} strokeWidth={2.6} />
-              </Pressable>
-              <Text style={[styles.stepperValue, { color: titleColor }]}>{hasCredits ? credits : 0}</Text>
-              <Pressable
-                onPress={() => bump(1)}
-                disabled={!canIncrease}
-                style={({ pressed }) => [
-                  styles.stepperBtn,
-                  { backgroundColor: stepperBtnBg },
-                  pressed && canIncrease && { opacity: 0.7 },
-                  !canIncrease && { opacity: 0.35 },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={t('profile.myOffers.promote.creditsIncreaseA11y')}
-              >
-                <Plus size={16} color={stepperIcon} strokeWidth={2.6} />
-              </Pressable>
+            <View style={styles.costAmount}>
+              <Text style={[styles.costAmountNum, { color: titleColor }]}>1</Text>
+              <Text style={[styles.costAmountLabel, { color: muted }]}>
+                {t('profile.myOffers.promote.creditsWordOne')}
+              </Text>
             </View>
           </View>
 
@@ -250,47 +194,44 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
   },
-  stepperCard: {
+  costCard: {
     borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     marginBottom: 14,
   },
-  stepperCopy: {
+  costCopy: {
     flex: 1,
     minWidth: 0,
   },
-  stepperTitle: {
+  costTitle: {
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: -0.2,
   },
-  stepperHint: {
+  costHint: {
     marginTop: 2,
     fontSize: 12,
     fontWeight: '600',
   },
-  stepperControls: {
-    flexDirection: 'row',
+  costAmount: {
     alignItems: 'center',
-    gap: 8,
+    minWidth: 44,
   },
-  stepperBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepperValue: {
-    minWidth: 22,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: '800',
+  costAmountNum: {
+    fontSize: 22,
+    fontWeight: '900',
     fontVariant: ['tabular-nums'],
+    lineHeight: 26,
+  },
+  costAmountLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   balanceBlock: {
     marginBottom: 18,

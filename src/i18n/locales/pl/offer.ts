@@ -229,6 +229,7 @@ export const offer = {
       featureTopUp: 'Doładuj',
       featuredCelebrationTitle: 'ogłoszenie wyróżnione',
       featuredCelebrationSubtitle: 'Twoja oferta świeci w galerii przez najbliższe dni',
+      featuredCelebrationDays: '7 dni',
       count: '{{count}} wyświetleń',
       countZero: '0 wyświetleń',
     },

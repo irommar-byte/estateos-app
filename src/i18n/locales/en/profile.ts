@@ -74,8 +74,11 @@ export const profile = {
       confirmTitle: 'Feature this listing?',
       confirmBody:
         'This uses 1 Plus publication credit. The listing appears in the Featured section for 7 days.',
+      confirmBodySingle: 'Extend featured placement for 7 days for 1 Plus credit?',
       confirmBodyStepper:
         'Each credit gives 7 days in Featured. You’ll use {{credits}} {{creditsWord}} — {{days}} days of promotion.',
+      singleCostTitle: '7 days in gallery',
+      singleCostHint: '1 coin · Plus Package',
       creditsWordOne: 'credit',
       creditsWordFew: 'credits',
       creditsWordMany: 'credits',

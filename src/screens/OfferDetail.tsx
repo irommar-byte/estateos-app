@@ -1698,63 +1698,72 @@ export default function OfferDetail({ route, navigation }: any) {
           {/* Cena na górze została usunięta — pełna kwota i PLN/m² siedzą teraz
               w dolnym pasku CTA. Trzymamy tu tylko badge'y meta (czynsz, views). */}
           <View style={styles.topMetaBadgesRow}>
-            <View style={styles.topMetaLeftCluster}>
-              <View style={[styles.viewsBadge, { backgroundColor: isDark ? '#1c1c1e' : '#f3f4f6', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.12)' }]}>
-                <Eye color={isDark ? "#9ca3af" : "#374151"} size={14} />
-                <Text style={[styles.viewsBadgeText, { color: isDark ? '#d1d5db' : '#374151' }]}>
-                  {viewsCount > 0
-                    ? t('offer.detail.views.count', { count: viewsCount.toLocaleString(dateLocale) })
-                    : t('offer.detail.views.countZero')}
-                </Text>
-              </View>
-              {isFeaturedListing ? (
-                <View style={styles.featuredBadge}>
-                  <Star size={11} color="#000000" fill="#000000" strokeWidth={0} />
-                  <Text style={styles.featuredBadgeText}>{t('offer.detail.views.featuredBadge')}</Text>
-                  <Star size={11} color="#000000" fill="#000000" strokeWidth={0} />
-                </View>
-              ) : canManageFeatureBadge ? (
-                <Pressable
-                  onPress={handleFeatureBadgePress}
-                  disabled={promotingFeatured}
-                  style={({ pressed }) => [
-                    styles.featuredBadge,
-                    styles.featuredBadgeInactive,
-                    isDark && {
-                      backgroundColor: 'rgba(142,142,147,0.18)',
-                      borderColor: 'rgba(235,235,245,0.18)',
-                    },
-                    (pressed || promotingFeatured) && { opacity: 0.72 },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('offer.detail.views.featureCta')}
-                >
-                  <Star
-                    size={11}
-                    color={isDark ? 'rgba(235,235,245,0.45)' : '#8E8E93'}
-                    fill="transparent"
-                    strokeWidth={2}
-                  />
-                  <Text
-                    style={[
-                      styles.featuredBadgeText,
-                      styles.featuredBadgeTextInactive,
-                      isDark && { color: 'rgba(235,235,245,0.45)' },
-                    ]}
-                  >
-                    {promotingFeatured
-                      ? t('profile.myOffers.promote.working')
-                      : t('offer.detail.views.featureCta')}
-                  </Text>
-                  <Star
-                    size={11}
-                    color={isDark ? 'rgba(235,235,245,0.45)' : '#8E8E93'}
-                    fill="transparent"
-                    strokeWidth={2}
-                  />
-                </Pressable>
-              ) : null}
+            <View
+              style={[
+                styles.viewsBadge,
+                {
+                  backgroundColor: isDark ? '#1c1c1e' : '#f3f4f6',
+                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.12)',
+                },
+              ]}
+            >
+              <Eye color={isDark ? '#9ca3af' : '#374151'} size={13} />
+              <Text style={[styles.viewsBadgeText, { color: isDark ? '#d1d5db' : '#374151' }]} numberOfLines={1}>
+                {viewsCount > 0
+                  ? t('offer.detail.views.count', { count: viewsCount.toLocaleString(dateLocale) })
+                  : t('offer.detail.views.countZero')}
+              </Text>
             </View>
+            {isFeaturedListing ? (
+              <View style={styles.featuredBadge}>
+                <Star size={10} color="#000000" fill="#000000" strokeWidth={0} />
+                <Text style={styles.featuredBadgeText} numberOfLines={1}>
+                  {t('offer.detail.views.featuredBadge')}
+                </Text>
+                <Star size={10} color="#000000" fill="#000000" strokeWidth={0} />
+              </View>
+            ) : canManageFeatureBadge ? (
+              <Pressable
+                onPress={handleFeatureBadgePress}
+                disabled={promotingFeatured}
+                style={({ pressed }) => [
+                  styles.featuredBadge,
+                  styles.featuredBadgeInactive,
+                  isDark && {
+                    backgroundColor: 'rgba(142,142,147,0.18)',
+                    borderColor: 'rgba(235,235,245,0.18)',
+                  },
+                  (pressed || promotingFeatured) && { opacity: 0.72 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={t('offer.detail.views.featureCta')}
+              >
+                <Star
+                  size={10}
+                  color={isDark ? 'rgba(235,235,245,0.45)' : '#8E8E93'}
+                  fill="transparent"
+                  strokeWidth={2}
+                />
+                <Text
+                  style={[
+                    styles.featuredBadgeText,
+                    styles.featuredBadgeTextInactive,
+                    isDark && { color: 'rgba(235,235,245,0.45)' },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {promotingFeatured
+                    ? t('profile.myOffers.promote.working')
+                    : t('offer.detail.views.featureCta')}
+                </Text>
+                <Star
+                  size={10}
+                  color={isDark ? 'rgba(235,235,245,0.45)' : '#8E8E93'}
+                  fill="transparent"
+                  strokeWidth={2}
+                />
+              </Pressable>
+            ) : null}
             {isLegalSafeVerified ? (
               <View style={styles.topMetaCenterBadge}>
                 <LegalVerifiedShieldBadge isDark={isDark} compact />
@@ -1773,13 +1782,11 @@ export default function OfferDetail({ route, navigation }: any) {
                   newOfferBadgeAnimatedStyle,
                 ]}
               >
-                <Text style={[styles.newOfferBadgeText, { color: isDark ? '#93C5FD' : '#1D4ED8' }]}>
+                <Text style={[styles.newOfferBadgeText, { color: isDark ? '#93C5FD' : '#1D4ED8' }]} numberOfLines={1}>
                   {t('offer.detail.views.newOfferBadge')}
                 </Text>
               </Animated.View>
-            ) : (
-              <View style={styles.topMetaEndSpacer} />
-            )}
+            ) : null}
           </View>
           
           {isSamplePreview ? (
@@ -3428,20 +3435,22 @@ const styles = StyleSheet.create({
   topMetaBadgesRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
+    flexWrap: 'nowrap',
+    gap: 6,
     marginBottom: 10,
   },
-  topMetaLeftCluster: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
+  topMetaCenterBadge: {
+    flexGrow: 1,
     flexShrink: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 0,
   },
-  topMetaCenterBadge: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  topMetaCenterSpacer: { flex: 1 },
-  topMetaEndSpacer: { minWidth: 0 },
+  topMetaCenterSpacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 4,
+  },
   adminFeeBadge: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(52,199,89,0.12)',
@@ -3453,30 +3462,27 @@ const styles = StyleSheet.create({
   },
   adminFeeBadgeText: { fontSize: 12, fontWeight: '800', color: '#1d1d1f', letterSpacing: 0.2 },
   viewsBadge: {
-    alignSelf: 'flex-start',
+    flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.12)',
     backgroundColor: '#f3f4f6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    maxWidth: '42%',
   },
-  viewsBadgeText: { color: '#374151', fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
+  viewsBadgeText: { color: '#374151', fontSize: 11, fontWeight: '700', letterSpacing: 0.1 },
   featuredBadge: {
-    alignSelf: 'flex-start',
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     backgroundColor: '#FBBF24',
     borderWidth: 1,
     borderColor: 'rgba(180, 83, 9, 0.28)',
@@ -3495,25 +3501,25 @@ const styles = StyleSheet.create({
   },
   featuredBadgeText: {
     color: '#000000',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 0.55,
+    letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
   featuredBadgeTextInactive: {
     color: '#8E8E93',
   },
   newOfferBadge: {
-    alignSelf: 'flex-start',
+    flexShrink: 0,
     borderRadius: 999,
     borderWidth: 1,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
   newOfferBadgeText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 0.8,
+    letterSpacing: 0.55,
   },
   title: { fontSize: 24, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5, marginBottom: 6 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },

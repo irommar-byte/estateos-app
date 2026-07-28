@@ -74,8 +74,12 @@ export const profile = {
       confirmTitle: 'Wyróżnić ogłoszenie?',
       confirmBody:
         'To zużyje 1 kredyt publikacji Pakietu Plus. Ogłoszenie pojawi się w sekcji „Wyróżnione” przez 7 dni.',
+      confirmBodySingle:
+        'Przedłużyć wyróżnienie o 7 dni za 1 kredyt Pakietu Plus?',
       confirmBodyStepper:
         'Każdy kredyt daje 7 dni w sekcji „Wyróżnione”. Zużyjesz {{credits}} {{creditsWord}} — łącznie {{days}} dni promocji.',
+      singleCostTitle: '7 dni w galerii',
+      singleCostHint: '1 moneta · Pakiet Plus',
       creditsWordOne: 'kredyt',
       creditsWordFew: 'kredyty',
       creditsWordMany: 'kredytów',

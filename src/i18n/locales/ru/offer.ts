@@ -229,6 +229,7 @@ export const offer = {
       featureTopUp: 'Пополнить',
       featuredCelebrationTitle: 'объявление выделено',
       featuredCelebrationSubtitle: 'Ваше объявление сияет в галерее в ближайшие дни',
+      featuredCelebrationDays: '7 дней',
       count: '{{count}} просмотров',
       countZero: '0 просмотров',
     },
