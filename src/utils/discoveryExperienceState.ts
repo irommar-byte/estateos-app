@@ -19,6 +19,18 @@ export function shouldAskDiscoveryDislikeReason(dislikeCount: number): boolean {
   return dislikeCount > 0 && dislikeCount % 3 === 0;
 }
 
+/** Session counter for catalog / rail dislikes (survives remounts within app session). */
+let catalogDislikePromptTick = 0;
+
+/**
+ * Returns true only when Intelligence should ask for a dislike reason from the brain orb.
+ * Always advances the tick so consecutive “Nie dla mnie” stay mostly frictionless.
+ */
+export function shouldPromptCatalogDislikeViaBrain(): boolean {
+  catalogDislikePromptTick += 1;
+  return shouldAskDiscoveryDislikeReason(catalogDislikePromptTick);
+}
+
 export function resolveDiscoveryEntryRoute(firstEntrySeen: boolean): 'DiscoveryEntry' | 'EstateDiscovery' {
   return firstEntrySeen ? 'EstateDiscovery' : 'DiscoveryEntry';
 }

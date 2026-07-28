@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DISCOVERY_COLORS, DISCOVERY_MOTION } from './discoveryMotion';
 
 export type DiscoveryIslandState =
@@ -24,6 +25,7 @@ const decisionMeta = {
 };
 
 export default function DiscoverySessionIsland({ state, onBack }: Props) {
+  const insets = useSafeAreaInsets();
   const scale = useRef(new Animated.Value(1)).current;
   const opacity = useRef(new Animated.Value(1)).current;
 
@@ -87,7 +89,12 @@ export default function DiscoverySessionIsland({ state, onBack }: Props) {
         : undefined;
 
   return (
-    <Animated.View style={[styles.wrap, { opacity, transform: [{ scale }] }]}>
+    <Animated.View
+      style={[
+        styles.wrap,
+        { top: Math.max(12, insets.top + 6), opacity, transform: [{ scale }] },
+      ]}
+    >
       <Pressable onPress={onBack} style={styles.back} accessibilityLabel="Wróć" accessibilityRole="button">
         <Ionicons name="chevron-back" size={17} color="#FFF" />
       </Pressable>
@@ -96,7 +103,13 @@ export default function DiscoverySessionIsland({ state, onBack }: Props) {
         onPress={onPress}
         disabled={!actionable}
         accessibilityRole={actionable ? 'button' : 'text'}
-        accessibilityLabel={state.kind === 'undo' ? 'Cofnij ostatnią decyzję' : state.kind === 'insight' ? 'Dlaczego ta oferta' : 'Pauza sesji'}
+        accessibilityLabel={
+          state.kind === 'undo'
+            ? 'Cofnij ostatnią decyzję'
+            : state.kind === 'insight'
+              ? 'Dlaczego ta oferta'
+              : 'Pauza sesji'
+        }
       >
         <BlurView intensity={65} tint="dark" style={styles.blur}>
           {content}
@@ -109,9 +122,8 @@ export default function DiscoverySessionIsland({ state, onBack }: Props) {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    top: 54,
-    left: 18,
-    right: 18,
+    left: 16,
+    right: 16,
     zIndex: 40,
     flexDirection: 'row',
     justifyContent: 'center',
@@ -121,21 +133,22 @@ const styles = StyleSheet.create({
   back: {
     position: 'absolute',
     left: 0,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(12,12,14,0.6)',
-    borderWidth: 1,
+    backgroundColor: 'rgba(12,12,14,0.62)',
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: DISCOVERY_COLORS.glassBorder,
+    zIndex: 2,
   },
   island: {
     minHeight: 38,
-    maxWidth: '82%',
+    maxWidth: '70%',
     borderRadius: 20,
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: DISCOVERY_COLORS.glassBorder,
   },
   actionable: {
@@ -159,7 +172,7 @@ const styles = StyleSheet.create({
   label: {
     color: '#FFF',
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   primary: {
     color: DISCOVERY_COLORS.ivory,
@@ -169,6 +182,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     flexShrink: 1,
-    maxWidth: 160,
+    maxWidth: 140,
   },
 });

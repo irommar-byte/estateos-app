@@ -10,6 +10,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useDiscoveryActions } from '../../hooks/useDiscoveryActions';
+import { dispatchIntelligenceDislikePrompt } from '../../lib/discovery/clientEvents';
+import { shouldPromptCatalogDislikeViaBrain } from '../../utils/discoveryExperienceState';
 import type { DiscoveryTasteAction } from '../../services/discoveryService';
 import { DISCOVERY_COLORS } from './discoveryMotion';
 
@@ -21,6 +23,8 @@ type Props = {
   source?: string;
   trackOpen?: boolean;
   onRequireAuth?: () => void;
+  /** Pytanie o powód otwiera okienko mózgu (np. taśma Intelligence). */
+  promptDislikeViaBrain?: boolean;
 };
 
 const DISLIKE_REASONS: Array<{ code: string; label: string }> = [
@@ -56,6 +60,7 @@ export default function OfferDiscoveryActions({
   source = 'mobile_offer_card',
   trackOpen = false,
   onRequireAuth,
+  promptDislikeViaBrain = false,
 }: Props) {
   const { record, lastAction, isBusy } = useDiscoveryActions();
   const [flash, setFlash] = useState<DiscoveryTasteAction | null>(null);
@@ -95,9 +100,22 @@ export default function OfferDiscoveryActions({
   };
 
   const handle = async (eventType: Exclude<DiscoveryTasteAction, 'OPEN'>) => {
-    if (eventType === 'DISLIKE' && variant === 'full') {
-      setReasonOpen(true);
-      return;
+    if (eventType === 'DISLIKE') {
+      if (promptDislikeViaBrain) {
+        if (!Number.isFinite(id) || id <= 0 || isBusy(id)) return;
+        // Algorytm pyta rzadko (co 3. „nie dla mnie”) — inaczej zapisujemy od razu.
+        if (shouldPromptCatalogDislikeViaBrain()) {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          dispatchIntelligenceDislikePrompt({ offerId: id, source });
+          return;
+        }
+        await commit('DISLIKE');
+        return;
+      }
+      if (variant === 'full') {
+        setReasonOpen(true);
+        return;
+      }
     }
     await commit(eventType);
   };

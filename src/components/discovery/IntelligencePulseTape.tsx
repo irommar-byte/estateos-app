@@ -22,9 +22,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDiscoveryPulse } from '../../hooks/useDiscoveryPulse';
 import { useDiscoveryStore } from '../../store/useDiscoveryStore';
 import { playIntelligenceChime } from '../../lib/discovery/intelligenceChime';
-import { subscribeIntelligenceLearn } from '../../lib/discovery/clientEvents';
+import {
+  dispatchDiscoveryUpdated,
+  subscribeIntelligenceDislikePrompt,
+  subscribeIntelligenceLearn,
+} from '../../lib/discovery/clientEvents';
 import { navigateDiscoveryHref } from '../../lib/discovery/navigateDiscoveryHref';
 import { resolveDiscoveryEntryRoute } from '../../utils/discoveryExperienceState';
+import { postDiscoveryTasteEvent } from '../../services/discoveryService';
+import { useAuthStore } from '../../store/useAuthStore';
 
 type Props = {
   navigation: any;
@@ -35,6 +41,14 @@ type Props = {
 
 type Mood = 'calm' | 'active' | 'alert' | 'celebrate';
 type PresentReason = 'progress' | 'milestone' | 'contradiction' | 'ready_peek' | 'manual';
+type SheetMode = 'pulse' | 'dislike_prompt' | 'thanks';
+
+const DISLIKE_REASONS: Array<{ code: string; label: string }> = [
+  { code: 'PRICE_TOO_HIGH', label: 'Cena' },
+  { code: 'LOCATION_MISMATCH', label: 'Lokalizacja' },
+  { code: 'LAYOUT_MISMATCH', label: 'Układ' },
+  { code: 'QUALITY_LOW', label: 'Jakość' },
+];
 
 /** Core leaves clear air under CircularLabelRing arcs (EstateOS™ / Intelligence). */
 const CORE = 58;
@@ -248,8 +262,13 @@ export default function IntelligencePulseTape({
 }: Props) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
+  const token = useAuthStore((s) => s.token);
   const firstEntrySeen = useDiscoveryStore((s) => s.firstEntrySeen);
   const [sheetVisible, setSheetVisible] = useState(false);
+  const [sheetMode, setSheetMode] = useState<SheetMode>('pulse');
+  const [pendingDislike, setPendingDislike] = useState<{ offerId: number; source?: string } | null>(
+    null,
+  );
   const [presentReason, setPresentReason] = useState<PresentReason | null>(null);
   const [spectacle, setSpectacle] = useState(false);
   const genie = useRef(new Animated.Value(0)).current;
@@ -285,6 +304,8 @@ export default function IntelligencePulseTape({
         setSheetVisible(false);
         sheetVisibleRef.current = false;
         setPresentReason(null);
+        setSheetMode('pulse');
+        setPendingDislike(null);
         setSpectacle(false);
         closingRef.current = false;
         after?.();
@@ -320,10 +341,12 @@ export default function IntelligencePulseTape({
     (kind: PresentReason) => {
       if (kind === 'manual') {
         setPresentReason(null);
+        setSheetMode('pulse');
         runGenieIn();
         scheduleHide(9000);
         return;
       }
+      setSheetMode('pulse');
       setPresentReason(kind);
       setSpectacle(kind === 'progress' || kind === 'milestone');
       void playIntelligenceChime(kind === 'progress' || kind === 'milestone' ? 'progress' : 'suggest');
@@ -333,6 +356,51 @@ export default function IntelligencePulseTape({
       spectacleTimerRef.current = setTimeout(() => setSpectacle(false), 2400);
     },
     [runGenieIn, scheduleHide],
+  );
+
+  const presentDislikePrompt = useCallback(
+    (detail: { offerId: number; source?: string }) => {
+      clearHide();
+      closingRef.current = false;
+      setPendingDislike(detail);
+      setPresentReason(null);
+      setSheetMode('dislike_prompt');
+      runGenieIn();
+    },
+    [clearHide, runGenieIn],
+  );
+
+  const submitDislikeFeedback = useCallback(
+    async (reasonCode?: string) => {
+      if (!pendingDislike) return;
+      if (!token) {
+        navigation?.navigate?.('Login');
+        runGenieOut();
+        return;
+      }
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const result = await postDiscoveryTasteEvent({
+        token,
+        offerId: pendingDislike.offerId,
+        eventType: 'DISLIKE',
+        reasonCode,
+        source: pendingDislike.source || 'mobile_catalog_for_you',
+      });
+      if (result.authRequired) {
+        navigation?.navigate?.('Login');
+        runGenieOut();
+        return;
+      }
+      if (result.ok) {
+        dispatchDiscoveryUpdated({
+          offerId: pendingDislike.offerId,
+          eventType: 'DISLIKE',
+        });
+      }
+      setSheetMode('thanks');
+      scheduleHide(1500);
+    },
+    [navigation, pendingDislike, runGenieOut, scheduleHide, token],
   );
 
   const onPulseChange = useCallback(
@@ -401,6 +469,15 @@ export default function IntelligencePulseTape({
       cancelled = true;
     };
   }, [presentGently, pulse, ready]);
+
+  useEffect(
+    () => subscribeIntelligenceDislikePrompt((detail) => {
+      if (!detail?.offerId) return;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      presentDislikePrompt(detail);
+    }),
+    [presentDislikePrompt],
+  );
 
   useEffect(
     () => () => {
@@ -504,7 +581,10 @@ export default function IntelligencePulseTape({
     layout === 'inline' ? width - 12 - HIT / 2 : width - right - HIT / 2;
   const bubbleCenterY =
     layout === 'inline' ? height - (TAB + Math.max(insets.bottom, 8) + 220) : top + HIT / 2;
-  const sheetTop = Math.max(insets.top + 72, Math.min(bubbleCenterY - 220, height * 0.22));
+  const sheetTop =
+    layout === 'float' && (sheetMode === 'dislike_prompt' || sheetMode === 'thanks')
+      ? Math.max(insets.top + 40, bubbleCenterY - 300)
+      : Math.max(insets.top + 72, Math.min(bubbleCenterY - 220, height * 0.22));
   const sheetLeft = (width - sheetWidth) / 2;
   const sheetCenterX = sheetLeft + sheetWidth / 2;
   const sheetCenterY = sheetTop + 160;
@@ -631,56 +711,127 @@ export default function IntelligencePulseTape({
             <Pressable onPress={(e) => e.stopPropagation()}>
               <BlurView intensity={96} tint="dark" style={[styles.sheet, { borderColor: colors.ring }]}>
                 <View style={[styles.sheetGlow, { backgroundColor: colors.soft }]} />
-                <View style={styles.sheetHead}>
-                  <View style={[styles.orbLg, { borderColor: colors.accent }]}>
-                    <LivingBrain accent={colors.accent} size={28} />
-                  </View>
-                  <View style={styles.sheetHeadCopy}>
-                    <Text style={styles.sheetKicker}>EstateOS™ Intelligence</Text>
-                    <Text style={styles.sheetStage}>{pulse.stageLabel}</Text>
-                  </View>
-                  <ApplePressable onPress={close} haptic="none" style={styles.closeBtn} accessibilityLabel="Zamknij">
-                    <Ionicons name="close" size={16} color="#FFF" />
-                  </ApplePressable>
-                </View>
 
-                {reasonMeta ? (
-                  <View style={styles.reasonBadge}>
-                    <Text style={[styles.reasonBadgeText, { color: colors.accent }]}>{reasonMeta.badge}</Text>
-                    <Text style={styles.reasonLead}>{reasonMeta.lead}</Text>
-                  </View>
+                {sheetMode === 'dislike_prompt' ? (
+                  <>
+                    <View style={styles.sheetHead}>
+                      <View style={[styles.orbLg, { borderColor: colors.accent }]}>
+                        <LivingBrain accent={colors.accent} size={28} />
+                      </View>
+                      <View style={styles.sheetHeadCopy}>
+                        <Text style={styles.sheetKicker}>EstateOS™ Intelligence</Text>
+                        <Text style={styles.sheetStage}>Co nie pasuje?</Text>
+                      </View>
+                      <ApplePressable
+                        onPress={close}
+                        haptic="none"
+                        style={styles.closeBtn}
+                        accessibilityLabel="Zamknij"
+                      >
+                        <Ionicons name="close" size={16} color="#FFF" />
+                      </ApplePressable>
+                    </View>
+                    <Text style={styles.dislikeLead}>
+                      Jedno słowo wystarczy — dopasujemy kolejne tropki spokojniej.
+                    </Text>
+                    <View style={styles.dislikeChips}>
+                      {DISLIKE_REASONS.map((reason) => (
+                        <ApplePressable
+                          key={reason.code}
+                          haptic="light"
+                          style={styles.dislikeChip}
+                          onPress={() => void submitDislikeFeedback(reason.code)}
+                        >
+                          <Text style={styles.dislikeChipText}>{reason.label}</Text>
+                        </ApplePressable>
+                      ))}
+                    </View>
+                    <ApplePressable
+                      style={styles.dislikeSkip}
+                      haptic="none"
+                      onPress={() => void submitDislikeFeedback()}
+                    >
+                      <Text style={styles.dislikeSkipText}>Pomiń — i tak uczymy się gustu</Text>
+                    </ApplePressable>
+                  </>
+                ) : sheetMode === 'thanks' ? (
+                  <>
+                    <View style={styles.sheetHead}>
+                      <View style={[styles.orbLg, { borderColor: colors.accent }]}>
+                        <LivingBrain accent={colors.accent} size={28} />
+                      </View>
+                      <View style={styles.sheetHeadCopy}>
+                        <Text style={styles.sheetKicker}>EstateOS™ Intelligence</Text>
+                        <Text style={styles.sheetStage}>Dziękuję za wybór</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.thanksBody}>
+                      Zapamiętaliśmy to — następne propozycje będą bliżej Twojego gustu.
+                    </Text>
+                  </>
+                ) : pulse ? (
+                  <>
+                    <View style={styles.sheetHead}>
+                      <View style={[styles.orbLg, { borderColor: colors.accent }]}>
+                        <LivingBrain accent={colors.accent} size={28} />
+                      </View>
+                      <View style={styles.sheetHeadCopy}>
+                        <Text style={styles.sheetKicker}>EstateOS™ Intelligence</Text>
+                        <Text style={styles.sheetStage}>{pulse.stageLabel}</Text>
+                      </View>
+                      <ApplePressable onPress={close} haptic="none" style={styles.closeBtn} accessibilityLabel="Zamknij">
+                        <Ionicons name="close" size={16} color="#FFF" />
+                      </ApplePressable>
+                    </View>
+
+                    {reasonMeta ? (
+                      <View style={styles.reasonBadge}>
+                        <Text style={[styles.reasonBadgeText, { color: colors.accent }]}>{reasonMeta.badge}</Text>
+                        <Text style={styles.reasonLead}>{reasonMeta.lead}</Text>
+                      </View>
+                    ) : null}
+
+                    <Text style={styles.direction} numberOfLines={2}>
+                      {pulse.directionLine || pulse.suggestion}
+                    </Text>
+
+                    <View style={styles.progressTrack}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          {
+                            width: `${Math.max(8, pulse.progress)}%`,
+                            backgroundColor: colors.accent,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.progressMeta}>
+                      Etap kierunku · {pulse.progress}%
+                      {pulse.decisionCount != null
+                        ? ` · ${pulse.decisionCount} decyzji`
+                        : ''}
+                    </Text>
+                    <Text style={styles.progressHint}>
+                      To nie jest dopasowanie oferty — to postęp profilu gustu (Odkrywanie → Fokus →
+                      Gotowość).
+                    </Text>
+
+                    <Text style={styles.suggestion} numberOfLines={4}>
+                      {pulse.suggestion}
+                    </Text>
+
+                    <ApplePressable style={[styles.cta, { backgroundColor: colors.accent }]} onPress={runPrimary} haptic="medium">
+                      <Text style={styles.ctaText}>{pulse.primaryCta?.label || 'Kontynuuj Discovery'}</Text>
+                      <Ionicons name="arrow-forward" size={16} color="#061018" />
+                    </ApplePressable>
+                    <ApplePressable style={styles.secondaryCta} onPress={runSecondary} haptic="none">
+                      <Text style={styles.secondaryCtaText}>
+                        {pulse.secondaryCta?.label || 'Lustro preferencji'}
+                      </Text>
+                    </ApplePressable>
+                  </>
                 ) : null}
-
-                <Text style={styles.direction} numberOfLines={2}>
-                  {pulse.directionLine || pulse.suggestion}
-                </Text>
-
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      {
-                        width: `${Math.max(8, pulse.progress)}%`,
-                        backgroundColor: colors.accent,
-                      },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.progressMeta}>{pulse.progress}% gotowości kierunku</Text>
-
-                <Text style={styles.suggestion} numberOfLines={4}>
-                  {pulse.suggestion}
-                </Text>
-
-                <ApplePressable style={[styles.cta, { backgroundColor: colors.accent }]} onPress={runPrimary} haptic="medium">
-                  <Text style={styles.ctaText}>{pulse.primaryCta?.label || 'Kontynuuj Discovery'}</Text>
-                  <Ionicons name="arrow-forward" size={16} color="#061018" />
-                </ApplePressable>
-                <ApplePressable style={styles.secondaryCta} onPress={runSecondary} haptic="none">
-                  <Text style={styles.secondaryCtaText}>
-                    {pulse.secondaryCta?.label || 'Lustro preferencji'}
-                  </Text>
-                </ApplePressable>
               </BlurView>
             </Pressable>
           </Animated.View>
@@ -829,6 +980,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 6,
   },
+  progressHint: {
+    color: 'rgba(245,245,247,0.42)',
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 6,
+  },
   suggestion: {
     color: 'rgba(244,232,204,0.88)',
     fontSize: 13,
@@ -875,5 +1032,47 @@ const styles = StyleSheet.create({
     color: 'rgba(245,245,247,0.7)',
     fontSize: 13,
     fontWeight: '800',
+  },
+  dislikeLead: {
+    color: 'rgba(245,245,247,0.72)',
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 12,
+  },
+  dislikeChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 16,
+  },
+  dislikeChip: {
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  dislikeChipText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  dislikeSkip: {
+    alignItems: 'center',
+    marginTop: 14,
+    paddingVertical: 8,
+  },
+  dislikeSkipText: {
+    color: 'rgba(245,245,247,0.55)',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  thanksBody: {
+    color: 'rgba(244,232,204,0.92)',
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 14,
+    fontWeight: '600',
   },
 });

@@ -396,8 +396,21 @@ export default function RadarOfferGallery({
           </Text>
         </View>
 
+        {navigation ? (
+          <View style={{ paddingHorizontal: horizontalPad, marginTop: 4 }}>
+            <DiscoveryForYouRail
+              navigation={navigation}
+              isDark={isDark}
+              transactionMode={
+                transactionFilter === 'RENT' ? 'rent' : transactionFilter === 'SELL' ? 'sale' : 'all'
+              }
+            />
+          </View>
+        ) : null}
+
         {featuredOffers.length > 0 ? (
           <View
+            style={{ marginTop: 12 }}
             onLayout={(event) => {
               const { y, height } = event.nativeEvent.layout;
               setFeaturedSpotlightBottom(y + height);
@@ -412,17 +425,6 @@ export default function RadarOfferGallery({
               formatPrice={formatPrice}
               onPressOffer={onPressOffer}
               autoRotateEnabled={featuredSpotlightVisible}
-            />
-          </View>
-        ) : null}
-
-        {navigation ? (
-          <View style={{ paddingHorizontal: horizontalPad, marginTop: 4 }}>
-            <DiscoveryForYouRail
-              navigation={navigation}
-              transactionMode={
-                transactionFilter === 'RENT' ? 'rent' : transactionFilter === 'SELL' ? 'sale' : 'all'
-              }
             />
           </View>
         ) : null}
@@ -528,6 +530,7 @@ export default function RadarOfferGallery({
       catalogStyles,
       colors,
       horizontalPad,
+      navigation,
       wrapFilterChange,
     ],
   );

@@ -15,12 +15,17 @@ import { X, Heart, Zap, MapPin, Maximize } from 'lucide-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
-import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import { API_URL } from '../config/network';
 import { useAuthStore } from '../store/useAuthStore';
 import { isOfferClosed } from '../utils/offerLifecycle';
 import { useMoneyContext } from '../money/useMoneyContext';
 import { resolveOfferListingPrice } from '../money/offerPrice';
+import { resolveOfferPriceDiscount } from '../utils/offerPriceDiscount';
+import {
+  buildChartSeriesFromHistory,
+} from '../utils/offerPriceHistory';
+import { fetchOfferPriceHistory } from '../services/offerPriceHistoryService';
+import OfferPriceHistoryChart from '../components/offer/OfferPriceHistoryChart';
 import {
   type DiscoveryEventType,
   type DiscoveryDislikeReasonCode,
@@ -46,22 +51,27 @@ import DiscoveryPauseSheet from '../components/discovery/DiscoveryPauseSheet';
 import DiscoveryContradictionCareSheet from '../components/discovery/DiscoveryContradictionCareSheet';
 import { shouldAskDiscoveryDislikeReason } from '../utils/discoveryExperienceState';
 import { DISCOVERY_EASE_OUT } from '../components/discovery/discoveryMotion';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// === LUKSUSOWA PALETA ===
-const RR_BLACK = '#040405';
-const RR_GOLD = '#D4AF37';
-const RR_IVORY = '#F4E8CC';
-const RR_GREEN = '#32D74B';
-const RR_RED = '#FF3B30';
+// === PALETA DISCOVERY (Apple glass) ===
+const RR_BLACK = '#000000';
+const RR_GOLD = '#C9A227';
+const RR_IVORY = '#F5F0E6';
+const RR_GREEN = '#30D158';
+const RR_RED = '#FF453A';
 
 type DiscoveryOffer = {
   id: string;
   title: string;
   location: string;
   price: string;
-  originalPrice: string;
+  /** Only set when list price is authentically higher than current. */
+  originalPrice: string | null;
+  hasPriceDrop: boolean;
+  discountPercent: number;
   area: string;
   daysOnMarket: number;
+  /** Empty when there is no real price movement — never invent a trend. */
   priceHistory: number[];
   images: string[];
   image: string;
@@ -199,16 +209,44 @@ const extractImagesFromOffer = (raw: any): string[] => {
 const formatPln = (value: number) =>
   `${new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(Math.max(0, Math.round(value)))} PLN`;
 
-const buildPriceHistory = (priceNow: number, previousMaybe: number): number[] => {
-  const nowM = Math.max(0.001, priceNow / 1_000_000);
-  const prevM = previousMaybe > 0 ? previousMaybe / 1_000_000 : nowM * 1.04;
+/** Build a short series only when previous price is meaningfully above current. */
+const buildPriceHistory = (priceNow: number, previousPrice: number): number[] => {
+  if (!(previousPrice > 0 && priceNow > 0)) return [];
+  const dropRatio = (previousPrice - priceNow) / previousPrice;
+  if (dropRatio < 0.01) return [];
+  const nowM = priceNow / 1_000_000;
+  const prevM = previousPrice / 1_000_000;
   return [
-    Number((prevM * 1.05).toFixed(2)),
-    Number((prevM * 1.02).toFixed(2)),
     Number(prevM.toFixed(2)),
+    Number((prevM * 0.99 + nowM * 0.01).toFixed(2)),
     Number(((prevM + nowM) / 2).toFixed(2)),
+    Number((prevM * 0.2 + nowM * 0.8).toFixed(2)),
     Number(nowM.toFixed(2)),
   ];
+};
+
+const resolveDiscoveryPriceDrop = (
+  raw: Record<string, unknown> | null | undefined,
+  listingPln: number,
+) => {
+  const meta = resolveOfferPriceDiscount(raw);
+  const listFromMeta = meta.listPricePln;
+  const listRaw =
+    listFromMeta > 0
+      ? listFromMeta
+      : Number(raw?.listPricePln ?? raw?.previousPrice ?? raw?.oldPrice ?? 0) || 0;
+  const authentic =
+    listRaw > listingPln &&
+    listingPln > 0 &&
+    (listRaw - listingPln) / listRaw >= 0.01;
+  if (!authentic) {
+    return { hasDrop: false as const, listPricePln: 0, discountPercent: 0 };
+  }
+  const discountPercent =
+    meta.isDiscounted && meta.discountPercent > 0
+      ? meta.discountPercent
+      : Math.round(((listRaw - listingPln) / listRaw) * 100);
+  return { hasDrop: true as const, listPricePln: listRaw, discountPercent };
 };
 
 function extractOffersArray(json: any): any[] | null {
@@ -239,43 +277,6 @@ function orderByRankedIds(fullList: any[], rankedIds: Array<string | number>): a
   return ordered;
 }
 
-// === KOMPONENT WYKRESU (APPLE STOCKS STYLE) ===
-const PriceHistoryChart = ({ data, width }: { data: number[], width: number }) => {
-  const chartHeight = 50;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-
-  // Tworzenie ścieżki SVG
-  const pathData = data.map((point, index) => {
-    const x = (index / (data.length - 1)) * width;
-    const y = chartHeight - ((point - min) / range) * (chartHeight - 10) - 5;
-    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-  }).join(' ');
-
-  // Ścieżka tła (cieniowania)
-  const areaPath = `${pathData} L ${width} ${chartHeight} L 0 ${chartHeight} Z`;
-
-  // Kolor w zależności od trendu (spadek to okazja, więc zielony/złoty)
-  const isDrop = data[0] > data[data.length - 1];
-  const strokeColor = isDrop ? RR_GREEN : RR_GOLD;
-
-  return (
-    <View style={{ height: chartHeight, width, marginTop: 10 }}>
-      <Svg width={width} height={chartHeight}>
-        <Defs>
-          <SvgGradient id="chartGlow" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={strokeColor} stopOpacity="0.4" />
-            <Stop offset="1" stopColor={strokeColor} stopOpacity="0.0" />
-          </SvgGradient>
-        </Defs>
-        <Path d={areaPath} fill="url(#chartGlow)" />
-        <Path d={pathData} fill="none" stroke={strokeColor} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-      </Svg>
-    </View>
-  );
-};
-
 export default function EstateDiscoveryMode({ navigation }: any) {
   return (
     <IntelligenceRequired navigation={navigation}>
@@ -286,6 +287,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
 
 function EstateDiscoveryModeInner({ navigation }: any) {
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const token = useAuthStore((s: any) => s.token);
   const userId = useAuthStore((s: any) => s.user?.id);
   const discoverySession = useDiscoveryStore((s) => s.session);
@@ -298,18 +300,20 @@ function EstateDiscoveryModeInner({ navigation }: any) {
   const isTablet = width >= 768;
   const [deckSize, setDeckSize] = useState({ w: width, h: Math.max(420, height * 0.62) });
 
-  // Karta wypełnia stage, ale z lekkim marginesem (nie „na styk”).
+  // Pełny stage — karta prawie edge-to-edge (bez „uciętych” czarnych ramek).
   const cardMetrics = useMemo(() => {
-    const hPad = isTablet ? Math.max(28, deckSize.w * 0.055) : Math.max(14, deckSize.w * 0.04);
-    const vPad = isTablet ? 14 : 8;
+    const hPad = isTablet ? Math.max(20, deckSize.w * 0.04) : 0;
+    const vPad = isTablet ? 10 : 0;
     const availW = Math.max(280, deckSize.w - hPad * 2);
     const availH = Math.max(360, deckSize.h - vPad * 2);
-    const fill = isTablet ? 0.9 : 0.94;
+    const fill = isTablet ? 0.96 : 1;
     let cardW = Math.round(availW * fill);
     let cardH = Math.round(availH * fill);
-    const maxAspect = isTablet ? 0.86 : 0.78;
-    if (cardW / cardH > maxAspect) {
-      cardW = Math.round(cardH * maxAspect);
+    if (isTablet) {
+      const maxAspect = 0.86;
+      if (cardW / cardH > maxAspect) {
+        cardW = Math.round(cardH * maxAspect);
+      }
     }
     return {
       CARD_WIDTH: cardW,
@@ -360,6 +364,7 @@ function EstateDiscoveryModeInner({ navigation }: any) {
   const [feedError, setFeedError] = useState(false);
   const [feedRefreshKey, setFeedRefreshKey] = useState(0);
   const [galleryVisible, setGalleryVisible] = useState(false);
+  const [priceSeriesByOffer, setPriceSeriesByOffer] = useState<Record<string, number[]>>({});
   const [saveOffer, setSaveOffer] = useState<DiscoveryOffer | null>(null);
   const [priorityOffer, setPriorityOffer] = useState<DiscoveryOffer | null>(null);
   const [insightVisible, setInsightVisible] = useState(false);
@@ -374,18 +379,7 @@ function EstateDiscoveryModeInner({ navigation }: any) {
       .map((raw: any): DiscoveryOffer | null => {
         const listing = resolveOfferListingPrice(raw);
         if (listing.amount <= 0) return null;
-        const previousPrice = parsePriceNumber(
-          raw?.listPricePln ?? raw?.originalPrice ?? raw?.previousPrice ?? raw?.priceStart,
-        );
-        const prevPln =
-          previousPrice > 0 && (raw?.isDiscounted || previousPrice > listing.plnAmount)
-            ? resolveOfferListingPrice({
-                priceAmount: previousPrice,
-                price: previousPrice,
-                priceCurrency: listing.currency,
-                pricePln: Number(raw?.listPricePln) > 0 ? Number(raw?.listPricePln) : undefined,
-              }).plnAmount
-            : listing.plnAmount;
+        const drop = resolveDiscoveryPriceDrop(raw, listing.plnAmount);
         const city = String(raw?.city ?? '').trim();
         const district = String(raw?.district ?? '').trim();
         const title = String(raw?.title ?? raw?.name ?? '').trim() || 'Oferta premium';
@@ -403,20 +397,28 @@ function EstateDiscoveryModeInner({ navigation }: any) {
         const images = plannedImages.length > 0 ? plannedImages : extractedImages;
         const scoreRaw = raw?.score ?? raw?.matchScore;
         const scoreNum = scoreRaw == null ? null : Number(scoreRaw);
+        const originalPrice = drop.hasDrop
+          ? formatOffer({
+              ...raw,
+              priceAmount: drop.listPricePln,
+              price: drop.listPricePln,
+              pricePln: drop.listPricePln,
+              priceCurrency: 'PLN',
+            }).primary
+          : null;
         return {
           id: String(raw?.id ?? `${title}-${city}-${Math.random()}`),
           title,
           location,
           price: formatOffer(raw).primary,
-          originalPrice: formatOffer({
-            ...raw,
-            priceAmount: previousPrice || listing.amount,
-            price: previousPrice || listing.amount,
-            priceCurrency: listing.currency,
-          }).primary,
+          originalPrice,
+          hasPriceDrop: drop.hasDrop,
+          discountPercent: drop.discountPercent,
           area: `${Math.max(0, Math.round(areaValue || 0))} m²`,
           daysOnMarket,
-          priceHistory: buildPriceHistory(listing.plnAmount, prevPln),
+          priceHistory: drop.hasDrop
+            ? buildPriceHistory(listing.plnAmount, drop.listPricePln)
+            : [],
           images,
           image: images[0] || extractImageFromOffer(raw),
           matchScore:
@@ -885,6 +887,33 @@ function EstateDiscoveryModeInner({ navigation }: any) {
     });
   }, [offers, sendDiscoveryEvent]);
 
+  const openTopGallery = useCallback(() => {
+    const top = offers[0];
+    if (!top) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void sendDiscoveryEvent('DISCOVERY_PHOTO_VIEW', top, { photoIndex: activePhotoIndex });
+    setGalleryVisible(true);
+  }, [activePhotoIndex, offers, sendDiscoveryEvent]);
+
+  useEffect(() => {
+    const top = offers[0];
+    if (!top?.hasPriceDrop) return;
+    const offerId = Number(top.id);
+    if (!Number.isFinite(offerId) || offerId <= 0) return;
+    let cancelled = false;
+    void fetchOfferPriceHistory(offerId, token).then((remote) => {
+      if (cancelled || !remote || remote.length < 2) return;
+      const series = buildChartSeriesFromHistory(remote);
+      if (series.length < 2) return;
+      setPriceSeriesByOffer((prev) =>
+        prev[top.id]?.length >= 2 ? prev : { ...prev, [top.id]: series },
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [offers, token]);
+
   const topOfferInsight = useMemo(() => {
     const top = offers[0];
     if (!top) return { score: 50, reason: 'Budujemy Twój profil preferencji' };
@@ -953,7 +982,7 @@ function EstateDiscoveryModeInner({ navigation }: any) {
   const islandState = useMemo<DiscoveryIslandState>(() => {
     if (undoOffer) return { kind: 'undo', onUndo: undoLastDecision };
     if (saveOffer) return { kind: 'saved' };
-    if (offers[0]?.matchReason) {
+    if (offers[0]) {
       return {
         kind: 'insight',
         onOpen: () => {
@@ -1011,12 +1040,22 @@ function EstateDiscoveryModeInner({ navigation }: any) {
     height: CARD_HEIGHT,
     left: Math.max(0, (deckSize.w - CARD_WIDTH) / 2),
     top: Math.max(0, (deckSize.h - CARD_HEIGHT) / 2),
+    borderRadius: isTablet ? 28 : 0,
+    borderWidth: isTablet ? StyleSheet.hairlineWidth : 0,
   };
 
   const renderCardFace = (
     offer: DiscoveryOffer,
     opts: { photoIndex: number; showChrome: boolean },
-  ) => (
+  ) => {
+    const photoCount = Math.max(1, offer.images?.length || 1);
+    const chartSeries: number[] =
+      (priceSeriesByOffer[offer.id]?.length ?? 0) >= 2
+        ? priceSeriesByOffer[offer.id]!
+        : offer.priceHistory;
+    const chromeTop = Math.max(14, insets.top + 4);
+
+    return (
     <>
       <View style={styles.cardImageTapLayer}>
         <Image
@@ -1027,23 +1066,28 @@ function EstateDiscoveryModeInner({ navigation }: any) {
           cachePolicy="memory-disk"
         />
         {opts.showChrome ? (
-          <View style={styles.tapZonesLayer} pointerEvents="box-none">
-            <Pressable style={styles.tapZoneLeft} onPress={() => handleTopCardImageTap('left')} />
-            <Pressable style={styles.tapZoneRight} onPress={() => handleTopCardImageTap('right')} />
-          </View>
+          <Pressable
+            style={styles.cardOpenTap}
+            onPress={openTopGallery}
+            accessibilityRole="button"
+            accessibilityLabel="Otwórz galerię zdjęć"
+          />
         ) : null}
       </View>
       <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.92)']}
-        locations={[0.18, 0.58, 1]}
+        colors={['rgba(0,0,0,0.35)', 'transparent', 'rgba(0,0,0,0.28)', 'rgba(0,0,0,0.82)']}
+        locations={[0, 0.18, 0.55, 1]}
         style={styles.cardGradient}
       />
       {opts.showChrome ? (
-        <View style={styles.photoPagerOverlay} pointerEvents="box-none">
-          <View style={styles.photoCounterBadge}>
-            <Text style={styles.photoCounterText}>
-              {Math.min(opts.photoIndex + 1, Math.max(1, offer.images?.length || 1))}/{Math.max(1, offer.images?.length || 1)}
-            </Text>
+        <View style={[styles.photoPagerOverlay, { top: chromeTop }]} pointerEvents="box-none">
+          <View style={styles.photoPagerTopRow} pointerEvents="box-none">
+            <View style={styles.photoPagerSpacer} />
+            <View style={styles.photoCounterBadge}>
+              <Text style={styles.photoCounterText}>
+                {Math.min(opts.photoIndex + 1, photoCount)}/{photoCount}
+              </Text>
+            </View>
           </View>
           <View style={styles.photoDotsRow}>
             {(offer.images || [offer.image]).slice(0, 8).map((img, idx) => {
@@ -1051,63 +1095,114 @@ function EstateDiscoveryModeInner({ navigation }: any) {
               return <View key={`${offer.id}-dot-${idx}-${img}`} style={[styles.photoDot, active && styles.photoDotActive]} />;
             })}
           </View>
-          <Pressable
-            onPress={() => setGalleryVisible(true)}
-            style={styles.galleryOpenButton}
-            accessibilityRole="button"
-            accessibilityLabel="Otwórz galerię zdjęć"
-          >
-            <BlurView intensity={45} tint="dark" style={styles.galleryOpenGlass}>
-              <Ionicons name="expand-outline" size={16} color="#FFF" />
-            </BlurView>
-          </Pressable>
         </View>
       ) : null}
-      <View style={styles.offerInfoWrap}>
-        <View style={styles.locationRow}>
-          <MapPin size={14} color={RR_GOLD} />
-          <Text style={styles.offerLocation}>{offer.location}</Text>
-        </View>
-        <Text style={styles.offerTitle} numberOfLines={1}>{offer.title}</Text>
-        <View style={styles.specsRow}>
-          <Text style={styles.offerPrice}>{offer.price}</Text>
-          <View style={styles.specDivider} />
-          <Maximize size={14} color="#888" style={{ marginRight: 6 }} />
-          <Text style={styles.offerArea}>{offer.area}</Text>
-        </View>
-        <BlurView intensity={50} tint="dark" style={styles.miniDashboard}>
+      {opts.showChrome && photoCount > 1 ? (
+        <>
+          <Pressable
+            onPress={() => handleTopCardImageTap('left')}
+            style={[styles.photoArrowBtn, styles.photoArrowLeft]}
+            accessibilityRole="button"
+            accessibilityLabel="Poprzednie zdjęcie"
+            hitSlop={10}
+          >
+            <BlurView intensity={40} tint="dark" style={styles.photoArrowGlass}>
+              <Ionicons name="chevron-back" size={20} color="#FFF" />
+            </BlurView>
+          </Pressable>
+          <Pressable
+            onPress={() => handleTopCardImageTap('right')}
+            style={[styles.photoArrowBtn, styles.photoArrowRight]}
+            accessibilityRole="button"
+            accessibilityLabel="Następne zdjęcie"
+            hitSlop={10}
+          >
+            <BlurView intensity={40} tint="dark" style={styles.photoArrowGlass}>
+              <Ionicons name="chevron-forward" size={20} color="#FFF" />
+            </BlurView>
+          </Pressable>
+        </>
+      ) : null}
+      <View style={styles.offerInfoWrap} pointerEvents="box-none">
+        <Pressable onPress={opts.showChrome ? openTopGallery : undefined} disabled={!opts.showChrome}>
+          <View style={styles.locationRow}>
+            <MapPin size={13} color={RR_GOLD} />
+            <Text style={styles.offerLocation}>{offer.location}</Text>
+          </View>
+          <Text style={styles.offerTitle} numberOfLines={2}>
+            {offer.title}
+          </Text>
+          <View style={styles.specsRow}>
+            <View style={styles.priceStack}>
+              {offer.hasPriceDrop && offer.originalPrice ? (
+                <Text style={styles.offerPriceWas}>{offer.originalPrice}</Text>
+              ) : null}
+              <Text style={styles.offerPrice}>{offer.price}</Text>
+            </View>
+            {offer.hasPriceDrop && offer.discountPercent > 0 ? (
+              <View style={styles.discountPill}>
+                <Text style={styles.discountPillText}>−{offer.discountPercent}%</Text>
+              </View>
+            ) : null}
+            <View style={styles.specDivider} />
+            <Maximize size={13} color="rgba(235,235,245,0.55)" style={{ marginRight: 5 }} />
+            <Text style={styles.offerArea}>{offer.area}</Text>
+          </View>
+        </Pressable>
+        <BlurView intensity={38} tint="dark" style={styles.miniDashboard}>
           <View style={styles.dashHeaderRow}>
             <View>
-              <Text style={styles.dashLabel}>CENA STARTOWA</Text>
-              <Text style={styles.dashValueMuted}>{offer.originalPrice}</Text>
+              <Text style={styles.dashLabel}>NA RYNKU</Text>
+              <Text style={styles.dashValue}>
+                {offer.daysOnMarket === 1 ? '1 dzień' : `${offer.daysOnMarket} dni`}
+              </Text>
             </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.dashLabel}>NA RYNKU OD</Text>
-              <Text style={styles.dashValue}>{offer.daysOnMarket} dni</Text>
-            </View>
+            {offer.hasPriceDrop && offer.originalPrice ? (
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.dashLabel}>BYŁO</Text>
+                <Text style={styles.dashValueMuted}>{offer.originalPrice}</Text>
+              </View>
+            ) : null}
           </View>
-          <PriceHistoryChart data={offer.priceHistory} width={CARD_WIDTH - 64} />
+          {offer.hasPriceDrop && chartSeries.length >= 2 ? (
+            <View style={styles.priceChartWrap}>
+              <OfferPriceHistoryChart
+                data={chartSeries}
+                width={CARD_WIDTH - 56}
+                height={48}
+                gradientId={`discovery-price-${offer.id}`}
+              />
+            </View>
+          ) : null}
           {opts.showChrome ? (
-            <Text style={styles.discoveryQuietHint}>Dopasowanie wyjaśnimy na Twoje życzenie.</Text>
+            <Pressable
+              onPress={() => {
+                void sendDiscoveryEvent('DISCOVERY_INSIGHT_OPEN', offer, {
+                  score: topOfferInsight.score,
+                });
+                setInsightVisible(true);
+              }}
+              style={styles.intelligenceRow}
+              accessibilityRole="button"
+              accessibilityLabel="Dlaczego ta oferta"
+            >
+              <View style={styles.intelligenceIcon}>
+                <Ionicons name="sparkles" size={13} color={RR_GOLD} />
+              </View>
+              <View style={styles.intelligenceCopy}>
+                <Text style={styles.intelligenceLabel}>Intelligence</Text>
+                <Text style={styles.intelligenceReason} numberOfLines={2}>
+                  {offer.matchReason || topOfferInsight.reason}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.45)" />
+            </Pressable>
           ) : null}
         </BlurView>
       </View>
-      {opts.showChrome ? (
-        <Pressable
-          onPress={() => {
-            void sendDiscoveryEvent('DISCOVERY_DEPTH_OPEN', offer, { score: topOfferInsight.score });
-            navigation?.navigate?.('OfferDetail', { offerId: Number(offer.id) || offer.id });
-          }}
-          style={styles.infoChevronBtn}
-          hitSlop={14}
-        >
-          <BlurView intensity={45} tint="dark" style={styles.infoChevronGlass}>
-            <Ionicons name="chevron-forward" size={20} color="#FFF" />
-          </BlurView>
-        </Pressable>
-      ) : null}
     </>
-  );
+    );
+  };
 
   // === RENDEROWANIE KART ===
   const renderCards = () => {
@@ -1192,6 +1287,19 @@ function EstateDiscoveryModeInner({ navigation }: any) {
 
   return (
     <View style={styles.container}>
+      {offers[0] ? (
+        <View style={styles.ambientLayer} pointerEvents="none">
+          <Image
+            source={{ uri: offers[0].images?.[activePhotoIndex] || offers[0].image }}
+            style={styles.ambientImage}
+            contentFit="cover"
+            blurRadius={48}
+            transition={200}
+          />
+          <View style={styles.ambientScrim} />
+        </View>
+      ) : null}
+
       <DiscoverySessionIsland state={islandState} onBack={() => setPauseVisible(true)} />
 
       <View
@@ -1206,7 +1314,13 @@ function EstateDiscoveryModeInner({ navigation }: any) {
       </View>
 
       {offers.length > 0 && (
-        <View style={[styles.actionButtonsRow, isTablet && styles.actionButtonsRowTablet]}>
+        <View
+          style={[
+            styles.actionButtonsRow,
+            isTablet && styles.actionButtonsRowTablet,
+            { paddingBottom: Math.max(18, insets.bottom + 10) },
+          ]}
+        >
           <DiscoveryGlassOrb onPress={() => forceSwipe('left')} accessibilityLabel="Pomiń ofertę">
             <X size={28} color="#D0D0D4" />
           </DiscoveryGlassOrb>
@@ -1231,6 +1345,13 @@ function EstateDiscoveryModeInner({ navigation }: any) {
           const offer = offers[0];
           if (offer) void sendDiscoveryEvent('DISCOVERY_PHOTO_VIEW', offer, { dwellMs, photoIndex: activePhotoIndex });
           setGalleryVisible(false);
+        }}
+        onOpenDetail={() => {
+          const offer = offers[0];
+          if (!offer) return;
+          setGalleryVisible(false);
+          void sendDiscoveryEvent('DISCOVERY_DEPTH_OPEN', offer, { score: topOfferInsight.score });
+          navigation?.navigate?.('OfferDetail', { offerId: Number(offer.id) || offer.id });
         }}
       />
       <DiscoveryDislikeReasonSheet
@@ -1299,6 +1420,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: RR_BLACK,
   },
+  ambientLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
+  ambientImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.45,
+  },
+  ambientScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1337,7 +1470,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'visible',
+    overflow: 'hidden',
+    zIndex: 1,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -1359,17 +1493,17 @@ const styles = StyleSheet.create({
   // === KARTA ===
   cardContainer: {
     position: 'absolute',
-    borderRadius: 32,
+    borderRadius: 28,
     backgroundColor: '#0A0A0B',
     overflow: 'hidden',
     opacity: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.8,
-    shadowRadius: 30,
-    elevation: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    elevation: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   cardImage: {
     width: '100%',
@@ -1380,74 +1514,79 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  tapZonesLayer: {
+  cardOpenTap: {
     ...StyleSheet.absoluteFillObject,
-    flexDirection: 'row',
-  },
-  tapZoneLeft: {
-    width: '50%',
-    height: '100%',
-  },
-  tapZoneRight: {
-    width: '50%',
-    height: '100%',
   },
   photoPagerOverlay: {
     position: 'absolute',
-    top: 16,
     left: 16,
     right: 16,
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+  },
+  photoPagerTopRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  photoPagerSpacer: {
+    flex: 1,
   },
   photoCounterBadge: {
-    alignSelf: 'flex-end',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   photoCounterText: {
     color: '#FFF',
     fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.4,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   photoDotsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-  },
-  galleryOpenButton: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  galleryOpenGlass: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    gap: 5,
   },
   photoDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
     backgroundColor: 'rgba(255,255,255,0.35)',
   },
   photoDotActive: {
-    width: 16,
-    borderRadius: 4,
+    width: 14,
+    borderRadius: 3,
     backgroundColor: RR_GOLD,
+  },
+  photoArrowBtn: {
+    position: 'absolute',
+    top: '38%',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+    zIndex: 20,
+  },
+  photoArrowLeft: {
+    left: 10,
+  },
+  photoArrowRight: {
+    right: 10,
+  },
+  photoArrowGlass: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.38)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.22)',
+    borderRadius: 20,
   },
   cardGradient: {
     position: 'absolute',
@@ -1480,107 +1619,148 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     width: '100%',
-    padding: 24,
+    paddingHorizontal: 22,
+    paddingTop: 20,
+    paddingBottom: 22,
   },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    opacity: 0.9,
+    marginBottom: 6,
   },
   offerLocation: {
     color: RR_GOLD,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1.5,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
-    marginLeft: 6,
+    marginLeft: 5,
   },
   offerTitle: {
     color: '#FFF',
-    fontSize: 32,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.6,
+    lineHeight: 32,
     marginBottom: 10,
   },
   specsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 14,
+    flexWrap: 'wrap',
+  },
+  priceStack: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
+  offerPriceWas: {
+    color: 'rgba(235,235,245,0.45)',
+    fontSize: 13,
+    fontWeight: '600',
+    textDecorationLine: 'line-through',
+    marginBottom: 1,
   },
   offerPrice: {
     color: '#FFF',
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: 0.5,
+    fontSize: 21,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  discountPill: {
+    marginLeft: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(48,209,88,0.18)',
+  },
+  discountPillText: {
+    color: RR_GREEN,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
   specDivider: {
-    width: 2,
-    height: 16,
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    width: StyleSheet.hairlineWidth,
+    height: 14,
+    backgroundColor: 'rgba(255,255,255,0.28)',
     marginHorizontal: 12,
   },
   offerArea: {
-    color: '#EBEBF5',
-    fontSize: 18,
+    color: 'rgba(235,235,245,0.78)',
+    fontSize: 16,
     fontWeight: '600',
   },
 
-  // === MINIDASHBOARD (WYKRES) ===
+  // === MINIPANEL ===
   miniDashboard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 10,
-    overflow: 'hidden',
-  },
-  discoveryQuietHint: {
-    marginTop: 10,
-    color: 'rgba(215,215,219,0.68)',
-    fontSize: 12,
-    fontWeight: '600',
-    lineHeight: 16,
-  },
-  infoChevronBtn: {
-    position: 'absolute',
-    right: 14,
-    bottom: 20,
-    borderRadius: 18,
-    overflow: 'hidden',
-    zIndex: 30,
-  },
-  infoChevronGlass: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.26)',
-    backgroundColor: 'rgba(0,0,0,0.26)',
+    borderColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 12,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+  priceChartWrap: {
+    marginTop: 8,
+    marginBottom: 2,
+  },
+  intelligenceRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.12)',
+  },
+  intelligenceIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(201,162,39,0.16)',
+  },
+  intelligenceCopy: {
+    flex: 1,
+  },
+  intelligenceLabel: {
+    color: RR_GOLD,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  intelligenceReason: {
+    color: 'rgba(245,240,230,0.92)',
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 17,
   },
   dashHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   dashLabel: {
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255,255,255,0.42)',
     fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginBottom: 4,
+    fontWeight: '700',
+    letterSpacing: 0.9,
+    marginBottom: 3,
   },
   dashValue: {
     color: '#FFF',
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   dashValueMuted: {
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(255,255,255,0.55)',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
     textDecorationLine: 'line-through',
   },
 

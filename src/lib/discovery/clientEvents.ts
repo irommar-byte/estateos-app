@@ -2,6 +2,7 @@ import { DeviceEventEmitter } from 'react-native';
 
 export const DISCOVERY_UPDATED_EVENT = 'estateos:discovery-updated';
 export const INTELLIGENCE_LEARN_EVENT = 'estateos:intelligence-learn';
+export const INTELLIGENCE_DISLIKE_PROMPT_EVENT = 'estateos:intelligence-dislike-prompt';
 
 export type DiscoveryUpdatedDetail = {
   offerId?: number;
@@ -12,6 +13,11 @@ export type IntelligenceLearnDetail = {
   offerId?: number;
   eventType?: string;
   kind?: 'like' | 'dislike' | 'serious' | 'open' | 'other';
+};
+
+export type IntelligenceDislikePromptDetail = {
+  offerId: number;
+  source?: string;
 };
 
 function learnKind(eventType?: string): IntelligenceLearnDetail['kind'] {
@@ -46,5 +52,17 @@ export function subscribeDiscoveryUpdated(handler: (detail?: DiscoveryUpdatedDet
 /** Water-splash cue for the Intelligence orb when the algorithm learns a taste signal. */
 export function subscribeIntelligenceLearn(handler: (detail?: IntelligenceLearnDetail) => void) {
   const sub = DeviceEventEmitter.addListener(INTELLIGENCE_LEARN_EVENT, handler);
+  return () => sub.remove();
+}
+
+/** Open the Intelligence orb sheet to ask why an offer was disliked (catalog rail). */
+export function dispatchIntelligenceDislikePrompt(detail: IntelligenceDislikePromptDetail) {
+  DeviceEventEmitter.emit(INTELLIGENCE_DISLIKE_PROMPT_EVENT, detail);
+}
+
+export function subscribeIntelligenceDislikePrompt(
+  handler: (detail: IntelligenceDislikePromptDetail) => void,
+) {
+  const sub = DeviceEventEmitter.addListener(INTELLIGENCE_DISLIKE_PROMPT_EVENT, handler);
   return () => sub.remove();
 }
