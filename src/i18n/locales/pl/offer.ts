@@ -224,6 +224,11 @@ export const offer = {
     views: {
       newOffer: 'Nowa oferta',
       newOfferBadge: 'NOWA OFERTA',
+      featuredBadge: 'Wyróżnione',
+      featureCta: 'Wyróżnij',
+      featureTopUp: 'Doładuj',
+      featuredCelebrationTitle: 'ogłoszenie wyróżnione',
+      featuredCelebrationSubtitle: 'Twoja oferta świeci w galerii przez najbliższe dni',
       count: '{{count}} wyświetleń',
       countZero: '0 wyświetleń',
     },
@@ -303,6 +308,7 @@ export const offer = {
       sellerLoading: 'Profil sprzedawcy · ładowanie…',
       ratingReviews: 'Ocena {{rating}} · {{count}} opinii',
       ratingOnly: 'Ocena {{rating}}',
+      privatePerson: 'Osoba prywatna',
     },
     ctas: {
       editOffer: 'Edytuj ofertę',
@@ -313,15 +319,20 @@ export const offer = {
       negotiate: 'Negocjuj cenę',
     },
     negotiation: {
-      appointmentLabel: 'TERMIN SPOTKANIA',
+      sectionTitle: 'Twój Dealroom',
+      sectionSub: 'To Twoje ustalenia przy tej ofercie — termin i cena. Dotknij kartę, aby otworzyć właściwą sekcję w Dealroomie.',
+      openInDealroom: 'Otwórz w Dealroomie →',
+      openAppointmentHint: 'Przejdź do sekcji terminu w Dealroomie',
+      openPriceHint: 'Przejdź do sekcji ceny w Dealroomie',
+      appointmentLabel: 'TERMIN PREZENTACJI',
       appointmentConfirmedTitle: 'Termin prezentacji: uzgodniony',
       appointmentPendingTitle: 'Termin prezentacji: w negocjacji',
       appointmentConfirmedBody: 'Potwierdzona data i godzina: {{date}}.',
       appointmentWaitingBody:
-        'Ty wysłałeś ostatnią propozycję terminu — czekasz na reakcję właściciela nieruchomości (akceptacja, kontroferta lub odrzucenie).',
+        'Ty wysłałeś ostatnią propozycję terminu — czekasz na reakcję właściciela (akceptacja, kontroferta lub odrzucenie).',
       appointmentOwnerAction:
-        'Ostatnia akcja właściciela: {{action}}. Twoja kolej: akceptacja, kontroferta daty lub odrzucenie (przycisk „Spotkanie”).',
-      priceLabel: 'NEGOCJACJE CENOWE',
+        'Ostatnia akcja właściciela: {{action}}. Twoja kolej: akceptacja, kontroferta daty lub odrzucenie.',
+      priceLabel: 'NEGOCJACJA CENY',
     },
     modals: {
       bidTitle: 'Negocjacja ceny',

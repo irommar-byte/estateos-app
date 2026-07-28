@@ -74,7 +74,17 @@ export const profile = {
       confirmTitle: 'Feature this listing?',
       confirmBody:
         'This uses 1 Plus publication credit. The listing appears in the Featured section for 7 days.',
+      confirmBodyStepper:
+        'Each credit gives 7 days in Featured. You’ll use {{credits}} {{creditsWord}} — {{days}} days of promotion.',
+      creditsWordOne: 'credit',
+      creditsWordFew: 'credits',
+      creditsWordMany: 'credits',
+      creditsStepperLabel: 'How many credits',
+      creditsStepperHint: '{{days}} days in gallery',
+      creditsDecreaseA11y: 'Decrease credits',
+      creditsIncreaseA11y: 'Increase credits',
       confirmAction: 'Feature',
+      topUpAction: 'Top up',
       successTitle: 'Featured',
       successBody: 'Your listing is promoted in the gallery for 7 days.',
       failedTitle: 'Could not feature',
@@ -92,7 +102,7 @@ export const profile = {
       editFailed: 'Could not open this listing for editing.',
       plusPackageTitle: 'Plus Package',
       plusPackageBump:
-        'Plus Package pays for one public listing on the market (30 days). It does not boost or extend an already active listing.',
+        'Plus Package pays for one public listing on the market (30 days) or for featuring a listing. It does not extend the publication period of an already active listing.',
       endListingTitle: 'End listing',
       withdrawAction: 'Withdraw',
       withdrawRejected: 'Server rejected listing withdrawal (HTTP {{status}}).',
@@ -329,12 +339,12 @@ export const profile = {
     },
     investorProFooter:
       'Investor Pro is an auto-renewable monthly subscription: portal import, off-market preview and Pro tools. Price is shown on the purchase screen from the App Store. A 3-day free trial may apply before the first charge. Cancel in Settings → Apple ID → Subscriptions (ideally ≥24 hours before the period ends). Separate from Plus Package (listing publication). If payment did not register, use Restore purchases.',
-    plusSlotOne: '1 Plus publication available',
-    plusSlotsMany: '{{count}} Plus publications available',
+    plusSlotOne: '1 Plus credit (publish or feature)',
+    plusSlotsMany: '{{count}} Plus credits (publish or feature)',
     noPackages: 'No packages — buy before the next paid publication',
     plusValidUntil:
-      'Valid until {{date}}. Publishing will use 1 package from your balance.',
-    plusBuyHint: 'Buy Plus Package below — then publish without a second payment.',
+      'Valid until {{date}}. Publishing or featuring will use 1 credit.',
+    plusBuyHint: 'Buy Plus Package below — then publish or feature a listing without a second payment.',
     welcomeCouponTitle: 'Welcome coupon',
     welcomeCouponSubtitle: 'One free publication of your first listing',
     welcomeCouponReady: 'Ready to use on your first publication.',
@@ -372,15 +382,15 @@ export const profile = {
     bonusCouponNotifyAction: 'View in Profile',
     buyPlus: 'Top up Plus Package credits',
     buyPlusWithPrice: 'Top up Plus Package credits — {{price}}',
-    buyPlusSubtitle: 'Open App Store and pay for 1 extra publication ({{price}})',
+    buyPlusSubtitle: 'Open App Store — 1 credit for publishing or featuring a listing ({{price}})',
     restorePurchases: 'Restore purchases',
     restoring: 'Connecting to store…',
     restoreIos: 'Restore purchases from Apple ID on this device',
     restoreAndroid: 'Restore purchases from Google Play account',
     footerIos:
-      'Plus Package ({{price}}) pays for one selected listing on the market for 30 days. It is not a subscription or an account "slot". New accounts receive a welcome coupon for the first publication. If payment did not register publication, use Restore purchases.',
+      'Plus Package ({{price}}) is 1 credit: publish a listing for 30 days or feature a listing. It is not a subscription or an account "slot". New accounts receive a welcome coupon for the first publication. If payment did not register the credit, use Restore purchases.',
     footerAndroid:
-      'Plus Package pays for one selected listing on the market for 30 days. Your first publication can be paid with the welcome coupon after sign-up.',
+      'Plus Package is 1 credit: publish a listing for 30 days or feature a listing. Your first publication can be paid with the welcome coupon after sign-up.',
     plusDaysDefault: 'Extra listing is valid 30 days from publication',
     plusDaysToday: 'Last extra publication ends today',
     plusDaysLeft: 'Last extra publication: {{days}} {{daysLabel}} remaining',
@@ -403,9 +413,9 @@ export const profile = {
       purchaseFailed: 'Could not start purchase.',
       plusActiveTitle: 'Plus Package active',
       plusActiveSlotsOne:
-        'You have 1 Plus publication to use when publishing a listing.',
+        'You have 1 Plus credit — use it to publish a listing or to feature an offer.',
       plusActiveSlotsMany:
-        'You have {{count}} Plus publications to use when publishing a listing.',
+        'You have {{count}} Plus credits — use them to publish listings or to feature offers.',
       plusActivePending:
         'Payment received. Processing — refresh Profile in a moment.',
       investorProLoginBody: 'Sign in again to buy Investor Pro.',

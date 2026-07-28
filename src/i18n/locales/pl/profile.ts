@@ -74,7 +74,17 @@ export const profile = {
       confirmTitle: 'Wyróżnić ogłoszenie?',
       confirmBody:
         'To zużyje 1 kredyt publikacji Pakietu Plus. Ogłoszenie pojawi się w sekcji „Wyróżnione” przez 7 dni.',
+      confirmBodyStepper:
+        'Każdy kredyt daje 7 dni w sekcji „Wyróżnione”. Zużyjesz {{credits}} {{creditsWord}} — łącznie {{days}} dni promocji.',
+      creditsWordOne: 'kredyt',
+      creditsWordFew: 'kredyty',
+      creditsWordMany: 'kredytów',
+      creditsStepperLabel: 'Ile kredytów',
+      creditsStepperHint: '{{days}} dni w galerii',
+      creditsDecreaseA11y: 'Zmniejsz liczbę kredytów',
+      creditsIncreaseA11y: 'Zwiększ liczbę kredytów',
       confirmAction: 'Wyróżnij',
+      topUpAction: 'Doładuj',
       successTitle: 'Wyróżniono',
       successBody: 'Ogłoszenie jest promowane w galerii przez 7 dni.',
       failedTitle: 'Nie udało się wyróżnić',
@@ -92,7 +102,7 @@ export const profile = {
       editFailed: 'Nie udało się otworzyć tej oferty do edycji.',
       plusPackageTitle: 'Pakiet Plus',
       plusPackageBump:
-        'Pakiet Plus opłaca publiczne wystawienie konkretnego ogłoszenia na rynek (30 dni). Nie podbija ani nie przedłuża już aktywnego ogłoszenia.',
+        'Pakiet Plus służy do publicznego wystawienia ogłoszenia na rynek (30 dni) albo do wyróżnienia oferty. Nie przedłuża okresu publikacji już aktywnego ogłoszenia.',
       endListingTitle: 'Zakończ ogłoszenie',
       withdrawAction: 'Wycofaj',
       withdrawRejected: 'Serwer odrzucił wycofanie oferty (HTTP {{status}}).',
@@ -332,12 +342,12 @@ export const profile = {
     },
     investorProFooter:
       'Investor Pro to auto-odnawialna subskrypcja miesięczna: import z OtoDom/OLX/Nieruchomosci-Online, podgląd off-market i strefa narzędzi Pro. Cena jest widoczna na ekranie zakupu z App Store. Może obowiązywać 3-dniowy okres próbny przed pierwszą opłatą. Anuluj w Ustawienia → Apple ID → Subskrypcje (najlepiej ≥24 h przed końcem okresu). To nie jest Pakiet Plus (publikacja ogłoszeń). Przy problemie z płatnością użyj „Przywróć zakupy”.',
-    plusSlotOne: '1 publikacja Plus do wykorzystania',
-    plusSlotsMany: '{{count}} publikacji Plus do wykorzystania',
+    plusSlotOne: '1 kredyt Plus (publikacja lub wyróżnienie)',
+    plusSlotsMany: '{{count}} kredytów Plus (publikacja lub wyróżnienie)',
     noPackages: 'Brak pakietów — kup przed kolejną płatną publikacją',
     plusValidUntil:
-      'Ważne do {{date}}. Publikacja zdejmie 1 pakiet z licznika.',
-    plusBuyHint: 'Kup Pakiet Plus poniżej — potem opublikuj ogłoszenie bez drugiej płatności.',
+      'Ważne do {{date}}. Publikacja lub wyróżnienie zużyje 1 kredyt.',
+    plusBuyHint: 'Kup Pakiet Plus poniżej — potem opublikuj lub wyróżnij ogłoszenie bez drugiej płatności.',
     welcomeCouponTitle: 'Kupon powitalny',
     welcomeCouponSubtitle: 'Jedna darmowa publikacja pierwszej oferty',
     welcomeCouponReady: 'Gotowy do wykorzystania przy pierwszym wystawieniu.',
@@ -375,15 +385,15 @@ export const profile = {
     bonusCouponNotifyAction: 'Zobacz w Profilu',
     buyPlus: 'Dokup kredyty Pakiet +',
     buyPlusWithPrice: 'Dokup kredyty Pakiet + — {{price}}',
-    buyPlusSubtitle: 'Otwórz App Store i opłać 1 dodatkowe wystawienie ({{price}})',
+    buyPlusSubtitle: 'Otwórz App Store — 1 kredyt na publikację lub wyróżnienie oferty ({{price}})',
     restorePurchases: 'Przywróć zakupy',
     restoring: 'Łączę ze sklepem…',
     restoreIos: 'Odzyskaj zakupy z Apple ID na tym urządzeniu',
     restoreAndroid: 'Odzyskaj zakupy z konta Google Play',
     footerIos:
-      'Pakiet Plus ({{price}}) opłaca publiczne wystawienie wybranego ogłoszenia na rynek na 30 dni. Nie jest to abonament ani „slot” na koncie. Nowe konto dostaje kupon powitalny na pierwszą publikację. Jeśli płatność nie zaksięgowała wystawienia, użyj Przywróć zakupy.',
+      'Pakiet Plus ({{price}}) to 1 kredyt: publiczne wystawienie ogłoszenia na 30 dni albo wyróżnienie oferty. Nie jest to abonament ani „slot” na koncie. Nowe konto dostaje kupon powitalny na pierwszą publikację. Jeśli płatność nie zaksięgowała kredytu, użyj Przywróć zakupy.',
     footerAndroid:
-      'Pakiet Plus opłaca publiczne wystawienie wybranego ogłoszenia na 30 dni. Pierwszą publikację możesz opłacić kuponem powitalnym po rejestracji.',
+      'Pakiet Plus to 1 kredyt: publiczne wystawienie ogłoszenia na 30 dni albo wyróżnienie oferty. Pierwszą publikację możesz opłacić kuponem powitalnym po rejestracji.',
     plusDaysDefault: 'Dodatkowa oferta będzie ważna 30 dni od publikacji',
     plusDaysToday: 'Ostatnia dodatkowa publikacja kończy się dzisiaj',
     plusDaysLeft: 'Ostatnia dodatkowa publikacja: {{days}} {{daysLabel}} do końca',
@@ -406,9 +416,9 @@ export const profile = {
       purchaseFailed: 'Nie udało się rozpocząć zakupu.',
       plusActiveTitle: 'Pakiet Plus aktywny',
       plusActiveSlotsOne:
-        'Masz 1 publikację Plus do wykorzystania przy publikacji ogłoszenia.',
+        'Masz 1 kredyt Plus — możesz go użyć do publikacji ogłoszenia albo do wyróżnienia oferty.',
       plusActiveSlotsMany:
-        'Masz {{count}} publikacje Plus do wykorzystania przy publikacji ogłoszenia.',
+        'Masz {{count}} kredyty Plus — możesz je użyć do publikacji ogłoszeń albo do wyróżnienia ofert.',
       plusActivePending:
         'Płatność została przyjęta. Księgowanie trwa — odśwież Profil za chwilę.',
       investorProLoginBody: 'Zaloguj się ponownie, aby kupić Investor Pro.',

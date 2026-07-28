@@ -93,6 +93,7 @@ import TermsScreen from './src/screens/TermsScreen';
 import SmsVerificationScreen from './src/screens/SmsVerificationScreen';
 import DealroomListScreen from './src/screens/DealroomListScreen';
 import FloatingChatsDock from './src/components/messaging/FloatingChatsDock';
+import KeiImportProgressHost from './src/components/admin/KeiImportProgressHost';
 import AgencyPendingGate from './src/components/agency/AgencyPendingGate';
 import { isAgencyAgentPendingApproval } from './src/utils/agencyMembershipAccess';
 import EstateDiscoveryMode from './src/screens/EstateDiscoveryMode';
@@ -105,6 +106,7 @@ import DiscoveryBridgeScreen from './src/screens/DiscoveryBridgeScreen';
 import DiscoveryLustroScreen from './src/screens/DiscoveryLustroScreen';
 import DiscoveryDirectionScreen from './src/screens/DiscoveryDirectionScreen';
 import IntelligenceEnableSheet from './src/components/discovery/IntelligenceEnableSheet';
+import FeaturedCelebrationOverlay from './src/components/offer/FeaturedCelebrationOverlay';
 import { useDiscoveryStore } from './src/store/useDiscoveryStore';
 import AdminNativeImportScreen from './src/screens/AdminNativeImportScreen';
 import AdminKeiAmerScreen from './src/screens/AdminKeiAmerScreen';
@@ -1954,7 +1956,9 @@ export default function App() {
             <AppStack.Screen name="AuctionEvent" component={AuctionEventScreen} />
           </AppStack.Navigator>
           {!isSplashVisible ? <FloatingChatsDock /> : null}
+          {!isSplashVisible ? <KeiImportProgressHost /> : null}
           {!isSplashVisible ? <IntelligenceEnableSheet /> : null}
+          {!isSplashVisible ? <FeaturedCelebrationOverlay /> : null}
         </NavigationContainer>
         {!isSplashVisible ? <AppRatingPromptHost /> : null}
         {!isSplashVisible ? <InvestorProUpsellHost /> : null}

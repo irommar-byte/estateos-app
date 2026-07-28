@@ -74,7 +74,17 @@ export const profile = {
       confirmTitle: 'Выделить объявление?',
       confirmBody:
         'Будет списан 1 кредит публикации Пакета Плюс. Объявление появится в разделе «Выделенные» на 7 дней.',
+      confirmBodyStepper:
+        'Каждый кредит даёт 7 дней в «Выделенных». Спишется {{credits}} {{creditsWord}} — всего {{days}} дней продвижения.',
+      creditsWordOne: 'кредит',
+      creditsWordFew: 'кредита',
+      creditsWordMany: 'кредитов',
+      creditsStepperLabel: 'Сколько кредитов',
+      creditsStepperHint: '{{days}} дней в галерее',
+      creditsDecreaseA11y: 'Уменьшить число кредитов',
+      creditsIncreaseA11y: 'Увеличить число кредитов',
       confirmAction: 'Выделить',
+      topUpAction: 'Пополнить',
       successTitle: 'Выделено',
       successBody: 'Объявление продвигается в галерее 7 дней.',
       failedTitle: 'Не удалось выделить',
@@ -92,7 +102,7 @@ export const profile = {
       editFailed: 'Не удалось открыть это объявление для редактирования.',
       plusPackageTitle: 'Пакет Плюс',
       plusPackageBump:
-        'Plus Package pays for one public listing on the market (30 days). It does not boost or extend an already active listing.',
+        'Пакет Plus оплачивает публикацию объявления на рынок (30 дней) или выделение объявления. Он не продлевает срок уже активной публикации.',
       endListingTitle: 'Конец списка',
       withdrawAction: 'Отзывать',
       withdrawRejected: 'Сервер отклонил отзыв листинга (HTTP {{status}}).',
@@ -330,12 +340,12 @@ export const profile = {
     },
     investorProFooter:
       'Investor Pro — автопродлеваемая месячная подписка: импорт с порталов, off-market и Pro-инструменты. Цена отображается на экране покупки из App Store. Может действовать 3-дневный пробный период до первого списания. Отмена: Настройки → Apple ID → Подписки (лучше ≥24 ч до конца периода). Это не Пакет Plus (публикация объявлений). При проблеме с оплатой используйте «Восстановить покупки».',
-    plusSlotOne: 'Доступна 1 публикация Plus',
-    plusSlotsMany: '{{count}} Плюс доступны публикации',
+    plusSlotOne: '1 кредит Plus (публикация или выделение)',
+    plusSlotsMany: '{{count}} кредитов Plus (публикация или выделение)',
     noPackages: 'Нет пакетов — купите до следующей платной публикации',
     plusValidUntil:
-      'Valid until {{date}}. Publishing will use 1 package from your balance.',
-    plusBuyHint: 'Купите пакет Plus ниже — и опубликуйте без повторной оплаты.',
+      'Действует до {{date}}. Публикация или выделение спишет 1 кредит.',
+    plusBuyHint: 'Купите пакет Plus ниже — затем опубликуйте или выделите объявление без повторной оплаты.',
     welcomeCouponTitle: 'Приветственный купон',
     welcomeCouponSubtitle: 'Одна бесплатная публикация первого объявления',
     welcomeCouponReady: 'Готов к использованию при первой публикации.',
@@ -373,15 +383,15 @@ export const profile = {
     bonusCouponNotifyAction: 'Открыть профиль',
     buyPlus: 'Докупить кредиты Pakiet +',
     buyPlusWithPrice: 'Докупить кредиты Pakiet + — {{price}}',
-    buyPlusSubtitle: 'Откройте App Store и оплатите 1 дополнительную публикацию ({{price}})',
+    buyPlusSubtitle: 'Откройте App Store — 1 кредит на публикацию или выделение объявления ({{price}})',
     restorePurchases: 'Восстановление покупок',
     restoring: 'Подключение к магазину…',
     restoreIos: 'Восстановить покупки из Apple ID на этом устройстве',
     restoreAndroid: 'Восстановить покупки из аккаунта Google Play',
     footerIos:
-      'Пакет Plus ({{price}}) оплачивает публикацию выбранного объявления на рынок на 30 дней. Это не подписка и не «слот» на аккаунте. Новые аккаунты получают приветственный купон на первую публикацию. Если оплата не зарегистрировала публикацию, используйте «Восстановить покупки».',
+      'Пакет Plus ({{price}}) — это 1 кредит: публикация объявления на 30 дней или выделение предложения. Это не подписка и не «слот» на аккаунте. Новые аккаунты получают приветственный купон на первую публикацию. Если оплата не зарегистрировала кредит, используйте «Восстановить покупки».',
     footerAndroid:
-      'Plus Package pays for one selected listing on the market for 30 days. Your first publication can be paid with the welcome coupon after sign-up.',
+      'Пакет Plus — это 1 кредит: публикация объявления на 30 дней или выделение предложения. Первую публикацию можно оплатить приветственным купоном после регистрации.',
     plusDaysDefault: 'Дополнительный листинг действителен в течение 30 дней с момента публикации.',
     plusDaysToday: 'Последняя дополнительная публикация заканчивается сегодня',
     plusDaysLeft: 'Последняя дополнительная публикация: осталось {{days}} {{daysLabel}}',
@@ -404,9 +414,9 @@ export const profile = {
       purchaseFailed: 'Не удалось начать покупку.',
       plusActiveTitle: 'Пакет Плюс активен',
       plusActiveSlotsOne:
-        'You have 1 Plus publication to use when publishing a listing.',
+        'У вас 1 кредит Plus — его можно использовать для публикации объявления или для выделения предложения.',
       plusActiveSlotsMany:
-        'You have {{count}} Plus publications to use when publishing a listing.',
+        'У вас {{count}} кредита Plus — их можно использовать для публикации объявлений или для выделения предложений.',
       plusActivePending:
         'Payment received. Processing — refresh Profile in a moment.',
       investorProLoginBody: 'Войдите еще раз, чтобы купить Investor Pro.',

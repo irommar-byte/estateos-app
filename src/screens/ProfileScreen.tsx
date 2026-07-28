@@ -89,6 +89,8 @@ import {
 } from '../utils/mobileOfferUpdate';
 import { promoteMobileOfferListing } from '../utils/mobileOfferPromote';
 import { promoteMobileCarListing } from '../utils/mobileCarPromote';
+import FeaturedPromoteSheet from '../components/offer/FeaturedPromoteSheet';
+import { playFeaturedCelebration } from '../store/useFeaturedCelebrationStore';
 import { fetchMyCars } from '../services/carsApi';
 import { isOfferPromotionActive } from '../utils/listingPromotion';
 import { formatOfferLocationLine } from '../constants/locationEcosystem';
@@ -733,7 +735,7 @@ function MyOffersVerticalSwitcher({ value, onChange, homeCount, carCount, isDark
   );
 }
 
-const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
+const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions, onOpenShop }) => {
   const { t, locale } = useI18n();
   const publicationCopy = useMemo(() => getPublicationCopy(), [locale]);
   const navigation = useNavigation();
@@ -749,6 +751,8 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
   const [reactivating, setReactivating] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  const [featureSheetVisible, setFeatureSheetVisible] = useState(false);
+  const [featureTarget, setFeatureTarget] = useState<'offer' | 'car' | null>(null);
   const [syncTick, setSyncTick] = useState(0);
   const [reactivationChoiceVisible, setReactivationChoiceVisible] = useState(false);
   const [reactivationChoiceLoading, setReactivationChoiceLoading] = useState(false);
@@ -1066,7 +1070,6 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
       );
     } else if (actionType === 'PROMOTE') {
       if (!selectedOffer?.id || !token || promoting) return;
-      const offerId = Number(selectedOffer.id);
       if (isOfferPromotionActive(selectedOffer.promotedUntil)) {
         Alert.alert(
           t('profile.myOffers.promote.alreadyTitle'),
@@ -1075,48 +1078,8 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
         );
         return;
       }
-      Alert.alert(
-        t('profile.myOffers.promote.confirmTitle'),
-        t('profile.myOffers.promote.confirmBody'),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          {
-            text: t('profile.myOffers.promote.confirmAction'),
-            onPress: async () => {
-              setPromoting(true);
-              try {
-                const result = await promoteMobileOfferListing(token, offerId);
-                if (!result.ok) throw new Error(result.message);
-                await refreshUser();
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                setOffers((prev) =>
-                  prev.map((o) =>
-                    Number(o?.id) === offerId ? { ...o, promotedUntil: result.promotedUntil } : o,
-                  ),
-                );
-                setSelectedOffer((prev) =>
-                  prev && Number(prev.id) === offerId
-                    ? { ...prev, promotedUntil: result.promotedUntil }
-                    : prev,
-                );
-                Alert.alert(
-                  t('profile.myOffers.promote.successTitle'),
-                  t('profile.myOffers.promote.successBody'),
-                  [{ text: t('common.ok') }],
-                );
-              } catch (err) {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                Alert.alert(
-                  t('profile.myOffers.promote.failedTitle'),
-                  String(err?.message || t('profile.myOffers.promote.failedBody')),
-                );
-              } finally {
-                setPromoting(false);
-              }
-            },
-          },
-        ],
-      );
+      setFeatureTarget('offer');
+      setFeatureSheetVisible(true);
     } else if (actionType === 'ARCHIVE') {
       if (!selectedOffer?.id || !token || archiving) return;
       const offerId = Number(selectedOffer.id);
@@ -1214,7 +1177,6 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
       setTimeout(() => navigation.navigate('AddCarListing', { mode: 'edit', carId }), 200);
     } else if (actionType === 'PROMOTE') {
       if (!selectedCar?.id || !token || promoting) return;
-      const carId = Number(selectedCar.id);
       if (isOfferPromotionActive(selectedCar.promotedUntil)) {
         Alert.alert(
           t('profile.myOffers.promote.alreadyTitle'),
@@ -1223,50 +1185,64 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
         );
         return;
       }
+      setFeatureTarget('car');
+      setFeatureSheetVisible(true);
+    }
+  };
+
+  const featureCreditBalance = getAdditionalListingSlots(user);
+  const featureHasCredits = hasAdditionalPlusPublication(user);
+
+  const handleConfirmFeatureFromSheet = async (credits: number) => {
+    if (!token || promoting) return;
+    setPromoting(true);
+    try {
+      if (featureTarget === 'car') {
+        const carId = Number(selectedCar?.id);
+        if (!Number.isFinite(carId) || carId <= 0) return;
+        const result = await promoteMobileCarListing(token, carId, credits);
+        if (!result.ok) throw new Error(result.message);
+        await refreshUser();
+        setMyCars((prev) =>
+          prev.map((c) =>
+            Number(c?.id) === carId
+              ? { ...c, promotedUntil: result.promotedUntil, featured: true }
+              : c,
+          ),
+        );
+        setSelectedCar((prev) =>
+          prev && Number(prev.id) === carId
+            ? { ...prev, promotedUntil: result.promotedUntil, featured: true }
+            : prev,
+        );
+      } else {
+        const offerId = Number(selectedOffer?.id);
+        if (!Number.isFinite(offerId) || offerId <= 0) return;
+        const result = await promoteMobileOfferListing(token, offerId, credits);
+        if (!result.ok) throw new Error(result.message);
+        await refreshUser();
+        setOffers((prev) =>
+          prev.map((o) =>
+            Number(o?.id) === offerId ? { ...o, promotedUntil: result.promotedUntil } : o,
+          ),
+        );
+        setSelectedOffer((prev) =>
+          prev && Number(prev.id) === offerId
+            ? { ...prev, promotedUntil: result.promotedUntil }
+            : prev,
+        );
+      }
+      setFeatureSheetVisible(false);
+      setFeatureTarget(null);
+      playFeaturedCelebration();
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(
-        t('profile.myOffers.promote.confirmTitle'),
-        t('profile.myOffers.promote.confirmBody'),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          {
-            text: t('profile.myOffers.promote.confirmAction'),
-            onPress: async () => {
-              setPromoting(true);
-              try {
-                const result = await promoteMobileCarListing(token, carId);
-                if (!result.ok) throw new Error(result.message);
-                await refreshUser();
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                setMyCars((prev) =>
-                  prev.map((c) =>
-                    Number(c?.id) === carId
-                      ? { ...c, promotedUntil: result.promotedUntil, featured: true }
-                      : c,
-                  ),
-                );
-                setSelectedCar((prev) =>
-                  prev && Number(prev.id) === carId
-                    ? { ...prev, promotedUntil: result.promotedUntil, featured: true }
-                    : prev,
-                );
-                Alert.alert(
-                  t('profile.myOffers.promote.successTitle'),
-                  t('profile.myOffers.promote.successBody'),
-                  [{ text: t('common.ok') }],
-                );
-              } catch (err) {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                Alert.alert(
-                  t('profile.myOffers.promote.failedTitle'),
-                  String(err?.message || t('profile.myOffers.promote.failedBody')),
-                );
-              } finally {
-                setPromoting(false);
-              }
-            },
-          },
-        ],
+        t('profile.myOffers.promote.failedTitle'),
+        String(err?.message || t('profile.myOffers.promote.failedBody')),
       );
+    } finally {
+      setPromoting(false);
     }
   };
 
@@ -1630,6 +1606,26 @@ const MyOffersModal = ({ visible, onClose, theme, onOpenPhotoSessions }) => {
         />
       </View>
     </Modal>
+    <FeaturedPromoteSheet
+      visible={featureSheetVisible}
+      creditBalance={featureCreditBalance}
+      hasCredits={featureHasCredits}
+      loading={promoting}
+      onClose={() => {
+        if (promoting) return;
+        setFeatureSheetVisible(false);
+        setFeatureTarget(null);
+      }}
+      onConfirm={(credits) => {
+        void handleConfirmFeatureFromSheet(credits);
+      }}
+      onTopUp={() => {
+        setFeatureSheetVisible(false);
+        setFeatureTarget(null);
+        handleMyOffersClose();
+        setTimeout(() => onOpenShop?.(), 180);
+      }}
+    />
     </>
   );
 };
@@ -4882,6 +4878,10 @@ function ProfileScreenLoggedIn({
         visible={isMyOffersVisible}
         onClose={() => setIsMyOffersVisible(false)}
         theme={theme}
+        onOpenShop={() => {
+          setIsMyOffersVisible(false);
+          setTimeout(() => setShopExpandRequestId((n) => n + 1), 320);
+        }}
         onOpenPhotoSessions={() => {
           setIsMyOffersVisible(false);
           setTimeout(() => setIsUserPhotoSessionsVisible(true), 320);

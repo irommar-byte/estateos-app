@@ -224,6 +224,11 @@ export const offer = {
     views: {
       newOffer: 'New listing',
       newOfferBadge: 'NEW LISTING',
+      featuredBadge: 'Featured',
+      featureCta: 'Feature',
+      featureTopUp: 'Top up',
+      featuredCelebrationTitle: 'listing featured',
+      featuredCelebrationSubtitle: 'Your offer is glowing in the gallery for the next days',
       count: '{{count}} views',
       countZero: '0 views',
     },
@@ -302,6 +307,7 @@ export const offer = {
       sellerLoading: 'Seller profile · loading…',
       ratingReviews: 'Rating {{rating}} · {{count}} reviews',
       ratingOnly: 'Rating {{rating}}',
+      privatePerson: 'Private seller',
     },
     ctas: {
       editOffer: 'Edit listing',
@@ -312,6 +318,11 @@ export const offer = {
       negotiate: 'Negotiate price',
     },
     negotiation: {
+      sectionTitle: 'Your Dealroom',
+      sectionSub: 'These are your arrangements on this listing — viewing date and price. Tap a card to open the matching Dealroom section.',
+      openInDealroom: 'Open in Dealroom →',
+      openAppointmentHint: 'Go to the viewing section in Dealroom',
+      openPriceHint: 'Go to the price section in Dealroom',
       appointmentLabel: 'VIEWING APPOINTMENT',
       appointmentConfirmedTitle: 'Viewing date: agreed',
       appointmentPendingTitle: 'Viewing date: in negotiation',

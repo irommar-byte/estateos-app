@@ -2,6 +2,7 @@ import FloorPlanViewer from '../components/FloorPlanViewer';
 import { normalizeStoredScanMeta } from '../lib/roomScan/parseRoomPlanJson';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Alert, Modal, Platform, Pressable, ScrollView, ActivityIndicator, useColorScheme, type GestureResponderEvent } from 'react-native';
 import { useThemeStore } from '../store/useThemeStore';
 import MapView, { Marker, Circle } from 'react-native-maps';
@@ -24,7 +25,9 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import OfferGlassGallery from '../components/offer/OfferGlassGallery';
-import { ChevronLeft, Share as ShareIcon, Heart, Maximize, Images, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, ChevronUp, Eye, MoreHorizontal, Flag, Ban } from 'lucide-react-native';
+import FeaturedPromoteSheet from '../components/offer/FeaturedPromoteSheet';
+import { playFeaturedCelebration } from '../store/useFeaturedCelebrationStore';
+import { ChevronLeft, Share as ShareIcon, Heart, Maximize, Images, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, ChevronUp, Eye, MoreHorizontal, Flag, Ban, DollarSign } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
@@ -40,7 +43,13 @@ import { DEAL_EVENT_PREFIX } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 import OwnerLegalVerificationCard from '../components/OwnerLegalVerificationCard';
 import ClosedOfferOverlay from '../components/ClosedOfferOverlay';
-import { getOfferLifecycleState, isOfferNewListing } from '../utils/offerLifecycle';
+import { isOfferNewListing, getOfferLifecycleState } from '../utils/offerLifecycle';
+import { isOfferFeatured } from '../utils/listingPromotion';
+import {
+  getAdditionalListingSlots,
+  hasAdditionalPlusPublication,
+} from '../utils/listingQuota';
+import { promoteMobileOfferListing } from '../utils/mobileOfferPromote';
 import {
   formatOfferConditionLabel,
   formatOfferHeatingLabel,
@@ -93,8 +102,8 @@ import { localeToDateFormat, useI18n } from '../i18n';
 import { isProPhotoSessionSampleOfferId } from '../data/proPhotoSessionSampleOffers';
 
 const { width, height } = Dimensions.get('window');
-/** Fallback hero — finalna wysokość dobierana tak, by karta kończyła się na opisie. */
-const DEFAULT_HERO_HEIGHT = Math.max(360, Math.round(Math.min(width * (4 / 3), height * 0.42)));
+/** Fallback hero — krótsza karta intro = więcej zdjęcia; finalną wysokość dobiera fitHeroToIntro. */
+const DEFAULT_HERO_HEIGHT = Math.max(380, Math.round(Math.min(width * (4 / 3), height * 0.46)));
 /** Ile białej karty nachodzi na dół zdjęcia (zaokrąglone rogi). */
 const HERO_SHEET_OVERLAP = 28;
 const GALLERY_CONTENT_WIDTH = width - 48;
@@ -179,7 +188,11 @@ export default function OfferDetail({ route, navigation }: any) {
   const [heroHeight, setHeroHeight] = useState(DEFAULT_HERO_HEIGHT);
   const heroHeightSV = useSharedValue(DEFAULT_HERO_HEIGHT);
   const heartScale = useSharedValue(1);
-  const { user, token } = useAuthStore() as any;
+  const { user, token, refreshUser } = useAuthStore() as any;
+  const [promotingFeatured, setPromotingFeatured] = useState(false);
+  const [featureSheetVisible, setFeatureSheetVisible] = useState(false);
+  const intelligenceEnabled = useIntelligencePreferenceStore((s) => s.enabled);
+  const intelligenceHydrated = useIntelligencePreferenceStore((s) => s.hydrated);
   const isGuest = !user?.id;
   const [isGuestGateVisible, setIsGuestGateVisible] = useState(isGuest);
   const [isPhoneVerifyGateVisible, setIsPhoneVerifyGateVisible] = useState(false);
@@ -812,7 +825,67 @@ export default function OfferDetail({ route, navigation }: any) {
   const viewsCountRaw = Number(firstDefined(offer?.views, offer?.viewCount, offer?.viewsCount, offer?.stats?.views, 0));
   const viewsCount = Number.isFinite(viewsCountRaw) && viewsCountRaw > 0 ? Math.round(viewsCountRaw) : 0;
   const isNewOfferListing = useMemo(() => isOfferNewListing(offer), [offer]);
+  const isFeaturedListing = useMemo(
+    () => isOfferFeatured(offer && typeof offer === 'object' ? (offer as Record<string, unknown>) : null),
+    [offer],
+  );
+  const plusCreditSlots = useMemo(() => getAdditionalListingSlots(user), [user]);
+  const hasPlusCredit = useMemo(() => hasAdditionalPlusPublication(user), [user]);
+  const canManageFeatureBadge =
+    isOwner && !isSamplePreview && Number(offer?.id) > 0 && !isFeaturedListing;
   const newOfferPulse = useSharedValue(1);
+
+  const applyPromotedUntilLocally = useCallback((promotedUntil: string) => {
+    setHydratedOffer((prev: any) => {
+      const base =
+        prev && typeof prev === 'object'
+          ? prev
+          : offerFromParams && typeof offerFromParams === 'object'
+            ? offerFromParams
+            : { id: idFromParams };
+      return { ...base, promotedUntil, featured: true };
+    });
+  }, [offerFromParams, idFromParams]);
+
+  const openShopToTopUp = useCallback(() => {
+    setFeatureSheetVisible(false);
+    navigation.navigate('MainTabs', { screen: 'Profil', params: { openShop: true } });
+  }, [navigation]);
+
+  const handleFeatureBadgePress = useCallback(() => {
+    if (!canManageFeatureBadge || promotingFeatured) return;
+    if (!token) {
+      openAuthEntry('login');
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setFeatureSheetVisible(true);
+  }, [canManageFeatureBadge, promotingFeatured, token]);
+
+  const handleConfirmFeature = useCallback(
+    async (credits: number) => {
+      const offerId = Number(offer?.id);
+      if (!token || !Number.isFinite(offerId) || offerId <= 0 || promotingFeatured) return;
+      setPromotingFeatured(true);
+      try {
+        const result = await promoteMobileOfferListing(token, offerId, credits);
+        if (!result.ok) throw new Error(result.message);
+        await refreshUser?.();
+        applyPromotedUntilLocally(result.promotedUntil);
+        setFeatureSheetVisible(false);
+        playFeaturedCelebration();
+      } catch (err: any) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert(
+          t('profile.myOffers.promote.failedTitle'),
+          String(err?.message || t('profile.myOffers.promote.failedBody')),
+        );
+      } finally {
+        setPromotingFeatured(false);
+      }
+    },
+    [applyPromotedUntilLocally, offer?.id, promotingFeatured, refreshUser, t, token],
+  );
 
   useEffect(() => {
     if (!isNewOfferListing) {
@@ -913,10 +986,11 @@ export default function OfferDetail({ route, navigation }: any) {
   const fitHeroToIntro = useCallback(
     (introHeight: number) => {
       if (!Number.isFinite(introHeight) || introHeight < 80) return;
+      // Styk karty z hero: intro (do kafelków) kończy się tuż nad sticky CTA → więcej zdjęcia.
       const next = Math.round(
         Math.max(
-          300,
-          Math.min(height * 0.54, height - bottomBarHeight - introHeight + HERO_SHEET_OVERLAP),
+          340,
+          Math.min(height * 0.62, height - bottomBarHeight - introHeight + HERO_SHEET_OVERLAP),
         ),
       );
       if (Math.abs(next - heroHeight) <= 4) return;
@@ -1083,11 +1157,12 @@ export default function OfferDetail({ route, navigation }: any) {
     setIsAppointmentModalOpen(true);
   };
 
-  const openDealroom = () => {
+  const openDealroom = (focusSection?: 'appointment' | 'price') => {
     if (!dealId) return;
     navigation.navigate('DealroomChat', {
       dealId,
       title: offer?.title || t('offer.detail.dealTitleFallback', { dealId }),
+      ...(focusSection ? { focusSection } : null),
     });
   };
 
@@ -1148,6 +1223,8 @@ export default function OfferDetail({ route, navigation }: any) {
         messages,
         dealStatus: matchingDeal?.status ?? matchingDeal?.dealStatus,
         acceptedBidId: matchingDeal?.acceptedBidId ?? matchingDeal?.acceptedBid?.id,
+        viewerUserId: viewerUserId > 0 ? viewerUserId : null,
+        ownerUserId: listingOwnerUserId,
       });
         setDealNegotiationState({
           dealId: existingDealId,
@@ -1162,7 +1239,7 @@ export default function OfferDetail({ route, navigation }: any) {
       } finally {
         setDealSyncLoading(false);
       }
-  }, [token, offer?.id, isOwner]);
+  }, [token, offer?.id, isOwner, viewerUserId, listingOwnerUserId]);
 
   useEffect(() => {
     void loadDealState();
@@ -1560,7 +1637,7 @@ export default function OfferDetail({ route, navigation }: any) {
             },
           ]}
         >
-          {/* Pierwszy ekran karty: od uchwytu do końca opisu — reszta po przewinięciu. */}
+          {/* Pierwszy ekran karty: od uchwytu do końca kafelków (pokoje/m²/piętro/rok). */}
           <View
             onLayout={(e) => {
               const h = e.nativeEvent.layout.height;
@@ -1621,14 +1698,63 @@ export default function OfferDetail({ route, navigation }: any) {
           {/* Cena na górze została usunięta — pełna kwota i PLN/m² siedzą teraz
               w dolnym pasku CTA. Trzymamy tu tylko badge'y meta (czynsz, views). */}
           <View style={styles.topMetaBadgesRow}>
-            <View style={[styles.viewsBadge, { backgroundColor: isDark ? '#1c1c1e' : '#f3f4f6', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.12)' }]}>
-              <Eye color={isDark ? "#9ca3af" : "#374151"} size={14} />
-              <Text style={[styles.viewsBadgeText, { color: isDark ? '#d1d5db' : '#374151' }]}>
-                {viewsCount > 0
-                  ? t('offer.detail.views.count', { count: viewsCount.toLocaleString(dateLocale) })
-                  : t('offer.detail.views.countZero')}
-              </Text>
-          </View>
+            <View style={styles.topMetaLeftCluster}>
+              <View style={[styles.viewsBadge, { backgroundColor: isDark ? '#1c1c1e' : '#f3f4f6', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.12)' }]}>
+                <Eye color={isDark ? "#9ca3af" : "#374151"} size={14} />
+                <Text style={[styles.viewsBadgeText, { color: isDark ? '#d1d5db' : '#374151' }]}>
+                  {viewsCount > 0
+                    ? t('offer.detail.views.count', { count: viewsCount.toLocaleString(dateLocale) })
+                    : t('offer.detail.views.countZero')}
+                </Text>
+              </View>
+              {isFeaturedListing ? (
+                <View style={styles.featuredBadge}>
+                  <Star size={11} color="#000000" fill="#000000" strokeWidth={0} />
+                  <Text style={styles.featuredBadgeText}>{t('offer.detail.views.featuredBadge')}</Text>
+                  <Star size={11} color="#000000" fill="#000000" strokeWidth={0} />
+                </View>
+              ) : canManageFeatureBadge ? (
+                <Pressable
+                  onPress={handleFeatureBadgePress}
+                  disabled={promotingFeatured}
+                  style={({ pressed }) => [
+                    styles.featuredBadge,
+                    styles.featuredBadgeInactive,
+                    isDark && {
+                      backgroundColor: 'rgba(142,142,147,0.18)',
+                      borderColor: 'rgba(235,235,245,0.18)',
+                    },
+                    (pressed || promotingFeatured) && { opacity: 0.72 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('offer.detail.views.featureCta')}
+                >
+                  <Star
+                    size={11}
+                    color={isDark ? 'rgba(235,235,245,0.45)' : '#8E8E93'}
+                    fill="transparent"
+                    strokeWidth={2}
+                  />
+                  <Text
+                    style={[
+                      styles.featuredBadgeText,
+                      styles.featuredBadgeTextInactive,
+                      isDark && { color: 'rgba(235,235,245,0.45)' },
+                    ]}
+                  >
+                    {promotingFeatured
+                      ? t('profile.myOffers.promote.working')
+                      : t('offer.detail.views.featureCta')}
+                  </Text>
+                  <Star
+                    size={11}
+                    color={isDark ? 'rgba(235,235,245,0.45)' : '#8E8E93'}
+                    fill="transparent"
+                    strokeWidth={2}
+                  />
+                </Pressable>
+              ) : null}
+            </View>
             {isLegalSafeVerified ? (
               <View style={styles.topMetaCenterBadge}>
                 <LegalVerifiedShieldBadge isDark={isDark} compact />
@@ -1730,22 +1856,22 @@ export default function OfferDetail({ route, navigation }: any) {
             {[
               {
                 key: 'rooms',
-                icon: <BedDouble color={isDark ? '#e5e7eb' : '#1d1d1f'} size={26} strokeWidth={1.5} />,
+                icon: <BedDouble color={isDark ? '#e5e7eb' : '#1d1d1f'} size={16} strokeWidth={1.8} />,
                 label: t('offer.detail.stats.rooms', { count: displayOffer.stats.beds }),
               },
               {
                 key: 'size',
-                icon: <Maximize color={isDark ? '#e5e7eb' : '#1d1d1f'} size={26} strokeWidth={1.5} />,
+                icon: <Maximize color={isDark ? '#e5e7eb' : '#1d1d1f'} size={16} strokeWidth={1.8} />,
                 label: displayOffer.stats.size,
               },
               {
                 key: 'floor',
-                icon: <Layers color={isDark ? '#e5e7eb' : '#1d1d1f'} size={26} strokeWidth={1.5} />,
+                icon: <Layers color={isDark ? '#e5e7eb' : '#1d1d1f'} size={16} strokeWidth={1.8} />,
                 label: t('offer.detail.stats.floor', { floor: formatFloorStat(offer?.floor, t) }),
               },
               {
                 key: 'year',
-                icon: <Calendar color={isDark ? '#e5e7eb' : '#1d1d1f'} size={26} strokeWidth={1.5} />,
+                icon: <Calendar color={isDark ? '#e5e7eb' : '#1d1d1f'} size={16} strokeWidth={1.8} />,
                 label: t('offer.detail.stats.year', {
                   year: offer?.yearBuilt || offer?.buildYear || offer?.year || '-',
                 }),
@@ -1761,7 +1887,7 @@ export default function OfferDetail({ route, navigation }: any) {
                     borderTopColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.95)',
                     borderBottomColor: isDark ? 'rgba(0,0,0,0.45)' : 'rgba(17,24,39,0.12)',
                     shadowColor: isDark ? '#000000' : '#111827',
-                    shadowOpacity: isDark ? 0.5 : 0.16,
+                    shadowOpacity: isDark ? 0.4 : 0.1,
                   },
                 ]}
               >
@@ -1770,18 +1896,18 @@ export default function OfferDetail({ route, navigation }: any) {
                   style={[styles.statText, { color: isDark ? '#e5e7eb' : '#1d1d1f' }]}
                   numberOfLines={1}
                   adjustsFontSizeToFit
-                  minimumFontScale={0.8}
+                  minimumFontScale={0.7}
                 >
                   {item.label}
                 </Text>
               </View>
             ))}
           </View>
+          </View>
 
           <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
           <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.about')}</Text>
           <Text style={[styles.description, isDark && { color: '#d1d5db' }]}>{displayOffer.description}</Text>
-          </View>
 
           <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
           <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.keyParameters')}</Text>
@@ -2016,8 +2142,8 @@ export default function OfferDetail({ route, navigation }: any) {
             />
           ) : null}
 
-          {offer?.id ? (
-            <View style={styles.discoveryUnifiedWrap}>
+          {offer?.id && intelligenceHydrated && intelligenceEnabled ? (
+            <View style={[styles.discoveryUnifiedWrap, isDark && styles.discoveryUnifiedWrapDark]}>
               <LinearGradient
                 colors={
                   isDark
@@ -2032,10 +2158,8 @@ export default function OfferDetail({ route, navigation }: any) {
                   style={[
                     styles.discoveryUnifiedCard,
                     {
-                      backgroundColor: isDark ? 'rgba(16,20,26,0.94)' : 'rgba(248,251,253,0.97)',
-                      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)',
-                      shadowColor: isDark ? '#000000' : '#111827',
-                      shadowOpacity: isDark ? 0.45 : 0.14,
+                      backgroundColor: isDark ? 'rgba(16,20,26,0.96)' : '#FFFFFF',
+                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.95)',
                     },
                   ]}
                 >
@@ -2053,72 +2177,176 @@ export default function OfferDetail({ route, navigation }: any) {
             </View>
           ) : null}
 
+          {offer?.id && intelligenceHydrated && intelligenceEnabled ? (
+            <View style={styles.discoveryWhisperStack}>
+              <DiscoveryVisitHint navigation={navigation} offerId={offer.id} isDark={isDark} />
+              <DiscoveryContactWhisper navigation={navigation} beforeContact isDark={isDark} />
+            </View>
+          ) : null}
+
           {isSamplePreview ? (
             <Text style={styles.offerIdText}>{t('addOffer.step5.proSession.examples.previewOfferId')}</Text>
           ) : (
             <Text style={styles.offerIdText}>{t('offer.detail.offerId', { id: offer?.id })}</Text>
           )}
-          {!isOwner && !dealSyncLoading && dealNegotiationState?.latestAppointment && (
-            <View
-              style={[
-                styles.negotiationMemoryBox,
-                String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
-                  ? styles.negotiationMemoryBoxConfirmed
-                  : styles.negotiationMemoryBoxPending
-              ]}
-            >
-              <Text style={styles.negotiationMemoryLabel}>{t('offer.detail.negotiation.appointmentLabel')}</Text>
-              <Text style={styles.negotiationMemoryTitle}>
-                {String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
-                  ? t('offer.detail.negotiation.appointmentConfirmedTitle')
-                  : t('offer.detail.negotiation.appointmentPendingTitle')}
+
+          {!isOwner &&
+          !dealSyncLoading &&
+          (dealNegotiationState?.latestAppointment || dealPresentation?.priceNegotiation) ? (
+            <View style={styles.myDealroomSection}>
+              <Text style={[styles.myDealroomSectionTitle, isDark && { color: '#FFFFFF' }]}>
+                {t('offer.detail.negotiation.sectionTitle')}
               </Text>
-              <Text style={styles.negotiationMemoryText}>
-                {String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
-                  ? t('offer.detail.negotiation.appointmentConfirmedBody', {
-                      date: dealNegotiationState.latestAppointment?.proposedDate
-                        ? new Date(dealNegotiationState.latestAppointment.proposedDate).toLocaleString(dateLocale)
-                        : '-',
-                    })
-                  : Number(dealNegotiationState.latestAppointment?.senderId || 0) === Number(user?.id || 0)
-                    ? t('offer.detail.negotiation.appointmentWaitingBody')
-                    : t('offer.detail.negotiation.appointmentOwnerAction', {
-                        action: getDealActionLabel(dealNegotiationState.latestAppointment.action, t),
-                      })}
+              <Text style={[styles.myDealroomSectionSub, isDark && { color: '#9ca3af' }]}>
+                {t('offer.detail.negotiation.sectionSub')}
               </Text>
-            </View>
-          )}
-          {!isOwner && !dealSyncLoading && dealPresentation?.priceNegotiation ? (
-            <View
-              style={[
-                styles.negotiationMemoryBox,
-                dealPresentation.priceNegotiation.tone === 'finalized'
-                  ? styles.negotiationMemoryBoxFinalized
-                  : dealPresentation.priceNegotiation.tone === 'confirmed'
-                  ? styles.negotiationMemoryBoxConfirmed
-                    : styles.negotiationMemoryBoxPending,
-              ]}
-            >
-              <Text style={styles.negotiationMemoryLabel}>{t('offer.detail.negotiation.priceLabel')}</Text>
-              <Text style={styles.negotiationMemoryTitle}>{dealPresentation.priceNegotiation.title}</Text>
-              <Text style={styles.negotiationMemoryText}>{dealPresentation.priceNegotiation.body}</Text>
-            </View>
-          ) : null}
-          {offer?.id ? (
-            <View style={{ marginTop: 8, marginBottom: 4, gap: 10 }}>
-              <DiscoveryVisitHint navigation={navigation} offerId={offer.id} />
-              <DiscoveryContactWhisper navigation={navigation} beforeContact />
+
+              {dealNegotiationState?.latestAppointment ? (
+                <Pressable
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    openDealroom('appointment');
+                  }}
+                  style={({ pressed }) => [
+                    styles.negotiationMemoryBox,
+                    styles.negotiationMemoryBoxInteractive,
+                    String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
+                      ? styles.negotiationMemoryBoxConfirmed
+                      : styles.negotiationMemoryBoxPending,
+                    pressed && { opacity: 0.86 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityHint={t('offer.detail.negotiation.openAppointmentHint')}
+                >
+                  <View style={styles.negotiationMemoryHeader}>
+                    <View
+                      style={[
+                        styles.negotiationMemoryIconWrap,
+                        String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
+                          ? styles.negotiationMemoryIconConfirmed
+                          : styles.negotiationMemoryIconPending,
+                      ]}
+                    >
+                      <CalendarClock
+                        size={18}
+                        color={
+                          String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
+                            ? '#047857'
+                            : '#B45309'
+                        }
+                      />
+                    </View>
+                    <View style={styles.negotiationMemoryHeaderCopy}>
+                      <Text style={styles.negotiationMemoryLabel}>
+                        {t('offer.detail.negotiation.appointmentLabel')}
+                      </Text>
+                      <Text style={styles.negotiationMemoryTitle}>
+                        {String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
+                          ? t('offer.detail.negotiation.appointmentConfirmedTitle')
+                          : t('offer.detail.negotiation.appointmentPendingTitle')}
+                      </Text>
+                    </View>
+                    <ChevronRight size={18} color="#9ca3af" />
+                  </View>
+                  <Text style={styles.negotiationMemoryText}>
+                    {String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
+                      ? t('offer.detail.negotiation.appointmentConfirmedBody', {
+                          date: dealNegotiationState.latestAppointment?.proposedDate
+                            ? new Date(dealNegotiationState.latestAppointment.proposedDate).toLocaleString(dateLocale)
+                            : '-',
+                        })
+                      : Number(dealNegotiationState.latestAppointment?.senderId || 0) === Number(user?.id || 0)
+                        ? t('offer.detail.negotiation.appointmentWaitingBody')
+                        : t('offer.detail.negotiation.appointmentOwnerAction', {
+                            action: getDealActionLabel(dealNegotiationState.latestAppointment.action, t),
+                          })}
+                  </Text>
+                  <Text style={styles.negotiationMemoryCta}>{t('offer.detail.negotiation.openInDealroom')}</Text>
+                </Pressable>
+              ) : null}
+
+              {dealPresentation?.priceNegotiation ? (
+                <Pressable
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    openDealroom('price');
+                  }}
+                  style={({ pressed }) => [
+                    styles.negotiationMemoryBox,
+                    styles.negotiationMemoryBoxInteractive,
+                    dealPresentation.priceNegotiation!.tone === 'finalized'
+                      ? styles.negotiationMemoryBoxFinalized
+                      : dealPresentation.priceNegotiation!.tone === 'confirmed'
+                        ? styles.negotiationMemoryBoxConfirmed
+                        : styles.negotiationMemoryBoxPending,
+                    pressed && { opacity: 0.86 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityHint={t('offer.detail.negotiation.openPriceHint')}
+                >
+                  <View style={styles.negotiationMemoryHeader}>
+                    <View
+                      style={[
+                        styles.negotiationMemoryIconWrap,
+                        dealPresentation.priceNegotiation.tone === 'finalized'
+                          ? styles.negotiationMemoryIconFinalized
+                          : dealPresentation.priceNegotiation.tone === 'confirmed'
+                            ? styles.negotiationMemoryIconConfirmed
+                            : styles.negotiationMemoryIconPending,
+                      ]}
+                    >
+                      <DollarSign
+                        size={18}
+                        color={
+                          dealPresentation.priceNegotiation.tone === 'finalized'
+                            ? '#1D4ED8'
+                            : dealPresentation.priceNegotiation.tone === 'confirmed'
+                              ? '#047857'
+                              : '#B45309'
+                        }
+                      />
+                    </View>
+                    <View style={styles.negotiationMemoryHeaderCopy}>
+                      <Text style={styles.negotiationMemoryLabel}>
+                        {t('offer.detail.negotiation.priceLabel')}
+                      </Text>
+                      <Text style={styles.negotiationMemoryTitle}>
+                        {dealPresentation.priceNegotiation.title}
+                      </Text>
+                    </View>
+                    <ChevronRight size={18} color="#9ca3af" />
+                  </View>
+                  {dealPresentation.priceNegotiation.stageLabel ? (
+                    <Text style={styles.negotiationMemoryMeta}>
+                      {dealPresentation.priceNegotiation.stageLabel}
+                    </Text>
+                  ) : null}
+                  {dealPresentation.priceNegotiation.amountLabel ? (
+                    <Text style={styles.negotiationMemoryAmount}>
+                      {dealPresentation.priceNegotiation.amountLabel}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.negotiationMemoryText}>
+                    {dealPresentation.priceNegotiation.body}
+                  </Text>
+                  {dealPresentation.priceNegotiation.waitingLabel ? (
+                    <Text style={styles.negotiationMemoryWaiting}>
+                      {dealPresentation.priceNegotiation.waitingLabel}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.negotiationMemoryCta}>{t('offer.detail.negotiation.openInDealroom')}</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
           {/*
-            Stały blok w kolorze karty — rezerwuje miejsce pod fixed bottom bar
-            (cena + prowizja + Spotkanie / Negocjuj). Bez tego ScrollView (zIndex 2)
-            przykrywa pasek i zabiera dotyk.
+            Rezerwa pod sticky CTA (cena + agent + przyciski).
+            Pełna wysokość paska — przy max scroll ID siedzi tuż nad CTA, bez dziury.
           */}
           <View
             pointerEvents="none"
             style={{
-              height: bottomBarHeight + 12,
+              height: bottomBarHeight + 8,
               marginHorizontal: -24,
               backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
             }}
@@ -2426,6 +2654,17 @@ export default function OfferDetail({ route, navigation }: any) {
                         />
                       ))}
                     </View>
+                    {!isPartnerListing ? (
+                      <Text
+                        style={[
+                          styles.ownerPillPrivatePerson,
+                          { color: isDark ? '#34D399' : '#047857' },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {t('offer.detail.seller.privatePerson')}
+                      </Text>
+                    ) : null}
                     <Text style={[styles.ownerPillSecondary, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
                       {ownerSummarySecondary}
                     </Text>
@@ -3013,6 +3252,20 @@ export default function OfferDetail({ route, navigation }: any) {
       </Modal>
       ) : null}
 
+      <FeaturedPromoteSheet
+        visible={featureSheetVisible}
+        creditBalance={plusCreditSlots}
+        hasCredits={hasPlusCredit}
+        loading={promotingFeatured}
+        onClose={() => {
+          if (!promotingFeatured) setFeatureSheetVisible(false);
+        }}
+        onConfirm={(credits) => {
+          void handleConfirmFeature(credits);
+        }}
+        onTopUp={openShopToTopUp}
+      />
+
       <ReportSheet
         visible={isReportOpen}
         onClose={() => setIsReportOpen(false)}
@@ -3179,6 +3432,13 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 10,
   },
+  topMetaLeftCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    flexShrink: 1,
+  },
   topMetaCenterBadge: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   topMetaCenterSpacer: { flex: 1 },
   topMetaEndSpacer: { minWidth: 0 },
@@ -3209,6 +3469,40 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   viewsBadgeText: { color: '#374151', fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
+  featuredBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#FBBF24',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.28)',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.28,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  featuredBadgeInactive: {
+    backgroundColor: 'rgba(142,142,147,0.14)',
+    borderColor: 'rgba(60,60,67,0.18)',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  featuredBadgeText: {
+    color: '#000000',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.55,
+    textTransform: 'uppercase',
+  },
+  featuredBadgeTextInactive: {
+    color: '#8E8E93',
+  },
   newOfferBadge: {
     alignSelf: 'flex-start',
     borderRadius: 999,
@@ -3302,25 +3596,40 @@ const styles = StyleSheet.create({
     gap: 14,
     marginBottom: 28,
   },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 14, columnGap: '4%', marginBottom: 32 },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignItems: 'stretch',
+    gap: 8,
+    marginBottom: 6,
+  },
   statBox: {
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#f6f7f9',
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.08)',
     borderTopColor: 'rgba(255,255,255,0.95)',
     borderBottomColor: 'rgba(17,24,39,0.12)',
-    paddingVertical: 18,
-    paddingHorizontal: 12,
-    borderRadius: 22,
-    width: '48%',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 14,
     shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  statText: { marginTop: 8, fontSize: 13, fontWeight: '600', color: '#1d1d1f' },
+  statText: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1d1d1f',
+    letterSpacing: -0.2,
+    textAlign: 'center',
+  },
   divider: { height: 1, backgroundColor: '#e5e5ea', marginBottom: 32 },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#1d1d1f', marginBottom: 16, letterSpacing: -0.2 },
   description: { fontSize: 16, lineHeight: 26, color: '#424245', fontWeight: '400' },
@@ -3387,7 +3696,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   amenityText: { color: '#1d1d1f', fontSize: 14, fontWeight: '600' },
-  offerIdText: { textAlign: 'center', color: '#86868b', fontSize: 12, marginTop: 24, marginBottom: 0, letterSpacing: 0.5 },
+  offerIdText: { textAlign: 'center', color: '#86868b', fontSize: 12, marginTop: 12, marginBottom: 4, letterSpacing: 0.5 },
   samplePreviewBanner: {
     borderRadius: 14,
     borderWidth: 1,
@@ -3410,6 +3719,7 @@ const styles = StyleSheet.create({
   
   gallerySection: {
     gap: 12,
+    marginBottom: 4,
   },
   galleryHeroWrap: {
     width: '100%',
@@ -3725,6 +4035,12 @@ const styles = StyleSheet.create({
   ownerPillName: { color: '#1d1d1f', fontSize: 12, fontWeight: '800', letterSpacing: -0.1 },
   ownerPillStarsRow: { flexDirection: 'row', alignItems: 'center', gap: 1, marginTop: 2 },
   ownerPillSecondary: { color: '#6b7280', fontSize: 9.5, fontWeight: '700', marginTop: 2, letterSpacing: 0.08 },
+  ownerPillPrivatePerson: {
+    marginTop: 2,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.1,
+  },
   ownerPillCommission: {
     fontSize: 9,
     fontWeight: '900',
@@ -3983,11 +4299,19 @@ const styles = StyleSheet.create({
   reviewDate: { color: '#6b7280', fontSize: 10 },
   reviewText: { color: '#e5e7eb', fontSize: 12, lineHeight: 17 },
   negotiationMemoryBox: {
-    marginTop: 14,
-    borderRadius: 14,
+    marginTop: 0,
+    marginBottom: 10,
+    borderRadius: 16,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  negotiationMemoryBoxInteractive: {
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   negotiationMemoryBoxPending: {
     borderColor: 'rgba(250, 204, 21, 0.55)',
@@ -4001,42 +4325,131 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(59, 130, 246, 0.55)',
     backgroundColor: 'rgba(59, 130, 246, 0.14)',
   },
+  negotiationMemoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  negotiationMemoryIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  negotiationMemoryIconPending: {
+    backgroundColor: 'rgba(245, 158, 11, 0.18)',
+    borderColor: 'rgba(180, 83, 9, 0.28)',
+  },
+  negotiationMemoryIconConfirmed: {
+    backgroundColor: 'rgba(16, 185, 129, 0.18)',
+    borderColor: 'rgba(4, 120, 87, 0.28)',
+  },
+  negotiationMemoryIconFinalized: {
+    backgroundColor: 'rgba(59, 130, 246, 0.18)',
+    borderColor: 'rgba(29, 78, 216, 0.28)',
+  },
+  negotiationMemoryHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
   negotiationMemoryLabel: {
     color: '#6b7280',
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   negotiationMemoryTitle: {
     color: '#1d1d1f',
     fontSize: 15,
     fontWeight: '800',
-    marginTop: 4,
+    marginTop: 2,
+  },
+  negotiationMemoryMeta: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4b5563',
+    marginBottom: 2,
+  },
+  negotiationMemoryAmount: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
+    letterSpacing: -0.3,
+    marginBottom: 4,
   },
   negotiationMemoryText: {
     color: '#374151',
     fontSize: 13,
     fontWeight: '600',
-    marginTop: 4,
     lineHeight: 18,
   },
+  negotiationMemoryWaiting: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#92400E',
+    lineHeight: 17,
+  },
+  negotiationMemoryCta: {
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0071e3',
+    letterSpacing: -0.1,
+  },
+  myDealroomSection: {
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  myDealroomSectionTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#111827',
+    letterSpacing: -0.3,
+    marginBottom: 4,
+  },
+  myDealroomSectionSub: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
   discoveryUnifiedWrap: {
-    marginBottom: 16,
+    marginTop: 28,
+    marginBottom: 18,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 22,
+    elevation: 10,
+  },
+  discoveryUnifiedWrapDark: {
+    backgroundColor: 'rgba(16,20,26,1)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.5,
   },
   discoveryRainbowBorder: {
-    borderRadius: 19,
-    padding: 1.25,
+    borderRadius: 20,
+    padding: 1.5,
+    overflow: 'hidden',
   },
   discoveryUnifiedCard: {
-    borderRadius: 18,
+    borderRadius: 18.5,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    elevation: 8,
+  },
+  discoveryWhisperStack: {
+    marginTop: 2,
+    marginBottom: 6,
+    gap: 10,
   },
   moreOverlay: {
     flex: 1,
