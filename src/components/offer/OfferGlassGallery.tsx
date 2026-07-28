@@ -19,9 +19,11 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  withSpring,
   runOnJS,
   interpolate,
   Extrapolation,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
@@ -37,6 +39,165 @@ type Props = {
 
 const THUMB = 58;
 const THUMB_GAP = 8;
+const MIN_SCALE = 1;
+const MAX_SCALE = 4;
+
+function ZoomablePhoto({
+  uri,
+  width,
+  height,
+  enabled,
+  zoomed,
+}: {
+  uri: string;
+  width: number;
+  height: number;
+  enabled: boolean;
+  zoomed: SharedValue<number>;
+}) {
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTX = useSharedValue(0);
+  const savedTY = useSharedValue(0);
+
+  useEffect(() => {
+    scale.value = 1;
+    savedScale.value = 1;
+    translateX.value = 0;
+    translateY.value = 0;
+    savedTX.value = 0;
+    savedTY.value = 0;
+    zoomed.value = 0;
+  }, [uri, scale, savedScale, translateX, translateY, savedTX, savedTY, zoomed]);
+
+  const clampTranslate = (sx: number, sy: number, nextScale: number) => {
+    'worklet';
+    const maxX = ((nextScale - 1) * width) / 2;
+    const maxY = ((nextScale - 1) * height) / 2;
+    return {
+      x: Math.max(-maxX, Math.min(maxX, sx)),
+      y: Math.max(-maxY, Math.min(maxY, sy)),
+    };
+  };
+
+  const syncZoomed = (next: number) => {
+    'worklet';
+    zoomed.value = next > 1.05 ? 1 : 0;
+  };
+
+  const pinch = useMemo(
+    () =>
+      Gesture.Pinch()
+        .enabled(enabled)
+        .onStart(() => {
+          savedScale.value = scale.value;
+        })
+        .onUpdate((e) => {
+          const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, savedScale.value * e.scale));
+          scale.value = next;
+          syncZoomed(next);
+          const clamped = clampTranslate(translateX.value, translateY.value, next);
+          translateX.value = clamped.x;
+          translateY.value = clamped.y;
+        })
+        .onEnd(() => {
+          if (scale.value < 1.05) {
+            scale.value = withSpring(1, { damping: 18, stiffness: 220 });
+            translateX.value = withSpring(0, { damping: 18, stiffness: 220 });
+            translateY.value = withSpring(0, { damping: 18, stiffness: 220 });
+            savedScale.value = 1;
+            savedTX.value = 0;
+            savedTY.value = 0;
+            zoomed.value = 0;
+            return;
+          }
+          savedScale.value = scale.value;
+          syncZoomed(scale.value);
+          const clamped = clampTranslate(translateX.value, translateY.value, scale.value);
+          translateX.value = withTiming(clamped.x, { duration: 120 });
+          translateY.value = withTiming(clamped.y, { duration: 120 });
+          savedTX.value = clamped.x;
+          savedTY.value = clamped.y;
+        }),
+    [enabled, height, savedScale, savedTX, savedTY, scale, translateX, translateY, width, zoomed],
+  );
+
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(enabled)
+        .averageTouches(true)
+        .minPointers(1)
+        .maxPointers(2)
+        .onStart(() => {
+          savedTX.value = translateX.value;
+          savedTY.value = translateY.value;
+        })
+        .onUpdate((e) => {
+          if (scale.value <= 1.02) return;
+          const clamped = clampTranslate(
+            savedTX.value + e.translationX,
+            savedTY.value + e.translationY,
+            scale.value,
+          );
+          translateX.value = clamped.x;
+          translateY.value = clamped.y;
+        })
+        .onEnd(() => {
+          savedTX.value = translateX.value;
+          savedTY.value = translateY.value;
+        }),
+    [enabled, savedTX, savedTY, scale, translateX, translateY],
+  );
+
+  const doubleTap = useMemo(
+    () =>
+      Gesture.Tap()
+        .enabled(enabled)
+        .numberOfTaps(2)
+        .onEnd(() => {
+          if (scale.value > 1.2) {
+            scale.value = withSpring(1, { damping: 16, stiffness: 200 });
+            translateX.value = withSpring(0, { damping: 16, stiffness: 200 });
+            translateY.value = withSpring(0, { damping: 16, stiffness: 200 });
+            savedScale.value = 1;
+            savedTX.value = 0;
+            savedTY.value = 0;
+            zoomed.value = 0;
+          } else {
+            scale.value = withSpring(2.2, { damping: 16, stiffness: 200 });
+            savedScale.value = 2.2;
+            zoomed.value = 1;
+          }
+        }),
+    [enabled, savedScale, savedTX, savedTY, scale, translateX, translateY, zoomed],
+  );
+
+  const composed = useMemo(
+    () => Gesture.Simultaneous(pinch, pan, doubleTap),
+    [doubleTap, pan, pinch],
+  );
+
+  const imageStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  return (
+    <GestureDetector gesture={composed}>
+      <Animated.View style={{ width, height, overflow: 'hidden' }}>
+        <Animated.View style={[{ width, height }, imageStyle]}>
+          <Image source={{ uri }} style={{ width, height }} contentFit="contain" transition={160} />
+        </Animated.View>
+      </Animated.View>
+    </GestureDetector>
+  );
+}
 
 export default function OfferGlassGallery({
   visible,
@@ -52,19 +213,27 @@ export default function OfferGlassGallery({
   const stripRef = useRef<FlatList<string>>(null);
   const opacity = useSharedValue(0);
   const dragY = useSharedValue(0);
+  const zoomed = useSharedValue(0);
 
   const safeIndex = Math.max(0, Math.min(Math.max(images.length - 1, 0), currentIndex));
   const activeUri = images[safeIndex] || images[0];
+  const stageHeight = height * 0.62;
 
   useEffect(() => {
     if (!visible) {
       opacity.value = 0;
       dragY.value = 0;
+      zoomed.value = 0;
       return;
     }
     opacity.value = withTiming(1, { duration: 220 });
     dragY.value = 0;
-  }, [visible, opacity, dragY]);
+    zoomed.value = 0;
+  }, [visible, opacity, dragY, zoomed]);
+
+  useEffect(() => {
+    zoomed.value = 0;
+  }, [safeIndex, zoomed]);
 
   useEffect(() => {
     if (!visible || images.length <= 1) return;
@@ -118,16 +287,18 @@ export default function OfferGlassGallery({
         .activeOffsetY(12)
         .failOffsetX([-28, 28])
         .onUpdate((e) => {
+          if (zoomed.value > 0.5) return;
           if (e.translationY > 0) dragY.value = e.translationY;
         })
         .onEnd((e) => {
+          if (zoomed.value > 0.5) return;
           if (e.translationY > 120 || e.velocityY > 1100) {
             runOnJS(closeAnimated)();
             return;
           }
           dragY.value = withTiming(0, { duration: 200 });
         }),
-    [closeAnimated, dragY],
+    [closeAnimated, dragY, zoomed],
   );
 
   const swipeX = useMemo(
@@ -136,6 +307,7 @@ export default function OfferGlassGallery({
         .activeOffsetX([-20, 20])
         .failOffsetY([-16, 16])
         .onEnd((e) => {
+          if (zoomed.value > 0.5) return;
           if (e.translationX < -48 || e.velocityX < -600) {
             runOnJS(goNext)();
             return;
@@ -144,7 +316,7 @@ export default function OfferGlassGallery({
             runOnJS(goPrev)();
           }
         }),
-    [goNext, goPrev],
+    [goNext, goPrev, zoomed],
   );
 
   const composed = useMemo(() => Gesture.Simultaneous(pan, swipeX), [pan, swipeX]);
@@ -190,7 +362,6 @@ export default function OfferGlassGallery({
     >
       <GestureDetector gesture={composed}>
         <Animated.View style={[styles.root, rootStyle]}>
-          {/* Zamglone odbicie bieżącego zdjęcia w tle */}
           <Image
             source={{ uri: activeUri }}
             style={styles.bgImage}
@@ -200,27 +371,15 @@ export default function OfferGlassGallery({
           <BlurView intensity={55} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={styles.bgDim} pointerEvents="none" />
 
-          <View style={[styles.stage, { height: height * 0.62, marginTop: insets.top + 56 }]}>
-            <Image
-              source={{ uri: activeUri }}
-              style={styles.mainImage}
-              contentFit="contain"
-              transition={160}
+          <View style={[styles.stage, { height: stageHeight, marginTop: insets.top + 56 }]}>
+            <ZoomablePhoto
+              key={`${safeIndex}-${activeUri}`}
+              uri={activeUri}
+              width={width - 16}
+              height={stageHeight}
+              enabled
+              zoomed={zoomed}
             />
-            {images.length > 1 ? (
-              <>
-                <Pressable
-                  onPress={goPrev}
-                  style={[styles.edgeHit, styles.edgeHitLeft]}
-                  accessibilityRole="button"
-                />
-                <Pressable
-                  onPress={goNext}
-                  style={[styles.edgeHit, styles.edgeHitRight]}
-                  accessibilityRole="button"
-                />
-              </>
-            ) : null}
           </View>
 
           <View
@@ -295,18 +454,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 8,
   },
-  mainImage: {
-    width: '100%',
-    height: '100%',
-  },
-  edgeHit: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: '28%',
-  },
-  edgeHitLeft: { left: 0 },
-  edgeHitRight: { right: 0 },
   header: {
     position: 'absolute',
     top: 0,

@@ -2373,9 +2373,8 @@ export default function OfferDetail({ route, navigation }: any) {
       >
         <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 16) + 12 }, Platform.OS === 'android' && { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }, isDark && { backgroundColor: Platform.OS === 'android' ? '#0a0a0a' : 'rgba(10,10,10,0.65)', borderTopColor: 'rgba(255,255,255,0.1)' }]}>
           {/*
-            1) Cena + banery (pełna szerokość, owijanie bez nakładania).
-            2) Wizytówka + krótki opis prowizji pod spodem (złączone).
-            Dla właściciela: cena | ROI obok siebie.
+            Właściciel: cena + OKAZJA/czynsz w jednym ciągu | same ROI (bez wizytówki).
+            Kupujący: cena + wizytówka / prowizja.
           */}
           {isOwner ? (
             <View style={styles.bottomBarTopRow}>
@@ -2401,135 +2400,75 @@ export default function OfferDetail({ route, navigation }: any) {
                     {pricePerSqmLabel}
                   </Text>
                 ) : null}
-                <View style={styles.priceMetaRow}>
-                  {displayOffer.priceSecondary ? (
-                    <Text style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
-                      {displayOffer.priceSecondary}
-                    </Text>
-                  ) : null}
-                  {marketDiffPercent !== null ? (
-                    <View
-                      style={[
-                        styles.marketStatusPill,
-                        { backgroundColor: marketStatus.bg, borderColor: marketStatus.color },
-                      ]}
-                    >
-                      <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
-                      <Text
-                        style={[styles.marketStatusPillText, { color: marketStatus.color }]}
-                        numberOfLines={1}
-                      >
-                        {marketStatus.label}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {hasAdminFee ? (
-                    <View
-                      style={[
-                        styles.adminFeeMiniPill,
-                        {
-                          backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(52,199,89,0.12)',
-                          borderColor: isDark ? 'rgba(52,199,89,0.42)' : 'rgba(52,199,89,0.38)',
-                        },
-                      ]}
-                    >
-                      <Text
+                {displayOffer.priceSecondary ? (
+                  <Text style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
+                    {displayOffer.priceSecondary}
+                  </Text>
+                ) : null}
+                {(marketDiffPercent !== null || hasAdminFee) ? (
+                  <View style={styles.ownerStatusFeeRow}>
+                    {marketDiffPercent !== null ? (
+                      <View
                         style={[
-                          styles.adminFeeMiniPillText,
-                          { color: isDark ? '#34d399' : '#15803d' },
+                          styles.marketStatusPill,
+                          { backgroundColor: marketStatus.bg, borderColor: marketStatus.color },
                         ]}
-                        numberOfLines={1}
                       >
-                        {t('offer.detail.adminFeePill', { amount: adminFeeLabel })}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-              <View style={styles.ownerStatsColumn}>
-                <View
-                  style={[
-                    styles.ownerCompactPill,
-                    styles.ownerStatsIdentityPill,
-                    isDark && { backgroundColor: 'rgba(28,28,30,0.72)' },
-                    agentCommissionInfo?.companyName && {
-                      borderColor: 'rgba(255,159,10,0.55)',
-                      borderWidth: 1,
-                    },
-                  ]}
-                >
-                  {sellerAvatarUrl ? (
-                    <Image
-                      source={{ uri: sellerAvatarUrl }}
-                      style={styles.ownerAvatarImage}
-                      contentFit="cover"
-                    />
-                  ) : (
-                  <LinearGradient
-                    colors={
-                      agentCommissionInfo?.companyName
-                        ? ['rgba(255,159,10,0.95)', 'rgba(251,146,60,0.88)']
-                        : ['rgba(16,185,129,0.92)', 'rgba(5,150,105,0.88)']
-                    }
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.ownerAvatarGrad}
-                  >
-                    <Text style={styles.ownerAvatarInitials} allowFontScaling={false}>
-                      {sellerInitials}
-                    </Text>
-                  </LinearGradient>
-                  )}
-                  <View style={styles.ownerPillInfo}>
-                    <Text numberOfLines={1} style={[styles.ownerPillName, isDark && { color: '#ffffff' }]}>
-                      {sellerPrimaryLabel}
-                    </Text>
-                    <View style={styles.ownerPillStarsRow}>
-                      {[1, 2, 3, 4, 5].map((s) => (
-                        <Star
-                          key={s}
-                          size={8}
-                          color={
-                            s <= Math.round(ownerAverageRating || 0)
-                              ? '#f59e0b'
-                              : isDark
-                                ? '#4b5563'
-                                : '#d1d5db'
-                          }
-                          fill={s <= Math.round(ownerAverageRating || 0) ? '#f59e0b' : 'transparent'}
-                        />
-                      ))}
-                    </View>
-                    {sellerSubtitleLine ? (
-                      <Text style={[styles.ownerPillSecondary, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
-                        {sellerSubtitleLine}
-                      </Text>
+                        <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
+                        <Text
+                          style={[styles.marketStatusPillText, { color: marketStatus.color }]}
+                          numberOfLines={1}
+                        >
+                          {marketStatus.label}
+                        </Text>
+                      </View>
                     ) : null}
-                  </View>
-                </View>
-                {estimatedRoi !== null ? (
-                  <View
-                    style={[
-                      styles.roiPillCard,
-                      styles.roiPillCardBelowIdentity,
-                      {
-                        backgroundColor: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.10)',
-                        borderColor: '#3b82f6',
-                      },
-                    ]}
-                  >
-                    <Text style={styles.roiPillLabel} numberOfLines={1}>
-                      {t('offer.detail.roi.label')}
-                    </Text>
-                    <Text style={styles.roiPillValue} numberOfLines={1}>
-                      {estimatedRoi}%
-                    </Text>
-                    <Text style={styles.roiPillSub} numberOfLines={1}>
-                      {t('offer.detail.roi.sub')}
-                    </Text>
+                    {hasAdminFee ? (
+                      <View
+                        style={[
+                          styles.adminFeeMiniPill,
+                          {
+                            backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(52,199,89,0.12)',
+                            borderColor: isDark ? 'rgba(52,199,89,0.42)' : 'rgba(52,199,89,0.38)',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.adminFeeMiniPillText,
+                            { color: isDark ? '#34d399' : '#15803d' },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {t('offer.detail.adminFeePill', { amount: adminFeeLabel })}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                 ) : null}
               </View>
+              {estimatedRoi !== null ? (
+                <View
+                  style={[
+                    styles.roiPillCard,
+                    styles.ownerRoiOnly,
+                    {
+                      backgroundColor: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.10)',
+                      borderColor: '#3b82f6',
+                    },
+                  ]}
+                >
+                  <Text style={styles.roiPillLabel} numberOfLines={1}>
+                    {t('offer.detail.roi.label')}
+                  </Text>
+                  <Text style={styles.roiPillValue} numberOfLines={1}>
+                    {estimatedRoi}%
+                  </Text>
+                  <Text style={styles.roiPillSub} numberOfLines={1}>
+                    {t('offer.detail.roi.sub')}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           ) : (
             <>
@@ -3806,10 +3745,22 @@ const styles = StyleSheet.create({
     marginTop: 6,
     width: '100%',
   },
+  /** Właściciel: OKAZJA + czynsz zawsze w jednej linii (bez zawijania). */
+  ownerStatusFeeRow: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  ownerRoiOnly: {
+    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
   marketStatusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexShrink: 0,
+    flexShrink: 1,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 999,
@@ -3828,7 +3779,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   adminFeeMiniPill: {
-    flexShrink: 0,
+    flexShrink: 1,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 999,
