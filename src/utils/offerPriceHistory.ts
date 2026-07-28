@@ -64,9 +64,22 @@ export function buildFallbackPriceHistoryFromOffer(offer: unknown): OfferPriceHi
   return [];
 }
 
+export function dedupeConsecutivePriceHistoryPoints(
+  rows: OfferPriceHistoryPoint[],
+): OfferPriceHistoryPoint[] {
+  if (rows.length < 2) return rows;
+  const out: OfferPriceHistoryPoint[] = [];
+  for (const row of rows) {
+    const prev = out[out.length - 1];
+    if (prev && Math.abs(Number(prev.pricePln) - Number(row.pricePln)) < 0.01) continue;
+    out.push(row);
+  }
+  return out;
+}
+
 export function normalizePriceHistoryRows(raw: unknown): OfferPriceHistoryPoint[] {
   if (!Array.isArray(raw)) return [];
-  return raw
+  const mapped = raw
     .map((row, index) => {
       if (!row || typeof row !== 'object') return null;
       const r = row as Record<string, unknown>;
@@ -84,6 +97,7 @@ export function normalizePriceHistoryRows(raw: unknown): OfferPriceHistoryPoint[
       } satisfies OfferPriceHistoryPoint;
     })
     .filter(Boolean) as OfferPriceHistoryPoint[];
+  return dedupeConsecutivePriceHistoryPoints(mapped);
 }
 
 export function computePriceHistoryDelta(series: number[]) {

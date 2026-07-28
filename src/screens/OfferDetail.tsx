@@ -17,14 +17,13 @@ import Animated, {
   withTiming,
   withSequence,
   withRepeat,
-  runOnJS,
 } from 'react-native-reanimated';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(GHScrollView);
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
-import ImageViewing from 'react-native-image-viewing';
+import OfferGlassGallery from '../components/offer/OfferGlassGallery';
 import { ChevronLeft, Share as ShareIcon, Heart, Maximize, Images, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, ChevronUp, Eye, MoreHorizontal, Flag, Ban } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -56,6 +55,7 @@ import {
   resolveIsExactLocation,
 } from '../constants/locationEcosystem';
 import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
+import { getBestUserAvatarUrl } from '../utils/userAvatar';
 import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDisplay';
 import { isPartnerIdentity } from '../utils/partnerIdentity';
 import { requestInvestorProUpsell } from '../services/investorProUpsell';
@@ -93,13 +93,11 @@ import { localeToDateFormat, useI18n } from '../i18n';
 import { isProPhotoSessionSampleOfferId } from '../data/proPhotoSessionSampleOffers';
 
 const { width, height } = Dimensions.get('window');
-/** ~4:3 względem szerokości ekranu — więcej kadru, mniej cropu niż stałe 450px. */
-const IMG_HEIGHT = Math.max(480, Math.round(Math.min(width * (4 / 3), height * 0.58)));
+/** ~4:3 względem szerokości — niższy hero, żeby po otwarciu widać było lokalizację nad paskiem CTA. */
+const IMG_HEIGHT = Math.max(400, Math.round(Math.min(width * (4 / 3), height * 0.46)));
 /** Ile białej karty nachodzi na dół zdjęcia (zaokrąglone rogi). */
 const HERO_SHEET_OVERLAP = 28;
 const HERO_TAP_HEIGHT = IMG_HEIGHT - HERO_SHEET_OVERLAP;
-/** Po tylu px scrolla sheetu rozwijamy pełną ramkę prowizji w bottom barze. */
-const AGENT_COMMISSION_EXPAND_Y = 64;
 const GALLERY_CONTENT_WIDTH = width - 48;
 const GALLERY_HERO_HEIGHT = Math.round(GALLERY_CONTENT_WIDTH * 0.62);
 const EVENT_PREFIX = DEAL_EVENT_PREFIX;
@@ -179,8 +177,6 @@ export default function OfferDetail({ route, navigation }: any) {
    * przy scrollu widać hero zdjęcia („szczelina" między kartą a bottom barem).
    */
   const [bottomBarHeight, setBottomBarHeight] = useState(180);
-  /** Duża ramka „Prowizja agenta” — dopiero po pociągnięciu sheetu w górę. */
-  const [agentCommissionExpanded, setAgentCommissionExpanded] = useState(false);
   const heartScale = useSharedValue(1);
   const { user, token } = useAuthStore() as any;
   const isGuest = !user?.id;
@@ -571,7 +567,7 @@ export default function OfferDetail({ route, navigation }: any) {
     } catch (e) {}
   }
   const imagesToShow = (realImages && realImages.length > 0) ? realImages : ['https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?q=80&w=1200&auto=format&fit=crop'];
-  const lightboxImages = useMemo(() => imagesToShow.map((uri) => ({ uri })), [imagesToShow]);
+  const lightboxImages = useMemo(() => imagesToShow, [imagesToShow]);
 
   const listingPrice = useMemo(() => resolveOfferListingPrice(offer, rate), [offer, rate]);
   const priceDiscount = useMemo(() => resolveOfferPriceDiscount(offer), [offer]);
@@ -856,14 +852,9 @@ export default function OfferDetail({ route, navigation }: any) {
   const sheetNudge = useSharedValue(0);
   const scrollViewRef = useRef<GHScrollView>(null);
   const touchTapRef = useRef({ x: 0, y: 0, at: 0 });
-  const setCommissionExpandedSafe = useCallback((next: boolean) => {
-    setAgentCommissionExpanded((prev) => (prev === next ? prev : next));
-  }, []);
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (e) => {
       scrollY.value = e.contentOffset.y;
-      const next = e.contentOffset.y >= AGENT_COMMISSION_EXPAND_Y;
-      runOnJS(setCommissionExpandedSafe)(next);
     },
   });
 
@@ -1242,6 +1233,19 @@ export default function OfferDetail({ route, navigation }: any) {
     return (parts[0]?.slice(0, 2).toUpperCase() || '?').slice(0, 2);
   }, [sellerPrimaryLabel]);
 
+  const sellerAvatarUrl = useMemo(
+    () =>
+      getBestUserAvatarUrl(ownerProfile?.user) ||
+      getBestUserAvatarUrl(ownerProfile) ||
+      getBestUserAvatarUrl(offer?.user) ||
+      getBestUserAvatarUrl(offer?.owner) ||
+      getBestUserAvatarUrl(offer?.seller) ||
+      null,
+    [ownerProfile, offer?.user, offer?.owner, offer?.seller],
+  );
+
+  const showZeroCommissionLabel = !agentCommissionInfo || agentCommissionInfo.isZero;
+
   const fetchPublicProfile = async (userId: number) => {
     const res = await fetch(`${API_URL}/api/users/${userId}/public`);
     const data = await res.json();
@@ -1427,27 +1431,33 @@ export default function OfferDetail({ route, navigation }: any) {
       </Animated.View>
 
       <View style={[styles.topBar, { top: Math.max(12, insets.top + 6) }]}>
-        <TouchableOpacity style={styles.glassButton} onPress={() => navigation?.goBack()} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
-          <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
-          <ChevronLeft color="white" size={24} />
+        <TouchableOpacity style={styles.glassButtonOuter} onPress={() => navigation?.goBack()} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} activeOpacity={0.85}>
+          <View style={styles.glassButton}>
+            <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+            <ChevronLeft color="white" size={24} />
+          </View>
         </TouchableOpacity>
 
         <View style={styles.topBarRight}>
           {!isSamplePreview ? (
             <>
-          <TouchableOpacity style={[styles.glassButton, { marginRight: 12 }]} onPress={handleShare} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
-            <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
-            <ShareIcon color="white" size={20} />
+          <TouchableOpacity style={[styles.glassButtonOuter, { marginRight: 12 }]} onPress={handleShare} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} activeOpacity={0.85}>
+            <View style={styles.glassButton}>
+              <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+              <ShareIcon color="white" size={20} />
+            </View>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.glassButton, { marginRight: 12 }]} onPress={handleFavorite} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
-            <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
-            <Animated.View style={animatedHeartStyle}>
-              <Heart color={isFavorite ? "#ff3b30" : "white"} fill={isFavorite ? "#ff3b30" : "transparent"} size={20} />
-            </Animated.View>
+          <TouchableOpacity style={[styles.glassButtonOuter, { marginRight: 12 }]} onPress={handleFavorite} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} activeOpacity={0.85}>
+            <View style={styles.glassButton}>
+              <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+              <Animated.View style={animatedHeartStyle}>
+                <Heart color={isFavorite ? "#ff3b30" : "white"} fill={isFavorite ? "#ff3b30" : "transparent"} size={20} />
+              </Animated.View>
+            </View>
           </TouchableOpacity>
           {!isOwner ? (
             <TouchableOpacity
-              style={styles.glassButton}
+              style={styles.glassButtonOuter}
               onPress={() => {
                 Haptics.selectionAsync();
                 setIsMoreMenuOpen(true);
@@ -1455,9 +1465,12 @@ export default function OfferDetail({ route, navigation }: any) {
               hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
               accessibilityLabel={t('offer.detail.accessibility.moreOptions')}
               accessibilityRole="button"
+              activeOpacity={0.85}
             >
-              <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
-              <MoreHorizontal color="white" size={20} />
+              <View style={styles.glassButton}>
+                <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                <MoreHorizontal color="white" size={20} />
+              </View>
             </TouchableOpacity>
           ) : null}
             </>
@@ -1687,10 +1700,11 @@ export default function OfferDetail({ route, navigation }: any) {
                   styles.statBox,
                   {
                     backgroundColor: isDark ? '#1c1c1e' : '#f6f7f9',
-                    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.06)',
-                    borderTopColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.9)',
+                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.08)',
+                    borderTopColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.95)',
+                    borderBottomColor: isDark ? 'rgba(0,0,0,0.45)' : 'rgba(17,24,39,0.12)',
                     shadowColor: isDark ? '#000000' : '#111827',
-                    shadowOpacity: isDark ? 0.42 : 0.12,
+                    shadowOpacity: isDark ? 0.5 : 0.16,
                   },
                 ]}
               >
@@ -2067,100 +2081,123 @@ export default function OfferDetail({ route, navigation }: any) {
         }}
       >
         <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 16) + 12 }, Platform.OS === 'android' && { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }, isDark && { backgroundColor: Platform.OS === 'android' ? '#0a0a0a' : 'rgba(10,10,10,0.65)', borderTopColor: 'rgba(255,255,255,0.1)' }]}>
-          
-          {/* TOP ROW: Cena (z meta-pigułkami) + ROI / status cenowy / sprzedawca */}
-          <View style={styles.bottomBarTopRow}>
-            <View style={styles.bottomBarPriceColumn}>
-              <Text style={styles.bottomBarPriceLabel}>{t('offer.detail.labels.offerPrice')}</Text>
-              {priceDiscount.isDiscounted && listedPriceLabel ? (
-                <OfferDiscountPriceBlock
-                  discountPercent={priceDiscount.discountPercent}
-                  listedPriceLabel={listedPriceLabel}
-                  isDark={isDark}
-                />
-              ) : null}
+          {/* Lokalizacja tuż pod linią zetknięcia karty z hero — zawsze widoczna po otwarciu. */}
+          {locationLine ? (
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                setIsLocationPreviewOpen(true);
+              }}
+              style={({ pressed }) => [
+                styles.bottomBarLocationRow,
+                pressed && { opacity: 0.72 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={locationLine}
+            >
+              <MapPin color={isDark ? '#A1A1AA' : '#86868b'} size={15} />
               <Text
-                style={[styles.bottomBarPrice, isDark && { color: '#ffffff' }]}
+                style={[styles.bottomBarLocationText, isDark && { color: '#D4D4D8' }]}
                 numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
               >
-                {displayOffer.price}
+                {locationLine}
               </Text>
-              {displayOffer.priceSecondary ? (
-                <Text style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]} numberOfLines={2}>
-                  {displayOffer.priceSecondary}
+            </Pressable>
+          ) : null}
+          
+          {/*
+            1) Cena + banery (pełna szerokość, owijanie bez nakładania).
+            2) Wizytówka + krótki opis prowizji pod spodem (złączone).
+            Dla właściciela: cena | ROI obok siebie.
+          */}
+          {isOwner ? (
+            <View style={styles.bottomBarTopRow}>
+              <View style={styles.bottomBarPriceColumn}>
+                <Text style={styles.bottomBarPriceLabel}>{t('offer.detail.labels.offerPrice')}</Text>
+                {priceDiscount.isDiscounted && listedPriceLabel ? (
+                  <OfferDiscountPriceBlock
+                    discountPercent={priceDiscount.discountPercent}
+                    listedPriceLabel={listedPriceLabel}
+                    isDark={isDark}
+                  />
+                ) : null}
+                <Text
+                  style={[styles.bottomBarPrice, isDark && { color: '#ffffff' }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                >
+                  {displayOffer.price}
                 </Text>
-              ) : null}
-              {/*
-                Wiersz meta pod główną kwotą — krótkie pigułki w stylu Apple:
-                  • PLN/m² (neutralne, główna informacja porównawcza),
-                  • status cenowy (Okazja / Rynkowa / Luksusowa) — zielony /
-                    żółty / czerwony zgodnie z `EstateOS™ Statistics`,
-                  • „+ czynsz admin {kwota}" (przeniesione tu z górnego rzędu).
-              */}
-              <View style={styles.priceMetaRow}>
                 {pricePerSqmLabel ? (
-                  <Text
-                    style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]}
-                    numberOfLines={1}
-                  >
+                  <Text style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
                     {pricePerSqmLabel}
                   </Text>
                 ) : null}
-                {marketDiffPercent !== null ? (
-                  <View
-                    style={[
-                      styles.marketStatusPill,
-                      { backgroundColor: marketStatus.bg, borderColor: marketStatus.color },
-                    ]}
-                  >
-                    <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
-                    <Text
-                      style={[styles.marketStatusPillText, { color: marketStatus.color }]}
-                      numberOfLines={1}
-                    >
-                      {marketStatus.label}
+                <View style={styles.priceMetaRow}>
+                  {displayOffer.priceSecondary ? (
+                    <Text style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
+                      {displayOffer.priceSecondary}
                     </Text>
-                  </View>
-                ) : null}
-                {hasAdminFee ? (
-                  <View
-                    style={[
-                      styles.adminFeeMiniPill,
-                      {
-                        backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(52,199,89,0.12)',
-                        borderColor: isDark ? 'rgba(52,199,89,0.42)' : 'rgba(52,199,89,0.38)',
-                      },
-                    ]}
-                  >
-                    <Text
+                  ) : null}
+                  {marketDiffPercent !== null ? (
+                    <View
                       style={[
-                        styles.adminFeeMiniPillText,
-                        { color: isDark ? '#34d399' : '#15803d' },
+                        styles.marketStatusPill,
+                        { backgroundColor: marketStatus.bg, borderColor: marketStatus.color },
                       ]}
-                      numberOfLines={1}
                     >
-                      {t('offer.detail.adminFeePill', { amount: adminFeeLabel })}
-                    </Text>
-                  </View>
-                ) : null}
+                      <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
+                      <Text
+                        style={[styles.marketStatusPillText, { color: marketStatus.color }]}
+                        numberOfLines={1}
+                      >
+                        {marketStatus.label}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {hasAdminFee ? (
+                    <View
+                      style={[
+                        styles.adminFeeMiniPill,
+                        {
+                          backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(52,199,89,0.12)',
+                          borderColor: isDark ? 'rgba(52,199,89,0.42)' : 'rgba(52,199,89,0.38)',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.adminFeeMiniPillText,
+                          { color: isDark ? '#34d399' : '#15803d' },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {t('offer.detail.adminFeePill', { amount: adminFeeLabel })}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
               </View>
-            </View>
-
-            {isOwner ? (
               <View style={styles.ownerStatsColumn}>
                 <View
                   style={[
                     styles.ownerCompactPill,
                     styles.ownerStatsIdentityPill,
                     isDark && { backgroundColor: 'rgba(28,28,30,0.72)' },
-                    agentCommissionInfo?.companyName && agentCommissionExpanded && {
+                    agentCommissionInfo?.companyName && {
                       borderColor: 'rgba(255,159,10,0.55)',
                       borderWidth: 1,
                     },
                   ]}
                 >
+                  {sellerAvatarUrl ? (
+                    <Image
+                      source={{ uri: sellerAvatarUrl }}
+                      style={styles.ownerAvatarImage}
+                      contentFit="cover"
+                    />
+                  ) : (
                   <LinearGradient
                     colors={
                       agentCommissionInfo?.companyName
@@ -2175,6 +2212,7 @@ export default function OfferDetail({ route, navigation }: any) {
                       {sellerInitials}
                     </Text>
                   </LinearGradient>
+                  )}
                   <View style={styles.ownerPillInfo}>
                     <Text numberOfLines={1} style={[styles.ownerPillName, isDark && { color: '#ffffff' }]}>
                       {sellerPrimaryLabel}
@@ -2225,182 +2263,163 @@ export default function OfferDetail({ route, navigation }: any) {
                   </View>
                 ) : null}
               </View>
-            ) : agentCommissionExpanded ? (
-              <Pressable 
-                onPress={openOwnerProfileModal} 
-                style={({ pressed }) => [
-                  styles.ownerCompactPill,
-                  isDark && { backgroundColor: 'rgba(28,28,30,0.72)' },
-                  agentCommissionInfo?.companyName && {
-                    borderColor: 'rgba(255,159,10,0.55)',
-                    borderWidth: 1,
-                  },
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <LinearGradient
-                  colors={
-                    agentCommissionInfo?.companyName
-                      ? ['rgba(255,159,10,0.95)', 'rgba(251,146,60,0.88)']
-                      : ['rgba(16,185,129,0.92)', 'rgba(5,150,105,0.88)']
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.ownerAvatarGrad}
+            </View>
+          ) : (
+            <>
+              <View style={styles.bottomPriceStack}>
+                <Text style={styles.bottomBarPriceLabel}>{t('offer.detail.labels.offerPrice')}</Text>
+                {priceDiscount.isDiscounted && listedPriceLabel ? (
+                  <OfferDiscountPriceBlock
+                    discountPercent={priceDiscount.discountPercent}
+                    listedPriceLabel={listedPriceLabel}
+                    isDark={isDark}
+                  />
+                ) : null}
+                <Text
+                  style={[styles.bottomBarPrice, isDark && { color: '#ffffff' }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
                 >
-                  <Text style={styles.ownerAvatarInitials} allowFontScaling={false}>
-                    {sellerInitials}
+                  {displayOffer.price}
+                </Text>
+                {pricePerSqmLabel ? (
+                  <Text style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
+                    {pricePerSqmLabel}
                   </Text>
-                </LinearGradient>
-                <View style={styles.ownerPillInfo}>
-                  <Text numberOfLines={1} style={[styles.ownerPillName, isDark && { color: '#ffffff' }]}>
-                    {sellerPrimaryLabel}
-                  </Text>
-                  <View style={styles.ownerPillStarsRow}>
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <Star
-                        key={s}
-                        size={8}
-                        color={
-                          s <= Math.round(ownerAverageRating || 0)
-                            ? '#f59e0b'
-                            : isDark
-                              ? '#4b5563'
-                              : '#d1d5db'
-                        }
-                        fill={s <= Math.round(ownerAverageRating || 0) ? '#f59e0b' : 'transparent'}
-                      />
-                    ))}
-                  </View>
-                  <Text style={[styles.ownerPillSecondary, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
-                    {ownerSummarySecondary}
-                    </Text>
-                  {agentCommissionInfo ? (
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.ownerPillCommission,
-                        agentCommissionInfo.isZero
-                          ? { color: isDark ? '#6ee7b7' : '#059669' }
-                          : { color: isDark ? '#FBBF24' : '#C2410C' },
-                      ]}
-                    >
-                      {agentCommissionInfo.isZero
-                        ? t('offer.detail.commission.ownerPillZero')
-                        : t('offer.detail.commission.ownerPillPercent', {
-                            percent: agentCommissionInfo.percentLabel,
-                            amount: agentCommissionAmountLabel ?? agentCommissionInfo.amountLabel,
-                          })}
+                ) : null}
+                <View style={styles.priceMetaRow}>
+                  {displayOffer.priceSecondary ? (
+                    <Text style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
+                      {displayOffer.priceSecondary}
                     </Text>
                   ) : null}
-                  </View>
-                <ChevronRight size={14} color={isDark ? '#9ca3af' : '#9ca3af'} style={styles.ownerPillChevron} />
-              </Pressable>
-            ) : null}
-          </View>
-
-          {/*
-            PIGUŁKA PROWIZJI — pełna szerokość dopiero po pociągnięciu sheetu w górę,
-            żeby na starcie widać było więcej zdjęcia + tytuł / lokalizację.
-            Skrót prowizji zostaje w małej wizytówce agenta obok ceny.
-          */}
-          {agentCommissionInfo && agentCommissionExpanded ? (
-            <View
-              style={[
-                styles.agentCommissionPill,
-                agentCommissionInfo.isZero
-                  ? {
-                      backgroundColor: isDark ? 'rgba(16,185,129,0.16)' : 'rgba(16,185,129,0.12)',
-                      borderColor: isDark ? 'rgba(16,185,129,0.6)' : 'rgba(16,185,129,0.5)',
-                    }
-                  : {
-                      backgroundColor: isDark ? 'rgba(255,159,10,0.14)' : 'rgba(255,159,10,0.10)',
-                      borderColor: isDark ? 'rgba(255,159,10,0.55)' : 'rgba(255,159,10,0.45)',
-                    },
-              ]}
-            >
-              <View style={styles.agentCommissionTopRow}>
-                <View style={styles.agentCommissionLabelCol}>
-                  <View style={styles.agentCommissionLabelLine}>
-                    <Handshake
-                      size={13}
-                      color={agentCommissionInfo.isZero ? '#10b981' : '#FF9F0A'}
-                      strokeWidth={2.6}
-                    />
-                    <Text
+                  {marketDiffPercent !== null ? (
+                    <View
                       style={[
-                        styles.agentCommissionTopLabel,
-                        { color: agentCommissionInfo.isZero ? '#10b981' : '#FF9F0A' },
+                        styles.marketStatusPill,
+                        { backgroundColor: marketStatus.bg, borderColor: marketStatus.color },
                       ]}
-                      numberOfLines={1}
-                      allowFontScaling={false}
                     >
-                      {agentCommissionInfo.isZero ? t('offer.detail.commission.pillZero') : t('offer.detail.commission.pillAgent')}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.agentCommissionHeroCol}>
-                  {agentCommissionInfo.isZero ? (
-                    <Text
-                      style={[styles.agentCommissionHeroAmount, { color: '#10b981' }]}
-                      numberOfLines={1}
-                      allowFontScaling={false}
+                      <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
+                      <Text
+                        style={[styles.marketStatusPillText, { color: marketStatus.color }]}
+                        numberOfLines={1}
+                      >
+                        {marketStatus.label}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {hasAdminFee ? (
+                    <View
+                      style={[
+                        styles.adminFeeMiniPill,
+                        {
+                          backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(52,199,89,0.12)',
+                          borderColor: isDark ? 'rgba(52,199,89,0.42)' : 'rgba(52,199,89,0.38)',
+                        },
+                      ]}
                     >
-                      {t('offer.detail.commission.zeroHero')}
-                    </Text>
-                  ) : (
-                    <>
                       <Text
-                        style={[styles.agentCommissionHeroPercent, { color: '#FF9F0A' }]}
+                        style={[
+                          styles.adminFeeMiniPillText,
+                          { color: isDark ? '#34d399' : '#15803d' },
+                        ]}
                         numberOfLines={1}
-                        allowFontScaling={false}
                       >
-                        {agentCommissionInfo.percentLabel}
+                        {t('offer.detail.adminFeePill', { amount: adminFeeLabel })}
                       </Text>
-                      <Text
-                        style={[styles.agentCommissionHeroAmount, { color: '#FF9F0A' }]}
-                        numberOfLines={1}
-                        allowFontScaling={false}
-                      >
-                        {t('offer.detail.commission.approxAmount', { amount: agentCommissionAmountLabel ?? agentCommissionInfo.amountLabel })}
-                      </Text>
-                    </>
-                  )}
+                    </View>
+                  ) : null}
                 </View>
               </View>
-              <Text
+
+              <View
                 style={[
-                  styles.agentCommissionBody,
-                  agentCommissionInfo.isZero
-                    ? { color: isDark ? '#9BE7C7' : '#047857' }
-                    : { color: isDark ? '#FFD09B' : '#B45309' },
+                  styles.agentSellerBundle,
+                  showZeroCommissionLabel
+                    ? {
+                        backgroundColor: isDark ? 'rgba(16,185,129,0.14)' : 'rgba(16,185,129,0.1)',
+                        borderColor: isDark ? 'rgba(16,185,129,0.55)' : 'rgba(16,185,129,0.42)',
+                      }
+                    : {
+                        backgroundColor: isDark ? 'rgba(255,159,10,0.12)' : 'rgba(255,159,10,0.09)',
+                        borderColor: isDark ? 'rgba(255,159,10,0.5)' : 'rgba(255,159,10,0.4)',
+                      },
                 ]}
               >
-                {agentCommissionInfo.isZero ? (
-                  <>
-                    {t('offer.detail.commission.bodyZero', {
-                      agentNote: agentCommissionInfo.companyName
-                        ? t('offer.detail.commission.bodyZeroCompany', {
-                            companyName: agentCommissionInfo.companyName,
-                          })
-                        : t('offer.detail.commission.bodyZeroAgentDefault'),
-                    })}
-                  </>
-                ) : (
-                  <>
-                    {t('offer.detail.commission.bodyPaid', {
-                      amount: agentCommissionAmountLabel ?? agentCommissionInfo.amountLabel,
-                      percent: agentCommissionInfo.percentLabel,
-                      agentSuffix: agentCommissionInfo.companyName
-                        ? ` ${agentCommissionInfo.companyName}`
-                        : t('offer.detail.commission.bodyPaidAgentDefault'),
-                    })}
-                    <Text style={{ fontWeight: '800' }}>{t('offer.detail.commission.bodyPaidVatBold')}</Text>
-                  </>
-                )}
-              </Text>
-            </View>
-          ) : null}
+                <Pressable
+                  onPress={openOwnerProfileModal}
+                  style={({ pressed }) => [styles.agentSellerBundleHeader, pressed && { opacity: 0.75 }]}
+                >
+                  {sellerAvatarUrl ? (
+                    <Image
+                      source={{ uri: sellerAvatarUrl }}
+                      style={styles.ownerAvatarImage}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <LinearGradient
+                      colors={
+                        showZeroCommissionLabel
+                          ? ['rgba(16,185,129,0.92)', 'rgba(5,150,105,0.88)']
+                          : ['rgba(255,159,10,0.95)', 'rgba(251,146,60,0.88)']
+                      }
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.ownerAvatarGrad}
+                    >
+                      <Text style={styles.ownerAvatarInitials} allowFontScaling={false}>
+                        {sellerInitials}
+                      </Text>
+                    </LinearGradient>
+                  )}
+                  <View style={styles.ownerPillInfo}>
+                    <Text numberOfLines={1} style={[styles.ownerPillName, isDark && { color: '#ffffff' }]}>
+                      {sellerPrimaryLabel}
+                    </Text>
+                    <View style={styles.ownerPillStarsRow}>
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <Star
+                          key={s}
+                          size={8}
+                          color={
+                            s <= Math.round(ownerAverageRating || 0)
+                              ? '#f59e0b'
+                              : isDark
+                                ? '#4b5563'
+                                : '#d1d5db'
+                          }
+                          fill={s <= Math.round(ownerAverageRating || 0) ? '#f59e0b' : 'transparent'}
+                        />
+                      ))}
+                    </View>
+                    <Text style={[styles.ownerPillSecondary, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
+                      {ownerSummarySecondary}
+                    </Text>
+                  </View>
+                  <ChevronRight size={14} color={isDark ? '#9ca3af' : '#9ca3af'} style={styles.ownerPillChevron} />
+                </Pressable>
+
+                <Text
+                  style={[
+                    styles.agentCommissionBodyShort,
+                    showZeroCommissionLabel
+                      ? { color: isDark ? '#34D399' : '#047857' }
+                      : { color: isDark ? '#FFD09B' : '#B45309' },
+                  ]}
+                  numberOfLines={2}
+                >
+                  {showZeroCommissionLabel
+                    ? t('offer.detail.commission.bodyShortZero')
+                    : t('offer.detail.commission.bodyShortPaid', {
+                        percent: agentCommissionInfo!.percentLabel,
+                        amount: agentCommissionAmountLabel ?? agentCommissionInfo!.amountLabel,
+                      })}
+                </Text>
+              </View>
+            </>
+          )}
 
           {/* BOTTOM ROW: Akcje */}
           <View style={styles.bottomActionsRow}>
@@ -2441,7 +2460,16 @@ export default function OfferDetail({ route, navigation }: any) {
               <>
                 <Animated.View style={[styles.actionFlexWrap, apptBtnAnimatedStyle]}>
                   <TouchableOpacity
-                    style={[styles.secondaryAppleButton, isDark && { backgroundColor: '#1c1c1e', borderColor: 'rgba(255,255,255,0.1)' }]}
+                    style={[
+                      styles.secondaryAppleButton,
+                      isDark && {
+                        backgroundColor: '#2C2C2E',
+                        borderColor: 'rgba(255,255,255,0.14)',
+                        borderTopColor: 'rgba(255,255,255,0.22)',
+                        borderBottomColor: 'rgba(0,0,0,0.45)',
+                        shadowOpacity: 0.35,
+                      },
+                    ]}
                     onPress={() => {
                       if (guardPhoneVerification()) return;
                       animateAppointmentButton();
@@ -2475,40 +2503,16 @@ export default function OfferDetail({ route, navigation }: any) {
         </BlurView>
       </View>
 
-      <ImageViewing
-        images={lightboxImages}
-        imageIndex={galleryInitialIndex}
+      <OfferGlassGallery
         visible={isGalleryOpen}
-        onRequestClose={closeGallery}
-        onImageIndexChange={(idx) => {
-          if (!Number.isFinite(idx as number)) return;
-          const safe = Number(idx);
-          setGalleryCurrentIndex(safe);
-        }}
-        doubleTapToZoomEnabled
-        swipeToCloseEnabled
-        presentationStyle="fullScreen"
-        backgroundColor="#000000F2"
-        HeaderComponent={({ imageIndex }) => (
-          <View style={[styles.galleryHeader, { paddingTop: Math.max(insets.top + 6, Platform.OS === 'ios' ? 54 : 36) }]}>
-            <TouchableOpacity
-              onPress={closeGallery}
-              style={styles.galleryCloseBtn}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel={t('common.close')}
-            >
-              <X color="#FFFFFF" size={20} strokeWidth={2.2} />
-            </TouchableOpacity>
-            <Text style={styles.galleryCounter}>
-              {t('offer.detail.gallery.counter', {
-                current: (imageIndex ?? galleryCurrentIndex) + 1,
-                total: imagesToShow.length,
-              })}
-            </Text>
-            <View style={styles.galleryHeaderSpacer} />
-          </View>
-        )}
+        images={lightboxImages}
+        currentIndex={galleryCurrentIndex}
+        onChangeIndex={setGalleryCurrentIndex}
+        onClose={closeGallery}
+        closeLabel={t('common.close')}
+        counterLabel={(current, total) =>
+          t('offer.detail.gallery.counter', { current, total })
+        }
       />
 
       {isLocationPreviewOpen ? (
@@ -3036,7 +3040,28 @@ const styles = StyleSheet.create({
   },
   topBar: { position: 'absolute', top: 55, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 100 },
   topBarRight: { flexDirection: 'row' },
-  glassButton: { width: 46, height: 46, borderRadius: 23, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
+  glassButtonOuter: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.32,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  glassButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    borderTopColor: 'rgba(255,255,255,0.45)',
+    borderBottomColor: 'rgba(0,0,0,0.35)',
+  },
   heroGradient: {
     position: 'absolute',
     left: 0,
@@ -3235,17 +3260,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f6f7f9',
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.06)',
-    borderTopColor: 'rgba(255,255,255,0.8)', // subtle highlight for 3D effect
+    borderColor: 'rgba(17,24,39,0.08)',
+    borderTopColor: 'rgba(255,255,255,0.95)',
+    borderBottomColor: 'rgba(17,24,39,0.12)',
     paddingVertical: 18,
     paddingHorizontal: 12,
     borderRadius: 22,
     width: '48%',
     shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.09,
-    shadowRadius: 18,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    elevation: 8,
   },
   statText: { marginTop: 8, fontSize: 13, fontWeight: '600', color: '#1d1d1f' },
   divider: { height: 1, backgroundColor: '#e5e5ea', marginBottom: 32 },
@@ -3383,38 +3409,60 @@ const styles = StyleSheet.create({
   },
   bottomBar: { 
     paddingHorizontal: 20, 
-    paddingTop: 16, 
-    borderTopWidth: 1, 
-    borderTopColor: 'rgba(255,255,255,0.4)',
-    backgroundColor: 'rgba(255,255,255,0.65)',
+    paddingTop: 14, 
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderTopWidth: StyleSheet.hairlineWidth, 
+    borderTopColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: 'rgba(255,255,255,0.72)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 20,
+    shadowOpacity: 0.08,
+    shadowRadius: 22,
+    overflow: 'hidden',
+  },
+  bottomBarLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(60,60,67,0.12)',
+  },
+  bottomBarLocationText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+    letterSpacing: -0.1,
   },
   bottomBarTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12 },
   bottomBarPriceColumn: { flex: 1, minWidth: 0 },
+  bottomPriceStack: {
+    width: '100%',
+    marginBottom: 10,
+    gap: 2,
+  },
   bottomBarPriceLabel: { fontSize: 11, fontWeight: '700', color: '#86868b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
   bottomBarPrice: { fontSize: 22, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5 },
   bottomBarPriceSqm: { fontSize: 12, fontWeight: '600', color: '#6b7280', letterSpacing: 0.1 },
 
   /**
-   * Wiersz meta pod ceną — luźne mini-pigułki, owijają się gdyby zabrakło
-   * miejsca (`flexWrap: 'wrap'`), więc na małych ekranach „LUKSUSOWA" oraz
-   * „+ czynsz admin XYZ PLN" mogą wskoczyć w kolejną linię — żaden tekst
-   * się nie ucina.
+   * Wiersz meta pod ceną — pigułki w jednym ciągu, owijają się bez nakładania.
    */
   priceMetaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 6,
-    marginTop: 4,
-    maxWidth: '100%',
+    marginTop: 6,
+    width: '100%',
   },
   marketStatusPill: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 999,
@@ -3433,6 +3481,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   adminFeeMiniPill: {
+    flexShrink: 0,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 999,
@@ -3445,10 +3494,43 @@ const styles = StyleSheet.create({
   },
 
   /*
-    — Pigułka prowizji agenta — pełna szerokość bottom baru.
-    Renderowana POD `bottomBarTopRow`, dlatego procent + kwota mieszczą się
-    bez ucinania i opis ma luz na 2 linie nawet na iPhone Mini / SE.
+    — Wizytówka + krótki opis prowizji: jedna ramka pod ceną.
   */
+  agentSellerBundle: {
+    width: '100%',
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+    gap: 8,
+  },
+  agentSellerBundleJoined: {
+    marginTop: 0,
+  },
+  ownerCompactPillJoined: {
+    maxWidth: '56%',
+  },
+  agentSellerBundleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  agentSellerBundleDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 8,
+  },
+  agentCommissionBodyShort: {
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 16,
+    letterSpacing: -0.1,
+  },
   agentCommissionPill: {
     marginTop: -2,
     marginBottom: 12,
@@ -3567,18 +3649,20 @@ const styles = StyleSheet.create({
   ownerCompactPill: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    backgroundColor: 'rgba(255,255,255,0.82)',
+    backgroundColor: 'rgba(255,255,255,0.92)',
     borderRadius: 22, 
     paddingVertical: 7,
     paddingLeft: 7,
     paddingRight: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    borderTopColor: 'rgba(255,255,255,0.95)',
+    borderBottomColor: 'rgba(0,0,0,0.1)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 6,
     flexGrow: 1,
     flexShrink: 1,
     minWidth: 116,
@@ -3591,6 +3675,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    overflow: 'hidden',
+  },
+  ownerAvatarImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    flexShrink: 0,
+    backgroundColor: 'rgba(120,120,128,0.2)',
   },
   ownerAvatarInitials: {
     color: '#ffffff',
@@ -3615,7 +3707,7 @@ const styles = StyleSheet.create({
   
   secondaryAppleButton: { 
     flex: 1,
-    backgroundColor: '#f5f5f7', 
+    backgroundColor: '#f8f8fa', 
     borderRadius: 24, 
     paddingVertical: 14, 
     flexDirection: 'row', 
@@ -3623,7 +3715,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center', 
     gap: 6,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)'
+    borderColor: 'rgba(0,0,0,0.08)',
+    borderTopColor: 'rgba(255,255,255,0.98)',
+    borderBottomColor: 'rgba(0,0,0,0.12)',
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    elevation: 5,
   },
   secondaryAppleButtonText: { color: '#1d1d1f', fontSize: 14, fontWeight: '700' },
   
@@ -3636,11 +3735,15 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     justifyContent: 'center', 
     gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(0,80,180,0.35)',
+    borderTopColor: 'rgba(255,255,255,0.35)',
+    borderBottomColor: 'rgba(0,40,100,0.45)',
     shadowColor: '#0071e3',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 5
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.38,
+    shadowRadius: 12,
+    elevation: 8,
   },
   primaryAppleButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
   // --- KONIEC ZMIENIONEJ SEKCJI ---
@@ -3868,10 +3971,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 9 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    elevation: 8,
   },
   moreOverlay: {
     flex: 1,
