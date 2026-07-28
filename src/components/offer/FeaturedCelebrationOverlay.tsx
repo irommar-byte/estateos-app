@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Star } from 'lucide-react-native';
 import Animated, {
   Easing,
+  Extrapolation,
   interpolate,
   runOnJS,
   useAnimatedStyle,
@@ -19,7 +20,7 @@ import { useI18n } from '../../i18n';
 import { useFeaturedCelebrationStore } from '../../store/useFeaturedCelebrationStore';
 
 const STAR_COUNT = 34;
-const HOLD_MS = 2600;
+const HOLD_MS = 3400;
 const FADE_OUT_MS = 520;
 const HERO_STAR = 72;
 const RING = 140;
@@ -75,6 +76,62 @@ function BurstParticle({
   );
 }
 
+function CascadeLetter({
+  char,
+  index,
+  total,
+  progress,
+}: {
+  char: string;
+  index: number;
+  total: number;
+  progress: SharedValue<number>;
+}) {
+  const style = useAnimatedStyle(() => {
+    const slots = Math.max(1, total + 1);
+    const start = index / slots;
+    const end = Math.min(1, (index + 1.35) / slots);
+    const local = interpolate(progress.value, [start, end], [0, 1], Extrapolation.CLAMP);
+    return {
+      opacity: local,
+      transform: [
+        { translateY: interpolate(local, [0, 1], [22, 0]) },
+        { scale: interpolate(local, [0, 1], [0.55, 1]) },
+        { rotateZ: `${interpolate(local, [0, 1], [-8, 0])}deg` },
+      ],
+    };
+  });
+
+  if (char === ' ') {
+    return <View style={styles.titleSpace} />;
+  }
+
+  return <Animated.Text style={[styles.titleLetter, style]}>{char}</Animated.Text>;
+}
+
+function CascadeTitle({
+  text,
+  progress,
+}: {
+  text: string;
+  progress: SharedValue<number>;
+}) {
+  const letters = useMemo(() => Array.from(text), [text]);
+  return (
+    <View style={styles.titleRow}>
+      {letters.map((char, index) => (
+        <CascadeLetter
+          key={`${index}-${char}`}
+          char={char}
+          index={index}
+          total={letters.length}
+          progress={progress}
+        />
+      ))}
+    </View>
+  );
+}
+
 /**
  * Full-screen yellow celebration: hero star + expanding ring impact → star burst → „7 dni”.
  */
@@ -91,8 +148,17 @@ export default function FeaturedCelebrationOverlay() {
   const ring = useSharedValue(0);
   const burst = useSharedValue(0);
   const days = useSharedValue(0);
-  const title = useSharedValue(0);
+  const cascade = useSharedValue(0);
   const exit = useSharedValue(0);
+
+  const celebrationTitle = useMemo(
+    () => String(t('offer.detail.views.featuredCelebrationTitle') || '').toUpperCase(),
+    [t],
+  );
+  const cascadeDuration = useMemo(
+    () => Math.max(900, 420 + celebrationTitle.length * 55),
+    [celebrationTitle.length],
+  );
 
   const stars = useMemo<BurstStar[]>(
     () =>
@@ -120,14 +186,13 @@ export default function FeaturedCelebrationOverlay() {
     ring.value = 0;
     burst.value = 0;
     days.value = 0;
-    title.value = 0;
+    cascade.value = 0;
     exit.value = 0;
 
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     wash.value = withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic) });
 
-    // Hero star drops in / grows, then punches with the ring.
     hero.value = withSequence(
       withTiming(1.18, { duration: 320, easing: Easing.out(Easing.back(1.6)) }),
       withTiming(0.92, { duration: 90 }),
@@ -156,8 +221,14 @@ export default function FeaturedCelebrationOverlay() {
     }, 420);
 
     burst.value = withDelay(380, withTiming(1, { duration: 1450, easing: Easing.out(Easing.cubic) }));
-    title.value = withDelay(520, withSpring(1, { damping: 12, stiffness: 160, mass: 0.7 }));
-    days.value = withDelay(680, withSpring(1, { damping: 11, stiffness: 150, mass: 0.75 }));
+    cascade.value = withDelay(
+      480,
+      withTiming(1, { duration: cascadeDuration, easing: Easing.linear }),
+    );
+    days.value = withDelay(
+      520 + cascadeDuration * 0.55,
+      withSpring(1, { damping: 11, stiffness: 150, mass: 0.75 }),
+    );
 
     const closeTimer = setTimeout(() => {
       exit.value = withTiming(
@@ -167,14 +238,27 @@ export default function FeaturedCelebrationOverlay() {
           if (finished) runOnJS(dismiss)();
         },
       );
-    }, HOLD_MS);
+    }, Math.max(HOLD_MS, 900 + cascadeDuration));
 
     return () => {
       clearTimeout(impactHaptic);
       clearTimeout(burstHaptic);
       clearTimeout(closeTimer);
     };
-  }, [visible, playToken, dismiss, wash, hero, impact, ring, burst, days, title, exit]);
+  }, [
+    visible,
+    playToken,
+    dismiss,
+    wash,
+    hero,
+    impact,
+    ring,
+    burst,
+    days,
+    cascade,
+    exit,
+    cascadeDuration,
+  ]);
 
   const rootStyle = useAnimatedStyle(() => ({
     opacity: interpolate(exit.value, [0, 1], [1, 0]),
@@ -201,14 +285,6 @@ export default function FeaturedCelebrationOverlay() {
   const flashStyle = useAnimatedStyle(() => ({
     opacity: interpolate(impact.value, [0, 1], [0, 0.55]),
     transform: [{ scale: interpolate(impact.value, [0, 1], [0.6, 1.8]) }],
-  }));
-
-  const titleStyle = useAnimatedStyle(() => ({
-    opacity: title.value,
-    transform: [
-      { scale: interpolate(title.value, [0, 1], [0.78, 1]) },
-      { translateY: interpolate(title.value, [0, 1], [18, 0]) },
-    ],
   }));
 
   const daysStyle = useAnimatedStyle(() => ({
@@ -287,9 +363,9 @@ export default function FeaturedCelebrationOverlay() {
           <BurstParticle key={`${playToken}-${star.id}`} star={star} progress={burst} cx={cx} cy={cy} />
         ))}
 
-        <Animated.View style={[styles.titleWrap, { top: cy + HERO_STAR * 0.72 }, titleStyle]}>
-          <Text style={styles.title}>{t('offer.detail.views.featuredCelebrationTitle')}</Text>
-        </Animated.View>
+        <View style={[styles.titleWrap, { top: cy + HERO_STAR * 0.72 }]}>
+          <CascadeTitle text={celebrationTitle} progress={cascade} />
+        </View>
 
         <Animated.View style={[styles.daysWrap, { bottom: Math.max(56, height * 0.12) }, daysStyle]}>
           <Text style={styles.daysText}>{t('offer.detail.views.featuredCelebrationDays')}</Text>
@@ -326,17 +402,25 @@ const styles = StyleSheet.create({
   },
   titleWrap: {
     position: 'absolute',
-    left: 28,
-    right: 28,
+    left: 18,
+    right: 18,
     alignItems: 'center',
   },
-  title: {
+  titleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+  },
+  titleLetter: {
     color: '#000000',
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: '900',
-    letterSpacing: -0.6,
-    textAlign: 'center',
-    textTransform: 'lowercase',
+    letterSpacing: -0.8,
+    lineHeight: 40,
+  },
+  titleSpace: {
+    width: 10,
   },
   daysWrap: {
     position: 'absolute',
