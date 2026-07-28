@@ -11,6 +11,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import ApplePressable from '../ApplePressable';
+import SlidingIconSegment from './SlidingIconSegment';
 
 export type CatalogRailItem = {
   id: number | string;
@@ -391,54 +392,25 @@ type DensityToggleProps = {
   accent?: string;
 };
 
-/** Przełącznik Małe / Średnie / Duże okienka w taśmach. */
+/** Przełącznik Małe / Średnie / Duże okienka w taśmach — płynny sliding pill. */
 export function CatalogRailDensityToggle({
   value,
   onChange,
   isDark,
   accent = '#6366F1',
 }: DensityToggleProps) {
-  const options: { key: CatalogRailDensity; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
-    { key: 'compact', icon: 'grid-outline', label: 'Małe' },
-    { key: 'comfortable', icon: 'tablet-landscape-outline', label: 'Średnie' },
-    { key: 'large', icon: 'tablet-landscape', label: 'Duże' },
-  ];
-
   return (
-    <View
-      style={[
-        styles.densityWrap,
-        {
-          backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.72)',
-          borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)',
-        },
+    <SlidingIconSegment
+      value={value}
+      onChange={onChange}
+      isDark={isDark}
+      accent={accent}
+      options={[
+        { key: 'compact', icon: 'grid-outline', accessibilityLabel: 'Małe' },
+        { key: 'comfortable', icon: 'tablet-landscape-outline', accessibilityLabel: 'Średnie' },
+        { key: 'large', icon: 'tablet-landscape', accessibilityLabel: 'Duże' },
       ]}
-    >
-      {options.map((opt) => {
-        const selected = value === opt.key;
-        return (
-          <ApplePressable
-            key={opt.key}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
-            accessibilityLabel={opt.label}
-            haptic="selection"
-            pressScale={0.94}
-            onPress={() => {
-              if (!selected) onChange(opt.key);
-            }}
-            style={[
-              styles.densityBtn,
-              selected && {
-                backgroundColor: hexToRgba(accent, isDark ? 0.35 : 0.18),
-              },
-            ]}
-          >
-            <Ionicons name={opt.icon} size={15} color={selected ? accent : '#8E8E93'} />
-          </ApplePressable>
-        );
-      })}
-    </View>
+    />
   );
 }
 

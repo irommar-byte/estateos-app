@@ -2,9 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   Linking,
-  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -24,11 +22,8 @@ import { BlurView } from 'expo-blur';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import {
-  KEI_IMPORT_STEPS,
   KEI_MAX_SELECT,
   KEI_PAGE_SIZE,
-  KEI_STEP_LABELS,
-  type KeiAiRewriteProgress,
   type KeiFloorPlanSelection,
   type KeiPreviewListing,
   type KeiPropertyKind,
@@ -40,11 +35,7 @@ import {
   keiAmerPeekListing,
   keiAmerRefreshSession,
 } from '../services/keiAmerService';
-import {
-  computeKeiOverallPercent,
-  computeKeiItemPercent,
-  useKeiAmerExportStore,
-} from '../store/useKeiAmerExportStore';
+import { useKeiAmerExportStore } from '../store/useKeiAmerExportStore';
 
 type LastImagePeek = {
   loading: boolean;
@@ -113,152 +104,6 @@ function SegmentedControl<T extends string>({
   );
 }
 
-function ProgressBar({ percent, color }: { percent: number; color: string }) {
-  return (
-    <View style={styles.progressTrack}>
-      <View style={[styles.progressFill, { width: `${Math.max(0, Math.min(100, percent))}%`, backgroundColor: color }]} />
-    </View>
-  );
-}
-
-function StepPill({
-  label,
-  done,
-  active,
-  pulsate,
-  accentColor,
-  colors,
-}: {
-  label: string;
-  done: boolean;
-  active: boolean;
-  pulsate?: boolean;
-  accentColor: string;
-  colors: ReturnType<typeof useKeiTheme>;
-}) {
-  const pulse = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    if (!pulsate || done) {
-      pulse.setValue(1);
-      return;
-    }
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 0.35, duration: 450, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1, duration: 450, useNativeDriver: true }),
-      ]),
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [pulsate, done, pulse]);
-
-  return (
-    <Animated.View
-      style={[
-        styles.stepPill,
-        {
-          opacity: pulsate && !done ? pulse : 1,
-          backgroundColor: done
-            ? 'rgba(52,199,89,0.2)'
-            : active
-              ? accentColor === '#FF9500'
-                ? 'rgba(255,149,0,0.2)'
-                : 'rgba(0,122,255,0.15)'
-              : colors.cardSecondary,
-          borderWidth: active && !done ? 1 : 0,
-          borderColor: active && !done ? accentColor : 'transparent',
-        },
-      ]}
-    >
-      <Text
-        style={{
-          fontSize: 10,
-          fontWeight: '700',
-          color: done ? colors.accent : active ? accentColor : colors.tertiary,
-        }}
-      >
-        {label}
-      </Text>
-    </Animated.View>
-  );
-}
-
-function AiRewritePanel({
-  rewrite,
-  colors,
-}: {
-  rewrite: KeiAiRewriteProgress;
-  colors: ReturnType<typeof useKeiTheme>;
-}) {
-  const titleChanged = rewrite.titleBefore.trim() !== rewrite.titleAfter.trim();
-  const descChanged = rewrite.descriptionBefore.trim() !== rewrite.descriptionAfter.trim();
-
-  return (
-    <View style={[styles.aiPanel, { backgroundColor: colors.cardSecondary, borderColor: colors.separator }]}>
-      <View style={styles.aiPanelHeader}>
-        {rewrite.working ? (
-          <ActivityIndicator size="small" color={colors.accentBlue} />
-        ) : (
-          <Ionicons
-            name={rewrite.rewrittenByAi ? 'sparkles' : 'document-text-outline'}
-            size={16}
-            color={rewrite.rewrittenByAi ? colors.accentBlue : colors.secondary}
-          />
-        )}
-        <Text style={[styles.aiPanelTitle, { color: colors.text }]}>
-          {rewrite.working
-            ? 'AI przepisuje opis…'
-            : rewrite.rewrittenByAi
-              ? 'Opis przepisany przez AI'
-              : 'Opis uzupełniony regułami'}
-        </Text>
-      </View>
-      {!rewrite.working && rewrite.skipReason && !rewrite.rewrittenByAi ? (
-        <Text style={[styles.aiPanelHint, { color: colors.tertiary }]}>{rewrite.skipReason}</Text>
-      ) : null}
-      {!rewrite.working ? (
-        <>
-          <Text style={[styles.aiDiffLabel, { color: colors.secondary }]}>Tytuł</Text>
-          <View style={styles.aiDiffRow}>
-            <View style={[styles.aiDiffCol, { backgroundColor: colors.card }]}>
-              <Text style={[styles.aiDiffTag, { color: colors.tertiary }]}>PRZED</Text>
-              <Text style={[styles.aiDiffText, { color: colors.secondary }]}>{rewrite.titleBefore || '—'}</Text>
-            </View>
-            <Ionicons name="arrow-forward" size={14} color={titleChanged ? colors.accentBlue : colors.tertiary} />
-            <View style={[styles.aiDiffCol, { backgroundColor: colors.card }]}>
-              <Text style={[styles.aiDiffTag, { color: colors.tertiary }]}>PO</Text>
-              <Text style={[styles.aiDiffText, { color: titleChanged ? colors.text : colors.secondary }]}>
-                {rewrite.titleAfter || '—'}
-              </Text>
-            </View>
-          </View>
-          <Text style={[styles.aiDiffLabel, { color: colors.secondary, marginTop: 10 }]}>Opis</Text>
-          <View style={styles.aiDiffRow}>
-            <View style={[styles.aiDiffCol, { backgroundColor: colors.card }]}>
-              <Text style={[styles.aiDiffTag, { color: colors.tertiary }]}>PRZED</Text>
-              <Text style={[styles.aiDiffText, { color: colors.secondary }]} numberOfLines={8}>
-                {rewrite.descriptionBefore || '—'}
-              </Text>
-            </View>
-            <Ionicons name="arrow-forward" size={14} color={descChanged ? colors.accentBlue : colors.tertiary} />
-            <View style={[styles.aiDiffCol, { backgroundColor: colors.card }]}>
-              <Text style={[styles.aiDiffTag, { color: colors.tertiary }]}>PO</Text>
-              <Text style={[styles.aiDiffText, { color: descChanged ? colors.text : colors.secondary }]} numberOfLines={8}>
-                {rewrite.descriptionAfter || '—'}
-              </Text>
-            </View>
-          </View>
-        </>
-      ) : (
-        <Text style={[styles.aiPanelHint, { color: colors.secondary }]}>
-          Pobrano treść ze źródła — czekam na wynik GPT…
-        </Text>
-      )}
-    </View>
-  );
-}
-
 export default function AdminKeiAmerScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -288,17 +133,11 @@ export default function AdminKeiAmerScreen() {
   const [importedExpanded, setImportedExpanded] = useState(false);
 
   const exportRunning = useKeiAmerExportStore((s) => s.running);
-  const exportVisible = useKeiAmerExportStore((s) => s.modalVisible);
-  const exportMessage = useKeiAmerExportStore((s) => s.message);
-  const exportItems = useKeiAmerExportStore((s) => s.items);
-  const exportResults = useKeiAmerExportStore((s) => s.results);
-  const exportSkipped = useKeiAmerExportStore((s) => s.skipped);
   const setExportVisible = useKeiAmerExportStore((s) => s.setModalVisible);
   const startKeiExport = useKeiAmerExportStore((s) => s.startExport);
   const cancelKeiExport = useKeiAmerExportStore((s) => s.cancelExport);
 
   const peekInflight = useRef(new Set<string>());
-  const exportScrollRef = useRef<ScrollView>(null);
 
   const selectedList = useMemo(() => Object.values(selected), [selected]);
   const availableListings = useMemo(() => listings.filter((l) => !l.alreadyImported), [listings]);
@@ -534,8 +373,6 @@ export default function AdminKeiAmerScreen() {
     }
   }, [sessionOk, propertyKind, transactionKind, exportRunning, loadPreview]);
 
-  const overallPercent = computeKeiOverallPercent(exportItems);
-
   const handleStopExport = useCallback(() => {
     Alert.alert(
       'Zatrzymać import?',
@@ -559,29 +396,13 @@ export default function AdminKeiAmerScreen() {
     setExportVisible(true);
   }, [setExportVisible]);
 
-  /** Y kart postępu w ScrollView — bieżąca oferta w kadrze, bez skoku na koniec listy. */
-  const exportCardOffsetsRef = useRef<Record<string, number>>({});
-  const activeExportIndex = useMemo(
-    () => exportItems.findIndex((item) => item.status === 'active'),
-    [exportItems],
-  );
-
+  // Wyjście z ekranu nie przerywa importu — tylko minimalizuje modal (pill zostaje globalnie).
   useEffect(() => {
-    if (!exportVisible || activeExportIndex < 0) return;
-    const item = exportItems[activeExportIndex];
-    if (!item) return;
-    const key = `${item.portalUrl}-${item.index}`;
-    const scrollToActive = () => {
-      const y = exportCardOffsetsRef.current[key];
-      if (typeof y !== 'number') return;
-      exportScrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+    return () => {
+      const state = useKeiAmerExportStore.getState();
+      if (state.running) state.setModalVisible(false);
     };
-    requestAnimationFrame(scrollToActive);
-    const t = setTimeout(scrollToActive, 80);
-    return () => clearTimeout(t);
-    // Tylko zmiana aktywnej pozycji / otwarcie modala — nie przy każdym % zdjęcia.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- exportItems[activeExportIndex]
-  }, [exportVisible, activeExportIndex]);
+  }, []);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
@@ -961,9 +782,9 @@ export default function AdminKeiAmerScreen() {
               onPress={handleOpenExportModal}
               style={[styles.exportBtn, styles.exportBtnDock, { backgroundColor: colors.accent, flex: 1 }]}
             >
-              <ActivityIndicator color="#000" />
-              <Text style={[styles.exportBtnText, { flex: 1 }]} numberOfLines={2}>
-                Import w toku ({overallPercent}%) — dotknij, aby otworzyć
+              <Ionicons name="expand-outline" size={18} color="#000" />
+              <Text style={[styles.exportBtnText, { flex: 1 }]} numberOfLines={1}>
+                Pokaż postęp importu
               </Text>
             </Pressable>
             <Pressable
@@ -992,120 +813,6 @@ export default function AdminKeiAmerScreen() {
           </Pressable>
         )}
       </View>
-
-      <Modal
-        visible={exportVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setExportVisible(false)}
-      >
-        <View style={[styles.modalRoot, { backgroundColor: colors.bg }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.separator, paddingTop: insets.top + 8 }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Import KEI</Text>
-            <View style={styles.modalHeaderActions}>
-              {exportRunning ? (
-                <Pressable onPress={handleStopExport} hitSlop={8}>
-                  <Text style={{ color: colors.danger, fontSize: 17, fontWeight: '700' }}>Zatrzymaj</Text>
-                </Pressable>
-              ) : null}
-              <Pressable onPress={() => setExportVisible(false)}>
-                <Text style={{ color: colors.accentBlue, fontSize: 17, fontWeight: '600' }}>
-                  {exportRunning ? 'Zminimalizuj' : 'Zamknij'}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-          <ScrollView ref={exportScrollRef} contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 24 }}>
-            <Text style={[styles.exportSummary, { color: colors.secondary }]}>{exportMessage}</Text>
-            <ProgressBar percent={overallPercent} color={colors.accent} />
-            <Text style={[styles.percentLabel, { color: colors.text }]}>{overallPercent}%</Text>
-
-            {exportItems.map((item) => (
-              <View
-                key={`${item.portalUrl}-${item.index}`}
-                style={[styles.progressCard, { backgroundColor: colors.card }]}
-                onLayout={(e) => {
-                  exportCardOffsetsRef.current[`${item.portalUrl}-${item.index}`] = e.nativeEvent.layout.y;
-                }}
-              >
-                <View style={styles.progressCardHeader}>
-                  <Text style={[styles.progressAddress, { color: colors.text }]} numberOfLines={2}>
-                    {item.address || item.portalUrl}
-                  </Text>
-                  <Text
-                    style={{
-                      color:
-                        item.status === 'done'
-                          ? colors.accent
-                          : item.status === 'skipped'
-                            ? colors.accentAmber
-                            : colors.accentBlue,
-                      fontWeight: '700',
-                      fontSize: 12,
-                    }}
-                  >
-                    {item.status === 'done'
-                      ? 'OK'
-                      : item.status === 'skipped'
-                        ? 'POMINIĘTO'
-                        : item.status === 'active'
-                          ? `${computeKeiItemPercent(item)}%`
-                          : '…'}
-                  </Text>
-                </View>
-                <Text style={{ color: colors.secondary, fontSize: 13 }}>{item.stepLabel}</Text>
-                {item.stepDetail ? (
-                  <Text style={{ color: colors.tertiary, fontSize: 12, marginTop: 4 }}>{item.stepDetail}</Text>
-                ) : null}
-                <View style={styles.stepsRow}>
-                  {KEI_IMPORT_STEPS.map((step) => {
-                    const done = item.completedSteps.includes(step) || item.status === 'done';
-                    const active = item.currentStep === step && item.status === 'active';
-                    const isFloorPlanStep = step === 'images' && item.imageProgress?.asFloorPlan;
-                    const accentColor = isFloorPlanStep && (active || done) ? colors.accentOrange : colors.accentBlue;
-                    return (
-                      <StepPill
-                        key={step}
-                        label={
-                          step === 'images' && (active || done) && item.imageProgress?.asFloorPlan ? 'Rzut' : KEI_STEP_LABELS[step]
-                        }
-                        done={done}
-                        active={active}
-                        pulsate={exportRunning && active && !done}
-                        accentColor={accentColor}
-                        colors={colors}
-                      />
-                    );
-                  })}
-                </View>
-                {item.aiRewrite ? <AiRewritePanel rewrite={item.aiRewrite} colors={colors} /> : null}
-                {item.status === 'done' && item.publicUrl ? (
-                  <View style={styles.resultLinks}>
-                    <Pressable onPress={() => void Linking.openURL(item.publicUrl!)}>
-                      <Text style={{ color: colors.accentBlue, fontWeight: '600' }}>Podgląd oferty</Text>
-                    </Pressable>
-                    {item.editUrl ? (
-                      <Pressable onPress={() => void Linking.openURL(item.editUrl!)}>
-                        <Text style={{ color: colors.accentBlue, fontWeight: '600' }}>Edycja</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                ) : null}
-                {item.reason ? <Text style={{ color: colors.accentAmber, fontSize: 12, marginTop: 6 }}>{item.reason}</Text> : null}
-              </View>
-            ))}
-
-            {exportResults.length > 0 ? (
-              <View style={[styles.resultBox, { backgroundColor: 'rgba(52,199,89,0.1)' }]}>
-                <Text style={{ color: colors.accent, fontWeight: '800' }}>
-                  Zaimportowano: {exportResults.length}
-                  {exportSkipped > 0 ? ` · Pominięto: ${exportSkipped}` : ''}
-                </Text>
-              </View>
-            ) : null}
-          </ScrollView>
-        </View>
-      </Modal>
     </View>
   );
 }

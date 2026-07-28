@@ -42,7 +42,7 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
         };
 
   const showIntelligence =
-    activeVertical === 'home' && intelligenceHydrated && intelligenceEnabled;
+    intelligenceHydrated && intelligenceEnabled;
 
   return (
     <View style={styles.root}>
@@ -58,9 +58,13 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
           route={{ ...(route || {}), params: homeParams }}
         />
       )}
-      {/* Jedyny wejście AI: mózg Intelligence (Guide wbudowany w sheet). Explore: orb inline w RadarHome. */}
+      {/* Intelligence brain — Homes (float/inline) + Cars (float on market). */}
       {showIntelligence && surface === 'market' ? (
-        <IntelligencePulseTape navigation={navigation} surface="market" layout="float" />
+        <IntelligencePulseTape
+          navigation={navigation}
+          surface="market"
+          layout="float"
+        />
       ) : null}
     </View>
   );

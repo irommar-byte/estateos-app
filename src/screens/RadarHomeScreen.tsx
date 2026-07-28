@@ -109,6 +109,7 @@ import MarketCatalogViewToggle, {
   type MarketCatalogContentMode,
 } from '../components/catalog/MarketCatalogViewToggle';
 import ChromeIconButton from '../components/catalog/ChromeIconButton';
+import FavorHeartChromeButton from '../components/catalog/FavorHeartChromeButton';
 import VerticalSegmentRail from '../components/VerticalSegmentRail';
 import RadarStatusBulb from '../components/radar/RadarStatusBulb';
 import { OfferMapMarkerPin } from '../components/radar/OfferMapMarkerPin';
@@ -1200,7 +1201,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const setFavorBrowseActive = useFavoritesFavorStore((s) => s.setBrowseActive);
   const applyFavorPrefs = useFavoritesFavorStore((s) => s.applyPrefs);
   const setSkipVerticalTransition = useEcosystemStore((s) => s.setSkipVerticalTransition);
-  const favorBrowseActive = useFavoritesFavorStore((s) => s.browseActive);
   const [favoritesRadarFilters, setFavoritesRadarFilters] = useState(defaultFavoritesRadarFilters);
   const isFavoritesRadarEnabled = favorEnabled;
 
@@ -1222,15 +1222,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   ]);
 
   useEffect(() => {
-    if (!favorBrowseActive) return;
-    setShowOnlyFavorites(true);
-    setFavoritesMapScope('FAVORITES');
-  }, [favorBrowseActive]);
-
-  useEffect(() => {
-    setSkipVerticalTransition(showOnlyFavorites);
-    setFavorBrowseActive(showOnlyFavorites);
-  }, [showOnlyFavorites, setFavorBrowseActive, setSkipVerticalTransition]);
+    setSkipVerticalTransition(false);
+    setFavorBrowseActive(false);
+  }, [setFavorBrowseActive, setSkipVerticalTransition]);
 
   /**
    * `useState(defaultRadarFilters)` ustala `pushNotifications` tylko przy pierwszym montowaniu.
@@ -2599,6 +2593,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           return resolveOfferListingPrice(a.raw, rate).plnAmount - resolveOfferListingPrice(b.raw, rate).plnAmount;
         case 'PRICE_DESC':
           return resolveOfferListingPrice(b.raw, rate).plnAmount - resolveOfferListingPrice(a.raw, rate).plnAmount;
+        case 'AREA_ASC':
+          return offerAreaValue(a) - offerAreaValue(b);
         case 'AREA_DESC':
           return offerAreaValue(b) - offerAreaValue(a);
         case 'NEAREST':
@@ -4151,6 +4147,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             notifyIncludeAmounts: false,
             notifyStatusChange: !!filtersToApply.favoritesNotifyStatusChange,
             notifyNewSimilar: !!filtersToApply.favoritesNotifyNewSimilar,
+            ids: favorites,
             carIds,
           },
         },
@@ -4945,22 +4942,12 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               }}
             />
           )}
-          <ChromeIconButton
-            icon={showOnlyFavorites ? 'heart' : 'heart-outline'}
-            color={showOnlyFavorites ? favoritesUiAccent : isDark ? '#FFF' : '#1C1C1E'}
+          <FavorHeartChromeButton
+            enabled={isFavoritesRadarEnabled}
             isDark={isDark}
             lightChrome={isGalleryLightChrome}
-            activeBg={showOnlyFavorites ? favoritesUiBg : undefined}
-            accessibilityLabel={t('radar.home.favoritesTab')}
-            accessibilityState={{ selected: showOnlyFavorites }}
-            haptic="medium"
-            onPress={() => {
-              setShowOnlyFavorites((prev) => {
-                const next = !prev;
-                if (next) setFavoritesMapScope('FAVORITES');
-                return next;
-              });
-            }}
+            accessibilityLabel={t('radar.home.favorBrand')}
+            onPress={openFavoritesCalibration}
           />
         </View>
 

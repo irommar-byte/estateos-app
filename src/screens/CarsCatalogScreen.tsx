@@ -12,6 +12,8 @@ import {
   Alert,
   Platform,
   Modal,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import MapView, { Circle, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { Image } from 'expo-image';
@@ -36,6 +38,8 @@ import MarketCatalogViewToggle, {
   type MarketCatalogContentMode,
 } from '../components/catalog/MarketCatalogViewToggle';
 import ChromeIconButton from '../components/catalog/ChromeIconButton';
+import FavorHeartChromeButton from '../components/catalog/FavorHeartChromeButton';
+import SlidingIconSegment from '../components/catalog/SlidingIconSegment';
 import MarketUnreadQuickReplyBubble from '../components/messaging/MarketUnreadQuickReplyBubble';
 import LiveRadarControlPill from '../components/radar/LiveRadarControlPill';
 import RadarCalibrationModal, { type RadarFilters } from '../components/RadarCalibrationModal';
@@ -66,6 +70,10 @@ import { useI18n } from '../i18n';
 
 const CAR_ACCENT = '#0EA5E9';
 const NEARBY_RADIUS_KM = 25;
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 function distanceKm(aLat: number, aLng: number, bLat: number, bLng: number) {
   const R = 6371;
@@ -122,17 +130,19 @@ export default function CarsCatalogScreen({
   }, [insets.bottom]);
   const cardLayout = useMemo(() => {
     const horizontalPad = 40;
-    const gap = 14;
     if (isListView) {
-      const cardWidth = (screenWidth - horizontalPad - gap) / 2;
-      return { cardWidth, imageAspectRatio: 5 / 4, compact: true };
+      const cols = 3;
+      const gap = 10;
+      const cardWidth = (screenWidth - horizontalPad - gap * (cols - 1)) / cols;
+      return { cardWidth, imageAspectRatio: 4 / 3, compact: true, cols, gap };
     }
     if (isGridView) {
       const cols = screenWidth >= 900 ? 3 : 2;
+      const gap = 14;
       const cardWidth = (screenWidth - horizontalPad - gap * (cols - 1)) / cols;
-      return { cardWidth, imageAspectRatio: 4 / 3, compact: true };
+      return { cardWidth, imageAspectRatio: 5 / 4, compact: true, cols, gap };
     }
-    return { cardWidth: undefined as number | undefined, imageAspectRatio: 16 / 10, compact: false };
+    return { cardWidth: undefined as number | undefined, imageAspectRatio: 16 / 10, compact: false, cols: 1, gap: 14 };
   }, [isListView, isGridView, screenWidth]);
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const token = useAuthStore((s) => s.token);
@@ -145,7 +155,6 @@ export default function CarsCatalogScreen({
   const [cars, setCars] = useState<CarListing[]>([]);
   const [myCars, setMyCars] = useState<CarListing[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
-  const favorBrowseActive = useFavoritesFavorStore((s) => s.browseActive);
   const favorEnabled = useFavoritesFavorStore((s) => s.enabled);
   const favorNotifyPriceChange = useFavoritesFavorStore((s) => s.notifyPriceChange);
   const favorNotifyDealProposals = useFavoritesFavorStore((s) => s.notifyDealProposals);
@@ -154,10 +163,11 @@ export default function CarsCatalogScreen({
   const setFavorBrowseActive = useFavoritesFavorStore((s) => s.setBrowseActive);
   const applyFavorPrefs = useFavoritesFavorStore((s) => s.applyPrefs);
   const setSkipVerticalTransition = useEcosystemStore((s) => s.setSkipVerticalTransition);
-  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
-  const [favoritesCarsScope, setFavoritesCarsScope] = useState<'MINE' | 'FAVORITES'>('FAVORITES');
   const [showFavoritesCalibration, setShowFavoritesCalibration] = useState(false);
   const [favoritesCalibrationSessionId, setFavoritesCalibrationSessionId] = useState(0);
+  const [gallerySort, setGallerySort] = useState<
+    'NEAREST' | 'NEWEST' | 'PRICE_ASC' | 'PRICE_DESC' | 'MILEAGE_ASC' | 'MILEAGE_DESC'
+  >('NEWEST');
   const favoritesRadarFilters = useMemo<RadarFilters>(
     () =>
       ({
@@ -193,8 +203,6 @@ export default function CarsCatalogScreen({
       favorNotifyStatusChange,
     ],
   );
-  const isNarrowChrome = screenWidth < 420;
-  const favoritesCenterMaxWidth = Math.min(Math.max(screenWidth - (isNarrowChrome ? 96 : 118), 200), 340);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -273,29 +281,48 @@ export default function CarsCatalogScreen({
   );
 
   useEffect(() => {
-    if (!favorBrowseActive) return;
-    setShowOnlyFavorites(true);
-    setFavoritesCarsScope('FAVORITES');
-  }, [favorBrowseActive]);
-
-  useEffect(() => {
-    setSkipVerticalTransition(showOnlyFavorites);
-    setFavorBrowseActive(showOnlyFavorites);
-  }, [showOnlyFavorites, setFavorBrowseActive, setSkipVerticalTransition]);
+    setSkipVerticalTransition(false);
+    setFavorBrowseActive(false);
+  }, [setFavorBrowseActive, setSkipVerticalTransition]);
 
   const filtered = useMemo(() => {
-    const base = showOnlyFavorites
-      ? favoriteCars
-      : cars;
     const filters = isCarRadarActive ? carRadarFilters : advancedFilters;
-    return applyCarsAdvancedFilters(base, filters);
+    let rows = applyCarsAdvancedFilters(cars, filters);
+    if (gallerySort === 'PRICE_ASC') {
+      rows = [...rows].sort((a, b) => Number(a.pricePln || a.price || 0) - Number(b.pricePln || b.price || 0));
+    } else if (gallerySort === 'PRICE_DESC') {
+      rows = [...rows].sort((a, b) => Number(b.pricePln || b.price || 0) - Number(a.pricePln || a.price || 0));
+    } else if (gallerySort === 'MILEAGE_ASC') {
+      rows = [...rows].sort((a, b) => Number(a.mileageKm || 0) - Number(b.mileageKm || 0));
+    } else if (gallerySort === 'MILEAGE_DESC') {
+      rows = [...rows].sort((a, b) => Number(b.mileageKm || 0) - Number(a.mileageKm || 0));
+    } else if (gallerySort === 'NEAREST' && userLocation) {
+      rows = [...rows].sort((a, b) => {
+        const da =
+          a.lat != null && a.lng != null
+            ? distanceKm(userLocation.latitude, userLocation.longitude, a.lat, a.lng)
+            : Number.POSITIVE_INFINITY;
+        const db =
+          b.lat != null && b.lng != null
+            ? distanceKm(userLocation.latitude, userLocation.longitude, b.lat, b.lng)
+            : Number.POSITIVE_INFINITY;
+        return da - db;
+      });
+    } else {
+      rows = [...rows].sort(
+        (a, b) =>
+          Date.parse(String(b.createdAt || b.updatedAt || 0)) -
+          Date.parse(String(a.createdAt || a.updatedAt || 0)),
+      );
+    }
+    return rows;
   }, [
     cars,
-    favoriteCars,
     advancedFilters,
     carRadarFilters,
     isCarRadarActive,
-    showOnlyFavorites,
+    gallerySort,
+    userLocation,
   ]);
 
   const openFavoritesCalibration = useCallback(() => {
@@ -325,6 +352,14 @@ export default function CarsCatalogScreen({
               notifyStatusChange: !!filtersToApply.favoritesNotifyStatusChange,
               notifyNewSimilar: !!filtersToApply.favoritesNotifyNewSimilar,
               carIds: favoriteIds,
+              ids: await (async () => {
+                try {
+                  const { loadFavoriteIds } = await import('../utils/favoritesStorage');
+                  return await loadFavoriteIds({ accessToken: token, apiBaseUrl: API_URL });
+                } catch {
+                  return [] as number[];
+                }
+              })(),
             },
           },
         });
@@ -659,6 +694,12 @@ export default function CarsCatalogScreen({
 
   const toggleViewMode = (mode: ViewMode) => {
     if (viewMode === mode) return;
+    LayoutAnimation.configureNext({
+      duration: 280,
+      create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+      update: { type: LayoutAnimation.Types.easeInEaseOut },
+      delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+    });
     void Haptics.selectionAsync();
     setViewMode(mode);
   };
@@ -685,61 +726,7 @@ export default function CarsCatalogScreen({
   };
 
   const centerChrome =
-    showOnlyFavorites ? (
-      <View style={{ width: '100%', maxWidth: favoritesCenterMaxWidth, alignItems: 'center', gap: 8 }}>
-        {surface === 'market' ? <VerticalSegmentRail isDark={isDark} mode="switch" /> : null}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            paddingHorizontal: 12,
-            paddingVertical: 7,
-            borderRadius: 12,
-            backgroundColor: isDark ? 'rgba(247,119,178,0.16)' : 'rgba(247,119,178,0.12)',
-          }}
-        >
-          <Ionicons name="heart" size={14} color="#F777B2" />
-          <Text
-            numberOfLines={1}
-            style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#FFD4E7' : '#5E1C3F' }}
-          >
-            {t('radar.home.favoritesTab')}
-          </Text>
-        </View>
-        <Pressable
-          onPress={openFavoritesCalibration}
-          style={({ pressed }) => [{ width: '100%', opacity: pressed ? 0.92 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-        >
-          <BlurView
-            intensity={95}
-            tint={isDark ? 'dark' : 'light'}
-            style={{
-              borderRadius: 18,
-              overflow: 'hidden',
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: favorEnabled ? 'rgba(247,119,178,0.35)' : isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-              backgroundColor: favorEnabled ? 'rgba(232,108,165,0.22)' : isDark ? 'rgba(28,28,30,0.72)' : 'rgba(255,255,255,0.82)',
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 10,
-            }}
-          >
-            <Ionicons name={favorEnabled ? 'heart' : 'heart-outline'} size={18} color={favorEnabled ? '#F777B2' : '#8E8E93'} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: favorEnabled ? '#F777B2' : '#8E8E93' }} numberOfLines={1}>
-                EstateOS™ Favor
-              </Text>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: favorEnabled ? '#F777B2' : '#8E8E93', marginTop: 1 }} numberOfLines={1}>
-                {favorEnabled ? t('radar.home.statusLoveLive') : t('radar.home.statusInactive')}
-              </Text>
-            </View>
-          </BlurView>
-        </Pressable>
-      </View>
-    ) : browseMode === 'MAP' || surface === 'explore' ? (
+    browseMode === 'MAP' || surface === 'explore' ? (
       <LiveRadarControlPill
         isDark={isDark}
         isActive={isCarRadarActive}
@@ -900,6 +887,7 @@ export default function CarsCatalogScreen({
             <>
           {featuredSpotlightCars.length > 0 ? (
             <View
+              style={{ marginTop: 8, marginBottom: 6 }}
               onLayout={(event) => {
                 const { y, height } = event.nativeEvent.layout;
                 setFeaturedSpotlightBottom(y + height);
@@ -921,39 +909,127 @@ export default function CarsCatalogScreen({
 
           {!loading && !error && filtered.length > 0 ? (
             <View style={styles.viewToggleRow}>
-              <Text style={styles.viewToggleLabel}>{t('radar.home.galleryViewLabel')}</Text>
-              <View style={styles.viewToggleGroup}>
-                {(
-                  [
-                    { key: 'cover' as const, label: t('radar.home.galleryViewCover'), iconOn: 'tablet-landscape', iconOff: 'tablet-landscape-outline' },
-                    { key: 'list' as const, label: t('radar.home.galleryViewList'), iconOn: 'list', iconOff: 'list-outline' },
-                    { key: 'grid' as const, label: t('radar.home.galleryViewGrid'), iconOn: 'grid', iconOff: 'grid-outline' },
-                  ] as const
-                ).map((mode) => {
-                  const selected = viewMode === mode.key;
-                  return (
-                    <ApplePressable
-                      key={mode.key}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      haptic="selection"
-                      pressScale={0.96}
-                      onPress={() => toggleViewMode(mode.key)}
-                      style={[styles.viewToggleBtn, selected && styles.viewToggleBtnActive]}
-                    >
-                      <Ionicons
-                        name={(selected ? mode.iconOn : mode.iconOff) as any}
-                        size={16}
-                        color={selected ? colors.chipActiveText : colors.muted}
-                      />
-                      <Text style={[styles.viewToggleBtnLabel, selected && styles.viewToggleBtnLabelActive]}>
-                        {mode.label}
-                      </Text>
-                    </ApplePressable>
-                  );
-                })}
-              </View>
+              <SlidingIconSegment
+                value={viewMode}
+                onChange={toggleViewMode}
+                isDark={isDark}
+                accent={CAR_ACCENT}
+                label={<Text style={styles.viewToggleLabel}>{t('radar.home.galleryViewLabel')}</Text>}
+                options={[
+                  {
+                    key: 'list',
+                    icon: viewMode === 'list' ? 'list' : 'list-outline',
+                    accessibilityLabel: t('radar.home.galleryViewList'),
+                  },
+                  {
+                    key: 'grid',
+                    icon: viewMode === 'grid' ? 'grid' : 'grid-outline',
+                    accessibilityLabel: t('radar.home.galleryViewGrid'),
+                  },
+                  {
+                    key: 'cover',
+                    icon: viewMode === 'cover' ? 'square' : 'square-outline',
+                    accessibilityLabel: t('radar.home.galleryViewCover'),
+                  },
+                ]}
+              />
             </View>
+          ) : null}
+
+          {!loading && !error && filtered.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8, paddingBottom: 10, paddingTop: 2 }}
+            >
+              {(
+                [
+                  {
+                    key: 'NEAREST' as const,
+                    label: t('radar.home.gallerySortNearest'),
+                    icon: 'navigate-outline' as const,
+                  },
+                  {
+                    key: 'NEWEST' as const,
+                    label: t('radar.home.gallerySortNewest'),
+                    icon: 'time-outline' as const,
+                  },
+                  {
+                    key: 'PRICE' as const,
+                    label: t('radar.home.gallerySortPrice'),
+                    icon: 'pricetag-outline' as const,
+                    trailingArrow: (gallerySort === 'PRICE_DESC' ? 'down' : 'up') as 'up' | 'down',
+                  },
+                  {
+                    key: 'MILEAGE' as const,
+                    label: t('radar.home.gallerySortMileage'),
+                    icon: 'speedometer-outline' as const,
+                    trailingArrow: (gallerySort === 'MILEAGE_DESC' ? 'down' : 'up') as 'up' | 'down',
+                  },
+                ] as const
+              ).map((opt) => {
+                const active =
+                  opt.key === 'PRICE'
+                    ? gallerySort === 'PRICE_ASC' || gallerySort === 'PRICE_DESC'
+                    : opt.key === 'MILEAGE'
+                      ? gallerySort === 'MILEAGE_ASC' || gallerySort === 'MILEAGE_DESC'
+                      : gallerySort === opt.key;
+                const fg = active ? CAR_ACCENT : colors.muted;
+                return (
+                  <ApplePressable
+                    key={opt.key}
+                    haptic="selection"
+                    pressScale={0.96}
+                    onPress={() => {
+                      if (opt.key === 'PRICE') {
+                        setGallerySort((prev) =>
+                          prev === 'PRICE_ASC' ? 'PRICE_DESC' : prev === 'PRICE_DESC' ? 'PRICE_ASC' : 'PRICE_ASC',
+                        );
+                        return;
+                      }
+                      if (opt.key === 'MILEAGE') {
+                        setGallerySort((prev) =>
+                          prev === 'MILEAGE_ASC'
+                            ? 'MILEAGE_DESC'
+                            : prev === 'MILEAGE_DESC'
+                              ? 'MILEAGE_ASC'
+                              : 'MILEAGE_ASC',
+                        );
+                        return;
+                      }
+                      if (opt.key === 'NEAREST' && !userLocation) {
+                        void Location.requestForegroundPermissionsAsync().then((perm) => {
+                          if (perm.status !== 'granted') return;
+                          void Location.getCurrentPositionAsync({}).then((pos) => {
+                            setUserLocation({
+                              latitude: pos.coords.latitude,
+                              longitude: pos.coords.longitude,
+                            });
+                            setGallerySort('NEAREST');
+                          });
+                        });
+                        return;
+                      }
+                      setGallerySort(opt.key);
+                    }}
+                    style={[
+                      styles.sortChip,
+                      active && { backgroundColor: 'rgba(14,165,233,0.18)', borderColor: CAR_ACCENT },
+                    ]}
+                  >
+                    <Ionicons name={opt.icon} size={14} color={fg} />
+                    <Text style={[styles.sortChipLabel, active && { color: CAR_ACCENT }]}>{opt.label}</Text>
+                    {'trailingArrow' in opt && opt.trailingArrow ? (
+                      <Ionicons
+                        name={opt.trailingArrow === 'up' ? 'arrow-up' : 'arrow-down'}
+                        size={12}
+                        color={fg}
+                      />
+                    ) : null}
+                  </ApplePressable>
+                );
+              })}
+            </ScrollView>
           ) : null}
 
           {loading ? (
@@ -971,7 +1047,13 @@ export default function CarsCatalogScreen({
           ) : filtered.length === 0 ? (
             <Text style={styles.muted}>Brak ogłoszeń samochodowych.</Text>
           ) : (
-            <View style={[styles.list, isMultiCol && styles.listGrid]}>
+            <View
+              style={[
+                styles.list,
+                isMultiCol && styles.listGrid,
+                isMultiCol && { gap: cardLayout.gap },
+              ]}
+            >
               {filtered.map((car) => (
                 <Pressable
                   key={car.id}
@@ -1056,22 +1138,12 @@ export default function CarsCatalogScreen({
               }}
             />
           )}
-          <ChromeIconButton
-            icon={showOnlyFavorites ? 'heart' : 'heart-outline'}
-            color={showOnlyFavorites ? '#F777B2' : isDark ? '#FFF' : '#1C1C1E'}
+          <FavorHeartChromeButton
+            enabled={favorEnabled}
             isDark={isDark}
             lightChrome={isGalleryLightChrome}
-            activeBg={showOnlyFavorites ? 'rgba(247,119,178,0.22)' : undefined}
-            accessibilityLabel="Ulubione"
-            accessibilityState={{ selected: showOnlyFavorites }}
-            haptic="medium"
-            onPress={() => {
-              setShowOnlyFavorites((prev) => {
-                const next = !prev;
-                if (next) setFavoritesCarsScope('FAVORITES');
-                return next;
-              });
-            }}
+            accessibilityLabel={t('radar.home.favorBrand')}
+            onPress={openFavoritesCalibration}
           />
         </View>
 
@@ -1079,7 +1151,6 @@ export default function CarsCatalogScreen({
           style={[
             styles.topBarCenter,
             browseMode === 'GALLERY' && styles.topBarCenterGallery,
-            showOnlyFavorites && { maxWidth: favoritesCenterMaxWidth },
           ]}
         >
           {centerChrome}
@@ -1626,6 +1697,8 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 12,
+      marginTop: 8,
+      marginBottom: 6,
     },
     viewToggleLabel: {
       color: colors.muted,
@@ -1633,6 +1706,22 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
       fontWeight: '800',
       letterSpacing: 1.2,
       textTransform: 'uppercase',
+    },
+    sortChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      borderRadius: 999,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.inputBorder,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.8)',
+    },
+    sortChipLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.chipText,
     },
     viewToggleGroup: {
       flexDirection: 'row',
@@ -1695,7 +1784,6 @@ function createStyles(colors: CarScreenColors, isDark: boolean) {
     listGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      justifyContent: 'space-between',
     },
     card: {
       borderRadius: 20,

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { AppState } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import {
   KEI_IMPORT_STEPS,
@@ -237,6 +238,25 @@ type KeiAmerExportState = {
 };
 
 let exportInflight: Promise<void> | null = null;
+/** true gdy użytkownik ręcznie zatrzymał — ignoruj late errors ze streamu. */
+let exportCancelledByUser = false;
+
+export function isKeiExportStreamAlive(): boolean {
+  return exportInflight != null;
+}
+
+/** Po powrocie z tła: jeśli stream padł, zamknij „running”, zostaw ostatni znany etap w kartach. */
+export function reconcileKeiExportAfterForeground(): void {
+  const state = useKeiAmerExportStore.getState();
+  if (!state.running || exportInflight != null || exportCancelledByUser) return;
+  const unfinished = state.items.some((item) => item.status === 'pending' || item.status === 'active');
+  useKeiAmerExportStore.setState({
+    running: false,
+    message: unfinished
+      ? 'Połączenie z importem zostało przerwane w tle. Ostatni znany etap poniżej — uruchom ponownie pozostałe oferty.'
+      : state.message,
+  });
+}
 
 export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
   running: false,
@@ -251,6 +271,7 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
 
   cancelExport: () => {
     if (!get().running) return;
+    exportCancelledByUser = true;
     cancelKeiAmerExportStream();
     exportInflight = null;
     set((state) => ({
@@ -286,6 +307,7 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
   startExport: (token, body, initialItems, onComplete) => {
     if (exportInflight) return;
 
+    exportCancelledByUser = false;
     set({
       running: true,
       modalVisible: true,
@@ -298,6 +320,7 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     exportInflight = keiAmerExportStream(token, body, (event) => {
+      if (exportCancelledByUser) return;
       if (event.type === 'result') {
         const cb = get().onComplete;
         set((state) => {
@@ -313,8 +336,16 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
       });
     })
       .catch((error) => {
-        if (!get().running) return;
+        if (exportCancelledByUser || !get().running) return;
         const cancelled = error instanceof Error && error.message.includes('zatrzymany');
+        // Po wyjściu w tło iOS czasem zrywa XHR — nie kasuj postępu; UI zostaje na ostatnim etapie.
+        const backgrounded = AppState.currentState !== 'active';
+        if (backgrounded && !cancelled) {
+          set({
+            message: get().message || 'Import w tle — wróć do aplikacji, aby zobaczyć postęp na żywo.',
+          });
+          return;
+        }
         set({
           running: false,
           message: cancelled
@@ -329,6 +360,9 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
       })
       .finally(() => {
         exportInflight = null;
+        if (exportCancelledByUser) return;
+        // Nie zamykaj „running”, jeśli apka jest w tle i stream padł — stan kart zostaje.
+        if (AppState.currentState !== 'active' && get().running) return;
         set((state) => (state.running ? { running: false } : state));
       });
   },

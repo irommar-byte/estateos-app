@@ -6,10 +6,12 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   Extrapolation,
+  cancelAnimation,
   interpolate,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withSpring,
@@ -290,16 +292,17 @@ export default function PromoCardStack({
   }, [topCard?.id, rotateDeg]);
 
   useEffect(() => {
+    cancelAnimation(peelWiggle);
     peelWiggle.value = 0;
     if (!topPeelHint) return;
-    peelWiggle.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 1400 }),
-        withTiming(0, { duration: 1400 }),
-      ),
-      -1,
-      true,
+    // Co ~20 s krótkie drgnięcie (nie ciągły wiggle).
+    const twitch = withSequence(
+      withTiming(1, { duration: 55, easing: Easing.linear }),
+      withTiming(0, { duration: 55, easing: Easing.linear }),
+      withTiming(1, { duration: 55, easing: Easing.linear }),
+      withTiming(0, { duration: 70, easing: Easing.out(Easing.quad) }),
     );
+    peelWiggle.value = withRepeat(withSequence(withDelay(20_000, twitch)), -1, false);
   }, [topCard?.id, topPeelHint, peelWiggle]);
 
   const triggerDragHaptic = useCallback(() => {
@@ -412,8 +415,8 @@ export default function PromoCardStack({
     const slideX = progress * SWIPE_OUT + dismissX.value;
     const wiggleActive =
       topPeelHint && isDragging.value === 0 && progress < 0.02 && Math.abs(dismissX.value) < 4;
-    const wiggleRot = wiggleActive ? interpolate(peelWiggle.value, [0, 1], [-0.5, 0.5]) : 0;
-    const wiggleX = wiggleActive ? interpolate(peelWiggle.value, [0, 1], [-2, 2]) : 0;
+    const wiggleRot = wiggleActive ? interpolate(peelWiggle.value, [0, 1], [-1.8, 1.8]) : 0;
+    const wiggleX = wiggleActive ? interpolate(peelWiggle.value, [0, 1], [-3.5, 3.5]) : 0;
     return {
       zIndex: 3,
       transform: [

@@ -27,6 +27,7 @@ import {
   CatalogHorizontalRailStack,
   CatalogRailDensityToggle,
 } from '../catalog/CatalogHorizontalRail';
+import SlidingIconSegment from '../catalog/SlidingIconSegment';
 import { buildHomeMarketRailSections } from '../catalog/buildMarketRails';
 import type { MarketCatalogContentMode } from '../catalog/MarketCatalogViewToggle';
 import ApplePressable from '../ApplePressable';
@@ -40,7 +41,13 @@ export type GalleryViewMode = 'cover' | 'list' | 'grid';
 export type GalleryTransactionFilter = 'ALL' | 'RENT' | 'SELL';
 export type GalleryCountryFilter = 'ALL' | 'PL' | 'ABROAD';
 export type GalleryPropertyFilter = 'ALL' | 'FLAT' | 'HOUSE' | 'PLOT' | 'PREMISES';
-export type GallerySortFilter = 'NEWEST' | 'PRICE_ASC' | 'PRICE_DESC' | 'AREA_DESC' | 'NEAREST';
+export type GallerySortFilter =
+  | 'NEWEST'
+  | 'PRICE_ASC'
+  | 'PRICE_DESC'
+  | 'AREA_ASC'
+  | 'AREA_DESC'
+  | 'NEAREST';
 
 export type GalleryOffer = {
   id: number | string;
@@ -149,6 +156,7 @@ function offerCountryLabel(raw: Record<string, unknown>): string {
 function MiniChip({
   label,
   icon,
+  trailingArrow,
   active,
   accent,
   isDark,
@@ -156,11 +164,15 @@ function MiniChip({
 }: {
   label: string;
   icon?: keyof typeof Ionicons.glyphMap;
+  /** Direction chevron on the right (price / area toggles). */
+  trailingArrow?: 'up' | 'down';
   active: boolean;
   accent: string;
   isDark: boolean;
   onPress: () => void;
 }) {
+  const muted = isDark ? '#A1A1AA' : '#64748B';
+  const fg = active ? accent : muted;
   return (
     <ApplePressable
       onPress={onPress}
@@ -178,15 +190,20 @@ function MiniChip({
         },
       ]}
     >
-      {icon ? (
-        <Ionicons name={icon} size={12} color={active ? accent : isDark ? '#A1A1AA' : '#64748B'} />
-      ) : null}
+      {icon ? <Ionicons name={icon} size={12} color={fg} /> : null}
       <Text
         style={[styles.miniChipLabel, { color: active ? accent : isDark ? '#D4D4D8' : '#475569' }]}
         numberOfLines={1}
       >
         {label}
       </Text>
+      {trailingArrow ? (
+        <Ionicons
+          name={trailingArrow === 'up' ? 'arrow-up' : 'arrow-down'}
+          size={12}
+          color={fg}
+        />
+      ) : null}
     </ApplePressable>
   );
 }
@@ -234,18 +251,18 @@ export default function RadarOfferGallery({
   const [viewMode, setViewMode] = useState<GalleryViewMode>(isTabletLike ? 'grid' : 'cover');
   const [railDensity, setRailDensity] = useState<CatalogRailDensity>('comfortable');
   const [page, setPage] = useState(1);
-  const gap = 14;
   const horizontalPad = 20;
-  /** Cover = dawna Lista (duże karty). Lista = 2× więcej (mniejsze). Siatka = siatka. */
+  /** Cover = duże karty. Siatka (4 kwadraty) = 2 kolumny. Lista (3 kreski) = 3 kolumny, gęściej. */
   const isCoverView = viewMode === 'cover';
   const isListView = viewMode === 'list';
   const isGridView = viewMode === 'grid';
   const isMultiCol = isListView || isGridView;
-  const numColumns = isListView ? 2 : isGridView ? (width >= 900 ? 3 : 2) : 1;
+  const numColumns = isListView ? 3 : isGridView ? (width >= 900 ? 3 : 2) : 1;
+  const gap = isListView ? 10 : 14;
   const cardWidth = isMultiCol
     ? (width - horizontalPad * 2 - gap * (numColumns - 1)) / numColumns
     : width - horizontalPad * 2;
-  const imageAspectRatio = isCoverView ? 16 / 10 : isListView ? 5 / 4 : 4 / 3;
+  const imageAspectRatio = isCoverView ? 16 / 10 : isGridView ? 5 / 4 : 4 / 3;
   const catalogStyles = useMemo(() => createCatalogStyles(colors, isDark), [colors, isDark]);
 
   const wrapFilterChange = useCallback(<T,>(fn: (v: T) => void, value: T) => {
@@ -253,17 +270,53 @@ export default function RadarOfferGallery({
     fn(value);
   }, []);
 
-  const sortOptions = useMemo(
-    () =>
-      [
-        { key: 'NEAREST' as const, label: t('radar.home.gallerySortNearest'), icon: 'navigate-outline' as const, accent: NEAR_ACCENT },
-        { key: 'NEWEST' as const, label: t('radar.home.gallerySortNewest'), icon: 'time-outline' as const, accent: GALLERY_ACCENT },
-        { key: 'PRICE_ASC' as const, label: t('radar.home.gallerySortPriceAsc'), icon: 'arrow-up-outline' as const, accent: GALLERY_ACCENT },
-        { key: 'PRICE_DESC' as const, label: t('radar.home.gallerySortPriceDesc'), icon: 'arrow-down-outline' as const, accent: GALLERY_ACCENT },
-        { key: 'AREA_DESC' as const, label: t('radar.home.gallerySortArea'), icon: 'resize-outline' as const, accent: GALLERY_ACCENT },
-      ] as const,
-    [t],
-  );
+  /** Soft catalog-only layout morph — no FlatList remount, featured/Intelligence stay put. */
+  const changeViewMode = useCallback((mode: GalleryViewMode) => {
+    setViewMode((prev) => {
+      if (prev === mode) return prev;
+      LayoutAnimation.configureNext({
+        duration: 280,
+        create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+        update: { type: LayoutAnimation.Types.easeInEaseOut },
+        delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+      });
+      void Haptics.selectionAsync();
+      return mode;
+    });
+  }, []);
+
+  const sortOptions = useMemo(() => {
+    const priceDesc = sortFilter === 'PRICE_DESC';
+    const areaDesc = sortFilter === 'AREA_DESC';
+    return [
+      {
+        key: 'NEAREST' as const,
+        label: t('radar.home.gallerySortNearest'),
+        icon: 'navigate-outline' as const,
+        accent: NEAR_ACCENT,
+      },
+      {
+        key: 'NEWEST' as const,
+        label: t('radar.home.gallerySortNewest'),
+        icon: 'time-outline' as const,
+        accent: GALLERY_ACCENT,
+      },
+      {
+        key: 'PRICE' as const,
+        label: t('radar.home.gallerySortPrice'),
+        icon: 'pricetag-outline' as const,
+        trailingArrow: (priceDesc ? 'down' : 'up') as 'up' | 'down',
+        accent: GALLERY_ACCENT,
+      },
+      {
+        key: 'AREA' as const,
+        label: t('radar.home.gallerySortArea'),
+        icon: 'resize-outline' as const,
+        trailingArrow: (areaDesc ? 'down' : 'up') as 'up' | 'down',
+        accent: GALLERY_ACCENT,
+      },
+    ];
+  }, [sortFilter, t]);
 
 
   /** Stały page size — zmiana widoku nie przeładowuje listy. */
@@ -410,7 +463,7 @@ export default function RadarOfferGallery({
 
         {featuredOffers.length > 0 ? (
           <View
-            style={{ marginTop: 12 }}
+            style={{ marginTop: 8, marginBottom: 6 }}
             onLayout={(event) => {
               const { y, height } = event.nativeEvent.layout;
               setFeaturedSpotlightBottom(y + height);
@@ -429,47 +482,31 @@ export default function RadarOfferGallery({
           </View>
         ) : null}
 
-        <View style={[catalogStyles.viewToggleRow, { paddingHorizontal: horizontalPad, marginBottom: 4 }]}>
-          <Text style={catalogStyles.viewToggleLabel}>{t('radar.home.galleryViewLabel')}</Text>
-          <View style={catalogStyles.viewToggleGroup}>
-            {(
-              [
-                { key: 'cover' as const, label: t('radar.home.galleryViewCover'), iconOn: 'tablet-landscape', iconOff: 'tablet-landscape-outline' },
-                { key: 'list' as const, label: t('radar.home.galleryViewList'), iconOn: 'list', iconOff: 'list-outline' },
-                { key: 'grid' as const, label: t('radar.home.galleryViewGrid'), iconOn: 'grid', iconOff: 'grid-outline' },
-              ] as const
-            ).map((mode) => {
-              const selected = viewMode === mode.key;
-              return (
-                <ApplePressable
-                  key={mode.key}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  haptic="selection"
-                  pressScale={0.96}
-                  onPress={() => {
-                    if (selected) return;
-                    setViewMode(mode.key);
-                  }}
-                  style={[catalogStyles.viewToggleBtn, selected && catalogStyles.viewToggleBtnActive]}
-                >
-                  <Ionicons
-                    name={(selected ? mode.iconOn : mode.iconOff) as any}
-                    size={16}
-                    color={selected ? colors.chipActiveText : colors.muted}
-                  />
-                  <Text
-                    style={[
-                      catalogStyles.viewToggleBtnLabel,
-                      selected && catalogStyles.viewToggleBtnLabelActive,
-                    ]}
-                  >
-                    {mode.label}
-                  </Text>
-                </ApplePressable>
-              );
-            })}
-          </View>
+        <View style={[catalogStyles.viewToggleRow, { paddingHorizontal: horizontalPad, marginBottom: 4, marginTop: 4 }]}>
+          <SlidingIconSegment
+            value={viewMode}
+            onChange={changeViewMode}
+            isDark={isDark}
+            accent={GALLERY_ACCENT}
+            label={<Text style={catalogStyles.viewToggleLabel}>{t('radar.home.galleryViewLabel')}</Text>}
+            options={[
+              {
+                key: 'list',
+                icon: viewMode === 'list' ? 'list' : 'list-outline',
+                accessibilityLabel: t('radar.home.galleryViewList'),
+              },
+              {
+                key: 'grid',
+                icon: viewMode === 'grid' ? 'grid' : 'grid-outline',
+                accessibilityLabel: t('radar.home.galleryViewGrid'),
+              },
+              {
+                key: 'cover',
+                icon: viewMode === 'cover' ? 'square' : 'square-outline',
+                accessibilityLabel: t('radar.home.galleryViewCover'),
+              },
+            ]}
+          />
         </View>
 
         {hasActiveFilters ? (
@@ -490,17 +527,49 @@ export default function RadarOfferGallery({
         ) : null}
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {sortOptions.map((opt) => (
-            <MiniChip
-              key={opt.key}
-              label={opt.label}
-              icon={opt.icon}
-              active={sortFilter === opt.key}
-              accent={opt.accent}
-              isDark={isDark}
-              onPress={() => wrapFilterChange(onSortFilterChange, opt.key)}
-            />
-          ))}
+          {sortOptions.map((opt) => {
+            const isPrice = opt.key === 'PRICE';
+            const isArea = opt.key === 'AREA';
+            const active = isPrice
+              ? sortFilter === 'PRICE_ASC' || sortFilter === 'PRICE_DESC'
+              : isArea
+                ? sortFilter === 'AREA_ASC' || sortFilter === 'AREA_DESC'
+                : sortFilter === opt.key;
+            return (
+              <MiniChip
+                key={opt.key}
+                label={opt.label}
+                icon={opt.icon}
+                trailingArrow={'trailingArrow' in opt ? opt.trailingArrow : undefined}
+                active={active}
+                accent={opt.accent}
+                isDark={isDark}
+                onPress={() => {
+                  if (isPrice) {
+                    const next: GallerySortFilter =
+                      sortFilter === 'PRICE_ASC'
+                        ? 'PRICE_DESC'
+                        : sortFilter === 'PRICE_DESC'
+                          ? 'PRICE_ASC'
+                          : 'PRICE_ASC';
+                    wrapFilterChange(onSortFilterChange, next);
+                    return;
+                  }
+                  if (isArea) {
+                    const next: GallerySortFilter =
+                      sortFilter === 'AREA_ASC'
+                        ? 'AREA_DESC'
+                        : sortFilter === 'AREA_DESC'
+                          ? 'AREA_ASC'
+                          : 'AREA_ASC';
+                    wrapFilterChange(onSortFilterChange, next);
+                    return;
+                  }
+                  wrapFilterChange(onSortFilterChange, opt.key as GallerySortFilter);
+                }}
+              />
+            );
+          })}
         </ScrollView>
         {userLocation ? (
           <View style={[styles.distanceHintRow, !isDark && styles.distanceHintRowLight]}>
@@ -528,119 +597,174 @@ export default function RadarOfferGallery({
       viewMode,
       formatPrice,
       catalogStyles,
-      colors,
       horizontalPad,
       navigation,
       wrapFilterChange,
+      transactionFilter,
+      changeViewMode,
     ],
   );
 
-  const renderItem = ({ item, index }: { item: GalleryOffer; index: number }) => {
-    const tx = String(item.raw?.transactionType || '').toUpperCase();
-    const txLabel =
-      tx === 'RENT' ? t('radar.home.transactionRentShort') : t('radar.home.transactionSellShort');
-    const typeOnly = String(item.type || '').split('•')[0].trim();
-    const cityLine = [typeOnly, formatLocationLabel(item.raw?.city, item.raw?.district, '')]
-      .filter(Boolean)
-      .join(' · ');
-    const fav = isFavoriteId(item.id, favorites);
-    const priceLabel = formatPrice(item.raw).primary;
-    const priceDiscount = resolveOfferPriceDiscount(item.raw);
-    const verified = isOfferVerified(item.id, item.raw);
-    const publishLabel = formatPublishDate(item.raw);
-    const featured = isOfferFeatured(item.raw);
-    const isLeftColumn = isMultiCol ? index % numColumns !== numColumns - 1 : true;
-    const distanceKmValue =
-      userLocation && Number.isFinite(item.lat) && Number.isFinite(item.lng)
-        ? haversineKm(userLocation.latitude, userLocation.longitude, item.lat, item.lng)
-        : null;
+  type GalleryRow = { id: string; items: GalleryOffer[] };
+  const galleryRows = useMemo((): GalleryRow[] => {
+    const cols = Math.max(1, numColumns);
+    if (cols === 1) {
+      return paginatedOffers.map((item) => ({ id: `solo-${item.id}`, items: [item] }));
+    }
+    const rows: GalleryRow[] = [];
+    for (let i = 0; i < paginatedOffers.length; i += cols) {
+      const items = paginatedOffers.slice(i, i + cols);
+      rows.push({ id: `row-${items.map((x) => x.id).join('-')}`, items });
+    }
+    return rows;
+  }, [paginatedOffers, numColumns]);
 
-    return (
-      <Pressable
-        onPress={() => {
-          Haptics.selectionAsync();
-          onPressOffer(item);
-        }}
-        style={({ pressed }) => [
-          catalogStyles.card,
-          elevation.card,
+  const renderOfferCard = useCallback(
+    (item: GalleryOffer) => {
+      const tx = String(item.raw?.transactionType || '').toUpperCase();
+      const txLabel =
+        tx === 'RENT' ? t('radar.home.transactionRentShort') : t('radar.home.transactionSellShort');
+      const typeOnly = String(item.type || '').split('•')[0].trim();
+      const cityLine = [typeOnly, formatLocationLabel(item.raw?.city, item.raw?.district, '')]
+        .filter(Boolean)
+        .join(' · ');
+      const fav = isFavoriteId(item.id, favorites);
+      const priceLabel = formatPrice(item.raw).primary;
+      const priceDiscount = resolveOfferPriceDiscount(item.raw);
+      const verified = isOfferVerified(item.id, item.raw);
+      const publishLabel = formatPublishDate(item.raw);
+      const featured = isOfferFeatured(item.raw);
+      const distanceKmValue =
+        userLocation && Number.isFinite(item.lat) && Number.isFinite(item.lng)
+          ? haversineKm(userLocation.latitude, userLocation.longitude, item.lat, item.lng)
+          : null;
+
+      return (
+        <Pressable
+          key={String(item.id)}
+          onPress={() => {
+            Haptics.selectionAsync();
+            onPressOffer(item);
+          }}
+          style={({ pressed }) => [
+            catalogStyles.card,
+            elevation.card,
+            {
+              width: cardWidth,
+              marginBottom: 0,
+              alignSelf: isMultiCol ? undefined : 'center',
+              opacity: pressed ? 0.94 : 1,
+              transform: [{ scale: pressed ? 0.99 : 1 }],
+            },
+          ]}
+        >
+          <View style={catalogStyles.cardImageWrap}>
+            {item.image ? (
+              <Image
+                source={{ uri: item.image }}
+                style={[catalogStyles.cardImage, { aspectRatio: imageAspectRatio }]}
+                contentFit="cover"
+                transition={180}
+              />
+            ) : (
+              <View style={[catalogStyles.cardImage, catalogStyles.cardImageFallback, { aspectRatio: imageAspectRatio }]}>
+                <Ionicons name="home-outline" size={28} color={colors.muted} />
+              </View>
+            )}
+            <View style={[catalogStyles.txChip, tx === 'RENT' ? catalogStyles.txChipRent : catalogStyles.txChipSell]}>
+              <Text style={catalogStyles.txChipText}>{txLabel.toUpperCase()}</Text>
+            </View>
+            {featured ? (
+              <View style={catalogStyles.featuredChip}>
+                <Ionicons name="sparkles" size={9} color="#000" />
+                <Text style={catalogStyles.featuredChipText}>{t('radar.home.galleryFeaturedBadge')}</Text>
+              </View>
+            ) : null}
+            {verified ? (
+              <View style={catalogStyles.verifiedChip}>
+                <Ionicons name="shield-checkmark" size={11} color="#34D399" />
+              </View>
+            ) : null}
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation?.();
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onToggleFavorite(Number(item.id));
+              }}
+              hitSlop={10}
+              style={catalogStyles.favBtn}
+            >
+              <Ionicons name={fav ? 'heart' : 'heart-outline'} size={18} color={fav ? '#FF3B30' : '#FFF'} />
+            </Pressable>
+          </View>
+          <View style={[catalogStyles.cardBody, isMultiCol && catalogStyles.cardBodyCompact]}>
+            <Text style={catalogStyles.cardMeta} numberOfLines={1}>
+              {cityLine}
+            </Text>
+            <Text style={catalogStyles.cardTitle} numberOfLines={2}>
+              {String(item.raw?.title || t('radar.home.locationFallback'))}
+            </Text>
+            <Text style={catalogStyles.cardSub} numberOfLines={1}>
+              {[item.area, item.rooms].filter(Boolean).join(' · ')}
+              {distanceKmValue != null ? ` · ~${formatApproxKm(distanceKmValue, locale)} km` : ''}
+            </Text>
+            <View style={catalogStyles.priceRow}>
+              <Text style={catalogStyles.cardPrice}>{priceLabel}</Text>
+              {priceDiscount.isDiscounted ? (
+                <View style={catalogStyles.discountChip}>
+                  <Text style={catalogStyles.discountChipText}>−{priceDiscount.discountPercent}%</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={catalogStyles.cardFooter} numberOfLines={1}>
+              ID {item.id} · {publishLabel.replace(/^[^:]+:\s*/, '')}
+            </Text>
+          </View>
+        </Pressable>
+      );
+    },
+    [
+      cardWidth,
+      catalogStyles,
+      colors.muted,
+      elevation.card,
+      favorites,
+      formatPrice,
+      formatPublishDate,
+      imageAspectRatio,
+      isMultiCol,
+      isOfferVerified,
+      locale,
+      onPressOffer,
+      onToggleFavorite,
+      t,
+      userLocation,
+    ],
+  );
+
+  const renderRow = useCallback(
+    ({ item: row }: { item: GalleryRow }) => (
+      <View
+        style={[
+          styles.galleryRow,
           {
-            width: cardWidth,
-            marginRight: isMultiCol && isLeftColumn ? gap : 0,
+            paddingHorizontal: horizontalPad,
+            gap,
             marginBottom: gap,
-            alignSelf: isMultiCol ? undefined : 'center',
-            opacity: pressed ? 0.94 : 1,
-            transform: [{ scale: pressed ? 0.99 : 1 }],
+            justifyContent: isMultiCol ? 'flex-start' : 'center',
           },
         ]}
       >
-        <View style={catalogStyles.cardImageWrap}>
-          {item.image ? (
-            <Image
-              source={{ uri: item.image }}
-              style={[catalogStyles.cardImage, { aspectRatio: imageAspectRatio }]}
-              contentFit="cover"
-              transition={200}
-            />
-          ) : (
-            <View style={[catalogStyles.cardImage, catalogStyles.cardImageFallback, { aspectRatio: imageAspectRatio }]}>
-              <Ionicons name="home-outline" size={28} color={colors.muted} />
-            </View>
-          )}
-          <View style={[catalogStyles.txChip, tx === 'RENT' ? catalogStyles.txChipRent : catalogStyles.txChipSell]}>
-            <Text style={catalogStyles.txChipText}>{txLabel.toUpperCase()}</Text>
-          </View>
-          {featured ? (
-            <View style={catalogStyles.featuredChip}>
-              <Ionicons name="sparkles" size={9} color="#000" />
-              <Text style={catalogStyles.featuredChipText}>{t('radar.home.galleryFeaturedBadge')}</Text>
-            </View>
-          ) : null}
-          {verified ? (
-            <View style={catalogStyles.verifiedChip}>
-              <Ionicons name="shield-checkmark" size={11} color="#34D399" />
-            </View>
-          ) : null}
-          <Pressable
-            onPress={(e) => {
-              e.stopPropagation?.();
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onToggleFavorite(Number(item.id));
-            }}
-            hitSlop={10}
-            style={catalogStyles.favBtn}
-          >
-            <Ionicons name={fav ? 'heart' : 'heart-outline'} size={18} color={fav ? '#FF3B30' : '#FFF'} />
-          </Pressable>
-        </View>
-        <View style={[catalogStyles.cardBody, isGridView && catalogStyles.cardBodyCompact]}>
-          <Text style={catalogStyles.cardMeta} numberOfLines={1}>
-            {cityLine}
-          </Text>
-          <Text style={catalogStyles.cardTitle} numberOfLines={isGridView ? 2 : 2}>
-            {String(item.raw?.title || t('radar.home.locationFallback'))}
-          </Text>
-          <Text style={catalogStyles.cardSub} numberOfLines={1}>
-            {[item.area, item.rooms].filter(Boolean).join(' · ')}
-            {distanceKmValue != null
-              ? ` · ~${formatApproxKm(distanceKmValue, locale)} km`
-              : ''}
-          </Text>
-          <View style={catalogStyles.priceRow}>
-            <Text style={catalogStyles.cardPrice}>{priceLabel}</Text>
-            {priceDiscount.isDiscounted ? (
-              <View style={catalogStyles.discountChip}>
-                <Text style={catalogStyles.discountChipText}>−{priceDiscount.discountPercent}%</Text>
-              </View>
-            ) : null}
-          </View>
-          <Text style={catalogStyles.cardFooter} numberOfLines={1}>
-            ID {item.id} · {publishLabel.replace(/^[^:]+:\s*/, '')}
-          </Text>
-        </View>
-      </Pressable>
-    );
-  };
+        {row.items.map((offer) => renderOfferCard(offer))}
+        {isMultiCol && row.items.length < numColumns
+          ? Array.from({ length: numColumns - row.items.length }).map((_, padIdx) => (
+              <View key={`pad-${row.id}-${padIdx}`} style={{ width: cardWidth }} />
+            ))
+          : null}
+      </View>
+    ),
+    [cardWidth, gap, horizontalPad, isMultiCol, numColumns, renderOfferCard],
+  );
 
   const listFooter = useMemo(() => {
     const pageStart = (safePage - 1) * pageSize + 1;
@@ -842,22 +966,17 @@ export default function RadarOfferGallery({
     <FlatList
       ref={listRef}
       style={styles.root}
-      data={paginatedOffers}
-      keyExtractor={(item) => String(item.id)}
-      numColumns={numColumns}
-      key={`gallery-cols-${numColumns}`}
+      data={galleryRows}
+      keyExtractor={(row) => row.id}
       extraData={`${viewMode}-${cardWidth}-${imageAspectRatio}`}
-      columnWrapperStyle={
-        isMultiCol ? [catalogStyles.columnWrap, { paddingHorizontal: horizontalPad }] : undefined
-      }
       contentContainerStyle={{
         paddingBottom: bottomInset + 88,
         paddingTop: 4,
-        flexGrow: paginatedOffers.length === 0 ? 1 : undefined,
+        flexGrow: galleryRows.length === 0 ? 1 : undefined,
       }}
       ListHeaderComponent={listHeader}
       ListFooterComponent={listFooter}
-      renderItem={renderItem}
+      renderItem={renderRow}
       showsVerticalScrollIndicator={false}
       onScroll={(event) => setScrollY(event.nativeEvent.contentOffset.y)}
       scrollEventThrottle={16}
@@ -866,8 +985,8 @@ export default function RadarOfferGallery({
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GALLERY_ACCENT} />
         ) : undefined
       }
-      initialNumToRender={12}
-      maxToRenderPerBatch={16}
+      initialNumToRender={8}
+      maxToRenderPerBatch={10}
       windowSize={10}
       removeClippedSubviews={false}
       ListEmptyComponent={
@@ -1142,6 +1261,10 @@ function createCatalogStyles(colors: CarScreenColors, isDark: boolean) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+  },
+  galleryRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
   },
   headerBlock: {
     paddingTop: 4,

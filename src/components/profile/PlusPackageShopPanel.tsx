@@ -138,7 +138,47 @@ export default function PlusPackageShopPanel({
           {buying ? (
             <ActivityIndicator size="small" color="#CA8A04" />
           ) : (
-                <EosCreditCoin size={coinSize} autoSpin={hasPlusAvailable} lit={hasPlusAvailable} />
+            <>
+              <EosCreditCoin size={coinSize} autoSpin={hasPlusAvailable} lit={hasPlusAvailable} />
+              <View
+                style={[
+                  styles.creditBadge,
+                  compactEmbedded && styles.creditBadgeCompact,
+                  {
+                    backgroundColor: hasPlusAvailable
+                      ? isDark
+                        ? 'rgba(16,185,129,0.18)'
+                        : 'rgba(16,185,129,0.14)'
+                      : isDark
+                        ? 'rgba(142,142,147,0.18)'
+                        : 'rgba(142,142,147,0.12)',
+                    borderColor: hasPlusAvailable
+                      ? isDark
+                        ? 'rgba(16,185,129,0.42)'
+                        : 'rgba(16,185,129,0.32)'
+                      : isDark
+                        ? 'rgba(142,142,147,0.28)'
+                        : 'rgba(142,142,147,0.22)',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.creditBadgeNum,
+                    compactEmbedded && styles.creditBadgeNumCompact,
+                    {
+                      color: hasPlusAvailable
+                        ? '#10B981'
+                        : isDark
+                          ? 'rgba(235,235,245,0.45)'
+                          : '#8E8E93',
+                    },
+                  ]}
+                >
+                  {plusSlots}
+                </Text>
+              </View>
+            </>
           )}
         </View>
 
@@ -250,8 +290,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   coinWrap: {
-    width: 44,
-    height: 44,
+    width: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -263,6 +302,31 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: -0.2,
+  },
+  creditBadge: {
+    marginTop: 6,
+    minWidth: 36,
+    height: 36,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creditBadgeCompact: {
+    marginTop: 5,
+    minWidth: 32,
+    height: 32,
+    paddingHorizontal: 6,
+    borderRadius: 9,
+  },
+  creditBadgeNum: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+  },
+  creditBadgeNumCompact: {
+    fontSize: 16,
   },
   countLine: {
     fontSize: 14,
