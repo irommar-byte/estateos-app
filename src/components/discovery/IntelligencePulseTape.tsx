@@ -25,6 +25,7 @@ import { useDiscoveryStore } from '../../store/useDiscoveryStore';
 import { playIntelligenceChime } from '../../lib/discovery/intelligenceChime';
 import {
   dispatchDiscoveryUpdated,
+  subscribeGuideOpen,
   subscribeIntelligenceDislikePrompt,
   subscribeIntelligenceLearn,
 } from '../../lib/discovery/clientEvents';
@@ -55,7 +56,6 @@ const RING_GAP = 11;
 /** Tight hit target — rings paint outside; parent uses box-none so map stays grabbable. */
 const HIT = CORE + 10;
 const BRAIN = 26;
-const SESSION_PEEK_KEY = 'eos_intel_peek_v1';
 const SESSION_MILESTONE_KEY = 'eos_intel_milestones_v1';
 
 /** Siri / oil-on-water iridescence for the Intelligence orb core. */
@@ -397,7 +397,6 @@ export default function IntelligencePulseTape({
   const closingRef = useRef(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spectacleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const bootPeekDoneRef = useRef(false);
   const sheetVisibleRef = useRef(false);
 
   const clearHide = useCallback(() => {
@@ -525,68 +524,33 @@ export default function IntelligencePulseTape({
     async ({
       previous,
       next,
-      silent,
     }: {
       previous: import('../../services/discoveryService').DiscoveryPulsePayload | null;
       next: import('../../services/discoveryService').DiscoveryPulsePayload;
       silent: boolean;
     }) => {
+      // Sparse Apple-style: only speak when something meaningful changed — not on every nudge.
+      if (sheetVisibleRef.current) return;
       const prevProgress = previous?.progress ?? null;
       const prevContra = previous?.contradictionIndex ?? null;
-      const increased = typeof prevProgress === 'number' && next.progress > prevProgress + 0.5;
       const milestone = crossedMilestone(prevProgress, next.progress);
       const contraRising =
         typeof prevContra === 'number' && prevContra < 0.55 && next.contradictionIndex >= 0.55;
 
-      if (!silent || increased || milestone != null || contraRising) {
-        if (contraRising) {
-          presentGently('contradiction');
-        } else if (milestone != null) {
-          const seen = await readMilestones();
-          if (!seen.includes(milestone)) {
-            await writeMilestones([...seen, milestone]);
-            presentGently('milestone');
-          } else if (increased) {
-            presentGently('progress');
-          }
-        } else if (increased) {
-          presentGently('progress');
-        }
+      if (contraRising) {
+        presentGently('contradiction');
+        return;
       }
+      if (milestone == null) return;
+      const seen = await readMilestones();
+      if (seen.includes(milestone)) return;
+      await writeMilestones([...seen, milestone]);
+      presentGently('milestone');
     },
     [presentGently],
   );
 
   const { pulse, ready } = useDiscoveryPulse({ onPulseChange });
-
-  useEffect(() => {
-    if (!ready || !pulse || bootPeekDoneRef.current || sheetVisibleRef.current) return;
-    const meaningful = pulse.progress >= 40 || pulse.confidence >= 0.32;
-    if (!meaningful) return;
-
-    let cancelled = false;
-    void (async () => {
-      try {
-        const seen = await AsyncStorage.getItem(SESSION_PEEK_KEY);
-        if (seen === '1') {
-          bootPeekDoneRef.current = true;
-          return;
-        }
-      } catch {
-        // quiet
-      }
-      bootPeekDoneRef.current = true;
-      setTimeout(() => {
-        if (cancelled) return;
-        void AsyncStorage.setItem(SESSION_PEEK_KEY, '1').catch(() => {});
-        presentGently(pulse.contradictionIndex >= 0.55 ? 'contradiction' : 'ready_peek');
-      }, 2200);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [presentGently, pulse, ready]);
 
   useEffect(
     () => subscribeIntelligenceDislikePrompt((detail) => {
@@ -595,6 +559,16 @@ export default function IntelligencePulseTape({
       presentDislikePrompt(detail);
     }),
     [presentDislikePrompt],
+  );
+
+  useEffect(
+    () =>
+      subscribeGuideOpen(() => {
+        if (sheetVisibleRef.current) return;
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        presentGently('manual');
+      }),
+    [presentGently],
   );
 
   useEffect(
@@ -704,12 +678,27 @@ export default function IntelligencePulseTape({
     });
   }, [firstEntrySeen, navigation, pulse?.primaryCta?.action, pulse?.primaryCta?.href, runGenieOut]);
 
-  const runSecondary = useCallback(() => {
-    runGenieOut(() => {
-      const href = pulse?.secondaryCta?.href || '/lustro';
-      navigateDiscoveryHref(navigation, href, pulse?.secondaryCta?.action || 'LUSTRO');
-    });
-  }, [navigation, pulse?.secondaryCta?.action, pulse?.secondaryCta?.href, runGenieOut]);
+  const runGuide = useCallback(
+    (dest: 'discovery' | 'tropes' | 'direction' | 'lustro') => {
+      runGenieOut(() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (dest === 'discovery') {
+          navigation?.navigate?.(resolveDiscoveryEntryRoute(firstEntrySeen));
+          return;
+        }
+        if (dest === 'tropes') {
+          navigation?.navigate?.('DiscoveryTropes');
+          return;
+        }
+        if (dest === 'direction') {
+          navigation?.navigate?.('DiscoveryDirection');
+          return;
+        }
+        navigation?.navigate?.('DiscoveryLustro');
+      });
+    },
+    [firstEntrySeen, navigation, runGenieOut],
+  );
 
   if (!ready || !pulse) return null;
 
@@ -726,7 +715,7 @@ export default function IntelligencePulseTape({
   const sheetTop =
     layout === 'float' && (sheetMode === 'dislike_prompt' || sheetMode === 'thanks')
       ? Math.max(insets.top + 40, bubbleCenterY - 300)
-      : Math.max(insets.top + 72, Math.min(bubbleCenterY - 220, height * 0.22));
+      : Math.max(insets.top + 56, Math.min(bubbleCenterY - 260, height * 0.12));
   const sheetLeft = (width - sheetWidth) / 2;
   const sheetCenterX = sheetLeft + sheetWidth / 2;
   const sheetCenterY = sheetTop + 160;
@@ -1004,19 +993,48 @@ export default function IntelligencePulseTape({
                       </Text>
                       <Ionicons name="arrow-forward" size={16} color="#061018" />
                     </ApplePressable>
-                    <ApplePressable style={styles.secondaryCta} onPress={runSecondary} haptic="none">
-                      <Text style={[styles.secondaryCtaText, { color: sheetMuted }]}>
-                        {(() => {
-                          const action = pulse.secondaryCta?.action;
-                          if (action) {
-                            const key = `discovery.cta.${action}`;
-                            const label = t(key);
-                            if (label !== key) return label;
-                          }
-                          return pulse.secondaryCta?.label || t('discovery.pulse.lustro');
-                        })()}
-                      </Text>
-                    </ApplePressable>
+
+                    <View style={[styles.guideDivider, { backgroundColor: sheetBorder }]} />
+                    <Text style={[styles.guideSupport, { color: sheetMuted }]}>
+                      {t('discovery.guide.supportSub')}
+                    </Text>
+                    {(
+                      [
+                        {
+                          key: 'discovery' as const,
+                          icon: 'compass-outline' as const,
+                          label: t('discovery.guide.findSpace'),
+                        },
+                        {
+                          key: 'tropes' as const,
+                          icon: 'bookmark-outline' as const,
+                          label: t('discovery.guide.showTropes'),
+                        },
+                        {
+                          key: 'direction' as const,
+                          icon: 'navigate-outline' as const,
+                          label: t('discovery.guide.nextStep'),
+                        },
+                        {
+                          key: 'lustro' as const,
+                          icon: 'sparkles-outline' as const,
+                          label: t('discovery.guide.lustro'),
+                        },
+                      ] as const
+                    ).map((item) => (
+                      <ApplePressable
+                        key={item.key}
+                        onPress={() => runGuide(item.key)}
+                        haptic="light"
+                        style={[styles.guideRow, { backgroundColor: chipBg, borderColor: sheetBorder }]}
+                      >
+                        <Ionicons name={item.icon} size={16} color={colors.accent} />
+                        <Text style={[styles.guideRowText, { color: sheetText }]} numberOfLines={2}>
+                          {item.label}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={14} color={sheetMuted} />
+                      </ApplePressable>
+                    ))}
                   </>
                 ) : null}
               </BlurView>
@@ -1253,15 +1271,33 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   ctaText: { color: '#061018', fontSize: 14, fontWeight: '900' },
-  secondaryCta: {
-    marginTop: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
+  guideDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: 16,
+    marginBottom: 10,
+    opacity: 0.9,
   },
-  secondaryCtaText: {
-    color: 'rgba(245,245,247,0.7)',
-    fontSize: 13,
-    fontWeight: '800',
+  guideSupport: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 6,
+    letterSpacing: 0.1,
+  },
+  guideRow: {
+    minHeight: 42,
+    borderRadius: 13,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    marginTop: 6,
+  },
+  guideRowText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 16,
   },
   dislikeLead: {
     color: 'rgba(245,245,247,0.72)',

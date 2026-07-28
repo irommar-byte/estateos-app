@@ -3,7 +3,6 @@ import { StyleSheet, View } from 'react-native';
 import { useEcosystemStore } from '../store/useEcosystemStore';
 import RadarHomeScreen from '../screens/RadarHomeScreen';
 import CarsCatalogScreen from '../screens/CarsCatalogScreen';
-import EstateOsGuideOverlay from '../components/discovery/EstateOsGuideOverlay';
 import IntelligencePulseTape from '../components/discovery/IntelligencePulseTape';
 import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
 
@@ -59,10 +58,7 @@ export default function MarketExploreShell({ splashDone = true, surface, navigat
           route={{ ...(route || {}), params: homeParams }}
         />
       )}
-      {showIntelligence && surface === 'explore' ? (
-        <EstateOsGuideOverlay navigation={navigation} />
-      ) : null}
-      {/* Market: floating orb — komunikaty Intelligence tylko z mózgu (bez paska u góry). */}
+      {/* Jedyny wejście AI: mózg Intelligence (Guide wbudowany w sheet). Explore: orb inline w RadarHome. */}
       {showIntelligence && surface === 'market' ? (
         <IntelligencePulseTape navigation={navigation} surface="market" layout="float" />
       ) : null}

@@ -68,7 +68,7 @@ export function subscribeIntelligenceDislikePrompt(
   return () => sub.remove();
 }
 
-/** Open EstateOS Guide panel from chrome (circular sparkles), not the map pill. */
+/** Open Intelligence sheet (Guide + Pulse live in one brain panel). */
 export function dispatchGuideOpen() {
   DeviceEventEmitter.emit(GUIDE_OPEN_EVENT);
 }
