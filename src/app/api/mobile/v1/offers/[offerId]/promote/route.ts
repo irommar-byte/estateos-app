@@ -32,7 +32,13 @@ export async function POST(req: Request, context: RouteContext) {
   }
 
   try {
-    const result = await promoteOfferListing({ userId, offerId });
+    const body = await req.json().catch(() => ({}));
+    const credits = Number((body as { credits?: unknown })?.credits);
+    const result = await promoteOfferListing({
+      userId,
+      offerId,
+      ...(Number.isFinite(credits) ? { credits } : {}),
+    });
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Nie udało się wyróżnić ogłoszenia.';
