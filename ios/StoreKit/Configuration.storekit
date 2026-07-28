@@ -79,6 +79,39 @@
           "subscriptionGroupID": "INVESTORPROGRP",
           "type": "RecurringSubscription",
           "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "99.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "INVPROLEGACY",
+          "introductoryOffer": {
+            "displayPrice": "0",
+            "internalID": "INVPROLEGACYTRIAL",
+            "numberOfPeriods": 1,
+            "paymentMode": "free",
+            "subscriptionPeriod": "P3D"
+          },
+          "localizations": [
+            {
+              "description": "Legacy Product ID — lokalny StoreKit / stare ASC.",
+              "displayName": "Investor Pro (legacy)",
+              "locale": "pl_PL"
+            },
+            {
+              "description": "Legacy Product ID — local StoreKit / older ASC.",
+              "displayName": "Investor Pro (legacy)",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "pl.estateos.app.pakiet_investor_pro",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Investor Pro Legacy",
+          "subscriptionGroupID": "INVESTORPROGRP",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
         }
       ]
     }

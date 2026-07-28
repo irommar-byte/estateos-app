@@ -12,6 +12,7 @@ import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferen
 import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { API_URL } from '../config/network';
 import { ESTATEOS_CONTACT_EMAIL, mailtoEstateosSubject } from '../constants/appContact';
+import { openLegalDocument } from '../utils/legalDocumentUrls';
 import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
 import UserRegionFlag from '../components/UserRegionFlag';
 import ProfilePublicHeader from '../components/ProfilePublicHeader';
@@ -24,12 +25,12 @@ import AuthScreen from './AuthScreen';
 import { useThemeStore, ThemeMode } from '../store/useThemeStore';
 import { VerificationBadge } from '../components/VerificationBadge';
 import { BlurView } from 'expo-blur';
-import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL, restorePakietPlusPurchases } from '../services/iapPakietPlus';
+import { purchasePakietPlusConsumable, fetchPakietPlusStoreListing, PAKIET_PLUS_PRICE_LABEL, restorePakietPlusPurchases } from '../services/iapPakietPlus';
 import { purchaseInvestorProSubscription, syncInvestorProEntitlement, transferInvestorProToCurrentAccount } from '../services/iapInvestorPro';
 import { IAPManager } from '../services/iapManager';
+import type { StoreProductListing, SubscriptionStoreListing } from '../services/iapManager';
 import { investorProPurchaseAlertCopy, investorProPurchaseErrorAlertCopy, investorProSubscriptionNeedsTransfer, isNoAppleInvestorProSubscriptionMessage, promptInvestorProReassignAndSubscribeAlert, promptInvestorProTransferAlert } from '../utils/investorProPurchaseFeedback';
 import { fetchInvestorProStoreListing } from '../services/iapInvestorProListing';
-import type { SubscriptionStoreListing } from '../services/iapManager';
 import * as Notifications from 'expo-notifications';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 import ProfileProExtrasSection from '../components/profile/ProfileProExtrasSection';
@@ -55,6 +56,7 @@ import ProfileShopSection from '../components/profile/ProfileShopSection';
 import InvestorProTrialIntroHost from '../components/profile/InvestorProTrialIntroHost';
 import ProfileCardShell from '../components/profile/ProfileCardShell';
 import ProfileAgencyOfficeCard from '../components/agency/ProfileAgencyOfficeCard';
+import { AgencyPendingProfileBanner } from '../components/agency/AgencyPendingGate';
 import ProfileConciergeCard from '../components/agency/ProfileConciergeCard';
 import AgencyTransferModal from '../components/agency/AgencyTransferModal';
 import ProPhotoSessionModal from '../components/ProPhotoSessionModal';
@@ -3052,6 +3054,9 @@ function ProfileScreenLoggedIn({
   const [isBuyingPakietPlus, setIsBuyingPakietPlus] = useState(false);
   const [isBuyingInvestorPro, setIsBuyingInvestorPro] = useState(false);
   const [investorProListing, setInvestorProListing] = useState<SubscriptionStoreListing | null>(null);
+  const [investorProListingReady, setInvestorProListingReady] = useState(false);
+  const [pakietPlusListing, setPakietPlusListing] = useState<StoreProductListing | null>(null);
+  const [pakietPlusListingReady, setPakietPlusListingReady] = useState(false);
   const adminPendingRef = useRef<number | null>(null);
   /** Zapobiega nakładaniu się dwóch Modal z listą użytkowników i kartą profilu (iOS psuje dotyk). */
   const adminUsersReturnRef = useRef(false);
@@ -3477,11 +3482,28 @@ function ProfileScreenLoggedIn({
 
   useFocusEffect(
     useCallback(() => {
-      if (hasActiveInvestorProMembership(user)) return;
+      if (hasActiveInvestorProMembership(user)) {
+        setInvestorProListingReady(true);
+      }
       let cancelled = false;
+      if (!hasActiveInvestorProMembership(user)) {
+        setInvestorProListingReady(false);
+      }
+      setPakietPlusListingReady(false);
       void (async () => {
-        const listing = await fetchInvestorProStoreListing();
-        if (!cancelled) setInvestorProListing(listing);
+        const [investorListing, plusListing] = await Promise.all([
+          hasActiveInvestorProMembership(user)
+            ? Promise.resolve(null)
+            : fetchInvestorProStoreListing(),
+          fetchPakietPlusStoreListing(),
+        ]);
+        if (cancelled) return;
+        if (!hasActiveInvestorProMembership(user)) {
+          setInvestorProListing(investorListing);
+          setInvestorProListingReady(true);
+        }
+        setPakietPlusListing(plusListing);
+        setPakietPlusListingReady(true);
       })();
       return () => {
         cancelled = true;
@@ -3694,16 +3716,26 @@ function ProfileScreenLoggedIn({
     hasInvestorProActive && investorProExpiryLabel
       ? t('profile.shop.investorProValidUntil', { date: investorProExpiryLabel })
       : null;
-  const investorProTrialBadge = !hasInvestorProActive ? t('profile.shop.investorProTrialBadge') : null;
+  // Apple 3.1.2(c): trial copy is subordinate; never show “App Store price” without a number.
+  const investorProTrialBadge =
+    !hasInvestorProActive && investorProListing?.priceLabel
+      ? t('profile.shop.investorProTrialBadge')
+      : null;
   const investorProPriceLine =
     !hasInvestorProActive && investorProListing?.priceLabel
       ? t('profile.shop.investorProTrialPriceAfter', { price: investorProListing.priceLabel })
-      : !hasInvestorProActive
-        ? t('profile.shop.investorProTrialPriceFallback')
-        : null;
+      : null;
+  const investorProBilledHeadline =
+    !hasInvestorProActive && investorProListing?.priceLabel
+      ? t('profile.shop.investorProBilledHeadline', { price: investorProListing.priceLabel })
+      : null;
   const investorProBuySubtitle = hasInvestorProActive
     ? t('profile.shop.buyInvestorProSubtitle')
-    : t('profile.shop.buyInvestorProTrialSubtitle');
+    : investorProListing?.priceLabel
+      ? t('profile.shop.buyInvestorProTrialSubtitle', { price: investorProListing.priceLabel })
+      : !investorProListingReady
+        ? t('profile.shop.investorProPriceLoading')
+        : t('profile.shop.investorProPriceUnavailable');
 
   if (!profileShellReady) {
     return (
@@ -4185,6 +4217,7 @@ function ProfileScreenLoggedIn({
 
         {showAgencyOfficeCard ? (
           <View style={[styles.section, { paddingHorizontal: 16, marginTop: -8 }]}>
+            <AgencyPendingProfileBanner isDark={isDark} />
             <ProfileAgencyOfficeCard membership={agencyMembership} isDark={isDark} />
           </View>
         ) : null}
@@ -4454,13 +4487,21 @@ function ProfileScreenLoggedIn({
             counterLabel: plusCounterLabel,
             expiryLabel: plusExpiryLine,
             daysLabel: plusDaysLabel,
-            buyLabel: t('profile.shop.buyPlus'),
-            buySubtitle: t('profile.shop.buyPlusSubtitle', { price: PAKIET_PLUS_PRICE_LABEL }),
+            buyLabel: pakietPlusListing?.priceLabel
+              ? t('profile.shop.buyPlusWithPrice', { price: pakietPlusListing.priceLabel })
+              : !pakietPlusListingReady
+                ? t('profile.shop.investorProPriceLoading')
+                : t('profile.shop.buyPlus'),
+            buySubtitle: t('profile.shop.buyPlusSubtitle', {
+              price: pakietPlusListing?.priceLabel || PAKIET_PLUS_PRICE_LABEL,
+            }),
             buying: isBuyingPakietPlus,
             footer: (
               <Text style={[styles.sectionFooter, styles.shopPanelFooter]}>
                 {Platform.OS === 'ios'
-                  ? t('profile.shop.footerIos', { price: PAKIET_PLUS_PRICE_LABEL })
+                  ? t('profile.shop.footerIos', {
+                      price: pakietPlusListing?.priceLabel || PAKIET_PLUS_PRICE_LABEL,
+                    })
                   : t('profile.shop.footerAndroid')}
               </Text>
             ),
@@ -4473,10 +4514,15 @@ function ProfileScreenLoggedIn({
             expiryLabel: investorProExpiryLine,
             trialBadge: investorProTrialBadge,
             priceLine: investorProPriceLine,
+            billedHeadline: investorProBilledHeadline,
             legalLine: !hasInvestorProActive ? t('profile.shop.investorProTrialLegal') : null,
             buyLabel: hasInvestorProActive
               ? t('profile.shop.buyInvestorProExtend')
-              : t('profile.shop.buyInvestorPro'),
+              : investorProListing?.priceLabel
+                ? t('profile.shop.investorProSubscribeCta', { price: investorProListing.priceLabel })
+                : !investorProListingReady
+                  ? t('profile.shop.investorProPriceLoading')
+                  : t('profile.shop.investorProPriceUnavailableCta'),
             buySubtitle: investorProBuySubtitle,
             buying: isBuyingInvestorPro,
             isActive: hasInvestorProActive,
@@ -4486,15 +4532,21 @@ function ProfileScreenLoggedIn({
                   {t('profile.shop.investorProFooter')}
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
-                  <Pressable onPress={() => navigation.navigate('Terms' as never)}>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      void openLegalDocument('terms').catch(() => undefined);
+                    }}
+                  >
                     <Text style={{ color: '#0A84FF', fontSize: 13, fontWeight: '600' }}>
                       {t('profile.help.terms')}
                     </Text>
                   </Pressable>
                   <Pressable
-                    onPress={() =>
-                      navigation.navigate('Terms' as never, { initialScrollTo: 'privacy' } as never)
-                    }
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      void openLegalDocument('privacy').catch(() => undefined);
+                    }}
                   >
                     <Text style={{ color: '#0A84FF', fontSize: 13, fontWeight: '600' }}>
                       {t('profile.help.privacy')}
@@ -4660,7 +4712,7 @@ function ProfileScreenLoggedIn({
               subtitle={t('profile.help.termsSubtitle')}
               onPress={() => {
                 Haptics.selectionAsync();
-                navigation.navigate('Terms' as never);
+                void openLegalDocument('terms').catch(() => undefined);
               }}
               isDark={isDark}
             />
@@ -4671,7 +4723,7 @@ function ProfileScreenLoggedIn({
               subtitle={t('profile.help.privacySubtitle')}
               onPress={() => {
                 Haptics.selectionAsync();
-                navigation.navigate('Terms' as never, { initialScrollTo: 'privacy' } as never);
+                void openLegalDocument('privacy').catch(() => undefined);
               }}
               isDark={isDark}
             />

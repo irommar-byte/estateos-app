@@ -1,13 +1,15 @@
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useI18n } from '../../i18n';
 import type { InvestorProUpsellReason } from '../../services/investorProUpsell';
+import InvestorProHeroBrand from './InvestorProHeroBrand';
 
 type Props = {
   visible: boolean;
   reason: InvestorProUpsellReason;
+  priceLabel?: string | null;
   priceLine?: string | null;
+  billedHeadline?: string | null;
   isDark: boolean;
   buying?: boolean;
   onSubscribe: () => void;
@@ -17,6 +19,7 @@ type Props = {
 export default function InvestorProUpsellModal({
   visible,
   reason,
+  priceLabel,
   priceLine,
   isDark,
   buying = false,
@@ -27,6 +30,7 @@ export default function InvestorProUpsellModal({
   const bg = isDark ? '#1C1C1E' : '#FFFFFF';
   const text = isDark ? '#FFFFFF' : '#111111';
   const sub = isDark ? '#8E8E93' : '#6B7280';
+  const hasPrice = Boolean(priceLabel);
 
   const titleKey = `profile.shop.investorProUpsell.${reason}.title` as const;
   const bodyKey = `profile.shop.investorProUpsell.${reason}.body` as const;
@@ -37,22 +41,50 @@ export default function InvestorProUpsellModal({
     <Modal visible transparent animationType="slide" onRequestClose={onLater}>
       <View style={styles.backdrop}>
         <View style={[styles.sheet, { backgroundColor: bg }]}>
-          <View style={styles.badge}>
-            <Ionicons name="diamond" size={22} color="#FFFFFF" />
-            <Text style={styles.badgeText}>{t('profile.shop.investorProTrialBadge')}</Text>
-          </View>
+          <InvestorProHeroBrand isDark={isDark} lit />
+          {!hasPrice ? (
+            <View style={styles.priceLoading}>
+              <ActivityIndicator color={isDark ? '#F59E0B' : '#B45309'} />
+              <Text style={[styles.priceLoadingText, { color: sub }]}>
+                {t('profile.shop.investorProPriceLoading')}
+              </Text>
+            </View>
+          ) : null}
+
           <Text style={[styles.title, { color: text }]}>{t(titleKey)}</Text>
           <Text style={[styles.body, { color: sub }]}>{t(bodyKey)}</Text>
           <Text style={[styles.creditsLine, { color: text }]}>{t('profile.shop.investorProUpsell.creditsLine')}</Text>
-          <Text style={[styles.price, { color: text }]}>
-            {priceLine || t('profile.shop.investorProTrialPriceFallback')}
+
+          {hasPrice ? (
+            <Text style={[styles.price, { color: text }]}>
+              {priceLine ||
+                t('profile.shop.investorProTrialPriceAfter', { price: priceLabel as string })}
+            </Text>
+          ) : null}
+
+          <Text style={[styles.trialNote, { color: sub }]}>
+            {t('profile.shop.investorProTrialSubordinate')}
           </Text>
           <Text style={[styles.legal, { color: sub }]}>{t('profile.shop.investorProTrialLegal')}</Text>
-          <Pressable style={[styles.cta, buying && styles.ctaDisabled]} disabled={buying} onPress={onSubscribe}>
-            <Text style={styles.ctaText}>
-              {buying ? t('profile.shop.restoring') : t('profile.shop.investorProUpsell.cta')}
-            </Text>
+
+          <Pressable
+            style={[styles.cta, (buying || !hasPrice) && styles.ctaDisabled]}
+            disabled={buying || !hasPrice}
+            onPress={onSubscribe}
+          >
+            {buying ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.ctaText}>
+                {hasPrice
+                  ? t('profile.shop.investorProSubscribeCta', { price: priceLabel as string })
+                  : t('profile.shop.investorProPriceLoading')}
+              </Text>
+            )}
           </Pressable>
+          <Text style={[styles.ctaSub, { color: sub }]}>
+            {t('profile.shop.investorProSubscribeCtaSub')}
+          </Text>
           <Pressable onPress={onLater} style={styles.laterBtn}>
             <Text style={[styles.laterText, { color: sub }]}>{t('profile.shop.investorProUpsell.later')}</Text>
           </Pressable>
@@ -72,69 +104,80 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 22,
-    paddingTop: 20,
+    paddingTop: 22,
     paddingBottom: 34,
   },
-  badge: {
-    alignSelf: 'flex-start',
+  priceLoading: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#F59E0B',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    marginBottom: 14,
+    gap: 10,
+    marginTop: 10,
+    marginBottom: 4,
+    minHeight: 28,
   },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.4,
+  priceLoadingText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   title: {
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: -0.4,
+    marginTop: 10,
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: -0.3,
   },
   body: {
-    marginTop: 10,
-    fontSize: 15,
-    lineHeight: 22,
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 20,
     fontWeight: '500',
   },
   creditsLine: {
-    marginTop: 12,
+    marginTop: 10,
     fontSize: 14,
     fontWeight: '700',
   },
   price: {
-    marginTop: 6,
-    fontSize: 13,
-    fontWeight: '600',
+    marginTop: 14,
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
-  legal: {
+  trialNote: {
     marginTop: 8,
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '500',
   },
+  legal: {
+    marginTop: 6,
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
   cta: {
-    marginTop: 20,
+    marginTop: 18,
     minHeight: 52,
     borderRadius: 16,
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#0A84FF',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 16,
   },
-  ctaDisabled: { opacity: 0.7 },
+  ctaDisabled: { opacity: 0.55 },
   ctaText: {
     color: '#FFFFFF',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
+    textAlign: 'center',
+  },
+  ctaSub: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   laterBtn: {
-    marginTop: 12,
+    marginTop: 10,
     alignItems: 'center',
     paddingVertical: 8,
   },

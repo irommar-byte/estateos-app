@@ -14,7 +14,8 @@ import { BlurView } from 'expo-blur';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useThemeStore } from '../store/useThemeStore';
 import * as Haptics from 'expo-haptics';
-import { SITE_ORIGIN } from '../utils/offerShareUrls';
+import { privacyDocumentUrl, termsDocumentUrl } from '../utils/legalDocumentUrls';
+import { getEffectiveAppLocale } from '../store/useAppLocaleStore';
 import { ESTATEOS_CONTACT_EMAIL, mailtoEstateosSubject } from '../constants/appContact';
 
 /* Treść prawna / regulamin — liczne cudzysłowy w cytatach; escapowanie HTML psuje czytelność. */
@@ -53,6 +54,9 @@ export default function TermsScreen() {
   const textColor = isDark ? '#ffffff' : '#1d1d1f';
   const subColor = isDark ? '#86868b' : '#86868b';
   const linkColor = isDark ? '#0A84FF' : '#0071e3';
+  const locale = getEffectiveAppLocale();
+  const termsUrl = termsDocumentUrl(locale);
+  const privacyUrl = privacyDocumentUrl(locale);
 
   const openWWW = (url: string) => {
     Haptics.selectionAsync();
@@ -311,21 +315,21 @@ export default function TermsScreen() {
           . Pełne, prawnie wiążące wersje dokumentów WWW (gdy są opublikowane na serwerze):
         </Text>
         <Pressable
-          onPress={() => openWWW(`${SITE_ORIGIN}/regulamin`)}
+          onPress={() => openWWW(termsUrl)}
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
           accessibilityRole="link"
         >
           <Text style={[styles.linkText, { color: linkColor }]}>
-            {`${SITE_ORIGIN}/regulamin`}
+            {termsUrl}
           </Text>
         </Pressable>
         <Pressable
-          onPress={() => openWWW(`${SITE_ORIGIN}/polityka-prywatnosci`)}
+          onPress={() => openWWW(privacyUrl)}
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
           accessibilityRole="link"
         >
           <Text style={[styles.linkText, { color: linkColor }]}>
-            {`${SITE_ORIGIN}/polityka-prywatnosci`}
+            {privacyUrl}
           </Text>
         </Pressable>
 

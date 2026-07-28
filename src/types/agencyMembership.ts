@@ -48,6 +48,7 @@ export type AgencyCompanyListItem = {
   name: string;
   slug?: string | null;
   city?: string | null;
+  logoUrl?: string | null;
   activeAgents?: number;
 };
 

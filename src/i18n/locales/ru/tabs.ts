@@ -34,7 +34,7 @@ export const tabs = {
     ctaGoToOpenHouse: 'К дню открытых дверей',
     ctaStartAuction: 'Запустить аукцион',
     ctaPlanOpenHouse: 'Запланировать день открытых дверей',
-    ctaTryPro3Days: 'Пробный Pro 3 дня',
+    ctaTryPro3Days: 'Investor Pro',
     ctaBecomePro: 'Investor Pro',
     infoLiveHint: 'Дни открытых дверей и аукционы рядом с вами',
     infoRadarScan247: 'Радар сканирует весь рынок 24/7 — включите, чтобы получать подборки',

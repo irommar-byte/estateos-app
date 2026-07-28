@@ -17,7 +17,7 @@ type Props = {
   /** Tylko na aktywnej zakładce Profil — nie pokazuj na innych ekranach. */
   enabled?: boolean;
   isDark?: boolean;
-  /** Ten sam flow co „Wypróbuj 3 dni” w sekcji sklepu profilu. */
+  /** Ten sam flow co „Subskrybuj” w sekcji sklepu profilu. */
   onPurchase: () => Promise<void>;
 };
 
@@ -39,7 +39,11 @@ export default function InvestorProTrialIntroHost({
   const priceLine =
     listing?.priceLabel != null
       ? t('profile.shop.investorProTrialPriceAfter', { price: listing.priceLabel })
-      : t('profile.shop.investorProTrialPriceFallback');
+      : null;
+  const billedHeadline =
+    listing?.priceLabel != null
+      ? t('profile.shop.investorProBilledHeadline', { price: listing.priceLabel })
+      : null;
 
   const dismiss = useCallback(async () => {
     setVisible(false);
@@ -62,6 +66,9 @@ export default function InvestorProTrialIntroHost({
       const storeListing = await fetchInvestorProStoreListing();
       if (cancelled) return;
       setListing(storeListing);
+
+      // Apple 3.1.2(c): nie pokazuj sheetu bez konkretnej ceny StoreKit.
+      if (!storeListing?.priceLabel) return;
 
       timer = setTimeout(() => {
         if (!cancelled) setVisible(true);
@@ -93,7 +100,9 @@ export default function InvestorProTrialIntroHost({
   return (
     <InvestorProTrialIntroModal
       visible={visible}
+      priceLabel={listing?.priceLabel || null}
       priceLine={priceLine}
+      billedHeadline={billedHeadline}
       isDark={isDark}
       buying={buying}
       onSubscribe={() => {

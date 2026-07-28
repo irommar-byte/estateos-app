@@ -47,6 +47,7 @@ type Props = {
     expiryLabel: string | null;
     trialBadge: string | null;
     priceLine: string | null;
+    billedHeadline: string | null;
     buyLabel: string;
     buySubtitle: string;
     footer: React.ReactNode;

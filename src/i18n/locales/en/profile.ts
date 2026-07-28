@@ -268,28 +268,42 @@ export const profile = {
     investorProValidUntil: 'Valid until {{date}}',
     investorProDaysLeft: '{{days}} {{daysLabel}} left in current billing period',
     investorProSubscriptionMeta:
-      '3 days free, then automatic monthly billing in the App Store. Auto-renews until you cancel.',
-    buyInvestorPro: 'Try 3 days free',
+      'Monthly auto-renewable App Store subscription. Cancel anytime in Settings → Apple ID → Subscriptions.',
+    buyInvestorPro: 'Subscribe',
     buyInvestorProExtend: 'Manage subscription',
     buyInvestorProSubtitle: 'Full Pro access — cancel anytime in the App Store',
     buyInvestorProTrialSubtitle:
-      '3 days free. After the trial, Apple automatically charges the monthly price. Cancel earlier in Settings → Apple ID → Subscriptions.',
-    investorProTrialBadge: '3 DAYS FREE',
+      '{{price}}/month after a 3-day free trial. Cancel earlier in Settings → Apple ID → Subscriptions.',
+    investorProTrialBadge: 'Includes a free 3-day trial',
+    investorProBecomePro: 'Become Pro',
+    investorProHeroTitle: 'INVESTOR PRO',
+    creditsOnAccountTitle: 'Credits on account',
+    creditsOnAccountCount: 'You have {{count}} {{creditsLabel}}',
+    creditsOnAccountCreditOne: 'credit',
+    creditsOnAccountCreditFew: 'credits',
+    creditsOnAccountCreditMany: 'credits',
+    creditsOnAccountEmpty: 'No credits — activate by topping up Plus Package',
     investorProTrialPriceAfter:
-      'After 3 days: {{price}}/month, charged automatically. Renews monthly until you cancel.',
-    investorProTrialPriceFallback:
-      'After 3 days: monthly App Store price, charged automatically. Renews monthly until you cancel.',
-    investorProTrialIntroTitle: 'Try Investor Pro',
+      'Then {{price}}/month, charged automatically. Renews monthly until you cancel.',
+    investorProBilledHeadline: '{{price}}/month',
+    investorProPriceLoading: 'Loading App Store price…',
+    investorProPriceUnavailable: 'App Store price unavailable on this build. Open the app from Xcode with StoreKit Configuration, or use a Sandbox Apple ID with the product Cleared for Sale.',
+    investorProPriceUnavailableCta: 'Retry App Store price',
+    investorProTrialPriceFallback: 'Loading App Store price…',
+    investorProTrialSubordinate: 'Includes a free 3-day trial before the first charge.',
+    investorProSubscribeCta: 'Subscribe — {{price}}/month',
+    investorProSubscribeCtaSub: 'Includes a free 3-day trial',
+    investorProTrialIntroTitle: 'Investor Pro',
     investorProTrialIntroBody:
-      'Portal import, off-market preview and premium tools — 3 days free. When the free trial ends, Apple automatically starts the paid monthly subscription at the price shown below. To avoid being charged, cancel at least 24 hours before the trial ends in Settings → Apple ID → Subscriptions.',
+      'Portal import, off-market preview and premium tools. The billed amount is shown below and on the subscribe button. To avoid being charged, cancel at least 24 hours before the trial ends in Settings → Apple ID → Subscriptions.',
     investorProTrialLegal:
-      'Free trial: 3 days. Then automatic payment for the next billing period (1 month). Auto-renews until canceled in the App Store.',
-    investorProTrialIntroCta: 'Start 3-day free trial',
+      'Payment is charged to your Apple ID. Auto-renews each month until canceled in the App Store. Manage or cancel in Settings → Apple ID → Subscriptions.',
+    investorProTrialIntroCta: 'Subscribe',
     investorProTrialIntroLater: 'Later',
     investorProTrialAscHint:
       'If Apple’s sheet does not show the trial, add Introductory Offer (Free Trial 3 days) in App Store Connect and use a fresh Sandbox account.',
     investorProUpsell: {
-      cta: 'Start 3-day free trial',
+      cta: 'Subscribe',
       later: 'Later',
       creditsLine: '+10 publication credits each subscription period',
       off_market: {
@@ -314,7 +328,7 @@ export const profile = {
       },
     },
     investorProFooter:
-      'Investor Pro is an auto-renewable monthly subscription: portal import, off-market preview and Pro tools. Free trial: 3 days. When it ends, Apple automatically charges for the next month at the App Store price. Cancel in Settings → Apple ID → Subscriptions (ideally ≥24 hours before the period ends). Separate from Plus Package (listing publication). If payment did not register, use Restore purchases.',
+      'Investor Pro is an auto-renewable monthly subscription: portal import, off-market preview and Pro tools. Price is shown on the purchase screen from the App Store. A 3-day free trial may apply before the first charge. Cancel in Settings → Apple ID → Subscriptions (ideally ≥24 hours before the period ends). Separate from Plus Package (listing publication). If payment did not register, use Restore purchases.',
     plusSlotOne: '1 Plus publication available',
     plusSlotsMany: '{{count}} Plus publications available',
     noPackages: 'No packages — buy before the next paid publication',
@@ -356,14 +370,15 @@ export const profile = {
     bonusCouponNotifyBirthdayBody:
       'EstateOS gifted you a free listing. Tap to open coupons in Profile.',
     bonusCouponNotifyAction: 'View in Profile',
-    buyPlus: 'Buy Plus Package',
-    buyPlusSubtitle: 'Open App Store and pay for 1 extra publication (~{{price}})',
+    buyPlus: 'Top up Plus Package credits',
+    buyPlusWithPrice: 'Top up Plus Package credits — {{price}}',
+    buyPlusSubtitle: 'Open App Store and pay for 1 extra publication ({{price}})',
     restorePurchases: 'Restore purchases',
     restoring: 'Connecting to store…',
     restoreIos: 'Restore purchases from Apple ID on this device',
     restoreAndroid: 'Restore purchases from Google Play account',
     footerIos:
-      'Plus Package (~{{price}}) pays for one selected listing on the market for 30 days. It is not a subscription or an account "slot". New accounts receive a welcome coupon for the first publication. If payment did not register publication, use Restore purchases.',
+      'Plus Package ({{price}}) pays for one selected listing on the market for 30 days. It is not a subscription or an account "slot". New accounts receive a welcome coupon for the first publication. If payment did not register publication, use Restore purchases.',
     footerAndroid:
       'Plus Package pays for one selected listing on the market for 30 days. Your first publication can be paid with the welcome coupon after sign-up.',
     plusDaysDefault: 'Extra listing is valid 30 days from publication',
@@ -464,6 +479,18 @@ export const profile = {
       ru: 'RU',
     },
     systemHint: 'iPhone suggests: {{language}}',
+  },
+  agency: {
+    pendingTitle: 'Waiting for approval',
+    pendingBody:
+      'The manager of {{company}} must approve you as an agent. You will get a notification when it is ready.',
+    pendingBrowseHint:
+      'You can browse the app and your profile. Publishing and adding listings will unlock after approval — then you act on behalf of the office.',
+    pendingBadge: 'Awaiting approval',
+    fallbackCompany: 'the office',
+    publishBlockedTitle: 'Office has not approved your account',
+    publishBlockedBody:
+      'You cannot publish or add listings yet. Your office manager must first approve you as an agent.',
   },
   currency: {
     sectionTitle: 'Prices in app',

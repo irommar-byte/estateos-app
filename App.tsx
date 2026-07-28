@@ -94,6 +94,7 @@ import SmsVerificationScreen from './src/screens/SmsVerificationScreen';
 import DealroomListScreen from './src/screens/DealroomListScreen';
 import FloatingChatsDock from './src/components/messaging/FloatingChatsDock';
 import AgencyPendingGate from './src/components/agency/AgencyPendingGate';
+import { isAgencyAgentPendingApproval } from './src/utils/agencyMembershipAccess';
 import EstateDiscoveryMode from './src/screens/EstateDiscoveryMode';
 import DiscoveryEntryScreen from './src/screens/DiscoveryEntryScreen';
 import DiscoveryResumeScreen from './src/screens/DiscoveryResumeScreen';
@@ -201,7 +202,9 @@ const FloatingNextButton = (props: any) => {
   }, [stepFromNav, currentStep, setCurrentStep]);
 
   const user = useAuthStore(state => state.user); 
+  const agencyMembership = useAuthStore((state) => state.agencyMembership);
   const isLoggedIn = !!user;
+  const { t } = useI18n();
   const navigation = useNavigation<any>();
   const activeVertical = useEcosystemStore((state) => state.activeVertical);
   const discoveryEntrySeen = useDiscoveryStore((state) => state.firstEntrySeen);
@@ -210,6 +213,13 @@ const FloatingNextButton = (props: any) => {
   useEffect(() => {
     void hydrateDiscoveryExperience(user?.id);
   }, [hydrateDiscoveryExperience, user?.id]);
+
+  const assertCanStartListing = useCallback(() => {
+    if (!isAgencyAgentPendingApproval(user, agencyMembership)) return true;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    Alert.alert(t('profile.agency.publishBlockedTitle'), t('profile.agency.publishBlockedBody'));
+    return false;
+  }, [agencyMembership, t, user]);
   
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const holdScale = useRef(new Animated.Value(1)).current;
@@ -277,6 +287,7 @@ const FloatingNextButton = (props: any) => {
   const handlePress = (e: any) => {
     if (!isFocused) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (!assertCanStartListing()) return;
       if (activeVertical === 'car') {
         // Guest can open the form; login/register only at publish.
         navigation.navigate('AddCarListing', { mode: 'create' });
@@ -301,6 +312,8 @@ const FloatingNextButton = (props: any) => {
       if (!isLoggedIn) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         navigation.navigate('Profil');
+      } else if (!assertCanStartListing()) {
+        return;
       } else {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         onPress(e);

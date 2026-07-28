@@ -8,7 +8,7 @@ export const offer = {
     countdownMinutes: 'МИН',
     countdownSeconds: 'СЕК',
     investorProInfo: 'О Investor Pro',
-    investorProCta: 'Investor Pro — 3 дня бесплатно',
+    investorProCta: 'Подписаться на Investor Pro',
     waitPatiently: 'Вернусь позже',
   },
   guestGate: {

@@ -36,10 +36,10 @@ const DECK_PEEK_Y = 12;
 const DECK_PEEK_Y_COMPACT = 8;
 const DECK_BACK_SCALE_REST = 0.98;
 /** Miejsce na cień karty + dolną warstwę stosu — podpowiedzi są poniżej. */
-const DECK_SHADOW_PAD = 18;
-const DECK_SHADOW_PAD_COMPACT = 10;
-const HINTS_GAP = 10;
-const HINTS_GAP_COMPACT = 4;
+const DECK_SHADOW_PAD = 28;
+const DECK_SHADOW_PAD_COMPACT = 24;
+const HINTS_GAP = 14;
+const HINTS_GAP_COMPACT = 12;
 /** Stała wysokość bloku tekstu — karty w talii mają ten sam rozmiar okna. */
 const SUBTITLE_SLOT_H = 38;
 const SUBTITLE_SLOT_H_COMPACT = 28;
@@ -131,18 +131,21 @@ function PromoCardFace({
       style={[
         styles.card,
         compact && styles.cardCompact,
+        elevated && styles.cardElevated3d,
+        softShadow && styles.cardSoft3d,
+        !elevated && !softShadow && styles.cardRest3d,
         {
           backgroundColor: surface.backgroundColor,
           borderColor,
-          shadowOpacity: softShadow ? 0.06 : elevated ? 0.22 : 0.1,
-          shadowOffset: { width: 0, height: softShadow ? 3 : 6 },
-          shadowRadius: softShadow ? 8 : 14,
-          elevation: softShadow ? 2 : elevated ? 5 : 3,
           overflow: 'hidden',
           paddingBottom: hasStrip ? metrics.purposeStripH + (compact ? 8 : 10) : compact ? 10 : 14,
         },
       ]}
     >
+      {/* Highlight + głęboki cień = „plastikowa” karta 3D */}
+      <View style={styles.cardTopSheen} pointerEvents="none" />
+      <View style={styles.cardInnerRim} pointerEvents="none" />
+
       {isBirthday ? <BirthdayCouponBackdrop isDark={isDark} /> : null}
 
       {elevated ? (
@@ -156,6 +159,7 @@ function PromoCardFace({
             styles.icon,
             compact && styles.iconCompact,
             styles.contentRaised,
+            styles.icon3d,
             { backgroundColor: card.iconBg },
           ]}
         >
@@ -173,6 +177,7 @@ function PromoCardFace({
               style={[
                 styles.pill,
                 compact && styles.pillCompact,
+                styles.pill3d,
                 { backgroundColor: card.pillBg, borderColor: card.pillBorder },
               ]}
             >
@@ -548,7 +553,7 @@ export default function PromoCardStack({
             {
               marginTop: metrics.hintsGap,
               backgroundColor: hintWellBg,
-              borderTopColor: hintDivider,
+              borderColor: hintDivider,
             },
           ]}
           pointerEvents="none"
@@ -564,30 +569,25 @@ export default function PromoCardStack({
               {deckPosition}/{count}
             </Text>
           ) : null}
-          {compact && canSwipeNext && swipeHint && canDismiss && dismissHint ? (
-            <Text style={[styles.hint, styles.hintCompact, { color: isDark ? 'rgba(235,235,245,0.55)' : '#636366' }]}>
-              {swipeHint} · {dismissHint}
+          {canSwipeNext && swipeHint ? (
+            <Text style={[styles.hint, compact && styles.hintCompact, { color: isDark ? 'rgba(235,235,245,0.7)' : '#636366' }]}>
+              {swipeHint}
             </Text>
-          ) : (
-            <>
-              {canSwipeNext && swipeHint ? (
-                <Text style={[styles.hint, compact && styles.hintCompact, { color: isDark ? 'rgba(235,235,245,0.62)' : '#636366' }]}>
-                  {swipeHint}
-                </Text>
-              ) : null}
-              {canDismiss && dismissHint ? (
-                <Text
-                  style={[
-                    styles.hint,
-                    compact ? styles.hintCompactSecondary : styles.hintSecondary,
-                    { color: isDark ? 'rgba(235,235,245,0.48)' : '#8E8E93' },
-                  ]}
-                >
-                  {dismissHint}
-                </Text>
-              ) : null}
-            </>
-          )}
+          ) : null}
+          {canDismiss && dismissHint ? (
+            <View style={[styles.dismissChip, { borderColor: hintDivider, backgroundColor: isDark ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.95)' }]}>
+              <Ionicons name="arrow-back" size={compact ? 11 : 12} color={isDark ? 'rgba(235,235,245,0.55)' : '#8E8E93'} />
+              <Text
+                style={[
+                  styles.dismissChipText,
+                  compact && styles.dismissChipTextCompact,
+                  { color: isDark ? 'rgba(235,235,245,0.62)' : '#636366' },
+                ]}
+              >
+                {dismissHint}
+              </Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -617,6 +617,7 @@ const styles = StyleSheet.create({
   deckStage: {
     width: '100%',
     zIndex: 1,
+    overflow: 'hidden',
   },
   stack: {
     position: 'relative',
@@ -625,18 +626,25 @@ const styles = StyleSheet.create({
   },
   hintsZone: {
     width: '100%',
-    paddingTop: 12,
-    paddingBottom: 4,
-    paddingHorizontal: 6,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    zIndex: 10,
+    paddingTop: 10,
+    paddingBottom: 8,
+    paddingHorizontal: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 14,
+    zIndex: 0,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2,
   },
   hintsZoneCompact: {
-    paddingTop: 6,
-    paddingBottom: 2,
-    paddingHorizontal: 4,
-    borderRadius: 10,
+    paddingTop: 8,
+    paddingBottom: 7,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    gap: 5,
   },
   deckLayer: {
     position: 'absolute',
@@ -659,12 +667,46 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingTop: 14,
     paddingHorizontal: 14,
-    shadowColor: '#000',
+    shadowColor: '#1A1A1A',
   },
   cardCompact: {
     borderRadius: 14,
     paddingTop: 10,
     paddingHorizontal: 10,
+  },
+  cardElevated3d: {
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.32,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  cardSoft3d: {
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  cardRest3d: {
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 5,
+  },
+  cardTopSheen: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: '42%',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  cardInnerRim: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
   },
   contentRow: {
     flexDirection: 'row',
@@ -703,6 +745,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginRight: 8,
   },
+  icon3d: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.28,
+    shadowRadius: 5,
+    elevation: 4,
+  },
   body: { flex: 1, minWidth: 0 },
   headerRow: {
     flexDirection: 'row',
@@ -714,13 +763,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.2,
-    marginBottom: 6,
     marginLeft: 2,
     fontVariant: ['tabular-nums'],
   },
   deckCounterHintCompact: {
     fontSize: 10,
-    marginBottom: 3,
   },
   title: { fontSize: 17, fontWeight: '700', letterSpacing: -0.2, flex: 1 },
   titleCompact: { fontSize: 15 },
@@ -734,6 +781,13 @@ const styles = StyleSheet.create({
   pillCompact: {
     paddingHorizontal: 6,
     paddingVertical: 2,
+  },
+  pill3d: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 2,
   },
   pillText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
   pillTextCompact: { fontSize: 9, letterSpacing: 0.35 },
@@ -757,11 +811,31 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
   },
-  hintSecondary: {
-    marginTop: 6,
+  dismissChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  hintCompactSecondary: {
-    marginTop: 3,
+  dismissChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+    lineHeight: 16,
+  },
+  dismissChipTextCompact: {
+    fontSize: 11,
+    lineHeight: 14,
   },
 });
 
@@ -779,6 +853,11 @@ const stripStyles = StyleSheet.create({
     borderBottomLeftRadius: 15,
     borderBottomRightRadius: 15,
     zIndex: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
   },
   stripCompact: {
     paddingHorizontal: 8,

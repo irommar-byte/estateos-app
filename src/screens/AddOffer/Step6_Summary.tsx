@@ -5,6 +5,7 @@ import type { Camera } from 'react-native-maps';
 import { useNavigation, CommonActions, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import { useAuthStore } from '../../store/useAuthStore';
+import { isAgencyAgentPendingApproval } from '../../utils/agencyMembershipAccess';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -400,6 +401,12 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     
     if (!user || !user.id || !token) {
       Alert.alert(t('addOffer.common.alerts.authError.title'), t('addOffer.common.alerts.authError.message'));
+      return;
+    }
+
+    if (isAgencyAgentPendingApproval(user, useAuthStore.getState().agencyMembership)) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert(t('profile.agency.publishBlockedTitle'), t('profile.agency.publishBlockedBody'));
       return;
     }
 

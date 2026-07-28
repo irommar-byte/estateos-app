@@ -52,7 +52,11 @@ export default function InvestorProUpsellHost() {
   const priceLine =
     listing?.priceLabel != null
       ? t('profile.shop.investorProTrialPriceAfter', { price: listing.priceLabel })
-      : t('profile.shop.investorProTrialPriceFallback');
+      : null;
+  const billedHeadline =
+    listing?.priceLabel != null
+      ? t('profile.shop.investorProBilledHeadline', { price: listing.priceLabel })
+      : null;
 
   const handleLater = useCallback(() => {
     setReason(null);
@@ -126,7 +130,9 @@ export default function InvestorProUpsellHost() {
     <InvestorProUpsellModal
       visible={Boolean(reason)}
       reason={reason}
+      priceLabel={listing?.priceLabel || null}
       priceLine={priceLine}
+      billedHeadline={billedHeadline}
       isDark={isDark}
       buying={buying}
       onSubscribe={() => {

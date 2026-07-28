@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useI18n } from '../../i18n';
 import { profileShopLeatherBg, profileShopLeatherPressedBg } from './profileCardElevation';
+import EosCreditCoin from './EosCreditCoin';
 
 type Props = {
   isDark: boolean;
@@ -36,20 +40,16 @@ type Props = {
 
 export default function PlusPackageShopPanel({
   isDark,
-  title,
   plusSlots,
   hasPlusAvailable,
   counterLabel,
   expiryLabel,
-  daysLabel,
   buyLabel,
   buySubtitle,
   restoreLabel,
   restoreSubtitle,
   restoring,
   buying,
-  defaultExpanded = true,
-  collapsible = true,
   embedded = false,
   leatherSurface = false,
   compactEmbedded = false,
@@ -58,21 +58,24 @@ export default function PlusPackageShopPanel({
   onBuy,
   onRestore,
 }: Props) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const isBodyVisible = collapsible ? expanded : true;
+  const { t } = useI18n();
+  const glow = useRef(new Animated.Value(hasPlusAvailable ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(glow, {
+      toValue: hasPlusAvailable ? 1 : 0,
+      duration: 480,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [glow, hasPlusAvailable]);
+
   const panelBg = leatherSurface ? profileShopLeatherBg(isDark) : isDark ? '#1C1C1E' : '#FFFFFF';
-  const pressedBg = leatherSurface ? profileShopLeatherPressedBg(isDark) : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
-  const panelBorder = leatherSurface
-    ? isDark
-      ? 'rgba(210,180,140,0.24)'
-      : 'rgba(139,115,85,0.18)'
-    : hasPlusAvailable
-    ? isDark
-      ? 'rgba(16,185,129,0.55)'
-      : 'rgba(16,185,129,0.62)'
+  const pressedBg = leatherSurface
+    ? profileShopLeatherPressedBg(isDark)
     : isDark
-      ? 'rgba(16,185,129,0.28)'
-      : 'rgba(16,185,129,0.35)';
+      ? 'rgba(255,255,255,0.06)'
+      : 'rgba(0,0,0,0.04)';
   const divider = leatherSurface
     ? isDark
       ? 'rgba(210,180,140,0.16)'
@@ -80,158 +83,134 @@ export default function PlusPackageShopPanel({
     : isDark
       ? 'rgba(255,255,255,0.08)'
       : 'rgba(0,0,0,0.06)';
-  const accent = hasPlusAvailable ? '#10B981' : '#0A84FF';
-  const showCombinedMeta = compactEmbedded && hasPlusAvailable && expiryLabel;
+
+  const inactiveBorder = isDark ? 'rgba(120,120,128,0.28)' : 'rgba(142,142,147,0.32)';
+  const activeBorder = isDark ? 'rgba(16,185,129,0.55)' : 'rgba(16,185,129,0.62)';
+  const mutedTitle = isDark ? 'rgba(235,235,245,0.45)' : '#8E8E93';
+  const liveTitle = isDark ? '#FFFFFF' : '#000000';
+  const coinSize = compactEmbedded ? 34 : 40;
+
+  const borderColor = glow.interpolate({
+    inputRange: [0, 1],
+    outputRange: [inactiveBorder, activeBorder],
+  });
+  const shadowOpacity = glow.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.04, embedded ? 0.18 : 0.32],
+  });
+
+  const creditsTitle = t('profile.shop.creditsOnAccountTitle');
+  const creditsLabel =
+    plusSlots === 1
+      ? t('profile.shop.creditsOnAccountCreditOne')
+      : plusSlots >= 2 && plusSlots <= 4
+        ? t('profile.shop.creditsOnAccountCreditFew')
+        : t('profile.shop.creditsOnAccountCreditMany');
+  const creditsMeta = hasPlusAvailable
+    ? t('profile.shop.creditsOnAccountCount', { count: plusSlots, creditsLabel })
+    : t('profile.shop.creditsOnAccountEmpty');
 
   return (
-    <View
+    <Animated.View
       style={[
         styles.panel,
         embedded && styles.panelEmbedded,
-        { backgroundColor: panelBg, borderColor: panelBorder },
-        hasPlusAvailable && !embedded && styles.panelActiveGlow,
+        {
+          backgroundColor: panelBg,
+          borderColor,
+          shadowOpacity,
+          shadowColor: hasPlusAvailable ? '#10B981' : '#8E8E93',
+        },
+        hasPlusAvailable && styles.panelActiveGlow,
+        !hasPlusAvailable && styles.panelInactive,
       ]}
     >
       <Pressable
-        onPress={collapsible ? () => setExpanded((v) => !v) : undefined}
-        disabled={!collapsible}
+        onPress={onBuy}
+        disabled={buying}
         style={({ pressed }) => [
-          styles.statusRow,
-          compactEmbedded && styles.statusRowCompact,
-          pressed && collapsible && { opacity: 0.92 },
+          styles.unifiedRow,
+          compactEmbedded && styles.unifiedRowCompact,
+          pressed && { backgroundColor: pressedBg },
+          buying && { opacity: 0.75 },
         ]}
       >
-        <View
-          style={[
-            styles.slotBadge,
-            compactEmbedded && styles.slotBadgeCompact,
-            { backgroundColor: `${accent}18`, borderColor: `${accent}44` },
-          ]}
-        >
-          <Text style={[styles.slotNumber, compactEmbedded && styles.slotNumberCompact, { color: accent }]}>
-            {hasPlusAvailable ? plusSlots : '0'}
-          </Text>
-          <Text
-            style={[
-              styles.slotCaption,
-              compactEmbedded && styles.slotCaptionCompact,
-              { color: isDark ? 'rgba(235,235,245,0.5)' : '#8E8E93' },
-            ]}
-          >
-            Plus
-          </Text>
-        </View>
-        <View style={styles.statusCopy}>
-          <Text
-            style={[
-              styles.packageTitle,
-              compactEmbedded && styles.packageTitleCompact,
-              { color: isDark ? '#FFFFFF' : '#000000' },
-            ]}
-          >
-            {title}
-          </Text>
-          <Text style={[styles.counter, compactEmbedded && styles.counterCompact, { color: accent }]}>
-            {counterLabel}
-          </Text>
-          {showCombinedMeta ? (
-            <Text
-              style={[styles.meta, compactEmbedded && styles.metaCompact, { color: isDark ? 'rgba(235,235,245,0.55)' : '#8E8E93' }]}
-              numberOfLines={1}
-            >
-              {[expiryLabel, daysLabel].filter(Boolean).join(' · ')}
-            </Text>
+        <View style={[styles.coinWrap, !hasPlusAvailable && styles.coinWrapInactive]}>
+          {buying ? (
+            <ActivityIndicator size="small" color="#CA8A04" />
           ) : (
-            <>
-              {hasPlusAvailable && expiryLabel ? (
-                <Text style={[styles.meta, compactEmbedded && styles.metaCompact, { color: isDark ? 'rgba(235,235,245,0.55)' : '#8E8E93' }]}>
-                  {expiryLabel}
-                </Text>
-              ) : null}
-              <Text style={[styles.meta, compactEmbedded && styles.metaCompact, { color: isDark ? 'rgba(235,235,245,0.45)' : '#AEAEB2' }]}>
-                {daysLabel}
-              </Text>
-            </>
+                <EosCreditCoin size={coinSize} autoSpin={hasPlusAvailable} lit={hasPlusAvailable} />
           )}
         </View>
-        <View style={styles.headerActions}>
-          <View style={[styles.statusIcon, compactEmbedded && styles.statusIconCompact, { backgroundColor: accent }]}>
-            <Ionicons name={hasPlusAvailable ? 'checkmark-circle' : 'bag-add'} size={compactEmbedded ? 18 : 22} color="#FFFFFF" />
-          </View>
-          {collapsible ? (
-            <Ionicons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={compactEmbedded ? 18 : 20}
-              color={isDark ? '#8E8E93' : '#C7C7CC'}
-            />
-          ) : null}
-        </View>
-      </Pressable>
 
-      {isBodyVisible ? (
-        <>
-          <View style={[styles.divider, { backgroundColor: divider }]} />
-
-          <Pressable
-            onPress={onBuy}
-            disabled={buying}
-            style={({ pressed }) => [
-              styles.actionRow,
-              compactEmbedded && styles.actionRowCompact,
-              pressed && { backgroundColor: pressedBg },
-              buying && { opacity: 0.7 },
+        <View style={styles.copy}>
+          <Text style={[styles.title, { color: hasPlusAvailable ? liveTitle : mutedTitle }]}>
+            {creditsTitle}
+          </Text>
+          <Text
+            style={[
+              styles.countLine,
+              { color: hasPlusAvailable ? '#10B981' : isDark ? 'rgba(235,235,245,0.4)' : '#AEAEB2' },
             ]}
           >
-            <View style={[styles.actionIcon, compactEmbedded && styles.actionIconCompact, { backgroundColor: '#10B981' }]}>
-              {buying ? (
+            {creditsMeta}
+          </Text>
+          {hasPlusAvailable && expiryLabel ? (
+            <Text style={[styles.meta, { color: isDark ? 'rgba(235,235,245,0.5)' : '#8E8E93' }]}>
+              {expiryLabel}
+            </Text>
+          ) : null}
+          {!hasPlusAvailable ? (
+            <Text style={[styles.meta, { color: isDark ? 'rgba(235,235,245,0.38)' : '#AEAEB2' }]}>
+              {counterLabel}
+            </Text>
+          ) : null}
+          <Text style={[styles.buyLine, { color: hasPlusAvailable ? liveTitle : mutedTitle }]}>
+            {buyLabel}
+          </Text>
+          <Text style={styles.subtitle}>{buySubtitle}</Text>
+        </View>
+
+        {!buying ? (
+          <Ionicons
+            name="chevron-forward"
+            size={compactEmbedded ? 18 : 20}
+            color={hasPlusAvailable ? '#10B981' : '#C7C7CC'}
+          />
+        ) : null}
+      </Pressable>
+
+      {showRestore ? (
+        <>
+          <View style={[styles.dividerThin, { backgroundColor: divider }]} />
+          <Pressable
+            onPress={onRestore}
+            disabled={restoring}
+            style={({ pressed }) => [
+              styles.restoreRow,
+              compactEmbedded && styles.restoreRowCompact,
+              pressed && { backgroundColor: pressedBg },
+              restoring && { opacity: 0.7 },
+            ]}
+          >
+            <View style={[styles.restoreIcon, { backgroundColor: '#0A84FF' }]}>
+              {restoring ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Ionicons name="bag-check" size={compactEmbedded ? 18 : 21} color="#FFFFFF" />
+                <Ionicons name="refresh-circle" size={compactEmbedded ? 20 : 22} color="#FFFFFF" />
               )}
             </View>
-            <View style={styles.actionBody}>
-              <Text style={[styles.actionTitle, compactEmbedded && styles.actionTitleCompact, { color: isDark ? '#FFFFFF' : '#000000' }]}>
-                {buyLabel}
-              </Text>
-              <Text style={[styles.actionSubtitle, compactEmbedded && styles.actionSubtitleCompact]}>{buySubtitle}</Text>
+            <View style={styles.copy}>
+              <Text style={[styles.buyLine, { color: liveTitle }]}>{restoreLabel}</Text>
+              <Text style={styles.subtitle}>{restoreSubtitle}</Text>
             </View>
-            {!buying && <Ionicons name="chevron-forward" size={compactEmbedded ? 18 : 20} color="#C7C7CC" />}
+            {!restoring && <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
           </Pressable>
-
-          <View style={[styles.dividerThin, { backgroundColor: divider }]} />
-
-          {showRestore ? (
-            <Pressable
-              onPress={onRestore}
-              disabled={restoring}
-              style={({ pressed }) => [
-                styles.actionRow,
-                compactEmbedded && styles.actionRowCompact,
-                pressed && { backgroundColor: pressedBg },
-                restoring && { opacity: 0.7 },
-              ]}
-            >
-              <View style={[styles.actionIcon, compactEmbedded && styles.actionIconCompact, { backgroundColor: '#0A84FF' }]}>
-                {restoring ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Ionicons name="refresh-circle" size={compactEmbedded ? 20 : 22} color="#FFFFFF" />
-                )}
-              </View>
-              <View style={styles.actionBody}>
-                <Text style={[styles.actionTitle, compactEmbedded && styles.actionTitleCompact, { color: isDark ? '#FFFFFF' : '#000000' }]}>
-                  {restoreLabel}
-                </Text>
-                <Text style={[styles.actionSubtitle, compactEmbedded && styles.actionSubtitleCompact]}>{restoreSubtitle}</Text>
-              </View>
-              {!restoring && <Ionicons name="chevron-forward" size={compactEmbedded ? 18 : 20} color="#C7C7CC" />}
-            </Pressable>
-          ) : null}
-
-          {footer ? <View style={[styles.footerWrap, compactEmbedded && styles.footerWrapCompact]}>{footer}</View> : null}
         </>
       ) : null}
-    </View>
+
+      {footer ? <View style={[styles.footerWrap, compactEmbedded && styles.footerWrapCompact]}>{footer}</View> : null}
+    </Animated.View>
   );
 }
 
@@ -240,9 +219,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     overflow: 'hidden',
-    shadowColor: '#10B981',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
     shadowRadius: 16,
     elevation: 4,
   },
@@ -253,150 +230,85 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   panelActiveGlow: {
-    shadowColor: '#10B981',
-    shadowOpacity: 0.32,
     shadowRadius: 22,
     elevation: 8,
   },
-  statusRow: {
+  panelInactive: {
+    opacity: 0.78,
+  },
+  unifiedRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
   },
-  statusRowCompact: {
-    paddingVertical: 10,
+  unifiedRowCompact: {
+    paddingVertical: 12,
     paddingHorizontal: 12,
     gap: 10,
   },
-  slotBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
-    borderWidth: 1,
+  coinWrap: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  slotBadgeCompact: {
-    width: 48,
-    height: 48,
-    borderRadius: 13,
+  coinWrapInactive: {
+    opacity: 0.55,
   },
-  slotNumber: {
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  slotNumberCompact: {
-    fontSize: 22,
-  },
-  slotCaption: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    marginTop: 2,
-    letterSpacing: 0.4,
-  },
-  slotCaptionCompact: {
-    fontSize: 9,
-    marginTop: 1,
-  },
-  statusCopy: { flex: 1, minWidth: 0 },
-  packageTitle: {
-    fontSize: 17,
+  copy: { flex: 1, minWidth: 0, paddingRight: 4 },
+  title: {
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: -0.2,
   },
-  packageTitleCompact: {
-    fontSize: 15,
-  },
-  counter: {
+  countLine: {
     fontSize: 14,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  counterCompact: {
-    fontSize: 13,
-    marginTop: 2,
+    fontWeight: '800',
+    marginTop: 3,
+    letterSpacing: -0.2,
   },
   meta: {
-    fontSize: 12,
-    marginTop: 3,
-    lineHeight: 16,
-    fontWeight: '500',
-  },
-  metaCompact: {
     fontSize: 11,
     marginTop: 2,
     lineHeight: 14,
+    fontWeight: '500',
   },
-  headerActions: {
-    alignItems: 'center',
-    gap: 6,
+  buyLine: {
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+    marginTop: 8,
   },
-  statusIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusIconCompact: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: 16,
+  subtitle: {
+    fontSize: 11,
+    color: '#8E8E93',
+    marginTop: 2,
+    lineHeight: 14,
   },
   dividerThin: {
     height: StyleSheet.hairlineWidth,
     marginLeft: 68,
   },
-  actionRow: {
+  restoreRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 13,
     paddingHorizontal: 16,
     gap: 12,
   },
-  actionRowCompact: {
+  restoreRowCompact: {
     paddingVertical: 10,
     paddingHorizontal: 12,
     gap: 10,
   },
-  actionIcon: {
+  restoreIcon: {
     width: 36,
     height: 36,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  actionIconCompact: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-  },
-  actionBody: { flex: 1, paddingRight: 4 },
-  actionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: -0.2,
-  },
-  actionTitleCompact: {
-    fontSize: 15,
-  },
-  actionSubtitle: {
-    fontSize: 12,
-    color: '#8E8E93',
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  actionSubtitleCompact: {
-    fontSize: 11,
-    lineHeight: 14,
-    marginTop: 1,
   },
   footerWrap: {
     paddingHorizontal: 16,

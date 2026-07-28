@@ -81,6 +81,11 @@ export type SubscriptionStoreListing = {
   trialLabel: string | null;
 };
 
+export type StoreProductListing = {
+  productId: IapProductId;
+  priceLabel: string | null;
+};
+
 export type RestorePurchasesResult = {
   ok: boolean;
   restored: number;
@@ -98,16 +103,91 @@ function readStringField(obj: Record<string, unknown>, ...keys: string[]): strin
   return null;
 }
 
+function parseLocalizedPriceLabel(raw: Record<string, unknown>): string | null {
+  const currency =
+    readStringField(raw, 'currency', 'currencyCode', 'currencyCodeIOS', 'priceCurrencyCode') ?? null;
+  const localized =
+    readStringField(
+      raw,
+      'displayPrice',
+      'localizedPrice',
+      'localizedPriceIOS',
+      'priceString',
+      'priceFormatted',
+      'formattedPrice',
+    ) ?? null;
+  const numericPrice =
+    typeof raw.price === 'number'
+      ? raw.price
+      : typeof raw.price === 'string' && raw.price.trim() && !Number.isNaN(Number(raw.price))
+        ? Number(raw.price)
+        : null;
+
+  let priceLabel = localized;
+  if (!priceLabel && numericPrice != null && currency) {
+    try {
+      priceLabel = new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency,
+      }).format(numericPrice);
+    } catch {
+      priceLabel = `${numericPrice} ${currency}`;
+    }
+  }
+  if (!priceLabel && numericPrice != null) {
+    priceLabel = String(numericPrice);
+  }
+
+  // Android / nested one-time offer phases sometimes carry the recurring price.
+  if (!priceLabel) {
+    const phases = Array.isArray(raw.subscriptionOfferDetailsAndroid)
+      ? raw.subscriptionOfferDetailsAndroid
+      : Array.isArray(raw.subscriptionOfferDetails)
+        ? raw.subscriptionOfferDetails
+        : [];
+    for (const phaseWrap of phases) {
+      const wrap = phaseWrap as Record<string, unknown>;
+      const pricingPhases = Array.isArray(wrap.pricingPhases)
+        ? wrap.pricingPhases
+        : Array.isArray((wrap.pricingPhases as { pricingPhaseList?: unknown[] } | undefined)?.pricingPhaseList)
+          ? ((wrap.pricingPhases as { pricingPhaseList: unknown[] }).pricingPhaseList)
+          : [];
+      for (const phase of pricingPhases) {
+        const p = phase as Record<string, unknown>;
+        const phasePrice =
+          readStringField(p, 'formattedPrice', 'price', 'priceAmountMicros') ?? null;
+        if (phasePrice && !String(phasePrice).endsWith('000000')) {
+          priceLabel = phasePrice;
+          break;
+        }
+        if (typeof p.priceAmountMicros === 'number' || typeof p.priceAmountMicros === 'string') {
+          const micros = Number(p.priceAmountMicros);
+          const cur = readStringField(p, 'priceCurrencyCode', 'currency') || currency;
+          if (Number.isFinite(micros) && micros > 0 && cur) {
+            try {
+              priceLabel = new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency: cur,
+              }).format(micros / 1_000_000);
+            } catch {
+              priceLabel = `${(micros / 1_000_000).toFixed(2)} ${cur}`;
+            }
+            break;
+          }
+        }
+      }
+      if (priceLabel) break;
+    }
+  }
+
+  return priceLabel;
+}
+
 function parseSubscriptionStoreListing(
   productId: IapProductId,
   raw: Record<string, unknown>,
 ): SubscriptionStoreListing {
-  const priceLabel =
-    readStringField(raw, 'displayPrice', 'localizedPrice', 'priceString') ??
-    (typeof raw.price === 'number' && raw.currency
-      ? `${raw.price} ${String(raw.currency)}`
-      : null);
-
+  const priceLabel = parseLocalizedPriceLabel(raw);
   const subscriptionOffersRaw = raw.subscriptionOfferDetails;
   const subscriptionOffers =
     subscriptionOffersRaw && typeof subscriptionOffersRaw === 'object'
@@ -319,7 +399,7 @@ class IAPManagerImpl {
         [IAP_PRODUCT_IDS.PAKIET_PLUS_30D],
         'in-app',
       );
-      await this.fetchProductsForPurchase(
+      await this.fetchProductsTryingSkus(
         this.iap,
         this.storeSkusForPurchase(IAP_PRODUCT_IDS.INVESTOR_PRO, 'subs'),
         'subs',
@@ -595,9 +675,10 @@ class IAPManagerImpl {
         'App Store nie zwraca tego produktu na tym buildzie.\n\n' +
         'To nie naprawi się „Przywróć zakupy” ani czekaniem.\n\n' +
         'Żeby działało lokalnie:\n' +
-        '1) Xcode → Scheme EstateOS → Run → StoreKit Configuration = Configuration.storekit\n' +
-        '2) Pełny rebuild (nie tylko Metro): npx expo run:ios\n' +
-        '3) Albo Sandbox Apple ID + produkt Cleared for Sale w App Store Connect\n\n' +
+        '1) Xcode → Scheme EstateOS → Run → Options → StoreKit Configuration = Configuration.storekit\n' +
+        '2) Uruchom appkę przez ▶ Run w Xcode (nie z ikony na SpringBoard — wtedy StoreKit Config nie działa)\n' +
+        '3) Pełny rebuild: npx expo run:ios --device\n' +
+        '4) Albo Sandbox Apple ID + produkt Cleared for Sale w App Store Connect\n\n' +
         `SKU: ${productId}`
       );
     }
@@ -635,6 +716,69 @@ class IAPManagerImpl {
     };
   }
 
+  /**
+   * Pobiera produkty SKU po SKU (nie batch z legacy).
+   * StoreKit Configuration / niektóre buildy zwracają pusty katalog,
+   * gdy w jednym `fetchProducts` jest ID spoza lokalnego pliku .storekit.
+   */
+  private async fetchProductsTryingSkus(
+    iap: IapModule,
+    skus: string[],
+    storeType: 'in-app' | 'subs',
+  ): Promise<unknown[] | null | undefined> {
+    const unique = Array.from(new Set(skus.filter(Boolean)));
+    for (const sku of unique) {
+      const products = await this.fetchProductsForPurchase(iap, [sku], storeType);
+      if (products?.length) {
+        const match = products.find((p) => this.productIdOf(p as Record<string, unknown>) === sku);
+        if (match) return [match];
+        return products;
+      }
+    }
+    // Ostatnia próba: cały zestaw naraz (Sandbox / ASC czasem tak woli).
+    if (unique.length > 1) {
+      return this.fetchProductsForPurchase(iap, unique, storeType);
+    }
+    return null;
+  }
+
+  /** Cena consumable / non-sub z App Store / Play. */
+  async getProductListing(
+    productId: IapProductId,
+    storeType: 'in-app' | 'subs' = 'in-app',
+  ): Promise<StoreProductListing | null> {
+    if (!this.iap) {
+      const ok = await this.init({ apiUrl: this.apiUrl, getToken: this.getToken });
+      if (!ok) return null;
+    }
+    const connected = await this.ensureConnected();
+    if (!connected || !this.iap) return null;
+
+    try {
+      const skus = this.storeSkusForPurchase(productId, storeType);
+      const products = await this.fetchProductsTryingSkus(this.iap, skus, storeType);
+      const resolvedId = this.pickFetchedProductId(productId, products);
+      if (!resolvedId || !products?.length) {
+        if (__DEV__) {
+          console.warn('[IAP] getProductListing empty catalog', { asked: skus, productId });
+        }
+        return null;
+      }
+      const raw =
+        (products.find((p) => this.productIdOf(p as Record<string, unknown>) === resolvedId) as
+          | Record<string, unknown>
+          | undefined) ?? (products[0] as Record<string, unknown> | undefined);
+      if (!raw) return null;
+      return {
+        productId: resolvedId,
+        priceLabel: parseLocalizedPriceLabel(raw),
+      };
+    } catch (e) {
+      if (__DEV__) console.log('[IAP] getProductListing failed:', e);
+      return null;
+    }
+  }
+
   /** Cena i trial z App Store / Play — do UI (sheet Apple i tak decyduje o trialu). */
   async getSubscriptionListing(productId: IapProductId): Promise<SubscriptionStoreListing | null> {
     if (!this.iap) {
@@ -646,9 +790,14 @@ class IAPManagerImpl {
 
     try {
       const skus = this.storeSkusForPurchase(productId, 'subs');
-      const products = await this.fetchProductsForPurchase(this.iap, skus, 'subs');
+      const products = await this.fetchProductsTryingSkus(this.iap, skus, 'subs');
       const resolvedId = this.pickFetchedProductId(productId, products);
-      if (!resolvedId || !products?.length) return null;
+      if (!resolvedId || !products?.length) {
+        if (__DEV__) {
+          console.warn('[IAP] getSubscriptionListing empty catalog', { asked: skus, productId });
+        }
+        return null;
+      }
       const raw =
         (products.find((p) => {
           const r = p as Record<string, unknown>;
@@ -710,7 +859,7 @@ class IAPManagerImpl {
     this.activePurchaseContext = { productId, storeType, skus };
 
     try {
-      const products = await this.fetchProductsForPurchase(iap, skus, storeType);
+      const products = await this.fetchProductsTryingSkus(iap, skus, storeType);
       const resolvedProductId = this.pickFetchedProductId(productId, products);
       if (resolvedProductId) {
         productId = resolvedProductId;

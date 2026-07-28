@@ -34,7 +34,7 @@ export const tabs = {
     ctaGoToOpenHouse: 'Do dnia otwartych',
     ctaStartAuction: 'Uruchom licytację',
     ctaPlanOpenHouse: 'Zaplanuj dzień otwarty',
-    ctaTryPro3Days: 'Wypróbuj Pro 3 dni',
+    ctaTryPro3Days: 'Investor Pro',
     ctaBecomePro: 'Zostań Pro',
     infoLiveHint: 'Dni otwarte i licytacje na żywo w Twojej okolicy',
     infoRadarScan247: 'Radar skanuje cały rynek 24/7 — włącz go, by dostawać dopasowane oferty',

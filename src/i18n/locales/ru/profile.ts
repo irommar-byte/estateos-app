@@ -268,28 +268,43 @@ export const profile = {
     investorProValidUntil: 'Действует до {{date}}',
     investorProDaysLeft: 'В текущем периоде осталось {{days}} {{daysLabel}}',
     investorProSubscriptionMeta:
-      '3 дня бесплатно, затем автоматическая ежемесячная оплата в App Store. Автопродление, пока вы не отмените.',
-    buyInvestorPro: '3 дня бесплатно',
+      'Ежемесячная автопродлеваемая подписка в App Store. Отмена в любой момент: Настройки → Apple ID → Подписки.',
+    buyInvestorPro: 'Подписаться',
     buyInvestorProExtend: 'Управление подпиской',
     buyInvestorProSubtitle: 'Полный Pro-доступ — отмена в App Store в любой момент',
     buyInvestorProTrialSubtitle:
-      '3 дня бесплатно. После trial Apple автоматически спишет ежемесячную оплату. Отмените раньше: Настройки → Apple ID → Подписки.',
-    investorProTrialBadge: '3 ДНЯ БЕСПЛАТНО',
+      '{{price}}/месяц после 3-дневного пробного периода. Отмените раньше: Настройки → Apple ID → Подписки.',
+    investorProTrialBadge: 'Включает бесплатный 3-дневный пробный период',
+    investorProBecomePro: 'Стань Pro',
+    investorProHeroTitle: 'INVESTOR PRO',
+    creditsOnAccountTitle: 'Кредиты на счёте',
+    creditsOnAccountCount: 'У вас {{count}} {{creditsLabel}}',
+    creditsOnAccountCreditOne: 'кредит',
+    creditsOnAccountCreditFew: 'кредита',
+    creditsOnAccountCreditMany: 'кредитов',
+    creditsOnAccountEmpty: 'Нет кредитов — активируйте, докупив Pakiet +',
     investorProTrialPriceAfter:
-      'Через 3 дня: {{price}}/мес., списывается автоматически. Продлевается каждый месяц, пока не отмените.',
-    investorProTrialPriceFallback:
-      'Через 3 дня: ежемесячная цена App Store, списывается автоматически. Продлевается каждый месяц, пока не отмените.',
-    investorProTrialIntroTitle: 'Попробуйте Investor Pro',
+      'Затем {{price}}/мес., списывается автоматически. Продлевается каждый месяц, пока не отмените.',
+    investorProBilledHeadline: '{{price}}/месяц',
+    investorProPriceLoading: 'Загрузка цены App Store…',
+    investorProPriceUnavailable:
+      'Цена App Store недоступна в этой сборке. Запустите приложение из Xcode (StoreKit Configuration) или используйте Sandbox Apple ID с продуктом Cleared for Sale.',
+    investorProPriceUnavailableCta: 'Повторить загрузку цены',
+    investorProTrialPriceFallback: 'Загрузка цены App Store…',
+    investorProTrialSubordinate: 'Включает бесплатный 3-дневный пробный период до первого списания.',
+    investorProSubscribeCta: 'Подписаться — {{price}}/месяц',
+    investorProSubscribeCtaSub: 'Включает бесплатный 3-дневный пробный период',
+    investorProTrialIntroTitle: 'Investor Pro',
     investorProTrialIntroBody:
-      'Импорт с порталов, off-market и Pro-инструменты — 3 дня бесплатно. По окончании пробного периода Apple автоматически начнёт платную месячную подписку по цене ниже. Чтобы не платить, отмените минимум за 24 часа до конца trial: Настройки → Apple ID → Подписки.',
+      'Импорт с порталов, off-market и Pro-инструменты. Сумма списания указана ниже и на кнопке подписки. Чтобы не платить, отмените минимум за 24 часа до конца пробного периода: Настройки → Apple ID → Подписки.',
     investorProTrialLegal:
-      'Пробный период: 3 дня. Затем автоматическая оплата следующего периода (1 месяц). Автопродление до отмены в App Store.',
-    investorProTrialIntroCta: 'Начать 3-дневный пробный период',
+      'Оплата списывается с Apple ID. Автопродление каждый месяц до отмены в App Store. Управление или отмена: Настройки → Apple ID → Подписки.',
+    investorProTrialIntroCta: 'Подписаться',
     investorProTrialIntroLater: 'Позже',
     investorProTrialAscHint:
       'Если в окне Apple нет trial: добавьте Introductory Offer (Free Trial 3 days) в App Store Connect и используйте новый Sandbox-аккаунт.',
     investorProUpsell: {
-      cta: 'Начать 3-дневный trial',
+      cta: 'Подписаться',
       later: 'Позже',
       creditsLine: '+10 кредитов публикации на каждый период подписки',
       off_market: {
@@ -314,7 +329,7 @@ export const profile = {
       },
     },
     investorProFooter:
-      'Investor Pro — автопродлеваемая месячная подписка: импорт с порталов, off-market и Pro-инструменты. Пробный период: 3 дня. После него Apple автоматически спишет оплату за следующий месяц по цене App Store. Отмена: Настройки → Apple ID → Подписки (лучше ≥24 ч до конца периода). Это не Пакет Plus (публикация объявлений). При проблеме с оплатой используйте «Восстановить покупки».',
+      'Investor Pro — автопродлеваемая месячная подписка: импорт с порталов, off-market и Pro-инструменты. Цена отображается на экране покупки из App Store. Может действовать 3-дневный пробный период до первого списания. Отмена: Настройки → Apple ID → Подписки (лучше ≥24 ч до конца периода). Это не Пакет Plus (публикация объявлений). При проблеме с оплатой используйте «Восстановить покупки».',
     plusSlotOne: 'Доступна 1 публикация Plus',
     plusSlotsMany: '{{count}} Плюс доступны публикации',
     noPackages: 'Нет пакетов — купите до следующей платной публикации',
@@ -356,14 +371,15 @@ export const profile = {
     bonusCouponNotifyBirthdayBody:
       'EstateOS подарил вам бесплатную публикацию. Откройте купоны в профиле.',
     bonusCouponNotifyAction: 'Открыть профиль',
-    buyPlus: 'Купить пакет Плюс',
-    buyPlusSubtitle: 'Откройте App Store и оплатите 1 дополнительную публикацию (~{{price}})',
+    buyPlus: 'Докупить кредиты Pakiet +',
+    buyPlusWithPrice: 'Докупить кредиты Pakiet + — {{price}}',
+    buyPlusSubtitle: 'Откройте App Store и оплатите 1 дополнительную публикацию ({{price}})',
     restorePurchases: 'Восстановление покупок',
     restoring: 'Подключение к магазину…',
     restoreIos: 'Восстановить покупки из Apple ID на этом устройстве',
     restoreAndroid: 'Восстановить покупки из аккаунта Google Play',
     footerIos:
-      'Plus Package (~{{price}}) pays for one selected listing on the market for 30 days. It is not a subscription or an account "slot". New accounts receive a welcome coupon for the first publication. If payment did not register publication, use Restore purchases.',
+      'Пакет Plus ({{price}}) оплачивает публикацию выбранного объявления на рынок на 30 дней. Это не подписка и не «слот» на аккаунте. Новые аккаунты получают приветственный купон на первую публикацию. Если оплата не зарегистрировала публикацию, используйте «Восстановить покупки».',
     footerAndroid:
       'Plus Package pays for one selected listing on the market for 30 days. Your first publication can be paid with the welcome coupon after sign-up.',
     plusDaysDefault: 'Дополнительный листинг действителен в течение 30 дней с момента публикации.',
@@ -464,6 +480,18 @@ export const profile = {
       ru: 'RU',
     },
     systemHint: 'iPhone предлагает: {{language}}',
+  },
+  agency: {
+    pendingTitle: 'Ожидание одобрения',
+    pendingBody:
+      'Руководитель офиса {{company}} должен одобрить вас как агента. Вы получите уведомление, когда всё будет готово.',
+    pendingBrowseHint:
+      'Вы можете пользоваться приложением и профилем. Публикация и добавление объявлений будут доступны после одобрения — тогда вы действуете от имени офиса.',
+    pendingBadge: 'Ожидает одобрения',
+    fallbackCompany: 'офиса',
+    publishBlockedTitle: 'Офис ещё не одобрил аккаунт',
+    publishBlockedBody:
+      'Пока нельзя публиковать и добавлять объявления. Сначала руководитель офиса должен одобрить вас как агента.',
   },
   currency: {
     sectionTitle: 'Цены в приложении',

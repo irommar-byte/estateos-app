@@ -14,6 +14,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft } from 'lucide-react-native';
 import { useAuthStore } from '../store/useAuthStore';
+import { isAgencyAgentPendingApproval } from '../utils/agencyMembershipAccess';
+import { useI18n } from '../i18n';
 import { fetchCarById, parseCarImages, withCarImage, type CarListing } from '../services/carsApi';
 import {
   createCarListing,
@@ -223,6 +225,9 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
   const { colors, isDark } = useCarScreenTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  const agencyMembership = useAuthStore((s) => s.agencyMembership);
+  const { t } = useI18n();
   const mode = route.params?.mode || (route.params?.car ? 'edit' : 'create');
   const editingCar = route.params?.car;
   const carId = Number(route.params?.carId || editingCar?.id || 0);
@@ -505,6 +510,10 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
 
   const publishListing = useCallback(
     async (authToken: string) => {
+      if (isAgencyAgentPendingApproval(user, agencyMembership)) {
+        Alert.alert(t('profile.agency.publishBlockedTitle'), t('profile.agency.publishBlockedBody'));
+        return;
+      }
       if (!form.title.trim() || !form.make.trim() || !form.model.trim() || !form.city.trim()) {
         Alert.alert('Uzupełnij formularz', 'Podaj tytuł, markę, model i miejscowość.');
         return;
@@ -577,7 +586,7 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
     return () => {
       cancelled = true;
     };
-  }, [token, mode, publishListing]);
+  }, [token, mode, publishListing, user, agencyMembership, t]);
 
   const openAuth = async (intent: 'login' | 'register') => {
     setPublishAuthOpen(false);

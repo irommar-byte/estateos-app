@@ -268,30 +268,45 @@ export const profile = {
     investorProValidUntil: 'Ważne do {{date}}',
     investorProDaysLeft: 'Pozostało {{days}} {{daysLabel}} w bieżącym okresie',
     investorProSubscriptionMeta:
-      '3 dni za darmo, potem automatyczna płatność miesięczna w App Store. Subskrypcja odnawia się automatycznie, dopóki jej nie anulujesz.',
-    buyInvestorPro: 'Wypróbuj 3 dni za darmo',
+      'Miesięczna subskrypcja auto-odnawialna w App Store. Anuluj w dowolnym momencie w Ustawienia → Apple ID → Subskrypcje.',
+    buyInvestorPro: 'Subskrybuj',
     buyInvestorProExtend: 'Zarządzaj subskrypcją',
     buyInvestorProSubtitle: 'Pełny dostęp Pro — anuluj w dowolnym momencie w App Store',
     buyInvestorProTrialSubtitle:
-      '3 dni za darmo. Po trialu Apple automatycznie pobierze opłatę miesięczną. Anuluj wcześniej w Ustawienia → Apple ID → Subskrypcje.',
-    investorProTrialBadge: '3 DNI ZA DARMO',
+      '{{price}}/miesiąc po 3-dniowym okresie próbnym. Anuluj wcześniej w Ustawienia → Apple ID → Subskrypcje.',
+    investorProTrialBadge: 'Zawiera darmowy 3-dniowy okres próbny',
+    investorProBecomePro: 'Zostań Pro',
+    investorProHeroTitle: 'INVESTOR PRO',
+    creditsOnAccountTitle: 'Kredyty na koncie',
+    creditsOnAccountCount: 'Posiadasz {{count}} {{creditsLabel}}',
+    creditsOnAccountCreditOne: 'kredyt',
+    creditsOnAccountCreditFew: 'kredyty',
+    creditsOnAccountCreditMany: 'kredytów',
+    creditsOnAccountEmpty: 'Brak kredytów — aktywuj dokupując Pakiet +',
     investorProTrialPriceAfter:
-      'Po 3 dniach: {{price}}/miesiąc, pobierane automatycznie. Subskrypcja odnawia się co miesiąc, aż ją anulujesz.',
-    investorProTrialPriceFallback:
-      'Po 3 dniach: opłata miesięczna według ceny w App Store, pobierana automatycznie. Subskrypcja odnawia się co miesiąc, aż ją anulujesz.',
-    investorProTrialIntroTitle: 'Wypróbuj Investor Pro',
+      'Następnie {{price}}/miesiąc, pobierane automatycznie. Subskrypcja odnawia się co miesiąc, aż ją anulujesz.',
+    investorProBilledHeadline: '{{price}}/miesiąc',
+    investorProPriceLoading: 'Ładowanie ceny z App Store…',
+    investorProPriceUnavailable:
+      'Cena z App Store niedostępna na tym buildzie. Uruchom aplikację z Xcode (Scheme → StoreKit Configuration) albo użyj Sandbox Apple ID z produktem Cleared for Sale.',
+    investorProPriceUnavailableCta: 'Ponów pobieranie ceny',
+    investorProTrialPriceFallback: 'Ładowanie ceny z App Store…',
+    investorProTrialSubordinate: 'Zawiera darmowy 3-dniowy okres próbny przed pierwszą płatnością.',
+    investorProSubscribeCta: 'Subskrybuj — {{price}}/miesiąc',
+    investorProSubscribeCtaSub: 'Zawiera darmowy 3-dniowy okres próbny',
+    investorProTrialIntroTitle: 'Investor Pro',
     investorProTrialIntroBody:
-      'Import z portali, podgląd off-market i narzędzia premium — 3 dni za darmo. Po zakończeniu okresu próbnego Apple automatycznie rozpocznie płatną subskrypcję miesięczną według ceny poniżej. Jeśli nie chcesz płacić, anuluj co najmniej 24 godziny przed końcem trialu w Ustawienia → Apple ID → Subskrypcje.',
+      'Import z portali, podgląd off-market i narzędzia premium. Kwota rozliczenia jest poniżej oraz na przycisku subskrypcji. Jeśli nie chcesz płacić, anuluj co najmniej 24 godziny przed końcem okresu próbnego w Ustawienia → Apple ID → Subskrypcje.',
     investorProTrialLegal:
-      'Okres próbny: 3 dni. Następnie płatność automatyczna za kolejny okres (miesiąc). Odnowienie automatyczne do anulowania w App Store.',
-    investorProTrialIntroCta: 'Rozpocznij 3-dniowy okres próbny',
+      'Opłata jest pobierana z konta Apple ID. Odnowienie automatyczne co miesiąc do anulowania w App Store. Zarządzaj lub anuluj w Ustawienia → Apple ID → Subskrypcje.',
+    investorProTrialIntroCta: 'Subskrybuj',
     investorProTrialIntroLater: 'Później',
     investorProTrialAscHint:
       'Jeśli w oknie Apple nie widać trialu: w App Store Connect dodaj Introductory Offer (Free Trial 3 days) i użyj nowego konta Sandbox.',
     investorProAlreadyOwnedHint:
       'Subskrypcja jest już w App Store — synchronizujemy dostęp z kontem. Jeśli admin wyłączył Pro testowo, użyj „Przywróć zakupy”.',
     investorProUpsell: {
-      cta: 'Wypróbuj 3 dni za darmo',
+      cta: 'Subskrybuj',
       later: 'Później',
       creditsLine: '+10 kredytów publikacji na każdy okres subskrypcji',
       off_market: {
@@ -316,7 +331,7 @@ export const profile = {
       },
     },
     investorProFooter:
-      'Investor Pro to auto-odnawialna subskrypcja miesięczna: import z OtoDom/OLX/Nieruchomosci-Online, podgląd off-market i strefa narzędzi Pro. Okres próbny: 3 dni. Po jego zakończeniu Apple automatycznie pobierze opłatę za kolejny miesiąc według ceny w App Store. Anuluj w Ustawienia → Apple ID → Subskrypcje (najlepiej ≥24 h przed końcem okresu). To nie jest Pakiet Plus (publikacja ogłoszeń). Przy problemie z płatnością użyj „Przywróć zakupy”.',
+      'Investor Pro to auto-odnawialna subskrypcja miesięczna: import z OtoDom/OLX/Nieruchomosci-Online, podgląd off-market i strefa narzędzi Pro. Cena jest widoczna na ekranie zakupu z App Store. Może obowiązywać 3-dniowy okres próbny przed pierwszą opłatą. Anuluj w Ustawienia → Apple ID → Subskrypcje (najlepiej ≥24 h przed końcem okresu). To nie jest Pakiet Plus (publikacja ogłoszeń). Przy problemie z płatnością użyj „Przywróć zakupy”.',
     plusSlotOne: '1 publikacja Plus do wykorzystania',
     plusSlotsMany: '{{count}} publikacji Plus do wykorzystania',
     noPackages: 'Brak pakietów — kup przed kolejną płatną publikacją',
@@ -358,14 +373,15 @@ export const profile = {
     bonusCouponNotifyBirthdayBody:
       'Zespół EstateOS podarował Ci darmowe ogłoszenie. Dotknij, aby otworzyć kupony w Profilu.',
     bonusCouponNotifyAction: 'Zobacz w Profilu',
-    buyPlus: 'Kup Pakiet Plus',
-    buyPlusSubtitle: 'Otwórz App Store i opłać 1 dodatkowe wystawienie (~{{price}})',
+    buyPlus: 'Dokup kredyty Pakiet +',
+    buyPlusWithPrice: 'Dokup kredyty Pakiet + — {{price}}',
+    buyPlusSubtitle: 'Otwórz App Store i opłać 1 dodatkowe wystawienie ({{price}})',
     restorePurchases: 'Przywróć zakupy',
     restoring: 'Łączę ze sklepem…',
     restoreIos: 'Odzyskaj zakupy z Apple ID na tym urządzeniu',
     restoreAndroid: 'Odzyskaj zakupy z konta Google Play',
     footerIos:
-      'Pakiet Plus (~{{price}}) opłaca publiczne wystawienie wybranego ogłoszenia na rynek na 30 dni. Nie jest to abonament ani „slot” na koncie. Nowe konto dostaje kupon powitalny na pierwszą publikację. Jeśli płatność nie zaksięgowała wystawienia, użyj Przywróć zakupy.',
+      'Pakiet Plus ({{price}}) opłaca publiczne wystawienie wybranego ogłoszenia na rynek na 30 dni. Nie jest to abonament ani „slot” na koncie. Nowe konto dostaje kupon powitalny na pierwszą publikację. Jeśli płatność nie zaksięgowała wystawienia, użyj Przywróć zakupy.',
     footerAndroid:
       'Pakiet Plus opłaca publiczne wystawienie wybranego ogłoszenia na 30 dni. Pierwszą publikację możesz opłacić kuponem powitalnym po rejestracji.',
     plusDaysDefault: 'Dodatkowa oferta będzie ważna 30 dni od publikacji',
@@ -466,6 +482,18 @@ export const profile = {
       ru: 'RU',
     },
     systemHint: 'iPhone sugeruje: {{language}}',
+  },
+  agency: {
+    pendingTitle: 'Oczekujesz na akceptację',
+    pendingBody:
+      'Kierownik biura {{company}} musi zatwierdzić Cię jako agenta. Dostaniesz powiadomienie, gdy będzie gotowe.',
+    pendingBrowseHint:
+      'Możesz przeglądać aplikację i swój profil. Publikowanie oraz dodawanie ogłoszeń będzie dostępne po zatwierdzeniu — wtedy działasz w imieniu biura.',
+    pendingBadge: 'Oczekuje na zatwierdzenie',
+    fallbackCompany: 'biura',
+    publishBlockedTitle: 'Biuro nie zatwierdziło konta',
+    publishBlockedBody:
+      'Nie możesz jeszcze publikować ani dodawać ogłoszeń. Kierownik biura musi najpierw zatwierdzić Cię jako agenta.',
   },
   currency: {
     sectionTitle: 'Ceny w aplikacji',

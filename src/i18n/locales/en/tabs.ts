@@ -34,7 +34,7 @@ export const tabs = {
     ctaGoToOpenHouse: 'Open house',
     ctaStartAuction: 'Start auction',
     ctaPlanOpenHouse: 'Plan open house',
-    ctaTryPro3Days: 'Try Pro 3 days',
+    ctaTryPro3Days: 'Investor Pro',
     ctaBecomePro: 'Get Investor Pro',
     infoLiveHint: 'Open houses and live auctions near you',
     infoRadarScan247: 'Radar scans the whole market 24/7 — turn it on for matched listings',

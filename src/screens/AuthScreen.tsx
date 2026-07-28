@@ -20,6 +20,9 @@ import {
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
+import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 import type { CountryCode } from 'libphonenumber-js';
 import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
 import PhoneCountryPickerModal from '../components/phone/PhoneCountryPickerModal';
@@ -38,6 +41,12 @@ import { useI18n } from '../i18n';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import AuthLanguageFlags from '../components/AuthLanguageFlags';
+import AppleSlidingSegment from '../components/AppleSlidingSegment';
+import { patchAgencyCompanyContact } from '../services/agencyCompanyService';
+import { PanGestureHandler, PinchGestureHandler, State } from 'react-native-gesture-handler';
+import { openLegalDocument } from '../utils/legalDocumentUrls';
+
+const MAX_MEDIA_FILE_BYTES = 15 * 1024 * 1024;
 
 // --- LUKSUSOWE IKONY WALIDACJI ---
 const StatusIcon = ({ status }: { status: string }) => {
@@ -126,6 +135,374 @@ const PremiumCheckbox = ({ checked, onPress, onReadTerms, onReadPrivacy, theme, 
     </View>
   );
 };
+
+function RegistrationHeroIcon({
+  isLogin,
+  role,
+}: {
+  isLogin: boolean;
+  role: 'PRIVATE' | 'AGENT';
+}) {
+  if (isLogin) {
+    return <Ionicons name="lock-closed" size={45} color="#10b981" />;
+  }
+
+  if (role === 'AGENT') {
+    return (
+      <View style={styles.heroIconAgentWrap}>
+        <Ionicons name="person" size={44} color="#10b981" />
+        <Ionicons name="add" size={16} color="#10b981" style={styles.heroIconAdd} />
+        <View style={styles.heroBriefcase}>
+          <Ionicons name="briefcase" size={12} color="#FFF7ED" />
+        </View>
+        <Text style={styles.heroAgentLabel}>AGENT</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.heroIconAgentWrap}>
+      <Ionicons name="person" size={44} color="#10b981" />
+      <Ionicons name="add" size={16} color="#10b981" style={styles.heroIconAdd} />
+    </View>
+  );
+}
+
+type ImageDraft = {
+  uri: string;
+  width: number;
+  height: number;
+  scale: number;
+  translateX: number;
+  translateY: number;
+  frameW: number;
+  frameH: number;
+  mimeType?: string;
+  fileName?: string;
+  isAnimated?: boolean;
+  fileSize?: number;
+};
+
+const LOGO_ASPECT = 56 / 38;
+const AVATAR_PREVIEW = { w: 56, h: 56, r: 28 } as const;
+const LOGO_PREVIEW = { w: 72, h: 49, r: 10 } as const;
+const CROP_GUIDE_INSET = 14;
+
+function CropCheckerboard({ isDark }: { isDark: boolean }) {
+  const a = isDark ? '#3A3A3C' : '#D1D5DB';
+  const b = isDark ? '#2C2C2E' : '#E5E7EB';
+  const cells = Array.from({ length: 64 }, (_, i) => i);
+  return (
+    <View style={styles.scaleCheckerboard} pointerEvents="none">
+      {cells.map((i) => {
+        const row = Math.floor(i / 8);
+        const col = i % 8;
+        const dark = (row + col) % 2 === 0;
+        return (
+          <View
+            key={i}
+            style={{
+              width: '12.5%',
+              height: '12.5%',
+              backgroundColor: dark ? a : b,
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+/** Ten sam kadr co w modalu — skala + przesunięcie mapowane 1:1 na podgląd i slot w formularzu. */
+function DraftFramedImage({
+  draft,
+  width,
+  height,
+  borderRadius,
+  borderColor,
+  backgroundColor,
+}: {
+  draft: Pick<ImageDraft, 'uri' | 'scale' | 'translateX' | 'translateY' | 'frameW' | 'frameH'>;
+  width: number;
+  height: number;
+  borderRadius?: number;
+  borderColor?: string;
+  backgroundColor?: string;
+}) {
+  const frameW = Math.max(1, draft.frameW || width);
+  const frameH = Math.max(1, draft.frameH || height);
+  const tx = (draft.translateX || 0) * (width / frameW);
+  const ty = (draft.translateY || 0) * (height / frameH);
+  const scale = Math.max(1, draft.scale || 1);
+  const imageStyle = {
+    width: '100%' as const,
+    height: '100%' as const,
+    transform: [{ translateX: tx }, { translateY: ty }, { scale }],
+  };
+
+  return (
+    <View
+      style={{
+        width,
+        height,
+        borderRadius: borderRadius ?? 0,
+        overflow: 'hidden',
+        borderWidth: borderColor ? 1 : 0,
+        borderColor: borderColor || 'transparent',
+        backgroundColor: backgroundColor || 'transparent',
+      }}
+    >
+      <Image source={{ uri: draft.uri }} style={imageStyle} contentFit="cover" />
+    </View>
+  );
+}
+
+function ImageScalePreviewModal({
+  visible,
+  draft,
+  target,
+  title,
+  subtitle,
+  theme,
+  onCancel,
+  onConfirm,
+}: {
+  visible: boolean;
+  draft: ImageDraft | null;
+  target: 'avatar' | 'logo';
+  title: string;
+  subtitle: string;
+  theme: any;
+  onCancel: () => void;
+  onConfirm: (next: ImageDraft) => void;
+}) {
+  const [scale, setScale] = useState(1);
+  const [translateX, setTranslateX] = useState(0);
+  const [translateY, setTranslateY] = useState(0);
+  const [frameW, setFrameW] = useState(280);
+  const [frameH, setFrameH] = useState(280);
+  const baseScaleRef = useRef(1);
+  const baseScaleAnim = useRef(new Animated.Value(1)).current;
+  const pinchScaleAnim = useRef(new Animated.Value(1)).current;
+  const panBaseXRef = useRef(0);
+  const panBaseYRef = useRef(0);
+  const panBaseXAnim = useRef(new Animated.Value(0)).current;
+  const panBaseYAnim = useRef(new Animated.Value(0)).current;
+  const panGestureXAnim = useRef(new Animated.Value(0)).current;
+  const panGestureYAnim = useRef(new Animated.Value(0)).current;
+  const pinchRef = useRef<any>(null);
+  const panRef = useRef<any>(null);
+  const pinchCombinedScale = Animated.multiply(baseScaleAnim, pinchScaleAnim);
+  const panCombinedX = Animated.add(panBaseXAnim, panGestureXAnim);
+  const panCombinedY = Animated.add(panBaseYAnim, panGestureYAnim);
+
+  const isAvatar = target === 'avatar';
+  const cropAspect = isAvatar ? 1 : LOGO_ASPECT;
+  const guideRadius = isAvatar
+    ? 999
+    : Math.max(8, frameW * (LOGO_PREVIEW.r / LOGO_PREVIEW.w));
+
+  const clampScale = (value: number) => Math.max(1, Math.min(2.8, value));
+  const getPanBounds = (nextScale: number) => {
+    const safeW = Math.max(1, frameW);
+    const safeH = Math.max(1, frameH);
+    const sourceW = Math.max(1, draft?.width || 1);
+    const sourceH = Math.max(1, draft?.height || 1);
+    const coverScale = Math.max(safeW / sourceW, safeH / sourceH);
+    const shownW = sourceW * coverScale * nextScale;
+    const shownH = sourceH * coverScale * nextScale;
+    return {
+      maxX: Math.max(0, (shownW - safeW) / 2),
+      maxY: Math.max(0, (shownH - safeH) / 2),
+    };
+  };
+  const syncPan = (nextX: number, nextY: number, scaleForBounds: number) => {
+    const { maxX, maxY } = getPanBounds(scaleForBounds);
+    const clampedX = Math.max(-maxX, Math.min(maxX, nextX));
+    const clampedY = Math.max(-maxY, Math.min(maxY, nextY));
+    panBaseXRef.current = clampedX;
+    panBaseYRef.current = clampedY;
+    setTranslateX(clampedX);
+    setTranslateY(clampedY);
+    panBaseXAnim.setValue(clampedX);
+    panBaseYAnim.setValue(clampedY);
+    panGestureXAnim.setValue(0);
+    panGestureYAnim.setValue(0);
+  };
+  const syncScale = (next: number) => {
+    const clamped = clampScale(next);
+    baseScaleRef.current = clamped;
+    setScale(clamped);
+    baseScaleAnim.setValue(clamped);
+    pinchScaleAnim.setValue(1);
+    syncPan(panBaseXRef.current, panBaseYRef.current, clamped);
+  };
+
+  useEffect(() => {
+    if (!visible || !draft) return;
+    if (draft.frameW > 0) setFrameW(draft.frameW);
+    if (draft.frameH > 0) setFrameH(draft.frameH);
+    syncScale(draft.scale || 1);
+    syncPan(draft.translateX || 0, draft.translateY || 0, draft.scale || 1);
+  }, [visible, draft]);
+
+  if (!visible || !draft) return null;
+
+  const nextDraft = { ...draft, scale, translateX, translateY, frameW, frameH };
+  const isDark = theme.glass === 'dark';
+  const border = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)';
+  const cardBg = isDark ? '#1C1C1E' : '#F3F4F6';
+  const muted = isDark ? '#A1A1AA' : '#6B7280';
+  const guideColor = isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.55)';
+  const liveDraft = { ...draft, scale, translateX, translateY, frameW, frameH };
+  const preview = isAvatar ? AVATAR_PREVIEW : LOGO_PREVIEW;
+
+  const onPinchGestureEvent = Animated.event([{ nativeEvent: { scale: pinchScaleAnim } }], {
+    useNativeDriver: true,
+  });
+  const onPinchStateChange = (event: any) => {
+    const { oldState, scale: gestureScale } = event.nativeEvent || {};
+    if (oldState !== State.ACTIVE) return;
+    syncScale(baseScaleRef.current * Number(gestureScale || 1));
+  };
+  const onPanGestureEvent = Animated.event(
+    [{ nativeEvent: { translationX: panGestureXAnim, translationY: panGestureYAnim } }],
+    { useNativeDriver: true },
+  );
+  const onPanStateChange = (event: any) => {
+    const { oldState, translationX, translationY } = event.nativeEvent || {};
+    if (oldState !== State.ACTIVE) return;
+    const nextX = panBaseXRef.current + Number(translationX || 0);
+    const nextY = panBaseYRef.current + Number(translationY || 0);
+    syncPan(nextX, nextY, baseScaleRef.current);
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={styles.scaleModalBackdrop}>
+        <View style={[styles.scaleModalCard, { backgroundColor: cardBg, borderColor: border }]}>
+          <Text style={[styles.scaleModalTitle, { color: theme.text }]}>{title}</Text>
+          <Text style={[styles.scaleModalSubtitle, { color: muted }]}>{subtitle}</Text>
+
+          <PanGestureHandler
+            ref={panRef}
+            simultaneousHandlers={pinchRef}
+            onGestureEvent={onPanGestureEvent}
+            onHandlerStateChange={onPanStateChange}
+          >
+            <Animated.View style={[styles.scaleCropFrame, { borderColor: border, aspectRatio: cropAspect }]}>
+              <CropCheckerboard isDark={isDark} />
+              <View
+                style={[
+                  styles.scaleCropMask,
+                  {
+                    margin: CROP_GUIDE_INSET,
+                    borderRadius: guideRadius,
+                  },
+                ]}
+                onLayout={(event) => {
+                  const nextW = event.nativeEvent.layout.width;
+                  const nextH = event.nativeEvent.layout.height;
+                  if (nextW > 0 && Math.abs(nextW - frameW) > 0.5) setFrameW(nextW);
+                  if (nextH > 0 && Math.abs(nextH - frameH) > 0.5) setFrameH(nextH);
+                }}
+              >
+                <PinchGestureHandler
+                  ref={pinchRef}
+                  simultaneousHandlers={panRef}
+                  onGestureEvent={onPinchGestureEvent}
+                  onHandlerStateChange={onPinchStateChange}
+                >
+                  <Animated.View style={styles.scaleCropInner}>
+                    <Animated.Image
+                      source={{ uri: draft.uri }}
+                      style={[
+                        styles.scaleCropImage,
+                        {
+                          transform: [
+                            { translateX: panCombinedX },
+                            { translateY: panCombinedY },
+                            { scale: pinchCombinedScale },
+                          ],
+                        },
+                      ]}
+                      resizeMode="cover"
+                    />
+                  </Animated.View>
+                </PinchGestureHandler>
+              </View>
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.scaleCropGuide,
+                  {
+                    top: CROP_GUIDE_INSET,
+                    left: CROP_GUIDE_INSET,
+                    right: CROP_GUIDE_INSET,
+                    bottom: CROP_GUIDE_INSET,
+                    borderRadius: guideRadius,
+                    borderColor: guideColor,
+                  },
+                ]}
+              />
+            </Animated.View>
+          </PanGestureHandler>
+
+          <View style={styles.scaleControls}>
+            <Pressable
+              style={[styles.scaleBtn, { borderColor: border, backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF' }]}
+              onPress={() => syncScale(Number((scale - 0.15).toFixed(2)))}
+            >
+              <Ionicons name="remove" size={18} color={theme.text} />
+            </Pressable>
+            <Text style={[styles.scaleValue, { color: theme.text }]}>{Math.round(scale * 100)}%</Text>
+            <Pressable
+              style={[styles.scaleBtn, { borderColor: border, backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF' }]}
+              onPress={() => syncScale(Number((scale + 0.15).toFixed(2)))}
+            >
+              <Ionicons name="add" size={18} color={theme.text} />
+            </Pressable>
+          </View>
+
+          <View style={styles.scalePreviewRow}>
+            <View
+              style={[
+                isAvatar ? styles.scalePreviewMini : styles.scalePreviewLogoWrap,
+                {
+                  width: preview.w,
+                  height: preview.h,
+                  borderRadius: preview.r,
+                  borderColor: border,
+                  backgroundColor: isDark ? '#2C2C2E' : '#E5E7EB',
+                  overflow: 'hidden',
+                },
+              ]}
+            >
+              <DraftFramedImage
+                draft={liveDraft}
+                width={preview.w}
+                height={preview.h}
+                borderRadius={preview.r}
+              />
+            </View>
+          </View>
+
+          <View style={styles.scaleActionRow}>
+            <Pressable
+              style={[styles.scaleCancelBtn, { borderColor: border, backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF' }]}
+              onPress={onCancel}
+            >
+              <Text style={[styles.scaleCancelText, { color: muted }]}>Anuluj</Text>
+            </Pressable>
+            <Pressable style={styles.scaleConfirmBtn} onPress={() => onConfirm(nextDraft)}>
+              <Text style={styles.scaleConfirmText}>Zastosuj</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 // --- MODAL: RESET HASŁA ---
 const ForgotPasswordModal = ({ visible, onClose, theme, t }: any) => {
@@ -289,6 +666,10 @@ export default function AuthScreen({
   const [agencySetupMode, setAgencySetupMode] = useState<'create' | 'join'>('create');
   const [joinCompanyId, setJoinCompanyId] = useState<number | null>(null);
   const [companyOptions, setCompanyOptions] = useState<AgencyCompanyListItem[]>([]);
+  const [avatarDraft, setAvatarDraft] = useState<ImageDraft | null>(null);
+  const [logoDraft, setLogoDraft] = useState<ImageDraft | null>(null);
+  const [editingDraft, setEditingDraft] = useState<{ target: 'avatar' | 'logo'; draft: ImageDraft } | null>(null);
+  const [mediaBusy, setMediaBusy] = useState(false);
   const [phone, setPhone] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   
@@ -442,6 +823,39 @@ export default function AuthScreen({
           const isLogged = await store.login(email, password, { registrationPhoneE164: regE164 });
           if (isLogged) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            try {
+              setMediaBusy(true);
+              if (avatarDraft?.uri) {
+                const avatarUrl = await uploadImageAndResolveUrl(
+                  avatarDraft.uri,
+                  avatarDraft.fileName || `avatar_reg_${Date.now()}.jpg`,
+                  avatarDraft.mimeType || 'image/jpeg',
+                );
+                if (avatarUrl) {
+                  await store.updateAvatar?.(avatarUrl);
+                  await store.refreshUser?.();
+                }
+              }
+              const freshToken = useAuthStore.getState().token;
+              if (role === 'AGENT' && agencySetupMode === 'create' && logoDraft?.uri && freshToken) {
+                const logoUrl = await uploadImageAndResolveUrl(
+                  logoDraft.uri,
+                  logoDraft.fileName || `agency_logo_${Date.now()}.jpg`,
+                  logoDraft.mimeType || 'image/jpeg',
+                );
+                if (logoUrl) {
+                  await patchAgencyCompanyContact(freshToken, { logoUrl } as any);
+                  await store.refreshAgencyMembership?.();
+                }
+              }
+            } catch (mediaErr: any) {
+              Alert.alert(
+                t('auth.mediaPartialTitle'),
+                t('auth.mediaPartialBody'),
+              );
+            } finally {
+              setMediaBusy(false);
+            }
             // Od razu po rejestracji wysyłamy kod weryfikacyjny na podany e-mail (jeśli backend wspiera).
             const verifySend = await store
               .sendCurrentEmailVerification()
@@ -517,6 +931,138 @@ export default function AuthScreen({
   const cardBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
   const cardBg = isDark ? 'rgba(255,255,255,0.05)' : '#ffffff';
   const dividerColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
+  const formTopInset = insets.top + (Platform.OS === 'ios' ? 84 : 72);
+  const selectedJoinCompany =
+    agencySetupMode === 'join' && joinCompanyId
+      ? companyOptions.find((c) => c.id === joinCompanyId) || null
+      : null;
+  const selectedJoinLogoUrl = (() => {
+    const raw = String(selectedJoinCompany?.logoUrl || '').trim();
+    if (!raw) return null;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (raw.startsWith('/')) return `${API_URL}${raw}`;
+    return `${API_URL}/${raw}`;
+  })();
+  const readFileSize = async (uri: string) => {
+    const info = await FileSystem.getInfoAsync(uri, { size: true } as any);
+    return typeof (info as any)?.size === 'number' ? Number((info as any).size) : 0;
+  };
+  const getFileMeta = (uri: string, fallbackName = `media_${Date.now()}`) => {
+    const cleanUri = String(uri || '').split('?')[0];
+    const last = cleanUri.split('/').pop() || fallbackName;
+    const name = last.includes('.') ? last : `${last}.jpg`;
+    const ext = (name.split('.').pop() || 'jpg').toLowerCase();
+    const mimeByExt: Record<string, string> = {
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      webp: 'image/webp',
+      gif: 'image/gif',
+      heic: 'image/heic',
+      heif: 'image/heif',
+    };
+    const mimeType = mimeByExt[ext] || 'image/jpeg';
+    const isAnimated = ext === 'gif' || ext === 'webp';
+    return { name, mimeType, isAnimated };
+  };
+  const pickRegistrationImage = async (target: 'avatar' | 'logo') => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(t('common.error'), t('auth.mediaPermissionDenied'));
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.95,
+        allowsEditing: false,
+      });
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+      const asset = result.assets[0];
+      const assetSize =
+        typeof (asset as any)?.fileSize === 'number'
+          ? Number((asset as any).fileSize)
+          : await readFileSize(asset.uri);
+      if (assetSize > MAX_MEDIA_FILE_BYTES) {
+        Alert.alert(t('common.error'), t('auth.mediaTooLarge'));
+        return;
+      }
+      const fileMeta = getFileMeta(asset.uri, asset.fileName || `${target}_${Date.now()}`);
+      const frameW = 280;
+      const frameH = target === 'logo' ? Math.round(280 / LOGO_ASPECT) : 280;
+      setEditingDraft({
+        target,
+        draft: {
+          uri: asset.uri,
+          width: asset.width || 1200,
+          height: asset.height || 1200,
+          scale: 1,
+          translateX: 0,
+          translateY: 0,
+          frameW,
+          frameH,
+          mimeType: fileMeta.mimeType,
+          fileName: fileMeta.name,
+          isAnimated: fileMeta.isAnimated,
+          fileSize: Number.isFinite(assetSize) ? assetSize : undefined,
+        },
+      });
+    } catch {
+      Alert.alert(t('common.error'), t('auth.mediaPickFailed'));
+    }
+  };
+
+  const finalizeDraft = async (draft: ImageDraft) => {
+    try {
+      let fileSize = typeof draft.fileSize === 'number' ? draft.fileSize : 0;
+      if (!fileSize) {
+        try {
+          fileSize = await readFileSize(draft.uri);
+        } catch {
+          fileSize = 0;
+        }
+      }
+      if (fileSize > MAX_MEDIA_FILE_BYTES) {
+        Alert.alert(t('common.error'), t('auth.mediaTooLarge'));
+        return;
+      }
+      const next: ImageDraft = { ...draft };
+      if (editingDraft?.target === 'avatar') setAvatarDraft(next);
+      else setLogoDraft(next);
+      setEditingDraft(null);
+    } catch {
+      Alert.alert(t('common.error'), t('auth.mediaEditFailed'));
+    }
+  };
+
+  const uploadImageAndResolveUrl = async (localUri: string, fileName?: string, mimeType?: string) => {
+    const current = useAuthStore.getState();
+    const freshToken = current.token;
+    const freshUser = current.user;
+    if (!freshToken || !freshUser?.id) return null;
+    const meta = getFileMeta(localUri, fileName || `media_${Date.now()}`);
+    const finalName = fileName || meta.name;
+    const finalMimeType = mimeType || meta.mimeType;
+    const formData = new FormData();
+    formData.append('userId', String(freshUser.id));
+    formData.append('file', { uri: localUri, name: finalName, type: finalMimeType } as any);
+    const res = await fetch(`${API_URL}/api/mobile/v1/user/avatar`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${freshToken}` },
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({} as any));
+    if (!res.ok) throw new Error(data?.message || data?.error || 'UPLOAD_FAILED');
+    const rel =
+      (typeof data.url === 'string' && data.url) ||
+      (typeof data.avatarUrl === 'string' && data.avatarUrl) ||
+      (typeof data.avatar === 'string' && data.avatar) ||
+      (typeof data.path === 'string' && data.path) ||
+      (typeof data?.data?.url === 'string' && data.data.url) ||
+      '';
+    if (!rel) throw new Error('UPLOAD_NO_URL');
+    return /^https?:\/\//i.test(rel) ? rel : rel.startsWith('/') ? `${API_URL}${rel}` : `${API_URL}/${rel}`;
+  };
 
   // 🌟 OBLICZENIA DLA EFEKTU "HYPER-DRIVE" 🌟
   const scale = warpAnim.interpolate({
@@ -565,37 +1111,110 @@ export default function AuthScreen({
       </View>
 
       <FormShell style={formShellStyle}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 25, paddingTop: Platform.OS === 'ios' ? 80 : 50, paddingBottom: 50 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-start', padding: 25, paddingTop: formTopInset, paddingBottom: 50 }}>
           
           <View style={[styles.iconWrapper, { backgroundColor: cardBg, borderColor: cardBorder }]}>
-            <Ionicons
-              name={isLogin ? 'lock-closed' : 'person-add'}
-              size={45}
-              color={isLogin ? '#10b981' : role === 'AGENT' ? '#FF9F0A' : '#10b981'}
-            />
+            <RegistrationHeroIcon isLogin={isLogin} role={role} />
           </View>
           <Text style={[styles.title, { color: theme.text }]}>{isLogin ? t('auth.welcomeBack') : t('auth.createCard')}</Text>
+
+          {!isLogin ? (
+            <View style={[styles.regMediaCard, { backgroundColor: isDark ? cardBg : '#FFFFFF', borderColor: isDark ? cardBorder : 'rgba(0,0,0,0.12)' }]}>
+              <View style={styles.regMediaRow}>
+                <Pressable
+                  style={[styles.regMediaSlot, { borderColor: isDark ? dividerColor : 'rgba(0,0,0,0.14)', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6' }]}
+                  onPress={() => void pickRegistrationImage('avatar')}
+                >
+                  {avatarDraft?.uri ? (
+                    <DraftFramedImage
+                      draft={avatarDraft}
+                      width={AVATAR_PREVIEW.w}
+                      height={AVATAR_PREVIEW.h}
+                      borderRadius={AVATAR_PREVIEW.r}
+                      backgroundColor={isDark ? '#2C2C2E' : '#E5E7EB'}
+                    />
+                  ) : (
+                    <Ionicons name="camera-outline" size={20} color={theme.subtitle} />
+                  )}
+                  <Text style={[styles.regMediaLabel, { color: theme.text }]}>{t('auth.addProfilePhoto')}</Text>
+                </Pressable>
+
+                {role === 'AGENT' && agencySetupMode === 'create' ? (
+                  <Pressable
+                    style={[styles.regMediaSlot, { borderColor: isDark ? dividerColor : 'rgba(0,0,0,0.14)', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6' }]}
+                    onPress={() => void pickRegistrationImage('logo')}
+                  >
+                    {logoDraft?.uri ? (
+                      <DraftFramedImage
+                        draft={logoDraft}
+                        width={LOGO_PREVIEW.w}
+                        height={LOGO_PREVIEW.h}
+                        borderRadius={LOGO_PREVIEW.r}
+                        backgroundColor={isDark ? '#2C2C2E' : '#E5E7EB'}
+                      />
+                    ) : (
+                      <Ionicons name="briefcase-outline" size={20} color={theme.subtitle} />
+                    )}
+                    <Text style={[styles.regMediaLabel, { color: theme.text }]}>{t('auth.addAgencyLogo')}</Text>
+                  </Pressable>
+                ) : null}
+
+                {role === 'AGENT' && agencySetupMode === 'join' ? (
+                  <View
+                    style={[
+                      styles.regMediaSlot,
+                      styles.regMediaSlotReadonly,
+                      {
+                        borderColor: isDark ? dividerColor : 'rgba(0,0,0,0.14)',
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6',
+                      },
+                    ]}
+                    accessibilityRole="image"
+                    accessibilityLabel={t('auth.joinOfficeLogo')}
+                  >
+                    {selectedJoinLogoUrl ? (
+                      <Image
+                        source={{ uri: selectedJoinLogoUrl }}
+                        style={styles.regJoinLogoPreview}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <Ionicons name="business-outline" size={20} color={theme.subtitle} />
+                    )}
+                    <Text style={[styles.regMediaLabel, { color: theme.text }]}>{t('auth.joinOfficeLogo')}</Text>
+                    <Text style={[styles.regMediaReadonlyHint, { color: theme.subtitle }]}>
+                      {selectedJoinCompany
+                        ? selectedJoinCompany.name
+                        : t('auth.joinOfficeLogoEmpty')}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={[styles.regMediaHint, { color: theme.subtitle }]}>
+                {role === 'AGENT' && agencySetupMode === 'join'
+                  ? t('auth.joinOfficeLogoHint')
+                  : t('auth.mediaHint')}
+              </Text>
+            </View>
+          ) : null}
           
           {!isLogin && (
             <View style={{ marginBottom: 25 }}>
-              <View style={[styles.roleSwitchContainer, { backgroundColor: cardBg, borderWidth: 1, borderColor: cardBorder }]}>
-                <Pressable
-                  onPress={() => { Haptics.selectionAsync(); setRole('PRIVATE'); }}
-                  style={[styles.roleButton, role === 'PRIVATE' && styles.roleButtonActivePrivate]}
-                >
-                  <Text style={[styles.roleText, { color: role === 'PRIVATE' ? '#FFF' : theme.subtitle }]}>
-                    {t('auth.rolePrivate')}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => { Haptics.selectionAsync(); setRole('AGENT'); }}
-                  style={[styles.roleButton, role === 'AGENT' && styles.roleButtonActiveAgent]}
-                >
-                  <Text style={[styles.roleText, { color: role === 'AGENT' ? '#FFF' : theme.subtitle }]}>
-                    {t('auth.roleAgent')}
-                  </Text>
-                </Pressable>
-              </View>
+              <AppleSlidingSegment
+                value={role}
+                options={[
+                  { value: 'PRIVATE', label: t('auth.rolePrivate') },
+                  { value: 'AGENT', label: t('auth.roleAgent') },
+                ]}
+                onChange={setRole}
+                isDark={isDark}
+                containerStyle={{ backgroundColor: cardBg, borderColor: cardBorder }}
+                activeGradient={
+                  role === 'AGENT'
+                    ? ['#FFB44A', '#FF9F0A', '#F59E0B']
+                    : ['#34D399', '#10B981', '#059669']
+                }
+              />
             </View>
           )}
 
@@ -618,24 +1237,30 @@ export default function AuthScreen({
               {role === 'AGENT' && (
                 <>
                   <View style={[styles.divider, { backgroundColor: dividerColor }]} />
-                  <View style={[styles.roleSwitchContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', marginBottom: 0 }]}>
-                    <Pressable
-                      onPress={() => { Haptics.selectionAsync(); setAgencySetupMode('create'); setJoinCompanyId(null); }}
-                      style={[styles.roleButton, agencySetupMode === 'create' && styles.roleButtonActiveAgent]}
-                    >
-                      <Text style={[styles.roleText, { color: agencySetupMode === 'create' ? '#FFF' : theme.subtitle, fontSize: 13 }]}>
-                        {t('auth.agencyModeCreate')}
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => { Haptics.selectionAsync(); setAgencySetupMode('join'); setCompanyName(''); }}
-                      style={[styles.roleButton, agencySetupMode === 'join' && styles.roleButtonActiveAgent]}
-                    >
-                      <Text style={[styles.roleText, { color: agencySetupMode === 'join' ? '#FFF' : theme.subtitle, fontSize: 13 }]}>
-                        {t('auth.agencyModeJoin')}
-                      </Text>
-                    </Pressable>
-                  </View>
+                  <AppleSlidingSegment
+                    value={agencySetupMode}
+                    options={[
+                      { value: 'create', label: t('auth.agencyModeCreate') },
+                      { value: 'join', label: t('auth.agencyModeJoin') },
+                    ]}
+                    onChange={(next) => {
+                      if (next === 'create') {
+                        setAgencySetupMode('create');
+                        setJoinCompanyId(null);
+                      } else {
+                        setAgencySetupMode('join');
+                        setCompanyName('');
+                        setLogoDraft(null);
+                      }
+                    }}
+                    isDark={isDark}
+                    compact
+                    containerStyle={{
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                      marginBottom: 0,
+                    }}
+                    activeGradient={['#FFB44A', '#FF9F0A', '#F59E0B']}
+                  />
                   <View style={[styles.divider, { backgroundColor: dividerColor }]} />
                   {agencySetupMode === 'create' ? (
                     <View style={styles.inputRow}>
@@ -724,8 +1349,14 @@ export default function AuthScreen({
             <PremiumCheckbox 
               checked={termsAccepted} 
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTermsAccepted(!termsAccepted); }}
-              onReadTerms={() => { Haptics.selectionAsync(); navigation.navigate('Terms'); }}
-              onReadPrivacy={() => { Haptics.selectionAsync(); navigation.navigate('Terms', { initialScrollTo: 'privacy' }); }}
+              onReadTerms={() => {
+                Haptics.selectionAsync();
+                void openLegalDocument('terms').catch(() => undefined);
+              }}
+              onReadPrivacy={() => {
+                Haptics.selectionAsync();
+                void openLegalDocument('privacy').catch(() => undefined);
+              }}
               theme={theme}
               t={t}
             />
@@ -736,7 +1367,11 @@ export default function AuthScreen({
               { opacity: pressed ? 0.8 : 1, backgroundColor: isLogin ? '#10b981' : (role === 'AGENT' ? '#FF9F0A' : '#10b981') },
               !isLogin && role === 'AGENT' && { shadowColor: '#FF9F0A' }
             ]}>
-            <Text style={styles.mainButtonText}>{isLogin ? t('auth.login') : t('auth.joinEcosystem')}</Text>
+            {mediaBusy ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.mainButtonText}>{isLogin ? t('auth.login') : t('auth.joinEcosystem')}</Text>
+            )}
           </Pressable>
 
           {isLogin && (
@@ -751,7 +1386,7 @@ export default function AuthScreen({
                 {isPasskeyLoading ? <ActivityIndicator size="small" color={theme.text} /> : (
                   <>
                     <Ionicons name="finger-print" size={24} color={theme.text} style={{ marginRight: 12 }} />
-                    <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>{authPasskeyButtonLabel(t)}</Text>
+                    <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>{authPasskeyButtonLabel(t as any)}</Text>
                   </>
                 )}
               </Pressable>
@@ -776,6 +1411,18 @@ export default function AuthScreen({
         onSelect={setPhoneCountryIso}
         isDark={isDark}
       />
+      <ImageScalePreviewModal
+        visible={Boolean(editingDraft)}
+        draft={editingDraft?.draft || null}
+        target={editingDraft?.target || 'avatar'}
+        title={editingDraft?.target === 'logo' ? t('auth.editAgencyLogo') : t('auth.editProfilePhoto')}
+        subtitle={t('auth.mediaScaleHint')}
+        theme={theme}
+        onCancel={() => setEditingDraft(null)}
+        onConfirm={(next) => {
+          void finalizeDraft(next);
+        }}
+      />
       <ForgotPasswordModal visible={isForgotModalVisible} onClose={() => setIsForgotModalVisible(false)} theme={theme} t={t} />
     </KeyboardAvoidingView>
   );
@@ -789,18 +1436,101 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   iconWrapper: { width: 80, height: 80, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginBottom: 25, alignSelf: 'center', borderWidth: 1 },
+  heroIconAgentWrap: {
+    width: 54,
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroIconAdd: {
+    position: 'absolute',
+    left: -2,
+    top: 4,
+  },
+  heroBriefcase: {
+    position: 'absolute',
+    right: -8,
+    bottom: 3,
+    minWidth: 30,
+    paddingHorizontal: 4,
+    height: 22,
+    borderRadius: 8,
+    backgroundColor: '#FF9F0A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#FF9F0A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.32,
+    shadowRadius: 7,
+    elevation: 4,
+  },
+  heroAgentLabel: {
+    position: 'absolute',
+    right: -9,
+    bottom: -8,
+    fontSize: 6,
+    lineHeight: 7,
+    fontWeight: '800',
+    color: '#B45309',
+    letterSpacing: 0.25,
+    textTransform: 'uppercase',
+  },
   title: { fontSize: 28, fontWeight: '800', textAlign: 'center', marginBottom: 30, letterSpacing: -0.5 },
-  roleSwitchContainer: { flexDirection: 'row', borderRadius: 16, padding: 4 },
-  roleButton: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12 },
-  roleText: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
-  roleButtonActivePrivate: { backgroundColor: '#10b981', shadowColor: '#10b981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4 },
-  /**
-   * Aktywny przycisk roli „Agent" — bursztynowy (Apple Orange / FF9F0A),
-   * świadomie inny od zielonego dla Osoby prywatnej. Ten sam akcent
-   * przejmuje submit-button przy AGENT, żeby cały formularz miał spójny
-   * „business-tone".
-   */
-  roleButtonActiveAgent: { backgroundColor: '#FF9F0A', shadowColor: '#FF9F0A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 4 },
+  regMediaCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 18,
+  },
+  regMediaRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  regMediaSlot: {
+    flex: 1,
+    minHeight: 86,
+    borderWidth: 1,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    gap: 8,
+  },
+  regMediaSlotReadonly: {
+    opacity: 0.95,
+  },
+  regJoinLogoPreview: {
+    width: LOGO_PREVIEW.w,
+    height: LOGO_PREVIEW.h,
+    borderRadius: LOGO_PREVIEW.r,
+  },
+  regMediaReadonlyHint: {
+    fontSize: 10,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 12,
+  },
+  regAvatarPreview: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+  regLogoPreview: {
+    width: 72,
+    height: 49,
+    borderRadius: 10,
+  },
+  regMediaLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  regMediaHint: {
+    marginTop: 8,
+    fontSize: 11,
+    lineHeight: 14,
+  },
   card: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
   inputRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 18 },
   input: { fontSize: 17, fontWeight: '600' },
@@ -816,4 +1546,135 @@ const styles = StyleSheet.create({
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 25 },
   line: { flex: 1, height: 1 },
   passkeyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, borderWidth: 1 }
+  ,
+  scaleModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  scaleModalCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 16,
+  },
+  scaleModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  scaleModalSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  scaleCropFrame: {
+    marginTop: 12,
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    backgroundColor: '#E5E7EB',
+  },
+  scaleCheckerboard: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  scaleCropMask: {
+    flex: 1,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  scaleCropInner: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  scaleCropImage: {
+    width: '100%',
+    height: '100%',
+  },
+  scaleCropGuide: {
+    position: 'absolute',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+  },
+  scaleControls: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+  },
+  scaleBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scaleValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    minWidth: 60,
+    textAlign: 'center',
+  },
+  scalePreviewRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  scalePreviewMini: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
+  },
+  scalePreviewAvatar: {
+    width: '100%',
+    height: '100%',
+  },
+  scalePreviewLogoWrap: {
+    width: 72,
+    height: 49,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+  },
+  scalePreviewLogo: {
+    width: '100%',
+    height: '100%',
+  },
+  scaleActionRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  scaleCancelBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scaleCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  scaleConfirmBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scaleConfirmText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
 });

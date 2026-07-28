@@ -10,7 +10,13 @@
 
 import Constants from 'expo-constants';
 import { IAP_PRODUCT_IDS } from '../contracts/iapContract';
-import { IAPManager, type IapProductId, type PurchaseConsumableOptions, type RestorePurchasesResult } from './iapManager';
+import {
+  IAPManager,
+  type IapProductId,
+  type PurchaseConsumableOptions,
+  type RestorePurchasesResult,
+  type StoreProductListing,
+} from './iapManager';
 
 const DEFAULT_PRODUCT_ID: IapProductId = IAP_PRODUCT_IDS.PAKIET_PLUS_30D;
 
@@ -27,8 +33,12 @@ export function getPakietPlusProductId(): IapProductId {
   return DEFAULT_PRODUCT_ID;
 }
 
-/** Tekst marketingowy — rzeczywista kwota pochodzi ze sklepu (tier / Play). */
+/** Fallback marketingowy — UI preferuje cenę ze StoreKit (`fetchPakietPlusStoreListing`). */
 export const PAKIET_PLUS_PRICE_LABEL = '49 zł';
+
+export async function fetchPakietPlusStoreListing(): Promise<StoreProductListing | null> {
+  return IAPManager.getProductListing(getPakietPlusProductId(), 'in-app');
+}
 
 export type PurchasePakietPlusResult =
   | {
