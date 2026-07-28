@@ -94,6 +94,8 @@ import JellyReveal from '../components/JellyReveal';
 import IntelligencePulseTape from '../components/discovery/IntelligencePulseTape';
 import { useDiscoveryMapIntelligence } from '../hooks/useDiscoveryMapIntelligence';
 import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
+import { useEcosystemStore } from '../store/useEcosystemStore';
+import { useFavoritesFavorStore } from '../store/useFavoritesFavorStore';
 import RadarOfferGallery, {
   type GalleryCountryFilter,
   type GalleryOffer,
@@ -1094,7 +1096,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [galleryCountryFilter, setGalleryCountryFilter] = useState<GalleryCountryFilter>('ALL');
   const [galleryPropertyFilter, setGalleryPropertyFilter] = useState<GalleryPropertyFilter>('ALL');
   const [gallerySortFilter, setGallerySortFilter] = useState<GallerySortFilter>('NEWEST');
-  const [favoritesMapScope, setFavoritesMapScope] = useState<'FAVORITES' | 'MINE'>('MINE');
+  const [favoritesMapScope, setFavoritesMapScope] = useState<'FAVORITES' | 'MINE'>('FAVORITES');
   const [unreadDealroomMessagesCount, setUnreadDealroomMessagesCount] = useState(0);
   const [userLocation, setUserLocation] = useState<UserLocation>(null);
   /** Opt-in: filtr 25 km + zoom GPS — domyślnie pokazujemy całą mapę pinezek. */
@@ -1190,8 +1192,46 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     pushNotifications: false,
   };
   const [radarFilters, setRadarFilters] = useState(defaultRadarFilters);
+  const favorEnabled = useFavoritesFavorStore((s) => s.enabled);
+  const favorNotifyPriceChange = useFavoritesFavorStore((s) => s.notifyPriceChange);
+  const favorNotifyDealProposals = useFavoritesFavorStore((s) => s.notifyDealProposals);
+  const favorNotifyStatusChange = useFavoritesFavorStore((s) => s.notifyStatusChange);
+  const favorNotifyNewSimilar = useFavoritesFavorStore((s) => s.notifyNewSimilar);
+  const setFavorBrowseActive = useFavoritesFavorStore((s) => s.setBrowseActive);
+  const applyFavorPrefs = useFavoritesFavorStore((s) => s.applyPrefs);
+  const setSkipVerticalTransition = useEcosystemStore((s) => s.setSkipVerticalTransition);
+  const favorBrowseActive = useFavoritesFavorStore((s) => s.browseActive);
   const [favoritesRadarFilters, setFavoritesRadarFilters] = useState(defaultFavoritesRadarFilters);
-  const [isFavoritesRadarEnabled, setIsFavoritesRadarEnabled] = useState(false);
+  const isFavoritesRadarEnabled = favorEnabled;
+
+  useEffect(() => {
+    setFavoritesRadarFilters((prev) => ({
+      ...prev,
+      pushNotifications: favorEnabled,
+      favoritesNotifyPriceChange: favorNotifyPriceChange,
+      favoritesNotifyDealProposals: favorNotifyDealProposals,
+      favoritesNotifyStatusChange: favorNotifyStatusChange,
+      favoritesNotifyNewSimilar: favorNotifyNewSimilar,
+    }));
+  }, [
+    favorEnabled,
+    favorNotifyPriceChange,
+    favorNotifyDealProposals,
+    favorNotifyStatusChange,
+    favorNotifyNewSimilar,
+  ]);
+
+  useEffect(() => {
+    if (!favorBrowseActive) return;
+    setShowOnlyFavorites(true);
+    setFavoritesMapScope('FAVORITES');
+  }, [favorBrowseActive]);
+
+  useEffect(() => {
+    setSkipVerticalTransition(showOnlyFavorites);
+    setFavorBrowseActive(showOnlyFavorites);
+  }, [showOnlyFavorites, setFavorBrowseActive, setSkipVerticalTransition]);
+
   /**
    * `useState(defaultRadarFilters)` ustala `pushNotifications` tylko przy pierwszym montowaniu.
    * Po `restoreSession()` `isRadarActive` może być już `true`, a to pole zostaje `false` — zielony
@@ -1758,9 +1798,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   );
 
   useEffect(() => {
-    if (!showOnlyFavorites) {
-      setFavoritesMapScope('MINE');
-    }
+    if (!showOnlyFavorites) return;
+    setFavoritesMapScope('FAVORITES');
   }, [showOnlyFavorites]);
 
   useEffect(() => {
@@ -4078,7 +4117,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   const applyFavoritesCalibration = async (filtersToApply: RadarFilters) => {
     setFavoritesRadarFilters(filtersToApply);
-    setIsFavoritesRadarEnabled(filtersToApply.pushNotifications);
+    applyFavorPrefs({
+      enabled: filtersToApply.pushNotifications !== false,
+      notifyPriceChange: !!filtersToApply.favoritesNotifyPriceChange,
+      notifyDealProposals: !!filtersToApply.favoritesNotifyDealProposals,
+      notifyStatusChange: !!filtersToApply.favoritesNotifyStatusChange,
+      notifyNewSimilar: !!filtersToApply.favoritesNotifyNewSimilar,
+    });
     // Preferencje Ulubionych → backend (może ignorować nieznane pola; ważne, by kontrakt nie blokował).
     void (async () => {
       if (user?.id && token) {
@@ -4094,6 +4139,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     // Preferencje push per-device (produkcyjnie: backend może upsert po expoPushToken).
     let pushPrefsSynced = true;
     if (token) {
+      const { loadCarFavoriteIds } = await import('../utils/carFavoritesStorage');
+      const carIds = await loadCarFavoriteIds().catch(() => [] as number[]);
       pushPrefsSynced = await syncPushDevicePreferences({
         authToken: token,
         devicePreferences: {
@@ -4104,6 +4151,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             notifyIncludeAmounts: false,
             notifyStatusChange: !!filtersToApply.favoritesNotifyStatusChange,
             notifyNewSimilar: !!filtersToApply.favoritesNotifyNewSimilar,
+            carIds,
           },
         },
       });
@@ -4899,17 +4947,17 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           )}
           <ChromeIconButton
             icon={showOnlyFavorites ? 'heart' : 'heart-outline'}
-            color={showOnlyFavorites ? mineUiAccent : isDark ? '#FFF' : '#1C1C1E'}
+            color={showOnlyFavorites ? favoritesUiAccent : isDark ? '#FFF' : '#1C1C1E'}
             isDark={isDark}
             lightChrome={isGalleryLightChrome}
-            activeBg={showOnlyFavorites ? mineUiBg : undefined}
+            activeBg={showOnlyFavorites ? favoritesUiBg : undefined}
             accessibilityLabel={t('radar.home.favoritesTab')}
             accessibilityState={{ selected: showOnlyFavorites }}
             haptic="medium"
             onPress={() => {
               setShowOnlyFavorites((prev) => {
                 const next = !prev;
-                if (next) setFavoritesMapScope('MINE');
+                if (next) setFavoritesMapScope('FAVORITES');
                 return next;
               });
             }}
@@ -4930,86 +4978,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             <View style={[styles.favoritesScopeRailOuter, { maxWidth: favoritesCenterMaxWidth }]}>
               {tabSurface === 'market' ? <VerticalSegmentRail isDark={isDark} mode="switch" /> : null}
               {tabSurface === 'market' ? <View style={{ height: 8 }} /> : null}
-              <BlurView
-                intensity={isDark ? 85 : 92}
-                tint={isDark ? 'dark' : 'light'}
-                style={[
-                  styles.favoritesScopeRailBlur,
-                  {
-                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-                    backgroundColor: isDark ? 'rgba(28,28,30,0.72)' : 'rgba(255,255,255,0.82)',
-                  },
-                ]}
-              >
-                <View style={styles.favoritesScopeRailRow}>
-                  <Pressable
-                    accessibilityRole="tab"
-                    accessibilityState={{ selected: favoritesMapScope === 'MINE' }}
-                    onPress={() => {
-                      if (favoritesMapScope === 'MINE') return;
-                      Haptics.selectionAsync();
-                      setFavoritesMapScope('MINE');
-                    }}
-                    style={({ pressed }) => [
-                      styles.favoritesScopeHalf,
-                      favoritesMapScope === 'MINE' && styles.favoritesScopeHalfActiveMine,
-                      pressed && { opacity: 0.88 },
-                    ]}
-                  >
-                    <Ionicons
-                      name={favoritesMapScope === 'MINE' ? 'home' : 'home-outline'}
-                      size={16}
-                      color={favoritesMapScope === 'MINE' ? '#10b981' : '#8E8E93'}
-                    />
-                    <Text
-                      style={[
-                        styles.favoritesScopeHalfLabel,
-                        { color: favoritesMapScope === 'MINE' ? (isDark ? '#C9F9E7' : '#0B5B43') : '#8E8E93' },
-                      ]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.85}
-                    >
-                      {t('radar.home.mineTab')}
-                    </Text>
-                  </Pressable>
-                  <View style={[styles.favoritesScopeDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]} />
-                  <Pressable
-                    accessibilityRole="tab"
-                    accessibilityState={{ selected: favoritesMapScope === 'FAVORITES' }}
-                    onPress={() => {
-                      if (favoritesMapScope === 'FAVORITES') return;
-                      Haptics.selectionAsync();
-                      setFavoritesMapScope('FAVORITES');
-                    }}
-                    style={({ pressed }) => [
-                      styles.favoritesScopeHalf,
-                      favoritesMapScope === 'FAVORITES' && styles.favoritesScopeHalfActiveFav,
-                      pressed && { opacity: 0.88 },
-                    ]}
-                  >
-                    <Ionicons
-                      name={favoritesMapScope === 'FAVORITES' ? 'heart' : 'heart-outline'}
-                      size={16}
-                      color={favoritesMapScope === 'FAVORITES' ? '#F777B2' : '#8E8E93'}
-                    />
-                    <Text
-                      style={[
-                        styles.favoritesScopeHalfLabel,
-                        { color: favoritesMapScope === 'FAVORITES' ? (isDark ? '#FFD4E7' : '#5E1C3F') : '#8E8E93' },
-                      ]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.85}
-                    >
-                      {t('radar.home.favoritesTab')}
-                    </Text>
-                  </Pressable>
-                </View>
-              </BlurView>
+              <View style={[styles.favoritesOnlyChip, { backgroundColor: isDark ? 'rgba(247,119,178,0.16)' : 'rgba(247,119,178,0.12)' }]}>
+                <Ionicons name="heart" size={14} color={favoritesUiAccent} />
+                <Text style={[styles.favoritesOnlyChipLabel, { color: isDark ? '#FFD4E7' : '#5E1C3F' }]} numberOfLines={1}>
+                  {t('radar.home.favoritesTab')}
+                </Text>
+              </View>
             </View>
             <View style={styles.radarHeroWrap}>
-              {favoritesMapScope === 'FAVORITES' && isFavoritesRadarEnabled && (
+              {isFavoritesRadarEnabled && (
                 <View pointerEvents="none" style={styles.radarPulseLayer}>
                   <Animated.View
                     style={[
@@ -5023,60 +5000,35 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   />
                 </View>
               )}
-              <JellyReveal visible key={favoritesMapScope}>
-                {favoritesMapScope === 'FAVORITES' ? (
-                  <Pressable onPress={openFavoritesCalibration} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
-                    <BlurView
-                      intensity={95}
-                      tint={isDark ? 'dark' : 'light'}
-                      style={[
-                        styles.radarPill,
-                        {
-                          backgroundColor: isFavoritesRadarEnabled ? 'rgba(232,108,165,0.22)' : 'rgba(255,255,255,0.1)',
-                        },
-                      ]}
-                    >
-                      <Animated.View style={{ transform: [{ scale: favoritesHeartBeat }] }}>
-                        <Ionicons
-                          name={isFavoritesRadarEnabled ? 'heart' : 'heart-outline'}
-                          size={18}
-                          color={isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93'}
-                        />
-                      </Animated.View>
-                      <View style={styles.radarPillTextWrap}>
-                        <Text style={[styles.radarTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]} numberOfLines={1}>
-                          {t('radar.home.favorBrand')}
-                        </Text>
-                        <Text style={styles.radarStatus} numberOfLines={1}>
-                          {isFavoritesRadarEnabled ? t('radar.home.statusLoveLive') : t('radar.home.statusInactive')}
-                        </Text>
-                      </View>
-                    </BlurView>
-                  </Pressable>
-                ) : (
-                  <Pressable onPress={openManageMyProperties} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
-                    <BlurView
-                      intensity={95}
-                      tint={isDark ? 'dark' : 'light'}
-                      style={[
-                        styles.radarPill,
-                        {
-                          backgroundColor: 'rgba(16,185,129,0.16)',
-                        },
-                      ]}
-                    >
-                      <Ionicons name="home" size={18} color="#10b981" />
-                      <View style={styles.radarPillTextWrap}>
-                        <Text style={[styles.radarTitle, { color: isDark ? '#C9F9E7' : '#0B5B43' }]} numberOfLines={1}>
-                          {isNarrowChrome ? 'Moje ogłoszenia' : t('radar.home.manageMyPropertiesTitle')}
-                        </Text>
-                        <Text style={[styles.radarStatus, { color: isDark ? 'rgba(201,249,231,0.72)' : 'rgba(11,91,67,0.72)' }]} numberOfLines={1}>
-                          {isNarrowChrome ? 'Edycja i publikacja' : t('radar.home.manageMyPropertiesSubtitle')}
-                        </Text>
-                      </View>
-                    </BlurView>
-                  </Pressable>
-                )}
+              <JellyReveal visible key="favorites-favor">
+                <Pressable onPress={openFavoritesCalibration} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
+                  <BlurView
+                    intensity={95}
+                    tint={isDark ? 'dark' : 'light'}
+                    style={[
+                      styles.radarPill,
+                      {
+                        backgroundColor: isFavoritesRadarEnabled ? 'rgba(232,108,165,0.22)' : 'rgba(255,255,255,0.1)',
+                      },
+                    ]}
+                  >
+                    <Animated.View style={{ transform: [{ scale: favoritesHeartBeat }] }}>
+                      <Ionicons
+                        name={isFavoritesRadarEnabled ? 'heart' : 'heart-outline'}
+                        size={18}
+                        color={isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93'}
+                      />
+                    </Animated.View>
+                    <View style={styles.radarPillTextWrap}>
+                      <Text style={[styles.radarTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]} numberOfLines={1}>
+                        EstateOS™ Favor
+                      </Text>
+                      <Text style={[styles.radarStatus, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]} numberOfLines={1}>
+                        {isFavoritesRadarEnabled ? t('radar.home.statusLoveLive') : t('radar.home.statusInactive')}
+                      </Text>
+                    </View>
+                  </BlurView>
+                </Pressable>
               </JellyReveal>
             </View>
           </Animated.View>
@@ -6672,6 +6624,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     minHeight: 44,
+  },
+  favoritesOnlyChip: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+  },
+  favoritesOnlyChipLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
   favoritesScopeHalf: {
     flex: 1,

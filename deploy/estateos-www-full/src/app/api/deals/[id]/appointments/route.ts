@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notificationService } from '@/lib/services/notification.service';
+import { dispatchFavoritesDealProposalPush } from '@/lib/favoritesPricePush';
 import { resolveDealUserId } from '@/lib/dealRequestAuth';
 import {
   FINALIZED_DEAL_STATUSES,
@@ -168,6 +169,14 @@ export async function POST(
     } catch (pushError) {
       console.warn('[DEAL APPOINTMENT PUSH WARN]', pushError);
     }
+
+    void dispatchFavoritesDealProposalPush({
+      offerId: Number(deal.offerId),
+      dealId,
+      actorUserId: Number(userId) || null,
+      kind: 'appointment',
+      source: 'deals_appointments_post',
+    });
 
     const freshDeal = await prisma.deal.findUnique({
       where: { id: dealId },

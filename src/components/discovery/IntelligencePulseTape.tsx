@@ -58,31 +58,179 @@ const HIT = CORE + 10;
 const BRAIN = 26;
 const SESSION_MILESTONE_KEY = 'eos_intel_milestones_v1';
 
-/** Siri / oil-on-water iridescence for the Intelligence orb core. */
-const SIRI_ORB = [
-  '#FF2D55',
-  '#FF375F',
-  '#BF5AF2',
-  '#5E5CE6',
-  '#64D2FF',
-  '#30D158',
-  '#FFD60A',
-  '#FF9F0A',
-  '#FF2D55',
-] as const;
+/** Siri / oil-on-water iridescence — bright gasoline blooms, not a flat blend. */
+const OIL_BASE = ['#FF2D55', '#BF5AF2', '#5E5CE6', '#64D2FF', '#30D158', '#FFD60A', '#FF9F0A', '#FF2D55'] as const;
+const OIL_HOT = ['#FF375F', '#FFD60A', '#64D2FF', '#BF5AF2', '#FF375F'] as const;
+const OIL_COOL = ['#64D2FF', '#5E5CE6', '#30D158', '#BF5AF2', '#64D2FF'] as const;
+const OIL_EDGE = ['transparent', '#FF2D55', 'transparent', '#64D2FF', 'transparent', '#FFD60A', 'transparent'] as const;
 
-const SIRI_ORB_ALT = [
-  '#64D2FF',
-  '#5E5CE6',
-  '#BF5AF2',
-  '#FF2D55',
-  '#FF9F0A',
-  '#FFD60A',
-  '#30D158',
-  '#64D2FF',
-] as const;
+/** Circular Intelligence launcher face — gasoline-on-water, brighter blooms. */
+function SiriBrainCore({ ringColor }: { ringColor: string }) {
+  const spinA = useRef(new Animated.Value(0)).current;
+  const spinB = useRef(new Animated.Value(0)).current;
+  const spinC = useRef(new Animated.Value(0)).current;
+  const breathe = useRef(new Animated.Value(0)).current;
+  const drift = useRef(new Animated.Value(0)).current;
 
-const MILESTONES = [25, 50, 75, 90];
+  useEffect(() => {
+    const loopA = Animated.loop(
+      Animated.timing(spinA, {
+        toValue: 1,
+        duration: 7200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    const loopB = Animated.loop(
+      Animated.timing(spinB, {
+        toValue: 1,
+        duration: 9800,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    const loopC = Animated.loop(
+      Animated.timing(spinC, {
+        toValue: 1,
+        duration: 5400,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    const breatheLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathe, {
+          toValue: 1,
+          duration: 2100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(breathe, {
+          toValue: 0,
+          duration: 2100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    const driftLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(drift, {
+          toValue: 1,
+          duration: 3400,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(drift, {
+          toValue: 0,
+          duration: 3400,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loopA.start();
+    loopB.start();
+    loopC.start();
+    breatheLoop.start();
+    driftLoop.start();
+    return () => {
+      loopA.stop();
+      loopB.stop();
+      loopC.stop();
+      breatheLoop.stop();
+      driftLoop.stop();
+    };
+  }, [breathe, drift, spinA, spinB, spinC]);
+
+  const rotateA = spinA.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const rotateB = spinB.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] });
+  const rotateC = spinC.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-360deg'] });
+  const swirlScale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1.08, 1.28] });
+  const blobShift = drift.interpolate({ inputRange: [0, 1], outputRange: [-6, 8] });
+  const blobShiftAlt = drift.interpolate({ inputRange: [0, 1], outputRange: [7, -5] });
+
+  return (
+    <View style={[styles.core, { borderColor: ringColor }]}>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.siriSwirl,
+          {
+            opacity: 1,
+            transform: [{ scale: swirlScale }, { rotate: rotateA }],
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={[...OIL_BASE]}
+          start={{ x: 0.05, y: 0.1 }}
+          end={{ x: 0.95, y: 0.9 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+      </Animated.View>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.oilBlob,
+          styles.oilBlobHot,
+          {
+            opacity: 0.92,
+            transform: [{ translateX: blobShift }, { translateY: blobShiftAlt }, { rotate: rotateB }, { scale: 1.15 }],
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={[...OIL_HOT]}
+          locations={[0, 0.28, 0.55, 0.78, 1]}
+          start={{ x: 0.2, y: 0 }}
+          end={{ x: 0.85, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+      </Animated.View>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.oilBlob,
+          styles.oilBlobCool,
+          {
+            opacity: 0.78,
+            transform: [{ translateX: blobShiftAlt }, { translateY: blobShift }, { rotate: rotateC }, { scale: 1.05 }],
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={[...OIL_COOL]}
+          locations={[0, 0.3, 0.58, 0.8, 1]}
+          start={{ x: 1, y: 0.15 }}
+          end={{ x: 0, y: 0.9 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+      </Animated.View>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.siriSwirlAlt,
+          {
+            opacity: 0.55,
+            transform: [{ rotate: rotateB }, { scale: 1.35 }],
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={[...OIL_EDGE]}
+          locations={[0, 0.18, 0.36, 0.52, 0.68, 0.84, 1]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+      </Animated.View>
+      <View pointerEvents="none" style={styles.siriSheen} />
+      <View pointerEvents="none" style={styles.siriHighlight} />
+      <LivingBrain accent="#FFFFFF" />
+    </View>
+  );
+}
 
 function resolveStageKey(stage: string | undefined, progress: number): StageKey {
   const raw = String(stage || '').toUpperCase();
@@ -112,6 +260,8 @@ const MOOD: Record<Mood, { accent: string; soft: string; ring: string }> = {
   alert: { accent: '#FBBF24', soft: 'rgba(251,191,36,0.4)', ring: 'rgba(251,191,36,0.65)' },
   celebrate: { accent: '#A78BFA', soft: 'rgba(167,139,250,0.45)', ring: 'rgba(167,139,250,0.7)' },
 };
+
+const MILESTONES = [25, 50, 75, 90];
 
 function crossedMilestone(prev: number | null, next: number): number | null {
   if (typeof prev !== 'number') return null;
@@ -269,101 +419,6 @@ function LivingBrain({ accent, size = BRAIN }: { accent: string; size?: number }
           );
         })}
       </View>
-    </View>
-  );
-}
-
-/** Circular Intelligence launcher face — Siri / gasoline-on-water swirl, not flat black. */
-function SiriBrainCore({ ringColor }: { ringColor: string }) {
-  const spinA = useRef(new Animated.Value(0)).current;
-  const spinB = useRef(new Animated.Value(0)).current;
-  const breathe = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const loopA = Animated.loop(
-      Animated.timing(spinA, {
-        toValue: 1,
-        duration: 5600,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    const loopB = Animated.loop(
-      Animated.timing(spinB, {
-        toValue: 1,
-        duration: 8200,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    const breatheLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breathe, {
-          toValue: 1,
-          duration: 1700,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(breathe, {
-          toValue: 0,
-          duration: 1700,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loopA.start();
-    loopB.start();
-    breatheLoop.start();
-    return () => {
-      loopA.stop();
-      loopB.stop();
-      breatheLoop.stop();
-    };
-  }, [breathe, spinA, spinB]);
-
-  const rotateA = spinA.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const rotateB = spinB.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] });
-  const swirlScale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1.05, 1.18] });
-
-  return (
-    <View style={[styles.core, { borderColor: ringColor }]}>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.siriSwirl,
-          {
-            opacity: 0.98,
-            transform: [{ scale: swirlScale }, { rotate: rotateA }],
-          },
-        ]}
-      >
-        <LinearGradient
-          colors={[...SIRI_ORB]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFillObject}
-        />
-      </Animated.View>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.siriSwirlAlt,
-          {
-            opacity: 0.62,
-            transform: [{ rotate: rotateB }, { scale: 1.2 }],
-          },
-        ]}
-      >
-        <LinearGradient
-          colors={[...SIRI_ORB_ALT]}
-          start={{ x: 1, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={StyleSheet.absoluteFillObject}
-        />
-      </Animated.View>
-      <View pointerEvents="none" style={styles.siriSheen} />
-      <LivingBrain accent="#F5F5F7" />
     </View>
   );
 }
@@ -786,25 +841,25 @@ export default function IntelligencePulseTape({
               text="EstateOS™"
               arcPosition="top"
               buttonDiameter={CORE}
-              gap={RING_GAP}
-              fontSize={7.2}
-              letterSpacing={1.2}
-              arcFraction={0.48}
-              color={DISCOVERY_COLORS.gold}
-              strokeColor="rgba(0,0,0,0.55)"
-              strokeWidth={0.6}
+              gap={RING_GAP - 1}
+              fontSize={8.6}
+              letterSpacing={1.35}
+              arcFraction={0.52}
+              color="#FFE08A"
+              strokeColor="rgba(0,0,0,0.72)"
+              strokeWidth={1.15}
             />
             <CircularLabelRing
               text="Intelligence"
               arcPosition="bottom"
               buttonDiameter={CORE}
-              gap={RING_GAP}
-              fontSize={6.8}
-              letterSpacing={0.95}
-              arcFraction={0.5}
-              color="#F5F5F7"
-              strokeColor="rgba(0,0,0,0.55)"
-              strokeWidth={0.6}
+              gap={RING_GAP - 1}
+              fontSize={8.2}
+              letterSpacing={1.05}
+              arcFraction={0.54}
+              color="#FFFFFF"
+              strokeColor="rgba(0,0,0,0.72)"
+              strokeWidth={1.15}
             />
           </View>
           <SiriBrainCore ringColor={colors.ring} />
@@ -1110,7 +1165,33 @@ const styles = StyleSheet.create({
   },
   siriSheen: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  siriHighlight: {
+    position: 'absolute',
+    top: 3,
+    left: 8,
+    width: CORE * 0.42,
+    height: CORE * 0.28,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+  },
+  oilBlob: {
+    position: 'absolute',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  oilBlobHot: {
+    width: CORE * 1.15,
+    height: CORE * 0.78,
+    top: CORE * 0.08,
+    left: -CORE * 0.12,
+  },
+  oilBlobCool: {
+    width: CORE * 0.95,
+    height: CORE * 0.88,
+    bottom: -CORE * 0.08,
+    right: -CORE * 0.18,
   },
   brainStage: {
     alignItems: 'center',

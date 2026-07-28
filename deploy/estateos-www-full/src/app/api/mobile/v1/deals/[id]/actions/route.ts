@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
 import { notificationService } from '@/lib/services/notification.service';
+import { dispatchFavoritesDealProposalPush } from '@/lib/favoritesPricePush';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { Prisma } from '@prisma/client';
 import { finalizeDealWithOfferArchive } from '@/lib/dealFinalize';
@@ -101,6 +102,14 @@ async function notifyNegotiationEvent(params: {
   } catch (pushError) {
     console.warn('[ACTIONS PUSH WARN][NEGOTIATION_EVENT]', pushError);
   }
+
+  void dispatchFavoritesDealProposalPush({
+    offerId,
+    dealId,
+    actorUserId: null,
+    kind: type === 'APPOINTMENT' ? 'appointment' : 'bid',
+    source: 'mobile_deals_actions',
+  });
 
   return { deduplicated: false as const };
 }

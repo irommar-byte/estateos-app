@@ -1087,7 +1087,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       </Tab.Screen>
       <Tab.Screen
         name="Ulubione"
-        initialParams={{ favoritesOnly: true, favoritesScope: 'MINE' }}
+        initialParams={{ favoritesOnly: true, favoritesScope: 'FAVORITES' }}
         options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }}
       >
         {(props) => (
@@ -1097,7 +1097,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
             surface="market"
             route={{
               ...props.route,
-              params: { ...props.route?.params, favoritesOnly: true, favoritesScope: 'MINE' },
+              params: { ...props.route?.params, favoritesOnly: true, favoritesScope: 'FAVORITES' },
             }}
           />
         )}
