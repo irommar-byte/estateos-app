@@ -12,6 +12,7 @@ import { appRating } from './appRating';
 import { openHouse } from './openHouse';
 import { auction } from './auction';
 import { contact } from './contact';
+import { discovery } from './discovery';
 
 export const en = {
   common,
@@ -28,4 +29,5 @@ export const en = {
   appRating,
   openHouse,
   auction,
+  discovery,
 };

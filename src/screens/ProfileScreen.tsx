@@ -58,7 +58,6 @@ import ProfileAgencyOfficeCard from '../components/agency/ProfileAgencyOfficeCar
 import ProfileConciergeCard from '../components/agency/ProfileConciergeCard';
 import AgencyTransferModal from '../components/agency/AgencyTransferModal';
 import ProPhotoSessionModal from '../components/ProPhotoSessionModal';
-import { getAppVersionLabel } from '../utils/appVersion';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
 import {
   dismissProfilePromoCardForever,
@@ -4349,15 +4348,15 @@ function ProfileScreenLoggedIn({
           <Text style={styles.sectionTitle}>{t('profile.intelligence.sectionTitle')}</Text>
           <ProfileCardShell isDark={isDark}>
             <View style={[styles.listItem, { paddingVertical: 12 }]}>
-              <IntelligenceToggleIcon enabled={intelligenceEnabled} size={36} />
-              <View style={{ flex: 1, paddingRight: 10, marginLeft: 2 }}>
+              <View style={{ marginRight: 14 }}>
+                <IntelligenceToggleIcon enabled={intelligenceEnabled} size={36} />
+              </View>
+              <View style={{ flex: 1, paddingRight: 10, minWidth: 0 }}>
                 <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>
                   {t('profile.intelligence.title')}
                 </Text>
-                <Text style={styles.listSubtitle}>
-                  {intelligenceEnabled
-                    ? t('profile.intelligence.subtitleOn')
-                    : t('profile.intelligence.subtitleOff')}
+                <Text style={styles.listSubtitle} numberOfLines={2}>
+                  {t('profile.intelligence.subtitleOff')}
                 </Text>
               </View>
               <Switch
@@ -4367,6 +4366,7 @@ function ProfileScreenLoggedIn({
                 trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#BF5AF2' }}
                 thumbColor={intelligenceEnabled ? '#F5F5F7' : undefined}
                 ios_backgroundColor={isDark ? '#3A3A3C' : '#E5E5EA'}
+                style={{ marginRight: 2 }}
               />
             </View>
           </ProfileCardShell>
@@ -4390,10 +4390,11 @@ function ProfileScreenLoggedIn({
                 </Text>
               </View>
               
-              <Switch 
-                value={isPasskeyActive} 
-                onValueChange={togglePasskey} 
-                trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#10b981' }} 
+              <Switch
+                value={isPasskeyActive}
+                onValueChange={togglePasskey}
+                trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#10b981' }}
+                style={{ marginRight: 2 }}
               />
             </View>
           </ProfileCardShell>
@@ -4483,9 +4484,6 @@ function ProfileScreenLoggedIn({
               <View>
                 <Text style={[styles.sectionFooter, styles.shopPanelFooter]}>
                   {t('profile.shop.investorProFooter')}
-                  {!hasInvestorProActive && investorProListing && !investorProListing.hasFreeTrial
-                    ? `\n\n${t('profile.shop.investorProTrialAscHint')}`
-                    : ''}
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10 }}>
                   <Pressable onPress={() => navigation.navigate('Terms' as never)}>
@@ -4779,9 +4777,6 @@ function ProfileScreenLoggedIn({
           </ListGroup>
         </View>
 
-        <Text style={styles.versionText}>
-          {t('profile.session.version', { version: getAppVersionLabel() })}
-        </Text>
         <Pressable
           onPress={() => {
             Haptics.selectionAsync();
@@ -5165,7 +5160,7 @@ const styles = StyleSheet.create({
   plusStatusPillText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.6 },
   plusStatusSubtitle: { color: '#8E8E93', fontSize: 13, fontWeight: '700', marginTop: 3 },
   plusStatusMeta: { color: '#8E8E93', fontSize: 12, marginTop: 3 },
-  listItem: { flexDirection: 'row', alignItems: 'center', paddingLeft: 16 },
+  listItem: { flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 14 },
   listIconBox: { width: 30, height: 30, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
   listContent: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingRight: 16 },
   listTitle: { fontSize: 17, fontWeight: '400', letterSpacing: -0.2 },
@@ -5186,7 +5181,7 @@ const styles = StyleSheet.create({
   logoutBtn: { padding: 16, alignItems: 'center', justifyContent: 'center' },
   logoutText: { color: '#FF3B30', fontSize: 17, fontWeight: '500' },
   versionText: { textAlign: 'center', color: '#8E8E93', fontSize: 13, marginTop: 10, marginBottom: 2 },
-  deleteAccountMicroWrap: { alignSelf: 'center', paddingVertical: 6, marginBottom: 32 },
+  deleteAccountMicroWrap: { alignSelf: 'center', paddingVertical: 6, marginTop: 14, marginBottom: 32 },
   deleteAccountMicro: { fontSize: 11, fontWeight: '500', letterSpacing: 0.15, textTransform: 'lowercase' },
   modalContainer: { flex: 1 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: Platform.OS === 'ios' ? 60 : 30 },

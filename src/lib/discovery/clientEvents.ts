@@ -3,6 +3,7 @@ import { DeviceEventEmitter } from 'react-native';
 export const DISCOVERY_UPDATED_EVENT = 'estateos:discovery-updated';
 export const INTELLIGENCE_LEARN_EVENT = 'estateos:intelligence-learn';
 export const INTELLIGENCE_DISLIKE_PROMPT_EVENT = 'estateos:intelligence-dislike-prompt';
+export const GUIDE_OPEN_EVENT = 'estateos:guide-open';
 
 export type DiscoveryUpdatedDetail = {
   offerId?: number;
@@ -64,5 +65,15 @@ export function subscribeIntelligenceDislikePrompt(
   handler: (detail: IntelligenceDislikePromptDetail) => void,
 ) {
   const sub = DeviceEventEmitter.addListener(INTELLIGENCE_DISLIKE_PROMPT_EVENT, handler);
+  return () => sub.remove();
+}
+
+/** Open EstateOS Guide panel from chrome (circular sparkles), not the map pill. */
+export function dispatchGuideOpen() {
+  DeviceEventEmitter.emit(GUIDE_OPEN_EVENT);
+}
+
+export function subscribeGuideOpen(handler: () => void) {
+  const sub = DeviceEventEmitter.addListener(GUIDE_OPEN_EVENT, handler);
   return () => sub.remove();
 }

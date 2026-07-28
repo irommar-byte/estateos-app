@@ -206,7 +206,7 @@ export const profile = {
   intelligence: {
     sectionTitle: 'EstateOS™ Intelligence',
     title: 'Intelligence',
-    subtitleOn: 'Discovery personalization and suggestions on',
+    subtitleOn: 'Discovery personalization and suggestions',
     subtitleOff: 'Discovery personalization and suggestions',
     footer:
       'Same preference as on estateos.pl — enables personalization on your account.',
@@ -489,6 +489,23 @@ export const profile = {
     version: 'EstateOS™ v{{version}}',
     deleteAccount: 'delete account',
     deleteAccountA11y: 'Delete account',
+    deleteAccountTitle: 'Delete account',
+    deleteAccountBody:
+      'Permanently deleting your account cannot be undone. Profile data, in-app preferences, and Passkey links on this account will stop working. Your current password is required — if you only use Passkey, set a password again on the sign-in screen (“Forgot password”).',
+    deleteAccountEmail: 'Account: {{email}}',
+    deleteAccountConsequences: 'Consequences',
+    deleteAccountBulletSessions: 'Sign-out from all app sessions.',
+    deleteAccountBulletOffers:
+      'Listings and content linked to the account will be removed or anonymized per server policy.',
+    deleteAccountBulletDealroom:
+      'Dealroom chat and transaction history may be anonymized for the other party.',
+    deleteAccountPlusTitle: 'Plus Package',
+    deleteAccountInvestorProTitle: 'Investor Pro',
+    deleteAccountAck: 'I understand the consequences',
+    deleteAccountPasswordLabel: 'Confirm with your current password',
+    deleteAccountPasswordPlaceholder: 'Password',
+    deleteAccountCancel: 'Cancel',
+    deleteAccountConfirm: 'Delete permanently',
     alerts: {
       avatarUploadFailed: 'Could not upload photo (HTTP {{status}}).',
       avatarNotSaved: 'Server did not confirm avatar save. Try again.',

@@ -5,6 +5,7 @@ import { fetchDiscoveryForYou } from '../../services/discoveryService';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../../store/useIntelligencePreferenceStore';
 import { subscribeDiscoveryUpdated } from '../../lib/discovery/clientEvents';
+import { useI18n } from '../../i18n';
 
 type Props = {
   offerId: number | string;
@@ -14,6 +15,7 @@ type Props = {
  * One calm “why this listing” line on offer detail.
  */
 export default function DiscoveryOfferExplainer({ offerId }: Props) {
+  const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const enabled = useIntelligencePreferenceStore((s) => s.enabled);
   const hydrated = useIntelligencePreferenceStore((s) => s.hydrated);
@@ -50,7 +52,7 @@ export default function DiscoveryOfferExplainer({ offerId }: Props) {
     <View style={styles.wrap}>
       <View style={styles.eyebrowRow}>
         <Sparkles size={11} color="rgba(52,211,153,0.9)" />
-        <Text style={styles.eyebrow}>EstateOS™ Intelligence</Text>
+        <Text style={styles.eyebrow}>{t('discovery.brand')}</Text>
       </View>
       <Text style={styles.body}>{reason}</Text>
     </View>

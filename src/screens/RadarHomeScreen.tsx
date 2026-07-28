@@ -94,6 +94,7 @@ import JellyReveal from '../components/JellyReveal';
 import IntelligencePulseTape from '../components/discovery/IntelligencePulseTape';
 import { useDiscoveryMapIntelligence } from '../hooks/useDiscoveryMapIntelligence';
 import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
+import { dispatchGuideOpen } from '../lib/discovery/clientEvents';
 import RadarOfferGallery, {
   type GalleryCountryFilter,
   type GalleryOffer,
@@ -4898,15 +4899,47 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             />
           )}
           <ChromeIconButton
-            icon={showOnlyFavorites ? 'heart' : 'heart-outline'}
-            color={showOnlyFavorites ? mineUiAccent : isDark ? '#FFF' : '#1C1C1E'}
+            icon={
+              tabSurface === 'explore' && intelligenceHydrated && intelligenceEnabled
+                ? 'sparkles'
+                : showOnlyFavorites
+                  ? 'heart'
+                  : 'heart-outline'
+            }
+            color={
+              tabSurface === 'explore' && intelligenceHydrated && intelligenceEnabled
+                ? '#D4AF37'
+                : showOnlyFavorites
+                  ? mineUiAccent
+                  : isDark
+                    ? '#FFF'
+                    : '#1C1C1E'
+            }
             isDark={isDark}
             lightChrome={isGalleryLightChrome}
-            activeBg={showOnlyFavorites ? mineUiBg : undefined}
-            accessibilityLabel={t('radar.home.favoritesTab')}
-            accessibilityState={{ selected: showOnlyFavorites }}
+            activeBg={
+              tabSurface === 'explore' && intelligenceHydrated && intelligenceEnabled
+                ? undefined
+                : showOnlyFavorites
+                  ? mineUiBg
+                  : undefined
+            }
+            accessibilityLabel={
+              tabSurface === 'explore' && intelligenceHydrated && intelligenceEnabled
+                ? t('discovery.guideA11y')
+                : t('radar.home.favoritesTab')
+            }
+            accessibilityState={
+              tabSurface === 'explore' && intelligenceHydrated && intelligenceEnabled
+                ? undefined
+                : { selected: showOnlyFavorites }
+            }
             haptic="medium"
             onPress={() => {
+              if (tabSurface === 'explore' && intelligenceHydrated && intelligenceEnabled) {
+                dispatchGuideOpen();
+                return;
+              }
               setShowOnlyFavorites((prev) => {
                 const next = !prev;
                 if (next) setFavoritesMapScope('MINE');
@@ -5423,7 +5456,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       )}
 
       {(showOnlyFavorites || radarBrowseMode !== 'GALLERY') && !showAreaPicker && (
-      <View style={styles.offersPreviewContainer} pointerEvents="auto">
+      <View style={styles.offersPreviewContainer} pointerEvents="box-none">
         {tabSurface === 'explore' && intelligenceHydrated && intelligenceEnabled ? (
           <View style={styles.intelOrbDock} pointerEvents="box-none">
             <IntelligencePulseTape navigation={navigation} surface="explore" layout="inline" />
@@ -7158,6 +7191,7 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   intelOrbDock: {
+    alignSelf: 'flex-end',
     alignItems: 'flex-end',
     paddingRight: 2,
     marginBottom: 2,

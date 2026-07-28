@@ -14,6 +14,7 @@ import { dispatchIntelligenceDislikePrompt } from '../../lib/discovery/clientEve
 import { shouldPromptCatalogDislikeViaBrain } from '../../utils/discoveryExperienceState';
 import type { DiscoveryTasteAction } from '../../services/discoveryService';
 import { DISCOVERY_COLORS } from './discoveryMotion';
+import { useI18n } from '../../i18n';
 
 type Variant = 'compact' | 'full';
 
@@ -27,28 +28,21 @@ type Props = {
   promptDislikeViaBrain?: boolean;
 };
 
-const DISLIKE_REASONS: Array<{ code: string; label: string }> = [
-  { code: 'PRICE_TOO_HIGH', label: 'Cena' },
-  { code: 'LOCATION_MISMATCH', label: 'Lokalizacja' },
-  { code: 'LAYOUT_MISMATCH', label: 'Układ' },
-  { code: 'QUALITY_LOW', label: 'Jakość' },
-];
-
-const ACTIONS: Array<{
+const ACTION_DEFS: Array<{
   type: Exclude<DiscoveryTasteAction, 'OPEN'>;
-  labelPl: string;
+  labelKey: 'like' | 'dislike' | 'serious';
   Icon: typeof ThumbsUp;
   tone: 'like' | 'dislike' | 'serious';
 }> = [
-  { type: 'LIKE', labelPl: 'Pasuje', Icon: ThumbsUp, tone: 'like' },
-  { type: 'DISLIKE', labelPl: 'Nie dla mnie', Icon: ThumbsDown, tone: 'dislike' },
-  { type: 'SERIOUS', labelPl: 'Na poważnie', Icon: Sparkles, tone: 'serious' },
+  { type: 'LIKE', labelKey: 'like', Icon: ThumbsUp, tone: 'like' },
+  { type: 'DISLIKE', labelKey: 'dislike', Icon: ThumbsDown, tone: 'dislike' },
+  { type: 'SERIOUS', labelKey: 'serious', Icon: Sparkles, tone: 'serious' },
 ];
 
 const TONE = {
   like: { idle: 'rgba(52,211,153,0.18)', active: 'rgba(52,211,153,0.45)', icon: '#34D399' },
   dislike: { idle: 'rgba(251,113,133,0.16)', active: 'rgba(251,113,133,0.42)', icon: '#FB7185' },
-  serious: { idle: 'rgba(251,191,36,0.16)', active: 'rgba(251,191,36,0.42)', icon: '#FBBF24' },
+  serious: { idle: 'rgba(251,191,36,0.16)', active: 'rgba(251,191,36,0.45)', icon: '#FBBF24' },
 };
 
 /**
@@ -62,11 +56,24 @@ export default function OfferDiscoveryActions({
   onRequireAuth,
   promptDislikeViaBrain = false,
 }: Props) {
+  const { t } = useI18n();
   const { record, lastAction, isBusy } = useDiscoveryActions();
   const [flash, setFlash] = useState<DiscoveryTasteAction | null>(null);
   const [reasonOpen, setReasonOpen] = useState(false);
   const active = flash || lastAction(offerId);
   const id = Number(offerId);
+
+  const dislikeReasons = [
+    { code: 'PRICE_TOO_HIGH', label: t('discovery.dislike.price') },
+    { code: 'LOCATION_MISMATCH', label: t('discovery.dislike.location') },
+    { code: 'LAYOUT_MISMATCH', label: t('discovery.dislike.layout') },
+    { code: 'QUALITY_LOW', label: t('discovery.dislike.quality') },
+  ];
+
+  const actions = ACTION_DEFS.map((action) => ({
+    ...action,
+    label: t(`discovery.actions.${action.labelKey}`),
+  }));
 
   useEffect(() => {
     if (!trackOpen || !Number.isFinite(id) || id <= 0) return;
@@ -121,11 +128,11 @@ export default function OfferDiscoveryActions({
   };
 
   const reasonSheet = reasonOpen ? (
-    <View style={styles.reasons} accessibilityLabel="Dlaczego nie pasuje">
+    <View style={styles.reasons} accessibilityLabel={t('discovery.dislike.title')}>
       <View style={styles.reasonsHead}>
-        <Text style={styles.reasonsTitle}>Co nie pasuje?</Text>
+        <Text style={styles.reasonsTitle}>{t('discovery.dislike.title')}</Text>
         <Pressable
-          accessibilityLabel="Zamknij"
+          accessibilityLabel={t('discovery.closeA11y')}
           hitSlop={10}
           onPress={() => setReasonOpen(false)}
         >
@@ -133,7 +140,7 @@ export default function OfferDiscoveryActions({
         </Pressable>
       </View>
       <View style={styles.reasonsGrid}>
-        {DISLIKE_REASONS.map((r) => (
+        {dislikeReasons.map((r) => (
           <Pressable
             key={r.code}
             disabled={isBusy(id)}
@@ -148,7 +155,7 @@ export default function OfferDiscoveryActions({
           style={[styles.chip, styles.chipSkip]}
           onPress={() => void commit('DISLIKE')}
         >
-          <Text style={styles.chipText}>Pomiń</Text>
+          <Text style={styles.chipText}>{t('discovery.dislike.skipShort')}</Text>
         </Pressable>
       </View>
     </View>
@@ -156,16 +163,16 @@ export default function OfferDiscoveryActions({
 
   if (variant === 'full') {
     return (
-      <View style={styles.fullBar} accessibilityLabel="Twoja ocena oferty">
+      <View style={styles.fullBar} accessibilityLabel={t('discovery.actions.like')}>
         <View style={styles.fullRow}>
-          {ACTIONS.map(({ type, labelPl, Icon, tone }) => {
+          {actions.map(({ type, label, Icon, tone }) => {
             const isActive = active === type;
             const colors = TONE[tone];
             return (
               <Pressable
                 key={type}
                 disabled={isBusy(id)}
-                accessibilityLabel={labelPl}
+                accessibilityLabel={label}
                 accessibilityState={{ selected: isActive }}
                 onPress={() => void handle(type)}
                 style={[
@@ -177,7 +184,7 @@ export default function OfferDiscoveryActions({
                 ]}
               >
                 <Icon size={16} color={colors.icon} />
-                <Text style={[styles.pillLabel, { color: colors.icon }]}>{labelPl}</Text>
+                <Text style={[styles.pillLabel, { color: colors.icon }]}>{label}</Text>
               </Pressable>
             );
           })}
@@ -188,15 +195,15 @@ export default function OfferDiscoveryActions({
   }
 
   return (
-    <View style={styles.tray} accessibilityLabel="Oceń ofertę">
-      {ACTIONS.map(({ type, labelPl, Icon, tone }) => {
+    <View style={styles.tray} accessibilityLabel={t('discovery.actions.like')}>
+      {actions.map(({ type, label, Icon, tone }) => {
         const isActive = active === type;
         const colors = TONE[tone];
         return (
           <Pressable
             key={type}
             disabled={isBusy(id)}
-            accessibilityLabel={labelPl}
+            accessibilityLabel={label}
             accessibilityState={{ selected: isActive }}
             onPress={(e) => {
               e?.stopPropagation?.();

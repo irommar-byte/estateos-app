@@ -206,7 +206,7 @@ export const profile = {
   intelligence: {
     sectionTitle: 'EstateOS™ Intelligence',
     title: 'Intelligence',
-    subtitleOn: 'Personalizacja Discovery i podpowiedzi włączone',
+    subtitleOn: 'Personalizacja Discovery i podpowiedzi',
     subtitleOff: 'Personalizacja Discovery i podpowiedzi',
     footer:
       'Ta sama preferencja co na estateos.pl — włącza personalizację na koncie.',
@@ -491,6 +491,23 @@ export const profile = {
     version: 'EstateOS™ v{{version}}',
     deleteAccount: 'usuń konto',
     deleteAccountA11y: 'Usuń konto',
+    deleteAccountTitle: 'Usuń konto',
+    deleteAccountBody:
+      'Trwałe usunięcie konta jest nieodwracalne. Dane profilowe, preferencje w aplikacji oraz powiązania Passkey na tym koncie przestaną działać. Wymagane jest aktualne hasło — jeśli korzystasz tylko z Passkey, ustaw hasło ponownie na ekranie logowania („Nie pamiętam hasła”).',
+    deleteAccountEmail: 'Konto: {{email}}',
+    deleteAccountConsequences: 'Konsekwencje',
+    deleteAccountBulletSessions: 'Wylogowanie ze wszystkich sesji aplikacji.',
+    deleteAccountBulletOffers:
+      'Oferty i treści powiązane z kontem zostaną usunięte lub zanonimizowane zgodnie z polityką serwera.',
+    deleteAccountBulletDealroom:
+      'Czat Dealroom oraz historia transakcji mogą zostać zanonimizowane dla drugiej strony.',
+    deleteAccountPlusTitle: 'Pakiet Plus',
+    deleteAccountInvestorProTitle: 'Investor Pro',
+    deleteAccountAck: 'Rozumiem skutki usuwania',
+    deleteAccountPasswordLabel: 'Potwierdź aktualnym hasłem',
+    deleteAccountPasswordPlaceholder: 'Hasło',
+    deleteAccountCancel: 'Anuluj',
+    deleteAccountConfirm: 'Usuń na stałe',
     alerts: {
       avatarUploadFailed: 'Nie udało się wgrać zdjęcia (HTTP {{status}}).',
       avatarNotSaved: 'Serwer nie potwierdził zapisania awatara. Spróbuj ponownie.',

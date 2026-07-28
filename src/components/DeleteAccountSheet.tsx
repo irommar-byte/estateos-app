@@ -110,39 +110,43 @@ export default function DeleteAccountSheet({
           <View style={[styles.sheet, { backgroundColor: surface, borderColor: border }]}>
             <View style={[styles.dragBar, { backgroundColor: isDark ? '#3A3A3C' : '#E5E7EB' }]} />
 
-            <Text style={[styles.title, { color: textMain }]}>Usuń konto</Text>
-            <Text style={[styles.sub, { color: textMuted }]}>
-              Trwałe usunięcie konta jest nieodwracalne. Dane profilowe, preferencje w aplikacji oraz powiązania Passkey na tym koncie przestaną działać. Wymagane jest aktualne hasło — jeśli korzystasz tylko z Passkey, ustaw hasło ponownie na ekranie logowania („Nie pamiętam hasła”).
-            </Text>
+            <Text style={[styles.title, { color: textMain }]}>{t('profile.session.deleteAccountTitle')}</Text>
+            <Text style={[styles.sub, { color: textMuted }]}>{t('profile.session.deleteAccountBody')}</Text>
 
             {userEmail ? (
               <Text style={[styles.emailLine, { color: textMuted }]}>
-                Konto: <Text style={{ color: textMain, fontWeight: '700' }}>{userEmail}</Text>
+                {t('profile.session.deleteAccountEmail', { email: userEmail })}
               </Text>
             ) : null}
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollInner}>
-              <Text style={[styles.bulletHead, { color: textMuted }]}>Konsekwencje</Text>
-              <Bullet text="Wylogowanie ze wszystkich sesji aplikacji." textMain={textMain} textMuted={textMuted} />
+              <Text style={[styles.bulletHead, { color: textMuted }]}>
+                {t('profile.session.deleteAccountConsequences')}
+              </Text>
+              <Bullet text={t('profile.session.deleteAccountBulletSessions')} textMain={textMain} textMuted={textMuted} />
               <Bullet
-                text="Oferty i treści powiązane z kontem zostaną usunięte lub zanonimizowane zgodnie z polityką serwera."
+                text={t('profile.session.deleteAccountBulletOffers')}
                 textMain={textMain}
                 textMuted={textMuted}
               />
-              <Bullet text="Czat Dealroom oraz historia transakcji mogą zostać zanonimizowane dla drugiej strony." textMain={textMain} textMuted={textMuted} />
+              <Bullet
+                text={t('profile.session.deleteAccountBulletDealroom')}
+                textMain={textMain}
+                textMuted={textMuted}
+              />
 
               {hasPaidIndicators ? (
                 <View style={styles.packagesBlock}>
                   <Text style={[styles.packagesHead, { color: textMuted }]}>{t('offer.investorPro.paidFeaturesTitle')}</Text>
                   <PaidPackageCard
-                    title="Pakiet Plus"
+                    title={t('profile.session.deleteAccountPlusTitle')}
                     body={t('offer.investorPro.deleteAccountPlusNote')}
                     isDark={isDark}
                     textMain={textMain}
                     textMuted={textMuted}
                   />
                   <PaidPackageCard
-                    title="Investor Pro"
+                    title={t('profile.session.deleteAccountInvestorProTitle')}
                     body={t('offer.investorPro.deleteAccountInvestorProNote')}
                     isDark={isDark}
                     textMain={textMain}
@@ -153,11 +157,11 @@ export default function DeleteAccountSheet({
               ) : null}
 
               <View style={[styles.confirmRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: border }]}>
-                <Text style={[styles.confirmLabel, { color: textMain }]}>Rozumiem skutki usuwania</Text>
+                <Text style={[styles.confirmLabel, { color: textMain }]}>{t('profile.session.deleteAccountAck')}</Text>
                 <Switch value={ack} onValueChange={setAck} trackColor={{ false: '#767577', true: '#34C759' }} />
               </View>
 
-              <Text style={[styles.inputLabel, { color: textMuted }]}>Potwierdź aktualnym hasłem</Text>
+              <Text style={[styles.inputLabel, { color: textMuted }]}>{t('profile.session.deleteAccountPasswordLabel')}</Text>
               <TextInput
                 value={password}
                 onChangeText={setPassword}
@@ -165,7 +169,7 @@ export default function DeleteAccountSheet({
                 autoCapitalize="none"
                 autoCorrect={false}
                 textContentType="password"
-                placeholder="Hasło"
+                placeholder={t('profile.session.deleteAccountPasswordPlaceholder')}
                 placeholderTextColor={isDark ? '#636366' : '#9CA3AF'}
                 style={[styles.input, { color: textMain, borderColor: border, backgroundColor: isDark ? '#1C1C1E' : '#F9FAFB' }]}
                 editable={!busy}
@@ -181,7 +185,7 @@ export default function DeleteAccountSheet({
                   { borderColor: border, opacity: pressed ? 0.75 : 1, backgroundColor: pressed ? pressedBg : 'transparent' },
                 ]}
               >
-                <Text style={[styles.btnSecondaryText, { color: textMain }]}>Anuluj</Text>
+                <Text style={[styles.btnSecondaryText, { color: textMain }]}>{t('profile.session.deleteAccountCancel')}</Text>
               </Pressable>
               <Pressable
                 onPress={() => void handleSubmit()}
@@ -194,7 +198,7 @@ export default function DeleteAccountSheet({
                 {busy ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.btnPrimaryText}>Usuń na stałe</Text>
+                  <Text style={styles.btnPrimaryText}>{t('profile.session.deleteAccountConfirm')}</Text>
                 )}
               </Pressable>
             </View>

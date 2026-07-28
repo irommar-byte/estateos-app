@@ -20,6 +20,7 @@ import { subscribeDiscoveryUpdated } from '../../lib/discovery/clientEvents';
 import { fetchDiscoveryForYou, type ForYouRailItem } from '../../services/discoveryService';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../../store/useIntelligencePreferenceStore';
+import { useI18n } from '../../i18n';
 
 type Props = {
   navigation: any;
@@ -239,6 +240,7 @@ export default function DiscoveryForYouRail({
   formatPrice = defaultFormatPrice,
   isDark = true,
 }: Props) {
+  const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const enabled = useIntelligencePreferenceStore((s) => s.enabled);
   const hydrated = useIntelligencePreferenceStore((s) => s.hydrated);
@@ -486,12 +488,12 @@ export default function DiscoveryForYouRail({
       <Animated.View style={[styles.brainBadge, theme.brainBadge, { opacity: brainGlow }]}>
         <Brain size={13} color={theme.accent} strokeWidth={2.2} />
       </Animated.View>
-      <Text style={[styles.eyebrow, { color: theme.accent }]}>EstateOS™ Intelligence</Text>
+      <Text style={[styles.eyebrow, { color: theme.accent }]}>{t('discovery.brand')}</Text>
       <View style={styles.liveDotWrap}>
         <Animated.View style={[styles.liveDotPulse, theme.liveDotPulse, { opacity: glowOpacity }]} />
         <View style={[styles.liveDot, theme.liveDot]} />
       </View>
-      <Text style={[styles.liveLabel, { color: theme.muted }]}>dla Twojego profilu</Text>
+      <Text style={[styles.liveLabel, { color: theme.muted }]}>{t('discovery.forYou.liveLabel')}</Text>
     </View>
   );
 
@@ -501,16 +503,14 @@ export default function DiscoveryForYouRail({
         <IntelligenceRailShell {...shellProps}>
           <View style={styles.coldCopy}>
             {eyebrow}
-            <Text style={[styles.h2, { color: theme.title }]}>Bliżej Twojego kierunku</Text>
-            <Text style={[styles.coldBody, { color: theme.body }]}>
-              Oceń kilka ofert spokojnie — tu pojawią się sugestie dopasowane do Ciebie.
-            </Text>
+            <Text style={[styles.h2, { color: theme.title }]}>{t('discovery.forYou.title')}</Text>
+            <Text style={[styles.coldBody, { color: theme.body }]}>{t('discovery.forYou.coldBody')}</Text>
           </View>
           <Pressable
             style={[styles.directionChip, theme.chip]}
             onPress={() => navigation?.navigate?.('DiscoveryDirection')}
           >
-            <Text style={[styles.directionChipText, { color: theme.accent }]}>Mój kierunek</Text>
+            <Text style={[styles.directionChipText, { color: theme.accent }]}>{t('discovery.forYou.myDirection')}</Text>
             <ArrowRight size={14} color={theme.accent} />
           </Pressable>
         </IntelligenceRailShell>
@@ -526,13 +526,13 @@ export default function DiscoveryForYouRail({
         <View style={styles.header}>
           <View style={{ flex: 1, minWidth: 0 }}>
             {eyebrow}
-            <Text style={[styles.h2, { color: theme.title }]}>Bliżej Twojego kierunku</Text>
+            <Text style={[styles.h2, { color: theme.title }]}>{t('discovery.forYou.title')}</Text>
           </View>
           <Pressable
             style={styles.linkRow}
             onPress={() => navigation?.navigate?.('DiscoveryDirection')}
           >
-            <Text style={[styles.link, { color: theme.link }]}>Mój kierunek</Text>
+            <Text style={[styles.link, { color: theme.link }]}>{t('discovery.forYou.myDirection')}</Text>
             <ArrowRight size={13} color={theme.link} />
           </Pressable>
         </View>
@@ -600,7 +600,7 @@ export default function DiscoveryForYouRail({
                         {item.reason}
                       </>
                     ) : (
-                      'Dopasowanie na podstawie Twojego kierunku'
+                      t('discovery.forYou.matchHint')
                     )}
                   </Text>
                 </View>

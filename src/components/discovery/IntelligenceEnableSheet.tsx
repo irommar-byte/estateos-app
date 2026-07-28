@@ -13,12 +13,16 @@ import ApplePressable from '../ApplePressable';
 import { playIntelligenceChime } from '../../lib/discovery/intelligenceChime';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../../store/useIntelligencePreferenceStore';
+import { useIsDarkTheme } from '../../store/useThemeStore';
 import { DISCOVERY_COLORS } from './discoveryMotion';
+import { useI18n } from '../../i18n';
 
 /**
- * iOS-style first-login proposal to turn on EstateOS™ Intelligence.
+ * First-login proposal to turn on EstateOS™ Intelligence — PL / EN / RU.
  */
 export default function IntelligenceEnableSheet() {
+  const { t } = useI18n();
+  const isDark = useIsDarkTheme();
   const token = useAuthStore((s) => s.token);
   const enabled = useIntelligencePreferenceStore((s) => s.enabled);
   const decided = useIntelligencePreferenceStore((s) => s.decided);
@@ -31,11 +35,11 @@ export default function IntelligenceEnableSheet() {
       setVisible(false);
       return;
     }
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       setVisible(true);
       void playIntelligenceChime('suggest');
     }, 1600);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [hydrated, token, decided, enabled]);
 
   const handleEnable = () => {
@@ -51,45 +55,72 @@ export default function IntelligenceEnableSheet() {
   };
 
   const features = [
-    { icon: Compass, text: 'Pulse z żywym mózgiem — kiedy kierunek się wyostrza' },
-    { icon: Sparkles, text: 'Sugestie „bliżej Twojego kierunku” w katalogu i na mapie' },
-    { icon: Shield, text: 'Szepty przed kontaktem i wizytą — tylko gdy mają sens' },
+    { icon: Compass, text: t('discovery.enable.featurePulse') },
+    { icon: Sparkles, text: t('discovery.enable.featureSuggestions') },
+    { icon: Shield, text: t('discovery.enable.featureWhispers') },
   ];
+
+  const sheetBg = isDark ? 'rgba(12,14,18,0.92)' : 'rgba(255,255,255,0.97)';
+  const border = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(17,24,39,0.1)';
+  const titleColor = isDark ? '#FFFFFF' : '#111827';
+  const muted = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(17,24,39,0.58)';
+  const eyebrow = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(17,24,39,0.45)';
+  const featureBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(17,24,39,0.04)';
+  const featureBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.08)';
+  const featureText = isDark ? 'rgba(255,255,255,0.75)' : 'rgba(17,24,39,0.72)';
+  const featureIconBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(14,165,233,0.1)';
+  const laterBorder = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(17,24,39,0.12)';
+  const laterBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(17,24,39,0.04)';
+  const laterText = isDark ? '#F5F5F7' : '#111827';
+  const brainAuraBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(14,165,233,0.08)';
+  const brainAuraBorder = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(14,165,233,0.2)';
+  const brainCoreBg = isDark ? 'rgba(56,189,248,0.22)' : 'rgba(14,165,233,0.16)';
+  const brainIcon = isDark ? '#E0F2FE' : '#0369A1';
+  const featureIconColor = isDark ? '#BAE6FD' : '#0284C7';
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={handleLater}>
       <View style={styles.root}>
-        <Pressable style={styles.backdrop} onPress={handleLater} accessibilityLabel="Nie teraz" />
-        <BlurView intensity={96} tint="dark" style={styles.sheet}>
-          <View style={styles.glowA} />
-          <View style={styles.glowB} />
+        <Pressable
+          style={[styles.backdrop, { backgroundColor: isDark ? 'rgba(0,0,0,0.45)' : 'rgba(15,23,42,0.35)' }]}
+          onPress={handleLater}
+          accessibilityLabel={t('discovery.enable.laterA11y')}
+        />
+        <BlurView
+          intensity={isDark ? 96 : 88}
+          tint={isDark ? 'dark' : 'light'}
+          style={[styles.sheet, { backgroundColor: sheetBg, borderColor: border }]}
+        >
+          <View style={[styles.glowA, !isDark && styles.glowALight]} />
+          <View style={[styles.glowB, !isDark && styles.glowBLight]} />
           <View style={styles.brainWrap}>
-            <View style={styles.brainAura} />
-            <View style={styles.brainCore}>
-              <Brain size={34} color="#E0F2FE" strokeWidth={1.6} />
+            <View style={[styles.brainAura, { backgroundColor: brainAuraBg, borderColor: brainAuraBorder }]} />
+            <View style={[styles.brainCore, { backgroundColor: brainCoreBg }]}>
+              <Brain size={34} color={brainIcon} strokeWidth={1.6} />
             </View>
           </View>
-          <Text style={styles.eyebrow}>EstateOS™ Intelligence</Text>
-          <Text style={styles.title}>Włącz Intelligence</Text>
-          <Text style={styles.body}>
-            Spokojny system, który uczy się z Twoich decyzji i podpowiada tropy — bez hałasu, jak prywatny
-            asystent na iOS.
-          </Text>
+          <Text style={[styles.eyebrow, { color: eyebrow }]}>{t('discovery.brand')}</Text>
+          <Text style={[styles.title, { color: titleColor }]}>{t('discovery.enable.title')}</Text>
+          <Text style={[styles.body, { color: muted }]}>{t('discovery.enable.body')}</Text>
           <View style={styles.features}>
             {features.map(({ icon: Icon, text }) => (
-              <View key={text} style={styles.featureRow}>
-                <View style={styles.featureIcon}>
-                  <Icon size={14} color="#BAE6FD" />
+              <View key={text} style={[styles.featureRow, { backgroundColor: featureBg, borderColor: featureBorder }]}>
+                <View style={[styles.featureIcon, { backgroundColor: featureIconBg }]}>
+                  <Icon size={14} color={featureIconColor} />
                 </View>
-                <Text style={styles.featureText}>{text}</Text>
+                <Text style={[styles.featureText, { color: featureText }]}>{text}</Text>
               </View>
             ))}
           </View>
           <ApplePressable style={styles.enable} onPress={handleEnable} haptic="medium">
-            <Text style={styles.enableText}>Włącz EstateOS™ Intelligence</Text>
+            <Text style={styles.enableText}>{t('discovery.enable.cta')}</Text>
           </ApplePressable>
-          <ApplePressable style={styles.later} onPress={handleLater} haptic="none">
-            <Text style={styles.laterText}>Nie teraz</Text>
+          <ApplePressable
+            style={[styles.later, { borderColor: laterBorder, backgroundColor: laterBg }]}
+            onPress={handleLater}
+            haptic="none"
+          >
+            <Text style={[styles.laterText, { color: laterText }]}>{t('discovery.enable.later')}</Text>
           </ApplePressable>
         </BlurView>
       </View>
@@ -106,14 +137,11 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   sheet: {
     borderRadius: 28,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(12,14,18,0.9)',
     padding: 24,
   },
   glowA: {
@@ -125,6 +153,9 @@ const styles = StyleSheet.create({
     borderRadius: 88,
     backgroundColor: 'rgba(56,189,248,0.22)',
   },
+  glowALight: {
+    backgroundColor: 'rgba(14,165,233,0.12)',
+  },
   glowB: {
     position: 'absolute',
     right: -40,
@@ -133,6 +164,9 @@ const styles = StyleSheet.create({
     height: 160,
     borderRadius: 80,
     backgroundColor: 'rgba(52,211,153,0.18)',
+  },
+  glowBLight: {
+    backgroundColor: 'rgba(16,185,129,0.1)',
   },
   brainWrap: {
     alignSelf: 'center',
@@ -145,8 +179,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderRadius: 26,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.15)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   brainCore: {
     width: 68,
@@ -154,12 +186,10 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(56,189,248,0.22)',
   },
   eyebrow: {
     marginTop: 18,
     textAlign: 'center',
-    color: 'rgba(255,255,255,0.5)',
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 2.2,
@@ -168,7 +198,6 @@ const styles = StyleSheet.create({
   title: {
     marginTop: 8,
     textAlign: 'center',
-    color: '#FFF',
     fontSize: 24,
     fontWeight: '700',
     letterSpacing: -0.4,
@@ -176,7 +205,6 @@ const styles = StyleSheet.create({
   body: {
     marginTop: 10,
     textAlign: 'center',
-    color: 'rgba(255,255,255,0.6)',
     fontSize: 13,
     lineHeight: 19,
   },
@@ -187,8 +215,6 @@ const styles = StyleSheet.create({
     gap: 12,
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
@@ -198,11 +224,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   featureText: {
     flex: 1,
-    color: 'rgba(255,255,255,0.75)',
     fontSize: 12,
     lineHeight: 17,
   },
@@ -220,10 +244,8 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 23,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.15)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  laterText: { color: '#F5F5F7', fontSize: 13, fontWeight: '800' },
+  laterText: { fontSize: 13, fontWeight: '800' },
 });

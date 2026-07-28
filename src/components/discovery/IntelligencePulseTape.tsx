@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Brain } from 'lucide-react-native';
 import Svg, { Line } from 'react-native-svg';
@@ -29,6 +30,8 @@ import {
 } from '../../lib/discovery/clientEvents';
 import { navigateDiscoveryHref } from '../../lib/discovery/navigateDiscoveryHref';
 import { resolveDiscoveryEntryRoute } from '../../utils/discoveryExperienceState';
+import { useI18n } from '../../i18n';
+import { useIsDarkTheme } from '../../store/useThemeStore';
 import { postDiscoveryTasteEvent } from '../../services/discoveryService';
 import { useAuthStore } from '../../store/useAuthStore';
 
@@ -42,37 +45,55 @@ type Props = {
 type Mood = 'calm' | 'active' | 'alert' | 'celebrate';
 type PresentReason = 'progress' | 'milestone' | 'contradiction' | 'ready_peek' | 'manual';
 type SheetMode = 'pulse' | 'dislike_prompt' | 'thanks';
+type StageKey = 'EXPLORE' | 'FOCUS' | 'READY' | 'COMPLETE';
 
-const DISLIKE_REASONS: Array<{ code: string; label: string }> = [
-  { code: 'PRICE_TOO_HIGH', label: 'Cena' },
-  { code: 'LOCATION_MISMATCH', label: 'Lokalizacja' },
-  { code: 'LAYOUT_MISMATCH', label: 'Układ' },
-  { code: 'QUALITY_LOW', label: 'Jakość' },
-];
+const STAGE_ORDER: StageKey[] = ['EXPLORE', 'FOCUS', 'READY', 'COMPLETE'];
 
 /** Core leaves clear air under CircularLabelRing arcs (EstateOS™ / Intelligence). */
 const CORE = 58;
 const RING_GAP = 11;
-const HIT = CORE + RING_GAP * 2 + 22;
+/** Tight hit target — rings paint outside; parent uses box-none so map stays grabbable. */
+const HIT = CORE + 10;
 const BRAIN = 26;
 const SESSION_PEEK_KEY = 'eos_intel_peek_v1';
 const SESSION_MILESTONE_KEY = 'eos_intel_milestones_v1';
 
-const REASON_COPY: Record<Exclude<PresentReason, 'manual'>, { badge: string; lead: string }> = {
-  progress: { badge: 'Postęp', lead: 'Kierunek się właśnie wyostrzył.' },
-  milestone: { badge: 'Gotowość', lead: 'Twój profil przekroczył nowy próg.' },
-  contradiction: {
-    badge: 'Korekta',
-    lead: 'Sygnały się mieszają — warto spokojnie doprecyzować.',
-  },
-  ready_peek: {
-    badge: 'Trop',
-    lead: 'Masz wystarczająco wyraźny kierunek, by na chwilę zajrzeć.',
-  },
-};
+/** Siri / oil-on-water iridescence for the Intelligence orb core. */
+const SIRI_ORB = [
+  '#FF2D55',
+  '#FF375F',
+  '#BF5AF2',
+  '#5E5CE6',
+  '#64D2FF',
+  '#30D158',
+  '#FFD60A',
+  '#FF9F0A',
+  '#FF2D55',
+] as const;
+
+const SIRI_ORB_ALT = [
+  '#64D2FF',
+  '#5E5CE6',
+  '#BF5AF2',
+  '#FF2D55',
+  '#FF9F0A',
+  '#FFD60A',
+  '#30D158',
+  '#64D2FF',
+] as const;
 
 const MILESTONES = [25, 50, 75, 90];
 
+function resolveStageKey(stage: string | undefined, progress: number): StageKey {
+  const raw = String(stage || '').toUpperCase();
+  if (raw === 'EXPLORE' || raw === 'FOCUS' || raw === 'READY' || raw === 'COMPLETE') {
+    return raw;
+  }
+  if (progress >= 100) return 'COMPLETE';
+  if (progress >= 75) return 'READY';
+  if (progress >= 28) return 'FOCUS';
+  return 'EXPLORE';
+}
 function resolveMood(
   progress: number,
   confidence: number,
@@ -252,6 +273,101 @@ function LivingBrain({ accent, size = BRAIN }: { accent: string; size?: number }
   );
 }
 
+/** Circular Intelligence launcher face — Siri / gasoline-on-water swirl, not flat black. */
+function SiriBrainCore({ ringColor }: { ringColor: string }) {
+  const spinA = useRef(new Animated.Value(0)).current;
+  const spinB = useRef(new Animated.Value(0)).current;
+  const breathe = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loopA = Animated.loop(
+      Animated.timing(spinA, {
+        toValue: 1,
+        duration: 5600,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    const loopB = Animated.loop(
+      Animated.timing(spinB, {
+        toValue: 1,
+        duration: 8200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    const breatheLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathe, {
+          toValue: 1,
+          duration: 1700,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(breathe, {
+          toValue: 0,
+          duration: 1700,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loopA.start();
+    loopB.start();
+    breatheLoop.start();
+    return () => {
+      loopA.stop();
+      loopB.stop();
+      breatheLoop.stop();
+    };
+  }, [breathe, spinA, spinB]);
+
+  const rotateA = spinA.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const rotateB = spinB.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] });
+  const swirlScale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1.05, 1.18] });
+
+  return (
+    <View style={[styles.core, { borderColor: ringColor }]}>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.siriSwirl,
+          {
+            opacity: 0.98,
+            transform: [{ scale: swirlScale }, { rotate: rotateA }],
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={[...SIRI_ORB]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+      </Animated.View>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.siriSwirlAlt,
+          {
+            opacity: 0.62,
+            transform: [{ rotate: rotateB }, { scale: 1.2 }],
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={[...SIRI_ORB_ALT]}
+          start={{ x: 1, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+      </Animated.View>
+      <View pointerEvents="none" style={styles.siriSheen} />
+      <LivingBrain accent="#F5F5F7" />
+    </View>
+  );
+}
+
 /**
  * EstateOS™ Intelligence launcher — clear chrome, genie sheet, living brain.
  */
@@ -260,6 +376,8 @@ export default function IntelligencePulseTape({
   surface = 'explore',
   layout = 'float',
 }: Props) {
+  const { t } = useI18n();
+  const isDark = useIsDarkTheme();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const token = useAuthStore((s) => s.token);
@@ -493,7 +611,31 @@ export default function IntelligencePulseTape({
   }, [pulse, spectacle]);
   const colors = MOOD[mood];
   const reasonMeta =
-    presentReason && presentReason !== 'manual' ? REASON_COPY[presentReason] : null;
+    presentReason && presentReason !== 'manual'
+      ? {
+          badge: t(`discovery.pulse.${presentReason === 'ready_peek' ? 'readyPeek' : presentReason}Badge`),
+          lead: t(`discovery.pulse.${presentReason === 'ready_peek' ? 'readyPeek' : presentReason}Lead`),
+        }
+      : null;
+
+  const dislikeReasons = [
+    { code: 'PRICE_TOO_HIGH', label: t('discovery.dislike.price') },
+    { code: 'LOCATION_MISMATCH', label: t('discovery.dislike.location') },
+    { code: 'LAYOUT_MISMATCH', label: t('discovery.dislike.layout') },
+    { code: 'QUALITY_LOW', label: t('discovery.dislike.quality') },
+  ];
+
+  const activeStage = resolveStageKey(pulse?.stage, pulse?.progress ?? 0);
+  const activeStageIndex = STAGE_ORDER.indexOf(activeStage);
+
+  const sheetSurface = isDark ? 'rgba(10,10,12,0.92)' : 'rgba(255,255,255,0.96)';
+  const sheetText = isDark ? '#FFFFFF' : '#111827';
+  const sheetMuted = isDark ? 'rgba(245,245,247,0.62)' : 'rgba(17,24,39,0.55)';
+  const sheetBorder = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(17,24,39,0.1)';
+  const chipBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.05)';
+  const stageDoneBg = isDark ? 'rgba(90,200,250,0.22)' : 'rgba(14,165,233,0.12)';
+  const stageCurrentBg = isDark ? 'rgba(90,200,250,0.38)' : 'rgba(14,165,233,0.2)';
+  const stageIdleBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(17,24,39,0.04)';
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -676,9 +818,7 @@ export default function IntelligencePulseTape({
               strokeWidth={0.6}
             />
           </View>
-          <BlurView intensity={92} tint="dark" style={[styles.core, { borderColor: colors.ring }]}>
-            <LivingBrain accent={colors.accent} />
-          </BlurView>
+          <SiriBrainCore ringColor={colors.ring} />
         </ApplePressable>
       </View>
 
@@ -709,7 +849,11 @@ export default function IntelligencePulseTape({
             ]}
           >
             <Pressable onPress={(e) => e.stopPropagation()}>
-              <BlurView intensity={96} tint="dark" style={[styles.sheet, { borderColor: colors.ring }]}>
+              <BlurView
+                intensity={isDark ? 96 : 88}
+                tint={isDark ? 'dark' : 'light'}
+                style={[styles.sheet, { borderColor: colors.ring, backgroundColor: sheetSurface }]}
+              >
                 <View style={[styles.sheetGlow, { backgroundColor: colors.soft }]} />
 
                 {sheetMode === 'dislike_prompt' ? (
@@ -719,30 +863,28 @@ export default function IntelligencePulseTape({
                         <LivingBrain accent={colors.accent} size={28} />
                       </View>
                       <View style={styles.sheetHeadCopy}>
-                        <Text style={styles.sheetKicker}>EstateOS™ Intelligence</Text>
-                        <Text style={styles.sheetStage}>Co nie pasuje?</Text>
+                        <Text style={[styles.sheetKicker, { color: sheetMuted }]}>{t('discovery.brand')}</Text>
+                        <Text style={[styles.sheetStage, { color: sheetText }]}>{t('discovery.dislike.title')}</Text>
                       </View>
                       <ApplePressable
                         onPress={close}
                         haptic="none"
                         style={styles.closeBtn}
-                        accessibilityLabel="Zamknij"
+                        accessibilityLabel={t('discovery.closeA11y')}
                       >
-                        <Ionicons name="close" size={16} color="#FFF" />
+                        <Ionicons name="close" size={16} color={sheetText} />
                       </ApplePressable>
                     </View>
-                    <Text style={styles.dislikeLead}>
-                      Jedno słowo wystarczy — dopasujemy kolejne tropki spokojniej.
-                    </Text>
+                    <Text style={[styles.dislikeLead, { color: sheetMuted }]}>{t('discovery.dislike.lead')}</Text>
                     <View style={styles.dislikeChips}>
-                      {DISLIKE_REASONS.map((reason) => (
+                      {dislikeReasons.map((reason) => (
                         <ApplePressable
                           key={reason.code}
                           haptic="light"
-                          style={styles.dislikeChip}
+                          style={[styles.dislikeChip, { backgroundColor: chipBg, borderColor: sheetBorder }]}
                           onPress={() => void submitDislikeFeedback(reason.code)}
                         >
-                          <Text style={styles.dislikeChipText}>{reason.label}</Text>
+                          <Text style={[styles.dislikeChipText, { color: sheetText }]}>{reason.label}</Text>
                         </ApplePressable>
                       ))}
                     </View>
@@ -751,7 +893,7 @@ export default function IntelligencePulseTape({
                       haptic="none"
                       onPress={() => void submitDislikeFeedback()}
                     >
-                      <Text style={styles.dislikeSkipText}>Pomiń — i tak uczymy się gustu</Text>
+                      <Text style={[styles.dislikeSkipText, { color: sheetMuted }]}>{t('discovery.dislike.skip')}</Text>
                     </ApplePressable>
                   </>
                 ) : sheetMode === 'thanks' ? (
@@ -761,13 +903,11 @@ export default function IntelligencePulseTape({
                         <LivingBrain accent={colors.accent} size={28} />
                       </View>
                       <View style={styles.sheetHeadCopy}>
-                        <Text style={styles.sheetKicker}>EstateOS™ Intelligence</Text>
-                        <Text style={styles.sheetStage}>Dziękuję za wybór</Text>
+                        <Text style={[styles.sheetKicker, { color: sheetMuted }]}>{t('discovery.brand')}</Text>
+                        <Text style={[styles.sheetStage, { color: sheetText }]}>{t('discovery.thanks.title')}</Text>
                       </View>
                     </View>
-                    <Text style={styles.thanksBody}>
-                      Zapamiętaliśmy to — następne propozycje będą bliżej Twojego gustu.
-                    </Text>
+                    <Text style={[styles.thanksBody, { color: sheetMuted }]}>{t('discovery.thanks.body')}</Text>
                   </>
                 ) : pulse ? (
                   <>
@@ -776,58 +916,105 @@ export default function IntelligencePulseTape({
                         <LivingBrain accent={colors.accent} size={28} />
                       </View>
                       <View style={styles.sheetHeadCopy}>
-                        <Text style={styles.sheetKicker}>EstateOS™ Intelligence</Text>
-                        <Text style={styles.sheetStage}>{pulse.stageLabel}</Text>
+                        <Text style={[styles.sheetKicker, { color: sheetMuted }]}>{t('discovery.brand')}</Text>
+                        <Text style={[styles.sheetStage, { color: sheetText }]}>
+                          {t(`discovery.stages.${activeStage}`)}
+                        </Text>
                       </View>
-                      <ApplePressable onPress={close} haptic="none" style={styles.closeBtn} accessibilityLabel="Zamknij">
-                        <Ionicons name="close" size={16} color="#FFF" />
+                      <ApplePressable
+                        onPress={close}
+                        haptic="none"
+                        style={styles.closeBtn}
+                        accessibilityLabel={t('discovery.closeA11y')}
+                      >
+                        <Ionicons name="close" size={16} color={sheetText} />
                       </ApplePressable>
                     </View>
 
                     {reasonMeta ? (
-                      <View style={styles.reasonBadge}>
+                      <View style={[styles.reasonBadge, { backgroundColor: chipBg }]}>
                         <Text style={[styles.reasonBadgeText, { color: colors.accent }]}>{reasonMeta.badge}</Text>
-                        <Text style={styles.reasonLead}>{reasonMeta.lead}</Text>
+                        <Text style={[styles.reasonLead, { color: sheetMuted }]}>{reasonMeta.lead}</Text>
                       </View>
                     ) : null}
 
-                    <Text style={styles.direction} numberOfLines={2}>
+                    <Text style={[styles.direction, { color: sheetText }]} numberOfLines={2}>
                       {pulse.directionLine || pulse.suggestion}
                     </Text>
 
-                    <View style={styles.progressTrack}>
-                      <View
-                        style={[
-                          styles.progressFill,
-                          {
-                            width: `${Math.max(8, pulse.progress)}%`,
-                            backgroundColor: colors.accent,
-                          },
-                        ]}
-                      />
+                    <View style={styles.stageRow}>
+                      {STAGE_ORDER.map((key, index) => {
+                        const done = index < activeStageIndex;
+                        const current = index === activeStageIndex;
+                        return (
+                          <View
+                            key={key}
+                            style={[
+                              styles.stageChip,
+                              {
+                                backgroundColor: current ? stageCurrentBg : done ? stageDoneBg : stageIdleBg,
+                                borderColor: current ? colors.accent : sheetBorder,
+                              },
+                            ]}
+                          >
+                            {done ? (
+                              <Ionicons name="checkmark" size={11} color={colors.accent} />
+                            ) : current ? (
+                              <View style={[styles.stageDot, { backgroundColor: colors.accent }]} />
+                            ) : null}
+                            <Text
+                              style={[
+                                styles.stageChipText,
+                                {
+                                  color: current || done ? sheetText : sheetMuted,
+                                  fontWeight: current ? '800' : '600',
+                                },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {t(`discovery.stages.${key}`)}
+                            </Text>
+                          </View>
+                        );
+                      })}
                     </View>
-                    <Text style={styles.progressMeta}>
-                      Etap kierunku · {pulse.progress}%
-                      {pulse.decisionCount != null
-                        ? ` · ${pulse.decisionCount} decyzji`
+                    <Text style={[styles.progressMeta, { color: sheetMuted }]}>
+                      {t('discovery.stages.meta')}
+                      {pulse.decisionCount != null && pulse.decisionCount > 0
+                        ? ` · ${t('discovery.stages.decisions', { count: pulse.decisionCount })}`
                         : ''}
                     </Text>
-                    <Text style={styles.progressHint}>
-                      To nie jest dopasowanie oferty — to postęp profilu gustu (Odkrywanie → Fokus →
-                      Gotowość).
-                    </Text>
+                    <Text style={[styles.progressHint, { color: sheetMuted }]}>{t('discovery.stages.hint')}</Text>
 
-                    <Text style={styles.suggestion} numberOfLines={4}>
+                    <Text style={[styles.suggestion, { color: sheetMuted }]} numberOfLines={4}>
                       {pulse.suggestion}
                     </Text>
 
                     <ApplePressable style={[styles.cta, { backgroundColor: colors.accent }]} onPress={runPrimary} haptic="medium">
-                      <Text style={styles.ctaText}>{pulse.primaryCta?.label || 'Kontynuuj Discovery'}</Text>
+                      <Text style={styles.ctaText}>
+                        {(() => {
+                          const action = pulse.primaryCta?.action;
+                          if (action) {
+                            const key = `discovery.cta.${action}`;
+                            const label = t(key);
+                            if (label !== key) return label;
+                          }
+                          return pulse.primaryCta?.label || t('discovery.pulse.continueDiscovery');
+                        })()}
+                      </Text>
                       <Ionicons name="arrow-forward" size={16} color="#061018" />
                     </ApplePressable>
                     <ApplePressable style={styles.secondaryCta} onPress={runSecondary} haptic="none">
-                      <Text style={styles.secondaryCtaText}>
-                        {pulse.secondaryCta?.label || 'Lustro preferencji'}
+                      <Text style={[styles.secondaryCtaText, { color: sheetMuted }]}>
+                        {(() => {
+                          const action = pulse.secondaryCta?.action;
+                          if (action) {
+                            const key = `discovery.cta.${action}`;
+                            const label = t(key);
+                            if (label !== key) return label;
+                          }
+                          return pulse.secondaryCta?.label || t('discovery.pulse.lustro');
+                        })()}
                       </Text>
                     </ApplePressable>
                   </>
@@ -853,12 +1040,14 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     marginRight: 10,
     marginBottom: 2,
+    overflow: 'visible',
   },
   hit: {
     width: HIT,
     height: HIT,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
   aura: {
     position: 'absolute',
@@ -875,7 +1064,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   ringHost: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    width: CORE + RING_GAP * 2,
+    height: CORE + RING_GAP * 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -885,9 +1076,23 @@ const styles = StyleSheet.create({
     borderRadius: CORE / 2,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(8,8,10,0.88)',
+    backgroundColor: '#1C1C1E',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  siriSwirl: {
+    position: 'absolute',
+    width: CORE * 1.85,
+    height: CORE * 1.85,
+  },
+  siriSwirlAlt: {
+    position: 'absolute',
+    width: CORE * 1.7,
+    height: CORE * 1.7,
+  },
+  siriSheen: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   brainStage: {
     alignItems: 'center',
@@ -974,6 +1179,31 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressFill: { height: '100%', borderRadius: 2 },
+  stageRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 14,
+  },
+  stageChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    maxWidth: '48%',
+  },
+  stageChipText: {
+    fontSize: 11,
+    letterSpacing: 0.1,
+  },
+  stageDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
   progressMeta: {
     color: 'rgba(245,245,247,0.55)',
     fontSize: 11,

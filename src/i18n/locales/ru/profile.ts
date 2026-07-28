@@ -206,7 +206,7 @@ export const profile = {
   intelligence: {
     sectionTitle: 'EstateOS™ Intelligence',
     title: 'Intelligence',
-    subtitleOn: 'Персонализация Discovery и подсказки включены',
+    subtitleOn: 'Персонализация Discovery и подсказки',
     subtitleOff: 'Персонализация Discovery и подсказки',
     footer:
       'Та же настройка, что на estateos.pl — включает персонализацию на аккаунте.',
@@ -489,6 +489,23 @@ export const profile = {
     version: 'EstateOS™ v{{version}}',
     deleteAccount: 'удалить аккаунт',
     deleteAccountA11y: 'Удалить аккаунт',
+    deleteAccountTitle: 'Удалить аккаунт',
+    deleteAccountBody:
+      'Удаление аккаунта необратимо. Данные профиля, настройки в приложении и привязки Passkey перестанут работать. Нужен текущий пароль — если вы пользуетесь только Passkey, задайте пароль снова на экране входа («Не помню пароль»).',
+    deleteAccountEmail: 'Аккаунт: {{email}}',
+    deleteAccountConsequences: 'Последствия',
+    deleteAccountBulletSessions: 'Выход из всех сессий приложения.',
+    deleteAccountBulletOffers:
+      'Объявления и контент, связанные с аккаунтом, будут удалены или анонимизированы согласно политике сервера.',
+    deleteAccountBulletDealroom:
+      'Чат Dealroom и история сделок могут быть анонимизированы для второй стороны.',
+    deleteAccountPlusTitle: 'Пакет Plus',
+    deleteAccountInvestorProTitle: 'Investor Pro',
+    deleteAccountAck: 'Я понимаю последствия удаления',
+    deleteAccountPasswordLabel: 'Подтвердите текущим паролем',
+    deleteAccountPasswordPlaceholder: 'Пароль',
+    deleteAccountCancel: 'Отмена',
+    deleteAccountConfirm: 'Удалить навсегда',
     alerts: {
       avatarUploadFailed: 'Не удалось загрузить фотографию (HTTP {{status}}).',
       avatarNotSaved: 'Сервер не подтвердил сохранение аватара. Попробуйте еще раз.',
