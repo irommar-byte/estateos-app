@@ -289,8 +289,10 @@ export const offer = {
       bodyPaidCompany: ' — {{companyName}}',
       bodyPaidVatBold:
         'Prowizja jest brutto (z VAT). Nie dopłacasz podatku ani opłat ponad cenę ofertową i uzgodnioną kwotę prowizji.',
+      bodyShortZero: 'Bez prowizji - 0%',
+      bodyShortPaid: 'W cenie: {{percent}} ≈ {{amount}} dla agenta (brutto, bez dopłat).',
     },
-    adminFeePill: '+ {{amount}} dodatkowe opłaty (czynsz)',
+    adminFeePill: '+ {{amount}} czynsz',
     roi: {
       label: 'EstateOS™ ROI',
       sub: 'roczna stopa',
@@ -304,6 +306,7 @@ export const offer = {
     },
     ctas: {
       editOffer: 'Edytuj ofertę',
+      adminEdit: 'Edycja',
       viewDealroom: 'Zobacz Dealroom',
       dealroomStatus: 'Dealroom — status ceny',
       appointment: 'Spotkanie',

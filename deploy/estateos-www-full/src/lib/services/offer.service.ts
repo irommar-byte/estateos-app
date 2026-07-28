@@ -596,7 +596,12 @@ export async function updateOffer(body: any) {
     }
   });
 
-  if (!existing || existing.userId !== Number(userId)) {
+  const actor = await prisma.user.findUnique({
+    where: { id: Number(userId) },
+    select: { id: true, role: true },
+  });
+  const isAdmin = String(actor?.role || '').toUpperCase() === 'ADMIN';
+  if (!existing || (!isAdmin && existing.userId !== Number(userId))) {
     throw new Error('Brak uprawnień');
   }
 

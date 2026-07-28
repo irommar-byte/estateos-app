@@ -93,11 +93,10 @@ import { localeToDateFormat, useI18n } from '../i18n';
 import { isProPhotoSessionSampleOfferId } from '../data/proPhotoSessionSampleOffers';
 
 const { width, height } = Dimensions.get('window');
-/** ~4:3 względem szerokości — niższy hero, żeby po otwarciu widać było lokalizację nad paskiem CTA. */
-const IMG_HEIGHT = Math.max(400, Math.round(Math.min(width * (4 / 3), height * 0.46)));
+/** Fallback hero — finalna wysokość dobierana tak, by karta kończyła się na opisie. */
+const DEFAULT_HERO_HEIGHT = Math.max(360, Math.round(Math.min(width * (4 / 3), height * 0.42)));
 /** Ile białej karty nachodzi na dół zdjęcia (zaokrąglone rogi). */
 const HERO_SHEET_OVERLAP = 28;
-const HERO_TAP_HEIGHT = IMG_HEIGHT - HERO_SHEET_OVERLAP;
 const GALLERY_CONTENT_WIDTH = width - 48;
 const GALLERY_HERO_HEIGHT = Math.round(GALLERY_CONTENT_WIDTH * 0.62);
 const EVENT_PREFIX = DEAL_EVENT_PREFIX;
@@ -177,6 +176,8 @@ export default function OfferDetail({ route, navigation }: any) {
    * przy scrollu widać hero zdjęcia („szczelina" między kartą a bottom barem).
    */
   const [bottomBarHeight, setBottomBarHeight] = useState(180);
+  const [heroHeight, setHeroHeight] = useState(DEFAULT_HERO_HEIGHT);
+  const heroHeightSV = useSharedValue(DEFAULT_HERO_HEIGHT);
   const heartScale = useSharedValue(1);
   const { user, token } = useAuthStore() as any;
   const isGuest = !user?.id;
@@ -207,6 +208,7 @@ export default function OfferDetail({ route, navigation }: any) {
   }, [offer]);
   const listingOwnerUserId = ownerCandidateIds[0] ?? null;
   const isOwner = viewerUserId > 0 && ownerCandidateIds.includes(viewerUserId);
+  const isPlatformAdmin = String(user?.role || '').toUpperCase() === 'ADMIN';
   const proExpiryMs = user?.proExpiresAt ? new Date(user.proExpiresAt).getTime() : null;
   const isProStillActive = Boolean(!proExpiryMs || proExpiryMs > Date.now());
   const viewerPlanType = String(user?.planType || '').trim().toUpperCase();
@@ -486,6 +488,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const [auctionEvent, setAuctionEvent] = useState<AuctionEventRecord | null>(null);
   const bidBtnScale = useSharedValue(1);
   const apptBtnScale = useSharedValue(1);
+  const adminSirenPulse = useSharedValue(1);
 
   useEffect(() => {
     if (isSamplePreview) {
@@ -897,12 +900,38 @@ export default function OfferDetail({ route, navigation }: any) {
     transform: [{ translateY: interpolate(scrollY.value, [0, 56], [0, -10], Extrapolation.CLAMP) }],
   }));
 
-  const imageAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: interpolate(scrollY.value, [-IMG_HEIGHT, 0, IMG_HEIGHT], [-IMG_HEIGHT / 2, 0, IMG_HEIGHT * 0.5], Extrapolation.CLAMP) },
-      { scale: interpolate(scrollY.value, [-IMG_HEIGHT, 0], [2, 1], Extrapolation.CLAMP) },
-    ],
-  }));
+  const imageAnimatedStyle = useAnimatedStyle(() => {
+    const h = heroHeightSV.value;
+    return {
+      transform: [
+        { translateY: interpolate(scrollY.value, [-h, 0, h], [-h / 2, 0, h * 0.5], Extrapolation.CLAMP) },
+        { scale: interpolate(scrollY.value, [-h, 0], [2, 1], Extrapolation.CLAMP) },
+      ],
+    };
+  });
+
+  const fitHeroToIntro = useCallback(
+    (introHeight: number) => {
+      if (!Number.isFinite(introHeight) || introHeight < 80) return;
+      const next = Math.round(
+        Math.max(
+          300,
+          Math.min(height * 0.54, height - bottomBarHeight - introHeight + HERO_SHEET_OVERLAP),
+        ),
+      );
+      if (Math.abs(next - heroHeight) <= 4) return;
+      setHeroHeight(next);
+      heroHeightSV.value = next;
+    },
+    [bottomBarHeight, heroHeight, heroHeightSV, height],
+  );
+  const introHeightRef = useRef(0);
+
+  useEffect(() => {
+    if (introHeightRef.current > 80) {
+      fitHeroToIntro(introHeightRef.current);
+    }
+  }, [bottomBarHeight, fitHeroToIntro]);
 
   // --- FUNKCJE OTWIERANIA GALERII ---
   const openGallery = (index: number) => {
@@ -1369,6 +1398,26 @@ export default function OfferDetail({ route, navigation }: any) {
     transform: [{ scale: apptBtnScale.value }],
   }));
 
+  const adminSirenAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: adminSirenPulse.value }],
+    opacity: interpolate(adminSirenPulse.value, [1, 1.08], [0.88, 1], Extrapolation.CLAMP),
+  }));
+
+  useEffect(() => {
+    if (!isPlatformAdmin || isOwner || isSamplePreview) {
+      adminSirenPulse.value = 1;
+      return;
+    }
+    adminSirenPulse.value = withRepeat(
+      withSequence(
+        withTiming(1.08, { duration: 520 }),
+        withTiming(1, { duration: 520 }),
+      ),
+      -1,
+      false,
+    );
+  }, [adminSirenPulse, isOwner, isPlatformAdmin, isSamplePreview]);
+
   const animateBidButton = () => {
     bidBtnScale.value = withSequence(
       withTiming(0.95, { duration: 90 }),
@@ -1388,7 +1437,7 @@ export default function OfferDetail({ route, navigation }: any) {
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#000000' : '#ffffff' }]}>
       <Animated.View
-        style={[styles.imageContainer, imageAnimatedStyle]}
+        style={[styles.imageContainer, { height: heroHeight }, imageAnimatedStyle]}
         pointerEvents="box-none"
       >
         <Pressable
@@ -1498,7 +1547,7 @@ export default function OfferDetail({ route, navigation }: any) {
         */}
         <Pressable
           onPress={() => openGallery(0)}
-          style={styles.heroTapStrip}
+          style={[styles.heroTapStrip, { height: Math.max(120, heroHeight - HERO_SHEET_OVERLAP) }]}
           accessibilityRole="button"
           accessibilityLabel={t('offer.detail.hero.openGallery')}
         />
@@ -1511,6 +1560,14 @@ export default function OfferDetail({ route, navigation }: any) {
             },
           ]}
         >
+          {/* Pierwszy ekran karty: od uchwytu do końca opisu — reszta po przewinięciu. */}
+          <View
+            onLayout={(e) => {
+              const h = e.nativeEvent.layout.height;
+              introHeightRef.current = h;
+              fitHeroToIntro(h);
+            }}
+          >
           <LinearGradient
             pointerEvents="none"
             colors={
@@ -1721,44 +1778,10 @@ export default function OfferDetail({ route, navigation }: any) {
             ))}
           </View>
 
-          {offer?.id ? (
-            <>
-              <View style={styles.discoveryUnifiedWrap}>
-                <LinearGradient
-                  colors={
-                    isDark
-                      ? ['rgba(90,200,250,0.92)', 'rgba(167,139,250,0.88)', 'rgba(52,211,153,0.9)', 'rgba(251,191,36,0.88)', 'rgba(90,200,250,0.92)']
-                      : ['rgba(56,189,248,0.85)', 'rgba(147,51,234,0.8)', 'rgba(34,197,94,0.85)', 'rgba(251,191,36,0.82)', 'rgba(56,189,248,0.85)']
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.discoveryRainbowBorder}
-                >
-                  <View
-                    style={[
-                      styles.discoveryUnifiedCard,
-                      {
-                        backgroundColor: isDark ? 'rgba(16,20,26,0.94)' : 'rgba(248,251,253,0.97)',
-                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)',
-                        shadowColor: isDark ? '#000000' : '#111827',
-                        shadowOpacity: isDark ? 0.45 : 0.14,
-                      },
-                    ]}
-                  >
-                    <DiscoveryOfferExplainer offerId={offer.id} isDark={isDark} embedded />
-                    <OfferDiscoveryActions
-                      offerId={offer.id}
-                      variant="full"
-                      source="mobile_offer_detail"
-                      trackOpen
-                      isDark={isDark}
-                      onRequireAuth={() => navigation?.navigate?.('Login')}
-                    />
-                  </View>
-                </LinearGradient>
-              </View>
-            </>
-          ) : null}
+          <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+          <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.about')}</Text>
+          <Text style={[styles.description, isDark && { color: '#d1d5db' }]}>{displayOffer.description}</Text>
+          </View>
 
           <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
           <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.keyParameters')}</Text>
@@ -1930,10 +1953,6 @@ export default function OfferDetail({ route, navigation }: any) {
             </>
           )}
 
-          <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
-          <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.about')}</Text>
-          <Text style={[styles.description, isDark && { color: '#d1d5db' }]}>{displayOffer.description}</Text>
-
           <Text style={[styles.sectionTitle, { marginTop: 28 }, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.gallery')}</Text>
           <View style={styles.gallerySection}>
             <Pressable
@@ -1995,6 +2014,43 @@ export default function OfferDetail({ route, navigation }: any) {
               token={token}
               contentWidth={GALLERY_CONTENT_WIDTH}
             />
+          ) : null}
+
+          {offer?.id ? (
+            <View style={styles.discoveryUnifiedWrap}>
+              <LinearGradient
+                colors={
+                  isDark
+                    ? ['rgba(90,200,250,0.92)', 'rgba(167,139,250,0.88)', 'rgba(52,211,153,0.9)', 'rgba(251,191,36,0.88)', 'rgba(90,200,250,0.92)']
+                    : ['rgba(56,189,248,0.85)', 'rgba(147,51,234,0.8)', 'rgba(34,197,94,0.85)', 'rgba(251,191,36,0.82)', 'rgba(56,189,248,0.85)']
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.discoveryRainbowBorder}
+              >
+                <View
+                  style={[
+                    styles.discoveryUnifiedCard,
+                    {
+                      backgroundColor: isDark ? 'rgba(16,20,26,0.94)' : 'rgba(248,251,253,0.97)',
+                      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)',
+                      shadowColor: isDark ? '#000000' : '#111827',
+                      shadowOpacity: isDark ? 0.45 : 0.14,
+                    },
+                  ]}
+                >
+                  <DiscoveryOfferExplainer offerId={offer.id} isDark={isDark} embedded />
+                  <OfferDiscoveryActions
+                    offerId={offer.id}
+                    variant="full"
+                    source="mobile_offer_detail"
+                    trackOpen
+                    isDark={isDark}
+                    onRequireAuth={() => navigation?.navigate?.('Login')}
+                  />
+                </View>
+              </LinearGradient>
+            </View>
           ) : null}
 
           {isSamplePreview ? (
@@ -2081,30 +2137,6 @@ export default function OfferDetail({ route, navigation }: any) {
         }}
       >
         <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 16) + 12 }, Platform.OS === 'android' && { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }, isDark && { backgroundColor: Platform.OS === 'android' ? '#0a0a0a' : 'rgba(10,10,10,0.65)', borderTopColor: 'rgba(255,255,255,0.1)' }]}>
-          {/* Lokalizacja tuż pod linią zetknięcia karty z hero — zawsze widoczna po otwarciu. */}
-          {locationLine ? (
-            <Pressable
-              onPress={() => {
-                Haptics.selectionAsync();
-                setIsLocationPreviewOpen(true);
-              }}
-              style={({ pressed }) => [
-                styles.bottomBarLocationRow,
-                pressed && { opacity: 0.72 },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={locationLine}
-            >
-              <MapPin color={isDark ? '#A1A1AA' : '#86868b'} size={15} />
-              <Text
-                style={[styles.bottomBarLocationText, isDark && { color: '#D4D4D8' }]}
-                numberOfLines={1}
-              >
-                {locationLine}
-              </Text>
-            </Pressable>
-          ) : null}
-          
           {/*
             1) Cena + banery (pełna szerokość, owijanie bez nakładania).
             2) Wizytówka + krótki opis prowizji pod spodem (złączone).
@@ -2481,6 +2513,21 @@ export default function OfferDetail({ route, navigation }: any) {
                     <Text style={[styles.secondaryAppleButtonText, isDark && { color: '#ffffff' }]}>{t('offer.detail.ctas.appointment')}</Text>
                   </TouchableOpacity>
                 </Animated.View>
+
+                {isPlatformAdmin ? (
+                  <Animated.View style={[styles.adminSirenWrap, adminSirenAnimatedStyle]}>
+                    <TouchableOpacity
+                      style={styles.adminSirenButton}
+                      onPress={handleEdit}
+                      activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('offer.detail.ctas.adminEdit')}
+                    >
+                      <Pencil size={15} color="#FFFFFF" strokeWidth={2.4} />
+                      <Text style={styles.adminSirenButtonText}>{t('offer.detail.ctas.adminEdit')}</Text>
+                    </TouchableOpacity>
+                  </Animated.View>
+                ) : null}
 
                 <Animated.View style={[styles.actionFlexWrap, bidBtnAnimatedStyle]}>
                   <TouchableOpacity
@@ -3005,10 +3052,10 @@ export default function OfferDetail({ route, navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffff' },
-  imageContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: IMG_HEIGHT, zIndex: 1, elevation: 1 },
+  imageContainer: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1, elevation: 1 },
   scrollLayer: { flex: 1, zIndex: 2 },
   scrollContent: { flexGrow: 0, paddingBottom: 0 },
-  heroTapStrip: { height: HERO_TAP_HEIGHT, backgroundColor: 'transparent' },
+  heroTapStrip: { backgroundColor: 'transparent' },
   heroImagePressable: { flex: 1 },
   mainImage: { width: '100%', height: '100%' },
   heroPhotoPill: {
@@ -3421,22 +3468,6 @@ const styles = StyleSheet.create({
     shadowRadius: 22,
     overflow: 'hidden',
   },
-  bottomBarLocationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-    paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(60,60,67,0.12)',
-  },
-  bottomBarLocationText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6b7280',
-    letterSpacing: -0.1,
-  },
   bottomBarTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12 },
   bottomBarPriceColumn: { flex: 1, minWidth: 0 },
   bottomPriceStack: {
@@ -3702,8 +3733,39 @@ const styles = StyleSheet.create({
   },
   ownerPillChevron: { marginLeft: 2, flexShrink: 0 },
   
-  bottomActionsRow: { flexDirection: 'row', gap: 12 },
+  bottomActionsRow: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
   actionFlexWrap: { flex: 1 },
+  adminSirenWrap: {
+    flexGrow: 0,
+    flexShrink: 0,
+    justifyContent: 'center',
+  },
+  adminSirenButton: {
+    minWidth: 78,
+    alignSelf: 'stretch',
+    borderRadius: 24,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FF3B30',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    borderTopColor: 'rgba(255,255,255,0.45)',
+    borderBottomColor: 'rgba(120,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    shadowColor: '#FF3B30',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  adminSirenButtonText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
   
   secondaryAppleButton: { 
     flex: 1,

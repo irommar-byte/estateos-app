@@ -288,8 +288,10 @@ export const offer = {
       bodyPaidCompany: ' — {{companyName}}',
       bodyPaidVatBold:
         'Commission is gross (VAT included). You pay no tax or fees beyond the listing price and agreed commission.',
+      bodyShortZero: 'No commission - 0%',
+      bodyShortPaid: 'In price: {{percent}} ≈ {{amount}} to agent (gross, no extras).',
     },
-    adminFeePill: '+ admin fee {{amount}}',
+    adminFeePill: '+ {{amount}} fees',
     roi: {
       label: 'EstateOS™ ROI',
       sub: 'annual yield',
@@ -303,6 +305,7 @@ export const offer = {
     },
     ctas: {
       editOffer: 'Edit listing',
+      adminEdit: 'Edit',
       viewDealroom: 'Open Dealroom',
       dealroomStatus: 'Dealroom — price status',
       appointment: 'Viewing',

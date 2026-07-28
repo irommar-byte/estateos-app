@@ -279,8 +279,10 @@ export const offer = {
       bodyPaidAgentDefault: 'агент',
       bodyPaidVatBold:
         'The commission is GROSS — VAT is included; the buyer pays no additional tax or fees.',
+      bodyShortZero: 'Без комиссии - 0%',
+      bodyShortPaid: 'В цене: {{percent}} ≈ {{amount}} агенту (брутто, без доплат).',
     },
-    adminFeePill: '+ административный сбор {{amount}}',
+    adminFeePill: '+ {{amount}} сборы',
     roi: {
       label: 'Окупаемость инвестиций EstateOS™',
       sub: 'годовая доходность',
@@ -294,6 +296,7 @@ export const offer = {
     },
     ctas: {
       editOffer: 'Редактировать объявление',
+      adminEdit: 'Правка',
       viewDealroom: 'Открыть дилерский зал',
       dealroomStatus: 'Dealroom — ценовой статус',
       appointment: 'Просмотр',
