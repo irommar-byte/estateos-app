@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,7 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
@@ -58,10 +58,12 @@ function fmtPrice(value: number) {
 }
 
 export default function AgencyOfficeScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const insets = useSafeAreaInsets();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
+  const userCompanyLogoUrl = (user as any)?.companyLogoUrl as string | null | undefined;
   const membership = useAuthStore((s) => s.agencyMembership);
   const refreshAgencyMembership = useAuthStore((s) => s.refreshAgencyMembership);
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
@@ -267,6 +269,57 @@ export default function AgencyOfficeScreen() {
   const creditTransfers = dashboard?.creditTransfers ?? [];
   const partnerPlan = dashboard?.partnerPlan ?? null;
 
+  const decidePendingMember = useCallback(
+    async (member: AgencyTeamMember, nextStatus: 'ACTIVE' | 'REJECTED') => {
+      if (!token) return;
+      setBusyId(member.id);
+      try {
+        const res = await patchAgencyMember(token, member.id, { status: nextStatus });
+        if (!res.ok) {
+          Alert.alert('Biuro', res.message || 'Nie udało się zapisać decyzji.');
+          return;
+        }
+        if (nextStatus === 'ACTIVE') {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        }
+        await refreshAgencyMembership();
+        await loadDashboard();
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [token, refreshAgencyMembership, loadDashboard],
+  );
+
+  useEffect(() => {
+    const shouldOpenDecision = Boolean(route?.params?.openPendingDecision);
+    if (!shouldOpenDecision || !isAdmin || pendingTeam.length === 0 || busyId !== null) return;
+    const member = pendingTeam[0];
+    navigation.setParams?.({ openPendingDecision: false });
+    Alert.alert(
+      'Nowe zgłoszenie do biura',
+      `${member.name || 'Nowy agent'} czeka na Twoją decyzję.`,
+      [
+        { text: 'Później', style: 'cancel' },
+        {
+          text: 'Odrzuć',
+          style: 'destructive',
+          onPress: () => {
+            void decidePendingMember(member, 'REJECTED');
+          },
+        },
+        {
+          text: 'Akceptuj',
+          onPress: () => {
+            void decidePendingMember(member, 'ACTIVE');
+          },
+        },
+      ],
+    );
+  }, [route?.params?.openPendingDecision, isAdmin, pendingTeam, busyId, navigation, decidePendingMember]);
+
   const PLAN_LABELS: Record<string, string> = {
     start: 'Partner Start',
     pro: 'Partner Pro',
@@ -290,9 +343,9 @@ export default function AgencyOfficeScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void reload()} />}
       >
         <View style={[styles.hero, { backgroundColor: colors.card, borderColor: colors.separator }]}>
-          {mediaUrl(membership?.company?.logoUrl || user?.companyLogoUrl) ? (
+          {mediaUrl(membership?.company?.logoUrl || userCompanyLogoUrl) ? (
             <Image
-              source={{ uri: mediaUrl(membership?.company?.logoUrl || user?.companyLogoUrl)! }}
+              source={{ uri: mediaUrl(membership?.company?.logoUrl || userCompanyLogoUrl)! }}
               style={styles.heroLogo}
               contentFit="cover"
             />

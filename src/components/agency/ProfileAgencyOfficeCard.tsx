@@ -80,7 +80,7 @@ export default function ProfileAgencyOfficeCard({ membership, isDark }: Props) {
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={[styles.eyebrow, { color: secondary }]}>MOJE BIURO</Text>
-          <Text style={[styles.companyName, { color: text }]} numberOfLines={2}>
+          <Text style={[styles.companyName, { color: text }]}>
             {companyName}
           </Text>
           <View style={styles.badgeRow}>
@@ -99,15 +99,20 @@ export default function ProfileAgencyOfficeCard({ membership, isDark }: Props) {
               </View>
             ) : null}
           </View>
-          <Text style={[styles.subtitle, { color: secondary }]} numberOfLines={3}>
+          <Text style={[styles.subtitle, { color: secondary }]}>
             {subtitle}
           </Text>
           {isPending ? (
-            <Text style={[styles.browseHint, { color: secondary }]} numberOfLines={3}>
+            <Text style={[styles.browseHint, { color: secondary }]}>
               {t('profile.agency.pendingBrowseHint')}
             </Text>
           ) : null}
         </View>
+        {!isPending && isAdmin && pendingCount > 0 ? (
+          <View style={styles.pendingBubble}>
+            <Text style={styles.pendingBubbleText}>{pendingCount > 99 ? '99+' : String(pendingCount)}</Text>
+          </View>
+        ) : null}
         {isPending ? null : <Ionicons name="chevron-forward" size={20} color={secondary} />}
       </View>
     </Pressable>
@@ -139,4 +144,23 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 11, fontWeight: '700', color: '#34C759' },
   subtitle: { fontSize: 13, marginTop: 8, lineHeight: 18 },
   browseHint: { fontSize: 12, marginTop: 6, lineHeight: 17 },
+  pendingBubble: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF3B30',
+    shadowColor: '#FF3B30',
+    shadowOpacity: 0.55,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  pendingBubbleText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+    lineHeight: 14,
+  },
 });

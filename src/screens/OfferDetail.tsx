@@ -1657,43 +1657,99 @@ export default function OfferDetail({ route, navigation }: any) {
           ) : null}
 
           <View style={styles.statsGrid}>
-            <View style={[styles.statBox, { backgroundColor: isDark ? '#1c1c1e' : '#f6f7f9', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.06)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
-              <BedDouble color={isDark ? "#e5e7eb" : "#1d1d1f"} size={26} strokeWidth={1.5} />
-              <Text style={[styles.statText, { color: isDark ? '#e5e7eb' : '#1d1d1f' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{t('offer.detail.stats.rooms', { count: displayOffer.stats.beds })}</Text>
-            </View>
-            <View style={[styles.statBox, { backgroundColor: isDark ? '#1c1c1e' : '#f6f7f9', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.06)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
-              <Maximize color={isDark ? "#e5e7eb" : "#1d1d1f"} size={26} strokeWidth={1.5} />
-              <Text style={[styles.statText, { color: isDark ? '#e5e7eb' : '#1d1d1f' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{displayOffer.stats.size}</Text>
-            </View>
-            <View style={[styles.statBox, { backgroundColor: isDark ? '#1c1c1e' : '#f6f7f9', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.06)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
-              <Layers color={isDark ? "#e5e7eb" : "#1d1d1f"} size={26} strokeWidth={1.5} />
-              <Text style={[styles.statText, { color: isDark ? '#e5e7eb' : '#1d1d1f' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{t('offer.detail.stats.floor', { floor: formatFloorStat(offer?.floor, t) })}</Text>
-            </View>
-            <View style={[styles.statBox, { backgroundColor: isDark ? '#1c1c1e' : '#f6f7f9', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.06)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
-              <Calendar color={isDark ? "#e5e7eb" : "#1d1d1f"} size={26} strokeWidth={1.5} />
-              <Text style={[styles.statText, { color: isDark ? '#e5e7eb' : '#1d1d1f' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{t('offer.detail.stats.year', { year: offer?.yearBuilt || offer?.buildYear || offer?.year || '-' })}</Text>
-            </View>
+            {[
+              {
+                key: 'rooms',
+                icon: <BedDouble color={isDark ? '#e5e7eb' : '#1d1d1f'} size={26} strokeWidth={1.5} />,
+                label: t('offer.detail.stats.rooms', { count: displayOffer.stats.beds }),
+              },
+              {
+                key: 'size',
+                icon: <Maximize color={isDark ? '#e5e7eb' : '#1d1d1f'} size={26} strokeWidth={1.5} />,
+                label: displayOffer.stats.size,
+              },
+              {
+                key: 'floor',
+                icon: <Layers color={isDark ? '#e5e7eb' : '#1d1d1f'} size={26} strokeWidth={1.5} />,
+                label: t('offer.detail.stats.floor', { floor: formatFloorStat(offer?.floor, t) }),
+              },
+              {
+                key: 'year',
+                icon: <Calendar color={isDark ? '#e5e7eb' : '#1d1d1f'} size={26} strokeWidth={1.5} />,
+                label: t('offer.detail.stats.year', {
+                  year: offer?.yearBuilt || offer?.buildYear || offer?.year || '-',
+                }),
+              },
+            ].map((item) => (
+              <View
+                key={item.key}
+                style={[
+                  styles.statBox,
+                  {
+                    backgroundColor: isDark ? '#1c1c1e' : '#f6f7f9',
+                    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.06)',
+                    borderTopColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.9)',
+                    shadowColor: isDark ? '#000000' : '#111827',
+                    shadowOpacity: isDark ? 0.42 : 0.12,
+                  },
+                ]}
+              >
+                {item.icon}
+                <Text
+                  style={[styles.statText, { color: isDark ? '#e5e7eb' : '#1d1d1f' }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                >
+                  {item.label}
+                </Text>
+              </View>
+            ))}
           </View>
 
           {offer?.id ? (
             <>
-              <DiscoveryOfferExplainer offerId={offer.id} />
-              <View style={{ marginBottom: 16 }}>
-                <OfferDiscoveryActions
-                  offerId={offer.id}
-                  variant="full"
-                  source="mobile_offer_detail"
-                  trackOpen
-                  onRequireAuth={() => navigation?.navigate?.('Login')}
-                />
+              <View style={styles.discoveryUnifiedWrap}>
+                <LinearGradient
+                  colors={
+                    isDark
+                      ? ['rgba(90,200,250,0.92)', 'rgba(167,139,250,0.88)', 'rgba(52,211,153,0.9)', 'rgba(251,191,36,0.88)', 'rgba(90,200,250,0.92)']
+                      : ['rgba(56,189,248,0.85)', 'rgba(147,51,234,0.8)', 'rgba(34,197,94,0.85)', 'rgba(251,191,36,0.82)', 'rgba(56,189,248,0.85)']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.discoveryRainbowBorder}
+                >
+                  <View
+                    style={[
+                      styles.discoveryUnifiedCard,
+                      {
+                        backgroundColor: isDark ? 'rgba(16,20,26,0.94)' : 'rgba(248,251,253,0.97)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)',
+                        shadowColor: isDark ? '#000000' : '#111827',
+                        shadowOpacity: isDark ? 0.45 : 0.14,
+                      },
+                    ]}
+                  >
+                    <DiscoveryOfferExplainer offerId={offer.id} isDark={isDark} embedded />
+                    <OfferDiscoveryActions
+                      offerId={offer.id}
+                      variant="full"
+                      source="mobile_offer_detail"
+                      trackOpen
+                      isDark={isDark}
+                      onRequireAuth={() => navigation?.navigate?.('Login')}
+                    />
+                  </View>
+                </LinearGradient>
               </View>
             </>
           ) : null}
 
           <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
           <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.keyParameters')}</Text>
-          <View style={[styles.detailsContainer, { backgroundColor: isDark ? '#1c1c1e' : '#f5f6f8', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.05)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
-            <View style={[styles.detailsContainerInnerGlow, isDark && { borderColor: 'rgba(255,255,255,0.1)' }]} pointerEvents="none" />
+          <View style={[styles.detailsContainer, { backgroundColor: isDark ? '#1c1c1e' : '#f5f6f8', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.05)', borderTopColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.9)', shadowColor: isDark ? '#000000' : '#111827', shadowOpacity: isDark ? 0.4 : 0.11 }]}>
+            <View style={[styles.detailsContainerInnerGlow, isDark && { borderColor: 'rgba(255,255,255,0.12)' }]} pointerEvents="none" />
             <View style={[styles.detailRow, { borderTopWidth: 0, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.transactionType')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{txTypeLabel}</Text></View>
             <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.propertyType')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{propTypeLabel}</Text></View>
             <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{String(offer?.propertyType || '').toUpperCase() === 'PLOT' ? t('offer.detail.labels.plotArea') : t('offer.detail.labels.area')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{displayOffer.stats.size}</Text></View>
@@ -1725,8 +1781,8 @@ export default function OfferDetail({ route, navigation }: any) {
 
           <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
           <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.details')}</Text>
-          <View style={[styles.detailsContainer, { backgroundColor: isDark ? '#1c1c1e' : '#f5f6f8', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.05)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
-            <View style={[styles.detailsContainerInnerGlow, isDark && { borderColor: 'rgba(255,255,255,0.1)' }]} pointerEvents="none" />
+          <View style={[styles.detailsContainer, { backgroundColor: isDark ? '#1c1c1e' : '#f5f6f8', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.05)', borderTopColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.9)', shadowColor: isDark ? '#000000' : '#111827', shadowOpacity: isDark ? 0.4 : 0.11 }]}>
+            <View style={[styles.detailsContainerInnerGlow, isDark && { borderColor: 'rgba(255,255,255,0.12)' }]} pointerEvents="none" />
             <View style={[styles.detailRow, { borderTopWidth: 0, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.condition')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{formatOfferConditionLabel(offer?.condition, t)}</Text></View>
             <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.adminFee')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{adminFeeLabel}</Text></View>
             <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.heating')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{heatingLabel || t('offer.shared.notProvided')}</Text></View>
@@ -1839,7 +1895,23 @@ export default function OfferDetail({ route, navigation }: any) {
             <>
               <Text style={[styles.sectionTitle, { marginTop: 15 }, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.amenities')}</Text>
               <View style={styles.amenitiesWrapper}>
-                {activeAmenities.map((am, i) => <View key={i} style={[styles.amenityPill, isDark && { backgroundColor: '#1c1c1e', borderColor: 'rgba(255,255,255,0.05)' }]}><Text style={[styles.amenityText, isDark && { color: '#e5e7eb' }]}>{am}</Text></View>)}
+                {activeAmenities.map((am, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.amenityPill,
+                      {
+                        backgroundColor: isDark ? '#1c1c1e' : '#ffffff',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.08)',
+                        borderTopColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.95)',
+                        shadowColor: isDark ? '#000000' : '#111827',
+                        shadowOpacity: isDark ? 0.35 : 0.1,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.amenityText, isDark && { color: '#e5e7eb' }]}>{am}</Text>
+                  </View>
+                ))}
               </View>
             </>
           )}
@@ -3170,10 +3242,10 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     width: '48%',
     shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.09,
+    shadowRadius: 18,
+    elevation: 6,
   },
   statText: { marginTop: 8, fontSize: 13, fontWeight: '600', color: '#1d1d1f' },
   divider: { height: 1, backgroundColor: '#e5e5ea', marginBottom: 32 },
@@ -3191,10 +3263,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(17,24,39,0.05)',
     borderTopColor: 'rgba(255,255,255,0.8)',
     shadowColor: '#111827',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.04,
-    shadowRadius: 16,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 11 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 6,
   },
   detailsContainerInnerGlow: {
     ...StyleSheet.absoluteFillObject,
@@ -3227,7 +3299,20 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   amenitiesWrapper: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 32 },
-  amenityPill: { backgroundColor: '#ffffff', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(17,24,39,0.08)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 4, elevation: 1 },
+  amenityPill: {
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+    borderTopColor: 'rgba(255,255,255,0.95)',
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
   amenityText: { color: '#1d1d1f', fontSize: 14, fontWeight: '600' },
   offerIdText: { textAlign: 'center', color: '#86868b', fontSize: 12, marginTop: 24, marginBottom: 0, letterSpacing: 0.5 },
   samplePreviewBanner: {
@@ -3371,6 +3456,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 16,
     borderWidth: 1,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 6,
   },
   agentCommissionTopRow: {
     flexDirection: 'row',
@@ -3764,6 +3854,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 4,
     lineHeight: 18,
+  },
+  discoveryUnifiedWrap: {
+    marginBottom: 16,
+  },
+  discoveryRainbowBorder: {
+    borderRadius: 19,
+    padding: 1.25,
+  },
+  discoveryUnifiedCard: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 9 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
   },
   moreOverlay: {
     flex: 1,

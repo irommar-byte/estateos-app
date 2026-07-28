@@ -613,7 +613,7 @@ const FloatingNextButton = (props: any) => {
           elevation: 6,
         }}
       />
-      <View ref={buttonRef} collapsable={false} {...panResponder.panHandlers} onLayout={() => { requestAnimationFrame(() => { buttonRef.current?.measureInWindow((x, y, w, h) => { const anchor = { x: x + w / 2, y: y + h / 2 }; buttonLayoutRef.current = anchor; setPlusAnchor(anchor); if (__DEV__) console.log('[PLUS] measureInWindow', { x, y, w, h, ...anchor }); }); }); }}>
+      <View ref={buttonRef} collapsable={false} {...panResponder.panHandlers} onLayout={() => { requestAnimationFrame(() => { buttonRef.current?.measureInWindow((x, y, w, h) => { const anchor = { x: x + w / 2, y: y + h / 2 }; buttonLayoutRef.current = anchor; setPlusAnchor(anchor); if (__DEV__) console.log('[PLUS] measureInWindow', { x, y, w, h, centerX: anchor.x, centerY: anchor.y }); }); }); }}>
         <Animated.View style={{
           transform: [{ scale: Animated.multiply(pulseAnim, holdScale) }],
           width: 80,
@@ -861,7 +861,11 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
   const restoreSession = useAuthStore(state => state.restoreSession);
   const token = useAuthStore((state: any) => state.token);
   const userRole = useAuthStore((state: any) => state.user?.role);
-  const isAdminUser = String(userRole || '').trim().toUpperCase() === 'ADMIN';
+  const agencyMembership = useAuthStore((state: any) => state.agencyMembership);
+  const isAdminUser =
+    String(userRole || '').trim().toUpperCase() === 'ADMIN' ||
+    (String(agencyMembership?.role || '').trim().toUpperCase() === 'ADMIN' &&
+      String(agencyMembership?.status || '').trim().toUpperCase() === 'ACTIVE');
   const resolvedTheme = useResolvedTheme();
   const currentColors = Colors[resolvedTheme];
   /**
@@ -896,9 +900,14 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
     refresh();
     const pushSub = Notifications.addNotificationReceivedListener((notification) => {
       const data = (notification?.request?.content?.data || {}) as Record<string, unknown>;
-      const kind = String(data?.kind || data?.notificationType || '').toLowerCase();
+      const kind = String(data?.kind || data?.notificationType || data?.type || '').toLowerCase();
       const attentionType = String(data?.attentionType || '').toLowerCase();
-      if (kind === 'admin_attention' || attentionType === 'photo_session') {
+      const isAgencyJoinPending =
+        kind.includes('agency_join') ||
+        kind.includes('agency_member_join') ||
+        kind.includes('agency_pending_member') ||
+        kind.includes('office_join');
+      if (kind === 'admin_attention' || attentionType === 'photo_session' || isAgencyJoinPending) {
         refresh();
       }
     });
@@ -1055,7 +1064,11 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
         options={{ tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }}
       >
         {(props) => {
-          const p = props.route?.params;
+          const p = (props.route?.params || {}) as {
+            openCalibration?: boolean;
+            radarFocus?: unknown;
+            exploreLive?: boolean;
+          };
           const live = !!(p?.openCalibration || p?.radarFocus || p?.exploreLive);
           return (
             <MarketExploreShell
@@ -1122,24 +1135,9 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
         name="Profil"
         options={{
           tabBarLabel: t('tabs.profile'),
-          tabBarIcon: ({ color }) => <Ionicons name="person-circle" size={28} color={color} />,
-          tabBarBadge:
-            profilePendingCount > 0
-              ? profilePendingCount > 99
-                ? '99+'
-                : profilePendingCount
-              : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: '#FF3B30',
-            color: '#FFFFFF',
-            fontSize: 11,
-            fontWeight: '700',
-            minWidth: 18,
-            height: 18,
-            lineHeight: 14,
-            borderRadius: 9,
-            paddingHorizontal: 5,
-          },
+          tabBarIcon: ({ color }) => (
+            <ProfileTabIconWithGlow color={color} pendingCount={profilePendingCount} />
+          ),
         }}
       >
         {(props) => (
@@ -1164,6 +1162,65 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
     {splashDone ? <TabBarTickerEngine /> : null}
     <EcosystemVerticalTransition />
   </View>
+  );
+}
+
+function ProfileTabIconWithGlow({
+  color,
+  pendingCount,
+}: {
+  color: string;
+  pendingCount: number;
+}) {
+  const glowAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (pendingCount <= 0) {
+      glowAnim.stopAnimation();
+      glowAnim.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 0.52, duration: 780, useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 1, duration: 780, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [glowAnim, pendingCount]);
+
+  return (
+    <View style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
+      <Ionicons name="person-circle" size={28} color={color} />
+      {pendingCount > 0 ? (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            right: -1,
+            bottom: -1,
+            minWidth: 18,
+            height: 18,
+            borderRadius: 9,
+            paddingHorizontal: 5,
+            backgroundColor: '#FF3B30',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: '#FFFFFF',
+            shadowColor: '#FF3B30',
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 0.92,
+            shadowRadius: 8,
+            opacity: glowAnim,
+          }}
+        >
+          <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '900', lineHeight: 12 }}>
+            {pendingCount > 99 ? '99+' : String(pendingCount)}
+          </Text>
+        </Animated.View>
+      ) : null}
+    </View>
   );
 }
 
@@ -1196,6 +1253,14 @@ type PushNavigationTarget =
   | {
       screen: 'AuctionEvent';
       params: { eventId: number | string };
+    }
+  | {
+      screen: 'AgencyOffice';
+      params?: { openPendingDecision?: boolean; source?: 'push_agency_join' };
+    }
+  | {
+      screen: 'AgencyLeadInbox';
+      params?: Record<string, never>;
     };
 
 const parseNumericOrStringId = (value: unknown): number | string | null => {
@@ -1522,6 +1587,21 @@ const parsePushTargetFromResponse = (
     return {
       screen: 'AgencyLeadInbox',
       params: {},
+    };
+  }
+
+  if (
+    routeHint.includes('agency_join') ||
+    routeHint.includes('agency_member_join') ||
+    routeHint.includes('agency_pending_member') ||
+    routeHint.includes('office_join') ||
+    routeHint.includes('agency_request') ||
+    targetTypeNorm.includes('AGENCY_MEMBER') ||
+    targetTypeNorm.includes('OFFICE_MEMBER')
+  ) {
+    return {
+      screen: 'AgencyOffice',
+      params: { openPendingDecision: true, source: 'push_agency_join' },
     };
   }
 

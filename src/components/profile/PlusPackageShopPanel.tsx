@@ -122,7 +122,6 @@ export default function PlusPackageShopPanel({
           shadowColor: hasPlusAvailable ? '#10B981' : '#8E8E93',
         },
         hasPlusAvailable && styles.panelActiveGlow,
-        !hasPlusAvailable && styles.panelInactive,
       ]}
     >
       <Pressable
@@ -165,17 +164,20 @@ export default function PlusPackageShopPanel({
               {counterLabel}
             </Text>
           ) : null}
-          <Text style={[styles.buyLine, { color: hasPlusAvailable ? liveTitle : mutedTitle }]}>
+          {/* CTA zakupu zawsze aktywne wizualnie — brak kredytów nie oznacza disabled. */}
+          <Text style={[styles.buyLine, { color: liveTitle }]}>
             {buyLabel}
           </Text>
-          <Text style={styles.subtitle}>{buySubtitle}</Text>
+          <Text style={[styles.subtitle, { color: isDark ? 'rgba(235,235,245,0.55)' : '#6C6C70' }]}>
+            {buySubtitle}
+          </Text>
         </View>
 
         {!buying ? (
           <Ionicons
             name="chevron-forward"
             size={compactEmbedded ? 18 : 20}
-            color={hasPlusAvailable ? '#10B981' : '#C7C7CC'}
+            color={hasPlusAvailable ? '#10B981' : isDark ? 'rgba(235,235,245,0.55)' : '#8E8E93'}
           />
         ) : null}
       </Pressable>
@@ -202,7 +204,9 @@ export default function PlusPackageShopPanel({
             </View>
             <View style={styles.copy}>
               <Text style={[styles.buyLine, { color: liveTitle }]}>{restoreLabel}</Text>
-              <Text style={styles.subtitle}>{restoreSubtitle}</Text>
+              <Text style={[styles.subtitle, { color: isDark ? 'rgba(235,235,245,0.55)' : '#6C6C70' }]}>
+                {restoreSubtitle}
+              </Text>
             </View>
             {!restoring && <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
           </Pressable>
@@ -232,9 +236,6 @@ const styles = StyleSheet.create({
   panelActiveGlow: {
     shadowRadius: 22,
     elevation: 8,
-  },
-  panelInactive: {
-    opacity: 0.78,
   },
   unifiedRow: {
     flexDirection: 'row',
@@ -283,7 +284,6 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 11,
-    color: '#8E8E93',
     marginTop: 2,
     lineHeight: 14,
   },

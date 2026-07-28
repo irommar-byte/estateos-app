@@ -38,8 +38,7 @@ import IntelligenceToggleIcon from '../components/profile/IntelligenceToggleIcon
 import { hasActiveInvestorProMembership, buildProMembershipCountdown, userAfterInvestorProPurchase } from '../utils/investorProMembership';
 import DeleteAccountSheet from '../components/DeleteAccountSheet';
 import EditNameSheet from '../components/profile/EditNameSheet';
-import EditPhoneSheet from '../components/profile/EditPhoneSheet';
-import EditEmailSheet from '../components/profile/EditEmailSheet';
+import ContactVerificationSheet from '../components/profile/ContactVerificationSheet';
 import BlockedUsersModal from '../components/BlockedUsersModal';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import { useProfileTabBadgeStore } from '../store/useProfileTabBadgeStore';
@@ -56,7 +55,6 @@ import ProfileShopSection from '../components/profile/ProfileShopSection';
 import InvestorProTrialIntroHost from '../components/profile/InvestorProTrialIntroHost';
 import ProfileCardShell from '../components/profile/ProfileCardShell';
 import ProfileAgencyOfficeCard from '../components/agency/ProfileAgencyOfficeCard';
-import { AgencyPendingProfileBanner } from '../components/agency/AgencyPendingGate';
 import ProfileConciergeCard from '../components/agency/ProfileConciergeCard';
 import AgencyTransferModal from '../components/agency/AgencyTransferModal';
 import ProPhotoSessionModal from '../components/ProPhotoSessionModal';
@@ -1640,7 +1638,10 @@ const ListGroup = ({ children, isDark, style }) => (
   <ProfileCardShell isDark={isDark} style={style}>{children}</ProfileCardShell>
 );
 
-const ListItem = ({ icon, color, title, subtitle, subtitleNode, value, onPress, isLast, isDark, rightElement, badgeCount }: any) => (
+const ListItem = ({ icon, color, title, subtitle, subtitleNode, value, onPress, isLast, isDark, rightElement, badgeCount }: any) => {
+  const valueText = String(value ?? '');
+  const isEmailValue = valueText.includes('@');
+  return (
   <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.listItem, pressed && onPress && { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}>
     <View style={[styles.listIconBox, { backgroundColor: color }]}>
       <Ionicons name={icon} size={20} color="#FFF" />
@@ -1697,11 +1698,20 @@ const ListItem = ({ icon, color, title, subtitle, subtitleNode, value, onPress, 
       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: 0 }}>
         {value && (
           <Text
-            style={[styles.listValue, { flexShrink: 1, textAlign: 'right' }]}
+            style={[
+              styles.listValue,
+              {
+                flexShrink: 1,
+                minWidth: 0,
+                textAlign: 'right',
+                letterSpacing: isEmailValue ? -0.15 : 0,
+                fontSize: isEmailValue ? 13 : undefined,
+              },
+            ]}
             numberOfLines={1}
-            ellipsizeMode="middle"
+            ellipsizeMode={isEmailValue ? 'clip' : 'middle'}
             adjustsFontSizeToFit
-            minimumFontScale={0.7}
+            minimumFontScale={isEmailValue ? 0.1 : 0.7}
             allowFontScaling={false}
           >
             {value}
@@ -1711,7 +1721,8 @@ const ListItem = ({ icon, color, title, subtitle, subtitleNode, value, onPress, 
       </View>
     </View>
   </Pressable>
-);
+  );
+};
 
 function AnimatedSegmentedControl({ themeMode, setThemeMode, isDark }) {
   const { t } = useI18n();
@@ -3026,8 +3037,7 @@ function ProfileScreenLoggedIn({
   const [isBlockedUsersVisible, setIsBlockedUsersVisible] = useState(false);
   const blockedUsersCount = useBlockedUsersStore((s) => s.blockedIds.size);
   const [isEditNameVisible, setIsEditNameVisible] = useState(false);
-  const [isEditPhoneVisible, setIsEditPhoneVisible] = useState(false);
-  const [isEditEmailVisible, setIsEditEmailVisible] = useState(false);
+  const [isContactVerifyVisible, setIsContactVerifyVisible] = useState(false);
   const proExpiryMsForDelete = user?.proExpiresAt ? new Date(user.proExpiresAt).getTime() : null;
   const hasPaidIndicators =
     !!user?.isPro ||
@@ -3160,7 +3170,7 @@ function ProfileScreenLoggedIn({
       if (state === 'active') void refreshAdminPendingOffers();
     });
     return () => sub.remove();
-  }, [isZarzad, token]);
+  }, [isZarzad, token, refreshAgencyMembership]);
 
   /**
    * Licznik PENDING zgłoszeń weryfikacji prawnej (KW + nr lokalu).
@@ -3240,7 +3250,7 @@ function ProfileScreenLoggedIn({
       }
     });
     return () => sub.remove();
-  }, [isZarzad, token]);
+  }, [isZarzad, token, refreshAgencyMembership]);
 
   useEffect(() => {
     if (!token || !user?.id) return;
@@ -3251,11 +3261,21 @@ function ProfileScreenLoggedIn({
     return () => sub.remove();
   }, [token, user?.id]);
 
+  const agencyAdminPendingMembers =
+    agencyMembership?.role === 'ADMIN' && agencyMembership?.status === 'ACTIVE'
+      ? (agencyMembership?.stats?.pendingMembers ??
+        agencyMembership?.team?.filter((m) => m.status === 'PENDING').length ??
+        0)
+      : 0;
+
   const adminProfileTabBadgeTotal = isZarzad
-    ? adminPendingOffersCount + adminPendingReportsCount + adminPendingLegalCount + adminPendingPhotoSessionsCount
+    ? adminPendingOffersCount +
+      adminPendingReportsCount +
+      adminPendingLegalCount +
+      adminPendingPhotoSessionsCount
     : 0;
 
-  const profileTabBadgeTotal = adminProfileTabBadgeTotal + userPhotoSessionsActionCount;
+  const profileTabBadgeTotal = adminProfileTabBadgeTotal + userPhotoSessionsActionCount + agencyAdminPendingMembers;
 
   useEffect(() => {
     useProfileTabBadgeStore.getState().setProfilePendingCount(profileTabBadgeTotal);
@@ -3266,15 +3286,26 @@ function ProfileScreenLoggedIn({
     const sub = Notifications.addNotificationReceivedListener((notification) => {
       const data = (notification?.request?.content?.data || {}) as Record<string, unknown>;
       const attentionType = String(data?.attentionType || '').toLowerCase();
+      const kind = String(data?.kind || data?.notificationType || data?.type || '').toLowerCase();
       if (attentionType === 'photo_session') {
         void refreshAdminPendingPhotoSessions();
         return;
       }
-      if (String(data?.kind || data?.notificationType || '').toLowerCase() !== 'admin_attention') return;
+      if (
+        kind.includes('agency_join') ||
+        kind.includes('agency_member_join') ||
+        kind.includes('agency_pending_member') ||
+        kind.includes('office_join')
+      ) {
+        void refreshAgencyMembership();
+        return;
+      }
+      if (kind !== 'admin_attention') return;
       void refreshAdminPendingOffers();
       void refreshAdminPendingLegalVerifications();
       void refreshAdminPendingReports();
       void refreshAdminPendingPhotoSessions();
+      void refreshAgencyMembership();
     });
     return () => sub.remove();
   }, [isZarzad, token]);
@@ -3602,8 +3633,7 @@ function ProfileScreenLoggedIn({
     setIsDeleteAccountVisible(false);
     setIsBlockedUsersVisible(false);
     setIsEditNameVisible(false);
-    setIsEditPhoneVisible(false);
-    setIsEditEmailVisible(false);
+    setIsContactVerifyVisible(false);
     setAdminSelectedUser(null);
   }, []);
 
@@ -4203,10 +4233,8 @@ function ProfileScreenLoggedIn({
               isDark={isDark}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                if (!user?.isVerifiedPhone) {
-                  setIsEditPhoneVisible(true);
-                } else if (!user?.isEmailVerified || hasPendingEmailChange) {
-                  setIsEditEmailVisible(true);
+                if (!user?.isVerifiedPhone || !user?.isEmailVerified || hasPendingEmailChange) {
+                  setIsContactVerifyVisible(true);
                 } else {
                   openPublicProfileModal();
                 }
@@ -4217,7 +4245,6 @@ function ProfileScreenLoggedIn({
 
         {showAgencyOfficeCard ? (
           <View style={[styles.section, { paddingHorizontal: 16, marginTop: -8 }]}>
-            <AgencyPendingProfileBanner isDark={isDark} />
             <ProfileAgencyOfficeCard membership={agencyMembership} isDark={isDark} />
           </View>
         ) : null}
@@ -4285,7 +4312,7 @@ function ProfileScreenLoggedIn({
                   ? undefined
                   : () => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setIsEditPhoneVisible(true);
+                      setIsContactVerifyVisible(true);
                     }
               }
               isDark={isDark}
@@ -4326,7 +4353,7 @@ function ProfileScreenLoggedIn({
                   ? undefined
                   : () => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setIsEditEmailVisible(true);
+                      setIsContactVerifyVisible(true);
                     }
               }
               isLast={true}
@@ -4994,18 +5021,11 @@ function ProfileScreenLoggedIn({
         theme={theme}
         isDark={isDark}
       />
-      <EditPhoneSheet
-        visible={isEditPhoneVisible}
-        onClose={() => setIsEditPhoneVisible(false)}
+      <ContactVerificationSheet
+        visible={isContactVerifyVisible}
+        onClose={() => setIsContactVerifyVisible(false)}
         theme={theme}
         isDark={isDark}
-      />
-      <EditEmailSheet
-        visible={isEditEmailVisible}
-        onClose={() => setIsEditEmailVisible(false)}
-        theme={theme}
-        isDark={isDark}
-        initialVerifyMode={hasPendingEmailChange ? 'change' : 'verify'}
       />
 
       <DeleteAccountSheet

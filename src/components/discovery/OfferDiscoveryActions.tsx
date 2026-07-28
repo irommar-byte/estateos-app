@@ -24,6 +24,7 @@ type Props = {
   source?: string;
   trackOpen?: boolean;
   onRequireAuth?: () => void;
+  isDark?: boolean;
   /** Pytanie o powód otwiera okienko mózgu (np. taśma Intelligence). */
   promptDislikeViaBrain?: boolean;
 };
@@ -54,6 +55,7 @@ export default function OfferDiscoveryActions({
   source = 'mobile_offer_card',
   trackOpen = false,
   onRequireAuth,
+  isDark = false,
   promptDislikeViaBrain = false,
 }: Props) {
   const { t } = useI18n();
@@ -74,6 +76,16 @@ export default function OfferDiscoveryActions({
     ...action,
     label: t(`discovery.actions.${action.labelKey}`),
   }));
+
+  const theme = {
+    pillBg: isDark ? 'rgba(44,52,60,0.86)' : 'rgba(241,245,249,0.95)',
+    pillBorder: isDark ? 'rgba(179,193,207,0.2)' : 'rgba(17,24,39,0.12)',
+    reasonsBg: isDark ? 'rgba(190,24,93,0.12)' : 'rgba(251,207,232,0.32)',
+    reasonsBorder: isDark ? 'rgba(244,114,182,0.28)' : 'rgba(225,29,72,0.2)',
+    reasonsText: isDark ? '#F9FAFB' : '#1F2937',
+    closeIcon: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(31,41,55,0.58)',
+    chipText: isDark ? DISCOVERY_COLORS.ivory : '#1F2937',
+  };
 
   useEffect(() => {
     if (!trackOpen || !Number.isFinite(id) || id <= 0) return;
@@ -128,15 +140,21 @@ export default function OfferDiscoveryActions({
   };
 
   const reasonSheet = reasonOpen ? (
-    <View style={styles.reasons} accessibilityLabel={t('discovery.dislike.title')}>
+    <View
+      style={[
+        styles.reasons,
+        { borderColor: theme.reasonsBorder, backgroundColor: theme.reasonsBg },
+      ]}
+      accessibilityLabel={t('discovery.dislike.title')}
+    >
       <View style={styles.reasonsHead}>
-        <Text style={styles.reasonsTitle}>{t('discovery.dislike.title')}</Text>
+        <Text style={[styles.reasonsTitle, { color: theme.reasonsText }]}>{t('discovery.dislike.title')}</Text>
         <Pressable
           accessibilityLabel={t('discovery.closeA11y')}
           hitSlop={10}
           onPress={() => setReasonOpen(false)}
         >
-          <Ionicons name="close" size={16} color="rgba(255,255,255,0.7)" />
+          <Ionicons name="close" size={16} color={theme.closeIcon} />
         </Pressable>
       </View>
       <View style={styles.reasonsGrid}>
@@ -144,18 +162,18 @@ export default function OfferDiscoveryActions({
           <Pressable
             key={r.code}
             disabled={isBusy(id)}
-            style={styles.chip}
+            style={[styles.chip, { backgroundColor: theme.pillBg, borderColor: theme.pillBorder }]}
             onPress={() => void commit('DISLIKE', r.code)}
           >
-            <Text style={styles.chipText}>{r.label}</Text>
+            <Text style={[styles.chipText, { color: theme.chipText }]}>{r.label}</Text>
           </Pressable>
         ))}
         <Pressable
           disabled={isBusy(id)}
-          style={[styles.chip, styles.chipSkip]}
+          style={[styles.chip, styles.chipSkip, { backgroundColor: theme.pillBg, borderColor: theme.pillBorder }]}
           onPress={() => void commit('DISLIKE')}
         >
-          <Text style={styles.chipText}>{t('discovery.dislike.skipShort')}</Text>
+          <Text style={[styles.chipText, { color: theme.chipText }]}>{t('discovery.dislike.skipShort')}</Text>
         </Pressable>
       </View>
     </View>
@@ -178,8 +196,8 @@ export default function OfferDiscoveryActions({
                 style={[
                   styles.pill,
                   {
-                    backgroundColor: isActive ? colors.active : colors.idle,
-                    borderColor: isActive ? colors.icon : 'rgba(255,255,255,0.12)',
+                    backgroundColor: isActive ? colors.active : theme.pillBg,
+                    borderColor: isActive ? colors.icon : theme.pillBorder,
                   },
                 ]}
               >
@@ -260,8 +278,6 @@ const styles = StyleSheet.create({
   reasons: {
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(251,113,133,0.28)',
-    backgroundColor: 'rgba(251,113,133,0.08)',
     padding: 12,
   },
   reasonsHead: {
@@ -270,16 +286,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
   },
-  reasonsTitle: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+  reasonsTitle: { fontSize: 13, fontWeight: '800' },
   reasonsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.14)',
   },
-  chipSkip: { borderColor: 'rgba(255,255,255,0.22)' },
-  chipText: { color: DISCOVERY_COLORS.ivory, fontSize: 12, fontWeight: '700' },
+  chipSkip: {},
+  chipText: { fontSize: 12, fontWeight: '700' },
 });

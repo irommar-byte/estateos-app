@@ -14,7 +14,11 @@ import {
 
 const QUEUE_KEY = '@estateos_discovery_event_queue_v2';
 const SESSION_KEY = '@estateos_discovery_session_v1';
+const SUPPRESSED_OFFERS_KEY = '@estateos_discovery_suppressed_offers_v1';
 const MAX_QUEUE = 160;
+const MAX_SUPPRESSED = 500;
+const SUPPRESS_MS_DEFAULT = 7 * 24 * 60 * 60 * 1000;
+const SUPPRESS_MS_LOCATION = 21 * 24 * 60 * 60 * 1000;
 
 export type DiscoverySession = {
   id: string;
@@ -65,6 +69,84 @@ function headers(token: string | null): HeadersInit {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
+}
+
+function normalizeDiscoveryPlatform(os: string): 'ios' | 'android' | 'web' {
+  if (os === 'ios' || os === 'android' || os === 'web') return os;
+  return 'web';
+}
+
+function normalizeDislikeReason(
+  value?: string | null,
+): 'PRICE_TOO_HIGH' | 'LOCATION_MISMATCH' | 'LAYOUT_MISMATCH' | 'QUALITY_LOW' | null | undefined {
+  if (value == null) return value;
+  const norm = String(value).trim().toUpperCase();
+  if (norm === 'PRICE_TOO_HIGH' || norm === 'LOCATION_MISMATCH' || norm === 'LAYOUT_MISMATCH' || norm === 'QUALITY_LOW') {
+    return norm;
+  }
+  return undefined;
+}
+
+function normalizeVisitOutcome(value?: string | null): 'YES' | 'NO' | 'DIFFERENT' | null | undefined {
+  if (value == null) return value;
+  const norm = String(value).trim().toUpperCase();
+  if (norm === 'YES' || norm === 'NO' || norm === 'DIFFERENT') return norm;
+  return undefined;
+}
+
+type SuppressedOfferRow = {
+  offerId: number;
+  untilTs: number;
+  reasonCode: string | null;
+  updatedAt: string;
+};
+
+function suppressMsForReason(reasonCode?: string | null): number {
+  return String(reasonCode || '').trim().toUpperCase() === 'LOCATION_MISMATCH'
+    ? SUPPRESS_MS_LOCATION
+    : SUPPRESS_MS_DEFAULT;
+}
+
+async function readSuppressedRows(): Promise<SuppressedOfferRow[]> {
+  try {
+    const raw = await AsyncStorage.getItem(SUPPRESSED_OFFERS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    const now = Date.now();
+    return parsed
+      .map((row: any) => ({
+        offerId: Number(row?.offerId) || 0,
+        untilTs: Number(row?.untilTs) || 0,
+        reasonCode: row?.reasonCode == null ? null : String(row.reasonCode),
+        updatedAt: String(row?.updatedAt || ''),
+      }))
+      .filter((row) => row.offerId > 0 && row.untilTs > now);
+  } catch {
+    return [];
+  }
+}
+
+async function writeSuppressedRows(rows: SuppressedOfferRow[]): Promise<void> {
+  const next = rows
+    .slice()
+    .sort((a, b) => b.untilTs - a.untilTs)
+    .slice(0, MAX_SUPPRESSED);
+  await AsyncStorage.setItem(SUPPRESSED_OFFERS_KEY, JSON.stringify(next));
+}
+
+async function suppressOfferLocally(offerId: number, reasonCode?: string | null): Promise<void> {
+  if (!Number.isFinite(offerId) || offerId <= 0) return;
+  const now = Date.now();
+  const ttl = suppressMsForReason(reasonCode);
+  const current = await readSuppressedRows();
+  const nextRow: SuppressedOfferRow = {
+    offerId,
+    untilTs: now + ttl,
+    reasonCode: reasonCode ? String(reasonCode) : null,
+    updatedAt: new Date(now).toISOString(),
+  };
+  const merged = [nextRow, ...current.filter((row) => row.offerId !== offerId)];
+  await writeSuppressedRows(merged);
 }
 
 export async function getOrCreateDiscoverySession(): Promise<DiscoverySession> {
@@ -140,9 +222,17 @@ export async function trackDiscoveryEvent(params: {
 }): Promise<DiscoveryEventPayload | null> {
   const session = params.sessionId ? null : await getOrCreateDiscoverySession();
   const payload = buildDiscoveryEventPayload({
-    ...params,
+    eventType: params.eventType,
+    offerId: params.offerId,
     sessionId: params.sessionId ?? session?.id ?? null,
-    platform: Platform.OS,
+    photoIndex: params.photoIndex,
+    score: params.score,
+    reasonCode: normalizeDislikeReason(params.reasonCode),
+    visitOutcome: normalizeVisitOutcome(params.visitOutcome),
+    correctionTarget: params.correctionTarget,
+    dwellMs: params.dwellMs,
+    decisionLatencyMs: params.decisionLatencyMs,
+    platform: normalizeDiscoveryPlatform(Platform.OS),
   });
   if (!payload) return null;
   await postDiscoveryEvent(payload, params.token);
@@ -520,9 +610,21 @@ export async function fetchDiscoveryForYou(
     }
     const data = await response.json().catch(() => ({}));
     const itemsRaw = Array.isArray(data?.items) ? data.items : [];
+    const suppressed =
+      opts?.offerId && Number.isFinite(opts.offerId) && opts.offerId > 0
+        ? new Set<number>()
+        : new Set((await readSuppressedRows()).map((row) => row.offerId));
+    const filteredRaw = suppressed.size
+      ? itemsRaw.filter((raw: any) => {
+          const id = Number(raw?.offerId ?? raw?.id ?? raw?.offer?.id);
+          return !Number.isFinite(id) || !suppressed.has(id);
+        })
+      : itemsRaw;
     return {
       auth: 'user',
-      items: itemsRaw.map(mapForYouItem).filter((item: ForYouRailItem | null): item is ForYouRailItem => Boolean(item)),
+      items: filteredRaw
+        .map(mapForYouItem)
+        .filter((item: ForYouRailItem | null): item is ForYouRailItem => Boolean(item)),
       profile: data?.profile
         ? {
             confidence: Number(data.profile.confidence) || 0,
@@ -578,6 +680,9 @@ export async function postDiscoveryTasteEvent(params: {
     });
     if (response.status === 401) return { ok: false, authRequired: true };
     if (!response.ok) return { ok: false };
+    if (params.eventType === 'DISLIKE') {
+      void suppressOfferLocally(id, params.reasonCode);
+    }
     return { ok: true };
   } catch {
     return { ok: false };

@@ -2,6 +2,7 @@ import { API_URL } from '../config/network';
 import { fetchAdminContentReports } from './adminReportsService';
 import { fetchAdminLegalVerificationQueue } from './legalVerificationService';
 import { fetchAdminPhotoSessionQueue, fetchMyPhotoSessionRequests } from './photoSessionService';
+import { fetchAgencyMembership } from './agencyCompanyService';
 import { useProfileTabBadgeStore } from '../store/useProfileTabBadgeStore';
 
 /** Odświeża sumę czerwonych badge'y na zakładce Profil (sekcje wewnętrzne → tab bar). */
@@ -36,6 +37,7 @@ export async function refreshProfileTabBadgeCounts(
     let legalPending = 0;
     let reportsPending = 0;
     let adminPhotoSessionsPending = 0;
+    let agencyPendingMembers = 0;
 
     try {
       const res = await fetch(`${API_URL}/api/mobile/v1/admin/offers?status=PENDING`, {
@@ -81,7 +83,17 @@ export async function refreshProfileTabBadgeCounts(
       // noop
     }
 
-    adminTotal = offersPending + legalPending + reportsPending + adminPhotoSessionsPending;
+    try {
+      const membership = await fetchAgencyMembership(safeToken);
+      const fallback = Array.isArray(membership?.team)
+        ? membership!.team!.filter((m) => m.status === 'PENDING').length
+        : 0;
+      agencyPendingMembers = membership?.stats?.pendingMembers ?? fallback;
+    } catch {
+      // noop
+    }
+
+    adminTotal = offersPending + legalPending + reportsPending + adminPhotoSessionsPending + agencyPendingMembers;
   }
 
   const total = userPhotoSessionsPending + adminTotal;

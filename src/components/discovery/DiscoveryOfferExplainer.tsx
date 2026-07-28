@@ -9,12 +9,20 @@ import { useI18n } from '../../i18n';
 
 type Props = {
   offerId: number | string;
+  isDark?: boolean;
+  embedded?: boolean;
 };
 
 /**
  * One calm “why this listing” line on offer detail.
  */
-export default function DiscoveryOfferExplainer({ offerId }: Props) {
+function sentenceCase(value: string): string {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+export default function DiscoveryOfferExplainer({ offerId, isDark = false, embedded = false }: Props) {
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const enabled = useIntelligencePreferenceStore((s) => s.enabled);
@@ -48,26 +56,28 @@ export default function DiscoveryOfferExplainer({ offerId }: Props) {
 
   if (!hydrated || !enabled || !reason) return null;
 
+  const textMain = isDark ? 'rgba(229,236,241,0.94)' : 'rgba(29,42,36,0.88)';
+  const badgeText = isDark ? 'rgba(129,225,190,0.96)' : 'rgba(21,127,99,0.92)';
+
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, embedded ? styles.wrapEmbedded : null]}>
       <View style={styles.eyebrowRow}>
-        <Sparkles size={11} color="rgba(52,211,153,0.9)" />
-        <Text style={styles.eyebrow}>{t('discovery.brand')}</Text>
+        <Sparkles size={11} color={badgeText} />
+        <Text style={[styles.eyebrow, { color: badgeText }]}>{t('discovery.brand')}</Text>
       </View>
-      <Text style={styles.body}>{reason}</Text>
+      <Text style={[styles.body, { color: textMain }]}>{sentenceCase(reason)}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: 20,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(16,185,129,0.2)',
-    backgroundColor: 'rgba(16,185,129,0.07)',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    marginBottom: 12,
+    paddingHorizontal: 2,
+    paddingVertical: 2,
+  },
+  wrapEmbedded: {
+    marginBottom: 10,
   },
   eyebrowRow: {
     flexDirection: 'row',
@@ -75,7 +85,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   eyebrow: {
-    color: 'rgba(52,211,153,0.9)',
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 1.6,
@@ -83,7 +92,6 @@ const styles = StyleSheet.create({
   },
   body: {
     marginTop: 6,
-    color: 'rgba(245,245,247,0.82)',
     fontSize: 14,
     lineHeight: 20,
   },
