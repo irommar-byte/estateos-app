@@ -9,12 +9,13 @@ type Props = {
   navigation?: any;
   offerId: number | string;
   style?: object;
+  isDark?: boolean;
 };
 
 /**
  * Soft suggest / discourage visit — one line near offer CTAs.
  */
-export default function DiscoveryVisitHint({ navigation, offerId, style }: Props) {
+export default function DiscoveryVisitHint({ navigation, offerId, style, isDark }: Props) {
   const token = useAuthStore((s) => s.token);
   const enabled = useIntelligencePreferenceStore((s) => s.enabled);
   const hydrated = useIntelligencePreferenceStore((s) => s.hydrated);
@@ -76,6 +77,7 @@ export default function DiscoveryVisitHint({ navigation, offerId, style }: Props
       body={hint.body}
       href={hint.href}
       style={style}
+      isDark={isDark}
     />
   );
 }

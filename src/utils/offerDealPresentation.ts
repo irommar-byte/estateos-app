@@ -21,6 +21,12 @@ export type OfferDealPricePresentation = {
   title: string;
   body: string;
   tone: 'pending' | 'confirmed' | 'finalized';
+  /** Short stage line, e.g. "Etap: kontroferta". */
+  stageLabel?: string | null;
+  /** Formatted amount currently on the table. */
+  amountLabel?: string | null;
+  /** Who waits for whom. */
+  waitingLabel?: string | null;
 };
 
 export type OfferDealPresentation = {
@@ -103,13 +109,26 @@ function formatPln(amount: number): string {
   return `${amount.toLocaleString('pl-PL')} PLN`;
 }
 
+function stageFromAction(action: string): string {
+  const a = String(action || '').toUpperCase();
+  if (a === 'ACCEPTED') return 'Etap: akceptacja ceny';
+  if (a === 'COUNTERED') return 'Etap: kontroferta';
+  if (a === 'REJECTED' || a === 'DECLINED') return 'Etap: odrzucenie';
+  if (a === 'PROPOSED') return 'Etap: propozycja ceny';
+  return 'Etap: negocjacja';
+}
+
 export function deriveOfferDealPresentation(input: {
   messages: Msg[];
   dealStatus?: string | null;
   acceptedBidId?: unknown;
+  viewerUserId?: number | null;
+  ownerUserId?: number | null;
 }): OfferDealPresentation {
   const messages = input.messages || [];
   const dealStatus = String(input.dealStatus || '').trim().toUpperCase();
+  const viewerId = Number(input.viewerUserId || 0);
+  const ownerId = Number(input.ownerUserId || 0);
   const transactionFinalized = isDealTransactionFinalized({
     dealStatus: input.dealStatus,
     messages,
@@ -135,6 +154,9 @@ export function deriveOfferDealPresentation(input: {
   const latestBid = bidEvents[bidEvents.length - 1] || null;
   const latestAction = String(latestBid?.event?.action || '').toUpperCase();
   const lastNegotiatedAmount = latestBidAmount(bidEvents);
+  const latestSenderId = Number(latestBid?.senderId || 0);
+  const latestByViewer = viewerId > 0 && latestSenderId === viewerId;
+  const latestByOwner = ownerId > 0 && latestSenderId === ownerId;
 
   if (!agreedPrice) {
     if (acceptedFromBid > 0) agreedPrice = acceptedFromBid;
@@ -157,32 +179,69 @@ export function deriveOfferDealPresentation(input: {
       title: 'Transakcja sfinalizowana',
       body: `Uzgodniona kwota: ${formatPln(agreedPrice)}. Oferta została wycofana z rynku — szczegóły w Dealroomie.`,
       tone: 'finalized',
+      stageLabel: 'Etap: finalizacja',
+      amountLabel: formatPln(agreedPrice),
+      waitingLabel: null,
     };
   } else if (transactionFinalized) {
     priceNegotiation = {
       title: 'Transakcja sfinalizowana',
       body: 'Sprzedaż została zamknięta w Dealroomie. Oferta powinna zniknąć z aktywnych ogłoszeń.',
       tone: 'finalized',
+      stageLabel: 'Etap: finalizacja',
+      amountLabel: null,
+      waitingLabel: null,
     };
   } else if (priceAgreedPendingOwner && agreedPrice > 0) {
     priceNegotiation = {
       title: 'Cena: uzgodniona',
       body: buyerFinalAccept
-        ? `Kwota ${formatPln(agreedPrice)} zaakceptowana przez kupującego — czeka na Twoje ostateczne potwierdzenie w Dealroomie (zielone okienko).`
+        ? `Kwota ${formatPln(agreedPrice)} zaakceptowana przez kupującego — czeka na ostateczne potwierdzenie właściciela w Dealroomie.`
         : `Uzgodniona kwota transakcyjna: ${formatPln(agreedPrice)}.`,
       tone: 'confirmed',
-    };
-  } else if (latestBid && agreedPrice > 0) {
-    priceNegotiation = {
-      title: 'Cena: w negocjacji',
-      body: `Ostatnia propozycja w Dealroomie: ${formatPln(agreedPrice)}.`,
-      tone: 'pending',
+      stageLabel: 'Etap: uzgodniona cena',
+      amountLabel: formatPln(agreedPrice),
+      waitingLabel: buyerFinalAccept
+        ? 'Czeka: właściciel na ostateczne potwierdzenie sprzedaży'
+        : 'Czeka: finalizacja w Dealroomie',
     };
   } else if (latestBid) {
+    const amount = lastNegotiatedAmount > 0 ? formatPln(lastNegotiatedAmount) : null;
+    const stageLabel = stageFromAction(latestAction);
+    let waitingLabel: string | null = null;
+    let body: string;
+
+    if (latestAction === 'REJECTED' || latestAction === 'DECLINED') {
+      waitingLabel = latestByViewer
+        ? 'Ostatnio Ty odrzuciłeś propozycję — możesz wysłać nową ofertę'
+        : 'Propozycja odrzucona — Twoja kolej na nową ofertę';
+      body = amount
+        ? `Odrzucona propozycja: ${amount}. Otwórz Dealroom, aby kontynuować.`
+        : 'Propozycja ceny została odrzucona. Otwórz Dealroom, aby kontynuować.';
+    } else if (latestByViewer) {
+      waitingLabel = 'Czeka: właściciel na decyzję wobec Twojej oferty';
+      body = amount
+        ? `Twoja propozycja: ${amount}. Czekasz na decyzję właściciela (akceptacja, kontroferta lub odrzucenie).`
+        : 'Wysłałeś propozycję ceny. Czekasz na decyzję właściciela.';
+    } else if (latestByOwner) {
+      waitingLabel = 'Czeka: Ty na decyzję względem oferty właściciela';
+      body = amount
+        ? `Właściciel proponuje: ${amount}. Twoja kolej: akceptacja, kontroferta lub odrzucenie.`
+        : 'Właściciel wysłał propozycję ceny. Twoja kolej w Dealroomie.';
+    } else {
+      waitingLabel = 'Czeka: Twoja reakcja albo odpowiedź drugiej strony';
+      body = amount
+        ? `Ostatnia propozycja na stole: ${amount}.`
+        : 'Trwa negocjacja w Dealroomie — otwórz czat, aby zobaczyć szczegóły.';
+    }
+
     priceNegotiation = {
       title: 'Cena: w negocjacji',
-      body: 'Trwa negocjacja w Dealroomie — otwórz czat transakcji, aby zobaczyć aktualną propozycję.',
+      body,
       tone: 'pending',
+      stageLabel,
+      amountLabel: amount,
+      waitingLabel,
     };
   }
 

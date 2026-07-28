@@ -8,6 +8,7 @@ type Props = {
   navigation?: any;
   beforeContact?: boolean;
   style?: object;
+  isDark?: boolean;
 };
 
 /**
@@ -17,6 +18,7 @@ export default function DiscoveryContactWhisper({
   navigation,
   beforeContact = true,
   style,
+  isDark,
 }: Props) {
   const token = useAuthStore((s) => s.token);
   const enabled = useIntelligencePreferenceStore((s) => s.enabled);
@@ -42,6 +44,7 @@ export default function DiscoveryContactWhisper({
       body={body}
       href={contradiction ? '/lustro' : '/moj-kierunek'}
       style={style}
+      isDark={isDark}
     />
   );
 }

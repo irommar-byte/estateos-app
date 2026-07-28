@@ -323,6 +323,9 @@ export default function DealroomChatScreen() {
   const dealId = route.params?.dealId || route.params?.params?.dealId;
   const offerId = route.params?.offerId || route.params?.params?.offerId;
   const title = route.params?.title || route.params?.params?.title || t('dealroom.chat.defaultTitle');
+  const focusSectionRaw = route.params?.focusSection || route.params?.params?.focusSection;
+  const focusSection =
+    focusSectionRaw === 'appointment' || focusSectionRaw === 'price' ? focusSectionRaw : null;
   
   const { user, token } = useAuthStore() as any;
 
@@ -344,8 +347,13 @@ export default function DealroomChatScreen() {
   const [roomAttachmentBytes, setRoomAttachmentBytes] = useState(0);
   
   // UI Expand State
-  const [appointmentSectionExpanded, setAppointmentSectionExpanded] = useState(false);
-  const [priceSectionExpanded, setPriceSectionExpanded] = useState(false);
+  const [appointmentSectionExpanded, setAppointmentSectionExpanded] = useState(
+    () => focusSection === 'appointment',
+  );
+  const [priceSectionExpanded, setPriceSectionExpanded] = useState(
+    () => focusSection === 'price',
+  );
+  const focusAppliedRef = useRef(false);
   
   const [resolvedOfferId, setResolvedOfferId] = useState<any>(offerId || null);
   const [isListingOwner, setIsListingOwner] = useState(false);
@@ -1260,6 +1268,26 @@ export default function DealroomChatScreen() {
       setPriceSectionExpanded(true);
     }
   }, [ownerNeedsFinalDecision, transactionFinalized]);
+
+  useEffect(() => {
+    if (loading || !focusSection || focusAppliedRef.current) return;
+    focusAppliedRef.current = true;
+    if (focusSection === 'appointment') {
+      setAppointmentSectionExpanded(true);
+      setPriceSectionExpanded(false);
+    } else if (focusSection === 'price') {
+      setPriceSectionExpanded(true);
+      setAppointmentSectionExpanded(false);
+    }
+    const timer = setTimeout(() => {
+      try {
+        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      } catch {
+        /* ignore */
+      }
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [loading, focusSection]);
 
   useEffect(() => {
     archiveAfterSaleAttemptedRef.current = false;

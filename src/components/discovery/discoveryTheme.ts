@@ -1,4 +1,4 @@
-import type { TextStyle, ViewStyle } from 'react-native';
+import { StyleSheet, type TextStyle, type ViewStyle } from 'react-native';
 
 export type DiscoveryTheme = {
   isDark: boolean;
@@ -164,5 +164,12 @@ export function discoveryCard(theme: DiscoveryTheme, accent = false): ViewStyle 
   return {
     backgroundColor: accent ? theme.cardAccent : theme.card,
     borderColor: accent ? theme.cardAccentBorder : theme.cardBorder,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 18,
+    shadowColor: theme.isDark ? '#000000' : '#0F172A',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: theme.isDark ? 0.45 : 0.16,
+    shadowRadius: 18,
+    elevation: 8,
   };
 }
