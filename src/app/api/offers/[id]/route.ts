@@ -8,7 +8,7 @@ import {
   buildOfferVerificationMeta,
   extractVerificationMeta,
 } from '@/lib/offerVerification';
-import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
+import { dispatchFavoritesPriceChangePush, dispatchFavoritesStatusChangePush } from '@/lib/favoritesPricePush';
 import { enrichOfferPriceDiscountFields, ensureOfferPriceHistorySchema, syncOfferPriceHistory } from '@/lib/offerPriceHistory';
 import { ensureOfferLegalColumns, ensureOfferMoneyColumns, ensureOfferLocalityCountryColumns, ensureOfferExtendedAmenityColumns } from '@/lib/services/offer.service';
 import { enrichOfferMoneyFieldsForApi, resolveOfferPriceFromBody } from '@/lib/money/offerPrice.server';
@@ -632,6 +632,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         offerId: Number(updatedOffer.id),
         oldPrice,
         newPrice,
+        changedByUserId: Number(currentOffer.userId) || null,
+        source: 'web_offers_put',
+      });
+    }
+    const prevStatus = String(currentOffer.status || '');
+    const nextStatus = String(updatedOffer.status || '');
+    if (prevStatus && nextStatus && prevStatus !== nextStatus) {
+      await dispatchFavoritesStatusChangePush({
+        offerId: Number(updatedOffer.id),
+        oldStatus: prevStatus,
+        newStatus: nextStatus,
         changedByUserId: Number(currentOffer.userId) || null,
         source: 'web_offers_put',
       });

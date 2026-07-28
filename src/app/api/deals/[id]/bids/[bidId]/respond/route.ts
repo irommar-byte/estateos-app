@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notificationService } from '@/lib/services/notification.service';
+import { dispatchFavoritesDealProposalPush } from '@/lib/favoritesPricePush';
 import { finalizeDealWithOfferArchive } from '@/lib/dealFinalize';
 import { resolveDealUserId } from '@/lib/dealRequestAuth';
 import {
@@ -335,6 +336,16 @@ export async function POST(
       });
     } catch (pushError) {
       console.warn('[WEB BID PUSH WARN]', pushError);
+    }
+
+    if (action === 'COUNTER' || action === 'ACCEPT') {
+      void dispatchFavoritesDealProposalPush({
+        offerId: Number(deal.offerId),
+        dealId,
+        actorUserId: Number(userId) || null,
+        kind: 'bid',
+        source: 'deals_bids_respond',
+      });
     }
 
     const freshDeal = await prisma.deal.findUnique({

@@ -16,7 +16,7 @@ import {
   buildOfferVerificationMeta,
   extractVerificationMeta,
 } from '@/lib/offerVerification';
-import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
+import { dispatchFavoritesPriceChangePush, dispatchFavoritesStatusChangePush, dispatchFavoritesNewSimilarPush } from '@/lib/favoritesPricePush';
 import { syncOfferPriceHistory } from '@/lib/offerPriceHistory';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
 import {
@@ -492,6 +492,16 @@ export async function createOffer(body: any) {
         source: 'offer_create',
       });
     }
+    if (String(created.status || '').toUpperCase() === 'ACTIVE') {
+      void dispatchFavoritesNewSimilarPush({
+        offerId: Number(created.id),
+        city: (created as { city?: string }).city,
+        transactionType: (created as { transactionType?: string }).transactionType,
+        pricePln: pln,
+        ownerUserId: Number((created as { userId?: number }).userId) || null,
+        source: 'offer_create',
+      });
+    }
     return created;
   } catch (error) {
     if (
@@ -840,6 +850,17 @@ export async function updateOffer(body: any) {
       offerId: Number(updatedOffer.id),
       oldPrice,
       newPrice,
+      changedByUserId: Number(userId) || null,
+      source: 'mobile_offers_put',
+    });
+  }
+  const oldStatus = String(existing.status || '');
+  const newStatus = String(updatedOffer.status || '');
+  if (oldStatus && newStatus && oldStatus !== newStatus) {
+    await dispatchFavoritesStatusChangePush({
+      offerId: Number(updatedOffer.id),
+      oldStatus,
+      newStatus,
       changedByUserId: Number(userId) || null,
       source: 'mobile_offers_put',
     });
