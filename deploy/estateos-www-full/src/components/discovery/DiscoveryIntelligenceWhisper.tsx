@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { Sparkles } from "lucide-react";
+import { Brain } from "lucide-react";
 
 type Variant = "nav" | "inline" | "map" | "drawer";
 
@@ -63,7 +63,7 @@ export default function DiscoveryIntelligenceWhisper({
       className={`${shell} ${className}`}
     >
       <p className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.22em] text-[var(--eos-muted)]">
-        <Sparkles size={11} className="opacity-70" aria-hidden />
+        <Brain size={11} className="opacity-80" strokeWidth={2.2} aria-hidden />
         {title}
       </p>
       <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--eos-text)]/78">{line}</p>

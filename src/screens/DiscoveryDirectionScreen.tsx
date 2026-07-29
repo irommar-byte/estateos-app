@@ -7,7 +7,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Brain, Check } from 'lucide-react-native';
+import IntelligenceBrainMark from '../components/discovery/IntelligenceBrainMark';
+import { Check } from 'lucide-react-native';
 import ApplePressable from '../components/ApplePressable';
 import DiscoveryScreenChrome from '../components/discovery/DiscoveryScreenChrome';
 import { discoveryCard, discoveryTheme } from '../components/discovery/discoveryTheme';
@@ -221,25 +222,18 @@ export default function DiscoveryDirectionScreen({ navigation }: any) {
         <DiscoveryScreenChrome theme={theme} onBack={() => goBackOrMarket(navigation)} />
 
         <View style={styles.headBrand}>
-          <View
-            style={[
-              styles.brainOrb,
-              { backgroundColor: theme.brainOrbBg, borderColor: theme.brainOrbBorder },
-            ]}
-          >
-            <Brain size={18} color={theme.brainOrbIcon} strokeWidth={2.2} />
-          </View>
+          <IntelligenceBrainMark size={40} softGlyph />
           <View style={{ flex: 1 }}>
             <Text style={[styles.eyebrow, { color: theme.eyebrow }]}>EstateOS™ Intelligence</Text>
             <Text style={[styles.headSub, { color: theme.textMuted }]}>
-              {refreshing ? 'Aktualizacja…' : 'Twój spokojny przewodnik po decyzji'}
+              {refreshing ? 'Aktualizacja…' : 'Uczy się z Twoich decyzji — podpowiada spokojnie'}
             </Text>
           </View>
         </View>
 
         <Text style={[styles.h1, { color: theme.text }]}>Mój kierunek</Text>
         <Text style={[styles.lead, { color: theme.textMuted }]}>
-          Trzy etapy od pierwszych ocen do gotowości. Tu zawsze widać, gdzie jesteś i co robić dalej.
+          Trzy etapy od pierwszych ocen do gotowości. Jedno spojrzenie — wiesz gdzie jesteś i co dalej.
         </Text>
 
         <View

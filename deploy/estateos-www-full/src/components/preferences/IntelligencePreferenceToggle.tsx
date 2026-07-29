@@ -5,7 +5,7 @@ import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceCont
 import { useLocale } from "@/contexts/LocaleContext";
 
 /**
- * Compact on/off control for EstateOS™ Intelligence in display settings.
+ * Compact on/off — white brain on Siri oil when enabled (matches mobile).
  */
 export default function IntelligencePreferenceToggle({ className = "" }: { className?: string }) {
   const { enabled, setEnabled, hydrated } = useIntelligencePreference();
@@ -21,13 +21,19 @@ export default function IntelligencePreferenceToggle({ className = "" }: { class
       className={`group flex w-full items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-left transition hover:border-[var(--eos-border-strong)] hover:brightness-110 disabled:opacity-60 ${className}`}
     >
       <span
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition duration-300 group-hover:scale-110 group-hover:brightness-125 ${
+        className={`flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border transition duration-300 group-hover:scale-110 ${
           enabled
-            ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.35)] group-hover:shadow-[0_0_28px_rgba(52,211,153,0.65)]"
-            : "border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-muted)] group-hover:text-[var(--eos-text)]"
+            ? "border-white/30 bg-[conic-gradient(from_210deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)] text-white shadow-[0_0_18px_rgba(191,90,242,0.35)]"
+            : "border-[var(--eos-border)] bg-[#3A3A3C] text-[#8E8E93]"
         }`}
       >
-        <Brain size={15} strokeWidth={1.75} aria-hidden />
+        <span
+          className={`flex h-full w-full items-center justify-center ${
+            enabled ? "bg-[#0B0B0F]/55 backdrop-blur-[1px]" : ""
+          }`}
+        >
+          <Brain size={15} strokeWidth={1.9} aria-hidden />
+        </span>
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[11px] font-semibold tracking-wide text-[var(--eos-text)]">
@@ -40,7 +46,7 @@ export default function IntelligencePreferenceToggle({ className = "" }: { class
       <span
         aria-hidden
         className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
-          enabled ? "bg-emerald-500" : "bg-[var(--eos-border-strong)]"
+          enabled ? "bg-[#BF5AF2]" : "bg-[var(--eos-border-strong)]"
         }`}
       >
         <span

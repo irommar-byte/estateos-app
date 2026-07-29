@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Brain } from "lucide-react";
 import OfferDiscoveryActions from "@/components/discovery/OfferDiscoveryActions";
 import { subscribeDiscoveryUpdated } from "@/lib/discovery/clientEvents";
 import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
@@ -97,15 +97,19 @@ export default function DiscoveryForYouRail({ transactionMode = "all", formatPri
         >
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 max-w-xl">
-              <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300/80">
-                <Sparkles size={12} aria-hidden />
+              <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[conic-gradient(from_210deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)] p-[1px]">
+                  <span className="flex h-full w-full items-center justify-center rounded-full bg-[#0B0B0F] text-white">
+                    <Brain size={11} strokeWidth={2.2} aria-hidden />
+                  </span>
+                </span>
                 EstateOS™ Intelligence
               </p>
               <h2 className="mt-2 text-lg font-medium tracking-tight text-white sm:text-xl">
                 Bliżej Twojego kierunku
               </h2>
               <p className="mt-1.5 text-sm leading-relaxed text-white/55">
-                Oceń kilka ofert spokojnie — tu pojawią się sugestie dopasowane do Ciebie.
+                Oceń kilka ofert — tu same pojawią się spokojne sugestie pod Ciebie.
               </p>
             </div>
             <Link
@@ -127,8 +131,12 @@ export default function DiscoveryForYouRail({ transactionMode = "all", formatPri
     <section className="mt-8">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-500/90 dark:text-emerald-300/80">
-            <Sparkles size={12} aria-hidden />
+          <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--eos-muted)]">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[conic-gradient(from_210deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)] p-[1px]">
+              <span className="flex h-full w-full items-center justify-center rounded-full bg-[#0B0B0F] text-white">
+                <Brain size={11} strokeWidth={2.2} aria-hidden />
+              </span>
+            </span>
             EstateOS™ Intelligence
           </p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--eos-text)]">
@@ -137,7 +145,7 @@ export default function DiscoveryForYouRail({ transactionMode = "all", formatPri
         </div>
         <Link
           href="/moj-kierunek"
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--eos-muted)] transition hover:text-emerald-500"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--eos-muted)] transition hover:text-[var(--eos-text)]"
         >
           Mój kierunek
           <ArrowRight size={13} />
@@ -155,7 +163,7 @@ export default function DiscoveryForYouRail({ transactionMode = "all", formatPri
           >
             <Link
               href={`/oferta/${item.offerId}`}
-              className="group block overflow-hidden rounded-[1.35rem] border border-[var(--eos-border)] bg-[var(--eos-card)] transition hover:border-emerald-500/25"
+              className="group block overflow-hidden rounded-[1.35rem] border border-[var(--eos-border)] bg-[var(--eos-card)] transition hover:border-violet-500/25"
             >
               <div className="relative aspect-[16/10] overflow-hidden bg-black/20">
                 <Image

@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Sparkles } from 'lucide-react-native';
+import { Brain } from 'lucide-react-native';
 import { fetchDiscoveryForYou } from '../../services/discoveryService';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../../store/useIntelligencePreferenceStore';
 import { subscribeDiscoveryUpdated } from '../../lib/discovery/clientEvents';
 import { useI18n } from '../../i18n';
+import { INTELLIGENCE_BRAIN_GLYPH_SOFT } from '../../lib/discovery/intelligenceBrand';
 
 type Props = {
   offerId: number | string;
@@ -56,13 +57,13 @@ export default function DiscoveryOfferExplainer({ offerId, isDark = false, embed
 
   if (!hydrated || !enabled || !reason) return null;
 
-  const textMain = isDark ? 'rgba(229,236,241,0.94)' : 'rgba(29,42,36,0.88)';
-  const badgeText = isDark ? 'rgba(129,225,190,0.96)' : 'rgba(21,127,99,0.92)';
+  const textMain = isDark ? 'rgba(229,236,241,0.94)' : 'rgba(28,28,30,0.86)';
+  const badgeText = isDark ? 'rgba(245,245,247,0.78)' : 'rgba(28,28,30,0.72)';
 
   return (
     <View style={[styles.wrap, embedded ? styles.wrapEmbedded : null]}>
       <View style={styles.eyebrowRow}>
-        <Sparkles size={11} color={badgeText} />
+        <Brain size={11} color={isDark ? INTELLIGENCE_BRAIN_GLYPH_SOFT : '#1C1C1E'} strokeWidth={2.2} />
         <Text style={[styles.eyebrow, { color: badgeText }]}>{t('discovery.brand')}</Text>
       </View>
       <Text style={[styles.body, { color: textMain }]}>{sentenceCase(reason)}</Text>

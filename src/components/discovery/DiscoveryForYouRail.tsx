@@ -14,13 +14,15 @@ import {
 import { useIsFocused } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
-import { ArrowRight, Brain } from 'lucide-react-native';
+import { ArrowRight } from 'lucide-react-native';
 import OfferDiscoveryActions from './OfferDiscoveryActions';
+import IntelligenceBrainMark from './IntelligenceBrainMark';
 import { subscribeDiscoveryUpdated } from '../../lib/discovery/clientEvents';
 import { fetchDiscoveryForYou, type ForYouRailItem } from '../../services/discoveryService';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../../store/useIntelligencePreferenceStore';
 import { useI18n } from '../../i18n';
+import { INTELLIGENCE_OIL } from '../../lib/discovery/intelligenceBrand';
 
 type Props = {
   navigation: any;
@@ -40,15 +42,7 @@ const MAX_RAIL_ITEMS = 36;
 const INITIAL_LIMIT = 12;
 const REFRESH_LIMIT = 24;
 
-const SIRI_RAINBOW = [
-  '#FF375F',
-  '#FF9F0A',
-  '#FFD60A',
-  '#30D158',
-  '#64D2FF',
-  '#BF5AF2',
-  '#FF375F',
-] as const;
+const SIRI_RAINBOW = [...INTELLIGENCE_OIL] as const;
 
 function SiriRainbowOrb({
   size,
@@ -452,7 +446,6 @@ export default function DiscoveryForYouRail({
     inputRange: [0, 1],
     outputRange: isDark ? [0.2, 0.42] : [0.12, 0.28],
   });
-  const brainGlow = livePulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] });
   const siriRotateA = siriSpin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   const siriRotateB = siriSpin.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] });
   const shellLift = shellFloat.interpolate({ inputRange: [0, 1], outputRange: [0, -3] });
@@ -495,9 +488,7 @@ export default function DiscoveryForYouRail({
 
   const eyebrow = (
     <View style={styles.eyebrowRow}>
-      <Animated.View style={[styles.brainBadge, theme.brainBadge, { opacity: brainGlow }]}>
-        <Brain size={13} color={theme.accent} strokeWidth={2.2} />
-      </Animated.View>
+      <IntelligenceBrainMark size={22} softGlyph />
       <Text style={[styles.eyebrow, { color: theme.accent }]}>{t('discovery.brand')}</Text>
       <View style={styles.liveDotWrap}>
         <Animated.View style={[styles.liveDotPulse, theme.liveDotPulse, { opacity: glowOpacity }]} />
@@ -674,7 +665,7 @@ export default function DiscoveryForYouRail({
                     {item.reason ? (
                       <>
                         <Text style={[styles.reasonLead, { color: theme.accent }]}>
-                          Intelligence ·{' '}
+                          {t('discovery.brand')} ·{' '}
                         </Text>
                         {item.reason}
                       </>

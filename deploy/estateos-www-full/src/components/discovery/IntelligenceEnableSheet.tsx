@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Brain, Sparkles, Compass, Shield } from "lucide-react";
+import { Brain, Compass, Shield } from "lucide-react";
 import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 import { useLocale } from "@/contexts/LocaleContext";
 import { playIntelligenceChime } from "@/lib/discovery/intelligenceChime";
@@ -72,8 +72,8 @@ export default function IntelligenceEnableSheet() {
   };
 
   const features = [
-    { icon: Compass, text: dict.intelligence.sheetFeature1 },
-    { icon: Sparkles, text: dict.intelligence.sheetFeature2 },
+    { icon: Brain, text: dict.intelligence.sheetFeature1 },
+    { icon: Compass, text: dict.intelligence.sheetFeature2 },
     { icon: Shield, text: dict.intelligence.sheetFeature3 },
   ];
 
@@ -110,41 +110,16 @@ export default function IntelligenceEnableSheet() {
           >
             <div
               aria-hidden
-              className="pointer-events-none absolute -left-16 -top-16 h-44 w-44 rounded-full bg-sky-400/25 blur-3xl"
+              className="pointer-events-none absolute -left-16 -top-16 h-44 w-44 rounded-full bg-[#BF5AF2]/25 blur-3xl"
             />
             <div
               aria-hidden
-              className="pointer-events-none absolute -bottom-20 -right-10 h-40 w-40 rounded-full bg-emerald-400/20 blur-3xl"
+              className="pointer-events-none absolute -bottom-20 -right-10 h-40 w-40 rounded-full bg-[#64D2FF]/20 blur-3xl"
             />
 
-            <div className="group relative mx-auto flex h-20 w-20 cursor-default items-center justify-center">
-              {!reduceMotion ? (
-                <motion.span
-                  aria-hidden
-                  className="absolute inset-0 rounded-[1.6rem] border border-white/15 bg-white/[0.06]"
-                  animate={{ scale: [1, 1.06, 1], opacity: [0.7, 1, 0.7] }}
-                  transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
-                />
-              ) : (
-                <span className="absolute inset-0 rounded-[1.6rem] border border-white/15 bg-white/[0.06]" />
-              )}
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-[-12px] rounded-[1.8rem] bg-[radial-gradient(circle,rgba(125,211,252,0.45),transparent_70%)] opacity-40 blur-md transition-opacity duration-300 group-hover:opacity-100"
-              />
-              <span className="relative flex h-[4.25rem] w-[4.25rem] items-center justify-center overflow-hidden rounded-[1.35rem] bg-gradient-to-br from-sky-400/30 via-emerald-400/20 to-white/10 text-sky-100 shadow-[0_0_40px_rgba(56,189,248,0.35)] transition-all duration-300 group-hover:scale-105 group-hover:brightness-125 group-hover:shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_48px_rgba(125,211,252,0.65),0_0_80px_rgba(52,211,153,0.35)]">
-                {!reduceMotion ? (
-                  <span
-                    aria-hidden
-                    className="eos-brain-flare absolute inset-y-[-30%] left-[-55%] w-[40%] skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/55 to-transparent"
-                  />
-                ) : null}
-                <Brain
-                  size={34}
-                  strokeWidth={1.6}
-                  aria-hidden
-                  className="relative z-[1] drop-shadow-[0_0_12px_rgba(186,230,253,0.85)] transition duration-300 group-hover:drop-shadow-[0_0_22px_rgba(255,255,255,0.95)]"
-                />
+            <div className="relative mx-auto flex h-[4.5rem] w-[4.5rem] items-center justify-center overflow-hidden rounded-full border border-white/25 bg-[conic-gradient(from_210deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)] shadow-[0_0_40px_rgba(191,90,242,0.35)]">
+              <span className="flex h-full w-full items-center justify-center bg-[#0B0B0F]/55 text-white backdrop-blur-[1px]">
+                <Brain size={34} strokeWidth={1.9} aria-hidden />
               </span>
             </div>
 
@@ -167,7 +142,7 @@ export default function IntelligenceEnableSheet() {
                   key={text}
                   className="flex items-start gap-3 rounded-2xl border border-white/8 bg-white/[0.04] px-3.5 py-3"
                 >
-                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/8 text-sky-200">
+                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/8 text-white/90">
                     <Icon size={14} aria-hidden />
                   </span>
                   <span className="text-[12px] leading-snug text-white/75">{text}</span>

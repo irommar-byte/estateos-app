@@ -35,6 +35,13 @@ import { useI18n } from '../../i18n';
 import { useIsDarkTheme } from '../../store/useThemeStore';
 import { postDiscoveryTasteEvent } from '../../services/discoveryService';
 import { useAuthStore } from '../../store/useAuthStore';
+import {
+  INTELLIGENCE_BRAIN_GLYPH,
+  INTELLIGENCE_BRAND_A11Y,
+  INTELLIGENCE_OIL,
+  INTELLIGENCE_OIL_COOL,
+  INTELLIGENCE_OIL_HOT,
+} from '../../lib/discovery/intelligenceBrand';
 
 type Props = {
   navigation: any;
@@ -59,9 +66,9 @@ const BRAIN = 26;
 const SESSION_MILESTONE_KEY = 'eos_intel_milestones_v1';
 
 /** Siri / oil-on-water iridescence — bright gasoline blooms, not a flat blend. */
-const OIL_BASE = ['#FF2D55', '#BF5AF2', '#5E5CE6', '#64D2FF', '#30D158', '#FFD60A', '#FF9F0A', '#FF2D55'] as const;
-const OIL_HOT = ['#FF375F', '#FFD60A', '#64D2FF', '#BF5AF2', '#FF375F'] as const;
-const OIL_COOL = ['#64D2FF', '#5E5CE6', '#30D158', '#BF5AF2', '#64D2FF'] as const;
+const OIL_BASE = INTELLIGENCE_OIL;
+const OIL_HOT = INTELLIGENCE_OIL_HOT;
+const OIL_COOL = INTELLIGENCE_OIL_COOL;
 const OIL_EDGE = ['transparent', '#FF2D55', 'transparent', '#64D2FF', 'transparent', '#FFD60A', 'transparent'] as const;
 
 /** Circular Intelligence launcher face — gasoline-on-water, brighter blooms. */
@@ -227,7 +234,7 @@ function SiriBrainCore({ ringColor }: { ringColor: string }) {
       </Animated.View>
       <View pointerEvents="none" style={styles.siriSheen} />
       <View pointerEvents="none" style={styles.siriHighlight} />
-      <LivingBrain accent="#FFFFFF" />
+      <LivingBrain accent={INTELLIGENCE_BRAIN_GLYPH} />
     </View>
   );
 }
@@ -810,7 +817,7 @@ export default function IntelligencePulseTape({
         <ApplePressable
           onPress={open}
           style={styles.hit}
-          accessibilityLabel="EstateOS Intelligence"
+          accessibilityLabel={INTELLIGENCE_BRAND_A11Y}
           haptic="none"
         >
           <Animated.View

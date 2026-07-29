@@ -1,22 +1,23 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import ApplePressable from '../ApplePressable';
 import DiscoveryGlassSheet from './DiscoveryGlassSheet';
+import IntelligenceBrainMark from './IntelligenceBrainMark';
 import { DISCOVERY_COLORS } from './discoveryMotion';
+import { INTELLIGENCE_BRAND_LABEL } from '../../lib/discovery/intelligenceBrand';
 
 type Props = { visible: boolean; reason: string; onClose: () => void; onReject: () => void };
 
 export default function DiscoveryInsightBubble({ visible, reason, onClose, onReject }: Props) {
   return (
     <DiscoveryGlassSheet visible={visible} onDismiss={onClose}>
-      <View style={styles.icon}>
-        <Ionicons name="sparkles" size={20} color={DISCOVERY_COLORS.gold} />
+      <View style={styles.mark}>
+        <IntelligenceBrainMark size={40} softGlyph />
       </View>
-      <Text style={styles.eyebrow}>Intelligence</Text>
+      <Text style={styles.eyebrow}>{INTELLIGENCE_BRAND_LABEL}</Text>
       <Text style={styles.title}>Dlaczego właśnie to?</Text>
       <Text style={styles.reason}>{reason}</Text>
-      <Text style={styles.note}>Hipoteza z Twoich wyborów w Discovery — nie wyrok.</Text>
+      <Text style={styles.note}>Hipoteza z Twoich wyborów — nie wyrok. Jedna decyzja wystarczy.</Text>
       <ApplePressable onPress={onReject} haptic="light" style={styles.reject}>
         <Text style={styles.rejectText}>To nie ja</Text>
       </ApplePressable>
@@ -28,32 +29,41 @@ export default function DiscoveryInsightBubble({ visible, reason, onClose, onRej
 }
 
 const styles = StyleSheet.create({
-  icon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(212,175,55,0.14)',
+  mark: {
     marginBottom: 12,
+    alignItems: 'center',
   },
   eyebrow: {
-    color: DISCOVERY_COLORS.gold,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.9,
+    color: 'rgba(245,245,247,0.55)',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
-    marginBottom: 6,
+    marginBottom: 8,
+    textAlign: 'center',
   },
-  title: { color: '#FFF', fontSize: 22, fontWeight: '700', letterSpacing: -0.4 },
+  title: {
+    color: '#FFF',
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+    textAlign: 'center',
+  },
   reason: {
     color: DISCOVERY_COLORS.ivory,
     fontSize: 16,
     fontWeight: '600',
     lineHeight: 23,
     marginTop: 10,
+    textAlign: 'center',
   },
-  note: { color: DISCOVERY_COLORS.textMuted, fontSize: 13, lineHeight: 18, marginTop: 10 },
+  note: {
+    color: DISCOVERY_COLORS.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 10,
+    textAlign: 'center',
+  },
   reject: {
     marginTop: 20,
     alignItems: 'center',

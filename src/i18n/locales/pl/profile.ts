@@ -220,13 +220,13 @@ export const profile = {
   intelligence: {
     sectionTitle: 'EstateOS™ Intelligence',
     title: 'Intelligence',
-    subtitleOn: 'Personalizacja Discovery i podpowiedzi',
-    subtitleOff: 'Personalizacja Discovery i podpowiedzi',
+    subtitleOn: 'Uczy się z decyzji i podpowiada tropy',
+    subtitleOff: 'Włącz, by personalizować Discovery',
     footer:
-      'Ta sama preferencja co na estateos.pl — włącza personalizację na koncie.',
+      'Ta sama preferencja co na estateos.pl — jeden mózg na koncie.',
     gateTitle: 'Włącz Intelligence',
     gateBody:
-      'Discovery i tropy działają, gdy EstateOS™ Intelligence jest włączone na Twoim koncie.',
+      'Jeden przełącznik. Potem system uczy się z Twoich ocen i spokojnie podpowiada tropy — bez formularzy.',
     gateEnable: 'Włącz Intelligence',
     gateLater: 'Nie teraz',
   },

@@ -1,7 +1,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
-import { Sparkles } from 'lucide-react-native';
+import { Brain } from 'lucide-react-native';
 import { navigateDiscoveryHref } from '../../lib/discovery/navigateDiscoveryHref';
+import { INTELLIGENCE_BRAND_LABEL } from '../../lib/discovery/intelligenceBrand';
+import { useI18n } from '../../i18n';
 
 type Variant = 'nav' | 'inline' | 'map' | 'drawer';
 
@@ -20,17 +22,19 @@ type Props = {
  */
 export default function DiscoveryIntelligenceWhisper({
   navigation,
-  title = 'EstateOS™ Intelligence',
+  title,
   body,
   href = '/moj-kierunek',
   variant = 'inline',
   style,
   isDark: isDarkProp,
 }: Props) {
+  const { t } = useI18n();
   const schemeDark = useColorScheme() === 'dark';
   const isDark = isDarkProp ?? schemeDark;
   const line = String(body || '').trim();
   if (!line) return null;
+  const brand = title || INTELLIGENCE_BRAND_LABEL;
 
   const go = () => navigateDiscoveryHref(navigation, href);
 
@@ -59,13 +63,13 @@ export default function DiscoveryIntelligenceWhisper({
   return (
     <View style={[shell, style]}>
       <View style={styles.eyebrowRow}>
-        <Sparkles size={11} color={isDark ? 'rgba(245,245,247,0.55)' : 'rgba(2,132,199,0.85)'} />
-        <Text style={[styles.eyebrow, !isDark && styles.eyebrowLight]}>{title}</Text>
+        <Brain size={11} color={isDark ? 'rgba(245,245,247,0.75)' : 'rgba(28,28,30,0.7)'} strokeWidth={2.2} />
+        <Text style={[styles.eyebrow, !isDark && styles.eyebrowLight]}>{brand}</Text>
       </View>
       <Text style={[styles.body, !isDark && styles.bodyLight]}>{line}</Text>
       {href ? (
         <Pressable onPress={go} hitSlop={8}>
-          <Text style={[styles.link, !isDark && styles.linkLight]}>Mój kierunek →</Text>
+          <Text style={[styles.link, !isDark && styles.linkLight]}>{t('discovery.forYou.myDirection')} →</Text>
         </Pressable>
       ) : null}
     </View>
