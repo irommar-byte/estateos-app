@@ -9,6 +9,8 @@ export const discovery = {
     coldBody: 'Oceń kilka ofert spokojnie — tu pojawią się sugestie dopasowane do Ciebie.',
     myDirection: 'Mój kierunek',
     matchHint: 'Dopasowanie na podstawie Twojego kierunku',
+    emptyReadyTitle: 'Na ten moment wszystko już ocenione.',
+    emptyReadyBody: 'Profil jest gotowy, ale nie ma nowych sugestii. Wróć za chwilę lub doprecyzuj kierunek.',
   },
   stages: {
     EXPLORE: 'Odkrywanie',

@@ -518,7 +518,44 @@ export default function DiscoveryForYouRail({
     );
   }
 
-  if (items.length === 0) return null;
+  if (items.length === 0) {
+    return (
+      <View style={styles.section}>
+        <IntelligenceRailShell {...shellProps}>
+          <View style={styles.header}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              {eyebrow}
+              <Text style={[styles.h2, { color: theme.title }]}>{t('discovery.forYou.title')}</Text>
+            </View>
+            <Pressable
+              style={styles.linkRow}
+              onPress={() => navigation?.navigate?.('DiscoveryDirection')}
+            >
+              <Text style={[styles.link, { color: theme.link }]}>{t('discovery.forYou.myDirection')}</Text>
+              <ArrowRight size={13} color={theme.link} />
+            </Pressable>
+          </View>
+          <View style={[styles.emptyReadyCard, theme.card]}>
+            <Text style={[styles.emptyReadyTitle, { color: theme.title }]}>
+              {t('discovery.forYou.emptyReadyTitle')}
+            </Text>
+            <Text style={[styles.emptyReadyBody, { color: theme.body }]}>
+              {t('discovery.forYou.emptyReadyBody')}
+            </Text>
+            <Pressable
+              style={[styles.directionChip, theme.chip, { marginHorizontal: 0, marginTop: 8 }]}
+              onPress={() => navigation?.navigate?.('DiscoveryDirection')}
+            >
+              <Text style={[styles.directionChipText, { color: theme.accent }]}>
+                {t('discovery.forYou.myDirection')}
+              </Text>
+              <ArrowRight size={14} color={theme.accent} />
+            </Pressable>
+          </View>
+        </IntelligenceRailShell>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.section}>
@@ -897,4 +934,20 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   reasonLead: { fontWeight: '700' },
+  emptyReadyCard: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginHorizontal: 4,
+  },
+  emptyReadyTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  emptyReadyBody: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
 });

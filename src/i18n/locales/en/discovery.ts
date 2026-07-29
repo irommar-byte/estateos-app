@@ -9,6 +9,8 @@ export const discovery = {
     coldBody: 'Rate a few listings at your pace — matched suggestions will appear here.',
     myDirection: 'My direction',
     matchHint: 'Matched from your direction',
+    emptyReadyTitle: 'You have rated everything for now.',
+    emptyReadyBody: 'Your profile is ready, but there are no fresh suggestions yet. Check back soon or refine direction.',
   },
   stages: {
     EXPLORE: 'Exploring',
