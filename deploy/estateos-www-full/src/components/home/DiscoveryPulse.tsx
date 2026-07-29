@@ -371,11 +371,13 @@ export default function DiscoveryPulse() {
   useEffect(
     () =>
       subscribeIntelligenceLearn((detail) => {
+        if (!intelligenceEnabled) return;
         if (!detail?.kind || detail.kind === "open" || detail.kind === "other") return;
         wakeOil();
         setSplashKey((k) => k + 1);
+        void playIntelligenceChime("learn");
       }),
-    [wakeOil],
+    [intelligenceEnabled, wakeOil],
   );
 
   useEffect(() => {
