@@ -76,23 +76,28 @@ async function loadForYouOfferPool(input: {
   }>
 > {
   const txFilter = String(input.transaction || "").trim().toUpperCase();
-  const txWhere =
-    txFilter === "SALE" || txFilter === "SELL"
-      ? { transactionType: { in: ["SALE", "SELL"] } }
-      : txFilter === "RENT"
-        ? { transactionType: "RENT" }
-        : {};
+  const baseWhere: {
+    status: "ACTIVE";
+    city?: { in: string[] };
+    transactionType?: "RENT" | { in: ("SALE" | "SELL")[] };
+  } = { status: "ACTIVE" };
+
+  if (txFilter === "SALE" || txFilter === "SELL") {
+    baseWhere.transactionType = { in: ["SALE", "SELL"] };
+  } else if (txFilter === "RENT") {
+    baseWhere.transactionType = "RENT";
+  }
 
   if (input.topCities.length > 0) {
     const [affinity, explore] = await Promise.all([
       prisma.offer.findMany({
-        where: { status: "ACTIVE", city: { in: input.topCities }, ...txWhere },
+        where: { ...baseWhere, city: { in: input.topCities } },
         orderBy: { updatedAt: "desc" },
         take: 100,
         select: OFFER_SELECT,
       }),
       prisma.offer.findMany({
-        where: { status: "ACTIVE", ...txWhere },
+        where: baseWhere,
         orderBy: { createdAt: "desc" },
         take: 80,
         select: OFFER_SELECT,
@@ -109,7 +114,7 @@ async function loadForYouOfferPool(input: {
   }
 
   return prisma.offer.findMany({
-    where: { status: "ACTIVE", ...txWhere },
+    where: baseWhere,
     orderBy: { createdAt: "desc" },
     take: 150,
     select: OFFER_SELECT,
