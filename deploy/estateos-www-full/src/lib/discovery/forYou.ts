@@ -79,11 +79,11 @@ async function loadForYouOfferPool(input: {
   const baseWhere: {
     status: "ACTIVE";
     city?: { in: string[] };
-    transactionType?: "RENT" | { in: ("SALE" | "SELL")[] };
+    transactionType?: "RENT" | "SELL";
   } = { status: "ACTIVE" };
 
   if (txFilter === "SALE" || txFilter === "SELL") {
-    baseWhere.transactionType = { in: ["SALE", "SELL"] };
+    baseWhere.transactionType = "SELL";
   } else if (txFilter === "RENT") {
     baseWhere.transactionType = "RENT";
   }
