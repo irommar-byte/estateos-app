@@ -9,7 +9,7 @@ import {
 } from "@/lib/discovery/engine";
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 import { absolutizeMediaUrl } from "@/lib/offerShareLanding";
-import { DISCOVERY_ENGINE_VERSION, type DiscoveryScoredCandidate } from "@/lib/discovery/types";
+import { DISCOVERY_ENGINE_VERSION, type DiscoveryCandidate, type DiscoveryScoredCandidate } from "@/lib/discovery/types";
 
 const OFFER_SELECT = {
   id: true,
@@ -153,7 +153,56 @@ export type DiscoveryForYouResult = {
   explain: { offerId: number; reason: string; score: number } | null;
 };
 
-function toItem(row: DiscoveryScoredCandidate): DiscoveryForYouItem {
+function toDiscoveryCandidate(row: {
+  id: number;
+  title: string | null;
+  price: number | null;
+  pricePln: number | null;
+  priceCurrency: string | null;
+  listPricePln: number | null;
+  city: string | null;
+  district: string | null;
+  propertyType: string | null;
+  transactionType: string | null;
+  area: number | null;
+  rooms: number | null;
+  hasBalcony: boolean | null;
+  hasParking: boolean | null;
+  hasGarden: boolean | null;
+  hasElevator: boolean | null;
+  isFurnished: boolean | null;
+  status: string;
+  expiresAt: Date | null;
+  images: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}): DiscoveryCandidate {
+  return {
+    id: row.id,
+    title: row.title || `Oferta #${row.id}`,
+    price: Number(row.price) || 0,
+    pricePln: row.pricePln == null ? null : Number(row.pricePln),
+    priceCurrency: String(row.priceCurrency || "PLN"),
+    listPricePln: row.listPricePln == null ? null : Number(row.listPricePln),
+    city: row.city || "",
+    district: row.district || "",
+    propertyType: String(row.propertyType || ""),
+    transactionType: String(row.transactionType || ""),
+    area: Number(row.area) || 0,
+    rooms: row.rooms == null ? null : Number(row.rooms),
+    hasBalcony: Boolean(row.hasBalcony),
+    hasParking: Boolean(row.hasParking),
+    hasGarden: Boolean(row.hasGarden),
+    hasElevator: Boolean(row.hasElevator),
+    isFurnished: Boolean(row.isFurnished),
+    images: typeof row.images === "string" ? row.images : row.images == null ? null : JSON.stringify(row.images),
+    status: String(row.status || ""),
+    expiresAt: row.expiresAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    embeddingVector: null,
+  };
+}
   return {
     id: row.id,
     offerId: row.id,
@@ -318,7 +367,7 @@ export async function buildDiscoveryForYou(input: {
       const pubIds = await activePublicationOfferIds([target.id]);
       if (canShowOfferOnPublicMarket(target, pubIds)) {
         const scored = scoreDiscoveryCandidate({
-          candidate: { ...target, embeddingVector: null },
+          candidate: toDiscoveryCandidate(target),
           profile: profileSnapshot,
           recentShown,
           recentDisliked: dislikedOfferIds,
@@ -347,7 +396,7 @@ export async function buildDiscoveryForYou(input: {
     })
     .map((offer) =>
       scoreDiscoveryCandidate({
-        candidate: { ...offer, embeddingVector: null },
+        candidate: toDiscoveryCandidate(offer),
         profile: profileSnapshot,
         recentShown,
         recentDisliked: dislikedOfferIds,
