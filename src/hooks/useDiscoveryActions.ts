@@ -21,7 +21,7 @@ type RecordResult = {
 };
 
 /**
- * Mobile taste controls — posts to /api/discovery/events (WWW parity + Bearer).
+ * Mobile taste controls — posts to /api/mobile/v1/discovery/events (Bearer).
  */
 export function useDiscoveryActions() {
   const token = useAuthStore((s) => s.token);

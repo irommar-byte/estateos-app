@@ -649,7 +649,21 @@ export async function fetchDiscoveryForYou(
 
 export type DiscoveryTasteAction = 'LIKE' | 'DISLIKE' | 'SERIOUS' | 'OPEN';
 
-/** WWW-parity taste events via /api/discovery/events (Bearer OK). */
+function mapTasteActionToDiscoveryEventType(action: DiscoveryTasteAction): DiscoveryEventType {
+  switch (action) {
+    case 'LIKE':
+      return 'DISCOVERY_LIKE';
+    case 'DISLIKE':
+      return 'DISCOVERY_DISLIKE';
+    case 'SERIOUS':
+      return 'DISCOVERY_PRIORITY';
+    case 'OPEN':
+    default:
+      return 'DISCOVERY_DEPTH_OPEN';
+  }
+}
+
+/** Mobile taste events via /api/mobile/v1/discovery/events (Bearer auth). */
 export async function postDiscoveryTasteEvent(params: {
   token: string | null;
   offerId: number;
@@ -666,25 +680,35 @@ export async function postDiscoveryTasteEvent(params: {
       ? `mobile-open-${id}-${new Date().toISOString().slice(0, 10)}`
       : `mobile-${params.eventType.toLowerCase()}-${id}-${Date.now()}`;
 
+  const payload: DiscoveryEventPayload = {
+    eventType: mapTasteActionToDiscoveryEventType(params.eventType),
+    offerId: id,
+    sessionId: null,
+    idempotencyKey,
+    reasonCode: normalizeDislikeReason(params.reasonCode) ?? null,
+    source: 'mobile_discovery',
+    platform: normalizeDiscoveryPlatform(Platform.OS),
+    at: new Date().toISOString(),
+  };
+  const source = String(params.source || 'mobile_offer_card').slice(0, 32);
+
   try {
-    const response = await fetch(`${API_URL}/api/discovery/events`, {
+    const response = await fetch(`${API_URL}/api/mobile/v1/discovery/events`, {
       method: 'POST',
       headers: headers(params.token),
-      body: JSON.stringify({
-        eventType: params.eventType,
-        offerId: id,
-        reasonCode: params.reasonCode || undefined,
-        source: (params.source || 'mobile_offer_card').slice(0, 32),
-        idempotencyKey,
-      }),
+      body: JSON.stringify({ ...payload, source }),
     });
     if (response.status === 401) return { ok: false, authRequired: true };
-    if (!response.ok) return { ok: false };
+    if (!response.ok) {
+      await enqueueDiscoveryEvent(payload);
+      return { ok: false };
+    }
     if (params.eventType === 'DISLIKE') {
       void suppressOfferLocally(id, params.reasonCode);
     }
     return { ok: true };
   } catch {
+    await enqueueDiscoveryEvent(payload);
     return { ok: false };
   }
 }
