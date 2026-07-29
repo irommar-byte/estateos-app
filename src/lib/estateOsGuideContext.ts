@@ -21,6 +21,7 @@ export type GuideCta = {
 export type EstateOsGuideContext = {
   confidence: number;
   contradictionIndex: number;
+  profileUpdatedAt: Date | null;
   searchPhase: string;
   intentStage: GuideIntentStage;
   intentLabel: string;
@@ -193,6 +194,7 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
   return {
     confidence,
     contradictionIndex,
+    profileUpdatedAt: profile?.updatedAt ?? null,
     searchPhase,
     intentStage,
     intentLabel: STAGE_LABEL[intentStage],
