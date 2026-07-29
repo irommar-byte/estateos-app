@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { resolveWebUserId } from "@/lib/webSessionAuth";
 import { buildEstateOsGuideContext } from "@/lib/estateOsGuideContext";
-import { buildDiscoveryBuyerBrief } from "@/lib/discoveryInsights";
-import { discoveryPropertyTypeLabel } from "@/lib/discovery/displayLabels";
 
 export async function GET(req: Request) {
   try {
@@ -15,36 +12,16 @@ export async function GET(req: Request) {
       );
     }
 
-    const [profile, guide] = await Promise.all([
-      prisma.discoveryProfile.findUnique({ where: { userId } }),
-      buildEstateOsGuideContext(userId),
-    ]);
-
-    const brief = buildDiscoveryBuyerBrief({
-      likesCount: profile?.likesCount || 0,
-      dislikesCount: profile?.dislikesCount || 0,
-      fastTrackCount: profile?.fastTrackCount || 0,
-      opensCount: profile?.opensCount || 0,
-      cityStats: profile?.cityStats,
-      districtStats: profile?.districtStats,
-      propertyStats: profile?.propertyStats,
-      reasonStats: profile?.reasonStats,
-    });
-
-    const topCity = brief.topCities[0]?.key || null;
-    const topTypeRaw = brief.topPropertyTypes[0]?.key || null;
-    const topType = topTypeRaw ? discoveryPropertyTypeLabel(topTypeRaw) : null;
-    const confidence = profile?.confidence ?? 0;
-    const contradictionIndex = profile?.contradictionIndex ?? 0;
+    const guide = await buildEstateOsGuideContext(userId);
+    const confidence = guide.confidence ?? 0;
+    const contradictionIndex = guide.contradictionIndex ?? 0;
     const progress = Math.round(Math.min(1, Math.max(0, guide.stageProgress || 0)) * 100);
 
-    const directionLine = [
-      topCity,
-      topType,
-      brief.preferredBudgetPln ? `~${brief.preferredBudgetPln.toLocaleString("pl-PL")} PLN` : null,
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    const normalizedSummary = String(guide.summaryLine || "").trim();
+    const directionLine =
+      normalizedSummary && !normalizedSummary.includes("Za mało")
+        ? normalizedSummary
+        : "Budujemy Twój kierunek z każdej decyzji.";
 
     const suggestion =
       contradictionIndex >= 0.55
@@ -66,7 +43,7 @@ export async function GET(req: Request) {
           decisionCount: guide.decisionCount,
           primaryCta: guide.primaryCta,
           secondaryCta: guide.secondaryCta,
-          updatedAt: profile?.updatedAt?.toISOString() || null,
+          updatedAt: null,
         },
       },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
