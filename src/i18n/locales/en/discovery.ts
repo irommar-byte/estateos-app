@@ -11,6 +11,9 @@ export const discovery = {
     matchHint: 'Matched from your direction',
     emptyReadyTitle: 'You have rated everything for now.',
     emptyReadyBody: 'Your profile is ready, but there are no fresh suggestions yet. Check back soon or refine direction.',
+    loadErrorTitle: 'Suggestions are briefly unavailable.',
+    loadErrorBody: 'We could not refresh your rail. This is not about your taste — please try again.',
+    retry: 'Try again',
   },
   stages: {
     EXPLORE: 'Exploring',

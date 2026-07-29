@@ -247,6 +247,7 @@ export default function DiscoveryForYouRail({
   const isFocused = useIsFocused();
   const [items, setItems] = useState<ForYouRailItem[]>([]);
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [auth, setAuth] = useState<'unknown' | 'guest' | 'user'>('unknown');
   const [loading, setLoading] = useState(true);
   const [appActive, setAppActive] = useState(() => AppState.currentState === 'active');
@@ -373,6 +374,7 @@ export default function DiscoveryForYouRail({
         setAuth('guest');
         setItems([]);
         setReady(false);
+        setLoadError(false);
         setLoading(false);
         return;
       }
@@ -385,9 +387,16 @@ export default function DiscoveryForYouRail({
           setAuth('guest');
           setItems([]);
           setReady(false);
+          setLoadError(false);
           return;
         }
         setAuth('user');
+        if (data.error) {
+          setLoadError(true);
+          if (!opts?.append) setItems([]);
+          return;
+        }
+        setLoadError(false);
         setReady(Boolean(data.profile?.ready));
         const incoming = Array.isArray(data.items) ? data.items : [];
         if (opts?.append) {
@@ -398,6 +407,7 @@ export default function DiscoveryForYouRail({
           scrollRef.current?.scrollTo({ x: 0, animated: false });
         }
       } catch {
+        setLoadError(true);
         if (!opts?.append) setItems([]);
       } finally {
         setLoading(false);
@@ -496,6 +506,38 @@ export default function DiscoveryForYouRail({
       <Text style={[styles.liveLabel, { color: theme.muted }]}>{t('discovery.forYou.liveLabel')}</Text>
     </View>
   );
+
+  if (loadError && items.length === 0) {
+    return (
+      <View style={styles.section}>
+        <IntelligenceRailShell {...shellProps}>
+          <View style={styles.header}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              {eyebrow}
+              <Text style={[styles.h2, { color: theme.title }]}>{t('discovery.forYou.title')}</Text>
+            </View>
+          </View>
+          <View style={[styles.emptyReadyCard, theme.card]}>
+            <Text style={[styles.emptyReadyTitle, { color: theme.title }]}>
+              {t('discovery.forYou.loadErrorTitle')}
+            </Text>
+            <Text style={[styles.emptyReadyBody, { color: theme.body }]}>
+              {t('discovery.forYou.loadErrorBody')}
+            </Text>
+            <Pressable
+              style={[styles.directionChip, theme.chip, { marginHorizontal: 0, marginTop: 8 }]}
+              onPress={() => void load()}
+            >
+              <Text style={[styles.directionChipText, { color: theme.accent }]}>
+                {t('discovery.forYou.retry')}
+              </Text>
+              <ArrowRight size={14} color={theme.accent} />
+            </Pressable>
+          </View>
+        </IntelligenceRailShell>
+      </View>
+    );
+  }
 
   if (!ready) {
     return (

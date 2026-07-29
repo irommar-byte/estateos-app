@@ -11,6 +11,9 @@ export const discovery = {
     matchHint: 'Dopasowanie na podstawie Twojego kierunku',
     emptyReadyTitle: 'Na ten moment wszystko już ocenione.',
     emptyReadyBody: 'Profil jest gotowy, ale nie ma nowych sugestii. Wróć za chwilę lub doprecyzuj kierunek.',
+    loadErrorTitle: 'Sugestie chwilowo niedostępne.',
+    loadErrorBody: 'Nie udało się odświeżyć taśmy. To nie wina Twojego gustu — spróbuj ponownie.',
+    retry: 'Spróbuj ponownie',
   },
   stages: {
     EXPLORE: 'Odkrywanie',

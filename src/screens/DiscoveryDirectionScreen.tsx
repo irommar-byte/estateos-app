@@ -87,18 +87,9 @@ function resolveStage(key: string | undefined): StageKey {
   return 'EXPLORE';
 }
 
-function humanTip(body: string | undefined, summaryLine: string | undefined) {
+function humanTip(body: string | undefined) {
   const raw = String(body || '').trim();
-  if (!raw) return 'Oceń kilka ofert — kierunek ułoży się sam.';
-  const summary = String(summaryLine || '').trim();
-  if (summary && raw.startsWith(summary)) {
-    const rest = raw.slice(summary.length).replace(/^[\s.·—–-]+/, '').trim();
-    return rest || 'Czas doprecyzować wybór albo oznaczyć coś „na poważnie”.';
-  }
-  if (summary && raw.includes(summary)) {
-    return raw.replace(summary, '').replace(/^[\s.·—–-]+/, '').trim() || raw;
-  }
-  return raw;
+  return raw || 'Oceń kilka ofert — kierunek ułoży się sam.';
 }
 
 function goBackOrMarket(navigation: any) {
@@ -138,7 +129,7 @@ export default function DiscoveryDirectionScreen({ navigation }: any) {
     activeStage === 'COMPLETE'
       ? 'Ta faza poszukiwania jest domknięta.'
       : guide?.nextStep?.title || 'Zacznijmy od tego, co jest dla Ciebie ważne.';
-  const tip = humanTip(guide?.body, profile?.summaryLine);
+  const tip = humanTip(guide?.body);
   const primary = guide?.primaryCta || { label: 'Oceń oferty', href: '/oferty' };
 
   const knownChips = useMemo(() => {

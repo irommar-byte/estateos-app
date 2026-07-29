@@ -581,6 +581,8 @@ export type DiscoveryForYouResponse = {
     ready: boolean;
   } | null;
   explain: { offerId: number; reason: string; score: number } | null;
+  /** True when network/API failed — UI must not treat this as “everything rated”. */
+  error?: boolean;
 };
 
 export async function fetchDiscoveryForYou(
@@ -606,7 +608,7 @@ export async function fetchDiscoveryForYou(
       return { auth: 'guest', items: [], profile: null, explain: null };
     }
     if (!response.ok) {
-      return { auth: 'user', items: [], profile: null, explain: null };
+      return { auth: 'user', items: [], profile: null, explain: null, error: true };
     }
     const data = await response.json().catch(() => ({}));
     const itemsRaw = Array.isArray(data?.items) ? data.items : [];
@@ -643,7 +645,7 @@ export async function fetchDiscoveryForYou(
         : null,
     };
   } catch {
-    return { auth: 'user', items: [], profile: null, explain: null };
+    return { auth: 'user', items: [], profile: null, explain: null, error: true };
   }
 }
 
