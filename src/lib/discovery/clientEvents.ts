@@ -31,7 +31,7 @@ function learnKind(eventType?: string): IntelligenceLearnDetail['kind'] {
   return 'other';
 }
 
-/** Broadcast after taste decisions so Lustro / For You / Pulse reload. */
+/** Broadcast after taste decisions so Kierunek / For You / Pulse reload. */
 export function dispatchDiscoveryUpdated(detail?: DiscoveryUpdatedDetail) {
   DeviceEventEmitter.emit(DISCOVERY_UPDATED_EVENT, detail || {});
   const eventType = detail?.eventType;

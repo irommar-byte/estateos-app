@@ -75,7 +75,6 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       guideFind: "Знайти простір, що пасує мені",
       guideTropes: "Показати важливі тропи",
       guideDirection: "Підказати наступний крок",
-      guideLustro: "Дзеркало вподобань",
       guideSupport: "Я тут, щоб спокійно допомагати.",
       progressBadge: "Прогрес",
       progressLead: "Напрямок щойно загострився.",
