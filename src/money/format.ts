@@ -100,7 +100,7 @@ export function formatApproxLine(
       : `≈ ${formatAmountWithCurrency(plnFromListingAmount(amount, 'EUR', r), 'PLN')}`;
   const dateLabel = formatFxRateDateLabel(rateDate);
   if (!dateLabel) return amountLine;
-  return `${amountLine} „kurs z ${dateLabel}”`;
+  return `${amountLine} (kurs z ${dateLabel})`;
 }
 
 export type FormattedOfferPrice = {

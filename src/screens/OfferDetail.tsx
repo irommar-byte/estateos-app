@@ -3,7 +3,7 @@ import { normalizeStoredScanMeta } from '../lib/roomScan/parseRoomPlanJson';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Alert, Modal, Platform, Pressable, ScrollView, ActivityIndicator, useColorScheme, type GestureResponderEvent } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Alert, Modal, Platform, Pressable, ScrollView, ActivityIndicator, useColorScheme, StatusBar, useWindowDimensions, type GestureResponderEvent } from 'react-native';
 import { useThemeStore } from '../store/useThemeStore';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,18 +18,20 @@ import Animated, {
   withTiming,
   withSequence,
   withRepeat,
+  Easing,
 } from 'react-native-reanimated';
-
 const AnimatedScrollView = Animated.createAnimatedComponent(GHScrollView);
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import OfferGlassGallery from '../components/offer/OfferGlassGallery';
 import LiveHeroPhoto from '../components/offer/LiveHeroPhoto';
+import CinemaRotateHint from '../components/offer/CinemaRotateHint';
+import { getScreenOrientationApi } from '../utils/screenOrientationSafe';
 import FeaturedPromoteSheet from '../components/offer/FeaturedPromoteSheet';
 import OfferDetailMetaBadgesSection from '../components/offer/OfferDetailMetaBadgesSection';
 import { playFeaturedCelebration } from '../store/useFeaturedCelebrationStore';
-import { ChevronLeft, Share as ShareIcon, Heart, Maximize, Images, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, ChevronUp, MoreHorizontal, Flag, Ban, DollarSign } from 'lucide-react-native';
+import { ChevronLeft, Share as ShareIcon, Heart, Maximize, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, ChevronUp, MoreHorizontal, Flag, Ban, DollarSign } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
@@ -101,10 +103,10 @@ import { localeToDateFormat, useI18n } from '../i18n';
 import { isProPhotoSessionSampleOfferId } from '../data/proPhotoSessionSampleOffers';
 
 const { width, height } = Dimensions.get('window');
-/** Fallback hero — krótsza karta intro = więcej zdjęcia; finalną wysokość dobiera fitHeroToIntro. */
+/** Fallback hero — finalną wysokość dobiera onIntroLayout / firstScreen. */
 const DEFAULT_HERO_HEIGHT = Math.max(380, Math.round(Math.min(width * (4 / 3), height * 0.46)));
-/** Ile białej karty nachodzi na dół zdjęcia (zaokrąglone rogi). */
-const HERO_SHEET_OVERLAP = 28;
+/** Lip karty na zdjęciu (zaokrąglone rogi). */
+const HERO_SHEET_OVERLAP = 36;
 const GALLERY_CONTENT_WIDTH = width - 48;
 const GALLERY_HERO_HEIGHT = Math.round(GALLERY_CONTENT_WIDTH * 0.62);
 const EVENT_PREFIX = DEAL_EVENT_PREFIX;
@@ -171,6 +173,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const systemScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemScheme === 'dark');
+  const topBarIconColor = isDark ? '#FFFFFF' : '#000000';
   const theme = { glass: isDark ? 'dark' : 'light' };
   const [isFavorite, setIsFavorite] = useState(false);
   /*
@@ -185,7 +188,11 @@ export default function OfferDetail({ route, navigation }: any) {
    */
   const [bottomBarHeight, setBottomBarHeight] = useState(180);
   const [heroHeight, setHeroHeight] = useState(DEFAULT_HERO_HEIGHT);
+  const [sheetOverlap] = useState(HERO_SHEET_OVERLAP);
+  const [introGlassHeight, setIntroGlassHeight] = useState(0);
   const heroHeightSV = useSharedValue(DEFAULT_HERO_HEIGHT);
+  const introHeightRef = useRef(0);
+  const bottomBarWrapRef = useRef<View>(null);
   const heartScale = useSharedValue(1);
   const { user, token, refreshUser } = useAuthStore() as any;
   const [promotingFeatured, setPromotingFeatured] = useState(false);
@@ -461,6 +468,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
   const [galleryCurrentIndex, setGalleryCurrentIndex] = useState(0);
   const [galleryPreviewIndex, setGalleryPreviewIndex] = useState(0);
+  const [galleryQueueNonce, setGalleryQueueNonce] = useState(0);
   const [isLocationPreviewOpen, setIsLocationPreviewOpen] = useState(false);
   const [dealId, setDealId] = useState<number | null>(null);
   const [isBidModalOpen, setIsBidModalOpen] = useState(false);
@@ -939,8 +947,15 @@ export default function OfferDetail({ route, navigation }: any) {
     return d.toLocaleDateString(dateLocale, { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isLandscape = winW > winH;
+  const windowHeightSV = useSharedValue(winH);
   const scrollY = useSharedValue(0);
   const sheetNudge = useSharedValue(0);
+  /** 0 = normalny widok, 1 = pełnoekranowy show hero. */
+  const cinemaProgress = useSharedValue(0);
+  const [isCinemaMode, setIsCinemaMode] = useState(false);
+  const [showRotateHint, setShowRotateHint] = useState(false);
   const scrollViewRef = useRef<GHScrollView>(null);
   const touchTapRef = useRef({ x: 0, y: 0, at: 0 });
   const scrollHandler = useAnimatedScrollHandler({
@@ -948,6 +963,24 @@ export default function OfferDetail({ route, navigation }: any) {
       scrollY.value = e.contentOffset.y;
     },
   });
+
+  useEffect(() => {
+    windowHeightSV.value = winH;
+  }, [winH, windowHeightSV]);
+
+  useEffect(() => {
+    if (!isCinemaMode || isLandscape) {
+      setShowRotateHint(false);
+      return;
+    }
+    setShowRotateHint(true);
+    const timer = setTimeout(() => setShowRotateHint(false), 4800);
+    return () => clearTimeout(timer);
+  }, [isCinemaMode, isLandscape]);
+
+  const lockPortrait = useCallback(() => {
+    getScreenOrientationApi().lockPortrait();
+  }, []);
 
   const isTapNotScroll = (start: { x: number; y: number; at: number }, end: GestureResponderEvent) => {
     const dx = Math.abs(end.nativeEvent.pageX - start.x);
@@ -964,12 +997,41 @@ export default function OfferDetail({ route, navigation }: any) {
   };
 
   const nudgeSheetOpen = () => {
+    if (isCinemaMode) return;
     scrollViewRef.current?.scrollTo({ y: 96, animated: true });
   };
 
   const handleSheetHintTapEnd = (e: GestureResponderEvent) => {
     if (isTapNotScroll(touchTapRef.current, e)) nudgeSheetOpen();
   };
+
+  const toggleCinemaMode = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const next = !isCinemaMode;
+    setIsCinemaMode(next);
+    if (next) {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+      getScreenOrientationApi().unlockAll();
+    } else {
+      lockPortrait();
+    }
+    cinemaProgress.value = withTiming(next ? 1 : 0, {
+      duration: 580,
+      easing: next
+        ? Easing.bezier(0.22, 1.0, 0.36, 1)
+        : Easing.bezier(0.22, 1.0, 0.36, 1),
+    });
+  }, [cinemaProgress, isCinemaMode, lockPortrait]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        lockPortrait();
+        setIsCinemaMode(false);
+        cinemaProgress.value = 0;
+      };
+    }, [cinemaProgress, lockPortrait]),
+  );
 
   useEffect(() => {
     sheetNudge.value = withRepeat(
@@ -989,38 +1051,99 @@ export default function OfferDetail({ route, navigation }: any) {
   }));
 
   const imageAnimatedStyle = useAnimatedStyle(() => {
-    const h = heroHeightSV.value;
+    const c = cinemaProgress.value;
+    const baseH = heroHeightSV.value;
+    const screenH = windowHeightSV.value;
+    const h = interpolate(c, [0, 1], [baseH, screenH]);
+    const scrollT = 1 - c;
+    const scrollScale = interpolate(scrollY.value, [-baseH, 0], [2, 1], Extrapolation.CLAMP);
     return {
+      height: h,
       transform: [
-        { translateY: interpolate(scrollY.value, [-h, 0, h], [-h / 2, 0, h * 0.5], Extrapolation.CLAMP) },
-        { scale: interpolate(scrollY.value, [-h, 0], [2, 1], Extrapolation.CLAMP) },
+        {
+          translateY:
+            interpolate(scrollY.value, [-baseH, 0, baseH], [-baseH / 2, 0, baseH * 0.5], Extrapolation.CLAMP) *
+            scrollT,
+        },
+        // Cinema: pełny ekran kontenera + cover Ken Burns (bez contain / letterbox).
+        { scale: scrollScale * scrollT + 1 * c },
       ],
     };
   });
 
-  const fitHeroToIntro = useCallback(
+  const cinemaTopLeftStyle = useAnimatedStyle(() => {
+    const c = cinemaProgress.value;
+    return {
+      opacity: interpolate(c, [0, 0.35, 1], [1, 0.4, 0], Extrapolation.CLAMP),
+      transform: [
+        { translateX: interpolate(c, [0, 1], [0, -110], Extrapolation.CLAMP) },
+        { translateY: interpolate(c, [0, 1], [0, -28], Extrapolation.CLAMP) },
+        { scale: interpolate(c, [0, 1], [1, 0.86], Extrapolation.CLAMP) },
+      ],
+    };
+  });
+
+  const cinemaTopRightStyle = useAnimatedStyle(() => {
+    const c = cinemaProgress.value;
+    return {
+      opacity: interpolate(c, [0, 0.35, 1], [1, 0.4, 0], Extrapolation.CLAMP),
+      transform: [
+        { translateX: interpolate(c, [0, 1], [0, 130], Extrapolation.CLAMP) },
+        { translateY: interpolate(c, [0, 1], [0, -28], Extrapolation.CLAMP) },
+        { scale: interpolate(c, [0, 1], [1, 0.86], Extrapolation.CLAMP) },
+      ],
+    };
+  });
+
+  const cinemaSheetStyle = useAnimatedStyle(() => {
+    const c = cinemaProgress.value;
+    const screenH = windowHeightSV.value;
+    return {
+      opacity: interpolate(c, [0, 0.45, 1], [1, 0.55, 0], Extrapolation.CLAMP),
+      transform: [
+        { translateY: interpolate(c, [0, 1], [0, screenH * 0.92], Extrapolation.CLAMP) },
+      ],
+    };
+  });
+
+  const cinemaBottomBarStyle = useAnimatedStyle(() => {
+    const c = cinemaProgress.value;
+    return {
+      opacity: interpolate(c, [0, 0.4, 1], [1, 0.5, 0], Extrapolation.CLAMP),
+      transform: [
+        { translateY: interpolate(c, [0, 1], [0, Math.max(bottomBarHeight, 160) + 48], Extrapolation.CLAMP) },
+      ],
+    };
+  });
+
+  const cinemaGradientStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(cinemaProgress.value, [0, 0.5, 1], [1, 0.35, 0], Extrapolation.CLAMP),
+  }));
+
+  /** Wysokość pierwszego ekranu: od góry do sticky — intro (z linią) zawsze na dole. */
+  const firstScreenHeight = Math.max(320, Math.round(height - bottomBarHeight));
+
+  const onIntroLayout = useCallback(
     (introHeight: number) => {
-      if (!Number.isFinite(introHeight) || introHeight < 80) return;
-      // Styk karty z hero: intro (do kafelków) kończy się tuż nad sticky CTA → więcej zdjęcia.
-      const next = Math.round(
-        Math.max(
-          340,
-          Math.min(height * 0.62, height - bottomBarHeight - introHeight + HERO_SHEET_OVERLAP),
-        ),
-      );
-      if (Math.abs(next - heroHeight) <= 4) return;
-      setHeroHeight(next);
-      heroHeightSV.value = next;
+      if (!Number.isFinite(introHeight) || introHeight < 60) return;
+      introHeightRef.current = introHeight;
+      setIntroGlassHeight(introHeight);
+      // Hero = to, co zostaje nad intro w pierwszym ekranie (+ lip pod szkło).
+      const next = Math.max(200, Math.round(firstScreenHeight - introHeight + sheetOverlap));
+      setHeroHeight((prev) => {
+        if (Math.abs(prev - next) <= 1) return prev;
+        heroHeightSV.value = next;
+        return next;
+      });
     },
-    [bottomBarHeight, heroHeight, heroHeightSV, height],
+    [firstScreenHeight, heroHeightSV, sheetOverlap],
   );
-  const introHeightRef = useRef(0);
 
   useEffect(() => {
-    if (introHeightRef.current > 80) {
-      fitHeroToIntro(introHeightRef.current);
+    if (introHeightRef.current > 60) {
+      onIntroLayout(introHeightRef.current);
     }
-  }, [bottomBarHeight, fitHeroToIntro]);
+  }, [firstScreenHeight, onIntroLayout, offer?.id]);
 
   // --- FUNKCJE OTWIERANIA GALERII ---
   const openGallery = (index: number) => {
@@ -1037,6 +1160,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const selectGalleryPreview = (index: number) => {
     Haptics.selectionAsync();
     setGalleryPreviewIndex(index);
+    setGalleryQueueNonce((n) => n + 1);
   };
 
   const closeGallery = () => {
@@ -1528,15 +1652,18 @@ export default function OfferDetail({ route, navigation }: any) {
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#000000' : '#ffffff' }]}>
+      <StatusBar hidden={isCinemaMode} animated />
       <Animated.View
-        style={[styles.imageContainer, { height: heroHeight }, imageAnimatedStyle]}
+        style={[styles.imageContainer, imageAnimatedStyle]}
         pointerEvents="box-none"
       >
         <Pressable
-          onPress={() => openGallery(0)}
+          onPress={toggleCinemaMode}
           style={styles.heroImagePressable}
           accessibilityRole="button"
-          accessibilityLabel={t('offer.detail.hero.openGallery')}
+          accessibilityLabel={
+            isCinemaMode ? t('offer.detail.hero.closeCinema', { defaultValue: 'Zamknij podgląd' }) : t('offer.detail.hero.openCinema', { defaultValue: 'Pełny ekran zdjęcia' })
+          }
         >
           {imagesToShow[0] ? (
             <LiveHeroPhoto
@@ -1547,54 +1674,47 @@ export default function OfferDetail({ route, navigation }: any) {
           ) : (
             <View style={[styles.mainImage, { backgroundColor: '#1c1c1e' }]} />
           )}
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.52)']}
-            locations={[0, 0.55, 1]}
-            style={styles.heroGradient}
-            pointerEvents="none"
-          />
+          <Animated.View style={[styles.heroGradient, cinemaGradientStyle]} pointerEvents="none">
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.52)']}
+              locations={[0, 0.55, 1]}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
+          <CinemaRotateHint visible={showRotateHint} />
         </Pressable>
-        {imagesToShow.length > 0 ? (
-          <Pressable
-            onPress={() => openGallery(0)}
-            style={styles.heroPhotoPill}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={t('offer.detail.hero.openGallery')}
-          >
-            <BlurView intensity={68} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
-            <View style={styles.heroPhotoPillInner} pointerEvents="none">
-              <Images color="#FFFFFF" size={15} strokeWidth={2.2} />
-              <Text style={styles.heroPhotoPillText}>
-                {t('offer.detail.hero.photoCount', { count: imagesToShow.length })}
-              </Text>
-            </View>
-          </Pressable>
-        ) : null}
       </Animated.View>
 
-      <View style={[styles.topBar, { top: Math.max(12, insets.top + 6) }]}>
-        <TouchableOpacity style={styles.glassButtonOuter} onPress={() => navigation?.goBack()} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} activeOpacity={0.85}>
-          <View style={styles.glassButton}>
-            <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
-            <ChevronLeft color="white" size={24} />
-          </View>
-        </TouchableOpacity>
+      <View
+        style={[styles.topBar, { top: Math.max(12, insets.top + 6) }]}
+        pointerEvents={isCinemaMode ? 'none' : 'box-none'}
+      >
+        <Animated.View style={cinemaTopLeftStyle}>
+          <TouchableOpacity style={styles.glassButtonOuter} onPress={() => navigation?.goBack()} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} activeOpacity={0.85}>
+            <View style={styles.glassButton}>
+              <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} pointerEvents="none" />
+              <View style={styles.glassButtonSheen} pointerEvents="none" />
+              <ChevronLeft color={topBarIconColor} size={24} />
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
 
-        <View style={styles.topBarRight}>
+        <Animated.View style={[styles.topBarRight, cinemaTopRightStyle]}>
           {!isSamplePreview ? (
             <>
           <TouchableOpacity style={[styles.glassButtonOuter, { marginRight: 12 }]} onPress={handleShare} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} activeOpacity={0.85}>
             <View style={styles.glassButton}>
-              <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
-              <ShareIcon color="white" size={20} />
+              <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} pointerEvents="none" />
+              <View style={styles.glassButtonSheen} pointerEvents="none" />
+              <ShareIcon color={topBarIconColor} size={20} />
             </View>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.glassButtonOuter, { marginRight: 12 }]} onPress={handleFavorite} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }} activeOpacity={0.85}>
             <View style={styles.glassButton}>
-              <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+              <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} pointerEvents="none" />
+              <View style={styles.glassButtonSheen} pointerEvents="none" />
               <Animated.View style={animatedHeartStyle}>
-                <Heart color={isFavorite ? "#ff3b30" : "white"} fill={isFavorite ? "#ff3b30" : "transparent"} size={20} />
+                <Heart color={isFavorite ? "#ff3b30" : topBarIconColor} fill={isFavorite ? "#ff3b30" : "transparent"} size={20} />
               </Animated.View>
             </View>
           </TouchableOpacity>
@@ -1611,16 +1731,21 @@ export default function OfferDetail({ route, navigation }: any) {
               activeOpacity={0.85}
             >
               <View style={styles.glassButton}>
-                <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
-                <MoreHorizontal color="white" size={20} />
+                <BlurView intensity={28} tint="light" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                <View style={styles.glassButtonSheen} pointerEvents="none" />
+                <MoreHorizontal color={topBarIconColor} size={20} />
               </View>
             </TouchableOpacity>
           ) : null}
             </>
           ) : null}
-        </View>
+        </Animated.View>
       </View>
 
+      <Animated.View
+        style={[styles.scrollLayer, cinemaSheetStyle]}
+        pointerEvents={isCinemaMode ? 'none' : 'box-none'}
+      >
       <AnimatedScrollView
         ref={scrollViewRef}
         onScroll={scrollHandler}
@@ -1630,46 +1755,85 @@ export default function OfferDetail({ route, navigation }: any) {
         keyboardShouldPersistTaps="handled"
         overScrollMode="always"
         bounces
+        scrollEnabled={!isCinemaMode}
         pointerEvents="box-none"
-        style={styles.scrollLayer}
+        style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
       >
         {/*
-          Przezroczysty pas nad zdjęciem — ScrollView ma pointerEvents="box-none",
-          więc dotyk trafia w Pressable hero pod spodem (galeria). Przewijanie działa
-          na białej karcie treści poniżej.
+          Pierwszy ekran = dokładnie do sticky CTA.
+          Intro (linia pod lokalizacją) jest na dole tego boxa — bez pętli pomiarów.
         */}
-        <Pressable
-          onPress={() => openGallery(0)}
-          style={[styles.heroTapStrip, { height: Math.max(120, heroHeight - HERO_SHEET_OVERLAP) }]}
-          accessibilityRole="button"
-          accessibilityLabel={t('offer.detail.hero.openGallery')}
-        />
-        <View
-          style={[
-            styles.contentSheet,
-            {
-              backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
-              marginTop: -HERO_SHEET_OVERLAP,
-            },
-          ]}
-        >
-          {/* Pierwszy ekran karty: od uchwytu do końca kafelków (pokoje/m²/piętro/rok). */}
+        <View style={{ height: firstScreenHeight }}>
+          <Pressable
+            onPress={toggleCinemaMode}
+            style={styles.heroTapStripFlex}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isCinemaMode
+                ? t('offer.detail.hero.closeCinema', { defaultValue: 'Zamknij podgląd' })
+                : t('offer.detail.hero.openCinema', { defaultValue: 'Pełny ekran zdjęcia' })
+            }
+          />
           <View
-            onLayout={(e) => {
-              const h = e.nativeEvent.layout.height;
-              introHeightRef.current = h;
-              fitHeroToIntro(h);
-            }}
+            style={[
+              styles.contentSheet,
+              styles.contentSheetIntro,
+              {
+                backgroundColor: 'transparent',
+                marginTop: -sheetOverlap,
+              },
+            ]}
           >
+            {introGlassHeight > 0 ? (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.sheetGlassBackdrop,
+                  { height: introGlassHeight },
+                ]}
+              >
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? 48 : 36}
+                  tint={isDark ? 'dark' : 'light'}
+                  style={StyleSheet.absoluteFill}
+                />
+                <LinearGradient
+                  colors={
+                    isDark
+                      ? [
+                          'rgba(10,10,10,0.08)',
+                          'rgba(10,10,10,0.28)',
+                          'rgba(10,10,10,0.62)',
+                          'rgba(10,10,10,0.94)',
+                        ]
+                      : [
+                          'rgba(255,255,255,0.08)',
+                          'rgba(255,255,255,0.32)',
+                          'rgba(255,255,255,0.72)',
+                          'rgba(255,255,255,0.97)',
+                        ]
+                  }
+                  locations={[0, 0.28, 0.62, 1]}
+                  style={StyleSheet.absoluteFill}
+                />
+              </View>
+            ) : null}
+            {/* Pierwszy ekran karty: uchwyt → lokalizacja → linia styku ze sticky. */}
+            <View
+              onLayout={(e) => {
+                onIntroLayout(e.nativeEvent.layout.height);
+              }}
+              style={styles.sheetIntroContent}
+            >
           <LinearGradient
             pointerEvents="none"
             colors={
               isDark
-                ? ['rgba(0,0,0,0.72)', 'rgba(0,0,0,0.28)', 'transparent']
-                : ['rgba(0,0,0,0.16)', 'rgba(0,0,0,0.06)', 'transparent']
+                ? ['rgba(255,255,255,0.08)', 'transparent']
+                : ['rgba(255,255,255,0.35)', 'transparent']
             }
-            locations={[0, 0.45, 1]}
+            locations={[0, 1]}
             style={styles.sheetTopShade}
           />
           <Animated.View
@@ -1771,6 +1935,24 @@ export default function OfferDetail({ route, navigation }: any) {
             </Pressable>
           ) : null}
 
+          <View
+            style={[
+              styles.introStickyJoinLine,
+              { backgroundColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)' },
+            ]}
+          />
+          </View>
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.contentSheet,
+            styles.contentSheetBody,
+            { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' },
+          ]}
+        >
+
           {auctionEvent ? (
             <AuctionOfferBanner
               event={auctionEvent}
@@ -1805,7 +1987,7 @@ export default function OfferDetail({ route, navigation }: any) {
             </View>
           ) : null}
 
-          <View style={styles.statsGrid}>
+          <View style={[styles.statsGrid, { marginTop: 18 }]}>
             {[
               {
                 key: 'rooms',
@@ -1856,10 +2038,8 @@ export default function OfferDetail({ route, navigation }: any) {
               </View>
             ))}
           </View>
-          </View>
 
-          <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
-          <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.about')}</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 28 }, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.about')}</Text>
           <Text style={[styles.description, isDark && { color: '#d1d5db' }]}>{displayOffer.description}</Text>
 
           <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
@@ -2045,6 +2225,8 @@ export default function OfferDetail({ route, navigation }: any) {
             >
               <LiveHeroPhoto
                 uris={imagesToShow.map(String)}
+                preferredNextIndex={galleryPreviewIndex}
+                preferredNextNonce={galleryQueueNonce}
                 style={styles.galleryHeroImage}
                 recyclingKey={`gallery-hero-${offer?.id}`}
               />
@@ -2297,14 +2479,15 @@ export default function OfferDetail({ route, navigation }: any) {
           />
         </View>
       </AnimatedScrollView>
+      </Animated.View>
 
       {/* --- NOWY, LUKSUSOWY BOTTOM BAR APPLE-STYLE --- */}
-        <View
-        style={styles.bottomBarContainer}
-        pointerEvents="box-none"
+        <Animated.View
+        ref={bottomBarWrapRef}
+        style={[styles.bottomBarContainer, cinemaBottomBarStyle]}
+        pointerEvents={isCinemaMode ? 'none' : 'box-none'}
         onLayout={(e) => {
           const h = e.nativeEvent.layout.height;
-          // Aktualizujemy tylko gdy zmiana > 2px, żeby nie wpadać w pętlę re-renderów.
           if (Math.abs(h - bottomBarHeight) > 2) setBottomBarHeight(h);
         }}
       >
@@ -2697,7 +2880,7 @@ export default function OfferDetail({ route, navigation }: any) {
           </View>
 
         </BlurView>
-      </View>
+      </Animated.View>
 
       <OfferGlassGallery
         visible={isGalleryOpen}
@@ -3219,12 +3402,13 @@ const styles = StyleSheet.create({
   scrollLayer: { flex: 1, zIndex: 2 },
   scrollContent: { flexGrow: 0, paddingBottom: 0 },
   heroTapStrip: { backgroundColor: 'transparent' },
+  heroTapStripFlex: { flex: 1, minHeight: 120, backgroundColor: 'transparent' },
   heroImagePressable: { flex: 1 },
   mainImage: { width: '100%', height: '100%' },
   heroPhotoPill: {
     position: 'absolute',
     right: 18,
-    bottom: HERO_SHEET_OVERLAP + 54,
+    bottom: 82,
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
@@ -3251,55 +3435,91 @@ const styles = StyleSheet.create({
   topBar: { position: 'absolute', top: 55, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 100 },
   topBarRight: { flexDirection: 'row' },
   glassButtonOuter: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.32,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 6,
   },
   glassButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    borderTopColor: 'rgba(255,255,255,0.45)',
-    borderBottomColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderColor: 'rgba(255,255,255,0.38)',
+    borderTopColor: 'rgba(255,255,255,0.62)',
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
+  glassButtonSheen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '48%',
+    backgroundColor: 'rgba(255,255,255,0.22)',
   },
   heroGradient: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    height: 280,
+    height: 220,
   },
   contentSheet: {
-    backgroundColor: '#ffffff',
+    backgroundColor: 'transparent',
     borderTopLeftRadius: 36,
     borderTopRightRadius: 36,
     padding: 24,
     paddingTop: 4,
     overflow: 'visible',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.65)',
+    borderTopColor: 'rgba(255,255,255,0.55)',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: -20 },
-    shadowOpacity: 0.28,
+    shadowOpacity: 0.22,
     shadowRadius: 32,
     elevation: 22,
+  },
+  contentSheetIntro: {
+    paddingBottom: 0,
+    paddingTop: 0,
+    flexShrink: 0,
+  },
+  contentSheetBody: {
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    borderTopWidth: 0,
+    shadowOpacity: 0,
+    elevation: 0,
+    paddingTop: 18,
+  },
+  sheetGlassBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  sheetIntroContent: {
+    zIndex: 2,
+    position: 'relative',
   },
   sheetTopShade: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 36,
+    height: 28,
     borderTopLeftRadius: 36,
     borderTopRightRadius: 36,
     zIndex: 1,
@@ -3308,11 +3528,11 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 10,
-    paddingBottom: 4,
-    marginBottom: 6,
+    paddingTop: 6,
+    paddingBottom: 2,
+    marginBottom: 2,
     marginHorizontal: -8,
-    minHeight: 52,
+    minHeight: 40,
     zIndex: 2,
   },
   sheetDragHandle: {
@@ -3335,8 +3555,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   price: { fontSize: 34, fontWeight: '800', color: '#1d1d1f', letterSpacing: -1, marginBottom: 8 },
-  title: { fontSize: 24, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5, marginBottom: 6 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+  title: { fontSize: 22, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5, marginBottom: 4 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   locationText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#6b7280', letterSpacing: -0.1 },
   locationModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.36)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
   locationModalCard: {
@@ -3421,7 +3641,14 @@ const styles = StyleSheet.create({
     flexWrap: 'nowrap',
     alignItems: 'stretch',
     gap: 8,
-    marginBottom: 6,
+    marginBottom: 14,
+  },
+  /** Linia pod lokalizacją — dolna krawędź pierwszego ekranu = góra sticky CTA. */
+  introStickyJoinLine: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: -24,
+    marginTop: 2,
+    marginBottom: 0,
   },
   statBox: {
     flex: 1,

@@ -15,18 +15,32 @@ import Animated, {
 type Props = {
   uri?: string;
   uris?: string[];
+  startIndex?: number;
+  preferredNextIndex?: number | null;
+  preferredNextNonce?: number;
   style?: StyleProp<ViewStyle>;
   motionSeed?: number | string;
   recyclingKey?: string;
 };
 
-const CYCLE_MS = 22000;
+/** Jedno pełne okrążenie kamery po kółku. */
+const CYCLE_MS = 18000;
+/** Morph dopiero pod koniec okrążenia — wcześniej można kolejkować miniaturę. */
+const HOLD_END = 0.72;
 
 /**
- * Wolny pan w lewo + miks z następnym zdjęciem (bez twardego cięcia).
- * Cover + nadmiar kadru — pionowe bez pustych pasków po bokach.
+ * Kamera stoi w środku pokoju i spokojnie kręci się po kółku.
+ * Bez skoków / trybów: tylko ciągły orbit + miękka zmiana zdjęcia.
  */
-export default function LiveHeroPhoto({ uri, uris, style, recyclingKey }: Props) {
+export default function LiveHeroPhoto({
+  uri,
+  uris,
+  startIndex = 0,
+  preferredNextIndex = null,
+  preferredNextNonce = 0,
+  style,
+  recyclingKey,
+}: Props) {
   const list = useMemo(() => {
     const fromArr = (uris || []).map((u) => String(u || '').trim()).filter(Boolean);
     if (fromArr.length) return fromArr;
@@ -36,28 +50,85 @@ export default function LiveHeroPhoto({ uri, uris, style, recyclingKey }: Props)
 
   const listKey = list.join('|');
   const multi = list.length > 1;
+  const safeStart = list.length
+    ? Math.max(0, Math.min(Math.floor(startIndex) || 0, list.length - 1))
+    : 0;
 
-  const [slotA, setSlotA] = useState(list[0] || '');
-  const [slotB, setSlotB] = useState(list[1] || list[0] || '');
-  const cursorRef = useRef(0);
-  /** 1 = A wyjeżdża (B wjeżdża); 0 = B wyjeżdża (A wjeżdża). */
+  const [slotA, setSlotA] = useState(list[safeStart] || '');
+  const [slotB, setSlotB] = useState(
+    list[(safeStart + 1) % Math.max(list.length, 1)] || list[safeStart] || '',
+  );
+
+  const cursorRef = useRef(safeStart);
+  const aOutgoingRef = useRef(true);
+  const queuedNextRef = useRef<number | null>(null);
+  const delayedQueueRef = useRef<number | null>(null);
+  const listRef = useRef(list);
+  listRef.current = list;
+
   const aIsOutgoing = useSharedValue(1);
   const multiSV = useSharedValue(multi ? 1 : 0);
+  const progress = useSharedValue(0);
   multiSV.value = multi ? 1 : 0;
 
   const [motionOk, setMotionOk] = useState(true);
-  const progress = useSharedValue(0);
 
-  const listRef = useRef(list);
-  listRef.current = list;
-  const aOutgoingRef = useRef(true);
+  const applyStartIndex = useCallback(
+    (index: number) => {
+      const L = listRef.current;
+      if (!L.length) return;
+      const i = Math.max(0, Math.min(index, L.length - 1));
+      cursorRef.current = i;
+      queuedNextRef.current = null;
+      delayedQueueRef.current = null;
+      aOutgoingRef.current = true;
+      aIsOutgoing.value = 1;
+      setSlotA(L[i] || '');
+      setSlotB(L[(i + 1) % L.length] || L[i] || '');
+    },
+    [aIsOutgoing],
+  );
+
+  const queueNextIndex = useCallback(
+    (index: number) => {
+      const L = listRef.current;
+      if (L.length < 2) return;
+      const i = Math.max(0, Math.min(Math.floor(index), L.length - 1));
+      if (i === cursorRef.current) {
+        queuedNextRef.current = null;
+        delayedQueueRef.current = null;
+        return;
+      }
+      if (progress.value < HOLD_END) {
+        queuedNextRef.current = i;
+        delayedQueueRef.current = null;
+        if (aOutgoingRef.current) setSlotB(L[i]!);
+        else setSlotA(L[i]!);
+      } else {
+        delayedQueueRef.current = i;
+        queuedNextRef.current = null;
+      }
+    },
+    [progress],
+  );
 
   const prepareNextHiddenSlot = useCallback(() => {
     const L = listRef.current;
     if (L.length < 2) return;
-    const nextCursor = (cursorRef.current + 1) % L.length;
-    cursorRef.current = nextCursor;
-    const upcoming = L[(nextCursor + 1) % L.length]!;
+
+    const justShown =
+      queuedNextRef.current != null ? queuedNextRef.current : (cursorRef.current + 1) % L.length;
+    queuedNextRef.current = null;
+    cursorRef.current = justShown;
+
+    const wasDelayed = delayedQueueRef.current != null;
+    const upcomingIndex = wasDelayed
+      ? delayedQueueRef.current!
+      : (justShown + 1) % L.length;
+    delayedQueueRef.current = null;
+    const upcoming = L[upcomingIndex]!;
+    if (wasDelayed) queuedNextRef.current = upcomingIndex;
+
     if (aOutgoingRef.current) {
       setSlotA(upcoming);
       aOutgoingRef.current = false;
@@ -69,7 +140,7 @@ export default function LiveHeroPhoto({ uri, uris, style, recyclingKey }: Props)
 
   const startCycleRef = useRef<() => void>(() => {});
 
-  const restartCycleJS = useCallback(() => {
+  const beginNextCycle = useCallback(() => {
     startCycleRef.current();
   }, []);
 
@@ -78,18 +149,20 @@ export default function LiveHeroPhoto({ uri, uris, style, recyclingKey }: Props)
     progress.value = 0;
     progress.value = withTiming(
       1,
-      { duration: CYCLE_MS, easing: Easing.inOut(Easing.sin) },
+      {
+        duration: CYCLE_MS,
+        easing: Easing.linear,
+      },
       (finished) => {
         if (!finished) return;
         if (multiSV.value) {
-          // Flip + p=0 w tym samym ticku: nowa „outgoing” = dotychczas widoczna (bez flasha).
           aIsOutgoing.value = aIsOutgoing.value ? 0 : 1;
           progress.value = 0;
           runOnJS(prepareNextHiddenSlot)();
         } else {
           progress.value = 0;
         }
-        runOnJS(restartCycleJS)();
+        runOnJS(beginNextCycle)();
       },
     );
   };
@@ -106,17 +179,9 @@ export default function LiveHeroPhoto({ uri, uris, style, recyclingKey }: Props)
   }, []);
 
   useEffect(() => {
-    cursorRef.current = 0;
-    aOutgoingRef.current = true;
-    aIsOutgoing.value = 1;
-    setSlotA(list[0] || '');
-    setSlotB(list[1] || list[0] || '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listKey]);
-
-  useEffect(() => {
-    cancelAnimation(progress);
+    applyStartIndex(safeStart);
     if (!motionOk || !list.length) {
+      cancelAnimation(progress);
       progress.value = 0;
       return;
     }
@@ -125,30 +190,67 @@ export default function LiveHeroPhoto({ uri, uris, style, recyclingKey }: Props)
       cancelAnimation(progress);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listKey, motionOk]);
+  }, [listKey, safeStart, motionOk]);
 
+  useEffect(() => {
+    if (preferredNextNonce < 1) return;
+    if (preferredNextIndex == null || !list.length) return;
+    queueNextIndex(preferredNextIndex);
+  }, [preferredNextIndex, preferredNextNonce, list.length, queueNextIndex]);
+
+  const cameraStyle = useAnimatedStyle(() => {
+    'worklet';
+    const p = progress.value;
+    // Jedno pełne kółko — stała prędkość kątowa, zero skoków.
+    const angle = p * Math.PI * 2;
+
+    const radiusX = 26;
+    const radiusY = 9;
+
+    const tx = Math.cos(angle) * radiusX;
+    const ty = Math.sin(angle) * radiusY;
+    // Lekki „oddech”, ciągły — nie osobne tryby zoomu.
+    const scale = 1.08 + Math.sin(angle) * 0.04;
+    const rotY = Math.sin(angle) * 1.8;
+    const rotZ = Math.cos(angle) * 0.35;
+
+    return {
+      transform: [
+        { perspective: 1200 },
+        { translateX: tx },
+        { translateY: ty },
+        { rotateY: `${rotY}deg` },
+        { rotateZ: `${rotZ}deg` },
+        { scale },
+      ],
+    };
+  });
+
+  // Płynne wyjechanie kolejnego zdjęcia pod koniec okrążenia (orbit się nie zatrzymuje).
   const layerAStyle = useAnimatedStyle(() => {
     const p = progress.value;
     const m = multiSV.value;
     const outgoing = aIsOutgoing.value === 1;
-    if (!m) {
-      const scale = interpolate(p, [0, 0.45, 1], [1.22, 1.3, 1.24], Extrapolation.CLAMP);
-      const tx = interpolate(p, [0, 1], [0, -36], Extrapolation.CLAMP);
-      const ty = interpolate(p, [0, 0.5, 1], [0, -4, 2], Extrapolation.CLAMP);
-      return { opacity: 1, transform: [{ scale }, { translateX: tx }, { translateY: ty }] };
-    }
+    if (!m) return { opacity: 1 };
+
     if (outgoing) {
-      const scale = interpolate(p, [0, 0.45, 1], [1.22, 1.3, 1.24], Extrapolation.CLAMP);
-      const tx = interpolate(p, [0, 1], [0, -78], Extrapolation.CLAMP);
-      const ty = interpolate(p, [0, 0.5, 1], [0, -4, 2], Extrapolation.CLAMP);
-      const opacity = interpolate(p, [0, 0.55, 0.8, 1], [1, 1, 0.38, 0], Extrapolation.CLAMP);
-      return { opacity, transform: [{ scale }, { translateX: tx }, { translateY: ty }] };
+      return {
+        opacity: interpolate(
+          p,
+          [0, 0.78, 0.88, 0.96, 1],
+          [1, 1, 0.55, 0.12, 0],
+          Extrapolation.CLAMP,
+        ),
+      };
     }
-    const scale = interpolate(p, [0, 0.55, 1], [1.28, 1.26, 1.22], Extrapolation.CLAMP);
-    const tx = interpolate(p, [0, 1], [82, 0], Extrapolation.CLAMP);
-    const ty = interpolate(p, [0, 1], [2, 0], Extrapolation.CLAMP);
-    const opacity = interpolate(p, [0, 0.48, 0.72, 1], [0, 0.18, 0.88, 1], Extrapolation.CLAMP);
-    return { opacity, transform: [{ scale }, { translateX: tx }, { translateY: ty }] };
+    return {
+      opacity: interpolate(
+        p,
+        [0, 0.78, 0.88, 0.96, 1],
+        [0, 0, 0.45, 0.9, 1],
+        Extrapolation.CLAMP,
+      ),
+    };
   });
 
   const layerBStyle = useAnimatedStyle(() => {
@@ -156,18 +258,25 @@ export default function LiveHeroPhoto({ uri, uris, style, recyclingKey }: Props)
     const m = multiSV.value;
     const outgoing = aIsOutgoing.value === 0;
     if (!m) return { opacity: 0 };
+
     if (outgoing) {
-      const scale = interpolate(p, [0, 0.45, 1], [1.22, 1.3, 1.24], Extrapolation.CLAMP);
-      const tx = interpolate(p, [0, 1], [0, -78], Extrapolation.CLAMP);
-      const ty = interpolate(p, [0, 0.5, 1], [0, -4, 2], Extrapolation.CLAMP);
-      const opacity = interpolate(p, [0, 0.55, 0.8, 1], [1, 1, 0.38, 0], Extrapolation.CLAMP);
-      return { opacity, transform: [{ scale }, { translateX: tx }, { translateY: ty }] };
+      return {
+        opacity: interpolate(
+          p,
+          [0, 0.78, 0.88, 0.96, 1],
+          [1, 1, 0.55, 0.12, 0],
+          Extrapolation.CLAMP,
+        ),
+      };
     }
-    const scale = interpolate(p, [0, 0.55, 1], [1.28, 1.26, 1.22], Extrapolation.CLAMP);
-    const tx = interpolate(p, [0, 1], [82, 0], Extrapolation.CLAMP);
-    const ty = interpolate(p, [0, 1], [2, 0], Extrapolation.CLAMP);
-    const opacity = interpolate(p, [0, 0.48, 0.72, 1], [0, 0.18, 0.88, 1], Extrapolation.CLAMP);
-    return { opacity, transform: [{ scale }, { translateX: tx }, { translateY: ty }] };
+    return {
+      opacity: interpolate(
+        p,
+        [0, 0.78, 0.88, 0.96, 1],
+        [0, 0, 0.45, 0.9, 1],
+        Extrapolation.CLAMP,
+      ),
+    };
   });
 
   if (!slotA) {
@@ -176,28 +285,30 @@ export default function LiveHeroPhoto({ uri, uris, style, recyclingKey }: Props)
 
   return (
     <View style={[styles.clip, style]}>
-      <Animated.View style={[styles.layer, layerAStyle]} pointerEvents="none">
-        <Image
-          source={{ uri: slotA }}
-          style={styles.image}
-          contentFit="cover"
-          contentPosition="center"
-          transition={0}
-          recyclingKey={`${recyclingKey || 'hero'}-a`}
-        />
-      </Animated.View>
-      {multi ? (
-        <Animated.View style={[styles.layer, layerBStyle]} pointerEvents="none">
+      <Animated.View style={[styles.camera, cameraStyle]} pointerEvents="none">
+        <Animated.View style={[styles.layer, layerAStyle]}>
           <Image
-            source={{ uri: slotB }}
+            source={{ uri: slotA }}
             style={styles.image}
             contentFit="cover"
             contentPosition="center"
             transition={0}
-            recyclingKey={`${recyclingKey || 'hero'}-b`}
+            recyclingKey={`${recyclingKey || 'hero'}-a`}
           />
         </Animated.View>
-      ) : null}
+        {multi ? (
+          <Animated.View style={[styles.layer, layerBStyle]}>
+            <Image
+              source={{ uri: slotB }}
+              style={styles.image}
+              contentFit="cover"
+              contentPosition="center"
+              transition={0}
+              recyclingKey={`${recyclingKey || 'hero'}-b`}
+            />
+          </Animated.View>
+        ) : null}
+      </Animated.View>
     </View>
   );
 }
@@ -207,13 +318,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: '#0a0a0a',
   },
+  camera: {
+    ...StyleSheet.absoluteFillObject,
+  },
   layer: {
     ...StyleSheet.absoluteFillObject,
   },
   image: {
-    width: '122%',
-    height: '122%',
-    marginLeft: '-11%',
-    marginTop: '-11%',
+    width: '130%',
+    height: '130%',
+    marginLeft: '-15%',
+    marginTop: '-15%',
   },
 });

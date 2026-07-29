@@ -61,6 +61,7 @@ import { refreshProfileTabBadgeCounts } from './src/services/profileTabBadgeRefr
 import { bootstrapFxRateRefresh } from './src/store/useFxRateStore';
 import { RELEASE_BUILD_FINGERPRINT } from './src/releaseBuildMarker';
 import AppleHover from './src/components/AppleHover';
+import { getScreenOrientationApi } from './src/utils/screenOrientationSafe';
 
 /** W Release bundle — sprawdź: npm run verify:ios-release / verify:ios-archive */
 (globalThis as typeof globalThis & { __EOS_RELEASE_BUILD_FINGERPRINT?: string }).__EOS_RELEASE_BUILD_FINGERPRINT =
@@ -1646,6 +1647,10 @@ export default function App() {
 
   useEffect(() => {
     ensureThemeAppearanceListener();
+  }, []);
+
+  useEffect(() => {
+    getScreenOrientationApi().lockPortrait();
   }, []);
 
   useEffect(() => {
