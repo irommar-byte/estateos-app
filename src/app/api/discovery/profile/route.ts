@@ -4,6 +4,7 @@ import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { buildEstateOsGuideContext } from '@/lib/estateOsGuideContext';
 import { buildDiscoveryBuyerBrief } from '@/lib/discoveryInsights';
 import { DISCOVERY_ENGINE_VERSION } from '@/lib/discovery/types';
+import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 
 /**
  * Personal Discovery profile for logged-in WWW users.
@@ -97,19 +98,11 @@ export async function GET(req: Request) {
       if (!offerId) return null;
       const offer = offerById.get(offerId);
       if (!offer) return { id: offerId, title: `Oferta #${offerId}`, city: null, imageUrl: null };
-      let imageUrl: string | null = null;
-      try {
-        const parsed = typeof offer.images === 'string' ? JSON.parse(offer.images) : offer.images;
-        if (Array.isArray(parsed) && parsed[0]) imageUrl = String(parsed[0]);
-        else if (typeof parsed === 'string' && parsed) imageUrl = parsed;
-      } catch {
-        if (typeof offer.images === 'string' && offer.images.startsWith('http')) imageUrl = offer.images;
-      }
       return {
         id: offer.id,
         title: offer.title || `Oferta #${offer.id}`,
         city: offer.city || offer.district || null,
-        imageUrl,
+        imageUrl: resolveOfferPrimaryImage({ images: offer.images }) || null,
       };
     };
 
