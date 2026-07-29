@@ -55,6 +55,8 @@ type PulsePayload = {
   contradictionIndex: number;
   directionLine: string;
   suggestion: string;
+  evidenceHint?: string | null;
+  decisionCount?: number;
   primaryCta: { label: string; href: string };
   secondaryCta: { label: string; href: string };
 };
@@ -534,7 +536,14 @@ export default function DiscoveryPulse() {
     READY: dict.intelligence.stageReady,
     COMPLETE: dict.intelligence.stageComplete,
   };
-  const currentStageLabel = stageLabels[activeStage] || pulse.stageLabel;
+  const statusCaption =
+    activeStage === "COMPLETE"
+      ? dict.intelligence.statusComplete
+      : activeStage === "READY"
+        ? dict.intelligence.statusReady
+        : activeStage === "FOCUS"
+          ? dict.intelligence.statusFocus
+          : dict.intelligence.statusExplore;
 
   const reasonLead =
     presentReason && presentReason !== "manual"
@@ -657,26 +666,37 @@ export default function DiscoveryPulse() {
 
             <h2
               id="eos-intel-pulse-title"
-              className="relative text-[17px] font-semibold leading-[1.25] tracking-[-0.02em] text-white"
+              className="relative text-[17px] font-semibold leading-[1.25] tracking-[-0.022em] text-white"
             >
               {pulse.directionLine}
             </h2>
-            <p className="relative mt-2 text-[13px] leading-relaxed text-white/55">
+            <p className="relative mt-2 text-[13px] leading-relaxed text-white/58">
               {pulse.suggestion}
             </p>
 
-            <div className="relative mt-4 space-y-2">
+            {pulse.evidenceHint ? (
+              <p className="relative mt-3 text-[11px] font-medium tracking-wide text-white/38">
+                {pulse.evidenceHint}
+              </p>
+            ) : null}
+
+            <div className="relative mt-4 space-y-2.5">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-[11px] font-medium tracking-wide text-white/50">
-                  {currentStageLabel}
-                  <span className="mx-1.5 text-white/20">·</span>
-                  <span className="tabular-nums text-white/75">{progress}%</span>
+                <p className="min-w-0 text-[12px] font-medium leading-snug tracking-tight text-white/62">
+                  {statusCaption}
                 </p>
                 <StageStepper activeIndex={activeStageIndex} labels={stageLabels} />
               </div>
-              <div className="h-[2.5px] overflow-hidden rounded-full bg-white/[0.08]">
+              <div
+                className="h-[2.5px] overflow-hidden rounded-full bg-white/[0.08]"
+                role="progressbar"
+                aria-valuenow={progress}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={statusCaption}
+              >
                 <motion.div
-                  className="h-full rounded-full bg-gradient-to-r from-white/35 via-white/80 to-white/55"
+                  className="h-full rounded-full bg-gradient-to-r from-white/30 via-white/75 to-white/45"
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
                   transition={{ duration: msToSec(INTEL_MOTION.progressBarMs), ease: INTEL_EASE.out }}
@@ -684,7 +704,7 @@ export default function DiscoveryPulse() {
               </div>
             </div>
 
-            <div className="relative mt-5 flex flex-col items-stretch gap-2.5">
+            <div className="relative mt-5 flex flex-col items-stretch gap-1.5">
               <Link
                 href={pulse.primaryCta.href}
                 className="eos-btn eos-btn--primary eos-btn--block !normal-case !tracking-wide !text-[13px] !font-semibold"
@@ -695,7 +715,7 @@ export default function DiscoveryPulse() {
               {pulse.secondaryCta?.href ? (
                 <Link
                   href={pulse.secondaryCta.href}
-                  className="rounded-full px-3 py-2 text-center text-[12px] font-medium tracking-wide text-white/55 transition hover:text-white/90"
+                  className="rounded-full px-3 py-2.5 text-center text-[12px] font-medium tracking-wide text-white/50 transition hover:bg-white/[0.04] hover:text-white/85"
                   onClick={onCtaClick}
                 >
                   {pulse.secondaryCta.label}
@@ -718,9 +738,9 @@ export default function DiscoveryPulse() {
         }}
         transition={reduceMotion ? { duration: 0.12 } : INTEL_ORB_SPRING}
         className={`pointer-events-auto group relative flex h-12 w-12 items-center justify-center rounded-full border ${ringClass} bg-transparent shadow-[0_12px_40px_rgba(0,0,0,0.45)] transition-all duration-300 hover:scale-[1.1] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_28px_rgba(255,255,255,0.28),0_16px_40px_rgba(0,0,0,0.5)] active:scale-[0.96]`}
-        aria-label={`EstateOS Intelligence · ${currentStageLabel} ${progress}%`}
+        aria-label={`EstateOS Intelligence · ${statusCaption}`}
         aria-expanded={expanded}
-        title={`${currentStageLabel} · ${progress}%`}
+        title={statusCaption}
       >
         {splashKey > 0 ? (
           <LearnSplash key={splashKey} color={colors.accent} reduceMotion={reduceMotion} />

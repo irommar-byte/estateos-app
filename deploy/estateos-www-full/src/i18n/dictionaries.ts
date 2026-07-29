@@ -73,6 +73,10 @@ export type Dictionary = {
     stageFocus: string;
     stageReady: string;
     stageComplete: string;
+    statusExplore: string;
+    statusFocus: string;
+    statusReady: string;
+    statusComplete: string;
     guideFind: string;
     guideTropes: string;
     guideDirection: string;
@@ -741,10 +745,14 @@ const pl: Dictionary = {
     confidenceOutline: "Zarys",
     confidenceClear: "Wyraźny kierunek",
     confidenceStrong: "Silny sygnał",
-    stageExplore: "Odkrywanie",
-    stageFocus: "Fokus",
-    stageReady: "Gotowość",
+    stageExplore: "Poznajemy",
+    stageFocus: "Ostrzymy",
+    stageReady: "Na tropie",
     stageComplete: "Domknięte",
+    statusExplore: "Dopiero poznajemy Twój gust",
+    statusFocus: "Kierunek się ostrzy",
+    statusReady: "Masz wyraźny trop",
+    statusComplete: "Ta faza jest domknięta",
     guideFind: "Znajdź przestrzeń, która do mnie pasuje",
     guideTropes: "Pokaż moje ważne tropy",
     guideDirection: "Podpowiedz kolejny krok",
@@ -1529,10 +1537,14 @@ const en: Dictionary = {
     confidenceOutline: "Outline",
     confidenceClear: "Clear direction",
     confidenceStrong: "Strong signal",
-    stageExplore: "Explore",
-    stageFocus: "Focus",
-    stageReady: "Ready",
+    stageExplore: "Learning",
+    stageFocus: "Sharpening",
+    stageReady: "On a lead",
     stageComplete: "Complete",
+    statusExplore: "Still learning your taste",
+    statusFocus: "Your direction is sharpening",
+    statusReady: "You have a clear lead",
+    statusComplete: "This phase is complete",
     guideFind: "Find a space that fits me",
     guideTropes: "Show my key tropes",
     guideDirection: "Suggest the next step",
