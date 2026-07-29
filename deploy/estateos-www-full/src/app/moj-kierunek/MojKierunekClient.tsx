@@ -24,7 +24,7 @@ const STAGES = [
     key: "READY",
     label: "Gotowość",
     meaning: "Profil jest wystarczająco wyraźny, by doprecyzować wybór albo iść „na poważnie”.",
-    youAreHere: "Intelligence dobrze Cię czyta — czas zawęzić oferty albo oznaczyć trop.",
+    youAreHere: "Intelligence dobrze Cię czyta — czas zawęzić oferty albo oznaczyć „na poważnie”.",
   },
 ] as const;
 
@@ -217,7 +217,7 @@ export default function MojKierunekClient() {
             Mój kierunek
           </h1>
           <p className="mt-3 max-w-xl text-[15px] leading-6 text-[var(--eos-muted)]">
-            Trzy etapy od pierwszych ocen do gotowości. Tu zawsze widać, gdzie jesteś i co robić dalej.
+            Oceń oferty w katalogu — tu widać, gdzie jesteś i jaki jest spokojny następny krok.
           </p>
         </motion.header>
 
@@ -352,13 +352,15 @@ export default function MojKierunekClient() {
               {primary.label}
               <ArrowRight size={15} />
             </Link>
-            <Link
-              href="/lustro"
-              className="inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-[13px] font-semibold text-white/70 transition hover:text-white"
-            >
-              Lustro preferencji — pełny podgląd gustu
-              <ArrowRight size={14} />
-            </Link>
+            {primary.href !== "/oferty" ? (
+              <Link
+                href="/oferty"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-[13px] font-semibold text-white/70 transition hover:text-white"
+              >
+                Przeglądaj oferty
+                <ArrowRight size={14} />
+              </Link>
+            ) : null}
           </div>
         </motion.section>
       </div>

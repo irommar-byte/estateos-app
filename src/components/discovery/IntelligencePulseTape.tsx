@@ -355,7 +355,7 @@ function navigatePulseAction(navigation: any, action: string | undefined, firstE
     return;
   }
   if (act === 'LUSTRO' || act === 'PROFILE') {
-    navigation?.navigate?.('DiscoveryLustro');
+    navigation?.navigate?.('DiscoveryDirection');
     return;
   }
   if (act === 'DISCOVERY' || !action) {
@@ -1001,7 +1001,7 @@ export default function IntelligencePulseTape({
   ]);
 
   const runGuide = useCallback(
-    (dest: 'discovery' | 'tropes' | 'direction' | 'lustro') => {
+    (dest: 'discovery' | 'tropes' | 'direction') => {
       runGenieOut(() => {
         impact(Haptics.ImpactFeedbackStyle.Light);
         if (dest === 'discovery') {
@@ -1012,11 +1012,7 @@ export default function IntelligencePulseTape({
           navigation?.navigate?.('DiscoveryTropes');
           return;
         }
-        if (dest === 'direction') {
-          navigation?.navigate?.('DiscoveryDirection');
-          return;
-        }
-        navigation?.navigate?.('DiscoveryLustro');
+        navigation?.navigate?.('DiscoveryDirection');
       });
     },
     [firstEntrySeen, impact, navigation, runGenieOut],
@@ -1375,7 +1371,7 @@ export default function IntelligencePulseTape({
                               const label = t(key);
                               if (label !== key) return label;
                             }
-                            return pulse.secondaryCta?.label || t('discovery.pulse.lustro');
+                            return pulse.secondaryCta?.label || t('discovery.cta.DIRECTION');
                           })()}
                         </Text>
                         <Ionicons name="chevron-forward" size={14} color={colors.accent} />
@@ -1402,11 +1398,6 @@ export default function IntelligencePulseTape({
                           key: 'direction' as const,
                           icon: 'navigate-outline' as const,
                           label: t('discovery.guide.nextStep'),
-                        },
-                        {
-                          key: 'lustro' as const,
-                          icon: 'sparkles-outline' as const,
-                          label: t('discovery.guide.lustro'),
                         },
                       ] as const
                     ).map((item) => (

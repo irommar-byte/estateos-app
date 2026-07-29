@@ -1,13 +1,13 @@
+/**
+ * For-you offer ids for map pin affinity.
+ * Ambient whisper copy removed — floating Intelligence pulse is the single voice.
+ */
 import { useEffect, useMemo, useState } from 'react';
 import { subscribeDiscoveryUpdated } from '../lib/discovery/clientEvents';
 import { fetchDiscoveryForYou } from '../services/discoveryService';
 import { useAuthStore } from '../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../store/useIntelligencePreferenceStore';
-import { useDiscoveryPulse } from './useDiscoveryPulse';
 
-/**
- * For-you offer ids + map whisper line — WWW InteractiveMap parity.
- */
 export function useDiscoveryMapIntelligence(opts?: {
   transaction?: 'SALE' | 'RENT' | '';
   enabled?: boolean;
@@ -16,7 +16,6 @@ export function useDiscoveryMapIntelligence(opts?: {
   const intelligenceEnabled = useIntelligencePreferenceStore((s) => s.enabled);
   const hydrated = useIntelligencePreferenceStore((s) => s.hydrated);
   const active = opts?.enabled !== false && hydrated && intelligenceEnabled && Boolean(token);
-  const { pulse } = useDiscoveryPulse();
   const [ids, setIds] = useState<number[]>([]);
 
   useEffect(() => {
@@ -43,13 +42,5 @@ export function useDiscoveryMapIntelligence(opts?: {
 
   const forYouIds = useMemo(() => new Set(ids), [ids]);
 
-  const whisperBody = useMemo(() => {
-    if (!active || !pulse || forYouIds.size === 0) return null;
-    const base = pulse.directionLine || pulse.suggestion;
-    if (!base) return null;
-    if (forYouIds.size === 1) return pulse.suggestion || pulse.directionLine;
-    return `${base} · ${forYouIds.size} tropów na mapie`;
-  }, [active, forYouIds.size, pulse]);
-
-  return { forYouIds, whisperBody, active };
+  return { forYouIds, whisperBody: null as string | null, active };
 }

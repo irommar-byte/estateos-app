@@ -153,30 +153,33 @@ export type DiscoveryForYouResult = {
   explain: { offerId: number; reason: string; score: number } | null;
 };
 
-function toDiscoveryCandidate(row: {
-  id: number;
-  title: string | null;
-  price: number | null;
-  pricePln: number | null;
-  priceCurrency: string | null;
-  listPricePln: number | null;
-  city: string | null;
-  district: string | null;
-  propertyType: string | null;
-  transactionType: string | null;
-  area: number | null;
-  rooms: number | null;
-  hasBalcony: boolean | null;
-  hasParking: boolean | null;
-  hasGarden: boolean | null;
-  hasElevator: boolean | null;
-  isFurnished: boolean | null;
-  status: string;
-  expiresAt: Date | null;
-  images: unknown;
-  createdAt: Date;
-  updatedAt: Date;
-}): DiscoveryCandidate {
+function toDiscoveryCandidate(
+  row: {
+    id: number;
+    title: string | null;
+    price: number | null;
+    pricePln: number | null;
+    priceCurrency: string | null;
+    listPricePln: number | null;
+    city: string | null;
+    district: string | null;
+    propertyType: string | null;
+    transactionType: string | null;
+    area: number | null;
+    rooms: number | null;
+    hasBalcony: boolean | null;
+    hasParking: boolean | null;
+    hasGarden: boolean | null;
+    hasElevator: boolean | null;
+    isFurnished: boolean | null;
+    status: string;
+    expiresAt: Date | null;
+    images: unknown;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+  embeddingVector: number[] | null = null,
+): DiscoveryCandidate {
   return {
     id: row.id,
     title: row.title || `Oferta #${row.id}`,
@@ -200,8 +203,30 @@ function toDiscoveryCandidate(row: {
     expiresAt: row.expiresAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    embeddingVector: null,
+    embeddingVector,
   };
+}
+
+function parseEmbeddingVector(raw: unknown): number[] | null {
+  if (!Array.isArray(raw)) return null;
+  const nums = raw.map(Number).filter(Number.isFinite);
+  return nums.length > 0 ? nums : null;
+}
+
+async function loadEmbeddingMap(offerIds: number[]): Promise<Map<number, number[]>> {
+  const map = new Map<number, number[]>();
+  if (offerIds.length === 0) return map;
+  const rows = await prisma.discoveryEmbeddingJob.findMany({
+    where: { offerId: { in: offerIds }, status: "READY" },
+    select: { offerId: true, vector: true, processedAt: true },
+    orderBy: { processedAt: "desc" },
+  });
+  for (const row of rows) {
+    if (map.has(row.offerId)) continue;
+    const vector = parseEmbeddingVector(row.vector);
+    if (vector) map.set(row.offerId, vector);
+  }
+  return map;
 }
 
 function toItem(row: DiscoveryScoredCandidate): DiscoveryForYouItem {
@@ -231,7 +256,7 @@ function toItem(row: DiscoveryScoredCandidate): DiscoveryForYouItem {
 
 /**
  * Soft “for you” ranking for WWW catalog / explainers.
- * No gallery/embedding side-effects (those stay on mobile feed).
+ * Uses READY DiscoveryEmbeddingJob vectors when present (same path as taste updates).
  */
 export async function buildDiscoveryForYou(input: {
   userId: number;
@@ -332,6 +357,10 @@ export async function buildDiscoveryForYou(input: {
   }
 
   const activePublicationIds = await activePublicationOfferIds(offers.map((o) => o.id));
+  const explainIds = explainOfferId ? [explainOfferId] : [];
+  const embeddingMap = await loadEmbeddingMap([
+    ...new Set([...offers.map((o) => o.id), ...explainIds]),
+  ]);
 
   const dislikedOfferIds = new Set(
     recentEvents
@@ -369,7 +398,7 @@ export async function buildDiscoveryForYou(input: {
       const pubIds = await activePublicationOfferIds([target.id]);
       if (canShowOfferOnPublicMarket(target, pubIds)) {
         const scored = scoreDiscoveryCandidate({
-          candidate: toDiscoveryCandidate(target),
+          candidate: toDiscoveryCandidate(target, embeddingMap.get(target.id) ?? null),
           profile: profileSnapshot,
           recentShown,
           recentDisliked: dislikedOfferIds,
@@ -398,7 +427,7 @@ export async function buildDiscoveryForYou(input: {
     })
     .map((offer) =>
       scoreDiscoveryCandidate({
-        candidate: toDiscoveryCandidate(offer),
+        candidate: toDiscoveryCandidate(offer, embeddingMap.get(offer.id) ?? null),
         profile: profileSnapshot,
         recentShown,
         recentDisliked: dislikedOfferIds,

@@ -1,5 +1,6 @@
 /**
  * Map WWW Discovery hrefs / pulse actions onto mobile stack routes.
+ * Lustro → Direction (one Kierunek). Ceremony routes demoted.
  */
 export function navigateDiscoveryHref(navigation: any, href?: string | null, action?: string | null) {
   const act = String(action || '').trim().toUpperCase();
@@ -7,11 +8,7 @@ export function navigateDiscoveryHref(navigation: any, href?: string | null, act
     navigation?.navigate?.('DiscoveryTropes');
     return;
   }
-  if (act === 'LUSTRO' || act === 'PROFILE') {
-    navigation?.navigate?.('DiscoveryLustro');
-    return;
-  }
-  if (act === 'DIRECTION') {
+  if (act === 'LUSTRO' || act === 'PROFILE' || act === 'DIRECTION') {
     navigation?.navigate?.('DiscoveryDirection');
     return;
   }
@@ -39,11 +36,7 @@ export function navigateDiscoveryHref(navigation: any, href?: string | null, act
     navigation?.navigate?.('OfferDetail', { offerId: Number(offerMatch[1]) });
     return;
   }
-  if (path.includes('/lustro')) {
-    navigation?.navigate?.('DiscoveryLustro');
-    return;
-  }
-  if (path.includes('/moj-kierunek')) {
+  if (path.includes('/lustro') || path.includes('/moj-kierunek')) {
     navigation?.navigate?.('DiscoveryDirection');
     return;
   }

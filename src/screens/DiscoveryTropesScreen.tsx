@@ -115,11 +115,11 @@ function DiscoveryTropesInner({ navigation }: any) {
     <View style={[styles.root, { backgroundColor: theme.bg, paddingTop: insets.top + 10 }]}>
       <View style={{ paddingHorizontal: 18 }}>
         <DiscoveryScreenChrome theme={theme} onBack={goBack} />
-        <Text style={[styles.kicker, { color: theme.eyebrow }]}>DISCOVERY™</Text>
-        <Text style={[styles.title, { color: theme.text }]}>Twoje tropy</Text>
+        <Text style={[styles.kicker, { color: theme.eyebrow }]}>ESTATEOS™ INTELLIGENCE</Text>
+        <Text style={[styles.title, { color: theme.text }]}>Na poważnie</Text>
         <Text style={[styles.lead, { color: theme.textMuted }]}>
-          Trop to oferta „na poważnie” — wracasz do niej spokojnie: otwierasz, piszesz do właściciela
-          albo oznaczasz wizytę.
+          Oferty oznaczone „na poważnie” trafiają też do ulubionych — jedna shortlista, nie drugi
+          słownik tropów. Wracasz spokojnie: otwierasz, piszesz albo oznaczasz wizytę.
         </Text>
         <View
           style={[
@@ -219,11 +219,13 @@ function DiscoveryTropesInner({ navigation }: any) {
                   ) : (
                     <ApplePressable
                       onPress={() =>
-                        navigation.navigate('DiscoveryJourneyHonor', { offerId: item.offerId })
+                        navigation.navigate('OfferDetail', { offerId: item.offerId })
                       }
                       style={[styles.action, { backgroundColor: theme.pillBg }]}
                     >
-                      <Text style={[styles.actionText, { color: theme.textSecondary }]}>Domknij</Text>
+                      <Text style={[styles.actionText, { color: theme.textSecondary }]}>
+                        Szczegóły
+                      </Text>
                     </ApplePressable>
                   )}
                 </View>

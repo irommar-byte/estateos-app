@@ -1227,7 +1227,7 @@ function EstateDiscoveryModeInner({ navigation }: any) {
         <DiscoveryEndDeck
           onWiden={() => setFeedRefreshKey((key) => key + 1)}
           onChangeDirection={() => {
-            navigation?.navigate?.('DiscoveryLifeShift');
+            navigation?.navigate?.('DiscoveryDirection');
           }}
           onTropes={() => navigation?.navigate?.('DiscoveryTropes')}
           onPause={() => setPauseVisible(true)}
@@ -1391,7 +1391,7 @@ function EstateDiscoveryModeInner({ navigation }: any) {
           const offer = offers[0];
           if (offer) void sendDiscoveryEvent('DISCOVERY_PAUSE', offer);
           setPauseVisible(false);
-          navigation?.replace?.('DiscoveryResume');
+          navigation?.goBack?.();
         }}
         onResume={() => setPauseVisible(false)}
       />
@@ -1404,7 +1404,7 @@ function EstateDiscoveryModeInner({ navigation }: any) {
         onSlow={() => setCareDismissed(true)}
         onShift={() => {
           setCareDismissed(true);
-          navigation?.navigate?.('DiscoveryLifeShift');
+          navigation?.navigate?.('DiscoveryDirection');
         }}
         onPause={() => {
           setCareDismissed(true);

@@ -1,18 +1,24 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Brain, Check } from 'lucide-react-native';
+import { Brain, Check, ChevronRight } from 'lucide-react-native';
 import ApplePressable from '../components/ApplePressable';
 import DiscoveryScreenChrome from '../components/discovery/DiscoveryScreenChrome';
 import { discoveryCard, discoveryTheme } from '../components/discovery/discoveryTheme';
 import { useDiscoveryProfile } from '../hooks/useDiscoveryProfile';
-import { discoveryDisplayLabel, discoveryPropertyTypeLabel } from '../lib/discovery/displayLabels';
+import {
+  discoveryDisplayLabel,
+  discoveryEventLabel,
+  discoveryPropertyTypeLabel,
+  discoveryReasonLabel,
+} from '../lib/discovery/displayLabels';
 import { navigateDiscoveryHref } from '../lib/discovery/navigateDiscoveryHref';
 import { useAuthStore } from '../store/useAuthStore';
 import { useIsDarkTheme } from '../store/useThemeStore';
@@ -41,7 +47,7 @@ const STAGES: Array<{
     key: 'READY',
     label: 'Gotowość',
     meaning: 'Profil jest wystarczająco wyraźny, by doprecyzować wybór albo iść „na poważnie”.',
-    youAreHere: 'Intelligence dobrze Cię czyta — czas zawęzić oferty albo oznaczyć trop.',
+    youAreHere: 'Intelligence dobrze Cię czyta — czas zawęzić oferty albo oznaczyć „na poważnie”.',
   },
 ];
 
@@ -58,6 +64,19 @@ function eventToastLabel(type: string) {
       return 'Na poważnie';
     default:
       return 'Zapisano';
+  }
+}
+
+function eventTone(type: string, theme: { success: string; textMuted: string; accent: string }) {
+  switch (type) {
+    case 'DISCOVERY_LIKE':
+    case 'LIKE':
+      return theme.success;
+    case 'DISCOVERY_DISLIKE':
+    case 'DISLIKE':
+      return theme.textMuted;
+    default:
+      return theme.accent;
   }
 }
 
@@ -113,7 +132,13 @@ export default function DiscoveryDirectionScreen({ navigation }: any) {
     setTimeout(() => setToast(null), 2200);
   }, []);
 
-  const { auth, profile, guide, refreshing, error } = useDiscoveryProfile({ onNewDecision });
+  const { auth, profile, guide, tropes, recent, refreshing, error } = useDiscoveryProfile({
+    onNewDecision,
+  });
+
+  const seriousTropes = useMemo(() => tropes.slice(0, 3), [tropes]);
+  const recentDecisions = useMemo(() => recent.slice(0, 3), [recent]);
+  const dislikeReasons = useMemo(() => (profile?.dislikeReasons || []).slice(0, 4), [profile]);
 
   const activeStage = resolveStage(guide?.intentStage);
   const stageIndex =
@@ -380,6 +405,30 @@ export default function DiscoveryDirectionScreen({ navigation }: any) {
             </View>
           )}
 
+          {dislikeReasons.length > 0 ? (
+            <View style={styles.knownBlock}>
+              <Text style={[styles.knownTitle, { color: theme.textSecondary }]}>
+                Dlaczego odrzucasz
+              </Text>
+              <View style={styles.chipWrap}>
+                {dislikeReasons.map((reason) => (
+                  <View
+                    key={reason.key}
+                    style={[
+                      styles.reasonChip,
+                      { backgroundColor: theme.dangerBg, borderColor: theme.dangerBorder },
+                    ]}
+                  >
+                    <Text style={[styles.reasonChipText, { color: theme.dangerText }]}>
+                      {discoveryReasonLabel(reason.key) || discoveryDisplayLabel(reason.key)} ·{' '}
+                      {reason.value}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           <View style={styles.confBlock}>
             <View style={styles.confHead}>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -418,16 +467,92 @@ export default function DiscoveryDirectionScreen({ navigation }: any) {
           >
             <Text style={[styles.primaryText, { color: theme.primaryBtnText }]}>{primary.label}</Text>
           </ApplePressable>
-          <ApplePressable
-            style={styles.secondary}
-            haptic="none"
-            onPress={() => navigation.navigate('DiscoveryLustro')}
-          >
-            <Text style={[styles.secondaryText, { color: theme.secondaryText }]}>
-              Lustro preferencji — pełny podgląd gustu
-            </Text>
-          </ApplePressable>
+          {seriousTropes.length > 0 ? (
+            <ApplePressable
+              style={styles.secondary}
+              haptic="none"
+              onPress={() => navigation.navigate('DiscoveryTropes')}
+            >
+              <Text style={[styles.secondaryText, { color: theme.secondaryText }]}>
+                Wszystkie tropy
+              </Text>
+            </ApplePressable>
+          ) : null}
         </View>
+
+        {seriousTropes.length > 0 ? (
+          <View style={styles.foldBlock}>
+            <Text style={[styles.foldTitle, { color: theme.text }]}>Tropy na poważnie</Text>
+            {seriousTropes.map((trope) => (
+              <ApplePressable
+                key={`${trope.offerId}-${trope.updatedAt}`}
+                style={[styles.foldRow, discoveryCard(theme)]}
+                haptic="none"
+                onPress={() => navigation.navigate('OfferDetail', { offerId: trope.offerId })}
+              >
+                <View style={[styles.thumb, { backgroundColor: theme.track }]}>
+                  {trope.offer?.imageUrl ? (
+                    <Image source={{ uri: trope.offer.imageUrl }} style={styles.thumbImg} />
+                  ) : null}
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.foldKicker, { color: theme.accent }]}>
+                    {trope.priority || trope.status === 'SERIOUS'
+                      ? 'Na poważnie'
+                      : discoveryDisplayLabel(trope.status)}
+                  </Text>
+                  <Text style={[styles.foldRowTitle, { color: theme.text }]} numberOfLines={1}>
+                    {trope.offer?.title || `Oferta #${trope.offerId}`}
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={theme.textMuted} />
+              </ApplePressable>
+            ))}
+          </View>
+        ) : null}
+
+        {recentDecisions.length > 0 ? (
+          <View style={styles.foldBlock}>
+            <Text style={[styles.foldTitle, { color: theme.text }]}>Ostatnie decyzje</Text>
+            {recentDecisions.map((event) => {
+              const reason = event.reasonCode
+                ? discoveryReasonLabel(event.reasonCode) || discoveryDisplayLabel(event.reasonCode)
+                : null;
+              return (
+                <ApplePressable
+                  key={event.id}
+                  style={[styles.foldRow, discoveryCard(theme)]}
+                  haptic="none"
+                  onPress={() => {
+                    if (event.offer?.id) {
+                      navigation.navigate('OfferDetail', { offerId: event.offer.id });
+                      return;
+                    }
+                    navigation.navigate('MainTabs', { screen: 'Market' });
+                  }}
+                >
+                  <View style={[styles.thumb, { backgroundColor: theme.track }]}>
+                    {event.offer?.imageUrl ? (
+                      <Image source={{ uri: event.offer.imageUrl }} style={styles.thumbImg} />
+                    ) : null}
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text
+                      style={[styles.foldKicker, { color: eventTone(event.eventType, theme) }]}
+                    >
+                      {discoveryEventLabel(event.eventType) || eventToastLabel(event.eventType)}
+                      {reason ? ` · ${reason}` : ''}
+                    </Text>
+                    <Text style={[styles.foldRowTitle, { color: theme.text }]} numberOfLines={1}>
+                      {event.offer?.title || 'Oferta'}
+                    </Text>
+                  </View>
+                  <ChevronRight size={16} color={theme.textMuted} />
+                </ApplePressable>
+              );
+            })}
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -621,4 +746,38 @@ const styles = StyleSheet.create({
   primaryText: { fontSize: 13, fontWeight: '800' },
   secondary: { marginTop: 10, paddingVertical: 12, alignItems: 'center' },
   secondaryText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  reasonChip: {
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  reasonChipText: { fontSize: 12, fontWeight: '600' },
+  foldBlock: { marginTop: 26 },
+  foldTitle: { fontSize: 16, fontWeight: '800', marginBottom: 10 },
+  foldRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 10,
+  },
+  foldKicker: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+  },
+  foldRowTitle: { marginTop: 3, fontSize: 14, fontWeight: '700' },
+  thumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thumbImg: { width: '100%', height: '100%' },
 });

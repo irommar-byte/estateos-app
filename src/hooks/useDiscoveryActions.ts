@@ -58,8 +58,19 @@ export function useDiscoveryActions() {
         }
         if (!result.ok) return { ok: false };
 
-        // SERIOUS/PRIORITY tropes are upserted server-side by
-        // /api/mobile/v1/discovery/events — no second client write.
+        // SERIOUS upserts a trope server-side and also joins local favorites
+        // so “Na poważnie” is not a second shortlist vocabulary.
+        if (opts.eventType === 'SERIOUS') {
+          try {
+            const { loadFavoriteIds, toggleFavoriteId } = await import('../utils/favoritesStorage');
+            const ids = await loadFavoriteIds();
+            if (!ids.includes(id)) {
+              await toggleFavoriteId(id, ids);
+            }
+          } catch {
+            /* favorites sync is best-effort */
+          }
+        }
 
         if (opts.eventType === 'OPEN') {
           openSentRef.current.add(id);

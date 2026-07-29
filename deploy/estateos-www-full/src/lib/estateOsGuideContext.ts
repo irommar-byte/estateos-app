@@ -56,14 +56,13 @@ const STAGE_LABEL: Record<GuideIntentStage, string> = {
 function resolveHref(action: GuideActionKey, offerId?: number | null): string {
   switch (action) {
     case 'TROPES':
-      return offerId ? `/oferta/${offerId}` : '/lustro';
+      return offerId ? `/oferta/${offerId}` : '/moj-kierunek';
     case 'MAP':
       return '/odkryj-mape';
     case 'DIRECTION':
-      return '/moj-kierunek';
     case 'LUSTRO':
     case 'PROFILE':
-      return '/lustro';
+      return '/moj-kierunek';
     case 'CONTACT':
       return '/moje-konto/wiadomosci';
     case 'DISCOVERY':
@@ -136,8 +135,8 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
       offerId: priority.offerId,
     };
     body = topCity
-      ? `Jeden sygnał „na poważnie” w okolicy ${topCity}. Otwórz ofertę albo porównaj z lustrem kierunku.`
-      : 'Jeden sygnał „na poważnie”. Otwórz ofertę albo porównaj z lustrem kierunku — bez pośpiechu.';
+      ? `Jeden sygnał „na poważnie” w okolicy ${topCity}. Otwórz ofertę albo zestaw ją ze swoim kierunkiem.`
+      : 'Jeden sygnał „na poważnie”. Otwórz ofertę albo zestaw ją ze swoim kierunkiem — bez pośpiechu.';
     primaryCta = buildCta('Otwórz trop', 'TROPES', priority.offerId);
     secondaryCta = buildCta('Mój kierunek', 'DIRECTION');
   } else if (contradictionIndex >= 0.55) {
@@ -147,9 +146,9 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
       action: 'DIRECTION',
     };
     body =
-      'Twoje „pasuje” i „nie dla mnie” trochę się ścierają. Spokojny kierunek albo lustro preferencji pomogą to ułożyć.';
+      'Twoje „pasuje” i „nie dla mnie” trochę się ścierają. Spokojny przegląd kierunku pomoże to ułożyć.';
     primaryCta = buildCta('Uporządkuj kierunek', 'DIRECTION');
-    secondaryCta = buildCta('Lustro preferencji', 'LUSTRO');
+    secondaryCta = buildCta('Przeglądaj oferty', 'DISCOVERY');
   } else if (intentStage === 'READY') {
     nextStep = {
       key: 'READY_NEXT',
@@ -159,7 +158,7 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
     // Tip only — structured prefs live in summaryLine / profile fields for UI chips.
     body = 'Czas doprecyzować katalog albo oznaczyć coś „na poważnie”.';
     primaryCta = buildCta('Doprecyzuj w katalogu', 'DISCOVERY');
-    secondaryCta = buildCta('Lustro preferencji', 'LUSTRO');
+    secondaryCta = buildCta('Mój kierunek', 'DIRECTION');
   } else if (intentStage === 'FOCUS') {
     nextStep = {
       key: 'CONTINUE_DISCOVERY',
@@ -169,7 +168,7 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
     body =
       'Kilka kolejnych cichych decyzji — zwłaszcza „nie dla mnie” z powodem — mocno ostrzy gust.';
     primaryCta = buildCta('Kontynuuj ocenianie', 'DISCOVERY');
-    secondaryCta = buildCta('Zobacz lustro', 'LUSTRO');
+    secondaryCta = buildCta('Mój kierunek', 'DIRECTION');
   } else {
     nextStep = {
       key: 'START_DISCOVERY',

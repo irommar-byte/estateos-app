@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Brain, Check, ChevronDown, Compass, Navigation, Sparkles } from "lucide-react";
+import { Brain, Check, ChevronDown, Compass, Navigation } from "lucide-react";
 import {
   dispatchIntelligenceSheetOpen,
   subscribeDiscoveryUpdated,
@@ -653,7 +653,6 @@ export default function DiscoveryPulse() {
                   [
                     { href: "/oferty", icon: Compass, label: dict.intelligence.guideFind },
                     { href: "/moj-kierunek", icon: Navigation, label: dict.intelligence.guideDirection },
-                    { href: "/lustro", icon: Sparkles, label: dict.intelligence.guideLustro },
                   ] as const
                 ).map((item) => (
                   <Link
