@@ -53,9 +53,9 @@ export default function EstateOsGuidePanel() {
   const progress = Math.round(Math.min(1, Math.max(0, g.stageProgress ?? 0.08)) * 100);
   const primary = g.primaryCta || FALLBACK.primaryCta!;
   const secondary = g.secondaryCta || FALLBACK.secondaryCta!;
-  const thirdHref =
-    secondary.href === "/lustro" || primary.href === "/lustro" ? "/moj-kierunek" : "/lustro";
-  const thirdLabel = thirdHref === "/lustro" ? "Lustro preferencji" : "Mój kierunek";
+  const thirdHref = "/moj-kierunek";
+  const thirdLabel = "Mój kierunek";
+  const showThird = primary.href !== thirdHref && secondary.href !== thirdHref;
 
   return (
     <section className="relative z-10 mx-auto mt-4 mb-12 w-[calc(100%-2rem)] max-w-6xl sm:mt-5 sm:w-[calc(100%-3rem)]">
@@ -116,14 +116,16 @@ export default function EstateOsGuidePanel() {
               <span className="flex-1 text-sm font-semibold text-white">{secondary.label}</span>
               <ArrowRight size={15} className="text-amber-200 transition group-hover:translate-x-0.5" />
             </Link>
-            <Link
-              href={thirdHref}
-              className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 transition hover:bg-white/[0.1] active:scale-[0.99]"
-            >
-              <Sparkles size={17} className="text-amber-200" />
-              <span className="flex-1 text-sm font-semibold text-white">{thirdLabel}</span>
-              <ArrowRight size={15} className="text-amber-200 transition group-hover:translate-x-0.5" />
-            </Link>
+            {showThird ? (
+              <Link
+                href={thirdHref}
+                className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 transition hover:bg-white/[0.1] active:scale-[0.99]"
+              >
+                <Sparkles size={17} className="text-amber-200" />
+                <span className="flex-1 text-sm font-semibold text-white">{thirdLabel}</span>
+                <ArrowRight size={15} className="text-amber-200 transition group-hover:translate-x-0.5" />
+              </Link>
+            ) : null}
           </div>
         </div>
       </motion.div>

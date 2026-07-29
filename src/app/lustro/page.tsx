@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
-import LustroClient from "./LustroClient";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "Lustro preferencji | EstateOS™",
-  description: "Głęboka analiza Twojego gustu Discovery — miasta, powody, tropy i historia decyzji.",
+  title: "Mój kierunek | EstateOS™",
+  description: "Twój kierunek Discovery — postęp, tropy i następny spokojny krok.",
   robots: { index: false, follow: false },
 };
 
+/** Lustro folded into one Kierunek surface. */
 export default function LustroPage() {
-  return <LustroClient />;
+  redirect("/moj-kierunek");
 }

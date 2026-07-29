@@ -16,8 +16,6 @@ import {
   normalizeTransactionType,
   transactionModeFromOffers,
 } from "@/lib/transactionType";
-import DiscoveryIntelligenceWhisper from "@/components/discovery/DiscoveryIntelligenceWhisper";
-import { useDiscoveryPulseLite } from "@/hooks/useDiscoveryPulseLite";
 import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 
 function parseOfferPrice(value: unknown): number {
@@ -274,9 +272,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [showMapGuide, setShowMapGuide] = useState(false);
   const [forYouIds, setForYouIds] = useState<Set<number>>(() => new Set());
   const sliderChangingRef = useRef(false);
-  const { pulse, auth: pulseAuth } = useDiscoveryPulseLite();
-  const { enabled: intelligenceEnabled, hydrated: intelligenceHydrated } =
-    useIntelligencePreference();
+  const { enabled: intelligenceEnabled } = useIntelligencePreference();
 
   const priceLocale = numberFormatLocale(locale);
   const maxPriceLabel =
@@ -873,24 +869,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
       <div className="interactive-map-galaxy pointer-events-none absolute inset-0 z-[1]" />
       <div className="interactive-map-vignette pointer-events-none absolute inset-0 z-[1]" />
 
-      {intelligenceHydrated &&
-      intelligenceEnabled &&
-      pulseAuth === "user" &&
-      pulse &&
-      (pulse.directionLine || pulse.suggestion) &&
-      forYouIds.size > 0 ? (
-        <div className="pointer-events-auto absolute left-4 top-4 z-30 w-[min(92vw,320px)] sm:left-6 sm:top-5">
-          <DiscoveryIntelligenceWhisper
-            variant="map"
-            body={
-              forYouIds.size === 1
-                ? pulse.suggestion || pulse.directionLine
-                : `${pulse.directionLine || pulse.suggestion} · ${forYouIds.size} tropów na mapie`
-            }
-            href="/moj-kierunek"
-          />
-        </div>
-      ) : null}
+      {/* For You affinity stays on pins only — ambient copy lives on DiscoveryPulse. */}
 
       {showMapGuide && (
         <motion.aside
