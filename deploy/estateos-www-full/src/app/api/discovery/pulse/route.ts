@@ -43,7 +43,7 @@ export async function GET(req: Request) {
           decisionCount: guide.decisionCount,
           primaryCta: guide.primaryCta,
           secondaryCta: guide.secondaryCta,
-          updatedAt: null,
+          updatedAt: guide.profileUpdatedAt?.toISOString() || null,
         },
       },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
