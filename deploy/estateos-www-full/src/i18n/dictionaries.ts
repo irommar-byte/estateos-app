@@ -60,6 +60,7 @@ export type Dictionary = {
     sheetFeature3: string;
     sheetEnable: string;
     sheetLater: string;
+    sheetDismissA11y: string;
     collapseA11y: string;
     brandEyebrow: string;
     stable: string;
@@ -726,11 +727,12 @@ const pl: Dictionary = {
     sheetTitle: "Włącz Intelligence",
     sheetBody:
       "Spokojny system, który uczy się z Twoich decyzji i podpowiada tropy — bez hałasu, jak prywatny asystent na iOS.",
-    sheetFeature1: "Pulse z żywym mózgiem — kiedy kierunek się wyostrza",
-    sheetFeature2: "Sugestie „bliżej Twojego kierunku” w katalogu i na mapie",
-    sheetFeature3: "Szepty przed kontaktem i wizytą — tylko gdy mają sens",
+    sheetFeature1: "Żywy mózg pokazuje, kiedy Twój kierunek się wyostrza",
+    sheetFeature2: "Oferty bliżej Ciebie w katalogu i na mapie",
+    sheetFeature3: "Uczy się z każdej decyzji — Pasuje, Nie dla mnie, Na poważnie",
     sheetEnable: "Włącz EstateOS™ Intelligence",
     sheetLater: "Nie teraz",
+    sheetDismissA11y: "Zamknij propozycję Intelligence",
     collapseA11y: "Zwiń EstateOS Intelligence",
     brandEyebrow: "EstateOS™ Intelligence",
     stable: "Stabilnie",
@@ -1513,11 +1515,12 @@ const en: Dictionary = {
     sheetTitle: "Turn on Intelligence",
     sheetBody:
       "A calm system that learns from your decisions and surfaces leads — quietly, like a private iOS assistant.",
-    sheetFeature1: "Pulse with a living brain when your direction sharpens",
-    sheetFeature2: "Closer-to-you suggestions in the catalog and on the map",
-    sheetFeature3: "Whispers before contact and visits — only when useful",
+    sheetFeature1: "A living brain when your direction sharpens",
+    sheetFeature2: "Closer matches in the catalog and on the map",
+    sheetFeature3: "Learns from every choice — Fit, Not for me, Serious",
     sheetEnable: "Turn on EstateOS™ Intelligence",
     sheetLater: "Not now",
+    sheetDismissA11y: "Dismiss Intelligence proposal",
     collapseA11y: "Collapse EstateOS Intelligence",
     brandEyebrow: "EstateOS™ Intelligence",
     stable: "Stable",

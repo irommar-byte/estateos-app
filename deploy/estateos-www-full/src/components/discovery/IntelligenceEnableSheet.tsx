@@ -1,12 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Brain, Compass, Shield } from "lucide-react";
+import { Brain, Check } from "lucide-react";
 import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 import { useLocale } from "@/contexts/LocaleContext";
 import { playIntelligenceChime } from "@/lib/discovery/intelligenceChime";
+
+const SESSION_SOFT_DISMISS_KEY = "eos_intel_enable_soft_dismiss_v1";
+
+function readSoftDismissed(): boolean {
+  try {
+    return sessionStorage.getItem(SESSION_SOFT_DISMISS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSoftDismissed() {
+  try {
+    sessionStorage.setItem(SESSION_SOFT_DISMISS_KEY, "1");
+  } catch {
+    /* quiet */
+  }
+}
 
 /**
  * iOS-style first-login proposal to turn on EstateOS™ Intelligence.
@@ -18,8 +36,23 @@ export default function IntelligenceEnableSheet() {
   const [mounted, setMounted] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [softDismissed, setSoftDismissed] = useState(false);
+  const titleId = useId();
+  const bodyId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const primaryRef = useRef<HTMLButtonElement>(null);
+
+  const handleSoftDismiss = useCallback(() => {
+    writeSoftDismissed();
+    setSoftDismissed(true);
+    setVisible(false);
+  }, []);
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    setSoftDismissed(readSoftDismissed());
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +81,7 @@ export default function IntelligenceEnableSheet() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated || !loggedIn || decided || enabled) {
+    if (!hydrated || !loggedIn || decided || enabled || softDismissed) {
       setVisible(false);
       return;
     }
@@ -57,7 +90,38 @@ export default function IntelligenceEnableSheet() {
       void playIntelligenceChime("suggest");
     }, 1600);
     return () => window.clearTimeout(t);
-  }, [hydrated, loggedIn, decided, enabled]);
+  }, [hydrated, loggedIn, decided, enabled, softDismissed]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const t = window.setTimeout(() => primaryRef.current?.focus(), 80);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleSoftDismiss();
+        return;
+      }
+      if (e.key !== "Tab" || !panelRef.current) return;
+      const focusable = panelRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [visible, handleSoftDismiss]);
 
   if (!mounted) return null;
 
@@ -72,9 +136,9 @@ export default function IntelligenceEnableSheet() {
   };
 
   const features = [
-    { icon: Brain, text: dict.intelligence.sheetFeature1 },
-    { icon: Compass, text: dict.intelligence.sheetFeature2 },
-    { icon: Shield, text: dict.intelligence.sheetFeature3 },
+    dict.intelligence.sheetFeature1,
+    dict.intelligence.sheetFeature2,
+    dict.intelligence.sheetFeature3,
   ];
 
   return createPortal(
@@ -83,41 +147,44 @@ export default function IntelligenceEnableSheet() {
         <div className="fixed inset-0 z-[10050] flex items-end justify-center p-3 sm:items-center sm:p-6">
           <motion.button
             type="button"
-            aria-label={dict.intelligence.sheetLater}
-            className="absolute inset-0 bg-black/45 backdrop-blur-[6px]"
+            aria-label={dict.intelligence.sheetDismissA11y}
+            className="absolute inset-0 bg-black/50 backdrop-blur-[8px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={handleLater}
+            transition={{ duration: 0.28 }}
+            onClick={handleSoftDismiss}
           />
           <motion.div
+            ref={panelRef}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="eos-intel-sheet-title"
+            aria-labelledby={titleId}
+            aria-describedby={bodyId}
             initial={
               reduceMotion
                 ? { opacity: 0 }
-                : { opacity: 0, y: 56, scale: 0.94, filter: "blur(8px)" }
+                : { opacity: 0, y: 48, scale: 0.96, filter: "blur(10px)" }
             }
             animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
             exit={
               reduceMotion
                 ? { opacity: 0 }
-                : { opacity: 0, y: 40, scale: 0.96, filter: "blur(6px)" }
+                : { opacity: 0, y: 28, scale: 0.97, filter: "blur(6px)" }
             }
-            transition={{ type: "spring", stiffness: 380, damping: 34, mass: 0.85 }}
-            className="relative z-10 w-full max-w-[400px] overflow-hidden rounded-[1.75rem] border border-white/12 bg-[rgba(12,14,18,0.88)] p-6 text-white shadow-[0_40px_120px_rgba(0,0,0,0.55)] backdrop-blur-3xl sm:p-7"
+            transition={{ type: "spring", stiffness: 400, damping: 36, mass: 0.82 }}
+            className="relative z-10 w-full max-w-[380px] overflow-hidden rounded-[28px] border border-white/[0.14] bg-[rgba(12,14,18,0.86)] px-6 pb-6 pt-7 text-white shadow-[0_40px_120px_rgba(0,0,0,0.55),0_0_1px_rgba(255,255,255,0.1)_inset] backdrop-blur-[40px] sm:px-7 sm:pb-7 sm:pt-8"
           >
             <div
               aria-hidden
-              className="pointer-events-none absolute -left-16 -top-16 h-44 w-44 rounded-full bg-[#BF5AF2]/25 blur-3xl"
+              className="pointer-events-none absolute -left-16 -top-16 h-44 w-44 rounded-full bg-[#BF5AF2]/22 blur-3xl"
             />
             <div
               aria-hidden
-              className="pointer-events-none absolute -bottom-20 -right-10 h-40 w-40 rounded-full bg-[#64D2FF]/20 blur-3xl"
+              className="pointer-events-none absolute -bottom-20 -right-10 h-40 w-40 rounded-full bg-[#64D2FF]/16 blur-3xl"
             />
 
-            <div className="relative mx-auto flex h-[4.5rem] w-[4.5rem] items-center justify-center overflow-hidden rounded-full border border-white/30 shadow-[0_0_40px_rgba(191,90,242,0.35)]">
+            <div className="relative mx-auto flex h-[4.75rem] w-[4.75rem] items-center justify-center overflow-hidden rounded-full border border-white/25 shadow-[0_0_48px_rgba(191,90,242,0.32)]">
               <span
                 aria-hidden
                 className="eos-oil-spin absolute inset-[-40%] rounded-full"
@@ -150,42 +217,43 @@ export default function IntelligenceEnableSheet() {
                 }}
               />
               <Brain
-                size={34}
+                size={32}
                 strokeWidth={2}
                 aria-hidden
                 className="relative z-[1] text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.55)]"
               />
             </div>
 
-            <p className="relative mt-5 text-center text-[10px] font-semibold uppercase tracking-[0.24em] text-white/50">
+            <p className="relative mt-5 text-center text-[11px] font-semibold tracking-[0.04em] text-white/50">
               EstateOS™ Intelligence
             </p>
             <h2
-              id="eos-intel-sheet-title"
-              className="relative mt-2 text-center text-[1.55rem] font-semibold tracking-tight text-white"
+              id={titleId}
+              className="relative mt-2 text-center text-[1.5rem] font-semibold tracking-[-0.02em] text-white"
             >
               {dict.intelligence.sheetTitle}
             </h2>
-            <p className="relative mt-2.5 text-center text-[13px] leading-relaxed text-white/60">
+            <p
+              id={bodyId}
+              className="relative mt-2.5 text-center text-[13px] leading-relaxed text-white/58"
+            >
               {dict.intelligence.sheetBody}
             </p>
 
-            <ul className="relative mt-5 space-y-2.5">
-              {features.map(({ icon: Icon, text }) => (
-                <li
-                  key={text}
-                  className="flex items-start gap-3 rounded-2xl border border-white/8 bg-white/[0.04] px-3.5 py-3"
-                >
-                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/8 text-white/90">
-                    <Icon size={14} aria-hidden />
+            <ul className="relative mt-6 space-y-3">
+              {features.map((text) => (
+                <li key={text} className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-white/85">
+                    <Check size={11} strokeWidth={2.5} aria-hidden />
                   </span>
-                  <span className="text-[12px] leading-snug text-white/75">{text}</span>
+                  <span className="text-[13px] leading-snug text-white/72">{text}</span>
                 </li>
               ))}
             </ul>
 
-            <div className="relative mt-6 flex flex-col gap-2.5">
+            <div className="relative mt-7 flex flex-col gap-2">
               <button
+                ref={primaryRef}
                 type="button"
                 onClick={handleEnable}
                 className="eos-btn eos-btn--primary eos-btn--block !normal-case !tracking-wide !text-[14px] !font-semibold"
@@ -195,8 +263,7 @@ export default function IntelligenceEnableSheet() {
               <button
                 type="button"
                 onClick={handleLater}
-                className="w-full rounded-full border border-white/15 bg-white/[0.06] px-4 py-3 text-[13px] font-semibold tracking-wide text-white transition hover:border-white/25 hover:bg-white/12 hover:text-white"
-                style={{ color: "#f5f5f7", WebkitTextFillColor: "#f5f5f7" }}
+                className="w-full rounded-full px-4 py-3 text-[13px] font-medium tracking-wide text-white/55 transition hover:bg-white/[0.06] hover:text-white/90"
               >
                 {dict.intelligence.sheetLater}
               </button>
