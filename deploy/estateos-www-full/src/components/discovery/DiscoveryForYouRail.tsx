@@ -98,10 +98,16 @@ export default function DiscoveryForYouRail({ transactionMode = "all", formatPri
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 max-w-xl">
               <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/70">
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[conic-gradient(from_210deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)] p-[1px]">
-                  <span className="flex h-full w-full items-center justify-center rounded-full bg-[#0B0B0F] text-white">
-                    <Brain size={11} strokeWidth={2.2} aria-hidden />
-                  </span>
+                <span className="relative inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border border-white/25">
+                  <span
+                    aria-hidden
+                    className="eos-oil-spin absolute inset-[-55%] rounded-full"
+                    style={{
+                      background:
+                        "conic-gradient(from 0deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)",
+                    }}
+                  />
+                  <Brain size={11} strokeWidth={2.2} aria-hidden className="relative z-[1] text-white" />
                 </span>
                 EstateOS™ Intelligence
               </p>
@@ -132,10 +138,16 @@ export default function DiscoveryForYouRail({ transactionMode = "all", formatPri
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--eos-muted)]">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[conic-gradient(from_210deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)] p-[1px]">
-              <span className="flex h-full w-full items-center justify-center rounded-full bg-[#0B0B0F] text-white">
-                <Brain size={11} strokeWidth={2.2} aria-hidden />
-              </span>
+            <span className="relative inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border border-white/20">
+              <span
+                aria-hidden
+                className="eos-oil-spin absolute inset-[-55%] rounded-full"
+                style={{
+                  background:
+                    "conic-gradient(from 0deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)",
+                }}
+              />
+              <Brain size={11} strokeWidth={2.2} aria-hidden className="relative z-[1] text-white" />
             </span>
             EstateOS™ Intelligence
           </p>

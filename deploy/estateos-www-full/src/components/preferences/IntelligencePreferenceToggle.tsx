@@ -21,19 +21,32 @@ export default function IntelligencePreferenceToggle({ className = "" }: { class
       className={`group flex w-full items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-left transition hover:border-[var(--eos-border-strong)] hover:brightness-110 disabled:opacity-60 ${className}`}
     >
       <span
-        className={`flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border transition duration-300 group-hover:scale-110 ${
+        className={`relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border transition duration-300 group-hover:scale-110 ${
           enabled
-            ? "border-white/30 bg-[conic-gradient(from_210deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)] text-white shadow-[0_0_18px_rgba(191,90,242,0.35)]"
+            ? "border-white/30 text-white shadow-[0_0_18px_rgba(191,90,242,0.35)]"
             : "border-[var(--eos-border)] bg-[#3A3A3C] text-[#8E8E93]"
         }`}
       >
-        <span
-          className={`flex h-full w-full items-center justify-center ${
-            enabled ? "bg-[#0B0B0F]/55 backdrop-blur-[1px]" : ""
-          }`}
-        >
-          <Brain size={15} strokeWidth={1.9} aria-hidden />
-        </span>
+        {enabled ? (
+          <>
+            <span
+              aria-hidden
+              className="eos-oil-spin absolute inset-[-45%] rounded-full"
+              style={{
+                background:
+                  "conic-gradient(from 0deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)",
+              }}
+            />
+            <span
+              aria-hidden
+              className="eos-oil-spin-rev absolute inset-[-25%] rounded-full opacity-90 mix-blend-screen"
+              style={{
+                background: "conic-gradient(from 90deg,#FF375F,#FFD60A,#64D2FF,#BF5AF2,#FF375F)",
+              }}
+            />
+          </>
+        ) : null}
+        <Brain size={15} strokeWidth={1.9} aria-hidden className="relative z-[1]" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[11px] font-semibold tracking-wide text-[var(--eos-text)]">

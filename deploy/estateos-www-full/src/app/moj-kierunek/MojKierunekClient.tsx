@@ -185,10 +185,23 @@ export default function MojKierunekClient() {
           transition={spring}
         >
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-white/25 bg-[conic-gradient(from_210deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)] text-white">
-              <span className="flex h-full w-full items-center justify-center bg-[#0B0B0F]/55">
-                <Brain size={16} strokeWidth={2.1} />
-              </span>
+            <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-white/30 text-white shadow-[0_0_22px_rgba(191,90,242,0.35)]">
+              <span
+                aria-hidden
+                className="eos-oil-spin absolute inset-[-40%] rounded-full"
+                style={{
+                  background:
+                    "conic-gradient(from 0deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)",
+                }}
+              />
+              <span
+                aria-hidden
+                className="eos-oil-spin-rev absolute inset-[-20%] rounded-full opacity-90 mix-blend-screen"
+                style={{
+                  background: "conic-gradient(from 90deg,#FF375F,#FFD60A,#64D2FF,#BF5AF2,#FF375F)",
+                }}
+              />
+              <Brain size={16} strokeWidth={2.1} className="relative z-[1] drop-shadow-[0_0_6px_rgba(255,255,255,0.5)]" />
             </span>
               <div>
               <p className="text-[10px] font-black uppercase tracking-[0.26em] text-white/70">

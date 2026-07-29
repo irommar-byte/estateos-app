@@ -7,10 +7,9 @@ import {
   View,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { Brain, Compass, Shield } from 'lucide-react-native';
+import { Brain, Compass, Shield, Sparkles } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import ApplePressable from '../ApplePressable';
-import IntelligenceBrainMark from './IntelligenceBrainMark';
 import { playIntelligenceChime } from '../../lib/discovery/intelligenceChime';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../../store/useIntelligencePreferenceStore';
@@ -19,7 +18,7 @@ import { DISCOVERY_COLORS } from './discoveryMotion';
 import { useI18n } from '../../i18n';
 
 /**
- * First-login proposal — same living brain mark as the app launcher.
+ * First-login proposal to turn on EstateOS™ Intelligence — PL / EN / RU.
  */
 export default function IntelligenceEnableSheet() {
   const { t } = useI18n();
@@ -56,8 +55,8 @@ export default function IntelligenceEnableSheet() {
   };
 
   const features = [
-    { icon: Brain, text: t('discovery.enable.featurePulse') },
-    { icon: Compass, text: t('discovery.enable.featureSuggestions') },
+    { icon: Compass, text: t('discovery.enable.featurePulse') },
+    { icon: Sparkles, text: t('discovery.enable.featureSuggestions') },
     { icon: Shield, text: t('discovery.enable.featureWhispers') },
   ];
 
@@ -69,11 +68,15 @@ export default function IntelligenceEnableSheet() {
   const featureBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(17,24,39,0.04)';
   const featureBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.08)';
   const featureText = isDark ? 'rgba(255,255,255,0.75)' : 'rgba(17,24,39,0.72)';
-  const featureIconBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(191,90,242,0.12)';
+  const featureIconBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(14,165,233,0.1)';
   const laterBorder = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(17,24,39,0.12)';
   const laterBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(17,24,39,0.04)';
   const laterText = isDark ? '#F5F5F7' : '#111827';
-  const featureIconColor = isDark ? '#F5F5F7' : '#1C1C1E';
+  const brainAuraBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(14,165,233,0.08)';
+  const brainAuraBorder = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(14,165,233,0.2)';
+  const brainCoreBg = isDark ? 'rgba(56,189,248,0.22)' : 'rgba(14,165,233,0.16)';
+  const brainIcon = isDark ? '#E0F2FE' : '#0369A1';
+  const featureIconColor = isDark ? '#BAE6FD' : '#0284C7';
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={handleLater}>
@@ -91,7 +94,10 @@ export default function IntelligenceEnableSheet() {
           <View style={[styles.glowA, !isDark && styles.glowALight]} />
           <View style={[styles.glowB, !isDark && styles.glowBLight]} />
           <View style={styles.brainWrap}>
-            <IntelligenceBrainMark size={72} softGlyph />
+            <View style={[styles.brainAura, { backgroundColor: brainAuraBg, borderColor: brainAuraBorder }]} />
+            <View style={[styles.brainCore, { backgroundColor: brainCoreBg }]}>
+              <Brain size={34} color={brainIcon} strokeWidth={1.6} />
+            </View>
           </View>
           <Text style={[styles.eyebrow, { color: eyebrow }]}>{t('discovery.brand')}</Text>
           <Text style={[styles.title, { color: titleColor }]}>{t('discovery.enable.title')}</Text>
@@ -100,7 +106,7 @@ export default function IntelligenceEnableSheet() {
             {features.map(({ icon: Icon, text }) => (
               <View key={text} style={[styles.featureRow, { backgroundColor: featureBg, borderColor: featureBorder }]}>
                 <View style={[styles.featureIcon, { backgroundColor: featureIconBg }]}>
-                  <Icon size={14} color={featureIconColor} strokeWidth={2.2} />
+                  <Icon size={14} color={featureIconColor} />
                 </View>
                 <Text style={[styles.featureText, { color: featureText }]}>{text}</Text>
               </View>
@@ -145,10 +151,10 @@ const styles = StyleSheet.create({
     width: 176,
     height: 176,
     borderRadius: 88,
-    backgroundColor: 'rgba(191,90,242,0.22)',
+    backgroundColor: 'rgba(56,189,248,0.22)',
   },
   glowALight: {
-    backgroundColor: 'rgba(191,90,242,0.12)',
+    backgroundColor: 'rgba(14,165,233,0.12)',
   },
   glowB: {
     position: 'absolute',
@@ -157,13 +163,27 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: 'rgba(100,210,255,0.2)',
+    backgroundColor: 'rgba(52,211,153,0.18)',
   },
   glowBLight: {
-    backgroundColor: 'rgba(100,210,255,0.12)',
+    backgroundColor: 'rgba(16,185,129,0.1)',
   },
   brainWrap: {
     alignSelf: 'center',
+    width: 80,
+    height: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brainAura: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 26,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  brainCore: {
+    width: 68,
+    height: 68,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },

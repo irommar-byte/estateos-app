@@ -1,14 +1,13 @@
 import React, { useEffect, useMemo, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import ApplePressable from '../ApplePressable';
-import IntelligenceBrainMark from './IntelligenceBrainMark';
 import { discoveryTheme } from './discoveryTheme';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../../store/useIntelligencePreferenceStore';
 import { useIsDarkTheme } from '../../store/useThemeStore';
 import { useI18n } from '../../i18n';
-import { INTELLIGENCE_BRAND_LABEL } from '../../lib/discovery/intelligenceBrand';
 
 type Props = {
   navigation: { goBack?: () => void; canGoBack?: () => boolean; navigate?: (name: string) => void };
@@ -45,10 +44,15 @@ export default function IntelligenceRequired({ navigation, children }: Props) {
     return (
       <View style={[styles.root, { backgroundColor: theme.bg }]}>
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-          <View style={styles.markWrap}>
-            <IntelligenceBrainMark size={64} softGlyph />
+          <View
+            style={[
+              styles.iconWrap,
+              { backgroundColor: theme.accentSoft, borderColor: theme.cardAccentBorder },
+            ]}
+          >
+            <Ionicons name="sparkles" size={28} color={theme.accent} />
           </View>
-          <Text style={[styles.kicker, { color: theme.eyebrow }]}>{INTELLIGENCE_BRAND_LABEL}</Text>
+          <Text style={[styles.kicker, { color: theme.eyebrow }]}>ESTATEOS™</Text>
           <Text style={[styles.title, { color: theme.text }]}>
             {t('profile.intelligence.gateTitle')}
           </Text>
@@ -109,12 +113,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 24,
   },
-  markWrap: {
-    marginBottom: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kicker: { fontSize: 11, fontWeight: '900', letterSpacing: 1.6, textAlign: 'center' },
+  kicker: { fontSize: 11, fontWeight: '900', letterSpacing: 3.2 },
   title: {
     fontSize: 28,
     fontWeight: '800',
