@@ -75,7 +75,6 @@ export type Dictionary = {
     guideFind: string;
     guideTropes: string;
     guideDirection: string;
-    guideLustro: string;
     guideSupport: string;
     progressBadge: string;
     progressLead: string;
@@ -747,7 +746,6 @@ const pl: Dictionary = {
     guideFind: "Znajdź przestrzeń, która do mnie pasuje",
     guideTropes: "Pokaż moje ważne tropy",
     guideDirection: "Podpowiedz kolejny krok",
-    guideLustro: "Lustro preferencji",
     guideSupport: "Jestem tu, żeby spokojnie pomagać.",
     progressBadge: "Postęp",
     progressLead: "Kierunek się właśnie wyostrzył.",
@@ -1535,7 +1533,6 @@ const en: Dictionary = {
     guideFind: "Find a space that fits me",
     guideTropes: "Show my key tropes",
     guideDirection: "Suggest the next step",
-    guideLustro: "Preference mirror",
     guideSupport: "I'm here to help quietly.",
     progressBadge: "Progress",
     progressLead: "Your direction just sharpened.",
