@@ -117,10 +117,36 @@ export default function IntelligenceEnableSheet() {
               className="pointer-events-none absolute -bottom-20 -right-10 h-40 w-40 rounded-full bg-[#64D2FF]/20 blur-3xl"
             />
 
-            <div className="relative mx-auto flex h-[4.5rem] w-[4.5rem] items-center justify-center overflow-hidden rounded-full border border-white/25 bg-[conic-gradient(from_210deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)] shadow-[0_0_40px_rgba(191,90,242,0.35)]">
-              <span className="flex h-full w-full items-center justify-center bg-[#0B0B0F]/55 text-white backdrop-blur-[1px]">
-                <Brain size={34} strokeWidth={1.9} aria-hidden />
-              </span>
+            <div className="relative mx-auto flex h-[4.5rem] w-[4.5rem] items-center justify-center overflow-hidden rounded-full border border-white/30 shadow-[0_0_40px_rgba(191,90,242,0.35)]">
+              <span
+                aria-hidden
+                className="eos-oil-spin absolute inset-[-40%] rounded-full"
+                style={{
+                  background:
+                    "conic-gradient(from 0deg,#FF2D55,#BF5AF2,#5E5CE6,#64D2FF,#30D158,#FFD60A,#FF9F0A,#FF2D55)",
+                }}
+              />
+              <span
+                aria-hidden
+                className="eos-oil-spin-rev absolute inset-[-20%] rounded-full opacity-90 mix-blend-screen"
+                style={{
+                  background: "conic-gradient(from 90deg,#FF375F,#FFD60A,#64D2FF,#BF5AF2,#FF375F)",
+                }}
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-full"
+                style={{
+                  background:
+                    "radial-gradient(circle at 32% 28%, rgba(255,255,255,0.42), transparent 42%), radial-gradient(circle at 70% 75%, rgba(0,0,0,0.22), transparent 50%)",
+                }}
+              />
+              <Brain
+                size={34}
+                strokeWidth={2}
+                aria-hidden
+                className="relative z-[1] text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.55)]"
+              />
             </div>
 
             <p className="relative mt-5 text-center text-[10px] font-semibold uppercase tracking-[0.24em] text-white/50">

@@ -3266,6 +3266,30 @@ html:not(.light) .eos-btn--danger {
   }
 }
 
+/* Gasoline-on-water Intelligence face (matches mobile SiriBrainCore) */
+.eos-oil-spin {
+  animation: eos-oil-spin 7.2s linear infinite;
+}
+.eos-oil-spin-rev {
+  animation: eos-oil-spin-rev 9.8s linear infinite;
+}
+@keyframes eos-oil-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes eos-oil-spin-rev {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .eos-oil-spin,
+  .eos-oil-spin-rev {
+    animation: none;
+  }
+}
+
 
 
 
