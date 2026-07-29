@@ -73,225 +73,232 @@ export async function persistDiscoveryEvent(
     return { ok: false, status: 404, error: 'Oferta nie istnieje' };
   }
 
-  const embedding = offer
-    ? await prisma.discoveryEmbeddingJob.findFirst({
-        where: { offerId: offer.id, status: 'READY' },
-        select: { vector: true },
-      })
-    : null;
-
-  try {
-    const created = await prisma.$transaction(async (tx) => {
-      if (event.sessionId) {
-        const session = await tx.discoverySession.findUnique({ where: { id: event.sessionId } });
-        if (session && session.userId !== userId) {
-          throw new Error('DISCOVERY_SESSION_FORBIDDEN');
-        }
-        await tx.discoverySession.upsert({
+  const [embedding, sessionRow, reasonOnlyFollowUp, existingProfile] = await Promise.all([
+    offer
+      ? prisma.discoveryEmbeddingJob.findFirst({
+          where: { offerId: offer.id, status: 'READY' },
+          select: { vector: true },
+        })
+      : Promise.resolve(null),
+    event.sessionId
+      ? prisma.discoverySession.findUnique({
           where: { id: event.sessionId },
-          create: { id: event.sessionId, userId, lastActivityAt: event.at },
-          update: {
-            lastActivityAt: event.at,
-            status: event.eventType === 'DISCOVERY_PHASE_END' ? 'COMPLETED' : 'ACTIVE',
-            ...(event.eventType === 'DISCOVERY_PAUSE' ? { tempoMode: 'PAUSED', endedAt: event.at } : {}),
-          },
-        });
-      }
-
-      const reasonOnlyFollowUp =
-        event.eventType === 'DISCOVERY_DISLIKE' && !!event.reasonCode && !!event.offerId
-          ? await tx.discoveryEvent.findFirst({
-              where: {
-                userId,
-                offerId: event.offerId,
-                eventType: 'DISCOVERY_DISLIKE',
-                reasonCode: null,
-                createdAt: { gte: new Date(event.at.getTime() - 10 * 60_000) },
-              },
-              select: { id: true },
-            })
-          : null;
-
-      const profileEvent = reasonOnlyFollowUp ? { ...event, legacyReasonOnly: true } : event;
-      const existingProfile = await tx.discoveryProfile.findUnique({ where: { userId } });
-      const profile = createDiscoveryProfileSnapshot({
-        tasteVector: existingProfile?.tasteVector,
-        preferenceVector: existingProfile?.preferenceVector,
-        confidence: existingProfile?.confidence,
-        contradictionIndex: existingProfile?.contradictionIndex,
-        explorationHunger: existingProfile?.explorationHunger,
-        searchPhase: existingProfile?.searchPhase,
-        cityStats: existingProfile?.cityStats,
-        districtStats: existingProfile?.districtStats,
-        propertyStats: existingProfile?.propertyStats,
-        reasonStats: existingProfile?.reasonStats,
-      });
-
-      const candidate = offer
-        ? ({
-            ...offer,
-            embeddingVector: Array.isArray(embedding?.vector)
-              ? embedding.vector.map(Number).filter(Number.isFinite)
-              : null,
-          } as DiscoveryCandidate)
-        : null;
-
-      const nextProfile =
-        profileEvent.legacyReasonOnly || !candidate
-          ? profile
-          : updateDiscoveryProfileFromEvent({ existing: profile, event: profileEvent, candidate });
-
-      const cityStats = { ...((existingProfile?.cityStats as Record<string, number>) || {}) };
-      const districtStats = { ...((existingProfile?.districtStats as Record<string, number>) || {}) };
-      const propertyStats = { ...((existingProfile?.propertyStats as Record<string, number>) || {}) };
-      const reasonStats = { ...((existingProfile?.reasonStats as Record<string, number>) || {}) };
-
-      const delta = profileEvent.legacyReasonOnly
-        ? 0
-        : event.eventType === 'DISCOVERY_LIKE' || event.eventType === 'DISCOVERY_PRIORITY'
-          ? 1
-          : event.eventType === 'DISCOVERY_DISLIKE' ||
-              (event.eventType === 'DISCOVERY_VISIT_FEEDBACK' && event.visitOutcome === 'NO')
-            ? -1
-            : 0;
-
-      if (delta) {
-        incrementLegacy(cityStats, candidate?.city || '', delta);
-        incrementLegacy(districtStats, candidate?.district || '', delta);
-        incrementLegacy(propertyStats, String(candidate?.propertyType || ''), delta);
-      }
-      if (event.reasonCode) incrementLegacy(reasonStats, event.reasonCode, 1);
-
-      if (candidate && !profileEvent.legacyReasonOnly) {
-        const candidatePrice = Number(candidate.pricePln ?? candidate.price ?? 0);
-        if (event.eventType === 'DISCOVERY_LIKE' || event.eventType === 'DISCOVERY_PRIORITY') {
-          reasonStats[DISCOVERY_META.priceLikedSum] =
-            Number(reasonStats[DISCOVERY_META.priceLikedSum] || 0) + candidatePrice;
-          reasonStats[DISCOVERY_META.priceLikedN] = Number(reasonStats[DISCOVERY_META.priceLikedN] || 0) + 1;
-          reasonStats[DISCOVERY_META.areaLikedSum] =
-            Number(reasonStats[DISCOVERY_META.areaLikedSum] || 0) + Number(candidate.area || 0);
-          reasonStats[DISCOVERY_META.areaLikedN] = Number(reasonStats[DISCOVERY_META.areaLikedN] || 0) + 1;
-          const txKey = candidate.transactionType === 'RENT' ? DISCOVERY_META.txRent : DISCOVERY_META.txSell;
-          reasonStats[txKey] = Number(reasonStats[txKey] || 0) + 1;
-        } else if (event.eventType === 'DISCOVERY_DISLIKE') {
-          reasonStats[DISCOVERY_META.priceDislikedSum] =
-            Number(reasonStats[DISCOVERY_META.priceDislikedSum] || 0) + candidatePrice;
-          reasonStats[DISCOVERY_META.priceDislikedN] =
-            Number(reasonStats[DISCOVERY_META.priceDislikedN] || 0) + 1;
-        }
-      }
-
-      const evt = await tx.discoveryEvent.create({
-        data: {
-          userId,
-          sessionId: event.sessionId,
-          idempotencyKey,
-          eventType: event.eventType,
-          offerId: event.offerId,
-          photoIndex: event.photoIndex,
-          score: event.score,
-          reasonCode: event.reasonCode,
-          visitOutcome: event.visitOutcome,
-          correctionTarget: event.correctionTarget,
-          dwellMs: event.dwellMs,
-          decisionLatencyMs: event.decisionLatencyMs,
-          source: event.source,
-          platform: event.platform,
-          at: event.at,
-        },
-      });
-
-      await tx.discoveryProfile.upsert({
-        where: { userId },
-        create: {
-          userId,
-          likesCount: event.eventType === 'DISCOVERY_LIKE' ? 1 : 0,
-          dislikesCount: event.eventType === 'DISCOVERY_DISLIKE' && !profileEvent.legacyReasonOnly ? 1 : 0,
-          fastTrackCount: event.eventType === 'DISCOVERY_PRIORITY' ? 1 : 0,
-          opensCount: event.eventType === 'DISCOVERY_DEPTH_OPEN' ? 1 : 0,
-          reasonStats,
-          cityStats,
-          districtStats,
-          propertyStats,
-          tasteVector: nextProfile.tasteVector,
-          preferenceVector: nextProfile.preferenceVector,
-          confidence: nextProfile.confidence,
-          contradictionIndex: nextProfile.contradictionIndex,
-          explorationHunger: nextProfile.explorationHunger,
-          searchPhase: nextProfile.searchPhase,
-          ...(event.eventType === 'DISCOVERY_CORRECTION' ? { lastCorrectionAt: event.at } : {}),
-          ...(event.eventType === 'DISCOVERY_VISIT_FEEDBACK' ? { lastVisitAt: event.at } : {}),
-        },
-        update: {
-          likesCount: { increment: event.eventType === 'DISCOVERY_LIKE' ? 1 : 0 },
-          dislikesCount: {
-            increment: event.eventType === 'DISCOVERY_DISLIKE' && !profileEvent.legacyReasonOnly ? 1 : 0,
-          },
-          fastTrackCount: { increment: event.eventType === 'DISCOVERY_PRIORITY' ? 1 : 0 },
-          opensCount: { increment: event.eventType === 'DISCOVERY_DEPTH_OPEN' ? 1 : 0 },
-          reasonStats,
-          cityStats,
-          districtStats,
-          propertyStats,
-          tasteVector: nextProfile.tasteVector,
-          preferenceVector: nextProfile.preferenceVector,
-          confidence: nextProfile.confidence,
-          contradictionIndex: nextProfile.contradictionIndex,
-          explorationHunger: nextProfile.explorationHunger,
-          searchPhase: nextProfile.searchPhase,
-          ...(event.eventType === 'DISCOVERY_CORRECTION' ? { lastCorrectionAt: event.at } : {}),
-          ...(event.eventType === 'DISCOVERY_VISIT_FEEDBACK' ? { lastVisitAt: event.at } : {}),
-        },
-      });
-
-      if (event.sessionId) {
-        const currentSession = await tx.discoverySession.findUnique({
-          where: { id: event.sessionId },
-          select: { shownOfferIds: true, decisionCount: true },
-        });
-        const shownOfferIds = Array.isArray(currentSession?.shownOfferIds)
-          ? currentSession.shownOfferIds.map((id) => Number(id)).filter(Number.isFinite)
-          : [];
-        if (event.eventType === 'DISCOVERY_VIEW_CARD' && event.offerId && !shownOfferIds.includes(event.offerId)) {
-          shownOfferIds.push(event.offerId);
-        }
-        const isDecision =
-          ['DISCOVERY_LIKE', 'DISCOVERY_DISLIKE', 'DISCOVERY_PRIORITY'].includes(event.eventType) &&
-          !profileEvent.legacyReasonOnly;
-        await tx.discoverySession.update({
-          where: { id: event.sessionId },
-          data: {
-            shownOfferIds: shownOfferIds.slice(-120),
-            decisionCount: (currentSession?.decisionCount || 0) + (isDecision ? 1 : 0),
-            lastActivityAt: event.at,
-          },
-        });
-      }
-
-      if (
-        options.upsertSeriousTrope &&
-        event.eventType === 'DISCOVERY_PRIORITY' &&
-        event.offerId &&
-        Number.isFinite(event.offerId)
-      ) {
-        await tx.discoveryTrope.upsert({
-          where: { userId_offerId: { userId, offerId: event.offerId } },
-          create: {
-            id: tropeId(),
+          select: { userId: true, shownOfferIds: true, decisionCount: true },
+        })
+      : Promise.resolve(null),
+    event.eventType === 'DISCOVERY_DISLIKE' && !!event.reasonCode && !!event.offerId
+      ? prisma.discoveryEvent.findFirst({
+          where: {
             userId,
             offerId: event.offerId,
-            priority: true,
-            status: 'SERIOUS',
+            eventType: 'DISCOVERY_DISLIKE',
+            reasonCode: null,
+            createdAt: { gte: new Date(event.at.getTime() - 10 * 60_000) },
           },
-          update: {
-            priority: true,
-            status: 'SERIOUS',
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+    prisma.discoveryProfile.findUnique({ where: { userId } }),
+  ]);
+
+  if (sessionRow && sessionRow.userId !== userId) {
+    return { ok: false, status: 403, error: 'Sesja Discovery nie należy do użytkownika' };
+  }
+
+  const profileEvent = reasonOnlyFollowUp ? { ...event, legacyReasonOnly: true } : event;
+  const profile = createDiscoveryProfileSnapshot({
+    tasteVector: existingProfile?.tasteVector,
+    preferenceVector: existingProfile?.preferenceVector,
+    confidence: existingProfile?.confidence,
+    contradictionIndex: existingProfile?.contradictionIndex,
+    explorationHunger: existingProfile?.explorationHunger,
+    searchPhase: existingProfile?.searchPhase,
+    cityStats: existingProfile?.cityStats,
+    districtStats: existingProfile?.districtStats,
+    propertyStats: existingProfile?.propertyStats,
+    reasonStats: existingProfile?.reasonStats,
+  });
+
+  const candidate = offer
+    ? ({
+        ...offer,
+        embeddingVector: Array.isArray(embedding?.vector)
+          ? embedding.vector.map(Number).filter(Number.isFinite)
+          : null,
+      } as DiscoveryCandidate)
+    : null;
+
+  const nextProfile =
+    profileEvent.legacyReasonOnly || !candidate
+      ? profile
+      : updateDiscoveryProfileFromEvent({ existing: profile, event: profileEvent, candidate });
+
+  const cityStats = { ...((existingProfile?.cityStats as Record<string, number>) || {}) };
+  const districtStats = { ...((existingProfile?.districtStats as Record<string, number>) || {}) };
+  const propertyStats = { ...((existingProfile?.propertyStats as Record<string, number>) || {}) };
+  const reasonStats = { ...((existingProfile?.reasonStats as Record<string, number>) || {}) };
+
+  const delta = profileEvent.legacyReasonOnly
+    ? 0
+    : event.eventType === 'DISCOVERY_LIKE' || event.eventType === 'DISCOVERY_PRIORITY'
+      ? 1
+      : event.eventType === 'DISCOVERY_DISLIKE' ||
+          (event.eventType === 'DISCOVERY_VISIT_FEEDBACK' && event.visitOutcome === 'NO')
+        ? -1
+        : 0;
+
+  if (delta) {
+    incrementLegacy(cityStats, candidate?.city || '', delta);
+    incrementLegacy(districtStats, candidate?.district || '', delta);
+    incrementLegacy(propertyStats, String(candidate?.propertyType || ''), delta);
+  }
+  if (event.reasonCode) incrementLegacy(reasonStats, event.reasonCode, 1);
+
+  if (candidate && !profileEvent.legacyReasonOnly) {
+    const candidatePrice = Number(candidate.pricePln ?? candidate.price ?? 0);
+    if (event.eventType === 'DISCOVERY_LIKE' || event.eventType === 'DISCOVERY_PRIORITY') {
+      reasonStats[DISCOVERY_META.priceLikedSum] =
+        Number(reasonStats[DISCOVERY_META.priceLikedSum] || 0) + candidatePrice;
+      reasonStats[DISCOVERY_META.priceLikedN] = Number(reasonStats[DISCOVERY_META.priceLikedN] || 0) + 1;
+      reasonStats[DISCOVERY_META.areaLikedSum] =
+        Number(reasonStats[DISCOVERY_META.areaLikedSum] || 0) + Number(candidate.area || 0);
+      reasonStats[DISCOVERY_META.areaLikedN] = Number(reasonStats[DISCOVERY_META.areaLikedN] || 0) + 1;
+      const txKey = candidate.transactionType === 'RENT' ? DISCOVERY_META.txRent : DISCOVERY_META.txSell;
+      reasonStats[txKey] = Number(reasonStats[txKey] || 0) + 1;
+    } else if (event.eventType === 'DISCOVERY_DISLIKE') {
+      reasonStats[DISCOVERY_META.priceDislikedSum] =
+        Number(reasonStats[DISCOVERY_META.priceDislikedSum] || 0) + candidatePrice;
+      reasonStats[DISCOVERY_META.priceDislikedN] =
+        Number(reasonStats[DISCOVERY_META.priceDislikedN] || 0) + 1;
+    }
+  }
+
+  const shownOfferIds = Array.isArray(sessionRow?.shownOfferIds)
+    ? sessionRow.shownOfferIds.map((id) => Number(id)).filter(Number.isFinite)
+    : [];
+  if (event.eventType === 'DISCOVERY_VIEW_CARD' && event.offerId && !shownOfferIds.includes(event.offerId)) {
+    shownOfferIds.push(event.offerId);
+  }
+  const isDecision =
+    ['DISCOVERY_LIKE', 'DISCOVERY_DISLIKE', 'DISCOVERY_PRIORITY'].includes(event.eventType) &&
+    !profileEvent.legacyReasonOnly;
+
+  try {
+    // Writes only — reads/compute happen above so taste feedback stays snappy.
+    const created = await prisma.$transaction(
+      async (tx) => {
+        if (event.sessionId) {
+          await tx.discoverySession.upsert({
+            where: { id: event.sessionId },
+            create: { id: event.sessionId, userId, lastActivityAt: event.at },
+            update: {
+              lastActivityAt: event.at,
+              status: event.eventType === 'DISCOVERY_PHASE_END' ? 'COMPLETED' : 'ACTIVE',
+              ...(event.eventType === 'DISCOVERY_PAUSE' ? { tempoMode: 'PAUSED', endedAt: event.at } : {}),
+            },
+          });
+        }
+
+        const evt = await tx.discoveryEvent.create({
+          data: {
+            userId,
+            sessionId: event.sessionId,
+            idempotencyKey,
+            eventType: event.eventType,
+            offerId: event.offerId,
+            photoIndex: event.photoIndex,
+            score: event.score,
+            reasonCode: event.reasonCode,
+            visitOutcome: event.visitOutcome,
+            correctionTarget: event.correctionTarget,
+            dwellMs: event.dwellMs,
+            decisionLatencyMs: event.decisionLatencyMs,
+            source: event.source,
+            platform: event.platform,
+            at: event.at,
           },
         });
-      }
 
-      return evt;
-    });
+        await tx.discoveryProfile.upsert({
+          where: { userId },
+          create: {
+            userId,
+            likesCount: event.eventType === 'DISCOVERY_LIKE' ? 1 : 0,
+            dislikesCount: event.eventType === 'DISCOVERY_DISLIKE' && !profileEvent.legacyReasonOnly ? 1 : 0,
+            fastTrackCount: event.eventType === 'DISCOVERY_PRIORITY' ? 1 : 0,
+            opensCount: event.eventType === 'DISCOVERY_DEPTH_OPEN' ? 1 : 0,
+            reasonStats,
+            cityStats,
+            districtStats,
+            propertyStats,
+            tasteVector: nextProfile.tasteVector,
+            preferenceVector: nextProfile.preferenceVector,
+            confidence: nextProfile.confidence,
+            contradictionIndex: nextProfile.contradictionIndex,
+            explorationHunger: nextProfile.explorationHunger,
+            searchPhase: nextProfile.searchPhase,
+            ...(event.eventType === 'DISCOVERY_CORRECTION' ? { lastCorrectionAt: event.at } : {}),
+            ...(event.eventType === 'DISCOVERY_VISIT_FEEDBACK' ? { lastVisitAt: event.at } : {}),
+          },
+          update: {
+            likesCount: { increment: event.eventType === 'DISCOVERY_LIKE' ? 1 : 0 },
+            dislikesCount: {
+              increment: event.eventType === 'DISCOVERY_DISLIKE' && !profileEvent.legacyReasonOnly ? 1 : 0,
+            },
+            fastTrackCount: { increment: event.eventType === 'DISCOVERY_PRIORITY' ? 1 : 0 },
+            opensCount: { increment: event.eventType === 'DISCOVERY_DEPTH_OPEN' ? 1 : 0 },
+            reasonStats,
+            cityStats,
+            districtStats,
+            propertyStats,
+            tasteVector: nextProfile.tasteVector,
+            preferenceVector: nextProfile.preferenceVector,
+            confidence: nextProfile.confidence,
+            contradictionIndex: nextProfile.contradictionIndex,
+            explorationHunger: nextProfile.explorationHunger,
+            searchPhase: nextProfile.searchPhase,
+            ...(event.eventType === 'DISCOVERY_CORRECTION' ? { lastCorrectionAt: event.at } : {}),
+            ...(event.eventType === 'DISCOVERY_VISIT_FEEDBACK' ? { lastVisitAt: event.at } : {}),
+          },
+        });
+
+        if (event.sessionId) {
+          await tx.discoverySession.update({
+            where: { id: event.sessionId },
+            data: {
+              shownOfferIds: shownOfferIds.slice(-120),
+              decisionCount: (sessionRow?.decisionCount || 0) + (isDecision ? 1 : 0),
+              lastActivityAt: event.at,
+            },
+          });
+        }
+
+        if (
+          options.upsertSeriousTrope &&
+          event.eventType === 'DISCOVERY_PRIORITY' &&
+          event.offerId &&
+          Number.isFinite(event.offerId)
+        ) {
+          await tx.discoveryTrope.upsert({
+            where: { userId_offerId: { userId, offerId: event.offerId } },
+            create: {
+              id: tropeId(),
+              userId,
+              offerId: event.offerId,
+              priority: true,
+              status: 'SERIOUS',
+            },
+            update: {
+              priority: true,
+              status: 'SERIOUS',
+            },
+          });
+        }
+
+        return evt;
+      },
+      { timeout: 8_000 },
+    );
 
     return { ok: true, id: String(created.id), idempotent: false };
   } catch (error) {

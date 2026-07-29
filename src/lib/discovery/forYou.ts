@@ -8,7 +8,113 @@ import {
   scoreDiscoveryCandidate,
 } from "@/lib/discovery/engine";
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
+import { absolutizeMediaUrl } from "@/lib/offerShareLanding";
 import { DISCOVERY_ENGINE_VERSION, type DiscoveryScoredCandidate } from "@/lib/discovery/types";
+
+const OFFER_SELECT = {
+  id: true,
+  title: true,
+  price: true,
+  pricePln: true,
+  priceCurrency: true,
+  listPricePln: true,
+  city: true,
+  district: true,
+  propertyType: true,
+  transactionType: true,
+  area: true,
+  rooms: true,
+  hasBalcony: true,
+  hasParking: true,
+  hasGarden: true,
+  hasElevator: true,
+  isFurnished: true,
+  status: true,
+  expiresAt: true,
+  images: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+function topAffinityCities(cityStats: unknown, limit = 3): string[] {
+  if (!cityStats || typeof cityStats !== "object") return [];
+  return Object.entries(cityStats as Record<string, number>)
+    .map(([key, value]) => [String(key || "").trim(), Number(value) || 0] as const)
+    .filter(([key, value]) => key.length > 0 && value > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([key]) => key);
+}
+
+async function loadForYouOfferPool(input: {
+  topCities: string[];
+  transaction?: string;
+}): Promise<
+  Array<{
+    id: number;
+    title: string | null;
+    price: number | null;
+    pricePln: number | null;
+    priceCurrency: string | null;
+    listPricePln: number | null;
+    city: string | null;
+    district: string | null;
+    propertyType: string | null;
+    transactionType: string | null;
+    area: number | null;
+    rooms: number | null;
+    hasBalcony: boolean | null;
+    hasParking: boolean | null;
+    hasGarden: boolean | null;
+    hasElevator: boolean | null;
+    isFurnished: boolean | null;
+    status: string;
+    expiresAt: Date | null;
+    images: unknown;
+    createdAt: Date;
+    updatedAt: Date;
+  }>
+> {
+  const txFilter = String(input.transaction || "").trim().toUpperCase();
+  const txWhere =
+    txFilter === "SALE" || txFilter === "SELL"
+      ? { transactionType: { in: ["SALE", "SELL"] } }
+      : txFilter === "RENT"
+        ? { transactionType: "RENT" }
+        : {};
+
+  if (input.topCities.length > 0) {
+    const [affinity, explore] = await Promise.all([
+      prisma.offer.findMany({
+        where: { status: "ACTIVE", city: { in: input.topCities }, ...txWhere },
+        orderBy: { updatedAt: "desc" },
+        take: 100,
+        select: OFFER_SELECT,
+      }),
+      prisma.offer.findMany({
+        where: { status: "ACTIVE", ...txWhere },
+        orderBy: { createdAt: "desc" },
+        take: 80,
+        select: OFFER_SELECT,
+      }),
+    ]);
+    const seen = new Set<number>();
+    const merged: typeof affinity = [];
+    for (const row of [...affinity, ...explore]) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      merged.push(row);
+    }
+    return merged;
+  }
+
+  return prisma.offer.findMany({
+    where: { status: "ACTIVE", ...txWhere },
+    orderBy: { createdAt: "desc" },
+    take: 150,
+    select: OFFER_SELECT,
+  });
+}
 
 export type DiscoveryForYouItem = {
   id: number;
@@ -56,7 +162,10 @@ function toItem(row: DiscoveryScoredCandidate): DiscoveryForYouItem {
     propertyType: String(row.propertyType || ""),
     transactionType: String(row.transactionType || ""),
     area: Number(row.area) || 0,
-    imageUrl: resolveOfferPrimaryImage({ images: row.images }) || null,
+    imageUrl: (() => {
+      const raw = resolveOfferPrimaryImage({ images: row.images });
+      return raw ? absolutizeMediaUrl(raw) || null : null;
+    })(),
     score: row.score,
     reason: row.reason,
     exploreFlag: Boolean(row.exploreFlag),
@@ -83,7 +192,7 @@ export async function buildDiscoveryForYou(input: {
       ? input.explainOfferId
       : null;
 
-  const [profile, legacyPreferenceSource, recentEvents, offers] = await Promise.all([
+  const [profile, legacyPreferenceSource, recentEvents] = await Promise.all([
     prisma.discoveryProfile.findUnique({
       where: { userId: input.userId },
       select: {
@@ -116,39 +225,15 @@ export async function buildDiscoveryForYou(input: {
     prisma.discoveryEvent.findMany({
       where: { userId: input.userId },
       orderBy: { createdAt: "desc" },
-      take: 400,
+      take: 200,
       select: { eventType: true, offerId: true, visitOutcome: true },
     }),
-    prisma.offer.findMany({
-      where: { status: "ACTIVE" },
-      orderBy: { createdAt: "desc" },
-      take: 400,
-      select: {
-        id: true,
-        title: true,
-        price: true,
-        pricePln: true,
-        priceCurrency: true,
-        listPricePln: true,
-        city: true,
-        district: true,
-        propertyType: true,
-        transactionType: true,
-        area: true,
-        rooms: true,
-        hasBalcony: true,
-        hasParking: true,
-        hasGarden: true,
-        hasElevator: true,
-        isFurnished: true,
-        status: true,
-        expiresAt: true,
-        images: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    }),
   ]);
+
+  const offers = await loadForYouOfferPool({
+    topCities: topAffinityCities(profile?.cityStats),
+    transaction: txFilter,
+  });
 
   const profileSnapshot = createDiscoveryProfileSnapshot({
     tasteVector: profile?.tasteVector,
@@ -217,17 +302,26 @@ export async function buildDiscoveryForYou(input: {
 
   let explain: DiscoveryForYouResult["explain"] = null;
   if (explainOfferId) {
-    const target = offers.find((o) => o.id === explainOfferId);
-    if (target && canShowOfferOnPublicMarket(target, activePublicationIds)) {
-      const scored = scoreDiscoveryCandidate({
-        candidate: { ...target, embeddingVector: null },
-        profile: profileSnapshot,
-        recentShown,
-        recentDisliked: dislikedOfferIds,
-        recentLiked: likedOfferIds,
+    let target = offers.find((o) => o.id === explainOfferId) || null;
+    if (!target) {
+      target = await prisma.offer.findUnique({
+        where: { id: explainOfferId },
+        select: OFFER_SELECT,
       });
-      if (scored.reason) {
-        explain = { offerId: scored.id, reason: scored.reason, score: scored.score };
+    }
+    if (target) {
+      const pubIds = await activePublicationOfferIds([target.id]);
+      if (canShowOfferOnPublicMarket(target, pubIds)) {
+        const scored = scoreDiscoveryCandidate({
+          candidate: { ...target, embeddingVector: null },
+          profile: profileSnapshot,
+          recentShown,
+          recentDisliked: dislikedOfferIds,
+          recentLiked: likedOfferIds,
+        });
+        if (scored.reason) {
+          explain = { offerId: scored.id, reason: scored.reason, score: scored.score };
+        }
       }
     }
   }
