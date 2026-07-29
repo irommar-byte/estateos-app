@@ -203,6 +203,8 @@ function toDiscoveryCandidate(row: {
     embeddingVector: null,
   };
 }
+
+function toItem(row: DiscoveryScoredCandidate): DiscoveryForYouItem {
   return {
     id: row.id,
     offerId: row.id,
