@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Brain, Check, ChevronDown, Compass, Navigation } from "lucide-react";
+import { Brain, X } from "lucide-react";
 import {
   dispatchIntelligenceSheetOpen,
   subscribeDiscoveryUpdated,
@@ -18,7 +18,6 @@ import {
   OIL_COOL,
   OIL_HOT,
   STAGE_ORDER,
-  confidenceLabel,
   crossedMilestone,
   oilConicCss,
   resolveIntelligenceMood,
@@ -205,6 +204,41 @@ function LearnSplash({ color, reduceMotion }: { color: string; reduceMotion: boo
   );
 }
 
+function StageStepper({
+  activeIndex,
+  labels,
+}: {
+  activeIndex: number;
+  labels: Record<StageKey, string>;
+}) {
+  return (
+    <div
+      className="flex items-center gap-1.5"
+      role="list"
+      aria-label={STAGE_ORDER.map((k) => labels[k]).join(" · ")}
+    >
+      {STAGE_ORDER.map((key, index) => {
+        const done = index < activeIndex;
+        const current = index === activeIndex;
+        return (
+          <span
+            key={key}
+            role="listitem"
+            title={labels[key]}
+            className={`h-1.5 rounded-full transition-all duration-500 ${
+              current
+                ? "w-5 bg-white/90"
+                : done
+                  ? "w-1.5 bg-white/45"
+                  : "w-1.5 bg-white/15"
+            }`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export default function DiscoveryPulse() {
   const reduceMotion = useReducedMotion();
   const { dict } = useLocale();
@@ -226,6 +260,10 @@ export default function DiscoveryPulse() {
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bootPeekDoneRef = useRef(false);
   const expandedRef = useRef(false);
+  const presentReasonRef = useRef<PresentReason | null>(null);
+  const hidePausedRef = useRef(false);
+  const hideRemainingRef = useRef(0);
+  const hideDeadlineRef = useRef(0);
 
   const wakeOil = useCallback(() => {
     setOilActive(true);
@@ -241,12 +279,16 @@ export default function DiscoveryPulse() {
       clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
     }
+    hidePausedRef.current = false;
+    hideRemainingRef.current = 0;
+    hideDeadlineRef.current = 0;
   }, []);
 
   const collapseToOrb = useCallback(() => {
     clearHide();
     setExpanded(false);
     expandedRef.current = false;
+    presentReasonRef.current = null;
     dispatchIntelligenceSheetOpen(false);
     setSpectacle(false);
     wakeOil();
@@ -267,12 +309,34 @@ export default function DiscoveryPulse() {
   const scheduleHide = useCallback(
     (ms: number) => {
       clearHide();
+      if (ms <= 0) return;
+      hideRemainingRef.current = ms;
+      hideDeadlineRef.current = Date.now() + ms;
       hideTimerRef.current = setTimeout(() => {
         collapseToOrb();
       }, ms);
     },
     [clearHide, collapseToOrb],
   );
+
+  const pauseHide = useCallback(() => {
+    if (!hideTimerRef.current || hidePausedRef.current) return;
+    const remaining = Math.max(0, hideDeadlineRef.current - Date.now());
+    clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = null;
+    hidePausedRef.current = true;
+    hideRemainingRef.current = remaining;
+  }, []);
+
+  const resumeHide = useCallback(() => {
+    if (!hidePausedRef.current || hideRemainingRef.current <= 0) return;
+    hidePausedRef.current = false;
+    const ms = hideRemainingRef.current;
+    hideDeadlineRef.current = Date.now() + ms;
+    hideTimerRef.current = setTimeout(() => {
+      collapseToOrb();
+    }, ms);
+  }, [collapseToOrb]);
 
   const presentGently = useCallback(
     async (kind: PresentReason) => {
@@ -281,10 +345,11 @@ export default function DiscoveryPulse() {
 
       if (kind === "manual") {
         setPresentReason(null);
+        presentReasonRef.current = "manual";
         setExpanded(true);
         expandedRef.current = true;
         dispatchIntelligenceSheetOpen(true);
-        scheduleHide(hideDurationForReason("manual"));
+        clearHide();
         return;
       }
 
@@ -292,6 +357,7 @@ export default function DiscoveryPulse() {
       if (!allowed) return;
 
       setPresentReason(kind);
+      presentReasonRef.current = kind;
       setExpanded(true);
       expandedRef.current = true;
       dispatchIntelligenceSheetOpen(true);
@@ -304,8 +370,17 @@ export default function DiscoveryPulse() {
       scheduleHide(hideDurationForReason(kind));
       window.setTimeout(() => setSpectacle(false), INTEL_MOTION.spectacleHoldMs);
     },
-    [intelligenceEnabled, scheduleHide, wakeOil],
+    [clearHide, intelligenceEnabled, scheduleHide, wakeOil],
   );
+
+  const toggleOrb = useCallback(() => {
+    wakeOil();
+    if (expandedRef.current) {
+      collapseToOrb();
+      return;
+    }
+    void presentGently("manual");
+  }, [collapseToOrb, presentGently, wakeOil]);
 
   const load = useCallback(
     async (silent = false) => {
@@ -388,6 +463,18 @@ export default function DiscoveryPulse() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [load]);
 
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        collapseToOrb();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded, collapseToOrb]);
+
   // One motivated session peek — only when direction is already meaningful
   useEffect(() => {
     if (!intelligenceEnabled) return;
@@ -431,7 +518,6 @@ export default function DiscoveryPulse() {
 
   const progress = Math.max(0, Math.min(100, pulse.progress || 0));
   const displayProgress = Math.max(0, Math.min(100, progress + fillBoost * 8));
-  const contradiction = pulse.contradictionIndex >= INTEL_THRESHOLDS.contradiction;
   const mood = resolveIntelligenceMood({
     progress: pulse.progress,
     confidence: pulse.confidence,
@@ -442,44 +528,38 @@ export default function DiscoveryPulse() {
   const ringClass = MOOD_RING_CLASS[mood];
   const activeStage = resolveStageKey(pulse.stage, progress);
   const activeStageIndex = STAGE_ORDER.indexOf(activeStage);
-  const confKey = confidenceLabel(pulse.confidence);
-  const confCopy = {
-    start: dict.intelligence.confidenceStart,
-    outline: dict.intelligence.confidenceOutline,
-    clear: dict.intelligence.confidenceClear,
-    strong: dict.intelligence.confidenceStrong,
-  }[confKey];
-  const stageLabel = (key: StageKey) =>
-    ({
-      EXPLORE: dict.intelligence.stageExplore,
-      FOCUS: dict.intelligence.stageFocus,
-      READY: dict.intelligence.stageReady,
-      COMPLETE: dict.intelligence.stageComplete,
-    })[key];
+  const stageLabels: Record<StageKey, string> = {
+    EXPLORE: dict.intelligence.stageExplore,
+    FOCUS: dict.intelligence.stageFocus,
+    READY: dict.intelligence.stageReady,
+    COMPLETE: dict.intelligence.stageComplete,
+  };
+  const currentStageLabel = stageLabels[activeStage] || pulse.stageLabel;
 
-  const reasonMeta =
+  const reasonLead =
     presentReason && presentReason !== "manual"
       ? {
-          progress: {
-            badge: dict.intelligence.progressBadge,
-            lead: dict.intelligence.progressLead,
-          },
-          milestone: {
-            badge: dict.intelligence.milestoneBadge,
-            lead: dict.intelligence.milestoneLead,
-          },
-          contradiction: {
-            badge: dict.intelligence.contradictionBadge,
-            lead: dict.intelligence.contradictionLead,
-          },
-          ready_peek: {
-            badge: dict.intelligence.readyPeekBadge,
-            lead: dict.intelligence.readyPeekLead,
-          },
+          progress: dict.intelligence.progressLead,
+          milestone: dict.intelligence.milestoneLead,
+          contradiction: dict.intelligence.contradictionLead,
+          ready_peek: dict.intelligence.readyPeekLead,
         }[presentReason]
       : null;
 
   const circumference = 2 * Math.PI * 17;
+
+  const onSheetEnter = () => {
+    wakeOil();
+    pauseHide();
+  };
+  const onSheetLeave = () => {
+    resumeHide();
+  };
+
+  const onCtaClick = () => {
+    wakeOil();
+    collapseToOrb();
+  };
 
   return (
     <div
@@ -490,6 +570,9 @@ export default function DiscoveryPulse() {
         {expanded ? (
           <motion.div
             key="expanded"
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="eos-intel-pulse-title"
             initial={
               reduceMotion
                 ? { opacity: 0 }
@@ -518,112 +601,82 @@ export default function DiscoveryPulse() {
                   }
             }
             style={{ transformOrigin: "24px 100%" }}
-            className="pointer-events-auto relative max-w-[min(90vw,340px)] overflow-hidden rounded-[22px] border border-white/12 bg-[rgba(8,10,14,0.82)] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55),0_0_1px_rgba(255,255,255,0.08)_inset] backdrop-blur-[28px]"
-            onMouseEnter={wakeOil}
-            onFocus={wakeOil}
+            className="pointer-events-auto relative w-[min(90vw,320px)] overflow-hidden rounded-[28px] border border-white/[0.14] bg-[rgba(10,12,16,0.78)] px-5 pb-5 pt-4 shadow-[0_28px_90px_rgba(0,0,0,0.55),0_0_1px_rgba(255,255,255,0.1)_inset] backdrop-blur-[40px]"
+            onMouseEnter={onSheetEnter}
+            onMouseLeave={onSheetLeave}
+            onFocusCapture={onSheetEnter}
+            onBlurCapture={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                onSheetLeave();
+              }
+            }}
           >
             <motion.div
               aria-hidden
-              className="pointer-events-none absolute -left-10 -top-10 h-28 w-28 rounded-full blur-3xl"
+              className="pointer-events-none absolute -left-12 -top-14 h-36 w-36 rounded-full blur-3xl"
               style={{ background: colors.glow }}
               animate={
                 reduceMotion
-                  ? { opacity: 0.25 }
-                  : { opacity: [0.18, 0.38, 0.18], scale: [1, 1.08, 1] }
+                  ? { opacity: 0.22 }
+                  : { opacity: [0.14, 0.32, 0.14], scale: [1, 1.06, 1] }
               }
-              transition={{ duration: colors.speed + 1.2, repeat: Infinity, ease: "easeInOut" }}
+              transition={{ duration: colors.speed + 1.4, repeat: Infinity, ease: "easeInOut" }}
             />
 
             <button
               type="button"
               onClick={collapseToOrb}
-              className="absolute right-2.5 top-2.5 z-10 rounded-full p-1.5 text-white/40 transition hover:bg-white/8 hover:text-white/75"
+              className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.06] text-white/45 transition hover:bg-white/[0.12] hover:text-white/85"
               aria-label={dict.intelligence.collapseA11y}
             >
-              <ChevronDown size={14} />
+              <X size={13} strokeWidth={2.25} />
             </button>
 
-            <div className="relative mb-2.5 flex items-center gap-2 pr-7">
-              <span className="relative flex h-5 w-5 items-center justify-center">
-                <IntelligenceBrain
-                  mood={mood}
-                  reduceMotion={reduceMotion}
-                  absorbing={false}
-                  size={14}
-                  oilActive={oilActive}
-                />
-              </span>
-              <span className="text-[9px] font-semibold uppercase tracking-[0.22em] text-white/55">
+            <div className="relative mb-3.5 flex items-center gap-2.5 pr-8">
+              <IntelligenceBrain
+                mood={mood}
+                reduceMotion={reduceMotion}
+                absorbing={false}
+                size={13}
+                oilActive={oilActive}
+              />
+              <span className="text-[10px] font-semibold tracking-[0.04em] text-white/55">
                 {dict.intelligence.brandEyebrow}
               </span>
-              {reasonMeta ? (
-                <motion.span
-                  initial={{ opacity: 0, scale: 0.85 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="ml-auto rounded-full border border-white/12 bg-white/8 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white/70"
-                >
-                  {reasonMeta.badge}
-                </motion.span>
-              ) : null}
             </div>
 
-            {reasonMeta ? (
+            {reasonLead ? (
               <motion.p
-                initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+                initial={reduceMotion ? false : { opacity: 0, y: 3 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="relative mb-2 text-[11px] font-medium leading-snug text-sky-200/85"
+                className="relative mb-2.5 text-[12px] font-medium leading-snug tracking-tight text-white/70"
               >
-                {reasonMeta.lead}
+                {reasonLead}
               </motion.p>
             ) : null}
 
-            <p className="relative text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50">
-              {pulse.stageLabel}
-              <span className="mx-1.5 text-white/25">·</span>
-              <span className="tabular-nums text-white/70">{progress}%</span>
-            </p>
-            <p className="relative mt-1.5 text-[15px] font-medium leading-snug tracking-tight text-white">
+            <h2
+              id="eos-intel-pulse-title"
+              className="relative text-[17px] font-semibold leading-[1.25] tracking-[-0.02em] text-white"
+            >
               {pulse.directionLine}
+            </h2>
+            <p className="relative mt-2 text-[13px] leading-relaxed text-white/55">
+              {pulse.suggestion}
             </p>
-            <p className="relative mt-2 text-[12px] leading-relaxed text-white/58">{pulse.suggestion}</p>
 
-            <div className="relative mt-3 flex flex-wrap gap-1.5">
-              {STAGE_ORDER.map((key, index) => {
-                const done = index < activeStageIndex;
-                const current = index === activeStageIndex;
-                return (
-                  <span
-                    key={key}
-                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold tracking-wide ${
-                      current
-                        ? "border-sky-300/45 bg-sky-400/20 text-white"
-                        : done
-                          ? "border-white/10 bg-sky-400/10 text-white/80"
-                          : "border-white/8 bg-white/[0.04] text-white/45"
-                    }`}
-                  >
-                    {done ? <Check size={9} strokeWidth={2.5} /> : null}
-                    {current ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-sky-300" aria-hidden />
-                    ) : null}
-                    {stageLabel(key)}
-                  </span>
-                );
-              })}
-            </div>
-
-            <div className="relative mt-3.5">
-              <div className="mb-1.5 flex items-center justify-between text-[10px] font-medium text-white/45">
-                <span>{confCopy}</span>
-                <span>{contradiction ? dict.intelligence.needsCorrection : dict.intelligence.stable}</span>
+            <div className="relative mt-4 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] font-medium tracking-wide text-white/50">
+                  {currentStageLabel}
+                  <span className="mx-1.5 text-white/20">·</span>
+                  <span className="tabular-nums text-white/75">{progress}%</span>
+                </p>
+                <StageStepper activeIndex={activeStageIndex} labels={stageLabels} />
               </div>
-              <div className="h-[3px] overflow-hidden rounded-full bg-white/10">
+              <div className="h-[2.5px] overflow-hidden rounded-full bg-white/[0.08]">
                 <motion.div
-                  className={`h-full rounded-full ${
-                    contradiction
-                      ? "bg-gradient-to-r from-amber-300 to-rose-400"
-                      : "bg-gradient-to-r from-emerald-300 via-teal-300 to-sky-400"
-                  }`}
+                  className="h-full rounded-full bg-gradient-to-r from-white/35 via-white/80 to-white/55"
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
                   transition={{ duration: msToSec(INTEL_MOTION.progressBarMs), ease: INTEL_EASE.out }}
@@ -631,43 +684,23 @@ export default function DiscoveryPulse() {
               </div>
             </div>
 
-            <div className="relative mt-4 flex flex-wrap gap-2">
+            <div className="relative mt-5 flex flex-col items-stretch gap-2.5">
               <Link
                 href={pulse.primaryCta.href}
-                className="eos-btn eos-btn--primary eos-btn--sm !normal-case !tracking-wide !text-[11px] !font-semibold"
-                onClick={wakeOil}
+                className="eos-btn eos-btn--primary eos-btn--block !normal-case !tracking-wide !text-[13px] !font-semibold"
+                onClick={onCtaClick}
               >
                 {pulse.primaryCta.label}
               </Link>
-              <Link
-                href={pulse.secondaryCta.href}
-                className="eos-btn eos-btn--secondary eos-btn--sm !normal-case !tracking-wide !text-[11px] !font-semibold"
-                onClick={wakeOil}
-              >
-                {pulse.secondaryCta.label}
-              </Link>
-            </div>
-
-            <div className="relative mt-4 border-t border-white/8 pt-3">
-              <p className="mb-2 text-[10px] font-medium text-white/40">{dict.intelligence.guideSupport}</p>
-              <div className="flex flex-col gap-1.5">
-                {(
-                  [
-                    { href: "/oferty", icon: Compass, label: dict.intelligence.guideFind },
-                    { href: "/moj-kierunek", icon: Navigation, label: dict.intelligence.guideDirection },
-                  ] as const
-                ).map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.04] px-2.5 py-2 text-[11px] font-medium text-white/75 transition hover:bg-white/[0.07]"
-                    onClick={wakeOil}
-                  >
-                    <item.icon size={14} className="shrink-0 text-sky-300/90" aria-hidden />
-                    <span className="min-w-0 flex-1 leading-snug">{item.label}</span>
-                  </Link>
-                ))}
-              </div>
+              {pulse.secondaryCta?.href ? (
+                <Link
+                  href={pulse.secondaryCta.href}
+                  className="rounded-full px-3 py-2 text-center text-[12px] font-medium tracking-wide text-white/55 transition hover:text-white/90"
+                  onClick={onCtaClick}
+                >
+                  {pulse.secondaryCta.label}
+                </Link>
+              ) : null}
             </div>
           </motion.div>
         ) : null}
@@ -675,10 +708,7 @@ export default function DiscoveryPulse() {
 
       <motion.button
         type="button"
-        onClick={() => {
-          wakeOil();
-          void presentGently("manual");
-        }}
+        onClick={toggleOrb}
         onMouseEnter={wakeOil}
         onFocus={wakeOil}
         initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.7 }}
@@ -688,9 +718,9 @@ export default function DiscoveryPulse() {
         }}
         transition={reduceMotion ? { duration: 0.12 } : INTEL_ORB_SPRING}
         className={`pointer-events-auto group relative flex h-12 w-12 items-center justify-center rounded-full border ${ringClass} bg-transparent shadow-[0_12px_40px_rgba(0,0,0,0.45)] transition-all duration-300 hover:scale-[1.1] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_28px_rgba(255,255,255,0.28),0_16px_40px_rgba(0,0,0,0.5)] active:scale-[0.96]`}
-        aria-label={`EstateOS Intelligence · ${pulse.stageLabel} ${progress}%`}
+        aria-label={`EstateOS Intelligence · ${currentStageLabel} ${progress}%`}
         aria-expanded={expanded}
-        title={`${pulse.stageLabel} · ${progress}%`}
+        title={`${currentStageLabel} · ${progress}%`}
       >
         {splashKey > 0 ? (
           <LearnSplash key={splashKey} color={colors.accent} reduceMotion={reduceMotion} />
