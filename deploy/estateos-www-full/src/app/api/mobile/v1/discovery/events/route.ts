@@ -15,10 +15,23 @@ export async function POST(req: Request) {
     const userBucket = checkRateLimit(`discovery-events:user:${userId}`, 90, 60_000);
     if (!userBucket.allowed) return rateLimitResponse(userBucket.retryAfterSeconds);
 
-    const parsed = parseDiscoveryIncomingEvent(await req.json().catch(() => ({})));
+    const raw = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const rawType = String(raw.eventType || '').trim().toUpperCase();
+    const wantsSeriousTrope =
+      rawType === 'SERIOUS' ||
+      rawType === 'DISCOVERY_PRIORITY' ||
+      rawType === 'DISCOVERY_FAST_TRACK';
+
+    const parsed = parseDiscoveryIncomingEvent({
+      ...raw,
+      platform: String(raw.platform || 'ios').slice(0, 16),
+      source: String(raw.source || 'mobile_discovery').slice(0, 32),
+    });
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-    const result = await persistDiscoveryEvent(userId, parsed.event);
+    const result = await persistDiscoveryEvent(userId, parsed.event, {
+      upsertSeriousTrope: wantsSeriousTrope,
+    });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }

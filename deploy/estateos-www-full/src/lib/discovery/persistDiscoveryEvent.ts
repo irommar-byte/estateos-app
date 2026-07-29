@@ -20,7 +20,7 @@ export type PersistDiscoveryEventResult =
   | { ok: false; status: 403 | 404 | 500; error: string };
 
 export type PersistDiscoveryEventOptions = {
-  /** When PRIORITY/SERIOUS: also upsert DiscoveryTrope as SERIOUS. Default false for mobile parity. */
+  /** When PRIORITY/SERIOUS: also upsert DiscoveryTrope as SERIOUS (web + mobile). */
   upsertSeriousTrope?: boolean;
 };
 

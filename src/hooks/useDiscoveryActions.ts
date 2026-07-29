@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { dispatchDiscoveryUpdated } from '../lib/discovery/clientEvents';
 import {
-  mutateDiscoveryTrope,
   postDiscoveryTasteEvent,
   type DiscoveryTasteAction,
 } from '../services/discoveryService';
@@ -59,9 +58,8 @@ export function useDiscoveryActions() {
         }
         if (!result.ok) return { ok: false };
 
-        if (opts.eventType === 'SERIOUS') {
-          void mutateDiscoveryTrope(token, { offerId: id, action: 'SERIOUS' });
-        }
+        // SERIOUS/PRIORITY tropes are upserted server-side by
+        // /api/mobile/v1/discovery/events — no second client write.
 
         if (opts.eventType === 'OPEN') {
           openSentRef.current.add(id);
