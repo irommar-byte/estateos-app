@@ -25,6 +25,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import OfferGlassGallery from '../components/offer/OfferGlassGallery';
+import LiveHeroPhoto from '../components/offer/LiveHeroPhoto';
 import FeaturedPromoteSheet from '../components/offer/FeaturedPromoteSheet';
 import OfferDetailMetaBadgesSection from '../components/offer/OfferDetailMetaBadgesSection';
 import { playFeaturedCelebration } from '../store/useFeaturedCelebrationStore';
@@ -1537,13 +1538,15 @@ export default function OfferDetail({ route, navigation }: any) {
           accessibilityRole="button"
           accessibilityLabel={t('offer.detail.hero.openGallery')}
         >
-          <Image
-            source={{ uri: imagesToShow[0] }}
-            style={styles.mainImage}
-            contentFit="cover"
-            contentPosition="center"
-            transition={500}
-          />
+          {imagesToShow[0] ? (
+            <LiveHeroPhoto
+              uris={imagesToShow.map(String)}
+              style={styles.mainImage}
+              recyclingKey={`hero-${offer?.id ?? 'x'}`}
+            />
+          ) : (
+            <View style={[styles.mainImage, { backgroundColor: '#1c1c1e' }]} />
+          )}
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.52)']}
             locations={[0, 0.55, 1]}
@@ -2040,12 +2043,10 @@ export default function OfferDetail({ route, navigation }: any) {
               accessibilityRole="button"
               accessibilityLabel={t('offer.detail.hero.openGallery')}
             >
-              <Image
-                source={{ uri: imagesToShow[galleryPreviewIndex] }}
+              <LiveHeroPhoto
+                uris={imagesToShow.map(String)}
                 style={styles.galleryHeroImage}
-                contentFit="cover"
-                contentPosition="center"
-                transition={220}
+                recyclingKey={`gallery-hero-${offer?.id}`}
               />
             </Pressable>
             {imagesToShow.length > 1 ? (
