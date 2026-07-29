@@ -135,6 +135,14 @@ export default function IntelligenceEnableSheet() {
               />
               <span
                 aria-hidden
+                className="eos-oil-spin absolute inset-[-8%] rounded-full opacity-70 mix-blend-screen"
+                style={{
+                  background: "conic-gradient(from 180deg,#64D2FF,#5E5CE6,#30D158,#BF5AF2,#64D2FF)",
+                  animationDuration: "5.4s",
+                }}
+              />
+              <span
+                aria-hidden
                 className="pointer-events-none absolute inset-0 rounded-full"
                 style={{
                   background:

@@ -20,7 +20,9 @@ function getCtx(): AudioContext | null {
   }
 }
 
-export async function playIntelligenceChime(kind: "suggest" | "progress" = "suggest") {
+export type IntelligenceChimeKind = "suggest" | "progress" | "celebrate";
+
+export async function playIntelligenceChime(kind: IntelligenceChimeKind = "suggest") {
   if (typeof window === "undefined") return;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
@@ -42,9 +44,13 @@ export async function playIntelligenceChime(kind: "suggest" | "progress" = "sugg
   master.gain.value = 0.0001;
   master.connect(ctx.destination);
 
-  // Quiet temple bowl: fundamental + soft overtones
-  const freqs = kind === "progress" ? [196, 294, 392] : [174.6, 261.6, 349.2];
-  const peak = kind === "progress" ? 0.028 : 0.022;
+  const freqs =
+    kind === "celebrate"
+      ? [220, 330, 440, 554]
+      : kind === "progress"
+        ? [196, 294, 392]
+        : [174.6, 261.6, 349.2];
+  const peak = kind === "celebrate" ? 0.032 : kind === "progress" ? 0.028 : 0.022;
 
   freqs.forEach((freq, i) => {
     const osc = ctx.createOscillator();
@@ -52,7 +58,7 @@ export async function playIntelligenceChime(kind: "suggest" | "progress" = "sugg
     osc.type = "sine";
     osc.frequency.value = freq;
     gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.exponentialRampToValueAtTime(peak / (i + 1.2), t0 + 0.08 + i * 0.04);
+    gain.gain.exponentialRampToValueAtTime(peak / (i + 1.2), t0 + 0.04 + i * 0.035);
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.8 + i * 0.35);
     osc.connect(gain);
     gain.connect(master);
@@ -61,6 +67,6 @@ export async function playIntelligenceChime(kind: "suggest" | "progress" = "sugg
   });
 
   master.gain.setValueAtTime(0.0001, t0);
-  master.gain.exponentialRampToValueAtTime(1, t0 + 0.05);
+  master.gain.exponentialRampToValueAtTime(1, t0 + 0.04);
   master.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.6);
 }
