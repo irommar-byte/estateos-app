@@ -182,7 +182,7 @@ export function getChatTheme(isDark: boolean) {
       marginBottom: 8,
       gap: 8,
     },
-    pendingPreview: { flex: 1, minWidth: 0 },
+    pendingPreview: { flexGrow: 0, flexShrink: 1, maxWidth: '88%' },
     pendingChipClear: { padding: 4, marginTop: 4 },
     loaderCenter: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
   });

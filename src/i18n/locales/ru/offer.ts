@@ -224,6 +224,7 @@ export const offer = {
     views: {
       newOffer: 'Новое объявление',
       newOfferBadge: 'НОВОЕ ОБЪЯВЛЕНИЕ',
+      newOfferBadgeShort: 'НОВОЕ',
       featuredBadge: 'Выделено',
       featureCta: 'Выделить',
       featureTopUp: 'Пополнить',
@@ -231,10 +232,21 @@ export const offer = {
       featuredCelebrationSubtitle: 'Ваше объявление сияет в галерее в ближайшие дни',
       featuredCelebrationDays: '7 дней',
       count: '{{count}} просмотров',
+      countCompact: '{{count}}',
       countZero: '0 просмотров',
+      countZeroCompact: '0',
     },
     sheetSwipeHint: 'Проведите вверх, чтобы увидеть больше',
     sheetSwipeHintShort: 'Подробнее',
+    legalVerified: {
+      label: 'БЕЗОПАСНЫЙ ОБЪЕКТ',
+      sublabel: 'EstateOS™ Quality Shield',
+      a11y: 'Безопасный объект — проверенная запись в реестре EstateOS Quality Shield',
+      unverifiedLabel: 'объект не проверен',
+      tapToVerify: 'нажмите, чтобы проверить',
+      unverifiedA11y: 'Объект не проверен',
+      unverifiedA11yTap: 'Объект не проверен — нажмите, чтобы проверить',
+    },
     stats: {
       rooms: '{{count}} номеров',
       floor: 'Этаж {{floor}}',
@@ -290,7 +302,7 @@ export const offer = {
       bodyShortZero: 'Без комиссии - 0%',
       bodyShortPaid: 'В цене: {{percent}} ≈ {{amount}} агенту (брутто, без доплат).',
     },
-    adminFeePill: '+ {{amount}} сборы',
+    adminFeePill: '+ {{amount}} / мес.',
     roi: {
       label: 'Окупаемость инвестиций EstateOS™',
       sub: 'годовая доходность',
@@ -490,7 +502,7 @@ export const offer = {
       sectionTitle: 'ЦЕНА И СТОИМОСТЬ',
       offerPrice: 'Цена листинга ({{currency}})',
       adminFee: 'Административный сбор',
-      adminFeeSuffix: 'злотых / мес.',
+      adminFeeSuffix: '{{currency}} / мес.',
       footer: 'Само по себе изменение цены не скроет объявление от радара.',
     },
     commission: {
@@ -559,8 +571,7 @@ export const offer = {
       exactOnSuffix: '+ точный пин.',
       exactOffPrefix: 'Выкл.: покупатели видят',
       exactOffSuffix: '(без номера) + примерная площадь.',
-      footer:
-        'This setting affects only the public listing card. In your dashboard you always see the full address and precise pin — buyers only see what you set above.',
+      footer: 'Влияет только на публичную карточку — вы всегда видите полный адрес.',
       previewEyebrow: 'ЧТО ВИДЯТ ПОКУПАТЕЛИ',
       badgeFull: 'ПОЛНЫЙ АДРЕС',
       badgeStreet: 'ТОЛЬКО УЛИЦА',

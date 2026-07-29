@@ -89,6 +89,12 @@ type Props = {
     size?: number;
   } | null;
   onClearPendingAttachment?: () => void;
+  downloadLabels?: {
+    button?: string;
+    failedTitle?: string;
+    failedMessage?: string;
+    unavailable?: string;
+  };
 };
 
 export default function InstantMessageThread({
@@ -106,6 +112,7 @@ export default function InstantMessageThread({
   attachmentMenu,
   pendingAttachment,
   onClearPendingAttachment,
+  downloadLabels,
 }: Props) {
   const { colors, styles } = useMemo(() => getChatTheme(isDark), [isDark]);
   const scrollRef = useRef<ScrollView>(null);
@@ -168,6 +175,7 @@ export default function InstantMessageThread({
               isMe
               isDark={isDark}
               compact
+              downloadLabels={downloadLabels}
             />
           </View>
           {onClearPendingAttachment ? (
@@ -309,7 +317,12 @@ export default function InstantMessageThread({
                       <Text style={[styles.msgText, isMe && styles.msgTextMe]}>{text}</Text>
                     ) : null}
                     {attachment ? (
-                      <ContactMessageAttachment attachment={attachment} isMe={isMe} isDark={isDark} />
+                      <ContactMessageAttachment
+                        attachment={attachment}
+                        isMe={isMe}
+                        isDark={isDark}
+                        downloadLabels={downloadLabels}
+                      />
                     ) : null}
                   </View>
                 </Pressable>

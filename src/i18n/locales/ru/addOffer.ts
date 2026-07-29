@@ -718,7 +718,8 @@ export const addOffer = {
     noPhotos: 'В объявлении нет фотографий',
     rentLabel: 'Ежемесячная арендная плата (всего)',
     depositLabel: 'Депозит {{amount}} PLN',
-    adminFeeLabel: 'Административный сбор ~ {{amount}} PLN',
+    rentAdditionalFeesLabel: '+ {{amount}} {{currency}} доп. платежи (ТСЖ)',
+    adminFeeLabel: 'Административный сбор ~ {{amount}} {{currency}}',
     commissionSummary: {
       label: 'Комиссия:',
       zero: 'без комиссии (0%)',

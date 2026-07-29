@@ -23,6 +23,10 @@ import NumericKeyboardAccessory, {
 import CurrencySegmentControl from '../../components/CurrencySegmentControl';
 import { convertBetweenCurrencies, normalizeListingCurrency } from '../../money/convert';
 import { formatApproxLine } from '../../money/format';
+import {
+  adminFeePlnFromInput,
+  convertAdminFeeInput,
+} from '../../money/adminFee';
 import { getEurPlnRate } from '../../money/fxRateService';
 import type { ListingCurrency } from '../../money/types';
 import AddOfferWheelPickerColumn from './AddOfferWheelPickerColumn';
@@ -114,8 +118,11 @@ export default function Step4_Finance({ theme }: { theme: any }) {
 
   const priceNum = parseFloat((draft.price || "").replace(/\s/g, '')) || 0;
   const areaNum = parseFloat((draft.area || "").replace(/\s/g, '').replace(',', '.')) || 0;
-  // W przypadku Sprzedaży (isRent === false) draft.rent przechowuje wpisany "Czynsz Admin."
-  const adminFeeNum = !isRent ? (parseFloat((draft.rent || "").replace(/\s/g, '')) || 0) : 0;
+  // W przypadku Sprzedaży (isRent === false) draft.rent / adminFee = czynsz w walucie oferty.
+  const adminFeeRaw = !isRent ? (draft.adminFee || draft.rent || '') : '';
+  const adminFeeNum = !isRent
+    ? (adminFeePlnFromInput(adminFeeRaw, listingCurrency, fxRate) || 0)
+    : 0;
   
   const pricePerSqm = areaNum > 0 ? Math.round(priceNum / areaNum) : 0;
   const avgPrice = draft.city === 'Warszawa' ? 16500 : (draft.city === 'Łódź' ? 8500 : 12000); 
@@ -194,13 +201,21 @@ export default function Step4_Finance({ theme }: { theme: any }) {
 
   const rentAdditionalFeeOptions = useMemo<AddOfferOption[]>(
     () =>
-      buildRentAdditionalFeePickerValues().map((v) => ({
-        value: v,
-        label: v
-          ? `${Number(v).toLocaleString('pl-PL')} PLN`
-          : t('addOffer.step4.rentAdditionalFeesNone'),
-      })),
-    [t],
+      buildRentAdditionalFeePickerValues().map((v) => {
+        if (!v) {
+          return { value: v, label: t('addOffer.step4.rentAdditionalFeesNone') };
+        }
+        const pln = Number(v);
+        const shown =
+          listingCurrency === 'EUR'
+            ? Math.round(pln / (fxRate > 0 ? fxRate : 4.32))
+            : pln;
+        return {
+          value: v,
+          label: `${shown.toLocaleString('pl-PL')} ${listingCurrency}`,
+        };
+      }),
+    [t, listingCurrency, fxRate],
   );
   const rentAdditionalFeeValue = String(draft.adminFee ?? '').trim();
 
@@ -308,7 +323,17 @@ export default function Step4_Finance({ theme }: { theme: any }) {
           onChange={(next: ListingCurrency) => {
             if (next === listingCurrency) return;
             const converted = convertBetweenCurrencies(priceNum, listingCurrency, next, fxRate);
-            updateDraft({ priceCurrency: next, price: converted > 0 ? String(converted) : draft.price });
+            const feeRaw = String(draft.adminFee || draft.rent || '').trim();
+            const feeConverted = !isRent && feeRaw
+              ? convertAdminFeeInput(feeRaw, listingCurrency, next, fxRate)
+              : undefined;
+            updateDraft({
+              priceCurrency: next,
+              price: converted > 0 ? String(converted) : draft.price,
+              ...(feeConverted !== undefined
+                ? { rent: feeConverted, adminFee: feeConverted }
+                : {}),
+            });
           }}
         />
         <View style={[styles.mainInputBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 15, shadowOffset: { width: 0, height: 5 }, elevation: 2 }]}>
@@ -327,8 +352,7 @@ export default function Step4_Finance({ theme }: { theme: any }) {
         </View>
         {priceNum > 0 && (
           <Text style={[styles.fxHint, { color: theme.subtitle }]}>
-            {formatApproxLine(priceNum, listingCurrency, fxRate)}
-            {fxDate ? ` · ${fxDate}` : ''}
+            {formatApproxLine(priceNum, listingCurrency, fxRate, fxDate)}
           </Text>
         )}
         {isRent ? (

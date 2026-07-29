@@ -39,6 +39,12 @@ import { buildOfferPricePayload } from '../money/offerPrice';
 import { getEurPlnRate } from '../money/fxRateService';
 import { convertBetweenCurrencies, normalizeListingCurrency } from '../money/convert';
 import { formatAmountWithCurrency, formatApproxLine } from '../money/format';
+import {
+  adminFeeInputFromPln,
+  adminFeePlnFromInput,
+  convertAdminFeeInput,
+  parseAdminFeePln,
+} from '../money/adminFee';
 import type { ListingCurrency } from '../money/types';
 import {
   applyLandRegistryPrefix,
@@ -406,6 +412,7 @@ export default function EditOfferScreen({ route }: any) {
   const [price, setPrice] = useState('');
   const [priceCurrency, setPriceCurrency] = useState<ListingCurrency>('PLN');
   const [editFxRate, setEditFxRate] = useState(4.32);
+  const [editFxDate, setEditFxDate] = useState('');
   const [adminFee, setAdminFee] = useState('');
   /**
    * Procent prowizji agenta (string z TextInput — akceptuje `.` i `,`).
@@ -492,8 +499,14 @@ export default function EditOfferScreen({ route }: any) {
           setDescription(formatOfferDescriptionForDisplay(cleanDesc));
           setVerifyTokens(tokens);
           setPrice(String(offer.priceAmount ?? offer.price ?? '') || '');
-          setPriceCurrency(normalizeListingCurrency(offer.priceCurrency ?? offer.price_currency));
-          setAdminFee(offer.adminFee?.toString() || '');
+          const listingCur = normalizeListingCurrency(offer.priceCurrency ?? offer.price_currency);
+          setPriceCurrency(listingCur);
+          const fxSnap = await getEurPlnRate();
+          setEditFxRate(fxSnap.rate);
+          setEditFxDate(fxSnap.date || '');
+          const feePln = parseAdminFeePln(offer.adminFee);
+          const feeDisplay = adminFeeInputFromPln(feePln, listingCur, fxSnap.rate);
+          setAdminFee(feeDisplay > 0 ? String(feeDisplay) : '');
           // Prowizja agenta — backend zwraca `agentCommissionPercent` (number | null).
           // 0 → '0' (świadome „BEZ PROWIZJI"), null/undefined → '' (brak).
           const cp = extractAgentCommissionPercent(offer);
@@ -602,7 +615,10 @@ export default function EditOfferScreen({ route }: any) {
   }, [fetchOffer]);
 
   useEffect(() => {
-    void getEurPlnRate().then((s) => setEditFxRate(s.rate));
+    void getEurPlnRate().then((s) => {
+      setEditFxRate(s.rate);
+      setEditFxDate(s.date || '');
+    });
   }, []);
 
   // -------- ANIMOWANY HERO --------
@@ -647,11 +663,17 @@ export default function EditOfferScreen({ route }: any) {
     const diffs: string[] = [];
     const sameText = (a: any, b: any) => normalizeTextForDirty(a) === normalizeTextForDirty(b);
     const sameNumber = (a: any, b: any) => normalizeNumberForDirty(a) === normalizeNumberForDirty(b);
-    const originalCleanDescription = extractVerifyTokens(originalData.description || '').clean;
+    const originalCleanDescription = formatOfferDescriptionForDisplay(
+      extractVerifyTokens(originalData.description || '').clean,
+    );
     if (!sameText(title, originalData.title)) diffs.push('title');
     if (!sameText(description, originalCleanDescription)) diffs.push('description');
-    if (!sameNumber(price, originalData.price)) diffs.push('price');
-    if (!sameNumber(adminFee, originalData.adminFee)) diffs.push('adminFee');
+    if (!sameNumber(price, originalData.priceAmount ?? originalData.price)) diffs.push('price');
+    {
+      const originalFeePln = parseAdminFeePln(originalData.adminFee);
+      const currentFeePln = adminFeePlnFromInput(adminFee, priceCurrency, editFxRate) || 0;
+      if (originalFeePln !== currentFeePln) diffs.push('adminFee');
+    }
     // Prowizja — porównujemy SPARSOWANE liczby, żeby '2,5' vs '2.5' vs 2.5 dawały
     // ten sam diff (bez fałszywych „dirty"). null vs null = brak zmian.
     {
@@ -662,14 +684,19 @@ export default function EditOfferScreen({ route }: any) {
       if (a !== b) diffs.push('commission');
     }
     if (!sameNumber(area, originalData.area)) diffs.push('area');
-    if (!sameNumber(plotArea, originalData.plotArea)) diffs.push('plotArea');
+    const originalPlotArea =
+      originalData.plotArea ??
+      (String(originalData.propertyType || '').toUpperCase() === 'PLOT' ? originalData.area : null);
+    if (!sameNumber(plotArea, originalPlotArea)) diffs.push('plotArea');
     if (!sameNumber(rooms, originalData.rooms)) diffs.push('rooms');
     if (!sameNumber(floor, originalData.floor)) diffs.push('floor');
     if (!sameNumber(yearBuilt, originalData.yearBuilt ?? originalData.buildYear)) diffs.push('yearBuilt');
     if (!sameText(heating, originalData.heating)) diffs.push('heating');
     if (!sameText(apartmentNumber, originalData.apartmentNumber)) diffs.push('apartmentNumber');
     if (!sameText(landRegistryNumber, originalData.landRegistryNumber)) diffs.push('landRegistry');
-    if (!sameText(condition, originalData.condition || 'READY')) diffs.push('condition');
+    if (!sameText(condition, normalizeOfferConditionForEdit(originalData.condition) || 'READY')) {
+      diffs.push('condition');
+    }
     if (Boolean(isExactLocation) !== resolveIsExactLocation(originalData.isExactLocation)) diffs.push('location');
     if (!sameNumber(locationState.lat, originalData.lat)) diffs.push('location');
     if (!sameNumber(locationState.lng, originalData.lng)) diffs.push('location');
@@ -703,8 +730,11 @@ export default function EditOfferScreen({ route }: any) {
     description,
     price,
     adminFee,
+    priceCurrency,
+    editFxRate,
     agentCommissionPercent,
     area,
+    plotArea,
     rooms,
     floor,
     yearBuilt,
@@ -884,25 +914,42 @@ export default function EditOfferScreen({ route }: any) {
     enqueueLayoutSpring();
     setTitle(originalData.title || '');
     const { clean: cleanDesc, tokens } = extractVerifyTokens(originalData.description || '');
-    setDescription(cleanDesc);
+    setDescription(formatOfferDescriptionForDisplay(cleanDesc));
     setVerifyTokens(tokens);
-    setPrice(originalData.price?.toString() || '');
-    setAdminFee(originalData.adminFee?.toString() || '');
+    setPrice(String(originalData.priceAmount ?? originalData.price ?? '') || '');
+    const listingCur = normalizeListingCurrency(originalData.priceCurrency ?? originalData.price_currency);
+    setPriceCurrency(listingCur);
+    const feePln = parseAdminFeePln(originalData.adminFee);
+    const feeDisplay = adminFeeInputFromPln(feePln, listingCur, editFxRate);
+    setAdminFee(feeDisplay > 0 ? String(feeDisplay) : '');
     {
       const cp = extractAgentCommissionPercent(originalData);
-      if (cp === null) setAgentCommissionPercent('');
-      else if (cp === 0) setAgentCommissionPercent('0');
-      else setAgentCommissionPercent(String(cp).replace('.', ','));
+      if (cp === null) {
+        setAgentCommissionPercent('');
+        setAgentCommissionAmountDraft('');
+      } else if (cp === 0) {
+        setAgentCommissionPercent('0');
+        setAgentCommissionAmountDraft('0');
+      } else {
+        setAgentCommissionPercent(String(cp).replace('.', ','));
+        const amt = computeAgentCommissionAmount(originalData.priceAmount ?? originalData.price, cp);
+        setAgentCommissionAmountDraft(amt > 0 ? String(amt) : '');
+      }
     }
     setArea(originalData.area?.toString() || '');
-    setPlotArea(originalData.plotArea?.toString() || '');
+    const loadedPlotArea =
+      originalData.plotArea?.toString() ||
+      (String(originalData.propertyType || '').toUpperCase() === 'PLOT'
+        ? originalData.area?.toString() || ''
+        : '');
+    setPlotArea(loadedPlotArea);
     setRooms(originalData.rooms?.toString() || '');
     setFloor(originalData.floor?.toString() || '');
     setYearBuilt(originalData.yearBuilt?.toString() || originalData.buildYear?.toString() || '');
     setHeating(String(originalData.heating || ''));
     setApartmentNumber(String(originalData.apartmentNumber || ''));
     setLandRegistryNumber(String(originalData.landRegistryNumber || ''));
-    setCondition(originalData.condition || 'READY');
+    setCondition(normalizeOfferConditionForEdit(originalData.condition) || 'READY');
     setIsExactLocation(resolveIsExactLocation(originalData.isExactLocation));
     setLocationState({
       lat: Number(originalData.lat) || 52.2297,
@@ -928,6 +975,10 @@ export default function EditOfferScreen({ route }: any) {
         serverPath: key.startsWith('/uploads') ? key : toServerPath(key),
       }))
     );
+    setFloorPlanCleared(false);
+    setFloorPlanLocalUri(null);
+    setFloorPlan3dLocalUri(null);
+    setDropServerFloorPlan3d(false);
   };
 
   const handleGenerateDescription = async () => {
@@ -972,7 +1023,7 @@ export default function EditOfferScreen({ route }: any) {
         floor: floor !== '' ? Number(floor) : null,
         yearBuilt: yearBuilt ? Number(yearBuilt) : null,
         price: price ? Number(String(price).replace(/\s/g, '')) : null,
-        adminFee: adminFee ? Number(adminFee) : null,
+        adminFee: adminFeePlnFromInput(adminFee, priceCurrency, editFxRate),
         condition,
         heating: heating.trim() || null,
         isExactLocation,
@@ -1050,11 +1101,7 @@ export default function EditOfferScreen({ route }: any) {
     const isAgentUser = isMobileAgentRole(user?.role);
     let resolvedCommission: number | null | undefined = undefined; // undefined = nie wysyłaj pola
     if (isAgentUser) {
-      if (commissionInputMode === 'amount') {
-        commitCommissionAmountDraft();
-      } else {
-        commitCommissionPercentDraft();
-      }
+      // Nie polegamy na setState z commit*Draft — walidujemy bieżące drafty synchronicznie.
       const rawCommission = agentCommissionPercent?.toString().trim() ?? '';
       const amountTrimmed = agentCommissionAmountDraft.trim();
       if (
@@ -1062,6 +1109,8 @@ export default function EditOfferScreen({ route }: any) {
         (commissionInputMode !== 'amount' || amountTrimmed === '')
       ) {
         resolvedCommission = null;
+        setAgentCommissionPercent('');
+        setAgentCommissionAmountDraft('');
       } else {
         const validation = resolveAgentCommissionPercentForSave({
           mode: commissionInputMode,
@@ -1075,6 +1124,15 @@ export default function EditOfferScreen({ route }: any) {
           return;
         }
         resolvedCommission = validation.percent;
+        if (resolvedCommission === 0) {
+          setAgentCommissionPercent('0');
+          setAgentCommissionAmountDraft('0');
+        } else if (resolvedCommission != null) {
+          setAgentCommissionPercent(String(resolvedCommission).replace('.', ','));
+          setAgentCommissionAmountDraft(
+            String(computeAgentCommissionAmount(price, resolvedCommission)),
+          );
+        }
       }
     }
 
@@ -1111,7 +1169,7 @@ export default function EditOfferScreen({ route }: any) {
       priceAmount: priceFields.priceAmount,
       priceCurrency: priceFields.priceCurrency,
       pricePln: priceFields.pricePln,
-      adminFee: adminFee ? Number(adminFee) : null,
+      adminFee: adminFeePlnFromInput(adminFee, priceCurrency, fxSnap.rate),
       condition,
       isExactLocation: isExactLocationBool,
       is_exact_location: isExactLocationBool,
@@ -1127,8 +1185,8 @@ export default function EditOfferScreen({ route }: any) {
       heating: heating.trim() || null,
       ...(showLandRegistryVerification
         ? {
-            apartmentNumber: apartmentNumber.trim() || undefined,
-            landRegistryNumber: landRegistryNumber.trim() || undefined,
+            apartmentNumber: apartmentNumber.trim() || null,
+            landRegistryNumber: landRegistryNumber.trim() || null,
           }
         : {}),
     };
@@ -1360,10 +1418,15 @@ export default function EditOfferScreen({ route }: any) {
         title: effectivePayload.title,
         description: effectivePayload.description,
         price: effectivePayload.price,
+        priceAmount: effectivePayload.priceAmount ?? effectivePayload.price,
+        priceCurrency: effectivePayload.priceCurrency,
         adminFee: effectivePayload.adminFee,
         agentCommissionPercent:
-          isAgentUser && resolvedCommission !== undefined ? resolvedCommission : originalData?.agentCommissionPercent ?? null,
+          isAgentUser && resolvedCommission !== undefined
+            ? resolvedCommission
+            : originalData?.agentCommissionPercent ?? null,
         area: effectivePayload.area,
+        plotArea: effectivePayload.plotArea,
         rooms: effectivePayload.rooms,
         floor: effectivePayload.floor,
         yearBuilt: effectivePayload.yearBuilt,
@@ -1376,11 +1439,17 @@ export default function EditOfferScreen({ route }: any) {
           : effectivePayload.landRegistryNumber || '',
         condition: effectivePayload.condition,
         isExactLocation: effectivePayload.isExactLocation,
+        lat: effectivePayload.lat,
+        lng: effectivePayload.lng,
+        city: effectivePayload.city,
+        district: effectivePayload.district,
+        street: effectivePayload.street,
         hasBalcony: effectivePayload.hasBalcony,
         hasParking: effectivePayload.hasParking,
         hasStorage: effectivePayload.hasStorage,
         hasElevator: effectivePayload.hasElevator,
         hasGarden: effectivePayload.hasGarden,
+        isTwoLevel: effectivePayload.isTwoLevel,
         isFurnished: effectivePayload.isFurnished,
       });
       setOriginalImageKeys(images.filter((i) => i.isRemote).map((i) => i.serverPath || i.uri));
@@ -1704,7 +1773,9 @@ export default function EditOfferScreen({ route }: any) {
 
           {/* ====== GALERIA ZDJĘĆ ====== */}
           <View style={styles.sectionHeaderContainer}>
-            <Text style={styles.sectionTitle}>{t('offer.edit.gallery.sectionTitle')}</Text>
+            <Text style={[styles.sectionTitle, styles.sectionTitleInHeader]}>
+              {t('offer.edit.gallery.sectionTitle')}
+            </Text>
             <Text style={styles.sectionSubtitle}>
               {t('offer.edit.gallery.counter', { current: images.length, max: MAX_IMAGES })}
             </Text>
@@ -1769,7 +1840,9 @@ export default function EditOfferScreen({ route }: any) {
           </Text>
 
           <View style={styles.sectionHeaderContainer}>
-            <Text style={styles.sectionTitle}>{t('offer.edit.floorPlan.sectionTitle')}</Text>
+            <Text style={[styles.sectionTitle, styles.sectionTitleInHeader]}>
+              {t('offer.edit.floorPlan.sectionTitle')}
+            </Text>
           </View>
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, padding: 12 }]}>
             {roomScanAvailable ? (
@@ -1994,7 +2067,11 @@ export default function EditOfferScreen({ route }: any) {
 
             {/* Liczba pokoi — stepper */}
             <View style={styles.inputRowPremium}>
-              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.parameters.rooms')}</Text>
+              <View style={styles.paramLabelStack}>
+                <Text style={[styles.inputLabelPremium, styles.inputLabelFlex, { color: txtColor }]}>
+                  {t('offer.edit.parameters.rooms')}
+                </Text>
+              </View>
               <View style={styles.stepperInline}>
                 <Pressable
                   hitSlop={8}
@@ -2045,12 +2122,16 @@ export default function EditOfferScreen({ route }: any) {
 
             {/* Piętro — stepper (może być 0) */}
             <View style={styles.inputRowPremium}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.parameters.floor')}</Text>
-                {floor === '0' && (
-                  <Text style={{ fontSize: 11, color: subColor, marginTop: 1 }}>{t('offer.shared.floorGroundLabel')}</Text>
-                )}
-            </View>
+              <View style={styles.paramLabelStack}>
+                <Text style={[styles.inputLabelPremium, styles.inputLabelFlex, { color: txtColor }]}>
+                  {t('offer.edit.parameters.floor')}
+                </Text>
+                {floor === '0' ? (
+                  <Text style={[styles.paramLabelHint, { color: subColor }]}>
+                    {t('offer.shared.floorGroundLabel')}
+                  </Text>
+                ) : null}
+              </View>
               <View style={styles.stepperInline}>
                 <Pressable
                   hitSlop={8}
@@ -2095,7 +2176,7 @@ export default function EditOfferScreen({ route }: any) {
                 >
                   <Ionicons name="add" size={16} color={primaryColor} />
                 </Pressable>
-          </View>
+              </View>
             </View>
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
 
@@ -2124,19 +2205,69 @@ export default function EditOfferScreen({ route }: any) {
               if (n > 0) {
                 setPrice(String(convertBetweenCurrencies(n, priceCurrency, next, editFxRate)));
               }
+              if (adminFee) {
+                setAdminFee(convertAdminFeeInput(adminFee, priceCurrency, next, editFxRate));
+              }
               setPriceCurrency(next);
             }}
           />
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
             <View style={styles.priceHeaderRow}>
-              <View>
-                <Text style={[styles.priceLabel, { color: subColor }]}>{t('offer.edit.price.offerPrice', { currency: priceCurrency })}</Text>
-                <Text style={[styles.priceFormatted, { color: txtColor }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+              <View style={styles.priceLeftCol}>
+                <Text style={[styles.priceLabel, { color: subColor }]}>
+                  {t('offer.edit.price.offerPrice', { currency: priceCurrency })}
+                </Text>
+                <Text
+                  style={[styles.priceFormatted, { color: txtColor }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                >
                   {Number(price) > 0 ? formatAmountWithCurrency(Number(price), priceCurrency) : '—'}
                 </Text>
+                <View style={styles.priceNudgeRow}>
+                  <Pressable
+                    hitSlop={6}
+                    style={[
+                      styles.priceNudgeBtn,
+                      {
+                        borderColor: 'rgba(255,59,48,0.32)',
+                        backgroundColor: isDark ? 'rgba(255,59,48,0.14)' : 'rgba(255,59,48,0.09)',
+                        ...controlShadow,
+                      },
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setPrice(String(Math.max(0, Number(price || 0) - 100)));
+                    }}
+                    accessibilityLabel="-100"
+                  >
+                    <Ionicons name="remove" size={16} color="#FF3B30" />
+                    <Text style={[styles.priceNudgeTxt, { color: '#FF3B30' }]}>100</Text>
+                  </Pressable>
+                  <Pressable
+                    hitSlop={6}
+                    style={[
+                      styles.priceNudgeBtn,
+                      {
+                        borderColor: 'rgba(52,199,89,0.36)',
+                        backgroundColor: isDark ? 'rgba(52,199,89,0.14)' : 'rgba(52,199,89,0.10)',
+                        ...controlShadow,
+                      },
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setPrice(String(Math.max(0, Number(price || 0) + 100)));
+                    }}
+                    accessibilityLabel="+100"
+                  >
+                    <Ionicons name="add" size={16} color="#34C759" />
+                    <Text style={[styles.priceNudgeTxt, { color: '#34C759' }]}>100</Text>
+                  </Pressable>
+                </View>
                 {Number(price) > 0 ? (
                   <Text style={[styles.priceSqm, { color: subColor }]}>
-                    {formatApproxLine(Number(price), priceCurrency, editFxRate)}
+                    {formatApproxLine(Number(price), priceCurrency, editFxRate, editFxDate)}
                   </Text>
                 ) : null}
                 {Number(area) > 0 && Number(price) > 0 ? (
@@ -2155,12 +2286,12 @@ export default function EditOfferScreen({ route }: any) {
                 textAlign="right"
               />
             </View>
-            {/* Quickpick steppers */}
+            {/* Quickpick — większe kroki */}
             <View style={styles.priceStepperRow}>
               {([-50000, -5000, -1000, 1000, 5000, 50000] as const).map((delta) => {
                 const isPos = delta > 0;
                 const abs = Math.abs(delta);
-                const label = `${isPos ? '+' : '−'}${abs >= 1000 ? `${abs / 1000}k` : abs}`;
+                const label = `${isPos ? '+' : '−'}${abs / 1000}k`;
                 return (
                   <Pressable
                     key={delta}
@@ -2198,7 +2329,7 @@ export default function EditOfferScreen({ route }: any) {
                 placeholder="0"
                 placeholderTextColor={subColor}
               />
-              <Text style={styles.inputSuffix}>{t('offer.edit.price.adminFeeSuffix')}</Text>
+              <Text style={styles.inputSuffix}>{t('offer.edit.price.adminFeeSuffix', { currency: priceCurrency })}</Text>
             </View>
           </View>
           <Text style={styles.sectionFooter}>{t('offer.edit.price.footer')}</Text>
@@ -2214,7 +2345,7 @@ export default function EditOfferScreen({ route }: any) {
           */}
           {isAgentUserUI ? (
             <>
-              <Text style={[styles.sectionTitle, { marginTop: 14 }]}>{t('offer.edit.commission.sectionTitle')}</Text>
+              <Text style={styles.sectionTitle}>{t('offer.edit.commission.sectionTitle')}</Text>
               <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
                 <View style={styles.commissionHeader}>
                   <View
@@ -2471,7 +2602,7 @@ export default function EditOfferScreen({ route }: any) {
           ) : null}
 
           {/* ====== STAN ====== */}
-          <Text style={[styles.sectionTitle, { marginTop: 14 }]}>{t('offer.edit.condition.sectionTitle')}</Text>
+          <Text style={styles.sectionTitle}>{t('offer.edit.condition.sectionTitle')}</Text>
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
             <View style={styles.segmentContainer}>
               {(['READY', 'DEVELOPER', 'TO_RENOVATION'] as const).map((condKey) => {
@@ -2491,10 +2622,14 @@ export default function EditOfferScreen({ route }: any) {
                         shadowOffset: { width: 0, height: 1 },
                         shadowOpacity: 0.12,
                         shadowRadius: 3,
+                        elevation: 2,
                       },
                     ]}
                   >
-                    <Text style={[styles.segmentText, isActive && { color: txtColor, fontWeight: '700' }]}>
+                    <Text
+                      style={[styles.segmentText, isActive && { color: txtColor, fontWeight: '700' }]}
+                      numberOfLines={2}
+                    >
                       {t(`offer.shared.conditionSegments.${condKey}`)}
                     </Text>
                   </Pressable>
@@ -2695,20 +2830,30 @@ export default function EditOfferScreen({ route }: any) {
           </View>
 
           {/* Formularz danych */}
-          <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow, marginTop: 8 }]}>
-            {/* Numer mieszkania */}
-            <View style={styles.inputRowPremium}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.kw.apartmentNumber')}</Text>
-                <Text style={{ fontSize: 11, color: subColor, marginTop: 1 }}>{t('offer.edit.kw.apartmentOptional')}</Text>
-              </View>
+          <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
+            {/* Numer mieszkania — ten sam styl pola co KW */}
+            <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 }}>
+              <Text style={[styles.inputLabelPremium, styles.inputLabelFlex, { color: txtColor, marginBottom: 2 }]}>
+                {t('offer.edit.kw.apartmentNumber')}
+              </Text>
+              <Text style={[styles.kwFormatHint, { color: subColor, marginBottom: 8 }]}>
+                {t('offer.edit.kw.apartmentOptional')}
+              </Text>
               <TextInput
-                style={[styles.inputRightPremium, { color: txtColor, maxWidth: 120 }]}
+                style={[
+                  styles.kwInput,
+                  {
+                    color: txtColor,
+                    borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
+                    backgroundColor: isDark ? '#2C2C2E' : '#F6F6F8',
+                  },
+                ]}
                 value={apartmentNumber}
                 onChangeText={setApartmentNumber}
                 placeholder={t('offer.edit.kw.apartmentPlaceholder')}
                 placeholderTextColor={subColor}
                 autoCapitalize="characters"
+                autoCorrect={false}
               />
             </View>
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
@@ -2719,14 +2864,16 @@ export default function EditOfferScreen({ route }: any) {
                 <View style={styles.kwLockBadge}>
                   <Ionicons name="lock-closed" size={10} color="#34C759" />
                   <Text style={styles.kwLockText}>{t('offer.edit.kw.encrypted')}</Text>
-            </View>
-                <Text style={[styles.inputLabelPremium, { color: txtColor, flex: 1, marginLeft: 8 }]}>
+                </View>
+                <Text style={[styles.inputLabelPremium, { color: txtColor, flex: 1, marginLeft: 8, width: undefined }]}>
                   {t('offer.edit.kw.landRegistryLabel')}
                 </Text>
-          </View>
+              </View>
               <Text style={[styles.kwFormatHint, { color: subColor }]}>
-                {t('offer.edit.kw.formatHint')} <Text style={{ fontWeight: '800', color: txtColor, letterSpacing: 1 }}>XXXX / XXXXXXXX / X</Text>
-                {'  '}{t('offer.edit.kw.formatExample')} <Text style={{ fontWeight: '700' }}>WA4N/00012345/6</Text>
+                {t('offer.edit.kw.formatHint')}{' '}
+                <Text style={{ fontWeight: '800', color: txtColor, letterSpacing: 1 }}>XXXX / XXXXXXXX / X</Text>
+                {'  '}
+                {t('offer.edit.kw.formatExample')} <Text style={{ fontWeight: '700' }}>WA4N/00012345/6</Text>
               </Text>
               <TextInput
                 style={[
@@ -2737,7 +2884,9 @@ export default function EditOfferScreen({ route }: any) {
                       ? isLandRegistryValid
                         ? '#34C759'
                         : '#FF3B30'
-                      : isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
+                      : isDark
+                        ? 'rgba(255,255,255,0.18)'
+                        : 'rgba(0,0,0,0.12)',
                     backgroundColor: isDark ? '#2C2C2E' : '#F6F6F8',
                   },
                 ]}
@@ -2852,7 +3001,7 @@ export default function EditOfferScreen({ route }: any) {
           </Text>
 
           {/* Bufor pod sticky save */}
-          <View style={{ height: 110 }} />
+          <View style={{ height: 96 }} />
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -2943,11 +3092,7 @@ function AmenityRow({
 }
 
 /* ============================================================================
-   LOCATION PREVIEW — pokazuje DOKŁADNIE jak adres wygląda na publicznej karcie
-   oferty w obu trybach. Dwa rzędy:
-     1) „Tak widzą kupujący" — mini-karta z prawdziwą linią adresu wg trybu
-        (`formatPublicAddress`). Animowane przejście wartości.
-     2) Mapa-mock z pinem precyzyjnym (ON) lub okręgiem ~500 m (OFF).
+   LOCATION PREVIEW — krótki podgląd linii adresu tak, jak widzą kupujący.
    ============================================================================ */
 function LocationPreview({
   isExactLocation,
@@ -2969,19 +3114,7 @@ function LocationPreview({
   localityCountryCode?: string;
 }) {
   const { t } = useI18n();
-  const pulse = useRef(new Animated.Value(0)).current;
-  // Animujemy fade na samym TEKŚCIE adresu, żeby zmiana była natychmiast czytelna.
   const addressFade = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    const a = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1400, easing: easeOut, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 1400, easing: easeOut, useNativeDriver: true }),
-      ])
-    );
-    a.start();
-    return () => a.stop();
-  }, [pulse]);
   useEffect(() => {
     addressFade.setValue(0.35);
     Animated.timing(addressFade, {
@@ -3011,10 +3144,8 @@ function LocationPreview({
   );
   const visibleStreet = hasStreet ? (isExactLocation ? streetRaw : stripHouseNumber(streetRaw)) : '';
 
-  const surfaceColor = isDark ? '#2C2C2E' : '#EEF1F5';
   return (
-    <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14, gap: 10 }}>
-      {/* ===== 1) PODGLĄD LINII ADRESU ===== */}
+    <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
       <View
         style={[
           styles.locAddressPreview,
@@ -3076,84 +3207,6 @@ function LocationPreview({
           )}
         </Animated.View>
       </View>
-
-      {/* ===== 2) PODGLĄD MAPY ===== */}
-      <View style={[styles.locPreviewWrap, { backgroundColor: surfaceColor }]}>
-        <View style={styles.locGridOverlay} pointerEvents="none">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <View
-              key={`h-${i}`}
-              style={[
-                styles.locGridLine,
-                { top: `${(i + 1) * 14}%`, width: '100%', height: StyleSheet.hairlineWidth },
-              ]}
-            />
-          ))}
-          {Array.from({ length: 6 }).map((_, i) => (
-            <View
-              key={`v-${i}`}
-              style={[
-                styles.locGridLine,
-                { left: `${(i + 1) * 14}%`, height: '100%', width: StyleSheet.hairlineWidth },
-              ]}
-            />
-          ))}
-        </View>
-
-        <View style={styles.locCenterMark}>
-          {isExactLocation ? (
-            <>
-              <Animated.View
-                style={{
-                  position: 'absolute',
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: 'rgba(0,122,255,0.25)',
-                  transform: [
-                    {
-                      scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.5] }),
-                    },
-                  ],
-                  opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] }),
-                }}
-              />
-              <View style={styles.locExactPin}>
-                <Ionicons name="location" size={20} color="#FFFFFF" />
-              </View>
-            </>
-          ) : (
-            <>
-              <Animated.View
-                style={{
-                  position: 'absolute',
-                  width: 110,
-                  height: 110,
-                  borderRadius: 55,
-                  borderWidth: 1.5,
-                  borderColor: 'rgba(52, 199, 89, 0.45)',
-                  backgroundColor: 'rgba(52, 199, 89, 0.10)',
-                  transform: [
-                    { scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.06] }) },
-                  ],
-                }}
-              />
-              <View style={[styles.locExactPin, { backgroundColor: 'rgba(52,199,89,0.85)' }]}>
-                <Ionicons name="navigate-circle" size={18} color="#FFFFFF" />
-              </View>
-            </>
-          )}
-        </View>
-
-        <View style={styles.locLegend}>
-          <Text style={[styles.locLegendTitle, { color: txtColor }]}>
-            {isExactLocation ? t('offer.edit.location.mapPinExact') : t('offer.edit.location.mapAreaApprox')}
-          </Text>
-          <Text style={styles.locLegendSub}>
-            {isExactLocation ? t('offer.edit.location.mapHintExact') : t('offer.edit.location.mapHintCircle')}
-          </Text>
-        </View>
-      </View>
     </View>
   );
 }
@@ -3187,7 +3240,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingTop: Platform.OS === 'ios' ? 110 : 90,
     paddingHorizontal: 16,
-    paddingBottom: 30,
+    paddingBottom: 24,
   },
 
   /* ===== HERO ===== */
@@ -3198,8 +3251,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
-    marginTop: 6,
-    marginBottom: 10,
+    marginTop: 4,
+    marginBottom: 12,
     shadowColor: '#007AFF',
     shadowOpacity: 0.08,
     shadowRadius: 14,
@@ -3241,7 +3294,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,149,0,0.12)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,149,0,0.45)',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   dirtyDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF9500' },
   dirtyTextWrap: { flex: 1 },
@@ -3322,22 +3375,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
-    marginTop: 18,
-    marginBottom: 6,
+    marginTop: 22,
+    marginBottom: 8,
     paddingHorizontal: 4,
   },
   sectionTitle: {
     fontSize: 13,
     color: '#8E8E93',
     marginLeft: 4,
-    marginBottom: 6,
+    marginBottom: 8,
     marginTop: 22,
-    fontWeight: '500',
+    fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
+  },
+  sectionTitleInHeader: {
+    marginTop: 0,
+    marginBottom: 0,
+    marginLeft: 0,
   },
   sectionSubtitle: { fontSize: 13, color: '#8E8E93', fontWeight: '500' },
-  sectionFooter: { fontSize: 12, color: '#8E8E93', marginLeft: 4, marginTop: 6, lineHeight: 17 },
+  sectionFooter: {
+    fontSize: 12,
+    color: '#8E8E93',
+    marginLeft: 4,
+    marginTop: 8,
+    marginBottom: 2,
+    lineHeight: 17,
+  },
   premiumGroup: {
     borderRadius: 14,
     overflow: 'visible',
@@ -3669,8 +3734,23 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     lineHeight: 23,
   },
-  inputRowPremium: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
-  inputLabelPremium: { fontSize: 16, width: 150, fontWeight: '500', letterSpacing: -0.3 },
+  inputRowPremium: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  inputLabelPremium: { fontSize: 16, width: 140, fontWeight: '500', letterSpacing: -0.3 },
+  inputLabelFlex: { width: undefined, flexShrink: 1 },
+  paramLabelStack: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 8,
+    justifyContent: 'center',
+  },
+  paramLabelHint: { fontSize: 11, fontWeight: '500', marginTop: 2 },
   inputRightPremium: { flex: 1, fontSize: 17, textAlign: 'right', letterSpacing: -0.3 },
   inputSuffix: { fontSize: 15, color: '#8E8E93', marginLeft: 6, fontWeight: '500' },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 16 },
@@ -3678,13 +3758,30 @@ const styles = StyleSheet.create({
   /* ===== SEGMENT ===== */
   segmentContainer: {
     flexDirection: 'row',
-    padding: 3,
+    alignItems: 'stretch',
+    padding: 4,
     margin: 12,
     backgroundColor: 'rgba(150,150,150,0.16)',
     borderRadius: 10,
+    gap: 4,
   },
-  segmentBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 7 },
-  segmentText: { fontSize: 13, color: '#8E8E93', fontWeight: '600', letterSpacing: -0.2 },
+  segmentBtn: {
+    flex: 1,
+    minHeight: 48,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  segmentText: {
+    fontSize: 11.5,
+    lineHeight: 14,
+    color: '#8E8E93',
+    fontWeight: '600',
+    letterSpacing: -0.2,
+    textAlign: 'center',
+  },
 
   /* ===== SWITCH ROWS ===== */
   switchRow: {
@@ -3711,7 +3808,10 @@ const styles = StyleSheet.create({
   stepperInline: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: 4,
+    flexShrink: 0,
+    width: 140,
   },
   stepperMiniBtn: {
     width: 36,
@@ -3722,7 +3822,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stepperValueInput: {
-    width: 54,
+    width: 48,
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: -0.4,
@@ -3732,16 +3832,42 @@ const styles = StyleSheet.create({
   /* ===== CENA ===== */
   priceHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
     gap: 12,
   },
+  priceLeftCol: {
+    flex: 1,
+    minWidth: 0,
+  },
   priceLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 0.2, textTransform: 'uppercase', marginBottom: 4 },
   priceFormatted: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
   priceCurrency: { fontSize: 16, fontWeight: '600' },
+  priceNudgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 6,
+  },
+  priceNudgeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  priceNudgeTxt: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    fontVariant: ['tabular-nums'],
+  },
   priceSqm: { fontSize: 12, fontWeight: '600', marginTop: 2, letterSpacing: 0.1 },
   priceInput: {
     fontSize: 22,
@@ -3750,8 +3876,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    minWidth: 130,
+    minWidth: 120,
     letterSpacing: -0.4,
+    marginTop: 18,
   },
   priceStepperRow: {
     flexDirection: 'row',
@@ -3759,15 +3886,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 14,
     flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
   priceStepBtn: {
-    paddingHorizontal: 11,
+    paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 54,
+    minWidth: 52,
+    flexGrow: 1,
   },
   priceStepTxt: {
     fontSize: 12,

@@ -8,6 +8,8 @@ type WebViewComponent = React.ComponentType<{
   originWhitelist?: string[];
   startInLoadingState?: boolean;
   scalesPageToFit?: boolean;
+  allowFileAccess?: boolean;
+  allowingReadAccessToURL?: string;
 }>;
 
 let cached: WebViewComponent | null | undefined;

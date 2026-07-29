@@ -726,8 +726,8 @@ export const addOffer = {
     noPhotos: 'Brak zdjęć w ofercie',
     rentLabel: 'Czynsz najmu (miesięcznie)',
     depositLabel: 'Kaucja {{amount}} PLN',
-    rentAdditionalFeesLabel: '+ {{amount}} PLN opłaty dodatkowe (czynsz)',
-    adminFeeLabel: 'Czynsz administracyjny ~ {{amount}} PLN',
+    rentAdditionalFeesLabel: '+ {{amount}} {{currency}} opłaty dodatkowe (czynsz)',
+    adminFeeLabel: 'Czynsz administracyjny ~ {{amount}} {{currency}}',
     commissionSummary: {
       label: 'Prowizja:',
       zero: 'bez prowizji (0%)',

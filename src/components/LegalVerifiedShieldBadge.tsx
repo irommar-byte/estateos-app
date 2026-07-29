@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { Pressable, View, Text, StyleSheet } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -8,25 +8,43 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { ShieldCheck } from 'lucide-react-native';
+import { Shield, ShieldCheck } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useI18n } from '../i18n';
 
 type Props = {
   isDark?: boolean;
-  compact?: boolean;
+  /** true = zielona świecąca; false = szara, bez animacji. */
+  verified?: boolean;
+  /** Owner + unverified: show tap CTA under label. */
+  showTapHint?: boolean;
+  onPress?: () => void;
 };
 
-export default function LegalVerifiedShieldBadge({ isDark = false, compact = false }: Props) {
+/**
+ * Centered EstateOS Quality Shield — verified (glow) or unverified (muted gray).
+ */
+export default function LegalVerifiedShieldBadge({
+  isDark = false,
+  verified = true,
+  showTapHint = false,
+  onPress,
+}: Props) {
   const { t } = useI18n();
   const floatY = useSharedValue(0);
   const glow = useSharedValue(0.45);
   const tilt = useSharedValue(0);
 
   useEffect(() => {
+    if (!verified) {
+      floatY.value = 0;
+      glow.value = 0;
+      tilt.value = 0;
+      return;
+    }
     floatY.value = withRepeat(
       withSequence(
-        withTiming(-3, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
+        withTiming(-2.5, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
         withTiming(0, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
       ),
       -1,
@@ -45,151 +63,214 @@ export default function LegalVerifiedShieldBadge({ isDark = false, compact = fal
       -1,
       true,
     );
-  }, [floatY, glow, tilt]);
+  }, [verified, floatY, glow, tilt]);
 
   const shellStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: floatY.value },
-      { rotateZ: `${tilt.value * 1.2}deg` },
-    ],
+    transform: verified
+      ? [{ translateY: floatY.value }, { rotateZ: `${tilt.value * 1.2}deg` }]
+      : [],
   }));
 
   const glowStyle = useAnimatedStyle(() => ({
-    opacity: 0.35 + glow.value * 0.45,
+    opacity: verified ? 0.35 + glow.value * 0.45 : 0,
   }));
 
-  return (
+  const title = verified
+    ? t('offer.detail.legalVerified.label')
+    : t('offer.detail.legalVerified.unverifiedLabel');
+  const subtitle = verified
+    ? t('offer.detail.legalVerified.sublabel')
+    : showTapHint
+      ? t('offer.detail.legalVerified.tapToVerify')
+      : null;
+
+  const a11y = verified
+    ? t('offer.detail.legalVerified.a11y')
+    : showTapHint
+      ? t('offer.detail.legalVerified.unverifiedA11yTap')
+      : t('offer.detail.legalVerified.unverifiedA11y');
+
+  const content = (
     <View
-      style={[styles.wrap, compact && styles.wrapCompact]}
-      accessibilityLabel={t('offer.detail.legalVerified.a11y')}
+      style={styles.wrap}
+      accessibilityRole={onPress ? 'button' : 'text'}
+      accessibilityLabel={a11y}
     >
       <Animated.View style={[styles.shieldOuter, shellStyle]}>
-        <Animated.View style={[styles.shieldGlow, glowStyle]} />
-        <LinearGradient
-          colors={isDark ? ['#34d399', '#059669', '#064e3b'] : ['#6ee7b7', '#10b981', '#047857']}
-          start={{ x: 0.15, y: 0 }}
-          end={{ x: 0.85, y: 1 }}
-          style={[styles.shieldShell, compact && styles.shieldShellCompact]}
-        >
-          <View style={styles.shieldHighlight} />
-          <ShieldCheck
-            size={compact ? 20 : 24}
-            color="#ffffff"
-            strokeWidth={2.5}
-            style={styles.shieldIcon}
-          />
-        </LinearGradient>
+        <Animated.View
+          style={[
+            styles.shieldGlow,
+            glowStyle,
+            !verified && styles.shieldGlowOff,
+          ]}
+        />
+        {verified ? (
+          <LinearGradient
+            colors={isDark ? ['#34d399', '#059669', '#064e3b'] : ['#6ee7b7', '#10b981', '#047857']}
+            start={{ x: 0.15, y: 0 }}
+            end={{ x: 0.85, y: 1 }}
+            style={styles.shieldShell}
+          >
+            <View style={styles.shieldHighlight} />
+            <ShieldCheck size={20} color="#ffffff" strokeWidth={2.5} style={styles.shieldIcon} />
+          </LinearGradient>
+        ) : (
+          <View
+            style={[
+              styles.shieldShell,
+              styles.shieldShellMuted,
+              {
+                backgroundColor: isDark ? 'rgba(142,142,147,0.22)' : 'rgba(142,142,147,0.18)',
+                borderColor: isDark ? 'rgba(235,235,245,0.18)' : 'rgba(60,60,67,0.2)',
+              },
+            ]}
+          >
+            <Shield
+              size={18}
+              color={isDark ? 'rgba(235,235,245,0.42)' : '#8E8E93'}
+              strokeWidth={2.2}
+            />
+          </View>
+        )}
       </Animated.View>
 
-      <View style={[styles.copyBlock, compact && styles.copyBlockCompact]}>
-        <Text
-          style={[
-            styles.title,
-            compact && styles.titleCompact,
-            isDark ? styles.titleDark : styles.titleLight,
-          ]}
-          numberOfLines={2}
-        >
-          {t('offer.detail.legalVerified.label')}
-        </Text>
+      <Text
+        style={[
+          styles.title,
+          verified
+            ? isDark
+              ? styles.titleVerifiedDark
+              : styles.titleVerifiedLight
+            : isDark
+              ? styles.titleMutedDark
+              : styles.titleMutedLight,
+        ]}
+        numberOfLines={2}
+      >
+        {title}
+      </Text>
+      {subtitle ? (
         <Text
           style={[
             styles.subtitle,
-            compact && styles.subtitleCompact,
-            isDark ? styles.subtitleDark : styles.subtitleLight,
+            verified
+              ? isDark
+                ? styles.subtitleVerifiedDark
+                : styles.subtitleVerifiedLight
+              : isDark
+                ? styles.subtitleMutedDark
+                : styles.subtitleMutedLight,
+            showTapHint && !verified && styles.subtitleTap,
           ]}
-          numberOfLines={1}
+          numberOfLines={2}
         >
-          {t('offer.detail.legalVerified.sublabel')}
+          {subtitle}
         </Text>
-      </View>
+      ) : null}
     </View>
+  );
+
+  if (!onPress) return content;
+
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [pressed && { opacity: 0.82 }]}>
+      {content}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    maxWidth: 220,
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 114,
+    paddingHorizontal: 0,
   },
-  wrapCompact: { gap: 8, maxWidth: 200 },
   shieldOuter: {
-    marginTop: -6,
-    marginBottom: -4,
-    marginLeft: -2,
+    marginBottom: 3,
   },
   shieldGlow: {
     position: 'absolute',
-    top: -8,
-    left: -8,
-    right: -8,
-    bottom: -8,
-    borderRadius: 22,
+    top: -6,
+    left: -6,
+    right: -6,
+    bottom: -6,
+    borderRadius: 20,
     backgroundColor: 'rgba(16,185,129,0.35)',
   },
+  shieldGlowOff: {
+    backgroundColor: 'transparent',
+  },
   shieldShell: {
-    width: 46,
-    height: 52,
-    borderRadius: 16,
+    width: 38,
+    height: 44,
+    borderRadius: 12,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#059669',
-    shadowOpacity: 0.55,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 8,
     overflow: 'visible',
   },
-  shieldShellCompact: { width: 40, height: 46, borderRadius: 14 },
+  shieldShellMuted: {
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
   shieldHighlight: {
     position: 'absolute',
-    top: 4,
-    left: 6,
-    right: 6,
-    height: 10,
-    borderRadius: 8,
+    top: 3,
+    left: 5,
+    right: 5,
+    height: 8,
+    borderRadius: 7,
     backgroundColor: 'rgba(255,255,255,0.28)',
   },
   shieldIcon: {
     zIndex: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
   },
-  copyBlock: { flex: 1, minWidth: 0 },
-  copyBlockCompact: { paddingTop: 2 },
   title: {
-    fontSize: 10,
+    fontSize: 7.5,
     fontWeight: '900',
-    letterSpacing: 0.85,
+    letterSpacing: 0.3,
     textTransform: 'uppercase',
-    lineHeight: 13,
+    textAlign: 'center',
+    lineHeight: 9,
   },
-  titleCompact: { fontSize: 9, letterSpacing: 0.7, lineHeight: 12 },
-  titleDark: {
+  titleVerifiedDark: {
     color: '#ecfdf5',
-    textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  titleLight: {
-    color: '#065f46',
-    textShadowColor: 'rgba(255,255,255,0.8)',
+    textShadowColor: 'rgba(0,0,0,0.4)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  subtitle: {
-    marginTop: 2,
-    fontSize: 8,
-    fontWeight: '700',
-    letterSpacing: 0.35,
+  titleVerifiedLight: {
+    color: '#065f46',
   },
-  subtitleCompact: { fontSize: 7 },
-  subtitleDark: { color: 'rgba(167,243,208,0.88)' },
-  subtitleLight: { color: 'rgba(4,120,87,0.82)' },
+  titleMutedDark: {
+    color: 'rgba(235,235,245,0.45)',
+  },
+  titleMutedLight: {
+    color: '#8E8E93',
+  },
+  subtitle: {
+    marginTop: 1,
+    fontSize: 6.5,
+    fontWeight: '700',
+    letterSpacing: 0.15,
+    textAlign: 'center',
+    lineHeight: 8,
+  },
+  subtitleVerifiedDark: { color: 'rgba(167,243,208,0.88)' },
+  subtitleVerifiedLight: { color: 'rgba(4,120,87,0.82)' },
+  subtitleMutedDark: { color: 'rgba(235,235,245,0.4)' },
+  subtitleMutedLight: { color: '#AEAEB2' },
+  subtitleTap: {
+    fontWeight: '800',
+    letterSpacing: 0.15,
+  },
 });

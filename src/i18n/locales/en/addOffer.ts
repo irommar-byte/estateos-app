@@ -718,7 +718,8 @@ export const addOffer = {
     noPhotos: 'No photos in listing',
     rentLabel: 'Monthly rent (total)',
     depositLabel: 'Deposit {{amount}} PLN',
-    adminFeeLabel: 'Admin fee ~ {{amount}} PLN',
+    rentAdditionalFeesLabel: '+ {{amount}} {{currency}} additional fees (HOA)',
+    adminFeeLabel: 'Admin fee ~ {{amount}} {{currency}}',
     commissionSummary: {
       label: 'Commission:',
       zero: 'no commission (0%)',

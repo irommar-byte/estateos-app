@@ -57,20 +57,16 @@ type Props = {
   offerId: number;
   token: string | null;
   isDark: boolean;
-  /**
-   * Sugerowane wartości pre-fill — jeśli oferta już ma KW/apt w głównym
-   * rekordzie (np. zostały wpisane podczas dodawania oferty), używamy
-   * ich jako wartości startowych w formularzu. Dzięki temu właściciel
-   * nie musi przepisywać po raz drugi.
-   */
   initialLandRegistryNumber?: string | null;
   initialApartmentNumber?: string | null;
-  /**
-   * Wywoływane po SUKCESIE submit/approve — daje sygnał rodzicowi
-   * (OfferDetail), że warto odświeżyć główny rekord oferty (żeby zaktualizować
-   * `isLegalSafeVerified` w hero-karcie). To opcjonalne.
-   */
   onStatusChanged?: (next: OfferLegalVerificationView) => void;
+  /**
+   * Ukryj kartę (niebieski CTA itd.) — zostaje tylko modal.
+   * Otwieranie formularza przez `openTrigger`.
+   */
+  hideInlineCard?: boolean;
+  /** Każda zmiana wartości otwiera formularz zgłoszenia KW. */
+  openTrigger?: number;
 };
 
 export default function OwnerLegalVerificationCard({
@@ -80,6 +76,8 @@ export default function OwnerLegalVerificationCard({
   initialLandRegistryNumber,
   initialApartmentNumber,
   onStatusChanged,
+  hideInlineCard = false,
+  openTrigger = 0,
 }: Props) {
   const [view, setView] = useState<OfferLegalVerificationView | null>(null);
   const [loading, setLoading] = useState(true);
@@ -127,6 +125,11 @@ export default function OwnerLegalVerificationCard({
     setSubmitOpen(true);
   }, [view?.landRegistryNumber, view?.apartmentNumber, initialLandRegistryNumber, initialApartmentNumber]);
 
+  useEffect(() => {
+    if (!openTrigger) return;
+    openSubmit();
+  }, [openTrigger, openSubmit]);
+
   const closeSubmit = useCallback(() => {
     setSubmitOpen(false);
     setSubmitting(false);
@@ -172,7 +175,7 @@ export default function OwnerLegalVerificationCard({
 
   const palette = useMemo(() => getPaletteFor(view?.status ?? 'NONE', isDark), [view?.status, isDark]);
 
-  if (loading) {
+  if (loading && !hideInlineCard) {
     return (
       <View style={[styles.card, palette.cardStyle]}>
         <ActivityIndicator size="small" color={palette.accent} />
@@ -183,32 +186,21 @@ export default function OwnerLegalVerificationCard({
     );
   }
 
-  if (!view) return null;
+  if (!view && !hideInlineCard) return null;
 
-  const submittedLabel = view.submittedAt
+  const submittedLabel = view?.submittedAt
     ? new Date(view.submittedAt).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' })
     : null;
-  const reviewedLabel = view.reviewedAt
+  const reviewedLabel = view?.reviewedAt
     ? new Date(view.reviewedAt).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' })
     : null;
 
-  // --- Wybór CTA na podstawie stanu ---
-  const ctaLabel = (() => {
-    switch (view.status) {
-      case 'NONE':
-        return 'Zgłoś KW do weryfikacji';
-      case 'REJECTED':
-        return 'Popraw i wyślij ponownie';
-      case 'PENDING':
-        return 'Edytuj zgłoszenie';
-      case 'VERIFIED':
-      default:
-        return null;
-    }
-  })();
+  // PENDING/REJECTED: status bez niebieskiego CTA (otwieranie przez tarczę).
+  const showStatusCard = !!view && (view.status === 'PENDING' || view.status === 'REJECTED');
 
   return (
     <>
+      {showStatusCard && view ? (
       <View style={[styles.card, palette.cardStyle]}>
         <View style={styles.headerRow}>
           <View style={[styles.iconWrap, { backgroundColor: palette.iconBg }]}>
@@ -237,20 +229,8 @@ export default function OwnerLegalVerificationCard({
             ) : null}
           </View>
         ) : null}
-
-        {ctaLabel ? (
-          <Pressable
-            onPress={openSubmit}
-            style={({ pressed }) => [
-              styles.ctaButton,
-              { backgroundColor: palette.accent, opacity: pressed ? 0.85 : 1 },
-            ]}
-          >
-            <Ionicons name="paper-plane-outline" size={14} color="#FFFFFF" />
-            <Text style={styles.ctaText}>{ctaLabel}</Text>
-          </Pressable>
-        ) : null}
       </View>
+      ) : null}
 
       {/* Bottom sheet z formularzem KW + apt + notatka */}
       <Modal visible={submitOpen} transparent animationType="fade" onRequestClose={closeSubmit}>
@@ -508,17 +488,6 @@ const styles = StyleSheet.create({
   },
   rejectionReason: { fontSize: 13, fontWeight: '800', marginTop: 2 },
   rejectionText: { fontSize: 12, fontWeight: '500', marginTop: 4, fontStyle: 'italic' },
-
-  ctaButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginTop: 14,
-  },
-  ctaText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900', letterSpacing: 0.3 },
 
   sheet: {
     borderTopLeftRadius: 24,

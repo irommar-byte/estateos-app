@@ -77,19 +77,30 @@ export function resolveOfferDisplayAmount(params: {
   };
 }
 
+export function formatFxRateDateLabel(rateDate?: string | null): string | null {
+  const raw = String(rateDate || '').trim();
+  if (!raw) return null;
+  // NBP / API zwykle zwraca YYYY-MM-DD
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+  return raw;
+}
+
 export function formatApproxLine(
   amount: number,
   currency: ListingCurrency,
   rate: number,
+  rateDate?: string | null,
 ): string | null {
   if (!Number.isFinite(amount) || amount <= 0) return null;
   const r = rate > 0 ? rate : DEFAULT_EUR_PLN_RATE;
-  if (currency === 'PLN') {
-    const eur = listingAmountFromPln(amount, 'EUR', r);
-    return `≈ ${formatAmountWithCurrency(eur, 'EUR')}`;
-  }
-  const pln = plnFromListingAmount(amount, 'EUR', r);
-  return `≈ ${formatAmountWithCurrency(pln, 'PLN')}`;
+  const amountLine =
+    currency === 'PLN'
+      ? `≈ ${formatAmountWithCurrency(listingAmountFromPln(amount, 'EUR', r), 'EUR')}`
+      : `≈ ${formatAmountWithCurrency(plnFromListingAmount(amount, 'EUR', r), 'PLN')}`;
+  const dateLabel = formatFxRateDateLabel(rateDate);
+  if (!dateLabel) return amountLine;
+  return `${amountLine} „kurs z ${dateLabel}”`;
 }
 
 export type FormattedOfferPrice = {
@@ -127,7 +138,7 @@ export function formatOfferPriceDisplay(params: {
   if (displayCurrency !== listingCurrency) {
     secondary = `W ofercie: ${formatAmountWithCurrency(listingAmount, listingCurrency)}`;
   } else {
-    secondary = formatApproxLine(listingAmount, listingCurrency, params.rate);
+    secondary = formatApproxLine(listingAmount, listingCurrency, params.rate, params.rateDate);
   }
   return { primary, secondary, listingCurrency, listingAmount, plnAmount };
 }

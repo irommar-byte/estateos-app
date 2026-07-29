@@ -1,6 +1,6 @@
 import { API_URL } from '../config/network';
 import { parseContactReactions } from '../utils/contactMessageReactions';
-import { formatContactLastMessagePreview } from '../utils/contactAttachment';
+import { formatContactLastMessagePreview, normalizeContactMediaUrl } from '../utils/contactAttachment';
 import type { ContactAttachmentMeta } from '../utils/contactAttachment';
 
 export type ContactThreadRow = {
@@ -128,11 +128,25 @@ export async function fetchContactAttachments(
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(String(json?.error || 'Nie udało się pobrać załączników.'));
+  const rawList = Array.isArray(json?.attachments) ? json.attachments : [];
+  const attachments = rawList
+    .map((att: any) => {
+      const url = normalizeContactMediaUrl(att?.url);
+      if (!url) return null;
+      return {
+        ...att,
+        url,
+        name: String(att?.name || 'Załącznik'),
+        mimeType: String(att?.mimeType || 'application/octet-stream'),
+        size: Number(att?.size) || 0,
+      };
+    })
+    .filter(Boolean);
   return {
     usageBytes: Number(json?.usageBytes) || 0,
     limitBytes: Number(json?.limitBytes) || 100 * 1024 * 1024,
     perFileLimitBytes: Number(json?.perFileLimitBytes) || 10 * 1024 * 1024,
-    attachments: Array.isArray(json?.attachments) ? json.attachments : [],
+    attachments,
   };
 }
 
@@ -157,7 +171,11 @@ export async function uploadContactAttachment(
   if (!res.ok || !json?.attachment) {
     throw new Error(String(json?.error || 'Nie udało się przesłać pliku.'));
   }
-  return json.attachment as ContactAttachmentMeta;
+  const att = json.attachment as ContactAttachmentMeta;
+  return {
+    ...att,
+    url: normalizeContactMediaUrl(att.url) || att.url,
+  };
 }
 
 export async function sendContactTyping(token: string, threadId: number): Promise<void> {

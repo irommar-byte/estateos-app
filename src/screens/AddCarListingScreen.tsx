@@ -793,10 +793,9 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
                 colors={colors}
                 styles={styles}
               />
-              {Number(form.pricePln) > 0 && formatApproxLine(Number(form.pricePln), form.priceCurrency, fxRate) ? (
+              {Number(form.pricePln) > 0 && formatApproxLine(Number(form.pricePln), form.priceCurrency, fxRate, fxDate) ? (
                 <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
-                  {formatApproxLine(Number(form.pricePln), form.priceCurrency, fxRate)}
-                  {fxDate ? ` · NBP ${fxDate}` : ''}
+                  {formatApproxLine(Number(form.pricePln), form.priceCurrency, fxRate, fxDate)}
                 </Text>
               ) : null}
             </View>

@@ -224,6 +224,7 @@ export const offer = {
     views: {
       newOffer: 'Nowa oferta',
       newOfferBadge: 'NOWA OFERTA',
+      newOfferBadgeShort: 'NOWA',
       featuredBadge: 'Wyróżnione',
       featureCta: 'Wyróżnij',
       featureTopUp: 'Doładuj',
@@ -231,7 +232,9 @@ export const offer = {
       featuredCelebrationSubtitle: 'Twoja oferta świeci w galerii przez najbliższe dni',
       featuredCelebrationDays: '7 dni',
       count: '{{count}} wyświetleń',
+      countCompact: '{{count}}',
       countZero: '0 wyświetleń',
+      countZeroCompact: '0',
     },
     sheetSwipeHint: 'Przesuń w górę po więcej szczegółów',
     sheetSwipeHintShort: 'Więcej szczegółów',
@@ -239,6 +242,10 @@ export const offer = {
       label: 'BEZPIECZNA NIERUCHOMOŚĆ',
       sublabel: 'EstateOS™ Quality Shield',
       a11y: 'Bezpieczna nieruchomość — zweryfikowana księga wieczysta EstateOS Quality Shield',
+      unverifiedLabel: 'nieruchomość nie zweryfikowana',
+      tapToVerify: 'kliknij aby zweryfikować',
+      unverifiedA11y: 'Nieruchomość nie zweryfikowana',
+      unverifiedA11yTap: 'Nieruchomość nie zweryfikowana — kliknij aby zweryfikować',
     },
     stats: {
       rooms: '{{count}} Pokoje',
@@ -298,7 +305,7 @@ export const offer = {
       bodyShortZero: 'Bez prowizji - 0%',
       bodyShortPaid: 'W cenie: {{percent}} ≈ {{amount}} dla agenta (brutto, bez dopłat).',
     },
-    adminFeePill: '+ {{amount}} czynsz',
+    adminFeePill: '+ {{amount}} / miesiąc',
     roi: {
       label: 'EstateOS™ ROI',
       sub: 'roczna stopa',
@@ -498,7 +505,7 @@ export const offer = {
       sectionTitle: 'CENA I KOSZTY',
       offerPrice: 'Cena ofertowa ({{currency}})',
       adminFee: 'Czynsz admin.',
-      adminFeeSuffix: 'PLN / mc',
+      adminFeeSuffix: '{{currency}} / mc',
       footer: 'Sama zmiana ceny nie ukrywa oferty z Radaru.',
     },
     commission: {
@@ -573,8 +580,7 @@ export const offer = {
       exactOnSuffix: ' + dokładny pin.',
       exactOffPrefix: 'Wyłączone: widzimy ',
       exactOffSuffix: ' (bez numeru) + przybliżony obszar.',
-      footer:
-        'To ustawienie wpływa wyłącznie na publiczną kartę oferty. W panelu zarządzania zawsze widzisz pełen adres i precyzyjny pin — kupujący tylko to, co masz powyżej.',
+      footer: 'Wpływa tylko na publiczną kartę — Ty zawsze widzisz pełny adres.',
       previewEyebrow: 'TAK WIDZĄ KUPUJĄCY',
       badgeFull: 'PEŁNY ADRES',
       badgeStreet: 'TYLKO ULICA',

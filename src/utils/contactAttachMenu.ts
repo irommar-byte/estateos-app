@@ -47,9 +47,10 @@ export function createContactAttachmentPickers(
     void (async () => {
       try {
         const result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ['images'],
+          mediaTypes: ['images', 'videos'],
           quality: 0.92,
           allowsMultipleSelection: false,
+          videoMaxDuration: 120,
         });
         if (result.canceled || !result.assets?.[0]) return;
         const asset = result.assets[0];
@@ -59,8 +60,17 @@ export function createContactAttachmentPickers(
           Alert.alert(labels.limitTitle, err);
           return;
         }
-        const name = asset.fileName || `zdjecie_${Date.now()}.jpg`;
-        const mimeType = asset.mimeType || (name.toLowerCase().endsWith('.gif') ? 'image/gif' : 'image/jpeg');
+        const isVideo = String(asset.type || asset.mimeType || '').includes('video');
+        const name =
+          asset.fileName ||
+          (isVideo ? `wideo_${Date.now()}.mp4` : `zdjecie_${Date.now()}.jpg`);
+        const mimeType =
+          asset.mimeType ||
+          (isVideo
+            ? 'video/mp4'
+            : name.toLowerCase().endsWith('.gif')
+              ? 'image/gif'
+              : 'image/jpeg');
         onPick({ uri: asset.uri, name, mimeType, size });
       } catch {
         Alert.alert(labels.title, labels.pickFailed);

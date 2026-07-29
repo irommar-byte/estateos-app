@@ -26,8 +26,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import OfferGlassGallery from '../components/offer/OfferGlassGallery';
 import FeaturedPromoteSheet from '../components/offer/FeaturedPromoteSheet';
+import OfferDetailMetaBadgesSection from '../components/offer/OfferDetailMetaBadgesSection';
 import { playFeaturedCelebration } from '../store/useFeaturedCelebrationStore';
-import { ChevronLeft, Share as ShareIcon, Heart, Maximize, Images, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, ChevronUp, Eye, MoreHorizontal, Flag, Ban, DollarSign } from 'lucide-react-native';
+import { ChevronLeft, Share as ShareIcon, Heart, Maximize, Images, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, ChevronUp, MoreHorizontal, Flag, Ban, DollarSign } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
@@ -78,7 +79,6 @@ import ProfilePublicHeader from '../components/ProfilePublicHeader';
 import ProfileReputationBlock from '../components/ProfileReputationBlock';
 import ProfileWriteMessageButton from '../components/messaging/ProfileWriteMessageButton';
 import { openDirectContactChat } from '../utils/openDirectContact';
-import LegalVerifiedShieldBadge from '../components/LegalVerifiedShieldBadge';
 import { API_URL } from '../config/network';
 import { findWebOfferById } from '../utils/webOffersFallback';
 import { useMoneyContext } from '../money/useMoneyContext';
@@ -87,12 +87,10 @@ import {
   loadFavoriteIds,
   toggleFavoriteId,
 } from '../utils/favoritesStorage';
-import { normalizeListingCurrency } from '../money/convert';
 import DiscoveryOfferExplainer from '../components/discovery/DiscoveryOfferExplainer';
-import DiscoveryVisitHint from '../components/discovery/DiscoveryVisitHint';
 import OfferDiscoveryActions from '../components/discovery/OfferDiscoveryActions';
-import DiscoveryContactWhisper from '../components/discovery/DiscoveryContactWhisper';
-import { formatAmountWithCurrency, formatOfferSecondaryAmount, resolveOfferDisplayAmount } from '../money/format';
+import { formatAmountWithCurrency, resolveOfferDisplayAmount } from '../money/format';
+import { formatAdminFeeDisplay, parseAdminFeePln } from '../money/adminFee';
 import { resolveOfferListingPrice } from '../money/offerPrice';
 import { formatListedPriceLabel, resolveOfferPriceDiscount } from '../utils/offerPriceDiscount';
 import OfferDiscountPriceBlock from '../components/OfferDiscountPriceBlock';
@@ -497,6 +495,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const [reviewerNameCache, setReviewerNameCache] = useState<Record<number, string>>({});
   const [profileHistory, setProfileHistory] = useState<number[]>([]);
   const [ownerLegalVerifiedOverride, setOwnerLegalVerifiedOverride] = useState<boolean | null>(null);
+  const [legalVerifyOpenTrigger, setLegalVerifyOpenTrigger] = useState(0);
   const [openHouseEvent, setOpenHouseEvent] = useState<OpenHouseEventRecord | null>(null);
   const [auctionEvent, setAuctionEvent] = useState<AuctionEventRecord | null>(null);
   const bidBtnScale = useSharedValue(1);
@@ -549,6 +548,7 @@ export default function OfferDetail({ route, navigation }: any) {
 
   useEffect(() => {
     setOwnerLegalVerifiedOverride(null);
+    setLegalVerifyOpenTrigger(0);
   }, [offer?.id]);
 
   const favoriteSync = { apiBaseUrl: API_URL, accessToken: token || null };
@@ -678,19 +678,18 @@ export default function OfferDetail({ route, navigation }: any) {
   if (isTrue(offer?.petsAllowed)) activeAmenities.push(t('offer.shared.amenities.petsAllowed'));
   const heatingLabel = formatOfferHeatingLabel(offer?.heating, t);
   const furnishedLabel = isTrue(offer?.isFurnished) ? t('offer.shared.furnished.yes') : t('offer.shared.furnished.no');
-  const adminFeeNumber = Number(String(offer?.adminFee ?? '').replace(/[^\d.,-]/g, '').replace(',', '.'));
-  const hasAdminFee = Number.isFinite(adminFeeNumber) && adminFeeNumber > 0;
+  /** Czynsz admin. w DB zawsze w PLN — wyświetlanie konwertuje do waluty oferty / preferencji. */
+  const adminFeePln = parseAdminFeePln(offer?.adminFee);
+  const hasAdminFee = adminFeePln > 0;
   const adminFeeLabel = useMemo(() => {
     if (!hasAdminFee) return t('offer.shared.none');
-    const listingCurrency = normalizeListingCurrency(offer?.priceCurrency);
-    return formatOfferSecondaryAmount({
-      amount: adminFeeNumber,
-      listingCurrency,
-      pricePln: listingCurrency === 'PLN' ? adminFeeNumber : null,
+    return formatAdminFeeDisplay({
+      adminFeePln,
+      listingCurrency: offer?.priceCurrency,
       displayPreference: preference,
       rate,
     });
-  }, [hasAdminFee, adminFeeNumber, offer?.priceCurrency, preference, rate, t]);
+  }, [hasAdminFee, adminFeePln, offer?.priceCurrency, preference, rate, t]);
 
   /**
    * ====================================================================
@@ -816,7 +815,7 @@ export default function OfferDetail({ route, navigation }: any) {
     else if (cityForStats === 'Kraków' || cityForStats === 'Wrocław' || cityForStats === 'Trójmiasto') estRentPerSqm = 65;
     else if (cityForStats === 'Łódź' || cityForStats === 'Poznań') estRentPerSqm = 55;
     const monthlyRent = areaNumForStats * estRentPerSqm;
-    const adminMonthly = hasAdminFee ? adminFeeNumber : 0;
+    const adminMonthly = hasAdminFee ? adminFeePln : 0;
     const netMonthly = Math.max(0, monthlyRent - adminMonthly);
     const annual = netMonthly * 12;
     if (annual <= 0) return null;
@@ -829,10 +828,15 @@ export default function OfferDetail({ route, navigation }: any) {
     () => isOfferFeatured(offer && typeof offer === 'object' ? (offer as Record<string, unknown>) : null),
     [offer],
   );
+  /** Oferta 533: testowy układ — wymuś wszystkie banery meta naraz (bez nachodzenia). */
+  const forceAllMetaBadges = Number(offer?.id) === 533;
+  const showFeaturedMetaBadge = forceAllMetaBadges || isFeaturedListing;
+  const showNewOfferMetaBadge = forceAllMetaBadges || isNewOfferListing;
   const plusCreditSlots = useMemo(() => getAdditionalListingSlots(user), [user]);
   const hasPlusCredit = useMemo(() => hasAdditionalPlusPublication(user), [user]);
   const canManageFeatureBadge =
-    isOwner && !isSamplePreview && Number(offer?.id) > 0 && !isFeaturedListing;
+    isOwner && !isSamplePreview && Number(offer?.id) > 0 && !isFeaturedListing && !forceAllMetaBadges;
+  const showFeatureMetaCta = canManageFeatureBadge;
   const newOfferPulse = useSharedValue(1);
 
   const applyPromotedUntilLocally = useCallback((promotedUntil: string) => {
@@ -888,7 +892,7 @@ export default function OfferDetail({ route, navigation }: any) {
   );
 
   useEffect(() => {
-    if (!isNewOfferListing) {
+    if (!showNewOfferMetaBadge) {
       newOfferPulse.value = 1;
       return;
     }
@@ -897,12 +901,22 @@ export default function OfferDetail({ route, navigation }: any) {
       -1,
       false,
     );
-  }, [isNewOfferListing, newOfferPulse]);
+  }, [showNewOfferMetaBadge, newOfferPulse]);
 
   const newOfferBadgeAnimatedStyle = useAnimatedStyle(() => ({
     opacity: newOfferPulse.value,
   }));
   const isLegalSafeVerified = isOfferLegallyVerified(offer, ownerLegalVerifiedOverride === true);
+  const canTapLegalShield =
+    !isLegalSafeVerified &&
+    !!isOwner &&
+    !isSamplePreview &&
+    Number(offer?.id) > 0 &&
+    isPolandOffer;
+  const viewsCountLabel =
+    viewsCount > 0
+      ? t('offer.detail.views.countCompact', { count: viewsCount.toLocaleString(dateLocale) })
+      : t('offer.detail.views.countZeroCompact');
   const handleOwnerLegalStatusChanged = useCallback((next: any) => {
     const status = String(next?.status || '').toUpperCase();
     const verified =
@@ -1695,100 +1709,27 @@ export default function OfferDetail({ route, navigation }: any) {
               </Animated.View>
             </View>
           </Animated.View>
-          {/* Cena na górze została usunięta — pełna kwota i PLN/m² siedzą teraz
-              w dolnym pasku CTA. Trzymamy tu tylko badge'y meta (czynsz, views). */}
-          <View style={styles.topMetaBadgesRow}>
-            <View
-              style={[
-                styles.viewsBadge,
-                {
-                  backgroundColor: isDark ? '#1c1c1e' : '#f3f4f6',
-                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.12)',
-                },
-              ]}
-            >
-              <Eye color={isDark ? '#9ca3af' : '#374151'} size={13} />
-              <Text style={[styles.viewsBadgeText, { color: isDark ? '#d1d5db' : '#374151' }]} numberOfLines={1}>
-                {viewsCount > 0
-                  ? t('offer.detail.views.count', { count: viewsCount.toLocaleString(dateLocale) })
-                  : t('offer.detail.views.countZero')}
-              </Text>
-            </View>
-            {isFeaturedListing ? (
-              <View style={styles.featuredBadge}>
-                <Star size={10} color="#000000" fill="#000000" strokeWidth={0} />
-                <Text style={styles.featuredBadgeText} numberOfLines={1}>
-                  {t('offer.detail.views.featuredBadge')}
-                </Text>
-                <Star size={10} color="#000000" fill="#000000" strokeWidth={0} />
-              </View>
-            ) : canManageFeatureBadge ? (
-              <Pressable
-                onPress={handleFeatureBadgePress}
-                disabled={promotingFeatured}
-                style={({ pressed }) => [
-                  styles.featuredBadge,
-                  styles.featuredBadgeInactive,
-                  isDark && {
-                    backgroundColor: 'rgba(142,142,147,0.18)',
-                    borderColor: 'rgba(235,235,245,0.18)',
-                  },
-                  (pressed || promotingFeatured) && { opacity: 0.72 },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={t('offer.detail.views.featureCta')}
-              >
-                <Star
-                  size={10}
-                  color={isDark ? 'rgba(235,235,245,0.45)' : '#8E8E93'}
-                  fill="transparent"
-                  strokeWidth={2}
-                />
-                <Text
-                  style={[
-                    styles.featuredBadgeText,
-                    styles.featuredBadgeTextInactive,
-                    isDark && { color: 'rgba(235,235,245,0.45)' },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {promotingFeatured
-                    ? t('profile.myOffers.promote.working')
-                    : t('offer.detail.views.featureCta')}
-                </Text>
-                <Star
-                  size={10}
-                  color={isDark ? 'rgba(235,235,245,0.45)' : '#8E8E93'}
-                  fill="transparent"
-                  strokeWidth={2}
-                />
-              </Pressable>
-            ) : null}
-            {isLegalSafeVerified ? (
-              <View style={styles.topMetaCenterBadge}>
-                <LegalVerifiedShieldBadge isDark={isDark} compact />
-              </View>
-            ) : (
-              <View style={styles.topMetaCenterSpacer} />
-            )}
-            {isNewOfferListing ? (
-              <Animated.View
-                style={[
-                  styles.newOfferBadge,
-                  {
-                    backgroundColor: isDark ? 'rgba(59,130,246,0.22)' : 'rgba(59,130,246,0.14)',
-                    borderColor: isDark ? 'rgba(96,165,250,0.65)' : 'rgba(37,99,235,0.45)',
-                  },
-                  newOfferBadgeAnimatedStyle,
-                ]}
-              >
-                <Text style={[styles.newOfferBadgeText, { color: isDark ? '#93C5FD' : '#1D4ED8' }]} numberOfLines={1}>
-                  {t('offer.detail.views.newOfferBadge')}
-                </Text>
-              </Animated.View>
-            ) : null}
-          </View>
-          
+          <OfferDetailMetaBadgesSection
+            isDark={isDark}
+            viewsCountLabel={viewsCountLabel}
+            isFeatured={showFeaturedMetaBadge}
+            showFeatureCta={showFeatureMetaCta}
+            featureCtaBusy={promotingFeatured}
+            isNewListing={showNewOfferMetaBadge}
+            newOfferBadgeAnimatedStyle={newOfferBadgeAnimatedStyle}
+            shieldVerified={forceAllMetaBadges ? true : isLegalSafeVerified}
+            showShieldTapHint={!forceAllMetaBadges && canTapLegalShield}
+            onShieldPress={
+              !forceAllMetaBadges && canTapLegalShield
+                ? () => {
+                    Haptics.selectionAsync();
+                    setLegalVerifyOpenTrigger((n) => n + 1);
+                  }
+                : undefined
+            }
+            onFeaturePress={handleFeatureBadgePress}
+          />
+
           {isSamplePreview ? (
             <View
               style={[
@@ -1846,7 +1787,7 @@ export default function OfferDetail({ route, navigation }: any) {
             />
           ) : null}
 
-          {!isLegalSafeVerified && isOwner && Number(offer?.id) > 0 && isPolandOffer ? (
+          {canTapLegalShield ? (
             <View style={styles.legalVerificationBlock}>
               <OwnerLegalVerificationCard
                 offerId={Number(offer.id)}
@@ -1855,6 +1796,8 @@ export default function OfferDetail({ route, navigation }: any) {
                 initialLandRegistryNumber={offer?.landRegistryNumber || null}
                 initialApartmentNumber={offer?.apartmentNumber || null}
                 onStatusChanged={handleOwnerLegalStatusChanged}
+                hideInlineCard
+                openTrigger={legalVerifyOpenTrigger}
               />
             </View>
           ) : null}
@@ -2184,13 +2127,6 @@ export default function OfferDetail({ route, navigation }: any) {
             </View>
           ) : null}
 
-          {offer?.id && intelligenceHydrated && intelligenceEnabled ? (
-            <View style={styles.discoveryWhisperStack}>
-              <DiscoveryVisitHint navigation={navigation} offerId={offer.id} isDark={isDark} />
-              <DiscoveryContactWhisper navigation={navigation} beforeContact isDark={isDark} />
-            </View>
-          ) : null}
-
           {isSamplePreview ? (
             <Text style={styles.offerIdText}>{t('addOffer.step5.proSession.examples.previewOfferId')}</Text>
           ) : (
@@ -2373,8 +2309,8 @@ export default function OfferDetail({ route, navigation }: any) {
       >
         <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 16) + 12 }, Platform.OS === 'android' && { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }, isDark && { backgroundColor: Platform.OS === 'android' ? '#0a0a0a' : 'rgba(10,10,10,0.65)', borderTopColor: 'rgba(255,255,255,0.1)' }]}>
           {/*
-            Właściciel: cena + OKAZJA/czynsz w jednym ciągu | same ROI (bez wizytówki).
-            Kupujący: cena + wizytówka / prowizja.
+            Cena + ROI w jednym wierszu (właściciel i kupujący).
+            Kupujący dodatkowo: wizytówka / prowizja pod spodem.
           */}
           {isOwner ? (
             <View style={styles.bottomBarTopRow}>
@@ -2407,22 +2343,6 @@ export default function OfferDetail({ route, navigation }: any) {
                 ) : null}
                 {(marketDiffPercent !== null || hasAdminFee) ? (
                   <View style={styles.ownerStatusFeeRow}>
-                    {marketDiffPercent !== null ? (
-                      <View
-                        style={[
-                          styles.marketStatusPill,
-                          { backgroundColor: marketStatus.bg, borderColor: marketStatus.color },
-                        ]}
-                      >
-                        <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
-                        <Text
-                          style={[styles.marketStatusPillText, { color: marketStatus.color }]}
-                          numberOfLines={1}
-                        >
-                          {marketStatus.label}
-                        </Text>
-                      </View>
-                    ) : null}
                     {hasAdminFee ? (
                       <View
                         style={[
@@ -2441,6 +2361,22 @@ export default function OfferDetail({ route, navigation }: any) {
                           numberOfLines={1}
                         >
                           {t('offer.detail.adminFeePill', { amount: adminFeeLabel })}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {marketDiffPercent !== null ? (
+                      <View
+                        style={[
+                          styles.marketStatusPill,
+                          { backgroundColor: marketStatus.bg, borderColor: marketStatus.color },
+                        ]}
+                      >
+                        <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
+                        <Text
+                          style={[styles.marketStatusPillText, { color: marketStatus.color }]}
+                          numberOfLines={1}
+                        >
+                          {marketStatus.label}
                         </Text>
                       </View>
                     ) : null}
@@ -2472,72 +2408,99 @@ export default function OfferDetail({ route, navigation }: any) {
             </View>
           ) : (
             <>
-              <View style={styles.bottomPriceStack}>
-                <Text style={styles.bottomBarPriceLabel}>{t('offer.detail.labels.offerPrice')}</Text>
-                {priceDiscount.isDiscounted && listedPriceLabel ? (
-                  <OfferDiscountPriceBlock
-                    discountPercent={priceDiscount.discountPercent}
-                    listedPriceLabel={listedPriceLabel}
-                    isDark={isDark}
-                  />
-                ) : null}
-                <Text
-                  style={[styles.bottomBarPrice, isDark && { color: '#ffffff' }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.8}
-                >
-                  {displayOffer.price}
-                </Text>
-                {pricePerSqmLabel ? (
-                  <Text style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
-                    {pricePerSqmLabel}
-                  </Text>
-                ) : null}
-                <View style={styles.priceMetaRow}>
+              <View style={styles.bottomBarTopRow}>
+                <View style={styles.bottomBarPriceColumn}>
+                  <Text style={styles.bottomBarPriceLabel}>{t('offer.detail.labels.offerPrice')}</Text>
+                  {priceDiscount.isDiscounted && listedPriceLabel ? (
+                    <OfferDiscountPriceBlock
+                      discountPercent={priceDiscount.discountPercent}
+                      listedPriceLabel={listedPriceLabel}
+                      isDark={isDark}
+                    />
+                  ) : null}
+                  <View style={styles.viewerPriceStatusRow}>
+                    <Text
+                      style={[styles.bottomBarPrice, styles.viewerPriceFlex, isDark && { color: '#ffffff' }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.72}
+                    >
+                      {displayOffer.price}
+                    </Text>
+                    {hasAdminFee ? (
+                      <View
+                        style={[
+                          styles.adminFeeMiniPill,
+                          {
+                            backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(52,199,89,0.12)',
+                            borderColor: isDark ? 'rgba(52,199,89,0.42)' : 'rgba(52,199,89,0.38)',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.adminFeeMiniPillText,
+                            { color: isDark ? '#34d399' : '#15803d' },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {t('offer.detail.adminFeePill', { amount: adminFeeLabel })}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  {pricePerSqmLabel ? (
+                    <Text style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
+                      {pricePerSqmLabel}
+                    </Text>
+                  ) : null}
                   {displayOffer.priceSecondary ? (
                     <Text style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
                       {displayOffer.priceSecondary}
                     </Text>
                   ) : null}
                   {marketDiffPercent !== null ? (
-                    <View
-                      style={[
-                        styles.marketStatusPill,
-                        { backgroundColor: marketStatus.bg, borderColor: marketStatus.color },
-                      ]}
-                    >
-                      <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
-                      <Text
-                        style={[styles.marketStatusPillText, { color: marketStatus.color }]}
-                        numberOfLines={1}
-                      >
-                        {marketStatus.label}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {hasAdminFee ? (
-                    <View
-                      style={[
-                        styles.adminFeeMiniPill,
-                        {
-                          backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(52,199,89,0.12)',
-                          borderColor: isDark ? 'rgba(52,199,89,0.42)' : 'rgba(52,199,89,0.38)',
-                        },
-                      ]}
-                    >
-                      <Text
+                    <View style={styles.viewerStatusFeeRow}>
+                      <View
                         style={[
-                          styles.adminFeeMiniPillText,
-                          { color: isDark ? '#34d399' : '#15803d' },
+                          styles.marketStatusPill,
+                          { backgroundColor: marketStatus.bg, borderColor: marketStatus.color },
                         ]}
-                        numberOfLines={1}
                       >
-                        {t('offer.detail.adminFeePill', { amount: adminFeeLabel })}
-                      </Text>
+                        <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
+                        <Text
+                          style={[styles.marketStatusPillText, { color: marketStatus.color }]}
+                          numberOfLines={1}
+                        >
+                          {marketStatus.label}
+                        </Text>
+                      </View>
                     </View>
                   ) : null}
                 </View>
+                {estimatedRoi !== null ? (
+                  <View
+                    style={[
+                      styles.roiPillCard,
+                      styles.roiPillCardCompact,
+                      styles.viewerRoiAlign,
+                      {
+                        backgroundColor: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.10)',
+                        borderColor: '#3b82f6',
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.roiPillLabel, styles.roiPillLabelCompact]} numberOfLines={1}>
+                      {t('offer.detail.roi.label')}
+                    </Text>
+                    <Text style={[styles.roiPillValue, styles.roiPillValueCompact]} numberOfLines={1}>
+                      {estimatedRoi}%
+                    </Text>
+                    <Text style={[styles.roiPillSub, styles.roiPillSubCompact]} numberOfLines={1}>
+                      {t('offer.detail.roi.sub')}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
 
               <View
@@ -3371,95 +3334,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   price: { fontSize: 34, fontWeight: '800', color: '#1d1d1f', letterSpacing: -1, marginBottom: 8 },
-  topMetaBadgesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'nowrap',
-    gap: 6,
-    marginBottom: 10,
-  },
-  topMetaCenterBadge: {
-    flexGrow: 1,
-    flexShrink: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 0,
-  },
-  topMetaCenterSpacer: {
-    flexGrow: 1,
-    flexShrink: 1,
-    minWidth: 4,
-  },
-  adminFeeBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(52,199,89,0.12)',
-    borderColor: 'rgba(52,199,89,0.35)',
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  adminFeeBadgeText: { fontSize: 12, fontWeight: '800', color: '#1d1d1f', letterSpacing: 0.2 },
-  viewsBadge: {
-    flexShrink: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.12)',
-    backgroundColor: '#f3f4f6',
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    maxWidth: '42%',
-  },
-  viewsBadgeText: { color: '#374151', fontSize: 11, fontWeight: '700', letterSpacing: 0.1 },
-  featuredBadge: {
-    flexShrink: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    backgroundColor: '#FBBF24',
-    borderWidth: 1,
-    borderColor: 'rgba(180, 83, 9, 0.28)',
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.28,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  featuredBadgeInactive: {
-    backgroundColor: 'rgba(142,142,147,0.14)',
-    borderColor: 'rgba(60,60,67,0.18)',
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
-  },
-  featuredBadgeText: {
-    color: '#000000',
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  featuredBadgeTextInactive: {
-    color: '#8E8E93',
-  },
-  newOfferBadge: {
-    flexShrink: 0,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
-  newOfferBadgeText: {
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 0.55,
-  },
   title: { fontSize: 24, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5, marginBottom: 6 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
   locationText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#6b7280', letterSpacing: -0.1 },
@@ -3723,13 +3597,14 @@ const styles = StyleSheet.create({
     shadowRadius: 22,
     overflow: 'hidden',
   },
-  bottomBarTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12 },
-  bottomBarPriceColumn: { flex: 1, minWidth: 0 },
-  bottomPriceStack: {
-    width: '100%',
+  bottomBarTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 10,
-    gap: 2,
+    gap: 10,
   },
+  bottomBarPriceColumn: { flex: 1, minWidth: 0 },
   bottomBarPriceLabel: { fontSize: 11, fontWeight: '700', color: '#86868b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
   bottomBarPrice: { fontSize: 22, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5 },
   bottomBarPriceSqm: { fontSize: 12, fontWeight: '600', color: '#6b7280', letterSpacing: 0.1 },
@@ -3745,7 +3620,27 @@ const styles = StyleSheet.create({
     marginTop: 6,
     width: '100%',
   },
-  /** Właściciel: OKAZJA + czynsz zawsze w jednej linii (bez zawijania). */
+  /** Kupujący: cena + czynsz w jednej linii. */
+  viewerPriceStatusRow: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+  },
+  viewerPriceFlex: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  /** Kupujący: OKAZJA / LUKSUSOWA pod euro. */
+  viewerStatusFeeRow: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 6,
+  },
+  /** Właściciel: czynsz + OKAZJA w jednej linii. */
   ownerStatusFeeRow: {
     flexDirection: 'row',
     flexWrap: 'nowrap',
@@ -3756,6 +3651,11 @@ const styles = StyleSheet.create({
   ownerRoiOnly: {
     alignSelf: 'flex-start',
     marginTop: 2,
+  },
+  viewerRoiAlign: {
+    alignSelf: 'center',
+    marginTop: 0,
+    flexShrink: 0,
   },
   marketStatusPill: {
     flexDirection: 'row',
@@ -3916,6 +3816,17 @@ const styles = StyleSheet.create({
     elevation: 2,
     minWidth: 110,
   },
+  roiPillCardCompact: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1.2,
+    minWidth: 0,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
   roiPillLabel: {
     fontSize: 9,
     fontWeight: '900',
@@ -3924,12 +3835,22 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 1,
   },
+  roiPillLabelCompact: {
+    fontSize: 7,
+    letterSpacing: 0.4,
+    marginBottom: 0,
+  },
   roiPillValue: {
     fontSize: 20,
     fontWeight: '900',
     letterSpacing: -0.4,
     color: '#3b82f6',
     lineHeight: 22,
+  },
+  roiPillValueCompact: {
+    fontSize: 14,
+    lineHeight: 16,
+    letterSpacing: -0.2,
   },
   roiPillSub: {
     fontSize: 9,
@@ -3939,6 +3860,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: 'uppercase',
     marginTop: 1,
+  },
+  roiPillSubCompact: {
+    fontSize: 6.5,
+    letterSpacing: 0.3,
+    marginTop: 0,
+    opacity: 0.72,
   },
   roiPillCardBelowIdentity: {
     marginTop: 10,

@@ -49,6 +49,10 @@ export const contact = {
     threadFull: 'No space left in this conversation (100 MB limit).',
     pickFailed: 'Could not pick a file.',
     sendFailed: 'Could not send the message with attachment.',
+    download: 'Download',
+    downloadFailedTitle: 'Download',
+    downloadFailedMessage: 'Could not download the attachment.',
+    downloadUnavailable: 'Sharing files is not available on this device.',
   },
   floating: {
     title: 'Active chats',

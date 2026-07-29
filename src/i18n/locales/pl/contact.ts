@@ -49,6 +49,10 @@ export const contact = {
     threadFull: 'Brak miejsca w tej rozmowie (limit 100 MB).',
     pickFailed: 'Nie udało się wybrać pliku.',
     sendFailed: 'Nie udało się wysłać wiadomości z załącznikiem.',
+    download: 'Pobierz',
+    downloadFailedTitle: 'Pobieranie',
+    downloadFailedMessage: 'Nie udało się pobrać załącznika.',
+    downloadUnavailable: 'Udostępnianie plików jest niedostępne na tym urządzeniu.',
   },
   floating: {
     title: 'Aktywne czaty',

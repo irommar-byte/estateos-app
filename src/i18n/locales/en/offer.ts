@@ -224,6 +224,7 @@ export const offer = {
     views: {
       newOffer: 'New listing',
       newOfferBadge: 'NEW LISTING',
+      newOfferBadgeShort: 'NEW',
       featuredBadge: 'Featured',
       featureCta: 'Feature',
       featureTopUp: 'Top up',
@@ -231,13 +232,20 @@ export const offer = {
       featuredCelebrationSubtitle: 'Your offer is glowing in the gallery for the next days',
       featuredCelebrationDays: '7 days',
       count: '{{count}} views',
+      countCompact: '{{count}}',
       countZero: '0 views',
+      countZeroCompact: '0',
     },
     sheetSwipeHint: 'Swipe up for more details',
     sheetSwipeHintShort: 'More details',
     legalVerified: {
-      label: 'verified',
-      a11y: 'Land registry verified by EstateOS',
+      label: 'SAFE PROPERTY',
+      sublabel: 'EstateOS™ Quality Shield',
+      a11y: 'Safe property — land registry verified by EstateOS Quality Shield',
+      unverifiedLabel: 'property not verified',
+      tapToVerify: 'tap to verify',
+      unverifiedA11y: 'Property not verified',
+      unverifiedA11yTap: 'Property not verified — tap to verify',
     },
     stats: {
       rooms: '{{count}} rooms',
@@ -297,7 +305,7 @@ export const offer = {
       bodyShortZero: 'No commission - 0%',
       bodyShortPaid: 'In price: {{percent}} ≈ {{amount}} to agent (gross, no extras).',
     },
-    adminFeePill: '+ {{amount}} fees',
+    adminFeePill: '+ {{amount}} / month',
     roi: {
       label: 'EstateOS™ ROI',
       sub: 'annual yield',
@@ -497,7 +505,7 @@ export const offer = {
       sectionTitle: 'PRICE AND COSTS',
       offerPrice: 'Listing price ({{currency}})',
       adminFee: 'Admin fee',
-      adminFeeSuffix: 'PLN / mo',
+      adminFeeSuffix: '{{currency}} / mo',
       footer: 'Changing the price alone does not hide the listing from Radar.',
     },
     commission: {
@@ -570,8 +578,7 @@ export const offer = {
       exactOnSuffix: ' + exact pin.',
       exactOffPrefix: 'Off: buyers see ',
       exactOffSuffix: ' (no number) + approximate area.',
-      footer:
-        'This setting affects only the public listing card. In your dashboard you always see the full address and precise pin — buyers only see what you set above.',
+      footer: 'Affects only the public listing — you always see the full address.',
       previewEyebrow: 'WHAT BUYERS SEE',
       badgeFull: 'FULL ADDRESS',
       badgeStreet: 'STREET ONLY',

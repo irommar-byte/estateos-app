@@ -1,5 +1,14 @@
-import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { useRef } from 'react';
+import {
+  InteractionManager,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { BlurView } from 'expo-blur';
 import Animated, { FadeIn, FadeOut, ZoomIn } from 'react-native-reanimated';
 import { Camera, FileText, Image as ImageIcon } from 'lucide-react-native';
@@ -26,6 +35,8 @@ type Props = {
 
 const ROW_H = 48;
 const MENU_W = 248;
+/** iOS: native picker must wait until Modal fully tears down or the app freezes. */
+const PICKER_DELAY_MS = Platform.OS === 'ios' ? 420 : 180;
 
 export default function ContactAttachMenuPopover({
   visible,
@@ -39,17 +50,33 @@ export default function ContactAttachMenuPopover({
 }: Props) {
   const { colors } = getChatTheme(isDark);
   const { width: screenW } = useWindowDimensions();
+  const launchingRef = useRef(false);
+  /** Keep last anchor so Modal can finish dismissing without jumping to null layout. */
+  const lastAnchorRef = useRef<AttachMenuAnchor | null>(anchor);
+  if (anchor) lastAnchorRef.current = anchor;
+  const layoutAnchor = anchor || lastAnchorRef.current;
 
-  if (!visible || !anchor) return null;
+  if (!visible && !layoutAnchor) return null;
+  if (!layoutAnchor) return null;
 
   const menuHeight = ROW_H * 3 + 14;
-  const left = Math.max(12, Math.min(anchor.x - 4, screenW - MENU_W - 12));
-  const top = Math.max(16, anchor.y - menuHeight - 10);
+  const left = Math.max(12, Math.min(layoutAnchor.x - 4, screenW - MENU_W - 12));
+  const top = Math.max(16, layoutAnchor.y - menuHeight - 10);
 
   const run = (fn: () => void) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (launchingRef.current) return;
+    launchingRef.current = true;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onDismiss();
-    requestAnimationFrame(fn);
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        try {
+          fn();
+        } finally {
+          launchingRef.current = false;
+        }
+      }, PICKER_DELAY_MS);
+    });
   };
 
   const rows = [
@@ -59,7 +86,7 @@ export default function ContactAttachMenuPopover({
   ] as const;
 
   return (
-    <Modal visible transparent animationType="none" onRequestClose={onDismiss}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
       <Pressable style={styles.backdrop} onPress={onDismiss}>
         <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={StyleSheet.absoluteFill}>
           <View style={[styles.dim, { backgroundColor: isDark ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.12)' }]} />
@@ -74,7 +101,6 @@ export default function ContactAttachMenuPopover({
               top,
               left,
               width: MENU_W,
-              transformOrigin: 'bottom left',
             },
           ]}
         >
@@ -114,10 +140,10 @@ export default function ContactAttachMenuPopover({
           style={[
             styles.anchorRing,
             {
-              top: anchor.y - 3,
-              left: anchor.x - 3,
-              width: anchor.width + 6,
-              height: anchor.height + 6,
+              top: layoutAnchor.y - 3,
+              left: layoutAnchor.x - 3,
+              width: layoutAnchor.width + 6,
+              height: layoutAnchor.height + 6,
               borderColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.1)',
             },
           ]}

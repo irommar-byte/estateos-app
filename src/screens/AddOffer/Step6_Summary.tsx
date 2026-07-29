@@ -58,8 +58,9 @@ import { useI18n } from '../../i18n';
 import { archiveOwnOfferViaMobileAdmin } from '../../utils/mobileOfferArchive';
 import { buildOfferPricePayload } from '../../money/offerPrice';
 import { getEurPlnRate } from '../../money/fxRateService';
-import { normalizeListingCurrency } from '../../money/convert';
+import { listingAmountFromPln, normalizeListingCurrency } from '../../money/convert';
 import { formatAmountWithCurrency, formatApproxLine } from '../../money/format';
+import { adminFeePlnFromInput, formatAdminFeeDisplay } from '../../money/adminFee';
 import {
   computeAgentCommissionAmount,
   formatPercentLabel,
@@ -282,12 +283,16 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const locationFlag = flagEmojiFromIso2(locationPresentation.countryIso);
   const mapExact = draft.isExactLocation !== false;
   const [previewFxRate, setPreviewFxRate] = useState(4.32);
+  const [previewFxDate, setPreviewFxDate] = useState('');
   const listingCurrency = normalizeListingCurrency(draft.priceCurrency);
 
   useEffect(() => {
     let cancelled = false;
     void getEurPlnRate().then((snap) => {
-      if (!cancelled) setPreviewFxRate(snap.rate);
+      if (!cancelled) {
+        setPreviewFxRate(snap.rate);
+        setPreviewFxDate(snap.date || '');
+      }
     });
     return () => {
       cancelled = true;
@@ -593,9 +598,9 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       priceCurrency: pricePayload.priceCurrency,
       pricePln: pricePayload.pricePln,
       adminFee:
-        parseRentAdditionalFeeForApi(
-          draft.transactionType === 'RENT' ? draft.adminFee : draft.adminFee || draft.rent,
-        ),
+        draft.transactionType === 'RENT'
+          ? parseRentAdditionalFeeForApi(draft.adminFee)
+          : adminFeePlnFromInput(draft.adminFee || draft.rent, listingCurrency, fxSnap.rate),
       deposit: draft.deposit || null,
       plotArea: resolvePlotAreaForSubmit(draft),
       rooms: draft.rooms || '0',        
@@ -1078,6 +1083,28 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const yearLabel = String(draft.yearBuilt || draft.buildYear || '').trim();
   const depositNum = parseLocaleNumber(draft.deposit);
   const adminFeeValue = parseLocaleNumber(draft.adminFee || draft.rent);
+  const adminFeeSummaryLabel = (() => {
+    if (!(adminFeeValue > 0)) return '';
+    if (draft.transactionType === 'RENT') {
+      // Picker trzyma kwoty w PLN; na podsumowaniu pokazujemy w walucie oferty.
+      return formatAdminFeeDisplay({
+        adminFeePln: adminFeeValue,
+        listingCurrency,
+        displayPreference: 'LISTING',
+        rate: previewFxRate,
+      });
+    }
+    // Sprzedaż: draft jest już w walucie oferty.
+    return `${Math.round(adminFeeValue).toLocaleString('pl-PL')} ${listingCurrency}`;
+  })();
+  const adminFeeSummaryAmountOnly = (() => {
+    if (!(adminFeeValue > 0)) return '';
+    if (draft.transactionType === 'RENT') {
+      const shown = listingAmountFromPln(adminFeeValue, listingCurrency, previewFxRate);
+      return shown > 0 ? Math.round(shown).toLocaleString('pl-PL') : '';
+    }
+    return Math.round(adminFeeValue).toLocaleString('pl-PL');
+  })();
   const isAgentSummary = isAgentCommissionAccount(user);
   const summaryCommissionPercent = parseAgentCommissionPercent(draft.agentCommissionPercent);
   const summaryIsZeroCommission = isZeroCommissionPercent(summaryCommissionPercent);
@@ -1182,7 +1209,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
                 </Text>
                 {priceNum > 0 ? (
                   <Text style={[styles.pricePerSqmText, { color: colors.subtitle, marginTop: 6 }]}>
-                    {formatApproxLine(priceNum, listingCurrency, previewFxRate)}
+                    {formatApproxLine(priceNum, listingCurrency, previewFxRate, previewFxDate)}
                   </Text>
                 ) : null}
                 {draft.transactionType === 'RENT' ? (
@@ -1201,13 +1228,17 @@ export default function Step6_Summary({ theme }: { theme: any }) {
                 {draft.transactionType === 'RENT' && adminFeeValue > 0 ? (
                   <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>
                     {t('addOffer.step6.rentAdditionalFeesLabel', {
-                      amount: Math.round(adminFeeValue).toLocaleString('pl-PL'),
+                      amount: adminFeeSummaryAmountOnly,
+                      currency: listingCurrency,
                     })}
                   </Text>
                 ) : null}
                 {draft.transactionType === 'SALE' && adminFeeValue > 0 ? (
                   <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>
-                    {t('addOffer.step6.adminFeeLabel', { amount: Math.round(adminFeeValue).toLocaleString('pl-PL') })}
+                    {t('addOffer.step6.adminFeeLabel', {
+                      amount: adminFeeSummaryAmountOnly,
+                      currency: listingCurrency,
+                    })}
                   </Text>
                 ) : null}
                 {showSummaryCommission ? (
@@ -1310,7 +1341,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               />
               <InfoBadge label={t('addOffer.step6.badges.floor')} value={formatFloorSummary(draft.floor, t)} icon="layers-outline" />
               <InfoBadge label={t('addOffer.step6.badges.yearBuilt')} value={yearLabel} icon="calendar-outline" />
-              <InfoBadge label={t('addOffer.step6.badges.adminFee')} value={adminFeeValue > 0 ? `${Math.round(adminFeeValue).toLocaleString('pl-PL')} PLN` : ''} icon="wallet-outline" />
+              <InfoBadge label={t('addOffer.step6.badges.adminFee')} value={adminFeeSummaryLabel} icon="wallet-outline" />
               <InfoBadge label={t('addOffer.step6.badges.heating')} value={heatingSummaryLabel} icon="flame-outline" />
               <InfoBadge label={t('addOffer.step6.badges.furnished')} value={draft.isFurnished ? t('addOffer.common.yes') : t('addOffer.common.no')} icon="bed-outline" />
               <InfoBadge label={t('addOffer.step6.badges.totalFloors')} value={draft.totalFloors ? String(draft.totalFloors) : ''} icon="albums-outline" />

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Linking,
   Modal,
@@ -11,10 +12,11 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Audio, Video, ResizeMode } from 'expo-av';
-import { FileText, Music, Pause, Play, X } from 'lucide-react-native';
+import { Download, FileText, Music, Pause, Play, X } from 'lucide-react-native';
 import { getSafeWebView } from './safeWebView';
 import ContactPdfThumbnail from './ContactPdfThumbnail';
-import { openContactPdfPreview } from '../../utils/contactPdfThumbnail';
+import { resolveContactPdfPreviewUri } from '../../utils/contactPdfThumbnail';
+import { downloadContactAttachment } from '../../utils/contactAttachmentDownload';
 import {
   ContactAttachmentMeta,
   contactAttachmentKind,
@@ -27,19 +29,33 @@ type Props = {
   isMe: boolean;
   isDark?: boolean;
   compact?: boolean;
+  downloadLabels?: {
+    button?: string;
+    failedTitle?: string;
+    failedMessage?: string;
+    unavailable?: string;
+  };
 };
 
-function pdfPreviewUri(url: string) {
-  if (url.startsWith('file://') || url.startsWith('content://')) return url;
-  if (Platform.OS === 'ios') return url;
-  return `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(url)}`;
+function pdfBoxSize(compact: boolean) {
+  const width = compact ? 140 : 188;
+  const height = Math.round(width * 1.22);
+  return { width, height };
 }
 
-export default function ContactMessageAttachment({ attachment, isMe, isDark = true, compact = false }: Props) {
+export default function ContactMessageAttachment({
+  attachment,
+  isMe,
+  isDark = true,
+  compact = false,
+  downloadLabels,
+}: Props) {
   const { colors } = getChatTheme(isDark);
   const kind = contactAttachmentKind(attachment);
   const [playing, setPlaying] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [pdfModalUri, setPdfModalUri] = useState<string | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
 
   useEffect(() => {
@@ -53,6 +69,25 @@ export default function ContactMessageAttachment({ attachment, isMe, isDark = tr
       await Linking.openURL(attachment.url);
     } catch {
       Alert.alert('Błąd', 'Nie udało się otworzyć pliku.');
+    }
+  };
+
+  const handleDownload = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      await downloadContactAttachment({
+        url: attachment.url,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        labels: {
+          failedTitle: downloadLabels?.failedTitle,
+          failedMessage: downloadLabels?.failedMessage,
+          unavailable: downloadLabels?.unavailable,
+        },
+      });
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -85,19 +120,44 @@ export default function ContactMessageAttachment({ attachment, isMe, isDark = tr
 
   const metaColor = isMe ? 'rgba(0,0,0,0.55)' : colors.textMuted;
   const titleColor = isMe ? '#000' : colors.textBase;
-  const imageWidth = compact ? 120 : 240;
-  const imageHeight = compact ? 90 : 180;
-  const pdfHeight = compact ? 120 : 220;
+  const imageWidth = compact ? 128 : 248;
+  const imageHeight = compact ? 96 : 186;
+  const downloadBtnLabel = downloadLabels?.button || 'Pobierz';
+
+  const DownloadChip = ({ light = false }: { light?: boolean }) => (
+    <Pressable
+      onPress={() => void handleDownload()}
+      disabled={downloading}
+      hitSlop={8}
+      style={({ pressed }) => [
+        styles.downloadChip,
+        light
+          ? styles.downloadChipLight
+          : { backgroundColor: pressed ? 'rgba(52,199,89,0.28)' : 'rgba(52,199,89,0.16)' },
+        downloading && { opacity: 0.7 },
+      ]}
+    >
+      {downloading ? (
+        <ActivityIndicator size="small" color={light ? '#fff' : colors.primary} />
+      ) : (
+        <Download size={16} color={light ? '#fff' : colors.primary} strokeWidth={2.4} />
+      )}
+      <Text style={[styles.downloadChipText, { color: light ? '#fff' : colors.primary }]}>
+        {downloadBtnLabel}
+      </Text>
+    </Pressable>
+  );
 
   if (kind === 'image') {
     return (
       <>
-        <Pressable onPress={() => setPreviewOpen(true)} style={[styles.imageWrap, { maxWidth: imageWidth }]}>
+        <Pressable onPress={() => setPreviewOpen(true)} style={[styles.imageWrap, { width: imageWidth }]}>
           <Image
             source={{ uri: attachment.url }}
             style={{ width: imageWidth, height: imageHeight, backgroundColor: 'rgba(0,0,0,0.08)' }}
             contentFit="cover"
-            transition={200}
+            transition={160}
+            recyclingKey={attachment.url}
             autoplay
           />
           {!compact ? (
@@ -109,9 +169,12 @@ export default function ContactMessageAttachment({ attachment, isMe, isDark = tr
         </Pressable>
         <Modal visible={previewOpen} transparent animationType="fade" onRequestClose={() => setPreviewOpen(false)}>
           <View style={styles.modalBackdrop}>
-            <Pressable style={styles.modalClose} onPress={() => setPreviewOpen(false)}>
-              <X size={22} color="#fff" />
-            </Pressable>
+            <View style={styles.modalTopBar}>
+              <DownloadChip light />
+              <Pressable style={styles.modalClose} onPress={() => setPreviewOpen(false)} hitSlop={8}>
+                <X size={22} color="#fff" />
+              </Pressable>
+            </View>
             <Image source={{ uri: attachment.url }} style={styles.modalImage} contentFit="contain" autoplay />
           </View>
         </Modal>
@@ -119,12 +182,8 @@ export default function ContactMessageAttachment({ attachment, isMe, isDark = tr
     );
   }
 
-  const openPdf = async () => {
-    const opened = await openContactPdfPreview(attachment.url);
-    if (!opened) await openExternal();
-  };
-
   if (kind === 'pdf') {
+    const { width: pdfW, height: pdfH } = pdfBoxSize(compact);
     const WebView = getSafeWebView();
     const pdfCard = (
       <View style={[styles.pdfFooter, isMe ? styles.fileCardMe : styles.fileCardThem]}>
@@ -140,68 +199,93 @@ export default function ContactMessageAttachment({ attachment, isMe, isDark = tr
       </View>
     );
 
-    if (WebView) {
-      return (
-        <>
-          <Pressable onPress={() => setPreviewOpen(true)} style={[styles.pdfWrap, { maxWidth: compact ? 160 : 260 }]}>
-            <View style={[styles.pdfPreviewBox, { height: pdfHeight }]}>
-              <WebView
-                source={{ uri: pdfPreviewUri(attachment.url) }}
-                style={styles.pdfWebView}
-                scrollEnabled={false}
-                originWhitelist={['*']}
-                startInLoadingState
-                scalesPageToFit
-              />
-            </View>
-            {pdfCard}
-          </Pressable>
-          <Modal visible={previewOpen} animationType="slide" onRequestClose={() => setPreviewOpen(false)}>
-            <View style={[styles.fullPdfModal, { backgroundColor: colors.background }]}>
-              <View style={styles.fullPdfHeader}>
-                <Text style={[styles.fileName, { color: colors.textBase, flex: 1 }]} numberOfLines={1}>
-                  {attachment.name}
-                </Text>
-                <Pressable onPress={() => setPreviewOpen(false)} hitSlop={8}>
-                  <X size={22} color={colors.textBase} />
-                </Pressable>
-              </View>
-              <WebView source={{ uri: pdfPreviewUri(attachment.url) }} style={styles.fullPdfWebView} originWhitelist={['*']} />
-            </View>
-          </Modal>
-        </>
-      );
-    }
+    const openPdf = () => {
+      setPreviewOpen(true);
+      void resolveContactPdfPreviewUri(attachment.url).then(setPdfModalUri);
+    };
 
     return (
-      <Pressable
-        onPress={() => void openPdf()}
-        style={[styles.pdfWrap, { maxWidth: compact ? 160 : 260 }]}
-      >
-        <ContactPdfThumbnail
-          url={attachment.url}
-          width={compact ? 160 : 240}
-          height={pdfHeight}
-        />
-        {pdfCard}
-      </Pressable>
+      <>
+        <Pressable onPress={openPdf} style={[styles.pdfWrap, { width: pdfW }]}>
+          <ContactPdfThumbnail
+            url={attachment.url}
+            width={pdfW}
+            height={pdfH}
+            fileName={attachment.name}
+          />
+          {pdfCard}
+        </Pressable>
+        <Modal visible={previewOpen} animationType="slide" onRequestClose={() => setPreviewOpen(false)}>
+          <View style={[styles.fullPdfModal, { backgroundColor: colors.background }]}>
+            <View style={styles.fullPdfHeader}>
+              <Text style={[styles.fileName, { color: colors.textBase, flex: 1 }]} numberOfLines={1}>
+                {attachment.name}
+              </Text>
+              <DownloadChip />
+              <Pressable onPress={() => setPreviewOpen(false)} hitSlop={8} style={{ marginLeft: 4 }}>
+                <X size={22} color={colors.textBase} />
+              </Pressable>
+            </View>
+            {WebView && pdfModalUri ? (
+              <WebView
+                source={{ uri: pdfModalUri }}
+                style={styles.fullPdfWebView}
+                originWhitelist={['*']}
+                startInLoadingState
+                allowFileAccess
+                allowingReadAccessToURL={pdfModalUri.startsWith('file://') ? pdfModalUri : undefined}
+              />
+            ) : (
+              <View style={styles.pdfFallbackBody}>
+                <ActivityIndicator color={colors.primary} />
+                <Pressable onPress={() => void openExternal()} style={{ marginTop: 16 }}>
+                  <Text style={{ color: colors.primary, fontWeight: '600' }}>Otwórz zewnętrznie</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        </Modal>
+      </>
     );
   }
 
   if (kind === 'video') {
+    const w = compact ? 168 : 248;
+    const h = compact ? 112 : 168;
     return (
-      <View style={[styles.videoWrap, { maxWidth: compact ? 180 : 260 }]}>
+      <View style={[styles.videoWrap, { width: w }]}>
         <Video
           source={{ uri: attachment.url }}
-          style={{ width: compact ? 180 : 260, height: compact ? 120 : 180, backgroundColor: '#000' }}
+          style={{ width: w, height: h, backgroundColor: '#000' }}
           useNativeControls
           resizeMode={ResizeMode.CONTAIN}
         />
-        {!compact ? (
-          <Text style={[styles.imageCaption, { color: metaColor }]} numberOfLines={1}>
-            {attachment.name}
-          </Text>
-        ) : null}
+        <View style={styles.videoFooter}>
+          {!compact ? (
+            <Text style={[styles.imageCaption, { color: metaColor, flex: 1 }]} numberOfLines={1}>
+              {attachment.name}
+              {attachment.size > 0 ? ` · ${formatContactBytes(attachment.size)}` : ''}
+            </Text>
+          ) : <View style={{ flex: 1 }} />}
+          <Pressable
+            onPress={() => void handleDownload()}
+            disabled={downloading}
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.downloadChip,
+              { backgroundColor: pressed ? 'rgba(52,199,89,0.28)' : 'rgba(52,199,89,0.16)', paddingVertical: 6 },
+            ]}
+          >
+            {downloading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Download size={14} color={colors.primary} strokeWidth={2.4} />
+            )}
+            <Text style={[styles.downloadChipText, { color: colors.primary, fontSize: 12 }]}>
+              {downloadBtnLabel}
+            </Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -221,6 +305,17 @@ export default function ContactMessageAttachment({ attachment, isMe, isDark = tr
           </Text>
         </View>
         <Pressable
+          onPress={() => void handleDownload()}
+          disabled={downloading}
+          style={[styles.playBtn, { backgroundColor: isMe ? 'rgba(0,0,0,0.12)' : 'rgba(52,199,89,0.2)', marginRight: 6 }]}
+        >
+          {downloading ? (
+            <ActivityIndicator size="small" color={isMe ? '#000' : colors.primary} />
+          ) : (
+            <Download size={14} color={isMe ? '#000' : colors.primary} />
+          )}
+        </Pressable>
+        <Pressable
           onPress={() => void toggleAudio()}
           style={[styles.playBtn, { backgroundColor: isMe ? 'rgba(0,0,0,0.15)' : colors.primary }]}
         >
@@ -231,22 +326,32 @@ export default function ContactMessageAttachment({ attachment, isMe, isDark = tr
   }
 
   return (
-    <Pressable
-      onPress={() => void openExternal()}
-      style={[styles.fileCard, isMe ? styles.fileCardMe : styles.fileCardThem, compact && styles.fileCardCompact]}
-    >
-      <View style={[styles.iconBox, { backgroundColor: isMe ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.08)' }]}>
-        <FileText size={16} color={isMe ? '#000' : colors.textBase} />
-      </View>
-      <View style={styles.fileInfo}>
-        <Text style={[styles.fileName, { color: titleColor }]} numberOfLines={1}>
-          {attachment.name}
-        </Text>
-        <Text style={[styles.fileMeta, { color: metaColor }]}>
-          Plik{attachment.size > 0 ? ` · ${formatContactBytes(attachment.size)}` : ''}
-        </Text>
-      </View>
-    </Pressable>
+    <View style={[styles.fileCard, isMe ? styles.fileCardMe : styles.fileCardThem, compact && styles.fileCardCompact]}>
+      <Pressable onPress={() => void openExternal()} style={styles.fileMainPress}>
+        <View style={[styles.iconBox, { backgroundColor: isMe ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.08)' }]}>
+          <FileText size={16} color={isMe ? '#000' : colors.textBase} />
+        </View>
+        <View style={styles.fileInfo}>
+          <Text style={[styles.fileName, { color: titleColor }]} numberOfLines={1}>
+            {attachment.name}
+          </Text>
+          <Text style={[styles.fileMeta, { color: metaColor }]}>
+            Plik{attachment.size > 0 ? ` · ${formatContactBytes(attachment.size)}` : ''}
+          </Text>
+        </View>
+      </Pressable>
+      <Pressable
+        onPress={() => void handleDownload()}
+        disabled={downloading}
+        style={[styles.playBtn, { backgroundColor: isMe ? 'rgba(0,0,0,0.12)' : 'rgba(52,199,89,0.2)' }]}
+      >
+        {downloading ? (
+          <ActivityIndicator size="small" color={isMe ? '#000' : colors.primary} />
+        ) : (
+          <Download size={14} color={isMe ? '#000' : colors.primary} />
+        )}
+      </Pressable>
+    </View>
   );
 }
 
@@ -266,15 +371,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     borderRadius: 16,
     overflow: 'hidden',
-  },
-  pdfPreviewBox: {
-    borderRadius: 14,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-  },
-  pdfWebView: {
-    flex: 1,
-    backgroundColor: 'transparent',
+    alignSelf: 'flex-start',
   },
   pdfFooter: {
     flexDirection: 'row',
@@ -289,6 +386,14 @@ const styles = StyleSheet.create({
     marginTop: 6,
     borderRadius: 16,
     overflow: 'hidden',
+    alignSelf: 'flex-start',
+  },
+  videoFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 4,
+    paddingHorizontal: 2,
   },
   fileCard: {
     marginTop: 6,
@@ -310,6 +415,13 @@ const styles = StyleSheet.create({
   },
   fileCardThem: {
     backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  fileMainPress: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
   },
   iconBox: {
     width: 36,
@@ -344,11 +456,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
   },
-  modalClose: {
+  modalTopBar: {
     position: 'absolute',
-    top: 56,
-    right: 20,
+    top: 52,
+    left: 16,
+    right: 16,
     zIndex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalClose: {
     padding: 8,
   },
   modalImage: {
@@ -357,16 +475,37 @@ const styles = StyleSheet.create({
   },
   fullPdfModal: {
     flex: 1,
-    paddingTop: 56,
+    paddingTop: Platform.OS === 'ios' ? 56 : 40,
   },
   fullPdfHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingBottom: 10,
   },
   fullPdfWebView: {
     flex: 1,
+    backgroundColor: '#111',
+  },
+  pdfFallbackBody: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  downloadChipLight: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  downloadChipText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

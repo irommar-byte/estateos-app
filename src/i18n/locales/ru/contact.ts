@@ -49,6 +49,10 @@ export const contact = {
     threadFull: 'Нет места в этом диалоге (лимит 100 МБ).',
     pickFailed: 'Не удалось выбрать файл.',
     sendFailed: 'Не удалось отправить сообщение с вложением.',
+    download: 'Скачать',
+    downloadFailedTitle: 'Скачивание',
+    downloadFailedMessage: 'Не удалось скачать вложение.',
+    downloadUnavailable: 'Обмен файлами недоступен на этом устройстве.',
   },
   floating: {
     title: 'Активные чаты',
