@@ -324,10 +324,10 @@ export function resolveTropeOfferImage(offer: any): string | null {
 
 export async function fetchEstateOsGuideContext(token: string | null): Promise<EstateOsGuideContext | null> {
   if (!token) return null;
-  const response = await fetch(`${API_URL}/api/guide/context`, { headers: headers(token) });
-  if (!response.ok) return null;
-  const json = await response.json().catch(() => null);
-  return json?.guide || null;
+  // Mobile should read guide from the discovery profile payload (single source of truth).
+  const profile = await fetchDiscoveryProfile(token);
+  if (profile.auth !== 'user') return null;
+  return (profile.guide as EstateOsGuideContext | null) || null;
 }
 
 export type DiscoveryPulseCta = {
