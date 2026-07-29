@@ -77,10 +77,10 @@ const MOOD_COLORS: Record<
     speed: 1.35,
   },
   celebrate: {
-    core: "text-[#F9E498]",
-    glow: "rgba(249,228,152,0.75)",
-    ring: "border-[#F9E498]/50",
-    stroke: "#F9E498",
+    core: "text-violet-300",
+    glow: "rgba(167,139,250,0.7)",
+    ring: "border-violet-400/50",
+    stroke: "#A78BFA",
     speed: 0.9,
   },
 };
@@ -182,7 +182,7 @@ function IntelligenceBrain({
         </>
       ) : null}
       <motion.span
-        className={`relative z-[1] ${colors.core} transition-[filter,transform] duration-300 group-hover:scale-110 group-hover:brightness-125`}
+        className="relative z-[1] text-white transition-[filter,transform] duration-300 group-hover:scale-110 group-hover:brightness-125"
         style={{ filter: `drop-shadow(0 0 10px ${colors.glow})` }}
         animate={
           reduceMotion
@@ -197,7 +197,7 @@ function IntelligenceBrain({
             : { duration: colors.speed * 0.9, repeat: Infinity, ease: "easeInOut" }
         }
       >
-        <Brain size={size} strokeWidth={1.75} aria-hidden />
+        <Brain size={size} strokeWidth={1.9} aria-hidden />
       </motion.span>
     </span>
   );

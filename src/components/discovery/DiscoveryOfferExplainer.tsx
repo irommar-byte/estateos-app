@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Sparkles } from "lucide-react";
+import { Brain } from "lucide-react";
 import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
 
 type Props = {
@@ -56,7 +56,7 @@ export default function DiscoveryOfferExplainer({ offerId }: Props) {
       className="mb-6 rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.06] px-4 py-3.5"
     >
       <p className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-emerald-500/90 dark:text-emerald-300/85">
-        <Sparkles size={11} aria-hidden />
+        <Brain size={11} strokeWidth={2.2} aria-hidden />
         EstateOS™ Intelligence
       </p>
       <p className="mt-1.5 text-sm leading-relaxed text-[var(--eos-text)]/80">{reason}</p>
