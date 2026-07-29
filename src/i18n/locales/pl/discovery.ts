@@ -36,6 +36,14 @@ export const discovery = {
     continueDiscovery: 'Kontynuuj ocenianie',
     lustro: 'Lustro preferencji',
     openLead: 'Otwórz trop →',
+    confidence: {
+      start: 'Start',
+      outline: 'Zarys',
+      clear: 'Wyraźny kierunek',
+      strong: 'Silny sygnał',
+    },
+    contradictionOn: 'Sygnały się mieszają',
+    contradictionOff: 'Sygnały spójne',
   },
   dislike: {
     title: 'Co nie pasuje?',

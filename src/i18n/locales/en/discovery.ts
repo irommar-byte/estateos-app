@@ -36,6 +36,14 @@ export const discovery = {
     continueDiscovery: 'Keep rating',
     lustro: 'Preference mirror',
     openLead: 'Open lead →',
+    confidence: {
+      start: 'Start',
+      outline: 'Outline',
+      clear: 'Clear direction',
+      strong: 'Strong signal',
+    },
+    contradictionOn: 'Signals are mixed',
+    contradictionOff: 'Signals are consistent',
   },
   dislike: {
     title: 'What doesn’t fit?',

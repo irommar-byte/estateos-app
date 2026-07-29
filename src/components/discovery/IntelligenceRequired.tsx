@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Brain } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import ApplePressable from '../ApplePressable';
 import { discoveryTheme } from './discoveryTheme';
+import { OIL_BASE } from '../../lib/discovery/intelligenceBrand';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useIntelligencePreferenceStore } from '../../store/useIntelligencePreferenceStore';
 import { useIsDarkTheme } from '../../store/useThemeStore';
@@ -50,7 +52,14 @@ export default function IntelligenceRequired({ navigation, children }: Props) {
               { backgroundColor: theme.accentSoft, borderColor: theme.cardAccentBorder },
             ]}
           >
-            <Ionicons name="sparkles" size={28} color={theme.accent} />
+            <LinearGradient
+              colors={[...OIL_BASE]}
+              start={{ x: 0.05, y: 0.1 }}
+              end={{ x: 0.95, y: 0.9 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <View pointerEvents="none" style={styles.iconSheen} />
+            <Brain size={30} color="#FFFFFF" strokeWidth={2} />
           </View>
           <Text style={[styles.kicker, { color: theme.eyebrow }]}>ESTATEOS™</Text>
           <Text style={[styles.title, { color: theme.text }]}>
@@ -112,6 +121,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     marginBottom: 24,
+    overflow: 'hidden',
+  },
+  iconSheen: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   kicker: { fontSize: 11, fontWeight: '900', letterSpacing: 3.2 },
   title: {

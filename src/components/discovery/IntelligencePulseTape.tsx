@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   Animated,
   Easing,
   Modal,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -13,7 +15,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Brain } from 'lucide-react-native';
-import Svg, { Line } from 'react-native-svg';
+import Svg, { Circle, Line } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import ApplePressable from '../ApplePressable';
@@ -24,7 +26,36 @@ import { useDiscoveryPulse } from '../../hooks/useDiscoveryPulse';
 import { useDiscoveryStore } from '../../store/useDiscoveryStore';
 import { playIntelligenceChime } from '../../lib/discovery/intelligenceChime';
 import {
+  INTEL_ORB,
+  INTEL_THRESHOLDS,
+  MOOD_PALETTE,
+  OIL_BASE,
+  OIL_COOL,
+  OIL_EDGE,
+  OIL_HOT,
+  SESSION_AUTO_BUDGET_KEY,
+  SESSION_PEEK_KEY,
+  STAGE_ORDER,
+  confidenceLabel,
+  crossedMilestone,
+  resolveIntelligenceMood,
+  resolveStageKey,
+  type IntelligenceMood,
+  type PresentReason,
+} from '../../lib/discovery/intelligenceBrand';
+import { INTEL_MOTION, hideDurationForReason } from '../../lib/discovery/intelligenceMotion';
+import {
+  consumeAutoBudget,
+  hasDonePeek,
+  markPeekDone,
+  pickAutoPresent,
+  readMilestones,
+  writeMilestones,
+  type SessionStorageLike,
+} from '../../lib/discovery/intelligenceSession';
+import {
   dispatchDiscoveryUpdated,
+  dispatchIntelligenceSheetOpen,
   subscribeGuideOpen,
   subscribeIntelligenceDislikePrompt,
   subscribeIntelligenceLearn,
@@ -43,105 +74,138 @@ type Props = {
   layout?: 'float' | 'inline';
 };
 
-type Mood = 'calm' | 'active' | 'alert' | 'celebrate';
-type PresentReason = 'progress' | 'milestone' | 'contradiction' | 'ready_peek' | 'manual';
 type SheetMode = 'pulse' | 'dislike_prompt' | 'thanks';
-type StageKey = 'EXPLORE' | 'FOCUS' | 'READY' | 'COMPLETE';
-
-const STAGE_ORDER: StageKey[] = ['EXPLORE', 'FOCUS', 'READY', 'COMPLETE'];
 
 /** Core leaves clear air under CircularLabelRing arcs (EstateOS™ / Intelligence). */
-const CORE = 58;
+const CORE = INTEL_ORB.lg;
 const RING_GAP = 11;
 /** Tight hit target — rings paint outside; parent uses box-none so map stays grabbable. */
 const HIT = CORE + 10;
 const BRAIN = 26;
-const SESSION_MILESTONE_KEY = 'eos_intel_milestones_v1';
+/** Progress ring sits just outside the oil face, inside the label arcs. */
+const PROGRESS_RING = CORE + 7;
+const PROGRESS_STROKE = 2.4;
+/** Swipe-down distance that dismisses the genie card. */
+const SWIPE_CLOSE_PX = 80;
 
-/** Siri / oil-on-water iridescence — bright gasoline blooms, not a flat blend. */
-const OIL_BASE = ['#FF2D55', '#BF5AF2', '#5E5CE6', '#64D2FF', '#30D158', '#FFD60A', '#FF9F0A', '#FF2D55'] as const;
-const OIL_HOT = ['#FF375F', '#FFD60A', '#64D2FF', '#BF5AF2', '#FF375F'] as const;
-const OIL_COOL = ['#64D2FF', '#5E5CE6', '#30D158', '#BF5AF2', '#64D2FF'] as const;
-const OIL_EDGE = ['transparent', '#FF2D55', 'transparent', '#64D2FF', 'transparent', '#FFD60A', 'transparent'] as const;
+/** Session gates share one AsyncStorage adapter (www mirrors this with sessionStorage). */
+const sessionStore: SessionStorageLike = {
+  getItem: (key) => AsyncStorage.getItem(key),
+  setItem: (key, value) => AsyncStorage.setItem(key, value),
+};
 
-/** Circular Intelligence launcher face — gasoline-on-water, brighter blooms. */
-function SiriBrainCore({ ringColor }: { ringColor: string }) {
+/**
+ * A "session" on www is one tab; on mobile it is one cold start.
+ * Peek + auto budget reset per launch, milestone chimes stay spent for good.
+ */
+void AsyncStorage.multiRemove([SESSION_PEEK_KEY, SESSION_AUTO_BUDGET_KEY]).catch(() => {});
+
+/** Thin stroke arc around the oil face — how far the profile has travelled. */
+function ProgressRing({ progress, color }: { progress: number; color: string }) {
+  const radius = (PROGRESS_RING - PROGRESS_STROKE) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const filled = (Math.max(0, Math.min(100, progress)) / 100) * circumference;
+  const center = PROGRESS_RING / 2;
+
+  return (
+    <View pointerEvents="none" style={styles.progressRingHost}>
+      <Svg width={PROGRESS_RING} height={PROGRESS_RING}>
+        <Circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke="rgba(0,0,0,0.35)"
+          strokeWidth={PROGRESS_STROKE}
+        />
+        <Circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={PROGRESS_STROKE}
+          strokeLinecap="round"
+          strokeDasharray={`${filled} ${Math.max(0.01, circumference - filled)}`}
+          transform={`rotate(-90 ${center} ${center})`}
+        />
+      </Svg>
+    </View>
+  );
+}
+
+/**
+ * Circular Intelligence launcher face — gasoline-on-water, brighter blooms.
+ * Idle-first: only the base oil breathes when nothing happened for a while.
+ */
+function SiriBrainCore({
+  ringColor,
+  active = true,
+  reduceMotion = false,
+}: {
+  ringColor: string;
+  active?: boolean;
+  reduceMotion?: boolean;
+}) {
   const spinA = useRef(new Animated.Value(0)).current;
   const spinB = useRef(new Animated.Value(0)).current;
   const spinC = useRef(new Animated.Value(0)).current;
   const breathe = useRef(new Animated.Value(0)).current;
   const drift = useRef(new Animated.Value(0)).current;
+  const full = active && !reduceMotion;
 
   useEffect(() => {
-    const loopA = Animated.loop(
-      Animated.timing(spinA, {
-        toValue: 1,
-        duration: 7200,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    const loopB = Animated.loop(
-      Animated.timing(spinB, {
-        toValue: 1,
-        duration: 9800,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    const loopC = Animated.loop(
-      Animated.timing(spinC, {
-        toValue: 1,
-        duration: 5400,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    const breatheLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breathe, {
+    if (reduceMotion) {
+      breathe.setValue(0.5);
+      drift.setValue(0.5);
+      return;
+    }
+
+    const spinLoop = (value: Animated.Value, duration: number) =>
+      Animated.loop(
+        Animated.timing(value, {
           toValue: 1,
-          duration: 2100,
-          easing: Easing.inOut(Easing.sin),
+          duration,
+          easing: Easing.linear,
           useNativeDriver: true,
         }),
-        Animated.timing(breathe, {
-          toValue: 0,
-          duration: 2100,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    const driftLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(drift, {
-          toValue: 1,
-          duration: 3400,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(drift, {
-          toValue: 0,
-          duration: 3400,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loopA.start();
-    loopB.start();
-    loopC.start();
-    breatheLoop.start();
-    driftLoop.start();
-    return () => {
-      loopA.stop();
-      loopB.stop();
-      loopC.stop();
-      breatheLoop.stop();
-      driftLoop.stop();
-    };
-  }, [breathe, drift, spinA, spinB, spinC]);
+      );
+    const breatheLoop = (value: Animated.Value, duration: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(value, {
+            toValue: 1,
+            duration,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(value, {
+            toValue: 0,
+            duration,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+
+    const loops: Animated.CompositeAnimation[] = [
+      spinLoop(spinA, full ? INTEL_MOTION.oilSpinAMs : INTEL_MOTION.oilSpinAMs * 4),
+    ];
+    if (full) {
+      loops.push(
+        spinLoop(spinB, INTEL_MOTION.oilSpinBMs),
+        spinLoop(spinC, INTEL_MOTION.oilSpinCMs),
+        breatheLoop(breathe, INTEL_MOTION.oilBreatheMs),
+        breatheLoop(drift, INTEL_MOTION.oilDriftMs),
+      );
+    } else {
+      breathe.setValue(0.5);
+      drift.setValue(0.5);
+    }
+
+    loops.forEach((loop) => loop.start());
+    return () => loops.forEach((loop) => loop.stop());
+  }, [breathe, drift, full, reduceMotion, spinA, spinB, spinC]);
 
   const rotateA = spinA.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   const rotateB = spinB.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] });
@@ -169,124 +233,119 @@ function SiriBrainCore({ ringColor }: { ringColor: string }) {
           style={StyleSheet.absoluteFillObject}
         />
       </Animated.View>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.oilBlob,
-          styles.oilBlobHot,
-          {
-            opacity: 0.92,
-            transform: [{ translateX: blobShift }, { translateY: blobShiftAlt }, { rotate: rotateB }, { scale: 1.15 }],
-          },
-        ]}
-      >
-        <LinearGradient
-          colors={[...OIL_HOT]}
-          locations={[0, 0.28, 0.55, 0.78, 1]}
-          start={{ x: 0.2, y: 0 }}
-          end={{ x: 0.85, y: 1 }}
-          style={StyleSheet.absoluteFillObject}
-        />
-      </Animated.View>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.oilBlob,
-          styles.oilBlobCool,
-          {
-            opacity: 0.78,
-            transform: [{ translateX: blobShiftAlt }, { translateY: blobShift }, { rotate: rotateC }, { scale: 1.05 }],
-          },
-        ]}
-      >
-        <LinearGradient
-          colors={[...OIL_COOL]}
-          locations={[0, 0.3, 0.58, 0.8, 1]}
-          start={{ x: 1, y: 0.15 }}
-          end={{ x: 0, y: 0.9 }}
-          style={StyleSheet.absoluteFillObject}
-        />
-      </Animated.View>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.siriSwirlAlt,
-          {
-            opacity: 0.55,
-            transform: [{ rotate: rotateB }, { scale: 1.35 }],
-          },
-        ]}
-      >
-        <LinearGradient
-          colors={[...OIL_EDGE]}
-          locations={[0, 0.18, 0.36, 0.52, 0.68, 0.84, 1]}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFillObject}
-        />
-      </Animated.View>
+      {full ? (
+        <>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.oilBlob,
+              styles.oilBlobHot,
+              {
+                opacity: 0.92,
+                transform: [
+                  { translateX: blobShift },
+                  { translateY: blobShiftAlt },
+                  { rotate: rotateB },
+                  { scale: 1.15 },
+                ],
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={[...OIL_HOT]}
+              locations={[0, 0.28, 0.55, 0.78, 1]}
+              start={{ x: 0.2, y: 0 }}
+              end={{ x: 0.85, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+          </Animated.View>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.oilBlob,
+              styles.oilBlobCool,
+              {
+                opacity: 0.78,
+                transform: [
+                  { translateX: blobShiftAlt },
+                  { translateY: blobShift },
+                  { rotate: rotateC },
+                  { scale: 1.05 },
+                ],
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={[...OIL_COOL]}
+              locations={[0, 0.3, 0.58, 0.8, 1]}
+              start={{ x: 1, y: 0.15 }}
+              end={{ x: 0, y: 0.9 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+          </Animated.View>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.siriSwirlAlt,
+              {
+                opacity: 0.55,
+                transform: [{ rotate: rotateB }, { scale: 1.35 }],
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={[...OIL_EDGE]}
+              locations={[0, 0.18, 0.36, 0.52, 0.68, 0.84, 1]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+          </Animated.View>
+        </>
+      ) : null}
       <View pointerEvents="none" style={styles.siriSheen} />
       <View pointerEvents="none" style={styles.siriHighlight} />
-      <LivingBrain accent="#FFFFFF" />
+      <LivingBrain accent="#FFFFFF" animated={!reduceMotion} />
     </View>
   );
 }
 
-function resolveStageKey(stage: string | undefined, progress: number): StageKey {
-  const raw = String(stage || '').toUpperCase();
-  if (raw === 'EXPLORE' || raw === 'FOCUS' || raw === 'READY' || raw === 'COMPLETE') {
-    return raw;
-  }
-  if (progress >= 100) return 'COMPLETE';
-  if (progress >= 75) return 'READY';
-  if (progress >= 28) return 'FOCUS';
-  return 'EXPLORE';
-}
-function resolveMood(
-  progress: number,
-  confidence: number,
-  contradiction: number,
-  spectacle: boolean,
-): Mood {
-  if (spectacle) return 'celebrate';
-  if (contradiction >= 0.55) return 'alert';
-  if (progress >= 35 || confidence >= 0.35) return 'active';
-  return 'calm';
-}
-
-const MOOD: Record<Mood, { accent: string; soft: string; ring: string }> = {
-  calm: { accent: '#34D399', soft: 'rgba(52,211,153,0.35)', ring: 'rgba(52,211,153,0.55)' },
-  active: { accent: '#5AC8FA', soft: 'rgba(90,200,250,0.45)', ring: 'rgba(90,200,250,0.65)' },
-  alert: { accent: '#FBBF24', soft: 'rgba(251,191,36,0.4)', ring: 'rgba(251,191,36,0.65)' },
-  celebrate: { accent: '#A78BFA', soft: 'rgba(167,139,250,0.45)', ring: 'rgba(167,139,250,0.7)' },
-};
-
-const MILESTONES = [25, 50, 75, 90];
-
-function crossedMilestone(prev: number | null, next: number): number | null {
-  if (typeof prev !== 'number') return null;
-  for (const gate of MILESTONES) {
-    if (prev < gate && next >= gate) return gate;
-  }
-  return null;
-}
-
-async function readMilestones(): Promise<number[]> {
-  try {
-    const raw = await AsyncStorage.getItem(SESSION_MILESTONE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function writeMilestones(next: number[]) {
-  try {
-    await AsyncStorage.setItem(SESSION_MILESTONE_KEY, JSON.stringify(next));
-  } catch {
-    // quiet
-  }
+/** Compact oil face for the sheet header — same gasoline skin, no swirl cost. */
+function OilFace({
+  size,
+  brainSize = INTEL_ORB.md,
+  reduceMotion = false,
+}: {
+  size: number;
+  brainSize?: number;
+  reduceMotion?: boolean;
+}) {
+  return (
+    <View style={[styles.oilFace, { width: size, height: size, borderRadius: size / 2 }]}>
+      <LinearGradient
+        colors={[...OIL_BASE]}
+        start={{ x: 0.05, y: 0.1 }}
+        end={{ x: 0.95, y: 0.9 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <LinearGradient
+        colors={[...OIL_HOT]}
+        locations={[0, 0.28, 0.55, 0.78, 1]}
+        start={{ x: 0.9, y: 0 }}
+        end={{ x: 0.1, y: 1 }}
+        style={[StyleSheet.absoluteFillObject, { opacity: 0.5 }]}
+      />
+      <View pointerEvents="none" style={styles.siriSheen} />
+      <View
+        pointerEvents="none"
+        style={[
+          styles.oilFaceHighlight,
+          { width: size * 0.42, height: size * 0.26, left: size * 0.14 },
+        ]}
+      />
+      <LivingBrain accent="#FFFFFF" size={brainSize} animated={!reduceMotion} />
+    </View>
+  );
 }
 
 function navigatePulseAction(navigation: any, action: string | undefined, firstEntrySeen: boolean) {
@@ -315,17 +374,29 @@ const NEURONS = [
   { id: 'n5', r: 9, phase: 0.86, cw: true },
 ];
 
-function LivingBrain({ accent, size = BRAIN }: { accent: string; size?: number }) {
+function LivingBrain({
+  accent,
+  size = BRAIN,
+  animated = true,
+}: {
+  accent: string;
+  size?: number;
+  animated?: boolean;
+}) {
   const spin = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
   const clipW = size * 0.82;
   const clipH = size * 0.64;
 
   useEffect(() => {
+    if (!animated) {
+      pulse.setValue(0);
+      return;
+    }
     const orbit = Animated.loop(
       Animated.timing(spin, {
         toValue: 1,
-        duration: 5200,
+        duration: INTEL_MOTION.neuronOrbitMs,
         easing: Easing.linear,
         useNativeDriver: true,
       }),
@@ -334,13 +405,13 @@ function LivingBrain({ accent, size = BRAIN }: { accent: string; size?: number }
       Animated.sequence([
         Animated.timing(pulse, {
           toValue: 1,
-          duration: 1300,
+          duration: INTEL_MOTION.neuronPulseMs,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(pulse, {
           toValue: 0,
-          duration: 1300,
+          duration: INTEL_MOTION.neuronPulseMs,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -352,7 +423,7 @@ function LivingBrain({ accent, size = BRAIN }: { accent: string; size?: number }
       orbit.stop();
       breathe.stop();
     };
-  }, [pulse, spin]);
+  }, [animated, pulse, spin]);
 
   const brainScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
 
@@ -444,15 +515,60 @@ export default function IntelligencePulseTape({
   );
   const [presentReason, setPresentReason] = useState<PresentReason | null>(null);
   const [spectacle, setSpectacle] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  /** Idle-first oil: full multi-layer swirl only around real interaction. */
+  const [orbActive, setOrbActive] = useState(true);
   const genie = useRef(new Animated.Value(0)).current;
+  const dragY = useRef(new Animated.Value(0)).current;
   const aura = useRef(new Animated.Value(0)).current;
+  const bar = useRef(new Animated.Value(0)).current;
   const splashA = useRef(new Animated.Value(0)).current;
   const splashB = useRef(new Animated.Value(0)).current;
   const splashC = useRef(new Animated.Value(0)).current;
   const closingRef = useRef(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spectacleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sheetVisibleRef = useRef(false);
+  const reduceMotionRef = useRef(false);
+  const peekArmedRef = useRef(false);
+  const peekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const apply = (value: boolean) => {
+      if (!alive) return;
+      reduceMotionRef.current = Boolean(value);
+      setReduceMotion(Boolean(value));
+    };
+    AccessibilityInfo.isReduceMotionEnabled?.()
+      .then(apply)
+      .catch(() => {});
+    const sub = AccessibilityInfo.addEventListener?.('reduceMotionChanged', apply);
+    return () => {
+      alive = false;
+      sub?.remove?.();
+    };
+  }, []);
+
+  /** Haptics are motion too — silent when the user asked for stillness. */
+  const impact = useCallback((style: Haptics.ImpactFeedbackStyle) => {
+    if (reduceMotionRef.current) return;
+    void Haptics.impactAsync(style);
+  }, []);
+
+  const bumpActivity = useCallback(() => {
+    setOrbActive(true);
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => setOrbActive(false), INTEL_MOTION.idleAfterMs);
+  }, []);
+
+  useEffect(() => {
+    bumpActivity();
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, [bumpActivity]);
 
   const clearHide = useCallback(() => {
     if (hideTimerRef.current) {
@@ -468,36 +584,74 @@ export default function IntelligencePulseTape({
       clearHide();
       Animated.timing(genie, {
         toValue: 0,
-        duration: 420,
+        duration: reduceMotionRef.current ? 0 : INTEL_MOTION.genieOutMs,
         easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
       }).start(({ finished }) => {
         if (!finished) return;
         setSheetVisible(false);
         sheetVisibleRef.current = false;
+        dispatchIntelligenceSheetOpen(false);
+        dragY.setValue(0);
         setPresentReason(null);
         setSheetMode('pulse');
         setPendingDislike(null);
         setSpectacle(false);
         closingRef.current = false;
+        bumpActivity();
         after?.();
       });
     },
-    [clearHide, genie],
+    [bumpActivity, clearHide, dragY, genie],
   );
 
   const runGenieIn = useCallback(() => {
     closingRef.current = false;
     setSheetVisible(true);
     sheetVisibleRef.current = true;
+    dispatchIntelligenceSheetOpen(true);
+    dragY.setValue(0);
     genie.setValue(0);
+    if (reduceMotionRef.current) {
+      genie.setValue(1);
+      return;
+    }
     Animated.spring(genie, {
       toValue: 1,
-      friction: 7,
-      tension: 68,
+      friction: INTEL_MOTION.genieInFriction,
+      tension: INTEL_MOTION.genieInTension,
       useNativeDriver: true,
     }).start();
-  }, [genie]);
+  }, [dragY, genie]);
+
+  /** Swipe the card down to send it back into the orb. */
+  const swipe = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_evt, gesture) =>
+          gesture.dy > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.4,
+        onPanResponderMove: (_evt, gesture) => {
+          if (gesture.dy <= 0) return;
+          dragY.setValue(gesture.dy);
+        },
+        onPanResponderRelease: (_evt, gesture) => {
+          if (gesture.dy >= SWIPE_CLOSE_PX) {
+            runGenieOut();
+            return;
+          }
+          Animated.spring(dragY, {
+            toValue: 0,
+            friction: INTEL_MOTION.genieInFriction,
+            tension: INTEL_MOTION.genieInTension,
+            useNativeDriver: true,
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          dragY.setValue(0);
+        },
+      }),
+    [dragY, runGenieOut],
+  );
 
   const scheduleHide = useCallback(
     (ms: number) => {
@@ -510,24 +664,28 @@ export default function IntelligencePulseTape({
   );
 
   const presentGently = useCallback(
-    (kind: PresentReason) => {
+    (kind: PresentReason, milestoneGate?: number | null) => {
+      bumpActivity();
       if (kind === 'manual') {
         setPresentReason(null);
         setSheetMode('pulse');
         runGenieIn();
-        scheduleHide(9000);
+        scheduleHide(hideDurationForReason('manual'));
         return;
       }
       setSheetMode('pulse');
       setPresentReason(kind);
       setSpectacle(kind === 'progress' || kind === 'milestone');
-      void playIntelligenceChime(kind === 'progress' || kind === 'milestone' ? 'progress' : 'suggest');
+      const celebrate = kind === 'milestone' && (milestoneGate ?? 0) >= 90;
+      void playIntelligenceChime(
+        celebrate ? 'celebrate' : kind === 'progress' || kind === 'milestone' ? 'progress' : 'suggest',
+      );
       runGenieIn();
-      scheduleHide(kind === 'contradiction' ? 9000 : kind === 'ready_peek' ? 7500 : 8200);
+      scheduleHide(hideDurationForReason(kind));
       if (spectacleTimerRef.current) clearTimeout(spectacleTimerRef.current);
-      spectacleTimerRef.current = setTimeout(() => setSpectacle(false), 2400);
+      spectacleTimerRef.current = setTimeout(() => setSpectacle(false), INTEL_MOTION.spectacleHoldMs);
     },
-    [runGenieIn, scheduleHide],
+    [bumpActivity, runGenieIn, scheduleHide],
   );
 
   const presentDislikePrompt = useCallback(
@@ -550,7 +708,9 @@ export default function IntelligencePulseTape({
         runGenieOut();
         return;
       }
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (!reduceMotionRef.current) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
       const result = await postDiscoveryTasteEvent({
         token,
         offerId: pendingDislike.offerId,
@@ -587,58 +747,89 @@ export default function IntelligencePulseTape({
       // Sparse Apple-style: only speak when something meaningful changed — not on every nudge.
       if (sheetVisibleRef.current) return;
       const prevProgress = previous?.progress ?? null;
-      const prevContra = previous?.contradictionIndex ?? null;
-      const milestone = crossedMilestone(prevProgress, next.progress);
-      const contraRising =
-        typeof prevContra === 'number' && prevContra < 0.55 && next.contradictionIndex >= 0.55;
-
-      if (contraRising) {
-        presentGently('contradiction');
-        return;
+      const gate = crossedMilestone(prevProgress, next.progress);
+      const seen = gate != null ? await readMilestones(sessionStore) : [];
+      const reason = pickAutoPresent({
+        prevProgress,
+        nextProgress: next.progress,
+        prevContradiction: previous?.contradictionIndex ?? null,
+        nextContradiction: next.contradictionIndex,
+        milestoneGate: gate,
+        milestoneAlreadySeen: gate != null && seen.includes(gate),
+      });
+      if (!reason) return;
+      if (sheetVisibleRef.current) return;
+      if (!(await consumeAutoBudget(sessionStore))) return;
+      if (reason === 'milestone' && gate != null) {
+        await writeMilestones(sessionStore, [...seen, gate]);
       }
-      if (milestone == null) return;
-      const seen = await readMilestones();
-      if (seen.includes(milestone)) return;
-      await writeMilestones([...seen, milestone]);
-      presentGently('milestone');
+      presentGently(reason, gate);
     },
     [presentGently],
   );
 
   const { pulse, ready } = useDiscoveryPulse({ onPulseChange });
 
+  /** Boot peek: one quiet hello when the direction is already meaningful. */
+  useEffect(() => {
+    if (!ready || !pulse || peekArmedRef.current) return;
+    const meaningful =
+      pulse.progress >= INTEL_THRESHOLDS.peekProgress ||
+      pulse.confidence >= INTEL_THRESHOLDS.peekConfidence;
+    if (!meaningful) return;
+    peekArmedRef.current = true;
+    const contradiction = pulse.contradictionIndex >= INTEL_THRESHOLDS.contradiction;
+    // Timer lives in a ref so a pulse refresh mid-delay does not cancel the peek.
+    peekTimerRef.current = setTimeout(() => {
+      void (async () => {
+        if (sheetVisibleRef.current) return;
+        if (await hasDonePeek(sessionStore)) return;
+        if (!(await consumeAutoBudget(sessionStore))) return;
+        await markPeekDone(sessionStore);
+        presentGently(contradiction ? 'contradiction' : 'ready_peek');
+      })();
+    }, INTEL_MOTION.bootPeekDelayMs);
+  }, [presentGently, pulse, ready]);
+
   useEffect(
     () => subscribeIntelligenceDislikePrompt((detail) => {
       if (!detail?.offerId) return;
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      impact(Haptics.ImpactFeedbackStyle.Medium);
       presentDislikePrompt(detail);
     }),
-    [presentDislikePrompt],
+    [impact, presentDislikePrompt],
   );
 
   useEffect(
     () =>
       subscribeGuideOpen(() => {
         if (sheetVisibleRef.current) return;
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        impact(Haptics.ImpactFeedbackStyle.Light);
         presentGently('manual');
       }),
-    [presentGently],
+    [impact, presentGently],
   );
 
   useEffect(
     () => () => {
       clearHide();
       if (spectacleTimerRef.current) clearTimeout(spectacleTimerRef.current);
+      if (peekTimerRef.current) clearTimeout(peekTimerRef.current);
+      dispatchIntelligenceSheetOpen(false);
     },
     [clearHide],
   );
 
-  const mood = useMemo(() => {
-    if (!pulse) return 'calm' as Mood;
-    return resolveMood(pulse.progress, pulse.confidence, pulse.contradictionIndex, spectacle);
+  const mood = useMemo<IntelligenceMood>(() => {
+    if (!pulse) return 'calm';
+    return resolveIntelligenceMood({
+      progress: pulse.progress,
+      confidence: pulse.confidence,
+      contradictionIndex: pulse.contradictionIndex,
+      spectacle,
+    });
   }, [pulse, spectacle]);
-  const colors = MOOD[mood];
+  const colors = MOOD_PALETTE[mood];
   const reasonMeta =
     presentReason && presentReason !== 'manual'
       ? {
@@ -656,6 +847,38 @@ export default function IntelligencePulseTape({
 
   const activeStage = resolveStageKey(pulse?.stage, pulse?.progress ?? 0);
   const activeStageIndex = STAGE_ORDER.indexOf(activeStage);
+  const progressPct = Math.max(0, Math.min(100, Math.round(pulse?.progress ?? 0)));
+  const stageName = t(`discovery.stages.${activeStage}`);
+  const orbA11y = `${t('discovery.brand')} · ${stageName} · ${progressPct}%`;
+
+  /** Confidence wording mirrors www — i18n when present, PL fallback otherwise. */
+  const confidenceText = (() => {
+    const bucket = confidenceLabel(pulse?.confidence ?? 0);
+    const key = `discovery.pulse.confidence.${bucket}`;
+    const label = t(key);
+    if (label !== key) return label;
+    if (bucket === 'start') return 'Start';
+    if (bucket === 'outline') return 'Zarys';
+    if (bucket === 'clear') return 'Wyraźny kierunek';
+    return 'Silny sygnał';
+  })();
+
+  const contradictionOn = (pulse?.contradictionIndex ?? 0) >= INTEL_THRESHOLDS.contradiction;
+  const contradictionText = (() => {
+    const key = contradictionOn ? 'discovery.pulse.contradictionOn' : 'discovery.pulse.contradictionOff';
+    const label = t(key);
+    if (label !== key) return label;
+    return contradictionOn ? 'Sygnały się mieszają' : 'Sygnały spójne';
+  })();
+
+  /** Screen readers hear the auto-present instead of watching it. */
+  useEffect(() => {
+    if (!sheetVisible || !presentReason || presentReason === 'manual') return;
+    const badge = t(
+      `discovery.pulse.${presentReason === 'ready_peek' ? 'readyPeek' : presentReason}Lead`,
+    );
+    AccessibilityInfo.announceForAccessibility?.(`${stageName} · ${progressPct}% · ${badge}`);
+  }, [presentReason, progressPct, sheetVisible, stageName, t]);
 
   const sheetSurface = isDark ? 'rgba(10,10,12,0.92)' : 'rgba(255,255,255,0.96)';
   const sheetText = isDark ? '#FFFFFF' : '#111827';
@@ -667,17 +890,21 @@ export default function IntelligencePulseTape({
   const stageIdleBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(17,24,39,0.04)';
 
   useEffect(() => {
+    if (reduceMotion) {
+      aura.setValue(0.45);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(aura, {
           toValue: 1,
-          duration: 2400,
+          duration: INTEL_MOTION.auraMs,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(aura, {
           toValue: 0,
-          duration: 2400,
+          duration: INTEL_MOTION.auraMs,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -685,7 +912,21 @@ export default function IntelligencePulseTape({
     );
     loop.start();
     return () => loop.stop();
-  }, [aura]);
+  }, [aura, reduceMotion]);
+
+  /** Progress bar fills once per sheet open — the card breathing in. */
+  useEffect(() => {
+    if (!sheetVisible) {
+      bar.setValue(0);
+      return;
+    }
+    Animated.timing(bar, {
+      toValue: 1,
+      duration: reduceMotion ? 0 : INTEL_MOTION.progressBarMs,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [bar, reduceMotion, sheetVisible]);
 
   /** Water-splash ripples when like / dislike / serious teach the model. */
   useEffect(() => {
@@ -695,7 +936,7 @@ export default function IntelligencePulseTape({
         Animated.delay(delayMs),
         Animated.timing(ring, {
           toValue: 1,
-          duration: 780,
+          duration: INTEL_MOTION.splashMs,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
@@ -704,39 +945,65 @@ export default function IntelligencePulseTape({
 
     return subscribeIntelligenceLearn((detail) => {
       if (!detail?.kind || detail.kind === 'open' || detail.kind === 'other') return;
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      impact(Haptics.ImpactFeedbackStyle.Light);
+      bumpActivity();
+      if (reduceMotionRef.current) return;
       Animated.parallel([
         runSplash(splashA, 0),
-        runSplash(splashB, 90),
-        runSplash(splashC, 180),
+        runSplash(splashB, INTEL_MOTION.splashStaggerMs),
+        runSplash(splashC, INTEL_MOTION.splashStaggerMs * 2),
       ]).start();
     });
-  }, [splashA, splashB, splashC]);
+  }, [bumpActivity, impact, splashA, splashB, splashC]);
 
   const open = useCallback(() => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    impact(Haptics.ImpactFeedbackStyle.Light);
     presentGently('manual');
-  }, [presentGently]);
+  }, [impact, presentGently]);
 
   const close = useCallback(() => {
-    void Haptics.selectionAsync();
+    if (!reduceMotionRef.current) void Haptics.selectionAsync();
     runGenieOut();
   }, [runGenieOut]);
 
   const runPrimary = useCallback(() => {
     runGenieOut(() => {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      impact(Haptics.ImpactFeedbackStyle.Medium);
       const action = pulse?.primaryCta?.action;
       const href = pulse?.primaryCta?.href;
       if (href) navigateDiscoveryHref(navigation, href, action);
       else navigatePulseAction(navigation, action, firstEntrySeen);
     });
-  }, [firstEntrySeen, navigation, pulse?.primaryCta?.action, pulse?.primaryCta?.href, runGenieOut]);
+  }, [
+    firstEntrySeen,
+    impact,
+    navigation,
+    pulse?.primaryCta?.action,
+    pulse?.primaryCta?.href,
+    runGenieOut,
+  ]);
+
+  const runSecondary = useCallback(() => {
+    runGenieOut(() => {
+      impact(Haptics.ImpactFeedbackStyle.Light);
+      const action = pulse?.secondaryCta?.action;
+      const href = pulse?.secondaryCta?.href;
+      if (href) navigateDiscoveryHref(navigation, href, action);
+      else navigatePulseAction(navigation, action, firstEntrySeen);
+    });
+  }, [
+    firstEntrySeen,
+    impact,
+    navigation,
+    pulse?.secondaryCta?.action,
+    pulse?.secondaryCta?.href,
+    runGenieOut,
+  ]);
 
   const runGuide = useCallback(
     (dest: 'discovery' | 'tropes' | 'direction' | 'lustro') => {
       runGenieOut(() => {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        impact(Haptics.ImpactFeedbackStyle.Light);
         if (dest === 'discovery') {
           navigation?.navigate?.(resolveDiscoveryEntryRoute(firstEntrySeen));
           return;
@@ -752,7 +1019,7 @@ export default function IntelligencePulseTape({
         navigation?.navigate?.('DiscoveryLustro');
       });
     },
-    [firstEntrySeen, navigation, runGenieOut],
+    [firstEntrySeen, impact, navigation, runGenieOut],
   );
 
   if (!ready || !pulse) return null;
@@ -793,7 +1060,12 @@ export default function IntelligencePulseTape({
     opacity: genie.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.85, 1] }),
     transform: [
       { translateX: genie.interpolate({ inputRange: [0, 1], outputRange: [originDX, 0] }) },
-      { translateY: genie.interpolate({ inputRange: [0, 1], outputRange: [originDY, 0] }) },
+      {
+        translateY: Animated.add(
+          genie.interpolate({ inputRange: [0, 1], outputRange: [originDY, 0] }),
+          dragY,
+        ),
+      },
       { scaleX: genie.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0.12, 0.72, 1] }) },
       { scaleY: genie.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0.04, 0.88, 1] }) },
     ],
@@ -810,7 +1082,8 @@ export default function IntelligencePulseTape({
         <ApplePressable
           onPress={open}
           style={styles.hit}
-          accessibilityLabel="EstateOS Intelligence"
+          accessibilityLabel={orbA11y}
+          accessibilityHint={confidenceText}
           haptic="none"
         >
           <Animated.View
@@ -862,7 +1135,8 @@ export default function IntelligencePulseTape({
               strokeWidth={1.15}
             />
           </View>
-          <SiriBrainCore ringColor={colors.ring} />
+          <ProgressRing progress={progressPct} color={colors.accent} />
+          <SiriBrainCore ringColor={colors.ring} active={orbActive} reduceMotion={reduceMotion} />
         </ApplePressable>
       </View>
 
@@ -886,6 +1160,8 @@ export default function IntelligencePulseTape({
             />
           </Pressable>
           <Animated.View
+            {...swipe.panHandlers}
+            accessibilityLiveRegion={presentReason && presentReason !== 'manual' ? 'polite' : 'none'}
             style={[
               styles.sheetWrap,
               { top: sheetTop, left: sheetLeft, width: sheetWidth },
@@ -898,13 +1174,14 @@ export default function IntelligencePulseTape({
                 tint={isDark ? 'dark' : 'light'}
                 style={[styles.sheet, { borderColor: colors.ring, backgroundColor: sheetSurface }]}
               >
+                <View pointerEvents="none" style={[styles.grabber, { backgroundColor: sheetBorder }]} />
                 <View style={[styles.sheetGlow, { backgroundColor: colors.soft }]} />
 
                 {sheetMode === 'dislike_prompt' ? (
                   <>
                     <View style={styles.sheetHead}>
                       <View style={[styles.orbLg, { borderColor: colors.accent }]}>
-                        <LivingBrain accent={colors.accent} size={28} />
+                        <OilFace size={46} brainSize={26} reduceMotion={reduceMotion} />
                       </View>
                       <View style={styles.sheetHeadCopy}>
                         <Text style={[styles.sheetKicker, { color: sheetMuted }]}>{t('discovery.brand')}</Text>
@@ -944,7 +1221,7 @@ export default function IntelligencePulseTape({
                   <>
                     <View style={styles.sheetHead}>
                       <View style={[styles.orbLg, { borderColor: colors.accent }]}>
-                        <LivingBrain accent={colors.accent} size={28} />
+                        <OilFace size={46} brainSize={26} reduceMotion={reduceMotion} />
                       </View>
                       <View style={styles.sheetHeadCopy}>
                         <Text style={[styles.sheetKicker, { color: sheetMuted }]}>{t('discovery.brand')}</Text>
@@ -957,13 +1234,11 @@ export default function IntelligencePulseTape({
                   <>
                     <View style={styles.sheetHead}>
                       <View style={[styles.orbLg, { borderColor: colors.accent }]}>
-                        <LivingBrain accent={colors.accent} size={28} />
+                        <OilFace size={46} brainSize={26} reduceMotion={reduceMotion} />
                       </View>
                       <View style={styles.sheetHeadCopy}>
                         <Text style={[styles.sheetKicker, { color: sheetMuted }]}>{t('discovery.brand')}</Text>
-                        <Text style={[styles.sheetStage, { color: sheetText }]}>
-                          {t(`discovery.stages.${activeStage}`)}
-                        </Text>
+                        <Text style={[styles.sheetStage, { color: sheetText }]}>{stageName}</Text>
                       </View>
                       <ApplePressable
                         onPress={close}
@@ -985,6 +1260,43 @@ export default function IntelligencePulseTape({
                     <Text style={[styles.direction, { color: sheetText }]} numberOfLines={2}>
                       {pulse.directionLine || pulse.suggestion}
                     </Text>
+
+                    <View style={styles.progressTrack}>
+                      <Animated.View
+                        style={[
+                          styles.progressFill,
+                          {
+                            backgroundColor: colors.accent,
+                            width: bar.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: ['0%', `${progressPct}%`],
+                            }),
+                          },
+                        ]}
+                      />
+                    </View>
+                    <View style={styles.signalRow}>
+                      <Text style={[styles.signalText, { color: sheetText }]}>
+                        {progressPct}% · {confidenceText}
+                      </Text>
+                      <View style={styles.signalStatus}>
+                        <View
+                          style={[
+                            styles.signalDot,
+                            { backgroundColor: contradictionOn ? MOOD_PALETTE.alert.accent : colors.accent },
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.signalText,
+                            { color: contradictionOn ? MOOD_PALETTE.alert.accent : sheetMuted },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {contradictionText}
+                        </Text>
+                      </View>
+                    </View>
 
                     <View style={styles.stageRow}>
                       {STAGE_ORDER.map((key, index) => {
@@ -1048,6 +1360,27 @@ export default function IntelligencePulseTape({
                       </Text>
                       <Ionicons name="arrow-forward" size={16} color="#061018" />
                     </ApplePressable>
+
+                    {pulse.secondaryCta ? (
+                      <ApplePressable
+                        style={[styles.ctaSecondary, { borderColor: colors.ring }]}
+                        onPress={runSecondary}
+                        haptic="light"
+                      >
+                        <Text style={[styles.ctaSecondaryText, { color: sheetText }]} numberOfLines={1}>
+                          {(() => {
+                            const action = pulse.secondaryCta?.action;
+                            if (action) {
+                              const key = `discovery.cta.${action}`;
+                              const label = t(key);
+                              if (label !== key) return label;
+                            }
+                            return pulse.secondaryCta?.label || t('discovery.pulse.lustro');
+                          })()}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+                      </ApplePressable>
+                    ) : null}
 
                     <View style={[styles.guideDivider, { backgroundColor: sheetBorder }]} />
                     <Text style={[styles.guideSupport, { color: sheetMuted }]}>
@@ -1143,6 +1476,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  progressRingHost: {
+    position: 'absolute',
+    width: PROGRESS_RING,
+    height: PROGRESS_RING,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   core: {
     width: CORE,
     height: CORE,
@@ -1193,6 +1533,18 @@ const styles = StyleSheet.create({
     bottom: -CORE * 0.08,
     right: -CORE * 0.18,
   },
+  oilFace: {
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1C1C1E',
+  },
+  oilFaceHighlight: {
+    position: 'absolute',
+    top: 3,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.26)',
+  },
   brainStage: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1237,6 +1589,15 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   sheetGlow: { ...StyleSheet.absoluteFillObject, opacity: 0.22 },
+  grabber: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    marginTop: -6,
+    marginBottom: 10,
+    opacity: 0.9,
+  },
   sheetHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   orbLg: {
     width: 48,
@@ -1286,6 +1647,29 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressFill: { height: '100%', borderRadius: 2 },
+  signalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 8,
+  },
+  signalStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    flexShrink: 1,
+  },
+  signalDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+  },
+  signalText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.1,
+  },
   stageRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1360,6 +1744,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   ctaText: { color: '#061018', fontSize: 14, fontWeight: '900' },
+  ctaSecondary: {
+    marginTop: 8,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 14,
+    backgroundColor: 'transparent',
+  },
+  ctaSecondaryText: { fontSize: 13, fontWeight: '800', flexShrink: 1 },
   guideDivider: {
     height: StyleSheet.hairlineWidth,
     marginTop: 16,

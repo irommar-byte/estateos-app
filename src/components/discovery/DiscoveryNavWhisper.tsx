@@ -1,6 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import DiscoveryIntelligenceWhisper from './DiscoveryIntelligenceWhisper';
 import { useDiscoveryPulse } from '../../hooks/useDiscoveryPulse';
+import {
+  isIntelligenceSheetOpen,
+  subscribeIntelligenceSheetOpen,
+} from '../../lib/discovery/clientEvents';
 import { useIntelligencePreferenceStore } from '../../store/useIntelligencePreferenceStore';
 import { useAuthStore } from '../../store/useAuthStore';
 
@@ -12,13 +16,18 @@ type Props = {
 
 /**
  * Quiet direction line from pulse for chrome / drawer.
+ * Hides while the Intelligence genie sheet is open.
  */
 export default function DiscoveryNavWhisper({ navigation, variant = 'nav', style }: Props) {
   const token = useAuthStore((s) => s.token);
   const enabled = useIntelligencePreferenceStore((s) => s.enabled);
   const hydrated = useIntelligencePreferenceStore((s) => s.hydrated);
   const { pulse, ready } = useDiscoveryPulse();
+  const [sheetOpen, setSheetOpen] = useState(isIntelligenceSheetOpen);
 
+  useEffect(() => subscribeIntelligenceSheetOpen(setSheetOpen), []);
+
+  if (sheetOpen) return null;
   if (!hydrated || !enabled || !token || !ready || !pulse) return null;
 
   const line =

@@ -4,6 +4,7 @@ export const DISCOVERY_UPDATED_EVENT = 'estateos:discovery-updated';
 export const INTELLIGENCE_LEARN_EVENT = 'estateos:intelligence-learn';
 export const INTELLIGENCE_DISLIKE_PROMPT_EVENT = 'estateos:intelligence-dislike-prompt';
 export const GUIDE_OPEN_EVENT = 'estateos:guide-open';
+export const INTELLIGENCE_SHEET_OPEN_EVENT = 'estateos:intelligence-sheet-open';
 
 export type DiscoveryUpdatedDetail = {
   offerId?: number;
@@ -75,5 +76,27 @@ export function dispatchGuideOpen() {
 
 export function subscribeGuideOpen(handler: () => void) {
   const sub = DeviceEventEmitter.addListener(GUIDE_OPEN_EVENT, handler);
+  return () => sub.remove();
+}
+
+/**
+ * Whether the Intelligence genie sheet currently owns the screen.
+ * Whispers stay quiet while the brain panel speaks — one voice at a time.
+ */
+let intelligenceSheetOpen = false;
+
+export function isIntelligenceSheetOpen() {
+  return intelligenceSheetOpen;
+}
+
+export function dispatchIntelligenceSheetOpen(open: boolean) {
+  const next = Boolean(open);
+  if (next === intelligenceSheetOpen) return;
+  intelligenceSheetOpen = next;
+  DeviceEventEmitter.emit(INTELLIGENCE_SHEET_OPEN_EVENT, next);
+}
+
+export function subscribeIntelligenceSheetOpen(handler: (open: boolean) => void) {
+  const sub = DeviceEventEmitter.addListener(INTELLIGENCE_SHEET_OPEN_EVENT, handler);
   return () => sub.remove();
 }

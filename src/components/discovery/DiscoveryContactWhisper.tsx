@@ -1,6 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import DiscoveryIntelligenceWhisper from './DiscoveryIntelligenceWhisper';
 import { useDiscoveryPulse } from '../../hooks/useDiscoveryPulse';
+import {
+  isIntelligenceSheetOpen,
+  subscribeIntelligenceSheetOpen,
+} from '../../lib/discovery/clientEvents';
 import { useIntelligencePreferenceStore } from '../../store/useIntelligencePreferenceStore';
 import { useAuthStore } from '../../store/useAuthStore';
 
@@ -24,7 +28,11 @@ export default function DiscoveryContactWhisper({
   const enabled = useIntelligencePreferenceStore((s) => s.enabled);
   const hydrated = useIntelligencePreferenceStore((s) => s.hydrated);
   const { pulse, ready } = useDiscoveryPulse();
+  const [sheetOpen, setSheetOpen] = useState(isIntelligenceSheetOpen);
 
+  useEffect(() => subscribeIntelligenceSheetOpen(setSheetOpen), []);
+
+  if (sheetOpen) return null;
   if (!hydrated || !enabled || !token || !ready || !pulse) return null;
   if (pulse.confidence < 0.1 && pulse.progress < 15) return null;
 

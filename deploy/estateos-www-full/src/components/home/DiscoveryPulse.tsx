@@ -3,12 +3,53 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Brain, ChevronDown } from "lucide-react";
-import { subscribeDiscoveryUpdated } from "@/lib/discovery/clientEvents";
+import { Brain, Check, ChevronDown, Compass, Navigation, Sparkles } from "lucide-react";
+import {
+  dispatchIntelligenceSheetOpen,
+  subscribeDiscoveryUpdated,
+  subscribeIntelligenceLearn,
+} from "@/lib/discovery/clientEvents";
 import { playIntelligenceChime } from "@/lib/discovery/intelligenceChime";
+import {
+  INTEL_THRESHOLDS,
+  MOOD_PALETTE,
+  MOOD_RING_CLASS,
+  OIL_BASE,
+  OIL_COOL,
+  OIL_HOT,
+  STAGE_ORDER,
+  confidenceLabel,
+  crossedMilestone,
+  oilConicCss,
+  resolveIntelligenceMood,
+  resolveStageKey,
+  type IntelligenceMood,
+  type PresentReason,
+  type StageKey,
+} from "@/lib/discovery/intelligenceBrand";
+import {
+  INTEL_EASE,
+  INTEL_GENIE_EXIT,
+  INTEL_GENIE_SPRING,
+  INTEL_MOTION,
+  INTEL_ORB_SPRING,
+  hideDurationForReason,
+  msToSec,
+} from "@/lib/discovery/intelligenceMotion";
+import {
+  consumeAutoBudget,
+  hasDonePeek,
+  markPeekDone,
+  pickAutoPresent,
+  readMilestones,
+  writeMilestones,
+  type SessionStorageLike,
+} from "@/lib/discovery/intelligenceSession";
 import { useIntelligencePreference } from "@/contexts/IntelligencePreferenceContext";
+import { useLocale } from "@/contexts/LocaleContext";
 
 type PulsePayload = {
+  stage?: string;
   stageLabel: string;
   progress: number;
   confidence: number;
@@ -19,152 +60,70 @@ type PulsePayload = {
   secondaryCta: { label: string; href: string };
 };
 
-type PresentReason = "progress" | "milestone" | "contradiction" | "ready_peek" | "manual";
-
-const spring = { type: "spring" as const, stiffness: 380, damping: 32, mass: 0.85 };
-const SESSION_PEEK_KEY = "eos_intel_peek_v1";
-const SESSION_MILESTONE_KEY = "eos_intel_milestones_v1";
-
-const REASON_COPY: Record<
-  Exclude<PresentReason, "manual">,
-  { badge: string; lead: string }
-> = {
-  progress: { badge: "Postęp", lead: "Kierunek się właśnie wyostrzył." },
-  milestone: { badge: "Gotowość", lead: "Twój profil przekroczył nowy próg." },
-  contradiction: { badge: "Korekta", lead: "Sygnały się mieszają — warto spokojnie doprecyzować." },
-  ready_peek: { badge: "Trop", lead: "Masz wystarczająco wyraźny kierunek, by na chwilę zajrzeć." },
-};
-
-function confidenceLabel(c: number) {
-  if (c < 0.12) return "Start";
-  if (c < 0.35) return "Zarys";
-  if (c < 0.6) return "Wyraźny kierunek";
-  return "Silny sygnał";
-}
-
-type OrbMood = "calm" | "active" | "alert" | "celebrate";
-
-function resolveMood(pulse: PulsePayload, spectacle: boolean): OrbMood {
-  if (spectacle) return "celebrate";
-  if (pulse.contradictionIndex >= 0.55) return "alert";
-  if (pulse.progress >= 35 || pulse.confidence >= 0.35) return "active";
-  return "calm";
-}
-
-const MOOD_COLORS: Record<
-  OrbMood,
-  { core: string; glow: string; ring: string; stroke: string; speed: number }
-> = {
-  calm: {
-    core: "text-emerald-300",
-    glow: "rgba(52,211,153,0.55)",
-    ring: "border-emerald-400/35",
-    stroke: "#34d399",
-    speed: 3.6,
+const webStore: SessionStorageLike = {
+  getItem: (key) => {
+    try {
+      return sessionStorage.getItem(key);
+    } catch {
+      return null;
+    }
   },
-  active: {
-    core: "text-sky-300",
-    glow: "rgba(56,189,248,0.55)",
-    ring: "border-sky-400/40",
-    stroke: "#38bdf8",
-    speed: 2.2,
-  },
-  alert: {
-    core: "text-amber-300",
-    glow: "rgba(251,191,36,0.6)",
-    ring: "border-amber-400/45",
-    stroke: "#fbbf24",
-    speed: 1.35,
-  },
-  celebrate: {
-    core: "text-violet-300",
-    glow: "rgba(167,139,250,0.7)",
-    ring: "border-violet-400/50",
-    stroke: "#A78BFA",
-    speed: 0.9,
+  setItem: (key, value) => {
+    try {
+      sessionStorage.setItem(key, value);
+    } catch {
+      /* quiet */
+    }
   },
 };
-
-function readMilestones(): number[] {
-  try {
-    const raw = sessionStorage.getItem(SESSION_MILESTONE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeMilestones(values: number[]) {
-  try {
-    sessionStorage.setItem(SESSION_MILESTONE_KEY, JSON.stringify(values));
-  } catch {
-    /* quiet */
-  }
-}
-
-function crossedMilestone(prev: number | null, next: number): number | null {
-  const gates = [25, 50, 75, 90];
-  for (const gate of gates) {
-    if ((prev == null || prev < gate) && next >= gate) return gate;
-  }
-  return null;
-}
-
-const OIL_BASE = ["#FF2D55", "#BF5AF2", "#5E5CE6", "#64D2FF", "#30D158", "#FFD60A", "#FF9F0A", "#FF2D55"] as const;
-const OIL_HOT = ["#FF375F", "#FFD60A", "#64D2FF", "#BF5AF2", "#FF375F"] as const;
-const OIL_COOL = ["#64D2FF", "#5E5CE6", "#30D158", "#BF5AF2", "#64D2FF"] as const;
 
 /**
- * Same living face as mobile launcher — gasoline-on-water / oil iridescence + white brain.
+ * Living gasoline-on-water face — idle uses one oil layer; active uses three counter-spins.
  */
 function IntelligenceBrain({
   mood,
   reduceMotion,
   absorbing,
   size = 18,
+  oilActive = true,
 }: {
-  mood: OrbMood;
+  mood: IntelligenceMood;
   reduceMotion: boolean | null;
   absorbing: boolean;
   size?: number;
+  oilActive?: boolean;
 }) {
-  const colors = MOOD_COLORS[mood];
+  const colors = MOOD_PALETTE[mood];
   const facePx = Math.round(size * 2.35);
+  const fullMotion = Boolean(oilActive && !reduceMotion);
+
   return (
     <span
       className="relative flex items-center justify-center overflow-hidden rounded-full"
       style={{ width: facePx, height: facePx }}
     >
-      {!reduceMotion ? (
+      {fullMotion ? (
         <>
           <motion.span
             aria-hidden
             className="absolute inset-[-35%] rounded-full"
-            style={{
-              background: `conic-gradient(from 0deg, ${OIL_BASE.join(",")})`,
-            }}
+            style={{ background: oilConicCss(0, OIL_BASE) }}
             animate={{ rotate: 360 }}
-            transition={{ duration: 7.2, repeat: Infinity, ease: "linear" }}
+            transition={{ duration: msToSec(INTEL_MOTION.oilSpinAMs), repeat: Infinity, ease: "linear" }}
           />
           <motion.span
             aria-hidden
             className="absolute inset-[-20%] rounded-full opacity-90 mix-blend-screen"
-            style={{
-              background: `conic-gradient(from 90deg, ${OIL_HOT.join(",")})`,
-            }}
+            style={{ background: oilConicCss(90, OIL_HOT) }}
             animate={{ rotate: -360 }}
-            transition={{ duration: 9.8, repeat: Infinity, ease: "linear" }}
+            transition={{ duration: msToSec(INTEL_MOTION.oilSpinBMs), repeat: Infinity, ease: "linear" }}
           />
           <motion.span
             aria-hidden
             className="absolute inset-[-10%] rounded-full opacity-75 mix-blend-screen"
-            style={{
-              background: `conic-gradient(from 180deg, ${OIL_COOL.join(",")})`,
-            }}
+            style={{ background: oilConicCss(180, OIL_COOL) }}
             animate={{ rotate: 360 }}
-            transition={{ duration: 5.4, repeat: Infinity, ease: "linear" }}
+            transition={{ duration: msToSec(INTEL_MOTION.oilSpinCMs), repeat: Infinity, ease: "linear" }}
           />
           <motion.span
             aria-hidden
@@ -186,7 +145,7 @@ function IntelligenceBrain({
         <span
           aria-hidden
           className="absolute inset-0 rounded-full"
-          style={{ background: `conic-gradient(from 210deg, ${OIL_BASE.join(",")})` }}
+          style={{ background: oilConicCss(210, OIL_BASE) }}
         />
       )}
       <span
@@ -209,8 +168,12 @@ function IntelligenceBrain({
         }
         transition={
           absorbing
-            ? { duration: 0.7, ease: [0.16, 1, 0.3, 1] }
-            : { duration: 2.1, repeat: Infinity, ease: "easeInOut" }
+            ? { duration: msToSec(INTEL_MOTION.celebratePulseMs), ease: INTEL_EASE.out }
+            : {
+                duration: msToSec(INTEL_MOTION.brainBreatheMs),
+                repeat: Infinity,
+                ease: "easeInOut",
+              }
         }
       >
         <Brain size={size} strokeWidth={2} aria-hidden />
@@ -219,8 +182,32 @@ function IntelligenceBrain({
   );
 }
 
+function LearnSplash({ color, reduceMotion }: { color: string; reduceMotion: boolean | null }) {
+  if (reduceMotion) return null;
+  return (
+    <>
+      {[0, 1, 2].map((i) => (
+        <motion.span
+          key={i}
+          aria-hidden
+          className="pointer-events-none absolute inset-[-2px] rounded-full border-2"
+          style={{ borderColor: color }}
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: [0, 0.75, 0], scale: [0.85, 1.55 + i * 0.3, 2.15 + i * 0.1] }}
+          transition={{
+            duration: msToSec(INTEL_MOTION.splashMs),
+            delay: msToSec(INTEL_MOTION.splashStaggerMs * i),
+            ease: "easeOut",
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
 export default function DiscoveryPulse() {
   const reduceMotion = useReducedMotion();
+  const { dict } = useLocale();
   const { enabled: intelligenceEnabled, hydrated: intelligenceHydrated } =
     useIntelligencePreference();
   const [pulse, setPulse] = useState<PulsePayload | null>(null);
@@ -230,11 +217,24 @@ export default function DiscoveryPulse() {
   const [presentReason, setPresentReason] = useState<PresentReason | null>(null);
   const [absorbing, setAbsorbing] = useState(false);
   const [fillBoost, setFillBoost] = useState(0);
+  const [oilActive, setOilActive] = useState(true);
+  const [splashKey, setSplashKey] = useState(0);
   const prevProgressRef = useRef<number | null>(null);
   const prevContradictionRef = useRef<number | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const absorbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bootPeekDoneRef = useRef(false);
+  const expandedRef = useRef(false);
+
+  const wakeOil = useCallback(() => {
+    setOilActive(true);
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    if (reduceMotion) return;
+    idleTimerRef.current = setTimeout(() => {
+      if (!expandedRef.current) setOilActive(false);
+    }, INTEL_MOTION.idleAfterMs);
+  }, [reduceMotion]);
 
   const clearHide = useCallback(() => {
     if (hideTimerRef.current) {
@@ -246,7 +246,10 @@ export default function DiscoveryPulse() {
   const collapseToOrb = useCallback(() => {
     clearHide();
     setExpanded(false);
+    expandedRef.current = false;
+    dispatchIntelligenceSheetOpen(false);
     setSpectacle(false);
+    wakeOil();
     if (reduceMotion) {
       setPresentReason(null);
       return;
@@ -258,11 +261,11 @@ export default function DiscoveryPulse() {
       setAbsorbing(false);
       setFillBoost(0);
       setPresentReason(null);
-    }, 900);
-  }, [clearHide, reduceMotion]);
+    }, INTEL_MOTION.absorbMs);
+  }, [clearHide, reduceMotion, wakeOil]);
 
   const scheduleHide = useCallback(
-    (ms = 7800) => {
+    (ms: number) => {
       clearHide();
       hideTimerRef.current = setTimeout(() => {
         collapseToOrb();
@@ -272,22 +275,36 @@ export default function DiscoveryPulse() {
   );
 
   const presentGently = useCallback(
-    (kind: PresentReason) => {
+    async (kind: PresentReason) => {
       if (!intelligenceEnabled) return;
+      wakeOil();
+
       if (kind === "manual") {
         setPresentReason(null);
         setExpanded(true);
-        scheduleHide(9000);
+        expandedRef.current = true;
+        dispatchIntelligenceSheetOpen(true);
+        scheduleHide(hideDurationForReason("manual"));
         return;
       }
+
+      const allowed = await consumeAutoBudget(webStore);
+      if (!allowed) return;
+
       setPresentReason(kind);
       setExpanded(true);
+      expandedRef.current = true;
+      dispatchIntelligenceSheetOpen(true);
       setSpectacle(kind === "progress" || kind === "milestone");
-      void playIntelligenceChime(kind === "progress" || kind === "milestone" ? "progress" : "suggest");
-      scheduleHide(kind === "contradiction" ? 9000 : kind === "ready_peek" ? 7500 : 8200);
-      window.setTimeout(() => setSpectacle(false), 2400);
+
+      const chimeKind =
+        kind === "milestone" ? "celebrate" : kind === "progress" ? "progress" : "suggest";
+      void playIntelligenceChime(chimeKind);
+
+      scheduleHide(hideDurationForReason(kind));
+      window.setTimeout(() => setSpectacle(false), INTEL_MOTION.spectacleHoldMs);
     },
-    [intelligenceEnabled, scheduleHide],
+    [intelligenceEnabled, scheduleHide, wakeOil],
   );
 
   const load = useCallback(
@@ -306,26 +323,25 @@ export default function DiscoveryPulse() {
 
         const prev = prevProgressRef.current;
         const prevContra = prevContradictionRef.current;
-        const increased = typeof prev === "number" && next.progress > prev + 0.5;
         const milestone = crossedMilestone(prev, next.progress);
-        const contraRising =
-          typeof prevContra === "number" &&
-          prevContra < 0.55 &&
-          next.contradictionIndex >= 0.55;
+        const seen = await readMilestones(webStore);
+        const milestoneAlreadySeen = milestone != null && seen.includes(milestone);
 
-        if (!silent || increased || milestone || contraRising) {
-          if (contraRising) {
-            presentGently("contradiction");
-          } else if (milestone != null) {
-            const seen = readMilestones();
-            if (!seen.includes(milestone)) {
-              writeMilestones([...seen, milestone]);
-              presentGently("milestone");
-            } else if (increased) {
-              presentGently("progress");
+        if (!expandedRef.current && silent) {
+          const pick = pickAutoPresent({
+            prevProgress: prev,
+            nextProgress: next.progress,
+            prevContradiction: prevContra,
+            nextContradiction: next.contradictionIndex,
+            milestoneGate: milestone,
+            milestoneAlreadySeen,
+          });
+
+          if (pick) {
+            if (pick === "milestone" && milestone != null) {
+              await writeMilestones(webStore, [...seen, milestone]);
             }
-          } else if (increased) {
-            presentGently("progress");
+            void presentGently(pick);
           }
         }
 
@@ -342,13 +358,25 @@ export default function DiscoveryPulse() {
 
   useEffect(() => {
     void load();
+    wakeOil();
     return () => {
       clearHide();
       if (absorbTimerRef.current) clearTimeout(absorbTimerRef.current);
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
-  }, [load, clearHide]);
+  }, [load, clearHide, wakeOil]);
 
   useEffect(() => subscribeDiscoveryUpdated(() => void load(true)), [load]);
+
+  useEffect(
+    () =>
+      subscribeIntelligenceLearn((detail) => {
+        if (!detail?.kind || detail.kind === "open" || detail.kind === "other") return;
+        wakeOil();
+        setSplashKey((k) => k + 1);
+      }),
+    [wakeOil],
+  );
 
   useEffect(() => {
     const onVisible = () => {
@@ -362,27 +390,31 @@ export default function DiscoveryPulse() {
   useEffect(() => {
     if (!intelligenceEnabled) return;
     if (auth !== "user" || !pulse || bootPeekDoneRef.current || expanded) return;
-    const meaningful = pulse.progress >= 40 || pulse.confidence >= 0.32;
+    const meaningful =
+      pulse.progress >= INTEL_THRESHOLDS.peekProgress ||
+      pulse.confidence >= INTEL_THRESHOLDS.peekConfidence;
     if (!meaningful) return;
-    try {
-      if (sessionStorage.getItem(SESSION_PEEK_KEY) === "1") {
+
+    let cancelled = false;
+    void (async () => {
+      if (await hasDonePeek(webStore)) {
         bootPeekDoneRef.current = true;
         return;
       }
-    } catch {
-      /* quiet */
-    }
+      bootPeekDoneRef.current = true;
+      await new Promise((r) => setTimeout(r, INTEL_MOTION.bootPeekDelayMs));
+      if (cancelled || expandedRef.current) return;
+      await markPeekDone(webStore);
+      void presentGently(
+        pulse.contradictionIndex >= INTEL_THRESHOLDS.contradiction
+          ? "contradiction"
+          : "ready_peek",
+      );
+    })();
 
-    bootPeekDoneRef.current = true;
-    const t = window.setTimeout(() => {
-      try {
-        sessionStorage.setItem(SESSION_PEEK_KEY, "1");
-      } catch {
-        /* quiet */
-      }
-      presentGently(pulse.contradictionIndex >= 0.55 ? "contradiction" : "ready_peek");
-    }, 2200);
-    return () => window.clearTimeout(t);
+    return () => {
+      cancelled = true;
+    };
   }, [auth, pulse, expanded, intelligenceEnabled, presentGently]);
 
   if (
@@ -397,11 +429,55 @@ export default function DiscoveryPulse() {
 
   const progress = Math.max(0, Math.min(100, pulse.progress || 0));
   const displayProgress = Math.max(0, Math.min(100, progress + fillBoost * 8));
-  const contradiction = pulse.contradictionIndex >= 0.55;
-  const mood = resolveMood(pulse, spectacle);
-  const colors = MOOD_COLORS[mood];
+  const contradiction = pulse.contradictionIndex >= INTEL_THRESHOLDS.contradiction;
+  const mood = resolveIntelligenceMood({
+    progress: pulse.progress,
+    confidence: pulse.confidence,
+    contradictionIndex: pulse.contradictionIndex,
+    spectacle,
+  });
+  const colors = MOOD_PALETTE[mood];
+  const ringClass = MOOD_RING_CLASS[mood];
+  const activeStage = resolveStageKey(pulse.stage, progress);
+  const activeStageIndex = STAGE_ORDER.indexOf(activeStage);
+  const confKey = confidenceLabel(pulse.confidence);
+  const confCopy = {
+    start: dict.intelligence.confidenceStart,
+    outline: dict.intelligence.confidenceOutline,
+    clear: dict.intelligence.confidenceClear,
+    strong: dict.intelligence.confidenceStrong,
+  }[confKey];
+  const stageLabel = (key: StageKey) =>
+    ({
+      EXPLORE: dict.intelligence.stageExplore,
+      FOCUS: dict.intelligence.stageFocus,
+      READY: dict.intelligence.stageReady,
+      COMPLETE: dict.intelligence.stageComplete,
+    })[key];
+
   const reasonMeta =
-    presentReason && presentReason !== "manual" ? REASON_COPY[presentReason] : null;
+    presentReason && presentReason !== "manual"
+      ? {
+          progress: {
+            badge: dict.intelligence.progressBadge,
+            lead: dict.intelligence.progressLead,
+          },
+          milestone: {
+            badge: dict.intelligence.milestoneBadge,
+            lead: dict.intelligence.milestoneLead,
+          },
+          contradiction: {
+            badge: dict.intelligence.contradictionBadge,
+            lead: dict.intelligence.contradictionLead,
+          },
+          ready_peek: {
+            badge: dict.intelligence.readyPeekBadge,
+            lead: dict.intelligence.readyPeekLead,
+          },
+        }[presentReason]
+      : null;
+
+  const circumference = 2 * Math.PI * 17;
 
   return (
     <div
@@ -415,18 +491,18 @@ export default function DiscoveryPulse() {
             initial={
               reduceMotion
                 ? { opacity: 0 }
-                : { opacity: 0, y: 28, scale: 0.72, filter: "blur(10px)" }
+                : { opacity: 0, y: 28, scaleX: 0.72, scaleY: 0.55, filter: "blur(10px)" }
             }
-            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+            animate={{ opacity: 1, y: 0, scaleX: 1, scaleY: 1, filter: "blur(0px)" }}
             exit={
               reduceMotion
                 ? { opacity: 0 }
                 : {
                     opacity: 0,
-                    y: 36,
-                    scaleX: 0.22,
-                    scaleY: 0.12,
-                    filter: "blur(12px)",
+                    y: INTEL_GENIE_EXIT.y,
+                    scaleX: INTEL_GENIE_EXIT.scaleX,
+                    scaleY: INTEL_GENIE_EXIT.scaleY,
+                    filter: `blur(${INTEL_GENIE_EXIT.blurPx}px)`,
                     borderRadius: "999px",
                   }
             }
@@ -434,16 +510,15 @@ export default function DiscoveryPulse() {
               reduceMotion
                 ? { duration: 0.15 }
                 : {
-                    type: "spring",
-                    stiffness: 420,
-                    damping: 34,
-                    mass: 0.8,
+                    ...INTEL_GENIE_SPRING,
                     opacity: { duration: 0.28 },
                     filter: { duration: 0.28 },
                   }
             }
             style={{ transformOrigin: "24px 100%" }}
-            className="pointer-events-auto relative max-w-[min(90vw,340px)] overflow-hidden rounded-[1.35rem] border border-white/12 bg-[rgba(8,10,14,0.82)] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55),0_0_1px_rgba(255,255,255,0.08)_inset] backdrop-blur-[28px]"
+            className="pointer-events-auto relative max-w-[min(90vw,340px)] overflow-hidden rounded-[22px] border border-white/12 bg-[rgba(8,10,14,0.82)] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55),0_0_1px_rgba(255,255,255,0.08)_inset] backdrop-blur-[28px]"
+            onMouseEnter={wakeOil}
+            onFocus={wakeOil}
           >
             <motion.div
               aria-hidden
@@ -461,17 +536,23 @@ export default function DiscoveryPulse() {
               type="button"
               onClick={collapseToOrb}
               className="absolute right-2.5 top-2.5 z-10 rounded-full p-1.5 text-white/40 transition hover:bg-white/8 hover:text-white/75"
-              aria-label="Zwiń EstateOS Intelligence"
+              aria-label={dict.intelligence.collapseA11y}
             >
               <ChevronDown size={14} />
             </button>
 
             <div className="relative mb-2.5 flex items-center gap-2 pr-7">
               <span className="relative flex h-5 w-5 items-center justify-center">
-                <IntelligenceBrain mood={mood} reduceMotion={reduceMotion} absorbing={false} size={14} />
+                <IntelligenceBrain
+                  mood={mood}
+                  reduceMotion={reduceMotion}
+                  absorbing={false}
+                  size={14}
+                  oilActive={oilActive}
+                />
               </span>
               <span className="text-[9px] font-semibold uppercase tracking-[0.22em] text-white/55">
-                EstateOS™ Intelligence
+                {dict.intelligence.brandEyebrow}
               </span>
               {reasonMeta ? (
                 <motion.span
@@ -504,10 +585,35 @@ export default function DiscoveryPulse() {
             </p>
             <p className="relative mt-2 text-[12px] leading-relaxed text-white/58">{pulse.suggestion}</p>
 
+            <div className="relative mt-3 flex flex-wrap gap-1.5">
+              {STAGE_ORDER.map((key, index) => {
+                const done = index < activeStageIndex;
+                const current = index === activeStageIndex;
+                return (
+                  <span
+                    key={key}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold tracking-wide ${
+                      current
+                        ? "border-sky-300/45 bg-sky-400/20 text-white"
+                        : done
+                          ? "border-white/10 bg-sky-400/10 text-white/80"
+                          : "border-white/8 bg-white/[0.04] text-white/45"
+                    }`}
+                  >
+                    {done ? <Check size={9} strokeWidth={2.5} /> : null}
+                    {current ? (
+                      <span className="h-1.5 w-1.5 rounded-full bg-sky-300" aria-hidden />
+                    ) : null}
+                    {stageLabel(key)}
+                  </span>
+                );
+              })}
+            </div>
+
             <div className="relative mt-3.5">
               <div className="mb-1.5 flex items-center justify-between text-[10px] font-medium text-white/45">
-                <span>{confidenceLabel(pulse.confidence)}</span>
-                <span>{contradiction ? "Wymaga korekty" : "Stabilnie"}</span>
+                <span>{confCopy}</span>
+                <span>{contradiction ? dict.intelligence.needsCorrection : dict.intelligence.stable}</span>
               </div>
               <div className="h-[3px] overflow-hidden rounded-full bg-white/10">
                 <motion.div
@@ -518,45 +624,84 @@ export default function DiscoveryPulse() {
                   }`}
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+                  transition={{ duration: msToSec(INTEL_MOTION.progressBarMs), ease: INTEL_EASE.out }}
                 />
               </div>
             </div>
 
-              <div className="relative mt-4 flex flex-wrap gap-2">
-                <Link
-                  href={pulse.primaryCta.href}
-                  className="eos-btn eos-btn--primary eos-btn--sm !normal-case !tracking-wide !text-[11px] !font-semibold"
-                >
-                  {pulse.primaryCta.label}
-                </Link>
-                <Link
-                  href={pulse.secondaryCta.href}
-                  className="eos-btn eos-btn--secondary eos-btn--sm !normal-case !tracking-wide !text-[11px] !font-semibold"
-                >
-                  {pulse.secondaryCta.label}
-                </Link>
+            <div className="relative mt-4 flex flex-wrap gap-2">
+              <Link
+                href={pulse.primaryCta.href}
+                className="eos-btn eos-btn--primary eos-btn--sm !normal-case !tracking-wide !text-[11px] !font-semibold"
+                onClick={wakeOil}
+              >
+                {pulse.primaryCta.label}
+              </Link>
+              <Link
+                href={pulse.secondaryCta.href}
+                className="eos-btn eos-btn--secondary eos-btn--sm !normal-case !tracking-wide !text-[11px] !font-semibold"
+                onClick={wakeOil}
+              >
+                {pulse.secondaryCta.label}
+              </Link>
+            </div>
+
+            <div className="relative mt-4 border-t border-white/8 pt-3">
+              <p className="mb-2 text-[10px] font-medium text-white/40">{dict.intelligence.guideSupport}</p>
+              <div className="flex flex-col gap-1.5">
+                {(
+                  [
+                    { href: "/oferty", icon: Compass, label: dict.intelligence.guideFind },
+                    { href: "/moj-kierunek", icon: Navigation, label: dict.intelligence.guideDirection },
+                    { href: "/lustro", icon: Sparkles, label: dict.intelligence.guideLustro },
+                  ] as const
+                ).map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.04] px-2.5 py-2 text-[11px] font-medium text-white/75 transition hover:bg-white/[0.07]"
+                    onClick={wakeOil}
+                  >
+                    <item.icon size={14} className="shrink-0 text-sky-300/90" aria-hidden />
+                    <span className="min-w-0 flex-1 leading-snug">{item.label}</span>
+                  </Link>
+                ))}
               </div>
+            </div>
           </motion.div>
         ) : null}
       </AnimatePresence>
 
-      {/* Lamp / orb — always the genie destination */}
       <motion.button
         type="button"
-        onClick={() => presentGently("manual")}
+        onClick={() => {
+          wakeOil();
+          void presentGently("manual");
+        }}
+        onMouseEnter={wakeOil}
+        onFocus={wakeOil}
         initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.7 }}
         animate={{
           opacity: 1,
           scale: absorbing ? [1, 1.14, 1] : 1,
         }}
-        transition={reduceMotion ? { duration: 0.12 } : spring}
-        className={`pointer-events-auto group relative flex h-12 w-12 items-center justify-center rounded-full border ${colors.ring} bg-transparent shadow-[0_12px_40px_rgba(0,0,0,0.45)] transition-all duration-300 hover:scale-[1.1] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_28px_rgba(255,255,255,0.28),0_16px_40px_rgba(0,0,0,0.5)] active:scale-[0.96]`}
+        transition={reduceMotion ? { duration: 0.12 } : INTEL_ORB_SPRING}
+        className={`pointer-events-auto group relative flex h-12 w-12 items-center justify-center rounded-full border ${ringClass} bg-transparent shadow-[0_12px_40px_rgba(0,0,0,0.45)] transition-all duration-300 hover:scale-[1.1] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_0_28px_rgba(255,255,255,0.28),0_16px_40px_rgba(0,0,0,0.5)] active:scale-[0.96]`}
         aria-label={`EstateOS Intelligence · ${pulse.stageLabel} ${progress}%`}
         aria-expanded={expanded}
         title={`${pulse.stageLabel} · ${progress}%`}
       >
-        <IntelligenceBrain mood={mood} reduceMotion={reduceMotion} absorbing={absorbing} size={18} />
+        {splashKey > 0 ? (
+          <LearnSplash key={splashKey} color={colors.accent} reduceMotion={reduceMotion} />
+        ) : null}
+
+        <IntelligenceBrain
+          mood={mood}
+          reduceMotion={reduceMotion}
+          absorbing={absorbing}
+          size={18}
+          oilActive={oilActive || expanded || absorbing}
+        />
 
         <svg
           className="pointer-events-none absolute left-1/2 top-1/2 size-[2.65rem] -translate-x-1/2 -translate-y-1/2 -rotate-90"
@@ -579,13 +724,18 @@ export default function DiscoveryPulse() {
             stroke={colors.stroke}
             strokeWidth="1.85"
             strokeLinecap="round"
-            strokeDasharray={`${(displayProgress / 100) * 106.76} 106.76`}
+            strokeDasharray={`${(displayProgress / 100) * circumference} ${circumference}`}
             initial={false}
             animate={{
-              strokeDasharray: `${(displayProgress / 100) * 106.76} 106.76`,
+              strokeDasharray: `${(displayProgress / 100) * circumference} ${circumference}`,
               opacity: absorbing ? [0.7, 1, 0.85] : 1,
             }}
-            transition={{ duration: absorbing ? 0.7 : 0.6, ease: [0.16, 1, 0.3, 1] }}
+            transition={{
+              duration: absorbing
+                ? msToSec(INTEL_MOTION.celebratePulseMs)
+                : msToSec(INTEL_MOTION.progressRingMs),
+              ease: INTEL_EASE.out,
+            }}
           />
         </svg>
       </motion.button>

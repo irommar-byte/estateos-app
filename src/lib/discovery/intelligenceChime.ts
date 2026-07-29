@@ -84,7 +84,14 @@ function buildToneWavUri(freqs: number[], peak: number): string {
   return `data:audio/wav;base64,${b64}`;
 }
 
-export async function playIntelligenceChime(kind: 'suggest' | 'progress' = 'suggest') {
+export type IntelligenceChimeKind = 'suggest' | 'progress' | 'celebrate';
+
+/** Shared reduce-motion cache so haptic callers do not re-query AccessibilityInfo. */
+export function isIntelligenceReduceMotion() {
+  return reduceMotion;
+}
+
+export async function playIntelligenceChime(kind: IntelligenceChimeKind = 'suggest') {
   if (reduceMotion) return;
   const now = Date.now();
   if (now - lastPlayedAt < 12_000) return;
@@ -102,8 +109,13 @@ export async function playIntelligenceChime(kind: 'suggest' | 'progress' = 'sugg
     // Continue — mode setup is best-effort.
   }
 
-  const freqs = kind === 'progress' ? [196, 294, 392] : [174.6, 261.6, 349.2];
-  const peak = kind === 'progress' ? 0.028 : 0.022;
+  const freqs =
+    kind === 'celebrate'
+      ? [220, 330, 440, 554]
+      : kind === 'progress'
+        ? [196, 294, 392]
+        : [174.6, 261.6, 349.2];
+  const peak = kind === 'celebrate' ? 0.032 : kind === 'progress' ? 0.028 : 0.022;
   const uri = buildToneWavUri(freqs, peak);
 
   try {

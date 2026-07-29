@@ -36,6 +36,14 @@ export const discovery = {
     continueDiscovery: 'Продолжить оценки',
     lustro: 'Зеркало предпочтений',
     openLead: 'Открыть зацепку →',
+    confidence: {
+      start: 'Старт',
+      outline: 'Контур',
+      clear: 'Ясное направление',
+      strong: 'Сильный сигнал',
+    },
+    contradictionOn: 'Сигналы смешиваются',
+    contradictionOff: 'Сигналы согласованы',
   },
   dislike: {
     title: 'Что не подходит?',

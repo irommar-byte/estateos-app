@@ -60,6 +60,31 @@ export type Dictionary = {
     sheetFeature3: string;
     sheetEnable: string;
     sheetLater: string;
+    collapseA11y: string;
+    brandEyebrow: string;
+    stable: string;
+    needsCorrection: string;
+    confidenceStart: string;
+    confidenceOutline: string;
+    confidenceClear: string;
+    confidenceStrong: string;
+    stageExplore: string;
+    stageFocus: string;
+    stageReady: string;
+    stageComplete: string;
+    guideFind: string;
+    guideTropes: string;
+    guideDirection: string;
+    guideLustro: string;
+    guideSupport: string;
+    progressBadge: string;
+    progressLead: string;
+    milestoneBadge: string;
+    milestoneLead: string;
+    contradictionBadge: string;
+    contradictionLead: string;
+    readyPeekBadge: string;
+    readyPeekLead: string;
   };
   currency: {
     sectionTitle: string;
@@ -707,6 +732,31 @@ const pl: Dictionary = {
     sheetFeature3: "Szepty przed kontaktem i wizytą — tylko gdy mają sens",
     sheetEnable: "Włącz EstateOS™ Intelligence",
     sheetLater: "Nie teraz",
+    collapseA11y: "Zwiń EstateOS Intelligence",
+    brandEyebrow: "EstateOS™ Intelligence",
+    stable: "Stabilnie",
+    needsCorrection: "Wymaga korekty",
+    confidenceStart: "Start",
+    confidenceOutline: "Zarys",
+    confidenceClear: "Wyraźny kierunek",
+    confidenceStrong: "Silny sygnał",
+    stageExplore: "Odkrywanie",
+    stageFocus: "Fokus",
+    stageReady: "Gotowość",
+    stageComplete: "Domknięte",
+    guideFind: "Znajdź przestrzeń, która do mnie pasuje",
+    guideTropes: "Pokaż moje ważne tropy",
+    guideDirection: "Podpowiedz kolejny krok",
+    guideLustro: "Lustro preferencji",
+    guideSupport: "Jestem tu, żeby spokojnie pomagać.",
+    progressBadge: "Postęp",
+    progressLead: "Kierunek się właśnie wyostrzył.",
+    milestoneBadge: "Gotowość",
+    milestoneLead: "Twój profil przekroczył nowy próg.",
+    contradictionBadge: "Korekta",
+    contradictionLead: "Sygnały się mieszają — warto spokojnie doprecyzować.",
+    readyPeekBadge: "Trop",
+    readyPeekLead: "Masz wystarczająco wyraźny kierunek, by na chwilę zajrzeć.",
   },
   currency: {
     sectionTitle: "Waluta cen",
@@ -1470,6 +1520,31 @@ const en: Dictionary = {
     sheetFeature3: "Whispers before contact and visits — only when useful",
     sheetEnable: "Turn on EstateOS™ Intelligence",
     sheetLater: "Not now",
+    collapseA11y: "Collapse EstateOS Intelligence",
+    brandEyebrow: "EstateOS™ Intelligence",
+    stable: "Stable",
+    needsCorrection: "Needs a nudge",
+    confidenceStart: "Start",
+    confidenceOutline: "Outline",
+    confidenceClear: "Clear direction",
+    confidenceStrong: "Strong signal",
+    stageExplore: "Explore",
+    stageFocus: "Focus",
+    stageReady: "Ready",
+    stageComplete: "Complete",
+    guideFind: "Find a space that fits me",
+    guideTropes: "Show my key tropes",
+    guideDirection: "Suggest the next step",
+    guideLustro: "Preference mirror",
+    guideSupport: "I'm here to help quietly.",
+    progressBadge: "Progress",
+    progressLead: "Your direction just sharpened.",
+    milestoneBadge: "Ready",
+    milestoneLead: "Your profile crossed a new threshold.",
+    contradictionBadge: "Nudge",
+    contradictionLead: "Signals are mixing — let's calmly refine.",
+    readyPeekBadge: "Lead",
+    readyPeekLead: "Your direction is clear enough for a quick look.",
   },
   currency: {
     sectionTitle: "Price currency",
