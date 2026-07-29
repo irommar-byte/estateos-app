@@ -17,17 +17,15 @@ export async function GET(req: Request) {
     const contradictionIndex = guide.contradictionIndex ?? 0;
     const progress = Math.round(Math.min(1, Math.max(0, guide.stageProgress || 0)) * 100);
 
-    const normalizedSummary = String(guide.summaryLine || "").trim();
-    const hasDirectionSignal = guide.decisionCount > 0;
+    // Human headline / body — never dump "szuka w: … · budżet …" as the title.
     const directionLine =
-      hasDirectionSignal && normalizedSummary
-        ? normalizedSummary
-        : "Budujemy Twój kierunek z każdej decyzji.";
-
+      String(guide.nextStep?.title || "").trim() ||
+      "Budujemy Twój kierunek z każdej decyzji.";
     const suggestion =
       contradictionIndex >= 0.55
-        ? "Sygnały się mieszają. Zrób 2-3 spokojne decyzje „Nie dla mnie” z powodem."
-        : guide.nextStep?.title || "Kierunek się ostrzy. Kontynuuj spokojnie ocenianie ofert.";
+        ? "Sygnały się mieszają. Zrób 2–3 spokojne decyzje „Nie dla mnie” z powodem."
+        : String(guide.body || "").trim() ||
+          "Kierunek się ostrzy. Kontynuuj spokojnie ocenianie ofert.";
 
     return NextResponse.json(
       {
@@ -38,9 +36,10 @@ export async function GET(req: Request) {
           progress,
           confidence,
           contradictionIndex,
-          directionLine: directionLine || "Budujemy Twój kierunek z każdej decyzji.",
-          summaryLine: guide.summaryLine,
+          directionLine,
           suggestion,
+          evidenceHint: guide.evidenceHint,
+          summaryLine: guide.summaryLine,
           decisionCount: guide.decisionCount,
           primaryCta: guide.primaryCta,
           secondaryCta: guide.secondaryCta,

@@ -1,5 +1,9 @@
 import { prisma } from '@/lib/prisma';
 import { buildDiscoveryBuyerBrief } from '@/lib/discoveryInsights';
+import {
+  discoveryDisplayLabel,
+  discoveryPropertyTypeLabel,
+} from '@/lib/discovery/displayLabels';
 
 export type GuideIntentStage = 'EXPLORE' | 'FOCUS' | 'READY' | 'COMPLETE';
 
@@ -27,6 +31,8 @@ export type EstateOsGuideContext = {
   intentLabel: string;
   body: string;
   summaryLine: string;
+  /** Short human chips for UI (city · type) — never a param dump. */
+  evidenceHint: string | null;
   decisionCount: number;
   tropes: Array<{
     offerId: number;
@@ -49,7 +55,7 @@ export type EstateOsGuideContext = {
 const STAGE_LABEL: Record<GuideIntentStage, string> = {
   EXPLORE: 'Odkrywanie',
   FOCUS: 'Fokus',
-  READY: 'Gotowość',
+  READY: 'Na tropie',
   COMPLETE: 'Domknięte',
 };
 
@@ -135,9 +141,9 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
       offerId: priority.offerId,
     };
     body = topCity
-      ? `Jeden sygnał „na poważnie” w okolicy ${topCity}. Otwórz ofertę albo zestaw ją ze swoim kierunkiem.`
-      : 'Jeden sygnał „na poważnie”. Otwórz ofertę albo zestaw ją ze swoim kierunkiem — bez pośpiechu.';
-    primaryCta = buildCta('Otwórz trop', 'TROPES', priority.offerId);
+      ? `Oznaczyłeś coś „na poważnie” w okolicy ${topCity}. Spokojnie zobacz ofertę albo zestaw ją z kierunkiem.`
+      : 'Oznaczyłeś coś „na poważnie”. Spokojnie zobacz ofertę albo zestaw ją z kierunkiem.';
+    primaryCta = buildCta('Zobacz ofertę', 'TROPES', priority.offerId);
     secondaryCta = buildCta('Mój kierunek', 'DIRECTION');
   } else if (contradictionIndex >= 0.55) {
     nextStep = {
@@ -146,7 +152,7 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
       action: 'DIRECTION',
     };
     body =
-      'Twoje „pasuje” i „nie dla mnie” trochę się ścierają. Spokojny przegląd kierunku pomoże to ułożyć.';
+      'Twoje „pasuje” i „nie dla mnie” trochę się ścierają. Krótki przegląd kierunku pomoże to ułożyć.';
     primaryCta = buildCta('Uporządkuj kierunek', 'DIRECTION');
     secondaryCta = buildCta('Przeglądaj oferty', 'DISCOVERY');
   } else if (intentStage === 'READY') {
@@ -156,8 +162,8 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
       action: 'DISCOVERY',
     };
     // Tip only — structured prefs live in summaryLine / profile fields for UI chips.
-    body = 'Czas doprecyzować katalog albo oznaczyć coś „na poważnie”.';
-    primaryCta = buildCta('Doprecyzuj w katalogu', 'DISCOVERY');
+    body = 'Doprecyzuj katalog albo oznacz coś „na poważnie” — wtedy tropy stają się konkretne.';
+    primaryCta = buildCta('Przeglądaj oferty', 'DISCOVERY');
     secondaryCta = buildCta('Mój kierunek', 'DIRECTION');
   } else if (intentStage === 'FOCUS') {
     nextStep = {
@@ -166,7 +172,7 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
       action: 'DISCOVERY',
     };
     body =
-      'Kilka kolejnych cichych decyzji — zwłaszcza „nie dla mnie” z powodem — mocno ostrzy gust.';
+      'Kilka kolejnych decyzji — zwłaszcza „nie dla mnie” z powodem — mocno ostrzy gust.';
     primaryCta = buildCta('Kontynuuj ocenianie', 'DISCOVERY');
     secondaryCta = buildCta('Mój kierunek', 'DIRECTION');
   } else {
@@ -176,19 +182,31 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
       action: 'DISCOVERY',
     };
     body =
-      'Bez formularza. Na kartach ofert wybierz Pasuje, Nie dla mnie albo Na poważnie — Guide nauczy się z tego sam.';
+      'Bez formularza. Na ofertach wybierz Pasuje, Nie dla mnie albo Na poważnie — Intelligence uczy się z tego samo.';
     primaryCta = buildCta('Oceń pierwsze oferty', 'DISCOVERY');
     secondaryCta = buildCta('Mój kierunek', 'DIRECTION');
   }
 
-  const stageProgress =
-    intentStage === 'COMPLETE'
-      ? 1
-      : intentStage === 'READY'
-        ? 0.82
-        : intentStage === 'FOCUS'
-          ? Math.min(0.65, 0.28 + decisionCount * 0.05)
-          : Math.min(0.22, decisionCount * 0.04);
+  // Continuous progress within stage bands — never a fake fixed 82%.
+  const stageBand: Record<GuideIntentStage, { floor: number; ceiling: number }> = {
+    EXPLORE: { floor: 0.04, ceiling: 0.26 },
+    FOCUS: { floor: 0.28, ceiling: 0.54 },
+    READY: { floor: 0.56, ceiling: 0.9 },
+    COMPLETE: { floor: 0.92, ceiling: 1 },
+  };
+  const band = stageBand[intentStage];
+  const blend = Math.min(1, Math.max(0, confidence * 0.72 + Math.min(0.28, decisionCount * 0.014)));
+  const stageProgress = band.floor + (band.ceiling - band.floor) * blend;
+
+  const evidenceBits: string[] = [];
+  if (topCity) evidenceBits.push(topCity);
+  if (brief.topPropertyTypes[0]?.key) {
+    evidenceBits.push(
+      discoveryPropertyTypeLabel(brief.topPropertyTypes[0].key) ||
+        discoveryDisplayLabel(brief.topPropertyTypes[0].key),
+    );
+  }
+  const evidenceHint = evidenceBits.length ? evidenceBits.join(' · ') : null;
 
   return {
     confidence,
@@ -199,6 +217,7 @@ export async function buildEstateOsGuideContext(userId: number): Promise<EstateO
     intentLabel: STAGE_LABEL[intentStage],
     body,
     summaryLine: brief.summaryLine,
+    evidenceHint,
     decisionCount,
     tropes,
     nextStep,
