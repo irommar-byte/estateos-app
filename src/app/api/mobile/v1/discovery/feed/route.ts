@@ -10,6 +10,7 @@ import {
   scoreDiscoveryCandidate,
 } from '@/lib/discovery/engine';
 import { DISCOVERY_ENGINE_VERSION } from '@/lib/discovery/types';
+import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 
 export async function GET(req: Request) {
   try {
@@ -228,6 +229,7 @@ export async function GET(req: Request) {
       items: ranked.map((item) => ({
         ...item,
         offerId: item.id,
+        imageUrl: resolveOfferPrimaryImage({ images: item.images }),
         engineVersion: DISCOVERY_ENGINE_VERSION,
       })),
       profile: {
