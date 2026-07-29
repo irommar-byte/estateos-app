@@ -18,8 +18,9 @@ export async function GET(req: Request) {
     const progress = Math.round(Math.min(1, Math.max(0, guide.stageProgress || 0)) * 100);
 
     const normalizedSummary = String(guide.summaryLine || "").trim();
+    const hasDirectionSignal = guide.decisionCount > 0;
     const directionLine =
-      normalizedSummary && !normalizedSummary.includes("Za mało")
+      hasDirectionSignal && normalizedSummary
         ? normalizedSummary
         : "Budujemy Twój kierunek z każdej decyzji.";
 
