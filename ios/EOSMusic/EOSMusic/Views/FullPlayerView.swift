@@ -52,13 +52,12 @@ private struct PlayerContent: View {
     private var playerBody: some View {
         ZStack {
             EOSAmbientBackground()
-            if engine.currentTrack != nil, effectsMode != .off {
-                DynamicPlayerBackdrop(
+            if engine.currentTrack != nil, effectsMode == .strong {
+                SoftPlayerBackdrop(
                     isPlaying: engine.isPlaying,
-                    isStrong: effectsMode == .strong,
                     audio: engine.audioFrame
                 )
-                    .allowsHitTesting(false)
+                .allowsHitTesting(false)
             }
 
             if let track = engine.currentTrack {
@@ -115,16 +114,15 @@ private struct PlayerContent: View {
                         mode: effectsMode,
                         audio: engine.audioFrame
                     )
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 18)
 
                     if effectsMode != .off {
-                        IslandMembraneVisualizer(
+                        CompactIslandVisualizer(
                             isPlaying: engine.isPlaying,
                             isStrong: effectsMode == .strong,
                             audio: engine.audioFrame
                         )
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 16)
+                        .padding(.bottom, 16)
                     }
 
                     VStack(spacing: 6) {
@@ -284,102 +282,130 @@ private struct RotatingDiscArtwork: View {
             ArtworkImage(url: artworkURL, size: 260, cornerRadius: 20)
                 .shadow(color: EOSTheme.accent.opacity(0.12), radius: 16, y: 8)
         } else {
-        ZStack {
-            ButterflyHaloRing(
-                isPlaying: isPlaying,
-                isStrong: strong,
-                audio: audio
-            )
-
-            TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !isPlaying || !enabled)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            let phase = t * 2 * .pi
             ZStack {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                EOSTheme.accentSecondary.opacity(enabled ? (strong ? 0.2 : 0.14) : 0),
-                                EOSTheme.accent.opacity(enabled ? (strong ? 0.13 : 0.08) : 0),
-                                .clear
-                            ],
-                            center: .center,
-                            startRadius: 20,
-                            endRadius: 210
-                        )
-                    )
-                    .frame(width: 300, height: 300)
+                SoftHaloRing(
+                    isPlaying: isPlaying,
+                    isStrong: strong,
+                    drive: audio.visualDrive(isStrong: strong),
+                    bars: strong ? audio.islandBars : []
+                )
 
-                Circle()
-                    .stroke(EOSTheme.textMuted.opacity(0.25), lineWidth: 1.2)
-                    .frame(width: 260, height: 260)
-
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                Color.black.opacity(0.24),
-                                Color.black.opacity(0.58),
-                                Color.black.opacity(0.9)
-                            ],
-                            center: UnitPoint(x: 0.38, y: 0.3),
-                            startRadius: 6,
-                            endRadius: 140
-                        )
-                    )
-                    .frame(width: 272, height: 272)
-                    .overlay {
-                        VinylGroovesOverlay()
-                    }
-
-                ArtworkImage(url: artworkURL, size: 238, cornerRadius: 119)
-                    .overlay {
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    RadialGradient(
-                                        colors: [
-                                            Color(red: 0.16, green: 0.16, blue: 0.18),
-                                            Color.black.opacity(0.95)
-                                        ],
-                                        center: .center,
-                                        startRadius: 1,
-                                        endRadius: 36
-                                    )
-                                )
-                                .frame(width: 36, height: 36)
-
-                            Circle()
-                                .stroke(Color.white.opacity(0.14), lineWidth: 1)
-                                .frame(width: 26, height: 26)
-
-                            Circle()
-                                .stroke(Color.black.opacity(0.6), lineWidth: 1.2)
-                                .frame(width: 16, height: 16)
-
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color(red: 0.82, green: 0.84, blue: 0.88),
-                                            Color(red: 0.46, green: 0.48, blue: 0.54)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 9, height: 9)
-                                .shadow(color: .white.opacity(0.35), radius: 1, x: -0.4, y: -0.4)
-                                .shadow(color: .black.opacity(0.45), radius: 1.4, x: 0.8, y: 0.8)
-                        }
-                    }
-                    .rotationEffect(.degrees(isPlaying && enabled ? phase * (strong ? 20 : 14) : 0))
-                    .shadow(color: EOSTheme.accent.opacity(enabled ? (strong ? 0.3 : 0.2) : 0.08), radius: 26, y: 16)
+                ContinuousSpin(isSpinning: isPlaying, secondsPerRevolution: strong ? 9 : 11) {
+                    VinylDisc(artworkURL: artworkURL)
+                }
+                .shadow(
+                    color: EOSTheme.accent.opacity(isPlaying ? (strong ? 0.28 : 0.16) : 0.08),
+                    radius: 22,
+                    y: 12
+                )
             }
-            }
-        }
+            .frame(width: 320, height: 320)
         }
     }
+}
+
+/// One composited spin — pauses cleanly without TimelineView thrash on child views.
+private struct ContinuousSpin<Content: View>: View {
+    let isSpinning: Bool
+    let secondsPerRevolution: Double
+    @ViewBuilder let content: Content
+
+    @State private var spinStartedAt: Date?
+    @State private var frozenTurns: Double = 0
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isSpinning)) { context in
+            let turns: Double = {
+                if isSpinning, let start = spinStartedAt {
+                    return frozenTurns + context.date.timeIntervalSince(start) / secondsPerRevolution
+                }
+                return frozenTurns
+            }()
+            return content.rotationEffect(.degrees(turns * 360))
+        }
+        .onAppear {
+            if isSpinning, spinStartedAt == nil {
+                spinStartedAt = Date()
+            }
+        }
+        .onChange(of: isSpinning) { _, spinning in
+            if spinning {
+                spinStartedAt = Date()
+            } else if let start = spinStartedAt {
+                frozenTurns += Date().timeIntervalSince(start) / secondsPerRevolution
+                spinStartedAt = nil
+            }
+        }
+    }
+}
+
+private struct VinylDisc: View {
+    let artworkURL: URL?
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.black.opacity(0.22),
+                            Color.black.opacity(0.55),
+                            Color.black.opacity(0.92)
+                        ],
+                        center: UnitPoint(x: 0.38, y: 0.3),
+                        startRadius: 6,
+                        endRadius: 140
+                    )
+                )
+                .frame(width: 272, height: 272)
+                .overlay { VinylGroovesOverlay() }
+
+            ArtworkImage(url: artworkURL, size: 238, cornerRadius: 119)
+                .overlay { SpindleHub() }
+        }
+    }
+}
+
+private struct SpindleHub: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color(red: 0.16, green: 0.16, blue: 0.18),
+                            Color.black.opacity(0.95)
+                        ],
+                        center: .center,
+                        startRadius: 1,
+                        endRadius: 36
+                    )
+                )
+                .frame(width: 36, height: 36)
+
+            Circle()
+                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                .frame(width: 26, height: 26)
+
+            Circle()
+                .stroke(Color.black.opacity(0.6), lineWidth: 1.2)
+                .frame(width: 16, height: 16)
+
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.82, green: 0.84, blue: 0.88),
+                            Color(red: 0.46, green: 0.48, blue: 0.54)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 9, height: 9)
+        }
+    }
+}
 
 private struct VinylGroovesOverlay: View {
     var body: some View {
@@ -394,162 +420,98 @@ private struct VinylGroovesOverlay: View {
                 var path = Path()
                 path.addArc(center: center, radius: r, startAngle: .degrees(0), endAngle: .degrees(360), clockwise: false)
                 gc.stroke(path, with: .color(.white.opacity(alpha)), lineWidth: 0.6)
-                r += 2.4
+                r += 2.8
             }
-
-            // tiny etched ring around spindle area
             var innerRing = Path()
             innerRing.addArc(center: center, radius: 18, startAngle: .degrees(0), endAngle: .degrees(360), clockwise: false)
             gc.stroke(innerRing, with: .color(.white.opacity(0.16)), lineWidth: 0.8)
         }
         .blendMode(.screen)
         .mask(Circle().fill(.white))
+        .allowsHitTesting(false)
     }
 }
-}
 
-private struct ButterflyHaloRing: View {
+/// Soft glow for Delikatne; one Canvas ring for Mocniejsze (no 96 SwiftUI bars).
+private struct SoftHaloRing: View {
     let isPlaying: Bool
     let isStrong: Bool
-    let audio: MusicPlaybackEngine.AudioReactiveFrame
+    let drive: Double
+    let bars: [Double]
 
-    private let barCount = 96
-  /// Zewnętrzna krawędź winyla (272 pt średnicy) — nitki startują dokładnie stąd.
     private let vinylRadius: CGFloat = 136
 
     var body: some View {
-        let baseOpacity: Double = isStrong ? 0.95 : 0.8
-        let drive = audio.visualDrive(isStrong: isStrong)
-        let maxExtension = isStrong ? 56.0 : 42.0
-
         ZStack {
-            ForEach(0..<barCount, id: \.self) { index in
-                let angle = (Double(index) / Double(barCount)) * (.pi * 2)
-                let amplitude = ringAmplitude(index: index, drive: drive)
-                RingPulseBar(
-                    amplitude: amplitude,
-                    maxExtension: maxExtension,
-                    vinylRadius: vinylRadius,
-                    angle: angle,
-                    baseOpacity: baseOpacity,
-                    isStrong: isStrong,
-                    isPlaying: isPlaying
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            EOSTheme.accentSecondary.opacity(isPlaying ? 0.16 + drive * 0.18 : 0.04),
+                            EOSTheme.accent.opacity(isPlaying ? 0.1 + drive * 0.12 : 0.02),
+                            .clear
+                        ],
+                        center: .center,
+                        startRadius: 40,
+                        endRadius: 168
+                    )
                 )
+                .frame(width: 320, height: 320)
+                .scaleEffect(isPlaying ? 1 + CGFloat(drive) * 0.03 : 1)
+                .animation(.easeOut(duration: 0.18), value: drive)
+
+            if isStrong, isPlaying {
+                Canvas { gc, size in
+                    let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                    let count = 48
+                    let maxExt: CGFloat = 40
+                    for index in 0..<count {
+                        let amp = barAmplitude(index: index, count: count)
+                        guard amp > 0.02 else { continue }
+                        let angle = (Double(index) / Double(count)) * (.pi * 2) - .pi / 2
+                        let length = 2 + CGFloat(amp) * maxExt
+                        let inner = vinylRadius + 1
+                        let outer = inner + length
+                        let cosA = CGFloat(cos(angle))
+                        let sinA = CGFloat(sin(angle))
+                        var path = Path()
+                        path.move(to: CGPoint(x: center.x + cosA * inner, y: center.y + sinA * inner))
+                        path.addLine(to: CGPoint(x: center.x + cosA * outer, y: center.y + sinA * outer))
+                        let alpha = 0.28 + amp * 0.55
+                        gc.stroke(
+                            path,
+                            with: .color(EOSTheme.accentSecondary.opacity(alpha)),
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                        )
+                    }
+                }
+                .frame(width: 320, height: 320)
+                .allowsHitTesting(false)
             }
 
             Circle()
-                .stroke(
-                    EOSTheme.accentSecondary.opacity(isStrong ? 0.34 : 0.24),
-                    lineWidth: isStrong ? 1.8 : 1.2
-                )
+                .stroke(EOSTheme.accentSecondary.opacity(isStrong ? 0.28 : 0.16), lineWidth: 1.2)
                 .frame(width: vinylRadius * 2, height: vinylRadius * 2)
-                .blur(radius: 1.2)
         }
-        .frame(width: 320, height: 320)
-        .animation(nil, value: audio.islandBars)
-        .animation(nil, value: audio.level)
         .allowsHitTesting(false)
     }
 
-    private func ringAmplitude(index: Int, drive: Double) -> Double {
-        guard isPlaying else { return 0 }
-        let bars = audio.islandBars
-
-        let position = Double(index) / Double(barCount) * Double(max(bars.count, 1))
-        let left = Int(position) % max(bars.count, 1)
-        let right = (left + 1) % max(bars.count, 1)
+    private func barAmplitude(index: Int, count: Int) -> Double {
+        guard !bars.isEmpty else { return drive }
+        let position = Double(index) / Double(count) * Double(bars.count)
+        let left = Int(position) % bars.count
+        let right = (left + 1) % bars.count
         let blend = position - floor(position)
-        let level = bars.isEmpty ? drive : bars[left] * (1 - blend) + bars[right] * blend
-
-        let wobble = sin(Double(index) * 0.73 + audio.beat * 7.2) * 0.06
-        let punch = audio.beat * (0.18 + blend * 0.3)
-        let energy = max(level, drive * 0.38) * 0.8 + punch * 0.22 + wobble
-        guard energy > 0.008 else { return 0 }
-        return pow(min(1, max(0, energy)), isStrong ? 1.45 : 1.55)
+        let level = bars[left] * (1 - blend) + bars[right] * blend
+        return pow(min(1, max(level, drive * 0.35)), 1.35)
     }
 }
 
-/// Nitka wyrasta od zewnętrznej krawędzi winyla — długość płynnie reaguje na audio (cisza = krótka).
-private struct RingPulseBar: View {
-    let amplitude: Double
-    let maxExtension: CGFloat
-    let vinylRadius: CGFloat
-    let angle: Double
-    let baseOpacity: Double
-    let isStrong: Bool
-    let isPlaying: Bool
-
-    @ViewBuilder
-    var body: some View {
-        let minLength: CGFloat = 1.2
-        let length = minLength + CGFloat(amplitude) * maxExtension
-        if isPlaying, amplitude > 0.006 {
-            Capsule(style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            EOSTheme.accentSecondary.opacity(baseOpacity * (0.35 + amplitude * 0.65)),
-                            EOSTheme.accent.opacity(baseOpacity * (0.22 + amplitude * 0.78))
-                        ],
-                        startPoint: .bottom,
-                        endPoint: .top
-                    )
-                )
-                .frame(width: 2.2, height: length)
-                .shadow(color: EOSTheme.accent.opacity(amplitude * 0.32), radius: isStrong ? 4 : 2, y: 0)
-                .offset(y: -(vinylRadius + length / 2))
-                .rotationEffect(.radians(angle))
-        }
-    }
-}
-
-private struct IslandMembraneVisualizer: View {
+private struct CompactIslandVisualizer: View {
     @Environment(\.colorScheme) private var colorScheme
     let isPlaying: Bool
     let isStrong: Bool
     let audio: MusicPlaybackEngine.AudioReactiveFrame
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !isPlaying)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            let drive = audio.visualDrive(isStrong: isStrong)
-
-            HStack(alignment: .center, spacing: 0) {
-                AudioMembraneView(
-                    drive: drive,
-                    beat: audio.beat,
-                    isStrong: isStrong,
-                    phase: t,
-                    mirror: false
-                )
-                .frame(maxWidth: .infinity, alignment: .trailing)
-
-                IslandWaveformAnalyzer(
-                    audio: audio,
-                    isStrong: isStrong
-                )
-                .padding(.horizontal, 10)
-
-                AudioMembraneView(
-                    drive: drive,
-                    beat: audio.beat,
-                    isStrong: isStrong,
-                    phase: t,
-                    mirror: true
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .frame(height: isStrong ? 92 : 80)
-        .opacity(isPlaying ? 0.98 : 0.35)
-    }
-}
-
-/// Kompaktowy analizator jak w Dynamic Island (pigułka + 5 pasków, ten sam driver co wyspa).
-private struct IslandWaveformAnalyzer: View {
-    @Environment(\.colorScheme) private var colorScheme
-    let audio: MusicPlaybackEngine.AudioReactiveFrame
-    let isStrong: Bool
 
     private let barCount = MusicPlaybackEngine.AudioReactiveFrame.islandBarCount
 
@@ -558,184 +520,80 @@ private struct IslandWaveformAnalyzer: View {
         let pillFill = colorScheme == .light
             ? Color.black.opacity(0.9)
             : Color.black.opacity(0.78)
-        let barColor = colorScheme == .light
-            ? Color.white.opacity(0.96)
-            : Color.white.opacity(0.94)
+        let barColor = Color.white.opacity(0.95)
 
-        ZStack {
+        HStack(spacing: 14) {
             Capsule(style: .continuous)
-                .fill(pillFill)
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(Color.white.opacity(colorScheme == .light ? 0.1 : 0.07), lineWidth: 0.7)
-                )
-                .shadow(color: EOSTheme.accent.opacity(drive > 0.02 ? 0.18 : 0), radius: 8, y: 2)
+                .fill(EOSTheme.accent.opacity(isPlaying ? 0.14 + drive * 0.28 : 0.06))
+                .frame(width: 10, height: 10 + CGFloat(drive) * (isStrong ? 22 : 14))
+                .animation(.easeOut(duration: 0.16), value: drive)
 
-            HStack(alignment: .center, spacing: 3.4) {
-                ForEach(0..<barCount, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 1.4, style: .continuous)
-                        .fill(barColor)
-                        .frame(width: 2.8, height: barHeight(index: index))
+            ZStack {
+                Capsule(style: .continuous)
+                    .fill(pillFill)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 0.7)
+                    )
+
+                HStack(alignment: .center, spacing: 3.4) {
+                    ForEach(0..<barCount, id: \.self) { index in
+                        RoundedRectangle(cornerRadius: 1.4, style: .continuous)
+                            .fill(barColor)
+                            .frame(width: 2.8, height: barHeight(index: index))
+                    }
                 }
+                .padding(.horizontal, 15)
             }
-            .padding(.horizontal, 15)
+            .frame(width: 120, height: 37)
+            .opacity(isPlaying ? 1 : 0.45)
+
+            Capsule(style: .continuous)
+                .fill(EOSTheme.accentSecondary.opacity(isPlaying ? 0.14 + drive * 0.28 : 0.06))
+                .frame(width: 10, height: 10 + CGFloat(drive) * (isStrong ? 22 : 14))
+                .animation(.easeOut(duration: 0.16), value: drive)
         }
-        .frame(width: 120, height: 37)
+        .frame(height: 44)
         .animation(nil, value: audio.islandBars)
     }
 
     private func barHeight(index: Int) -> CGFloat {
         let minH: CGFloat = 3
-        let maxH: CGFloat = isStrong ? 18 : 16
+        let maxH: CGFloat = isStrong ? 18 : 15
         let level = audio.islandBar(at: index)
-        guard level > 0.01 else { return minH }
+        guard isPlaying, level > 0.01 else { return minH }
         return minH + CGFloat(level) * (maxH - minH)
     }
 }
 
-/// Samo membrany — płynna skala od malutkiej do dużej zależnie od natężenia.
-private struct AudioMembraneView: View {
-    @Environment(\.colorScheme) private var colorScheme
-    let drive: Double
-    let beat: Double
-    let isStrong: Bool
-    let phase: TimeInterval
-    let mirror: Bool
-
-    var body: some View {
-        let scale = membraneScale(drive: drive)
-        let diameter = 26 + scale * (isStrong ? 52 : 44)
-        let conePulse = 0.42 + scale * 0.58 + beat * 0.12
-        let accent = colorScheme == .light
-            ? Color(red: 0.92, green: 0.2, blue: 0.45)
-            : EOSTheme.accent
-        let rim = colorScheme == .light
-            ? Color(red: 0.22, green: 0.22, blue: 0.26)
-            : Color(red: 0.14, green: 0.14, blue: 0.17)
-
-        ZStack {
-            if drive > 0.02 {
-                Circle()
-                    .fill(accent.opacity(0.1 + Double(scale) * 0.22))
-                    .frame(width: diameter + 18, height: diameter + 18)
-                    .blur(radius: 8)
-            }
-
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [rim.opacity(0.95), Color.black.opacity(0.92)],
-                        center: .center,
-                        startRadius: 2,
-                        endRadius: diameter * 0.52
-                    )
-                )
-                .frame(width: diameter, height: diameter)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                )
-
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color.white.opacity(0.28 + Double(scale) * 0.2),
-                            Color.black.opacity(0.82)
-                        ],
-                        center: UnitPoint(x: 0.4, y: 0.35),
-                        startRadius: 1,
-                        endRadius: diameter * 0.22
-                    )
-                )
-                .frame(width: diameter * 0.48, height: diameter * 0.48)
-                .scaleEffect(conePulse)
-
-            Circle()
-                .stroke(accent.opacity(0.35 + Double(scale) * 0.45), lineWidth: 1.2)
-                .frame(width: diameter * 0.72, height: diameter * 0.72)
-        }
-        .scaleEffect(x: mirror ? 1 : 1, y: 1)
-        .offset(x: mirror ? sin(phase * 8) * CGFloat(drive) * 1.2 : -sin(phase * 8) * CGFloat(drive) * 1.2)
-        .animation(.smooth(duration: 0.14), value: scale)
-    }
-
-    /// Płynne „stopnie” głośności: cicho → mała, głośniej → coraz większa.
-    private func membraneScale(drive: Double) -> CGFloat {
-        guard drive > 0.012 else { return 0 }
-        let x = min(1, drive)
-        let tiers: [CGFloat] = [0.22, 0.42, 0.64, 0.86, 1.0]
-        let pos = x * CGFloat(tiers.count - 1)
-        let i = min(tiers.count - 2, max(0, Int(pos)))
-        let frac = pos - CGFloat(i)
-        return tiers[i] + (tiers[i + 1] - tiers[i]) * frac
-    }
-}
-
-private struct DynamicPlayerBackdrop: View {
+private struct SoftPlayerBackdrop: View {
     let isPlaying: Bool
-    let isStrong: Bool
     let audio: MusicPlaybackEngine.AudioReactiveFrame
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: !isPlaying || !isStrong)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            let drive = audio.visualDrive(isStrong: isStrong)
-            let spots = audio.spotIntensity(isStrong: isStrong)
-            let disco = drive > 0.02 ? (sin(t * 15.0) * 0.5 + 0.5) : 0
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        EOSTheme.accentSecondary.opacity(0.06),
-                        .clear,
-                        EOSTheme.accent.opacity(0.06)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                Rectangle()
-                    .fill(.white.opacity(isStrong && isPlaying && drive > 0.02 ? ((0.012 + drive * 0.045 + disco * 0.02) * drive) : 0))
-                    .blendMode(.screen)
-
-                Rectangle()
-                    .fill(EOSTheme.accent.opacity(isStrong && isPlaying && drive > 0.02 ? (0.008 + drive * 0.032) * drive : 0))
-                    .blendMode(.softLight)
-
-                if isStrong && isPlaying && spots > 0.02 {
-                    CrossingSpotlights(phase: t, intensity: spots)
-                }
-            }
-            .ignoresSafeArea()
-        }
-    }
-}
-
-private struct CrossingSpotlights: View {
-    let phase: TimeInterval
-    let intensity: Double
-
-    var body: some View {
+        let drive = audio.visualDrive(isStrong: true)
         ZStack {
-            spotlight(angle: -36 + sin(phase * 2.2) * 8, opacity: 0.09 * intensity, offsetX: -80)
-            spotlight(angle: 36 + sin(phase * 2.0 + .pi / 2) * 8, opacity: 0.09 * intensity, offsetX: 80)
-            spotlight(angle: -18 + sin(phase * 2.8 + .pi / 4) * 7, opacity: 0.07 * intensity, offsetX: -150)
-            spotlight(angle: 18 + sin(phase * 2.6 + .pi * 0.75) * 7, opacity: 0.07 * intensity, offsetX: 150)
-        }
-        .blendMode(.screen)
-    }
-
-    private func spotlight(angle: Double, opacity: Double, offsetX: CGFloat) -> some View {
-        Rectangle()
-            .fill(
-                LinearGradient(
-                    colors: [.white.opacity(opacity), .clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+            RadialGradient(
+                colors: [
+                    EOSTheme.accentSecondary.opacity(isPlaying ? 0.1 + drive * 0.08 : 0.04),
+                    .clear
+                ],
+                center: .top,
+                startRadius: 20,
+                endRadius: 380
             )
-            .frame(width: 150, height: 520)
-            .blur(radius: 6)
-            .rotationEffect(.degrees(angle))
-            .offset(x: offsetX, y: -18)
+            RadialGradient(
+                colors: [
+                    EOSTheme.accent.opacity(isPlaying ? 0.07 + drive * 0.06 : 0.03),
+                    .clear
+                ],
+                center: .bottomTrailing,
+                startRadius: 10,
+                endRadius: 340
+            )
+        }
+        .ignoresSafeArea()
+        .animation(.easeOut(duration: 0.22), value: drive)
+        .allowsHitTesting(false)
     }
 }

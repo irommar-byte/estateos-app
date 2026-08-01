@@ -745,7 +745,8 @@ private final class PlayerAudioAnalyzer {
         }
 
         let now = CACurrentMediaTime()
-        let shouldPush = now - local.lastPush >= (1.0 / 60.0)
+        // 24 fps is enough for UI glow/bars and cuts MainActor churn vs 60 fps.
+        let shouldPush = now - local.lastPush >= (1.0 / 24.0)
         if shouldPush {
             local.lastPush = now
         }
