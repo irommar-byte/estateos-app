@@ -112,7 +112,7 @@ final class AppModel: ObservableObject {
     }
 
     /// Library + favorites + assets. Never blocks login/splash.
-    func refreshWorkspace(soft: Bool = false) async {
+    func refreshWorkspace(soft _: Bool = false) async {
         isLibraryLoading = true
         defer { isLibraryLoading = false }
         do {
