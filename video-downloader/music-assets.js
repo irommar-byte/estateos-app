@@ -15,6 +15,7 @@ import {
   downloadAppleMusicToFile,
   buildAppleMusicFilename,
   parseAppleMusicTrackId,
+  resolveAppleMusicDownloadUrl,
 } from "./apple-music.js";
 import { updateTrackDownloadByKey, getMusicFolderByKey, playlistDownloadDir } from "./music-library.js";
 
@@ -363,7 +364,7 @@ export function migrateLegacyMusicAssets(userKey, downloadsRoot, tracks = []) {
 /**
  * Ensure durable server asset exists; returns { jobId, reused, ready? }.
  */
-export function ensureMusicAsset({
+export async function ensureMusicAsset({
   userKey,
   url,
   folderId = null,
@@ -373,6 +374,7 @@ export function ensureMusicAsset({
   ensurePlayToken,
   downloadsRoot,
   friendlyError,
+  waitUntilPlayable = false,
 }) {
   if (!userKey) {
     const err = new Error("Zaloguj się, aby odtwarzać i zapisywać muzykę w bibliotece EOS.");
@@ -387,6 +389,46 @@ export function ensureMusicAsset({
 
   const assetId = stableAssetId(userKey, url);
   const inflightKey = `${userKey}:${canonicalMusicKey(url)}`;
+
+  const tokenFor = (job) => {
+    if (!job || !ensurePlayToken) return null;
+    try {
+      return ensurePlayToken(job) || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const playable = (job) => {
+    if (!job) return false;
+    if (job.file && fs.existsSync(job.file) && fs.statSync(job.file).size > 32 * 1024) return true;
+    return job.mode === "stream-proxy" && !!job.streamUrl && (job.ready === true || job.status === "done");
+  };
+
+  const pack = (jobId, { reused, ready, job }) => ({
+    jobId,
+    assetId,
+    reused: !!reused,
+    ready: !!ready,
+    token: ready ? tokenFor(job) : null,
+  });
+
+  const waitPlayable = async (jobId, timeoutMs = 120000) => {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const job = jobs.get(jobId);
+      if (job?.status === "error") {
+        const err = new Error(job.error || "Odtwarzanie nie powiodło się.");
+        err.status = 502;
+        throw err;
+      }
+      if (playable(job)) return job;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    const err = new Error("Przekroczono czas oczekiwania na przygotowanie utworu.");
+    err.status = 504;
+    throw err;
+  };
 
   // Already ready on disk
   const existing = findAssetByUrl(userKey, url);
@@ -403,23 +445,33 @@ export function ensureMusicAsset({
         /* ignore */
       }
     }
-    return { jobId: job.id, reused: true, ready: true, assetId };
+    return pack(job.id, { reused: true, ready: true, job });
   }
 
   // In-flight acquisition
   if (activeAcquire.has(inflightKey)) {
     const jobId = activeAcquire.get(inflightKey);
-    return { jobId, reused: true, ready: false, assetId };
+    if (waitUntilPlayable) {
+      const job = await waitPlayable(jobId);
+      return pack(jobId, { reused: true, ready: true, job });
+    }
+    const job = jobs.get(jobId);
+    return pack(jobId, { reused: true, ready: playable(job), job });
   }
+
   const existingJob = jobs.get(assetId);
   if (
     existingJob?.kind === "music" &&
     !existingJob.cancelled &&
     existingJob.status !== "error" &&
-    existingJob.status !== "done"
+    (playable(existingJob) || existingJob.status !== "done" || existingJob.persisting)
   ) {
     activeAcquire.set(inflightKey, assetId);
-    return { jobId: assetId, reused: true, ready: false, assetId };
+    if (waitUntilPlayable && !playable(existingJob)) {
+      const job = await waitPlayable(assetId);
+      return pack(assetId, { reused: true, ready: true, job });
+    }
+    return pack(assetId, { reused: true, ready: playable(existingJob), job: existingJob });
   }
 
   const job = {
@@ -435,18 +487,18 @@ export function ensureMusicAsset({
     progress: 0,
     clients: new Set(),
     partPath: null,
+    persisting: false,
   };
   jobs.set(assetId, job);
   activeAcquire.set(inflightKey, assetId);
 
-  (async () => {
+  const acquirePromise = (async () => {
     let partPath = null;
     try {
       job.status = "preparing";
       sendEvent?.(job, { status: "preparing", progress: 3, purpose: job.purpose, assetId });
 
       const track = await buildAppleMusicInfo(url);
-      // Prefer larger artwork (apple-music upscale)
       if (track.thumbnail) {
         track.thumbnail = String(track.thumbnail).replace(
           /\/(\d+)x(\d+)(bb)?(\.(?:jpg|png|webp))/i,
@@ -464,21 +516,52 @@ export function ensureMusicAsset({
         if (fs.existsSync(partPath)) fs.unlinkSync(partPath);
       } catch {}
 
-      job.status = "downloading";
-      sendEvent?.(job, { status: "downloading", progress: 5, purpose: job.purpose, assetId });
+      // Resolve remote MP3 once — open stream-proxy ASAP so playback doesn't wait for full download.
+      sendEvent?.(job, { status: "preparing", progress: 8, purpose: job.purpose, assetId });
+      const downloadUrl = await resolveAppleMusicDownloadUrl(track.webpageUrl || url);
 
+      job.mode = "stream-proxy";
+      job.streamUrl = downloadUrl;
+      job.streamContentType = "audio/mpeg";
+      job.status = "done";
+      job.ready = true;
+      job.progress = 18;
+      job.persisting = true;
+      ensurePlayToken?.(job);
+      sendEvent?.(job, {
+        status: "done",
+        ready: true,
+        progress: 18,
+        purpose: job.purpose,
+        assetId,
+        streaming: true,
+      });
+
+      // Persist to durable library in background (same URL, no second APLMate handshake).
+      sendEvent?.(job, {
+        status: "downloading",
+        progress: 22,
+        purpose: job.purpose,
+        assetId,
+        streaming: true,
+      });
+
+      // Fresh APLMate resolve for disk copy — keep streamUrl reserved for the player.
       await downloadAppleMusicToFile({
         appleUrl: url,
         destPath: partPath,
         trackMeta: track,
         onProgress: (pct) => {
           if (job.cancelled) return;
-          job.progress = Math.min(97, Math.round(pct));
+          // Keep stream-proxy playable while bytes land on disk.
+          job.progress = Math.min(97, Math.max(22, Math.round(pct)));
           sendEvent?.(job, {
             status: "downloading",
             progress: job.progress,
             purpose: job.purpose,
             assetId,
+            streaming: true,
+            ready: true,
           });
         },
       });
@@ -495,7 +578,6 @@ export function ensureMusicAsset({
       job.partPath = null;
       partPath = null;
 
-      // Keep cover sidecar for UI/API when embed also succeeded
       const coverSidecar = path.join(path.dirname(destPath), "cover.jpg");
       if (track.thumbnail && !fs.existsSync(coverSidecar)) {
         try {
@@ -530,29 +612,26 @@ export function ensureMusicAsset({
         relativePath,
         bytes: probe.bytes,
         duration: probe.duration || Number(track.duration) || 0,
-        bitrate: probe.bitrate,
-        codec: probe.codec,
-        sampleRate: probe.sampleRate,
-        channels: probe.channels,
+        bitrate: probe.bitrate || 0,
         checksum,
-        status: "ready",
         acquiredAt: Date.now(),
+        ready: true,
       });
 
       job.file = destPath;
-      job.name = filename;
+      job.mode = null;
+      job.streamUrl = null;
+      job.persisting = false;
       job.status = "done";
-      job.progress = 100;
       job.ready = true;
+      job.progress = 100;
       ensurePlayToken?.(job);
       sendEvent?.(job, {
         status: "done",
+        ready: true,
         progress: 100,
-        name: job.name,
-        jobId: job.id,
         purpose: job.purpose,
         assetId,
-        ready: true,
       });
 
       if (folderId && (trackUrl || url)) {
@@ -567,16 +646,31 @@ export function ensureMusicAsset({
       try {
         if (partPath && fs.existsSync(partPath)) fs.unlinkSync(partPath);
       } catch {}
-      job.status = "error";
-      job.error = friendlyError ? friendlyError(err) : err?.message || String(err);
-      sendEvent?.(job, { status: "error", error: job.error, purpose: job.purpose, assetId });
+      // If stream-proxy was already open, keep it playable unless resolve failed entirely.
+      if (!job.streamUrl && !job.file) {
+        job.status = "error";
+        job.ready = false;
+        job.error = friendlyError ? friendlyError(err) : err?.message || String(err);
+        sendEvent?.(job, { status: "error", error: job.error, purpose: job.purpose, assetId });
+      } else {
+        console.warn("music asset persist:", err?.message || err);
+        job.persisting = false;
+      }
     } finally {
       activeAcquire.delete(inflightKey);
     }
   })();
 
-  return { jobId: assetId, reused: false, ready: false, assetId };
+  job.acquirePromise = acquirePromise;
+
+  if (waitUntilPlayable) {
+    const readyJob = await waitPlayable(assetId);
+    return pack(assetId, { reused: false, ready: true, job: readyJob });
+  }
+
+  return pack(assetId, { reused: false, ready: false, job });
 }
+
 
 export function resolveAssetJob(userKey, jobId, downloadsRoot, { ensurePlayToken, jobs }) {
   if (!userKey || !jobId) return null;

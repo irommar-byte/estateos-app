@@ -168,7 +168,9 @@ final class MusicAPIClient {
             }
             if job.ready == true || job.status == "done" { return }
             poll += 1
-            try await Task.sleep(nanoseconds: poll < 30 ? 500_000_000 : 1_000_000_000)
+            // Fast polls while APLMate resolves / early stream opens.
+            let ns: UInt64 = poll < 40 ? 200_000_000 : poll < 80 ? 400_000_000 : 1_000_000_000
+            try await Task.sleep(nanoseconds: ns)
         }
         throw APIError.server("Przekroczono czas oczekiwania na przygotowanie utworu.")
     }

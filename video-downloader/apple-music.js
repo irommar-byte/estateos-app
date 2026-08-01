@@ -543,7 +543,24 @@ function extractDownloadUrl(html) {
   return match[1].replace(/\\\/\//g, "/");
 }
 
+const downloadUrlCache = new Map(); // appleUrl -> { url, expiresAt }
+const DOWNLOAD_URL_CACHE_TTL_MS = 20 * 60 * 1000;
+
 export async function resolveAppleMusicDownloadUrl(appleUrl) {
+  const key = String(appleUrl || "").trim();
+  const cached = downloadUrlCache.get(key);
+  if (cached && cached.expiresAt > Date.now() && cached.url) {
+    return cached.url;
+  }
+  const resolved = await resolveAppleMusicDownloadUrlUncached(key);
+  if (resolved) {
+    downloadUrlCache.set(key, { url: resolved, expiresAt: Date.now() + DOWNLOAD_URL_CACHE_TTL_MS });
+  }
+  return resolved;
+}
+
+async function resolveAppleMusicDownloadUrlUncached(appleUrl) {
+
   const jar = new CookieJar();
   await aplmateFetch("/", { jar });
 
@@ -669,9 +686,11 @@ export async function downloadAppleMusicToFile({
   destPath,
   trackMeta,
   onProgress,
+  downloadUrl: presetDownloadUrl = null,
 }) {
   const track = trackMeta || (await buildAppleMusicInfo(appleUrl));
-  const downloadUrl = await resolveAppleMusicDownloadUrl(track.webpageUrl || appleUrl);
+  const downloadUrl =
+    presetDownloadUrl || (await resolveAppleMusicDownloadUrl(track.webpageUrl || appleUrl));
 
   onProgress?.(5);
   const res = await fetch(downloadUrl, {

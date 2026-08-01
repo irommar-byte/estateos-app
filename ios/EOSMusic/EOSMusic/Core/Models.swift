@@ -123,6 +123,7 @@ struct DownloadStartResponse: Codable {
     let assetId: String?
     let reused: Bool?
     let ready: Bool?
+    let token: String?
 }
 
 struct MusicAssetItem: Codable, Identifiable, Hashable {

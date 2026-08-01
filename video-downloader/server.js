@@ -4889,7 +4889,7 @@ app.post("/api/music/play", async (req, res) => {
   }
   const userKey = favoritesUserKeyFromReq(req);
   try {
-    const result = ensureMusicAsset({
+    const result = await ensureMusicAsset({
       userKey,
       url,
       folderId: folderId || null,
@@ -4899,12 +4899,14 @@ app.post("/api/music/play", async (req, res) => {
       ensurePlayToken,
       downloadsRoot: MUSIC_PLAYLIST_DOWNLOADS_DIR,
       friendlyError: friendlyAppleMusicError,
+      waitUntilPlayable: true,
     });
     res.json({
       jobId: result.jobId,
       assetId: result.assetId,
       reused: !!result.reused,
       ready: !!result.ready,
+      token: result.token || undefined,
     });
   } catch (err) {
     const status = Number(err?.status) || 500;
@@ -5404,7 +5406,7 @@ app.post("/api/download", async (req, res) => {
   if (/music\.apple\.com/i.test(url)) {
     const musicUserKey = favoritesUserKeyFromReq(req);
     try {
-      const result = ensureMusicAsset({
+      const result = await ensureMusicAsset({
         userKey: musicUserKey,
         url,
         folderId: req.body?.folderId || null,
@@ -5414,12 +5416,14 @@ app.post("/api/download", async (req, res) => {
         ensurePlayToken,
         downloadsRoot: MUSIC_PLAYLIST_DOWNLOADS_DIR,
         friendlyError: friendlyAppleMusicError,
+        waitUntilPlayable: false,
       });
       return res.json({
         jobId: result.jobId,
         assetId: result.assetId,
         reused: !!result.reused,
         ready: !!result.ready,
+        token: result.token || undefined,
       });
     } catch (err) {
       const status = Number(err?.status) || 500;

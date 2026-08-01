@@ -281,14 +281,16 @@ final class MusicPlaybackEngine: ObservableObject {
         do {
             let streamURL = try await resolveStreamURL(for: track)
             guard generation == sessionGeneration, !Task.isCancelled else { return }
-            let isLocal = streamURL.isFileURL
             loadStream(
                 url: streamURL,
                 track: track,
                 queueIndex: index,
                 generation: generation,
-                preferFastStart: isLocal || isDownloaded(track) || track.isExternal
+                preferFastStart: true
             )
+            Task { [weak self] in
+                await self?.prefetchUpcoming(from: index, generation: generation)
+            }
         } catch {
             guard generation == sessionGeneration else { return }
             isLoading = false
@@ -341,11 +343,41 @@ final class MusicPlaybackEngine: ObservableObject {
             folderId: track.folderId,
             trackUrl: track.url
         )
-        if ensure.ready != true {
-            try await api.waitForMusicPlayReady(jobId: ensure.jobId)
+        let jobId = ensure.jobId
+        if let token = ensure.token, !token.isEmpty, ensure.ready == true {
+            return api.musicStreamURL(jobId: jobId, token: token)
         }
-        let token = try await api.musicPlayToken(jobId: ensure.jobId)
-        return api.musicStreamURL(jobId: ensure.jobId, token: token.token)
+        if ensure.ready != true {
+            try await api.waitForMusicPlayReady(jobId: jobId)
+        }
+        let token = try await api.musicPlayToken(jobId: jobId)
+        return api.musicStreamURL(jobId: jobId, token: token.token)
+    }
+
+    /// Warm the next 1–2 tracks so skip feels instant.
+    private func prefetchUpcoming(from index: Int, generation: Int) async {
+        guard generation == sessionGeneration, let api else { return }
+        let upcoming = [1, 2].compactMap { offset -> MusicPlaybackTrack? in
+            let cursor = orderCursor + offset
+            guard cursor >= 0, cursor < playOrder.count else { return nil }
+            let qi = playOrder[cursor]
+            guard queue.indices.contains(qi) else { return nil }
+            return queue[qi]
+        }
+        for track in upcoming {
+            guard generation == sessionGeneration else { return }
+            if track.isExternal { continue }
+            if OfflineMusicStore.shared.localURL(for: track.url) != nil { continue }
+            let known = [track.serverAssetId, track.downloadJobId, jobLookup?(track.url)]
+                .compactMap { $0 }
+                .contains { !$0.isEmpty }
+            if known { continue }
+            _ = try? await api.startMusicPlay(
+                url: track.url,
+                folderId: track.folderId ?? folderId,
+                trackUrl: track.url
+            )
+        }
     }
 
     private func loadStream(url: URL, track: MusicPlaybackTrack, queueIndex: Int, generation: Int, preferFastStart: Bool) {
