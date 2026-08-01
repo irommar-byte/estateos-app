@@ -279,7 +279,8 @@ private struct RotatingDiscArtwork: View {
         let enabled = mode != .off
         let strong = mode == .strong
         let drive = audio.visualDrive(isStrong: strong)
-        let beat = audio.beat
+        let beat = min(1, audio.beat * 1.35 + drive * 0.25)
+
         if !enabled {
             ArtworkImage(url: artworkURL, size: 260, cornerRadius: 20)
                 .shadow(color: EOSTheme.accent.opacity(0.12), radius: 16, y: 8)
@@ -293,18 +294,19 @@ private struct RotatingDiscArtwork: View {
                     bars: audio.islandBars
                 )
 
-                ContinuousSpin(
+                // Stable identity: spin period does not depend on audioFrame (keeps cover loaded).
+                DiscSpinner(
+                    artworkURL: artworkURL,
                     isSpinning: isPlaying,
-                    secondsPerRevolution: max(6.5, (strong ? 9.0 : 11.0) - drive * 2.2)
-                ) {
-                    VinylDisc(artworkURL: artworkURL)
-                }
-                .scaleEffect(isPlaying ? 1 + CGFloat(beat) * (strong ? 0.028 : 0.018) + CGFloat(drive) * 0.01 : 1)
-                .animation(.easeOut(duration: 0.12), value: beat)
+                    secondsPerRevolution: strong ? 9 : 11
+                )
+                .equatable()
+                .scaleEffect(isPlaying ? 1 + CGFloat(beat) * (strong ? 0.045 : 0.03) : 1)
+                .animation(.interpolatingSpring(stiffness: 240, damping: 18), value: beat)
                 .shadow(
-                    color: EOSTheme.accent.opacity(isPlaying ? (0.14 + drive * 0.22 + beat * 0.12) : 0.08),
-                    radius: 18 + CGFloat(drive) * 10,
-                    y: 12
+                    color: EOSTheme.accent.opacity(isPlaying ? (0.16 + drive * 0.25 + beat * 0.2) : 0.08),
+                    radius: 16 + CGFloat(beat) * 14,
+                    y: 10
                 )
             }
             .frame(width: 320, height: 320)
@@ -312,7 +314,25 @@ private struct RotatingDiscArtwork: View {
     }
 }
 
-/// One composited spin — pauses cleanly without TimelineView thrash on child views.
+/// Spin wrapper isolated from audio props so artwork task is not cancelled every beat.
+private struct DiscSpinner: View, Equatable {
+    let artworkURL: URL?
+    let isSpinning: Bool
+    let secondsPerRevolution: Double
+
+    static func == (lhs: DiscSpinner, rhs: DiscSpinner) -> Bool {
+        lhs.artworkURL == rhs.artworkURL
+            && lhs.isSpinning == rhs.isSpinning
+            && lhs.secondsPerRevolution == rhs.secondsPerRevolution
+    }
+
+    var body: some View {
+        ContinuousSpin(isSpinning: isSpinning, secondsPerRevolution: secondsPerRevolution) {
+            VinylDisc(artworkURL: artworkURL)
+        }
+    }
+}
+
 private struct ContinuousSpin<Content: View>: View {
     let isSpinning: Bool
     let secondsPerRevolution: Double
@@ -320,13 +340,12 @@ private struct ContinuousSpin<Content: View>: View {
 
     @State private var spinStartedAt: Date?
     @State private var frozenTurns: Double = 0
-    @State private var periodAtStart: Double = 10
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isSpinning)) { context in
             let turns: Double = {
                 if isSpinning, let start = spinStartedAt {
-                    return frozenTurns + context.date.timeIntervalSince(start) / max(0.1, periodAtStart)
+                    return frozenTurns + context.date.timeIntervalSince(start) / max(0.1, secondsPerRevolution)
                 }
                 return frozenTurns
             }()
@@ -334,16 +353,14 @@ private struct ContinuousSpin<Content: View>: View {
         }
         .onAppear {
             if isSpinning, spinStartedAt == nil {
-                periodAtStart = secondsPerRevolution
                 spinStartedAt = Date()
             }
         }
         .onChange(of: isSpinning) { _, spinning in
             if spinning {
-                periodAtStart = secondsPerRevolution
                 spinStartedAt = Date()
             } else if let start = spinStartedAt {
-                frozenTurns += Date().timeIntervalSince(start) / max(0.1, periodAtStart)
+                frozenTurns += Date().timeIntervalSince(start) / max(0.1, secondsPerRevolution)
                 spinStartedAt = nil
             }
         }
@@ -359,20 +376,37 @@ private struct VinylDisc: View {
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color.black.opacity(0.22),
-                            Color.black.opacity(0.55),
+                            Color(red: 0.12, green: 0.12, blue: 0.14),
                             Color.black.opacity(0.92)
                         ],
                         center: UnitPoint(x: 0.38, y: 0.3),
-                        startRadius: 6,
+                        startRadius: 8,
                         endRadius: 140
                     )
                 )
                 .frame(width: 272, height: 272)
-                .overlay { VinylGroovesOverlay() }
+                .overlay {
+                    VinylGroovesOverlay()
+                        .mask {
+                            ZStack {
+                                Circle().fill(.white)
+                                Circle()
+                                    .fill(.black)
+                                    .frame(width: 222, height: 222)
+                                    .blendMode(.destinationOut)
+                            }
+                            .compositingGroup()
+                            .frame(width: 272, height: 272)
+                        }
+                }
 
-            ArtworkImage(url: artworkURL, size: 238, cornerRadius: 119)
+            ArtworkImage(url: artworkURL, size: 236, cornerRadius: 118, circleClip: true)
+                .overlay {
+                    Circle()
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                }
                 .overlay { SpindleHub() }
+                .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
         }
     }
 }
@@ -392,15 +426,11 @@ private struct SpindleHub: View {
                         endRadius: 36
                     )
                 )
-                .frame(width: 36, height: 36)
+                .frame(width: 34, height: 34)
 
             Circle()
-                .stroke(Color.white.opacity(0.14), lineWidth: 1)
-                .frame(width: 26, height: 26)
-
-            Circle()
-                .stroke(Color.black.opacity(0.6), lineWidth: 1.2)
-                .frame(width: 16, height: 16)
+                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                .frame(width: 24, height: 24)
 
             Circle()
                 .fill(
@@ -413,7 +443,7 @@ private struct SpindleHub: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .frame(width: 9, height: 9)
+                .frame(width: 8, height: 8)
         }
     }
 }
@@ -422,28 +452,23 @@ private struct VinylGroovesOverlay: View {
     var body: some View {
         Canvas { gc, size in
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            let maxR = min(size.width, size.height) * 0.5 - 4
-            let minR: CGFloat = 28
+            let maxR = min(size.width, size.height) * 0.5 - 2
+            let minR: CGFloat = maxR - 26
             var r = minR
             while r < maxR {
                 let progress = (r - minR) / max(1, (maxR - minR))
-                let alpha = 0.06 + (1 - progress) * 0.08
+                let alpha = 0.05 + (1 - progress) * 0.1
                 var path = Path()
                 path.addArc(center: center, radius: r, startAngle: .degrees(0), endAngle: .degrees(360), clockwise: false)
-                gc.stroke(path, with: .color(.white.opacity(alpha)), lineWidth: 0.6)
-                r += 2.8
+                gc.stroke(path, with: .color(.white.opacity(alpha)), lineWidth: 0.7)
+                r += 2.2
             }
-            var innerRing = Path()
-            innerRing.addArc(center: center, radius: 18, startAngle: .degrees(0), endAngle: .degrees(360), clockwise: false)
-            gc.stroke(innerRing, with: .color(.white.opacity(0.16)), lineWidth: 0.8)
         }
-        .blendMode(.screen)
-        .mask(Circle().fill(.white))
         .allowsHitTesting(false)
     }
 }
 
-/// Soft ambient glow + single Canvas ring that follows bass/mid/treble island bars.
+/// Beat-first halo — always moves while playing; punches on kick.
 private struct MusicReactiveHalo: View {
     let isPlaying: Bool
     let isStrong: Bool
@@ -454,36 +479,36 @@ private struct MusicReactiveHalo: View {
     private let vinylRadius: CGFloat = 136
 
     var body: some View {
-        let barCount = isStrong ? 56 : 36
-        let maxExt: CGFloat = isStrong ? 46 : 28
+        let barCount = isStrong ? 64 : 44
+        let maxExt: CGFloat = isStrong ? 52 : 34
 
         ZStack {
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            EOSTheme.accentSecondary.opacity(isPlaying ? 0.14 + drive * 0.2 + beat * 0.1 : 0.04),
-                            EOSTheme.accent.opacity(isPlaying ? 0.08 + drive * 0.14 : 0.02),
+                            EOSTheme.accent.opacity(isPlaying ? 0.16 + beat * 0.28 + drive * 0.12 : 0.04),
+                            EOSTheme.accentSecondary.opacity(isPlaying ? 0.1 + drive * 0.14 : 0.02),
                             .clear
                         ],
                         center: .center,
-                        startRadius: 36,
-                        endRadius: 170
+                        startRadius: 40,
+                        endRadius: 175
                     )
                 )
-                .frame(width: 320, height: 320)
-                .scaleEffect(isPlaying ? 1 + CGFloat(drive) * 0.04 + CGFloat(beat) * 0.02 : 1)
-                .animation(.easeOut(duration: 0.14), value: drive)
-                .animation(.easeOut(duration: 0.1), value: beat)
+                .frame(width: 330, height: 330)
+                .scaleEffect(isPlaying ? 1 + CGFloat(beat) * 0.06 + CGFloat(drive) * 0.03 : 1)
+                .animation(.easeOut(duration: 0.09), value: beat)
 
-            if isPlaying {
+            TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: !isPlaying)) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
                 Canvas { gc, size in
                     let center = CGPoint(x: size.width / 2, y: size.height / 2)
                     for index in 0..<barCount {
-                        let amp = barAmplitude(index: index, count: barCount)
-                        guard amp > 0.015 else { continue }
+                        let amp = barAmplitude(index: index, count: barCount, time: t)
+                        guard amp > 0.012 else { continue }
                         let angle = (Double(index) / Double(barCount)) * (.pi * 2) - .pi / 2
-                        let length = 1.5 + CGFloat(amp) * maxExt
+                        let length = 2 + CGFloat(amp) * maxExt
                         let inner = vinylRadius + 1
                         let outer = inner + length
                         let cosA = CGFloat(cos(angle))
@@ -491,39 +516,40 @@ private struct MusicReactiveHalo: View {
                         var path = Path()
                         path.move(to: CGPoint(x: center.x + cosA * inner, y: center.y + sinA * inner))
                         path.addLine(to: CGPoint(x: center.x + cosA * outer, y: center.y + sinA * outer))
-                        let cool = index % 3 == 0
-                        let color = cool ? EOSTheme.accentSecondary : EOSTheme.accent
+                        let color = index % 2 == 0 ? EOSTheme.accent : EOSTheme.accentSecondary
                         gc.stroke(
                             path,
-                            with: .color(color.opacity(0.22 + amp * 0.62)),
-                            style: StrokeStyle(lineWidth: isStrong ? 2.2 : 1.7, lineCap: .round)
+                            with: .color(color.opacity(0.28 + amp * 0.7)),
+                            style: StrokeStyle(lineWidth: isStrong ? 2.4 : 1.8, lineCap: .round)
                         )
                     }
                 }
-                .frame(width: 320, height: 320)
-                .allowsHitTesting(false)
+                .frame(width: 330, height: 330)
             }
 
             Circle()
-                .stroke(
-                    EOSTheme.accentSecondary.opacity(isPlaying ? 0.18 + drive * 0.2 : 0.1),
-                    lineWidth: isStrong ? 1.4 : 1.1
-                )
+                .stroke(EOSTheme.accent.opacity(isPlaying ? 0.22 + beat * 0.25 : 0.1), lineWidth: 1.3)
                 .frame(width: vinylRadius * 2, height: vinylRadius * 2)
+                .scaleEffect(isPlaying ? 1 + CGFloat(beat) * 0.02 : 1)
         }
         .allowsHitTesting(false)
     }
 
-    private func barAmplitude(index: Int, count: Int) -> Double {
+    private func barAmplitude(index: Int, count: Int, time: TimeInterval) -> Double {
         guard isPlaying else { return 0 }
         let position = Double(index) / Double(count) * Double(max(bars.count, 1))
         let left = Int(position) % max(bars.count, 1)
         let right = (left + 1) % max(bars.count, 1)
         let blend = position - floor(position)
-        let sampled = bars.isEmpty ? drive : bars[left] * (1 - blend) + bars[right] * blend
-        let punch = beat * (0.2 + (index % 2 == 0 ? 0.18 : 0.08))
-        let energy = min(1, max(sampled, drive * 0.4) * 0.82 + punch)
-        return pow(energy, isStrong ? 1.2 : 1.35)
+        let sampled = bars.isEmpty
+            ? (0.22 + drive * 0.55)
+            : bars[left] * (1 - blend) + bars[right] * blend
+
+        // Idle shimmer so the ring never looks frozen when the track is quiet.
+        let shimmer = 0.12 + 0.08 * sin(time * 6.5 + Double(index) * 0.45)
+        let punch = beat * (0.35 + (index % 2 == 0 ? 0.28 : 0.12))
+        let energy = min(1, max(sampled, drive * 0.55, shimmer) * 0.75 + punch)
+        return pow(energy, isStrong ? 1.05 : 1.15)
     }
 }
 
@@ -537,7 +563,7 @@ private struct CompactIslandVisualizer: View {
 
     var body: some View {
         let drive = audio.visualDrive(isStrong: isStrong)
-        let beat = audio.beat
+        let beat = min(1, audio.beat * 1.4)
         let pillFill = colorScheme == .light
             ? Color.black.opacity(0.9)
             : Color.black.opacity(0.78)
@@ -548,20 +574,19 @@ private struct CompactIslandVisualizer: View {
                 .fill(
                     RadialGradient(
                         colors: [
-                            EOSTheme.accent.opacity(isPlaying ? 0.55 + beat * 0.35 : 0.15),
+                            EOSTheme.accent.opacity(isPlaying ? 0.6 + beat * 0.4 : 0.15),
                             EOSTheme.accent.opacity(0.05)
                         ],
                         center: .center,
                         startRadius: 1,
-                        endRadius: 16
+                        endRadius: 18
                     )
                 )
                 .frame(
-                    width: 12 + CGFloat(drive) * (isStrong ? 16 : 10),
-                    height: 12 + CGFloat(drive) * (isStrong ? 16 : 10)
+                    width: 11 + CGFloat(drive + beat) * (isStrong ? 18 : 12),
+                    height: 11 + CGFloat(drive + beat) * (isStrong ? 18 : 12)
                 )
-                .scaleEffect(1 + CGFloat(beat) * 0.2)
-                .animation(.easeOut(duration: 0.1), value: beat)
+                .animation(.easeOut(duration: 0.08), value: beat)
 
             ZStack {
                 Capsule(style: .continuous)
@@ -570,13 +595,13 @@ private struct CompactIslandVisualizer: View {
                         Capsule(style: .continuous)
                             .stroke(Color.white.opacity(0.08), lineWidth: 0.7)
                     )
-                    .shadow(color: EOSTheme.accent.opacity(isPlaying ? drive * 0.25 : 0), radius: 8, y: 2)
+                    .shadow(color: EOSTheme.accent.opacity(isPlaying ? 0.15 + beat * 0.25 : 0), radius: 8, y: 2)
 
                 HStack(alignment: .center, spacing: 3.4) {
                     ForEach(0..<barCount, id: \.self) { index in
                         RoundedRectangle(cornerRadius: 1.4, style: .continuous)
                             .fill(barColor)
-                            .frame(width: 2.8, height: barHeight(index: index))
+                            .frame(width: 2.8, height: barHeight(index: index, beat: beat))
                     }
                 }
                 .padding(.horizontal, 15)
@@ -588,32 +613,32 @@ private struct CompactIslandVisualizer: View {
                 .fill(
                     RadialGradient(
                         colors: [
-                            EOSTheme.accentSecondary.opacity(isPlaying ? 0.55 + beat * 0.35 : 0.15),
+                            EOSTheme.accentSecondary.opacity(isPlaying ? 0.6 + beat * 0.4 : 0.15),
                             EOSTheme.accentSecondary.opacity(0.05)
                         ],
                         center: .center,
                         startRadius: 1,
-                        endRadius: 16
+                        endRadius: 18
                     )
                 )
                 .frame(
-                    width: 12 + CGFloat(drive) * (isStrong ? 16 : 10),
-                    height: 12 + CGFloat(drive) * (isStrong ? 16 : 10)
+                    width: 11 + CGFloat(drive + beat) * (isStrong ? 18 : 12),
+                    height: 11 + CGFloat(drive + beat) * (isStrong ? 18 : 12)
                 )
-                .scaleEffect(1 + CGFloat(beat) * 0.2)
-                .animation(.easeOut(duration: 0.1), value: beat)
+                .animation(.easeOut(duration: 0.08), value: beat)
         }
-        .frame(height: 48)
+        .frame(height: 52)
         .animation(nil, value: audio.islandBars)
     }
 
-    private func barHeight(index: Int) -> CGFloat {
+    private func barHeight(index: Int, beat: Double) -> CGFloat {
         let minH: CGFloat = 3
-        let maxH: CGFloat = isStrong ? 20 : 16
+        let maxH: CGFloat = isStrong ? 22 : 17
         let level = audio.islandBar(at: index)
-        guard isPlaying, level > 0.01 else { return minH }
-        let punch = index == 2 ? audio.beat * 0.35 : audio.beat * 0.12
-        return minH + CGFloat(min(1, level + punch)) * (maxH - minH)
+        guard isPlaying else { return minH }
+        let punch = index == 2 ? beat * 0.45 : beat * 0.18
+        let idle = 0.08 + Double(index % 3) * 0.03
+        return minH + CGFloat(min(1, max(level, idle) + punch)) * (maxH - minH)
     }
 }
 

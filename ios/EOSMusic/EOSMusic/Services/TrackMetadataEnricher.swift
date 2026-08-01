@@ -59,7 +59,7 @@ enum TrackMetadataEnricher {
                 title: embedded.title,
                 artist: embedded.artist,
                 album: embedded.album,
-                thumbnail: embedded.cachedArtworkURL(for: track.id)
+                thumbnail: embedded.cachedArtworkURL(for: track.id) ?? result.thumbnail
             )
         }
 

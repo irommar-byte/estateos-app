@@ -1,41 +1,104 @@
 import SwiftUI
 import UIKit
 
+enum RemoteImageCache {
+    static let memory = NSCache<NSURL, UIImage>()
+
+    static func image(for url: URL) -> UIImage? {
+        if url.isFileURL {
+            return UIImage(contentsOfFile: url.path)
+        }
+        return memory.object(forKey: url as NSURL)
+    }
+
+    static func store(_ image: UIImage, for url: URL) {
+        guard !url.isFileURL else { return }
+        memory.setObject(image, forKey: url as NSURL)
+    }
+}
+
 struct ArtworkImage: View {
     let url: URL?
     var size: CGFloat = 56
     var cornerRadius: CGFloat = 10
+    var circleClip = false
+
+    @State private var image: UIImage?
+    @State private var loadingURL: URL?
 
     var body: some View {
         Group {
-            if let url {
-                if url.isFileURL, let image = UIImage(contentsOfFile: url.path) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    default:
-                        placeholder
-                    }
-                }
-                }
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
             } else {
                 placeholder
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .modifier(ArtworkClip(circleClip: circleClip, cornerRadius: cornerRadius, size: size))
+        .task(id: url?.absoluteString) {
+            await loadArtwork()
+        }
     }
 
     private var placeholder: some View {
         ZStack {
-            LinearGradient(colors: [EOSTheme.accent.opacity(0.35), EOSTheme.accentSecondary.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(
+                colors: [EOSTheme.accent.opacity(0.35), EOSTheme.accentSecondary.opacity(0.3)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
             Image(systemName: "music.note")
+                .font(.system(size: max(14, size * 0.28), weight: .medium))
                 .foregroundStyle(.white.opacity(0.7))
+        }
+    }
+
+    @MainActor
+    private func loadArtwork() async {
+        guard let url else {
+            image = nil
+            loadingURL = nil
+            return
+        }
+        if let cached = RemoteImageCache.image(for: url) {
+            image = cached
+            loadingURL = url
+            return
+        }
+        loadingURL = url
+        if url.isFileURL {
+            image = UIImage(contentsOfFile: url.path)
+            return
+        }
+
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 20
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  let loaded = UIImage(data: data) else { return }
+            guard loadingURL == url else { return }
+            RemoteImageCache.store(loaded, for: url)
+            image = loaded
+        } catch {
+            // Keep placeholder.
+        }
+    }
+}
+
+private struct ArtworkClip: ViewModifier {
+    let circleClip: Bool
+    let cornerRadius: CGFloat
+    let size: CGFloat
+
+    func body(content: Content) -> some View {
+        if circleClip {
+            content.clipShape(Circle())
+        } else {
+            content.clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         }
     }
 }

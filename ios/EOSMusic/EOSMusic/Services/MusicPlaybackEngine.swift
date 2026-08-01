@@ -41,7 +41,7 @@ final class MusicPlaybackEngine: ObservableObject {
         func visualDrive(isStrong: Bool) -> Double {
             let gain = isStrong ? 0.88 : 0.76
             let base = level * 0.82 + bass * 0.1
-            let punch = beat * 0.38
+            let punch = beat * 0.52
             let combined = (base + punch) * gain
             guard combined > 0.02 else { return 0 }
             return pow(min(1, combined), 1.18)
@@ -750,7 +750,7 @@ private final class PlayerAudioAnalyzer {
         let bassNorm = min(1, bass * 9.5)
         let midNorm = min(1, mid * 9.5)
         let trebleNorm = min(1, treble * 9.5)
-        let beatNorm = min(1, local.kickEnvelope * 28)
+        let beatNorm = min(1, local.kickEnvelope * 36)
         let targets: [Float] = [
             min(1, bassNorm * 0.88),
             min(1, bassNorm * 0.28 + midNorm * 0.58),
