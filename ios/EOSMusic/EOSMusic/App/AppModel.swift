@@ -144,6 +144,34 @@ final class AppModel: ObservableObject {
         downloads.isOfflineAvailable(url)
     }
 
+    func isInLibrary(_ url: String) -> Bool {
+        musicTracks.contains { $0.url == url }
+    }
+
+    /// Apple Music–style “+”: adds to primary library playlist and warms durable server asset.
+    func addToLibrary(_ track: MusicTrackPayload) async throws {
+        if isInLibrary(track.url) { return }
+        let folderId = try await ensurePrimaryLibraryFolderId()
+        try await addTrackToFolder(folderId: folderId, track: track)
+        // Guarantee EOS server copy for stream/download on any device.
+        _ = try? await api.startMusicPlay(url: track.url, folderId: folderId, trackUrl: track.url)
+        await refreshServerAssets()
+    }
+
+    func ensurePrimaryLibraryFolderId() async throws -> String {
+        if let existing = musicFolders.first(where: {
+            $0.name.localizedCaseInsensitiveCompare("Moja muzyka") == .orderedSame
+        }) {
+            return existing.id
+        }
+        if let first = musicFolders.first {
+            return first.id
+        }
+        let folder = try await api.createMusicFolder(name: "Moja muzyka")
+        try await refreshMusicLibrary()
+        return musicFolders.first(where: { $0.id == folder.id })?.id ?? folder.id
+    }
+
     func toggleFavorite(_ item: FavoriteItem) async {
         do {
             if isFavorite(item.url) {

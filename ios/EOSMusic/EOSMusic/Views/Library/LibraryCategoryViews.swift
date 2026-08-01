@@ -13,12 +13,20 @@ struct LibraryPlaylistsView: View {
     @State private var editMode: EditMode = .inactive
     @State private var folderToDelete: MusicFolder?
     @State private var errorMessage: String?
+    @State private var playlistQuery = ""
     private let gridColumns = [
         GridItem(.flexible(), spacing: 14),
         GridItem(.flexible(), spacing: 14),
     ]
 
     private var isGrid: Bool { playlistsLayout == PlaylistLayoutMode.grid.rawValue && editMode != .active }
+
+    private var filteredFolders: [MusicFolder] {
+        let q = playlistQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = app.musicFolders
+        guard q.count >= 1 else { return base }
+        return base.filter { $0.name.localizedCaseInsensitiveContains(q) }
+    }
 
     var body: some View {
         Group {
@@ -32,7 +40,7 @@ struct LibraryPlaylistsView: View {
                 if isGrid {
                     ScrollView {
                         LazyVGrid(columns: gridColumns, spacing: 16) {
-                            ForEach(app.musicFolders) { folder in
+                            ForEach(filteredFolders) { folder in
                                 NavigationLink(value: folder) {
                                     playlistCard(folder)
                                 }
@@ -44,7 +52,7 @@ struct LibraryPlaylistsView: View {
                     }
                 } else {
                     List {
-                        ForEach(app.musicFolders) { folder in
+                        ForEach(filteredFolders) { folder in
                             if editMode == .active {
                                 playlistRow(folder)
                             } else {
@@ -61,6 +69,7 @@ struct LibraryPlaylistsView: View {
         }
         .navigationTitle("Playlisty")
         .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $playlistQuery, prompt: "Szukaj w playlistach")
         .navigationDestination(for: MusicFolder.self) { folder in
             FolderDetailView(folder: folder)
         }
@@ -143,8 +152,8 @@ struct LibraryPlaylistsView: View {
     }
 
     private func deleteFolders(at offsets: IndexSet) {
-        guard let index = offsets.first else { return }
-        folderToDelete = app.musicFolders[index]
+        guard let index = offsets.first, filteredFolders.indices.contains(index) else { return }
+        folderToDelete = filteredFolders[index]
     }
 
     private func confirmDelete(_ folder: MusicFolder) async {
@@ -161,37 +170,63 @@ struct LibraryPlaylistsView: View {
 
 struct LibraryArtistsView: View {
     @EnvironmentObject private var app: AppModel
+    @State private var query = ""
 
     private var groups: [LibraryArtistGroup] {
-        LibraryData.artistGroups(from: app.musicTracks)
+        let all = LibraryData.artistGroups(from: app.musicTracks)
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard q.count >= 1 else { return all }
+        return all.filter { $0.name.localizedCaseInsensitiveContains(q) }
+    }
+
+    private var sections: [(key: String, items: [LibraryArtistGroup])] {
+        LibraryAlphabet.group(groups) { $0.name }
     }
 
     var body: some View {
-        List {
+        Group {
             if groups.isEmpty {
-                ContentUnavailableView("Brak wykonawców", systemImage: "mic", description: Text("Dodaj utwory do playlist."))
-                    .listRowBackground(Color.clear)
+                ContentUnavailableView(
+                    query.isEmpty ? "Brak wykonawców" : "Brak wyników",
+                    systemImage: "mic",
+                    description: Text(query.isEmpty ? "Dodaj utwory do playlist." : "Spróbuj innej frazy w bibliotece.")
+                )
             } else {
-                ForEach(groups) { group in
-                    if let artistId = group.artistId {
-                        NavigationLink {
-                            ArtistDetailView(artistId: artistId, artistName: group.name)
-                        } label: {
-                            artistRow(group)
-                        }
-                    } else {
-                        NavigationLink {
-                            LibraryArtistSongsView(artistName: group.name)
-                        } label: {
-                            artistRow(group)
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach(sections, id: \.key) { section in
+                            Section {
+                                ForEach(section.items) { group in
+                                    if let artistId = group.artistId {
+                                        NavigationLink {
+                                            ArtistDetailView(artistId: artistId, artistName: group.name)
+                                        } label: {
+                                            artistRow(group)
+                                        }
+                                    } else {
+                                        NavigationLink {
+                                            LibraryArtistSongsView(artistName: group.name)
+                                        } label: {
+                                            artistRow(group)
+                                        }
+                                    }
+                                }
+                            } header: {
+                                Text(section.key)
+                                    .font(.footnote.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                                    .id(section.key)
+                            }
                         }
                     }
+                    .listStyle(.plain)
+                    .modifier(AlphabetJumpOverlay(sections: sections.map(\.key), proxy: proxy))
                 }
             }
         }
-        .listStyle(.plain)
         .navigationTitle("Wykonawcy")
         .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $query, prompt: "Szukaj w wykonawcach")
     }
 
     private func artistRow(_ group: LibraryArtistGroup) -> some View {
@@ -226,37 +261,66 @@ struct LibraryArtistSongsView: View {
 
 struct LibraryAlbumsView: View {
     @EnvironmentObject private var app: AppModel
+    @State private var query = ""
 
     private var groups: [LibraryAlbumGroup] {
-        LibraryData.albumGroups(from: app.musicTracks)
+        let all = LibraryData.albumGroups(from: app.musicTracks)
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard q.count >= 1 else { return all }
+        return all.filter {
+            $0.title.localizedCaseInsensitiveContains(q)
+                || ($0.artist?.localizedCaseInsensitiveContains(q) == true)
+        }
+    }
+
+    private var sections: [(key: String, items: [LibraryAlbumGroup])] {
+        LibraryAlphabet.group(groups) { $0.title }
     }
 
     var body: some View {
-        List {
+        Group {
             if groups.isEmpty {
-                ContentUnavailableView("Brak albumów", systemImage: "square.stack", description: Text("Dodaj utwory z metadanymi albumu."))
-                    .listRowBackground(Color.clear)
+                ContentUnavailableView(
+                    query.isEmpty ? "Brak albumów" : "Brak wyników",
+                    systemImage: "square.stack",
+                    description: Text(query.isEmpty ? "Dodaj utwory z metadanymi albumu." : "Spróbuj innej frazy w bibliotece.")
+                )
             } else {
-                ForEach(groups) { group in
-                    if let albumId = group.albumId, !albumId.isEmpty {
-                        NavigationLink {
-                            AlbumDetailView(albumId: albumId)
-                        } label: {
-                            albumRow(group)
-                        }
-                    } else {
-                        NavigationLink {
-                            LibraryAlbumSongsView(albumTitle: group.title, artist: group.artist)
-                        } label: {
-                            albumRow(group)
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach(sections, id: \.key) { section in
+                            Section {
+                                ForEach(section.items) { group in
+                                    if let albumId = group.albumId, !albumId.isEmpty {
+                                        NavigationLink {
+                                            AlbumDetailView(albumId: albumId)
+                                        } label: {
+                                            albumRow(group)
+                                        }
+                                    } else {
+                                        NavigationLink {
+                                            LibraryAlbumSongsView(albumTitle: group.title, artist: group.artist)
+                                        } label: {
+                                            albumRow(group)
+                                        }
+                                    }
+                                }
+                            } header: {
+                                Text(section.key)
+                                    .font(.footnote.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                                    .id(section.key)
+                            }
                         }
                     }
+                    .listStyle(.plain)
+                    .modifier(AlphabetJumpOverlay(sections: sections.map(\.key), proxy: proxy))
                 }
             }
         }
-        .listStyle(.plain)
         .navigationTitle("Albumy")
         .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $query, prompt: "Szukaj w albumach")
     }
 
     private func albumRow(_ group: LibraryAlbumGroup) -> some View {
@@ -300,7 +364,8 @@ struct LibrarySongsView: View {
     var body: some View {
         LibrarySongsListView(
             tracks: app.musicTracks.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending },
-            title: "Utwory"
+            title: "Utwory",
+            enablesLibrarySearch: true
         )
     }
 }
@@ -309,44 +374,137 @@ struct LibrarySongsListView: View {
     @EnvironmentObject private var app: AppModel
     let tracks: [MusicTrack]
     let title: String
+    var enablesLibrarySearch: Bool = false
+
+    @State private var query = ""
+    @State private var sharePayload: SharePayload?
+
+    private var filtered: [MusicTrack] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard enablesLibrarySearch, q.count >= 1 else { return tracks }
+        return tracks.filter {
+            $0.title.localizedCaseInsensitiveContains(q)
+                || ($0.artist?.localizedCaseInsensitiveContains(q) == true)
+                || ($0.album?.localizedCaseInsensitiveContains(q) == true)
+        }
+    }
+
+    private var sections: [(key: String, items: [MusicTrack])] {
+        LibraryAlphabet.group(filtered) { $0.title }
+    }
 
     var body: some View {
         Group {
-            if tracks.isEmpty {
-                ContentUnavailableView("Brak utworów", systemImage: "music.note")
+            if filtered.isEmpty {
+                ContentUnavailableView(
+                    query.isEmpty ? "Brak utworów" : "Brak wyników",
+                    systemImage: "music.note",
+                    description: query.isEmpty ? nil : Text("Tylko utwory z Twojej biblioteki.")
+                )
             } else {
-                List {
-                    ForEach(Array(tracks.enumerated()), id: \.element.url) { index, track in
-                        Button {
-                            Task { await play(from: index) }
-                        } label: {
-                            TrackRowView(
-                                index: index + 1,
-                                title: track.title,
-                                subtitle: track.artist,
-                                duration: track.duration,
-                                artworkURL: track.artworkURL,
-                                isPlaying: app.playback.engine?.currentTrack?.url == track.url,
-                                downloadState: app.downloads.uiState(
-                                    for: track.url,
-                                    isDownloaded: app.isOfflineAvailable(track.url)
-                                )
-                            )
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach(sections, id: \.key) { section in
+                            Section {
+                                ForEach(Array(section.items.enumerated()), id: \.element.url) { _, track in
+                                    songRow(track)
+                                }
+                            } header: {
+                                Text(section.key)
+                                    .font(.footnote.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                                    .id(section.key)
+                            }
                         }
-                        .buttonStyle(.plain)
                     }
+                    .listStyle(.plain)
+                    .modifier(AlphabetJumpOverlay(sections: sections.map(\.key), proxy: proxy))
                 }
-                .listStyle(.plain)
             }
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $query, prompt: enablesLibrarySearch ? "Szukaj w utworach" : "Szukaj")
+        .sheet(item: $sharePayload) { payload in
+            ActivityView(activityItems: payload.items)
+        }
     }
 
-    private func play(from index: Int) async {
-        let folder = app.musicFolders.first(where: { $0.id == tracks[index].folderId })
-        await app.playTracks(tracks, startIndex: index, folder: folder)
+    private func songRow(_ track: MusicTrack) -> some View {
+        let index = filtered.firstIndex(where: { $0.url == track.url }).map { $0 + 1 } ?? 1
+        return Button {
+            Task { await play(track: track) }
+        } label: {
+            TrackRowView(
+                index: index,
+                title: track.title,
+                subtitle: track.artist,
+                duration: track.duration,
+                artworkURL: track.artworkURL,
+                isPlaying: app.playback.engine?.currentTrack?.url == track.url,
+                downloadState: app.downloads.uiState(
+                    for: track.url,
+                    isDownloaded: app.isOfflineAvailable(track.url)
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                Task { await play(track: track) }
+            } label: {
+                Label("Odtwórz", systemImage: "play.fill")
+            }
+            Button {
+                Task { await app.toggleFavorite(track.favoriteItem) }
+            } label: {
+                Label(
+                    app.isFavorite(track.url) ? "Usuń z ulubionych" : "Dodaj do ulubionych",
+                    systemImage: app.isFavorite(track.url) ? "heart.slash" : "heart"
+                )
+            }
+            Button {
+                sharePayload = .text(trackShareText(track))
+            } label: {
+                Label("Udostępnij", systemImage: "square.and.arrow.up")
+            }
+            if let local = OfflineMusicStore.shared.localURL(for: track.url) {
+                Button {
+                    sharePayload = .file(local)
+                } label: {
+                    Label("Wyślij plik", systemImage: "paperplane")
+                }
+            }
+            if app.downloads.uiState(for: track.url, isDownloaded: app.isOfflineAvailable(track.url)) != .done {
+                Button {
+                    app.downloadTrack(track, folderId: track.folderId)
+                } label: {
+                    Label("Pobierz na iPhone", systemImage: "arrow.down.circle")
+                }
+            }
+        }
     }
+
+    private func trackShareText(_ track: MusicTrack) -> String {
+        if let artist = track.artist, !artist.isEmpty {
+            return "\(track.title) — \(artist)"
+        }
+        return track.title
+    }
+
+    private func play(track: MusicTrack) async {
+        guard let index = filtered.firstIndex(where: { $0.url == track.url }) else { return }
+        let folder = app.musicFolders.first(where: { $0.id == track.folderId })
+        await app.playTracks(filtered, startIndex: index, folder: folder)
+    }
+}
+
+private struct SharePayload: Identifiable {
+    let id = UUID()
+    let items: [Any]
+
+    static func file(_ url: URL) -> SharePayload { SharePayload(items: [url]) }
+    static func text(_ string: String) -> SharePayload { SharePayload(items: [string]) }
 }
 
 // MARK: - Downloaded
@@ -354,53 +512,110 @@ struct LibrarySongsListView: View {
 struct LibraryDownloadedView: View {
     @EnvironmentObject private var app: AppModel
     @State private var errorMessage: String?
+    @State private var query = ""
+    @State private var sharePayload: SharePayload?
 
     private var tracks: [MusicTrack] {
-        LibraryData.downloadedTracks(from: app.musicTracks) { app.isOfflineAvailable($0) }
+        let all = LibraryData.downloadedTracks(from: app.musicTracks) { app.isOfflineAvailable($0) }
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard q.count >= 1 else { return all }
+        return all.filter {
+            $0.title.localizedCaseInsensitiveContains(q)
+                || ($0.artist?.localizedCaseInsensitiveContains(q) == true)
+        }
+    }
+
+    private var sections: [(key: String, items: [MusicTrack])] {
+        LibraryAlphabet.group(tracks) { $0.title }
     }
 
     var body: some View {
         Group {
             if tracks.isEmpty {
                 ContentUnavailableView(
-                    "Brak pobranych utworów",
+                    query.isEmpty ? "Brak pobranych utworów" : "Brak wyników",
                     systemImage: "arrow.down.circle",
-                    description: Text("Pobierz utwory z playlisty, aby odtwarzać offline.")
+                    description: Text(query.isEmpty
+                        ? "Pobierz utwory z playlisty, aby odtwarzać offline i udostępniać pliki."
+                        : "Szukaj tylko wśród pobranych z biblioteki.")
                 )
             } else {
-                List {
-                    ForEach(Array(tracks.enumerated()), id: \.element.url) { index, track in
-                        Button {
-                            Task { await play(from: index) }
-                        } label: {
-                            TrackRowView(
-                                index: index + 1,
-                                title: track.title,
-                                subtitle: track.artist,
-                                duration: track.duration,
-                                artworkURL: track.artworkURL,
-                                isPlaying: app.playback.engine?.currentTrack?.url == track.url,
-                                downloadState: app.downloads.uiState(
-                                    for: track.url,
-                                    isDownloaded: app.isOfflineAvailable(track.url)
-                                )
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                Task { await deleteDownloaded(track) }
-                            } label: {
-                                Label("Usuń utwór", systemImage: "trash")
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach(sections, id: \.key) { section in
+                            Section {
+                                ForEach(Array(section.items.enumerated()), id: \.element.url) { index, track in
+                                    Button {
+                                        Task { await play(track: track) }
+                                    } label: {
+                                        TrackRowView(
+                                            index: (tracks.firstIndex(where: { $0.url == track.url }) ?? index) + 1,
+                                            title: track.title,
+                                            subtitle: track.artist,
+                                            duration: track.duration,
+                                            artworkURL: track.artworkURL,
+                                            isPlaying: app.playback.engine?.currentTrack?.url == track.url,
+                                            downloadState: .done
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .contextMenu {
+                                        Button {
+                                            Task { await play(track: track) }
+                                        } label: {
+                                            Label("Odtwórz", systemImage: "play.fill")
+                                        }
+                                        Button {
+                                            let text: String = {
+                                                if let artist = track.artist, !artist.isEmpty {
+                                                    return "\(track.title) — \(artist)"
+                                                }
+                                                return track.title
+                                            }()
+                                            sharePayload = .text(text)
+                                        } label: {
+                                            Label("Udostępnij", systemImage: "square.and.arrow.up")
+                                        }
+                                        if let local = OfflineMusicStore.shared.localURL(for: track.url) {
+                                            Button {
+                                                sharePayload = .file(local)
+                                            } label: {
+                                                Label("Wyślij plik", systemImage: "paperplane")
+                                            }
+                                        }
+                                        Button(role: .destructive) {
+                                            Task { await deleteDownloaded(track) }
+                                        } label: {
+                                            Label("Usuń z iPhone’a", systemImage: "trash")
+                                        }
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            Task { await deleteDownloaded(track) }
+                                        } label: {
+                                            Label("Usuń", systemImage: "trash")
+                                        }
+                                    }
+                                }
+                            } header: {
+                                Text(section.key)
+                                    .font(.footnote.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                                    .id(section.key)
                             }
                         }
                     }
+                    .listStyle(.plain)
+                    .modifier(AlphabetJumpOverlay(sections: sections.map(\.key), proxy: proxy))
                 }
-                .listStyle(.plain)
             }
         }
         .navigationTitle("Pobrane")
         .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $query, prompt: "Szukaj w pobranych")
+        .sheet(item: $sharePayload) { payload in
+            ActivityView(activityItems: payload.items)
+        }
         .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -408,8 +623,9 @@ struct LibraryDownloadedView: View {
         }
     }
 
-    private func play(from index: Int) async {
-        let folder = app.musicFolders.first(where: { $0.id == tracks[index].folderId })
+    private func play(track: MusicTrack) async {
+        guard let index = tracks.firstIndex(where: { $0.url == track.url }) else { return }
+        let folder = app.musicFolders.first(where: { $0.id == track.folderId })
         await app.playTracks(tracks, startIndex: index, folder: folder)
     }
 

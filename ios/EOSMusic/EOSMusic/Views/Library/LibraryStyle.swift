@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum LibraryCategory: String, Identifiable, CaseIterable, Hashable {
     case playlists
@@ -264,6 +265,107 @@ struct RecentLibraryCell: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+        }
+    }
+}
+
+
+// MARK: - Alphabet index (Apple Music style)
+
+enum LibraryAlphabet {
+    static let letters: [String] = (65...90).map { String(UnicodeScalar($0)!) } + ["#"]
+
+    static func sectionKey(for name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.first else { return "#" }
+        let folded = String(first)
+            .folding(options: .diacriticInsensitive, locale: Locale(identifier: "pl_PL"))
+            .uppercased()
+        guard let scalar = folded.unicodeScalars.first,
+              CharacterSet.uppercaseLetters.contains(scalar) else {
+            return "#"
+        }
+        return String(scalar)
+    }
+
+    static func group<T>(_ items: [T], name: (T) -> String) -> [(key: String, items: [T])] {
+        let mapped = Dictionary(grouping: items) { sectionKey(for: name($0)) }
+        let keys = letters.filter { mapped[$0] != nil }
+        return keys.map { ($0, mapped[$0] ?? []) }
+    }
+}
+
+struct AlphabetIndexBar: View {
+    let available: Set<String>
+    let onSelect: (String) -> Void
+
+    @State private var dragLetter: String?
+    private let letters = LibraryAlphabet.letters
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            GeometryReader { geo in
+                let rowH = max(10, geo.size.height / CGFloat(letters.count))
+                VStack(spacing: 0) {
+                    ForEach(letters, id: \.self) { letter in
+                        Text(letter)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(
+                                dragLetter == letter
+                                    ? LibraryAccent.icon
+                                    : (available.contains(letter) ? Color.secondary : Color.secondary.opacity(0.28))
+                            )
+                            .frame(maxWidth: .infinity)
+                            .frame(height: rowH)
+                    }
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            let idx = min(letters.count - 1, max(0, Int(value.location.y / rowH)))
+                            let letter = letters[idx]
+                            guard available.contains(letter) else { return }
+                            if dragLetter != letter {
+                                dragLetter = letter
+                                UISelectionFeedbackGenerator().selectionChanged()
+                                onSelect(letter)
+                            }
+                        }
+                        .onEnded { _ in dragLetter = nil }
+                )
+            }
+            .frame(width: 18)
+
+            if let dragLetter {
+                Text(dragLetter)
+                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(width: 64, height: 64)
+                    .background(LibraryAccent.icon.gradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .offset(x: -36)
+                    .transition(.scale.combined(with: .opacity))
+                    .allowsHitTesting(false)
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: dragLetter)
+        .padding(.vertical, 4)
+        .accessibilityLabel("Indeks alfabetyczny")
+    }
+}
+
+struct AlphabetJumpOverlay: ViewModifier {
+    let sections: [String]
+    let proxy: ScrollViewProxy
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .trailing) {
+            AlphabetIndexBar(available: Set(sections)) { letter in
+                withAnimation(.easeOut(duration: 0.12)) {
+                    proxy.scrollTo(letter, anchor: .top)
+                }
+            }
+            .padding(.trailing, 2)
         }
     }
 }

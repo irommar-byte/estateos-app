@@ -23,6 +23,7 @@ struct SearchCatalogView: View {
     @State private var isSearching = false
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
+    @State private var sharePayload: LibrarySharePayload?
 
     private func sortedAlbums(_ albums: [MusicAlbum]) -> [MusicAlbum] {
         albums.sorted { lhs, rhs in
@@ -78,13 +79,19 @@ struct SearchCatalogView: View {
             }
             .background(EOSAmbientBackground())
             .navigationTitle("Szukaj")
-            .searchable(text: $query, prompt: "Wykonawca, album, utwór…")
+            .searchable(
+                text: $query,
+                prompt: scope == .library ? "Szukaj w bibliotece…" : "Wykonawca, album, utwór…"
+            )
             .onSubmit(of: .search) { scheduleSearch(immediate: true) }
             .onChange(of: query) { _, _ in scheduleSearch(immediate: false) }
             .onChange(of: scope) { _, _ in
                 catalogResults = nil
                 libraryResults = .empty
                 scheduleSearch(immediate: true)
+            }
+            .sheet(item: $sharePayload) { payload in
+                ActivityView(activityItems: payload.items)
             }
             .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -280,6 +287,31 @@ struct SearchCatalogView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        Button {
+                            Task { await playLibraryTrack(track, in: data.songs) }
+                        } label: {
+                            Label("Odtwórz", systemImage: "play.fill")
+                        }
+                        Button {
+                            let text: String = {
+                                if let artist = track.artist, !artist.isEmpty {
+                                    return "\(track.title) — \(artist)"
+                                }
+                                return track.title
+                            }()
+                            sharePayload = LibrarySharePayload(items: [text])
+                        } label: {
+                            Label("Udostępnij", systemImage: "square.and.arrow.up")
+                        }
+                        if let local = OfflineMusicStore.shared.localURL(for: track.url) {
+                            Button {
+                                sharePayload = LibrarySharePayload(items: [local])
+                            } label: {
+                                Label("Wyślij plik", systemImage: "paperplane")
+                            }
+                        }
+                    }
                     if index < min(19, data.songs.count - 1) {
                         Divider().opacity(0.2)
                     }
@@ -361,6 +393,11 @@ struct SearchCatalogView: View {
         let folder = app.musicFolders.first(where: { $0.id == track.folderId })
         await app.playTracks(queue, startIndex: index, folder: folder)
     }
+}
+
+private struct LibrarySharePayload: Identifiable {
+    let id = UUID()
+    let items: [Any]
 }
 
 private struct ArtistChip: View {
