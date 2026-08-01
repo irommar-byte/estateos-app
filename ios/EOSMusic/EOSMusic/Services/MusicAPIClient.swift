@@ -242,6 +242,14 @@ final class MusicAPIClient {
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(AppConfig.userAgent, forHTTPHeaderField: "User-Agent")
+        // Proxy + large libraries — fail fast instead of spinning for 60s+.
+        if path.hasPrefix("/api/auth/") {
+            req.timeoutInterval = 20
+        } else if path.hasPrefix("/api/music/library") || path.hasPrefix("/api/music/assets") {
+            req.timeoutInterval = 45
+        } else {
+            req.timeoutInterval = 30
+        }
         if authorized, let token {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }

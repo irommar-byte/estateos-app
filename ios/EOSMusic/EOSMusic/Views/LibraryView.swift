@@ -66,7 +66,15 @@ struct LibraryView: View {
                     }
                 }
             }
-            .refreshable { await refresh() }
+            .overlay(alignment: .top) {
+                    if app.isLibraryLoading && app.musicTracks.isEmpty {
+                        ProgressView("Ładuję bibliotekę…")
+                            .padding(10)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .padding(.top, 8)
+                    }
+                }
+                .refreshable { await refresh() }
             .alert("Nowa playlista", isPresented: $showCreateFolder) {
                 TextField("Nazwa", text: $newFolderName)
                 Button("Anuluj", role: .cancel) { newFolderName = "" }

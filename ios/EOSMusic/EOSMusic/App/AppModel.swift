@@ -11,6 +11,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var serverLibraryBytes: Int = 0
     @Published private(set) var serverAssets: [MusicAssetItem] = []
     @Published private(set) var favoriteItems: [FavoriteItem] = []
+    @Published private(set) var isLibraryLoading = false
     @Published var libraryError: String?
     @Published var isFullPlayerPresented = false
 
@@ -41,11 +42,9 @@ final class AppModel: ObservableObject {
         guard let session = SessionStore.load() else { return }
         api.setToken(session.token)
         do {
+            // Splash only waits for session validation — library loads in-app.
             user = try await api.me()
-            try await refreshMusicLibrary()
-            try? await refreshFavorites()
-            // Assets list is non-critical — never block the splash on it.
-            Task { await refreshServerAssets() }
+            Task { await refreshWorkspace(soft: true) }
         } catch {
             // Only clear session on auth failure; network blips keep the user in-app.
             if case APIError.unauthorized = error {
@@ -56,6 +55,9 @@ final class AppModel: ObservableObject {
                 logout()
             } else {
                 libraryError = error.localizedDescription
+                // Keep cached session user so Login isn't forced on a blip.
+                user = session.user
+                Task { await refreshWorkspace(soft: true) }
             }
         }
     }
@@ -68,8 +70,8 @@ final class AppModel: ObservableObject {
         } else {
             CredentialsStore.clear()
         }
-        try await refreshMusicLibrary()
-        try? await refreshFavorites()
+        // Enter the app immediately; playlist sync continues in background.
+        Task { await refreshWorkspace(soft: true) }
     }
 
     func loginWithApple(identityToken: String, login: String? = nil, password: String? = nil, linkOnly: Bool = false) async throws {
@@ -80,8 +82,7 @@ final class AppModel: ObservableObject {
             linkOnly: linkOnly
         )
         user = session.user
-        try await refreshMusicLibrary()
-        try? await refreshFavorites()
+        Task { await refreshWorkspace(soft: true) }
     }
 
     func linkAppleAccount(identityToken: String, login: String, password: String) async throws {
@@ -108,6 +109,19 @@ final class AppModel: ObservableObject {
         musicFolders = []
         musicTracks = []
         favoriteItems = []
+    }
+
+    /// Library + favorites + assets. Never blocks login/splash.
+    func refreshWorkspace(soft: Bool = false) async {
+        isLibraryLoading = true
+        defer { isLibraryLoading = false }
+        do {
+            try await refreshMusicLibrary()
+        } catch {
+            libraryError = error.localizedDescription
+        }
+        try? await refreshFavorites()
+        await refreshServerAssets()
     }
 
     func refreshMusicLibrary() async throws {

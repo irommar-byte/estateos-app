@@ -281,6 +281,19 @@ export function reconcileFolderDownloads(store, folder, downloadsRoot) {
 
 function folderStats(store, folder, downloadsRoot = null) {
   const tracks = store.tracks.filter((t) => t.folderId === folder.id);
+  if (!downloadsRoot) {
+    const downloadedTrackCount = tracks.filter(
+      (track) =>
+        Boolean(track.downloadJobId) ||
+        Boolean(track.serverAssetId) ||
+        Boolean(track.downloadedAt)
+    ).length;
+    return {
+      trackCount: tracks.length,
+      downloadedTrackCount,
+      fileCount: downloadedTrackCount,
+    };
+  }
   const files = listMp3Files(downloadsRoot, folder.name);
   const downloadedTrackCount = tracks.filter((track) =>
     trackHasFileOnDisk(track, folder, downloadsRoot, files)
@@ -412,11 +425,10 @@ export function listMusicLibrary(req, downloadsRoot = null) {
   if (!readStore(userKey).folders.length) {
     writeStore(userKey, store);
   }
-  if (enrichStoreFromDisk(store, downloadsRoot)) {
-    writeStore(userKey, store);
-  }
+  // Hot path: do not reconcile/scan disk on every library GET (large libraries
+  // were blocking EOS Music splash + login). Counts use metadata instead.
   return {
-    folders: folderWithCounts(store, downloadsRoot),
+    folders: folderWithCounts(store, null),
     tracks: store.tracks.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0)),
   };
 }
