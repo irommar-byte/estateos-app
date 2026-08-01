@@ -20,6 +20,25 @@ struct RootView: View {
             FullPlayerView()
                 .environmentObject(app)
                 .environmentObject(ui)
+                .presentationDetents([.fraction(0.96), .large])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(34)
+                .presentationBackground {
+                    ZStack {
+                        EOSTheme.background.opacity(0.42)
+                        Rectangle().fill(.ultraThinMaterial)
+                        LinearGradient(
+                            colors: [
+                                EOSTheme.accentSecondary.opacity(0.14),
+                                .clear,
+                                EOSTheme.accent.opacity(0.1)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    }
+                    .ignoresSafeArea()
+                }
         }
     }
 }

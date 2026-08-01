@@ -50,192 +50,224 @@ private struct PlayerContent: View {
 
     @ViewBuilder
     private var playerBody: some View {
-        ZStack {
-            EOSAmbientBackground()
-            if engine.currentTrack != nil, effectsMode == .strong {
-                SoftPlayerBackdrop(
-                    isPlaying: engine.isPlaying,
-                    audio: engine.audioFrame
-                )
-                .allowsHitTesting(false)
-            }
+        GeometryReader { geo in
+            let layout = PlayerLayout(height: geo.size.height, width: geo.size.width)
+            ZStack {
+                PlayerGlassBackground(isPlaying: engine.isPlaying, mode: effectsMode, audio: engine.audioFrame)
 
-            if let track = engine.currentTrack {
-                VStack(spacing: 0) {
-                    HStack {
-                        Button {
-                            app.minimizePlayer()
-                        } label: {
-                            Image(systemName: "chevron.down")
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(EOSTheme.textSecondary)
-                                .frame(width: 44, height: 44)
-                        }
-                        Spacer()
-                        Text(engine.queuePositionLabel)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(EOSTheme.textMuted)
-                        Spacer()
-                        FavoriteButton(item: track.favoriteItem, size: 20)
-                            .frame(width: 44, height: 44)
-                        Button {
-                            showAddToPlaylist = true
-                        } label: {
-                            Image(systemName: "text.badge.plus")
-                                .font(.title3)
-                                .foregroundStyle(EOSTheme.textSecondary)
-                                .frame(width: 44, height: 44)
-                        }
-                        if let folderId = engine.folderId,
-                           let libraryTrack = app.trackForCurrentPlayback() {
-                            DownloadCloudButton(
-                                state: app.downloads.uiState(
-                                    for: track.url,
-                                    isDownloaded: app.isOfflineAvailable(track.url)
-                                ),
-                                size: 24,
-                                onDownload: { app.downloadTrack(libraryTrack, folderId: folderId) },
-                                onCancel: { app.cancelDownload(for: track.url) },
-                                onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
-                            )
-                            .frame(width: 44, height: 44)
-                        } else {
-                            Color.clear.frame(width: 44, height: 44)
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.top, 8)
+                if let track = engine.currentTrack {
+                    VStack(spacing: 0) {
+                        playerChrome(track: track, layout: layout)
 
-                    Spacer(minLength: 12)
+                        Spacer(minLength: layout.topGap)
 
-                    RotatingDiscArtwork(
-                        artworkURL: track.artworkURL,
-                        isPlaying: engine.isPlaying,
-                        mode: effectsMode,
-                        audio: engine.audioFrame
-                    )
-                    .padding(.bottom, 18)
-
-                    if effectsMode != .off {
-                        CompactIslandVisualizer(
+                        RotatingDiscArtwork(
+                            artworkURL: track.artworkURL,
                             isPlaying: engine.isPlaying,
-                            isStrong: effectsMode == .strong,
-                            audio: engine.audioFrame
+                            mode: effectsMode,
+                            audio: engine.audioFrame,
+                            canvasSize: layout.discSize
                         )
-                        .padding(.bottom, 16)
-                    }
 
-                    VStack(spacing: 6) {
-                        Text(track.title)
-                            .font(.title2.weight(.bold))
-                            .foregroundStyle(EOSTheme.textPrimary)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                        if let artist = track.artist, !artist.isEmpty {
-                            Button {
-                                Task { await openArtist(for: track) }
-                            } label: {
-                                Text(artist)
-                                    .font(.title3)
-                                    .foregroundStyle(EOSTheme.textSecondary)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .buttonStyle(.plain)
+                        if effectsMode != .off {
+                            CompactIslandVisualizer(
+                                isPlaying: engine.isPlaying,
+                                isStrong: effectsMode == .strong,
+                                audio: engine.audioFrame,
+                                compact: layout.tight
+                            )
+                            .padding(.top, layout.afterDiscGap)
                         }
-                        if let album = track.album, !album.isEmpty {
-                            Button {
-                                openAlbum(for: track)
-                            } label: {
-                                Text(album)
-                                    .font(.subheadline)
-                                    .foregroundStyle(EOSTheme.textMuted)
-                                    .lineLimit(1)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(track.albumId?.isEmpty != false)
-                            .opacity(track.albumId?.isEmpty == false ? 1 : 0.55)
-                        }
-                    }
-                    .padding(.horizontal, 24)
 
-                    if engine.isLoading {
-                        ProgressView("Łączę stream…")
-                            .padding(.top, 16)
-                            .foregroundStyle(EOSTheme.textSecondary)
-                    }
+                        trackMeta(track: track, layout: layout)
+                            .padding(.top, layout.metaGap)
 
-                    if let error = engine.errorMessage {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(EOSTheme.accent)
-                            .padding(.top, 8)
-                    }
+                        if engine.isLoading {
+                            ProgressView("Łączę stream…")
+                                .controlSize(.small)
+                                .padding(.top, 6)
+                                .foregroundStyle(EOSTheme.textSecondary)
+                        }
 
-                    Spacer(minLength: 20)
+                        if let error = engine.errorMessage {
+                            Text(error)
+                                .font(.caption2)
+                                .foregroundStyle(EOSTheme.accent)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                                .padding(.horizontal, 20)
+                                .padding(.top, 4)
+                        }
 
-                    VStack(spacing: 8) {
-                        Slider(
-                            value: Binding(
-                                get: { engine.currentTime },
-                                set: { engine.seek(to: $0) }
-                            ),
-                            in: 0...max(engine.duration, 1)
-                        )
-                        .tint(EOSTheme.accent)
-                        HStack {
-                            Text(formatDuration(engine.currentTime))
-                            Spacer()
-                            Text(formatDuration(engine.duration))
-                        }
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(EOSTheme.textMuted)
-                    }
-                    .padding(.horizontal, 24)
+                        Spacer(minLength: layout.bottomGap)
 
-                    HStack(spacing: 28) {
-                        Button { engine.toggleShuffle() } label: {
-                            Image(systemName: "shuffle")
-                                .foregroundStyle(engine.shuffleEnabled ? EOSTheme.accent : EOSTheme.textMuted)
-                        }
-                        Button { Task { await engine.skipPrevious() } } label: {
-                            Image(systemName: "backward.fill")
-                                .font(.title2)
-                        }
-                        Button { engine.togglePlayPause() } label: {
-                            Image(systemName: engine.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                                .font(.system(size: 68))
-                                .foregroundStyle(EOSTheme.textPrimary)
-                        }
-                        Button { Task { await engine.skipNext() } } label: {
-                            Image(systemName: "forward.fill")
-                                .font(.title2)
-                        }
-                        Button { engine.cycleRepeatMode() } label: {
-                            Image(systemName: engine.repeatMode.icon)
-                                .foregroundStyle(engine.repeatMode != .off ? EOSTheme.accent : EOSTheme.textMuted)
+                        playbackSlider(layout: layout)
+                        transportControls(layout: layout)
+
+                        if engine.repeatMode != .off {
+                            Text("Powtórzenie: \(engine.repeatMode.label)")
+                                .font(.caption2)
+                                .foregroundStyle(EOSTheme.textMuted)
+                                .padding(.top, 2)
+                                .padding(.bottom, layout.safeBottom)
+                        } else {
+                            Color.clear.frame(height: layout.safeBottom)
                         }
                     }
-                    .foregroundStyle(EOSTheme.textPrimary)
-                    .padding(.vertical, 24)
-
-                    if engine.repeatMode != .off {
-                        Text("Powtórzenie: \(engine.repeatMode.label)")
-                            .font(.caption)
-                            .foregroundStyle(EOSTheme.textMuted)
-                            .padding(.bottom, 16)
-                    }
+                    .padding(.horizontal, layout.horizontalPadding)
+                    .frame(maxWidth: layout.maxContentWidth)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
-        .presentationDragIndicator(.visible)
-        .presentationBackground(EOSTheme.background)
         .sheet(isPresented: $showAddToPlaylist) {
             if let track = engine.currentTrack {
                 AddToPlaylistSheet(track: track.payload, trackTitle: track.title)
                     .environmentObject(app)
             }
         }
+    }
+
+    private func playerChrome(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                app.minimizePlayer()
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(EOSTheme.textSecondary)
+                    .frame(width: 40, height: 40)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            Spacer()
+            Text(engine.queuePositionLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(EOSTheme.textMuted)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
+            Spacer()
+            FavoriteButton(item: track.favoriteItem, size: 18)
+                .frame(width: 40, height: 40)
+                .background(.ultraThinMaterial, in: Circle())
+            Button {
+                showAddToPlaylist = true
+            } label: {
+                Image(systemName: "text.badge.plus")
+                    .font(.body)
+                    .foregroundStyle(EOSTheme.textSecondary)
+                    .frame(width: 40, height: 40)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            if let folderId = engine.folderId,
+               let libraryTrack = app.trackForCurrentPlayback() {
+                DownloadCloudButton(
+                    state: app.downloads.uiState(
+                        for: track.url,
+                        isDownloaded: app.isOfflineAvailable(track.url)
+                    ),
+                    size: 20,
+                    onDownload: { app.downloadTrack(libraryTrack, folderId: folderId) },
+                    onCancel: { app.cancelDownload(for: track.url) },
+                    onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
+                )
+                .frame(width: 40, height: 40)
+                .background(.ultraThinMaterial, in: Circle())
+            }
+        }
+        .padding(.top, layout.chromeTop)
+    }
+
+    private func trackMeta(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
+        VStack(spacing: layout.tight ? 3 : 5) {
+            Text(track.title)
+                .font(layout.tight ? .title3.weight(.bold) : .title2.weight(.bold))
+                .foregroundStyle(EOSTheme.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+            if let artist = track.artist, !artist.isEmpty {
+                Button {
+                    Task { await openArtist(for: track) }
+                } label: {
+                    Text(artist)
+                        .font(layout.tight ? .body : .title3)
+                        .foregroundStyle(EOSTheme.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+                }
+                .buttonStyle(.plain)
+            }
+            if let album = track.album, !album.isEmpty {
+                Button {
+                    openAlbum(for: track)
+                } label: {
+                    Text(album)
+                        .font(.footnote)
+                        .foregroundStyle(EOSTheme.textMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
+                }
+                .buttonStyle(.plain)
+                .disabled(track.albumId?.isEmpty != false)
+                .opacity(track.albumId?.isEmpty == false ? 1 : 0.55)
+            }
+        }
+        .padding(.horizontal, 8)
+    }
+
+    private func playbackSlider(layout: PlayerLayout) -> some View {
+        VStack(spacing: 6) {
+            Slider(
+                value: Binding(
+                    get: { engine.currentTime },
+                    set: { engine.seek(to: $0) }
+                ),
+                in: 0...max(engine.duration, 1)
+            )
+            .tint(EOSTheme.accent)
+            HStack {
+                Text(formatDuration(engine.currentTime))
+                Spacer()
+                Text(formatDuration(engine.duration))
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(EOSTheme.textMuted)
+        }
+        .padding(.horizontal, 4)
+        .padding(.bottom, layout.tight ? 6 : 10)
+    }
+
+    private func transportControls(layout: PlayerLayout) -> some View {
+        HStack(spacing: layout.tight ? 22 : 28) {
+            Button { engine.toggleShuffle() } label: {
+                Image(systemName: "shuffle")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(engine.shuffleEnabled ? EOSTheme.accent : EOSTheme.textMuted)
+            }
+            Button { Task { await engine.skipPrevious() } } label: {
+                Image(systemName: "backward.fill")
+                    .font(.title3)
+            }
+            Button { engine.togglePlayPause() } label: {
+                Image(systemName: engine.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: layout.playButtonSize))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(EOSTheme.textPrimary)
+                    .shadow(color: EOSTheme.accent.opacity(0.18), radius: 12, y: 4)
+            }
+            Button { Task { await engine.skipNext() } } label: {
+                Image(systemName: "forward.fill")
+                    .font(.title3)
+            }
+            Button { engine.cycleRepeatMode() } label: {
+                Image(systemName: engine.repeatMode.icon)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(engine.repeatMode != .off ? EOSTheme.accent : EOSTheme.textMuted)
+            }
+        }
+        .foregroundStyle(EOSTheme.textPrimary)
+        .padding(.vertical, layout.tight ? 4 : 8)
     }
 
     private func openAlbum(for track: MusicPlaybackTrack) {
@@ -269,20 +301,88 @@ private struct PlayerContent: View {
     }
 }
 
+private struct PlayerLayout {
+    let height: CGFloat
+    let width: CGFloat
+
+    var tight: Bool { height < 680 }
+    var compact: Bool { height < 760 }
+
+    var discSize: CGFloat {
+        if height < 620 { return 176 }
+        if height < 700 { return 210 }
+        if height < 780 { return 248 }
+        return 286
+    }
+
+    var playButtonSize: CGFloat { tight ? 56 : (compact ? 62 : 68) }
+    var topGap: CGFloat { tight ? 4 : (compact ? 8 : 14) }
+    var afterDiscGap: CGFloat { tight ? 8 : 12 }
+    var metaGap: CGFloat { tight ? 8 : 12 }
+    var bottomGap: CGFloat { tight ? 6 : 12 }
+    var chromeTop: CGFloat { tight ? 4 : 8 }
+    var safeBottom: CGFloat { tight ? 6 : 10 }
+    var horizontalPadding: CGFloat { width > 700 ? 28 : 16 }
+    var maxContentWidth: CGFloat { 560 }
+}
+
+private struct PlayerGlassBackground: View {
+    let isPlaying: Bool
+    let mode: PlayerEffectsMode
+    let audio: MusicPlaybackEngine.AudioReactiveFrame
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea()
+
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0.14),
+                    .clear,
+                    EOSTheme.accent.opacity(0.06)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            if mode == .strong {
+                SoftPlayerBackdrop(isPlaying: isPlaying, audio: audio)
+            } else if mode == .subtle {
+                RadialGradient(
+                    colors: [
+                        EOSTheme.accentSecondary.opacity(isPlaying ? 0.12 : 0.06),
+                        .clear
+                    ],
+                    center: .top,
+                    startRadius: 20,
+                    endRadius: 420
+                )
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
 private struct RotatingDiscArtwork: View {
     let artworkURL: URL?
     let isPlaying: Bool
     let mode: PlayerEffectsMode
     let audio: MusicPlaybackEngine.AudioReactiveFrame
+    var canvasSize: CGFloat = 286
 
     var body: some View {
         let enabled = mode != .off
         let strong = mode == .strong
         let drive = audio.visualDrive(isStrong: strong)
         let beat = min(1, audio.beat * 1.35 + drive * 0.25)
+        let scale = canvasSize / 320
 
         if !enabled {
-            ArtworkImage(url: artworkURL, size: 260, cornerRadius: 20)
+            ArtworkImage(url: artworkURL, size: canvasSize * 0.82, cornerRadius: 18)
                 .shadow(color: EOSTheme.accent.opacity(0.12), radius: 16, y: 8)
         } else {
             ZStack {
@@ -294,7 +394,6 @@ private struct RotatingDiscArtwork: View {
                     bars: audio.islandBars
                 )
 
-                // Stable identity: spin period does not depend on audioFrame (keeps cover loaded).
                 DiscSpinner(
                     artworkURL: artworkURL,
                     isSpinning: isPlaying,
@@ -310,6 +409,8 @@ private struct RotatingDiscArtwork: View {
                 )
             }
             .frame(width: 320, height: 320)
+            .scaleEffect(scale)
+            .frame(width: canvasSize, height: canvasSize)
         }
     }
 }
@@ -558,6 +659,7 @@ private struct CompactIslandVisualizer: View {
     let isPlaying: Bool
     let isStrong: Bool
     let audio: MusicPlaybackEngine.AudioReactiveFrame
+    var compact: Bool = false
 
     private let barCount = MusicPlaybackEngine.AudioReactiveFrame.islandBarCount
 
@@ -569,7 +671,7 @@ private struct CompactIslandVisualizer: View {
             : Color.black.opacity(0.78)
         let barColor = Color.white.opacity(0.95)
 
-        HStack(spacing: 14) {
+        HStack(spacing: compact ? 10 : 14) {
             Circle()
                 .fill(
                     RadialGradient(
@@ -627,13 +729,13 @@ private struct CompactIslandVisualizer: View {
                 )
                 .animation(.easeOut(duration: 0.08), value: beat)
         }
-        .frame(height: 52)
+        .frame(height: compact ? 40 : 48)
         .animation(nil, value: audio.islandBars)
     }
 
     private func barHeight(index: Int, beat: Double) -> CGFloat {
         let minH: CGFloat = 3
-        let maxH: CGFloat = isStrong ? 22 : 17
+        let maxH: CGFloat = compact ? (isStrong ? 16 : 13) : (isStrong ? 20 : 16)
         let level = audio.islandBar(at: index)
         guard isPlaying else { return minH }
         let punch = index == 2 ? beat * 0.45 : beat * 0.18
