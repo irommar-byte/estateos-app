@@ -4914,16 +4914,24 @@ app.post("/api/music/play", async (req, res) => {
 
 
 // GET /api/music/assets — trwała biblioteka serwerowa użytkownika
+const musicAssetMigrateDone = new Set();
+
 app.get("/api/music/assets", (req, res) => {
   const userKey = favoritesUserKeyFromReq(req);
   if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
   try {
-    // Best-effort migrate legacy playlist MP3s into asset registry
-    try {
-      const lib = listMusicLibrary(req, MUSIC_PLAYLIST_DOWNLOADS_DIR);
-      migrateLegacyMusicAssets(userKey, MUSIC_PLAYLIST_DOWNLOADS_DIR, lib.tracks || []);
-    } catch (err) {
-      console.warn("music assets migrate:", err?.message || err);
+    // One-shot background migrate — never block the splash / first paint.
+    if (!musicAssetMigrateDone.has(userKey)) {
+      musicAssetMigrateDone.add(userKey);
+      setImmediate(() => {
+        try {
+          const lib = listMusicLibrary(req, MUSIC_PLAYLIST_DOWNLOADS_DIR);
+          migrateLegacyMusicAssets(userKey, MUSIC_PLAYLIST_DOWNLOADS_DIR, lib.tracks || []);
+        } catch (err) {
+          musicAssetMigrateDone.delete(userKey);
+          console.warn("music assets migrate:", err?.message || err);
+        }
+      });
     }
     res.json(listMusicAssets(userKey, MUSIC_PLAYLIST_DOWNLOADS_DIR));
   } catch (err) {

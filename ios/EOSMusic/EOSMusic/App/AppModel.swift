@@ -44,8 +44,19 @@ final class AppModel: ObservableObject {
             user = try await api.me()
             try await refreshMusicLibrary()
             try? await refreshFavorites()
+            // Assets list is non-critical — never block the splash on it.
+            Task { await refreshServerAssets() }
         } catch {
-            logout()
+            // Only clear session on auth failure; network blips keep the user in-app.
+            if case APIError.unauthorized = error {
+                logout()
+            } else if case APIError.server(let message) = error,
+                      message.localizedCaseInsensitiveContains("brak autoryzacji")
+                        || message.localizedCaseInsensitiveContains("zaloguj") {
+                logout()
+            } else {
+                libraryError = error.localizedDescription
+            }
         }
     }
 
@@ -105,7 +116,6 @@ final class AppModel: ObservableObject {
         musicTracks = deduplicatedTracks(library.tracks)
         downloads.syncFromTracks(musicTracks)
         libraryError = nil
-            await refreshServerAssets()
     }
 
     func refreshFavorites() async throws {

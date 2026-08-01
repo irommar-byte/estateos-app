@@ -117,12 +117,25 @@ struct EOSLoadingView: View {
     @State private var isAnimating = false
 
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "waveform.circle.fill")
-                .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(EOSTheme.gradient)
-                .scaleEffect(isAnimating ? 1.05 : 0.92)
-                .opacity(isAnimating ? 1 : 0.72)
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .stroke(EOSTheme.accent.opacity(0.18), lineWidth: 1.5)
+                    .frame(width: 54, height: 54)
+                    .scaleEffect(isAnimating ? 1.35 : 0.9)
+                    .opacity(isAnimating ? 0 : 0.7)
+                Circle()
+                    .stroke(EOSTheme.accentSecondary.opacity(0.22), lineWidth: 1.5)
+                    .frame(width: 54, height: 54)
+                    .scaleEffect(isAnimating ? 1.15 : 0.95)
+                    .opacity(isAnimating ? 0.15 : 0.55)
+                Image(systemName: "waveform.circle.fill")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(EOSTheme.gradient)
+                    .scaleEffect(isAnimating ? 1.04 : 0.94)
+                    .shadow(color: EOSTheme.accent.opacity(0.35), radius: isAnimating ? 10 : 4)
+            }
+            .frame(width: 72, height: 72)
 
             Text(title)
                 .font(.subheadline.weight(.semibold))
@@ -137,7 +150,7 @@ struct EOSLoadingView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+            withAnimation(.easeInOut(duration: 1.05).repeatForever(autoreverses: true)) {
                 isAnimating = true
             }
         }
