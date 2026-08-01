@@ -16,7 +16,16 @@ struct DownloadCloudButton: View {
                     .foregroundStyle(.green.opacity(0.85))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Pobrano — dotknij, aby usunąć z urządzenia")
+            .accessibilityLabel("Na tym iPhonie — dotknij, aby usunąć lokalną kopię (serwer zostaje)")
+
+        case .onServer:
+            Button(action: onDownload) {
+                Image(systemName: "icloud.fill")
+                    .font(.system(size: size))
+                    .foregroundStyle(EOSTheme.accent.opacity(0.9))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Na serwerze EOS — pobierz na ten iPhone")
 
         case .downloading(let progress):
             let pct = min(100, max(0, progress))
@@ -54,7 +63,7 @@ struct DownloadCloudButton: View {
                     .foregroundStyle(EOSTheme.accentSecondary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Pobierz utwór")
+            .accessibilityLabel("Pobierz do biblioteki EOS i na ten iPhone")
         }
     }
 }

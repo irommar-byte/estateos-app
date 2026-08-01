@@ -215,6 +215,7 @@ extension MusicPlaybackTrack {
             albumId: pick(albumId) ?? self.albumId,
             folderId: folderId,
             downloadJobId: downloadJobId,
+            serverAssetId: serverAssetId,
             playbackFileURL: playbackFileURL,
             externalRelativePath: externalRelativePath,
             webDAVPath: webDAVPath,
@@ -241,6 +242,7 @@ extension MusicPlaybackTrack {
         albumId: String?,
         folderId: String?,
         downloadJobId: String?,
+        serverAssetId: String?,
         playbackFileURL: URL?,
         externalRelativePath: String?,
         webDAVPath: String?,
@@ -258,6 +260,7 @@ extension MusicPlaybackTrack {
         self.albumId = albumId
         self.folderId = folderId
         self.downloadJobId = downloadJobId
+        self.serverAssetId = serverAssetId
         self.playbackFileURL = playbackFileURL
         self.externalRelativePath = externalRelativePath
         self.webDAVPath = webDAVPath

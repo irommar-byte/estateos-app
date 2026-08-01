@@ -32,7 +32,7 @@ class CookieJar {
   }
 }
 
-function upscaleArtwork(url, size = 600) {
+function upscaleArtwork(url, size = 1200) {
   if (!url) return "";
   const u = String(url);
   if (/mzstatic\.com/i.test(u)) {

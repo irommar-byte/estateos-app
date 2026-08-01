@@ -7,6 +7,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var isBootstrapping = true
     @Published private(set) var musicFolders: [MusicFolder] = []
     @Published private(set) var musicTracks: [MusicTrack] = []
+    @Published private(set) var serverAssetCount: Int = 0
+    @Published private(set) var serverLibraryBytes: Int = 0
+    @Published private(set) var serverAssets: [MusicAssetItem] = []
     @Published private(set) var favoriteItems: [FavoriteItem] = []
     @Published var libraryError: String?
     @Published var isFullPlayerPresented = false
@@ -102,6 +105,7 @@ final class AppModel: ObservableObject {
         musicTracks = deduplicatedTracks(library.tracks)
         downloads.syncFromTracks(musicTracks)
         libraryError = nil
+            await refreshServerAssets()
     }
 
     func refreshFavorites() async throws {
@@ -161,8 +165,30 @@ final class AppModel: ObservableObject {
         musicTracks.append(contentsOf: response.tracks)
     }
 
+
+    func refreshServerAssets() async {
+        do {
+            let response = try await api.listMusicAssets()
+            serverAssetCount = response.count
+            serverLibraryBytes = response.totalBytes
+            serverAssets = response.items
+        } catch {
+            // Zachowaj ostatnie wartości — Settings i tak pokazuje ścieżki lokalne.
+        }
+    }
+
+    func deleteServerAsset(_ assetId: String) async {
+        do {
+            try await api.deleteMusicAsset(assetId: assetId)
+            await refreshServerAssets()
+            try? await refreshMusicLibrary()
+        } catch {
+            libraryError = error.localizedDescription
+        }
+    }
+
     func downloadJobId(for url: String) -> String? {
-        musicTracks.first { $0.url == url }?.downloadJobId
+        musicTracks.first { $0.url == url }?.durableJobId
     }
 
     func minimizePlayer() {
@@ -176,8 +202,8 @@ final class AppModel: ObservableObject {
 
     func playTracks(_ tracks: [MusicTrack], startIndex: Int, folder: MusicFolder?) async {
         let enriched = tracks.map { track -> MusicPlaybackTrack in
-            let jobId = track.downloadJobId
-                ?? musicTracks.first(where: { $0.url == track.url })?.downloadJobId
+            let jobId = track.durableJobId
+                ?? musicTracks.first(where: { $0.url == track.url })?.durableJobId
             return MusicPlaybackTrack(from: track, downloadJobId: jobId)
         }
         let externalSourceIds = Set(enriched.compactMap(\.externalSourceId))

@@ -68,31 +68,30 @@ final class OfflineMusicStore: ObservableObject {
         downloadJobId: String?,
         onProgress: ((Double) -> Void)? = nil
     ) async throws {
-        let (asyncBytes, response) = try await URLSession.shared.bytes(for: request)
+        let fileName = fileName(for: title, artist: artist, trackUrl: trackUrl)
+        let destination = root.appendingPathComponent(fileName)
+        let tempURL = root.appendingPathComponent("." + fileName + ".part")
+
+        if FileManager.default.fileExists(atPath: tempURL.path) {
+            try? FileManager.default.removeItem(at: tempURL)
+        }
+
+        let (tempFileURL, response) = try await URLSession.shared.download(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
             throw APIError.server("Nie udało się pobrać pliku na urządzenie.")
         }
-
-        let expected = response.expectedContentLength
-        var data = Data()
-        data.reserveCapacity(expected > 0 ? Int(expected) : 0)
-
-        for try await byte in asyncBytes {
-            try Task.checkCancellation()
-            data.append(byte)
-            if expected > 0, data.count % 65536 == 0 {
-                onProgress?(Double(data.count) / Double(expected))
-            }
-        }
         try Task.checkCancellation()
-        onProgress?(1)
 
-        let fileName = fileName(for: title, artist: artist, trackUrl: trackUrl)
-        let destination = root.appendingPathComponent(fileName)
+        if FileManager.default.fileExists(atPath: tempURL.path) {
+            try FileManager.default.removeItem(at: tempURL)
+        }
+        try FileManager.default.moveItem(at: tempFileURL, to: tempURL)
+
         if FileManager.default.fileExists(atPath: destination.path) {
             try FileManager.default.removeItem(at: destination)
         }
-        try data.write(to: destination, options: .atomic)
+        try FileManager.default.moveItem(at: tempURL, to: destination)
+        onProgress?(1)
 
         entries[trackUrl] = OfflineTrackEntry(
             url: trackUrl,

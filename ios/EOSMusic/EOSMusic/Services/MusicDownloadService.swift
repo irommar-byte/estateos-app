@@ -2,7 +2,10 @@ import Foundation
 
 enum TrackDownloadUIState: Equatable {
     case idle
+    /// Trwała kopia jest na serwerze EOS, ale nie na tym iPhonie.
+    case onServer
     case downloading(progress: Double)
+    /// Plik lokalny w Pobrane (offline).
     case done
     case failed(String)
 
@@ -21,6 +24,11 @@ enum TrackDownloadUIState: Equatable {
         if case .failed = self { return true }
         return false
     }
+
+    var isOnDevice: Bool {
+        if case .done = self { return true }
+        return false
+    }
 }
 
 @MainActor
@@ -30,15 +38,27 @@ final class MusicDownloadService: ObservableObject {
     private var activeTasks: [String: Task<Void, Never>] = [:]
     private let offline = OfflineMusicStore.shared
 
-    func uiState(for url: String, isDownloaded: Bool) -> TrackDownloadUIState {
+    func uiState(for url: String, isOnServer: Bool) -> TrackDownloadUIState {
         if offline.isAvailable(url) { return .done }
-        if isDownloaded, states[url] == nil { return .idle }
-        return states[url] ?? .idle
+        if let state = states[url] {
+            if case .idle = state, isOnServer { return .onServer }
+            return state
+        }
+        return isOnServer ? .onServer : .idle
+    }
+
+    /// Kompatybilność ze starymi call-site’ami (`isDownloaded` = na serwerze).
+    func uiState(for url: String, isDownloaded: Bool) -> TrackDownloadUIState {
+        uiState(for: url, isOnServer: isDownloaded)
     }
 
     func syncFromTracks(_ tracks: [MusicTrack]) {
-        for track in tracks where offline.isAvailable(track.url) {
-            states[track.url] = .done
+        for track in tracks {
+            if offline.isAvailable(track.url) {
+                states[track.url] = .done
+            } else if track.isOnServer, states[track.url] == nil || states[track.url] == .idle {
+                states[track.url] = .onServer
+            }
         }
     }
 
@@ -52,32 +72,34 @@ final class MusicDownloadService: ObservableObject {
         api: MusicAPIClient,
         onLibraryChanged: @escaping () async -> Void
     ) {
-        let current = uiState(for: track.url, isDownloaded: track.isDownloaded)
-        guard current == .idle || current.isFailed else { return }
+        let current = uiState(for: track.url, isOnServer: track.isOnServer)
+        guard current == .idle || current == .onServer || current.isFailed else { return }
         activeTasks[track.url]?.cancel()
         activeTasks[track.url] = Task {
             setProgress(track.url, 1)
             do {
-                var jobId = track.downloadJobId?.nonEmpty
-                if jobId == nil {
-                    jobId = try await api.startMusicDownload(
-                        url: track.url,
-                        folderId: folderId,
-                        trackUrl: track.url
-                    )
-                    try await pollServerJob(jobId: jobId!, trackUrl: track.url, api: api)
-                    _ = try await api.linkTrackDownload(
-                        folderId: folderId,
-                        url: track.url,
-                        downloadJobId: jobId!
-                    )
-                    await onLibraryChanged()
+                // Zawsze ensure na serwerze — Play i Pobierz dzielą trwały asset.
+                let ensure = try await api.startMusicDownload(
+                    url: track.url,
+                    folderId: folderId,
+                    trackUrl: track.url
+                )
+                let jobId = ensure.jobId
+                if ensure.ready != true {
+                    try await pollServerJob(jobId: jobId, trackUrl: track.url, api: api)
                 } else {
                     setProgress(track.url, 55)
                 }
 
-                let playToken = try await api.musicPlayToken(jobId: jobId!)
-                let request = api.streamURLRequest(jobId: jobId!, token: playToken.token)
+                _ = try? await api.linkTrackDownload(
+                    folderId: folderId,
+                    url: track.url,
+                    downloadJobId: jobId
+                )
+                await onLibraryChanged()
+
+                let playToken = try await api.musicPlayToken(jobId: jobId)
+                let request = api.streamURLRequest(jobId: jobId, token: playToken.token)
                 try await offline.save(
                     request: request,
                     trackUrl: track.url,
@@ -106,8 +128,8 @@ final class MusicDownloadService: ObservableObject {
     ) {
         Task {
             for track in tracks {
-                let state = uiState(for: track.url, isDownloaded: track.isDownloaded)
-                guard state == .idle || state.isFailed else { continue }
+                let state = uiState(for: track.url, isOnServer: track.isOnServer)
+                guard state == .idle || state == .onServer || state.isFailed else { continue }
                 await downloadAndWait(track: track, folderId: folderId, api: api, onLibraryChanged: onLibraryChanged)
             }
         }
@@ -115,7 +137,8 @@ final class MusicDownloadService: ObservableObject {
 
     func removeOffline(_ url: String) {
         offline.remove(url)
-        states[url] = .idle
+        // Po usunięciu z iPhone’a zostaje kopia serwerowa (jeśli była).
+        states[url] = .onServer
     }
 
     func cancelDownload(for url: String) {
@@ -155,7 +178,7 @@ final class MusicDownloadService: ObservableObject {
         let deadline = Date().addingTimeInterval(600)
         while Date() < deadline {
             if Task.isCancelled { throw APIError.server("Anulowano.") }
-            let job = try await api.fetchJobStatus(jobId: jobId)
+            let job = try await fetchJobStatus(jobId: jobId, api: api)
             let serverPct = job.progress ?? 0
             let mapped = serverPct > 0 ? serverPct * 0.55 : 2
             setProgress(trackUrl, mapped)
@@ -166,6 +189,10 @@ final class MusicDownloadService: ObservableObject {
             try await Task.sleep(nanoseconds: 500_000_000)
         }
         throw APIError.server("Przekroczono czas pobierania.")
+    }
+
+    private func fetchJobStatus(jobId: String, api: MusicAPIClient) async throws -> JobStatusResponse {
+        try await api.fetchJobStatus(jobId: jobId)
     }
 }
 

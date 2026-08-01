@@ -74,6 +74,11 @@ struct TrackRowView: View {
                         .font(.caption2)
                         .foregroundStyle(EOSTheme.textMuted)
                         .frame(width: indexWidth, alignment: .trailing)
+                } else if downloadState == .onServer {
+                    Image(systemName: "icloud.fill")
+                        .font(.caption2)
+                        .foregroundStyle(EOSTheme.accent.opacity(0.85))
+                        .frame(width: indexWidth, alignment: .trailing)
                 } else {
                     Image(systemName: "icloud")
                         .font(.caption2)

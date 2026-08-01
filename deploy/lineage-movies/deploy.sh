@@ -59,6 +59,7 @@ rsync -az \
   --exclude data/movies-favorites \
   --exclude data/movies-library \
   --exclude data/music-library \
+  --exclude data/music-assets \
   --exclude data/portal-sessions \
   "$ROOT/video-downloader/" \
   "$REMOTE:$REMOTE_DIR/video-downloader/"

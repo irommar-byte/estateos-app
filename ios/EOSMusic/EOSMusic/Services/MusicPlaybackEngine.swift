@@ -299,6 +299,7 @@ final class MusicPlaybackEngine: ObservableObject {
 
     private func isDownloaded(_ track: MusicPlaybackTrack) -> Bool {
         if OfflineMusicStore.shared.isAvailable(track.url) { return true }
+        if let jobId = track.serverAssetId, !jobId.isEmpty { return true }
         if let jobId = track.downloadJobId, !jobId.isEmpty { return true }
         if let jobId = jobLookup?(track.url), !jobId.isEmpty { return true }
         return false
@@ -312,7 +313,7 @@ final class MusicPlaybackEngine: ObservableObject {
             if let file = track.playbackFileURL {
                 return file
             }
-            throw APIError.server("Nie można odtworzyć pliku z źródła.")
+            throw APIError.server("Nie można odtworzyć pliku ze źródła.")
         }
 
         guard let api else { throw APIError.server("Brak połączenia z serwerem.") }
@@ -321,18 +322,30 @@ final class MusicPlaybackEngine: ObservableObject {
             return local
         }
 
-        let jobId = [track.downloadJobId, jobLookup?(track.url)].compactMap { $0 }.first { !$0.isEmpty }
+        let knownIds = [track.serverAssetId, track.downloadJobId, jobLookup?(track.url)]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
 
-        if let jobId {
-            // Pobrany utwór — od razu stream z serwera (bez startMusicPlay + oczekiwania).
-            let token = try await api.musicPlayToken(jobId: jobId)
-            return api.musicStreamURL(jobId: jobId, token: token.token)
+        for jobId in knownIds {
+            do {
+                let token = try await api.musicPlayToken(jobId: jobId)
+                return api.musicStreamURL(jobId: jobId, token: token.token)
+            } catch {
+                // Stale id — fall through to ensure.
+                continue
+            }
         }
 
-        let freshJobId = try await api.startMusicPlay(url: track.url)
-        try await api.waitForMusicPlayReady(jobId: freshJobId)
-        let token = try await api.musicPlayToken(jobId: freshJobId)
-        return api.musicStreamURL(jobId: freshJobId, token: token.token)
+        let ensure = try await api.startMusicPlay(
+            url: track.url,
+            folderId: track.folderId,
+            trackUrl: track.url
+        )
+        if ensure.ready != true {
+            try await api.waitForMusicPlayReady(jobId: ensure.jobId)
+        }
+        let token = try await api.musicPlayToken(jobId: ensure.jobId)
+        return api.musicStreamURL(jobId: ensure.jobId, token: token.token)
     }
 
     private func loadStream(url: URL, track: MusicPlaybackTrack, queueIndex: Int, generation: Int, preferFastStart: Bool) {

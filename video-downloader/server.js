@@ -102,6 +102,17 @@ import {
   buildAppleMusicFilename,
   resolveAppleMusicDownloadUrl,
 } from "./apple-music.js";
+import {
+  ensureMusicAsset,
+  resolveAssetJob,
+  listMusicAssets,
+  deleteMusicAsset,
+  migrateLegacyMusicAssets,
+  cleanupMusicJobCancel,
+  findAssetByUrl,
+  assetFileReady,
+  restoreJobFromAsset,
+} from "./music-assets.js";
 
 const require = createRequire(import.meta.url);
 // yt-dlp-wrap ships as CommonJS; normalize the default export for ESM.
@@ -2341,6 +2352,12 @@ function getOrRestoreMusicJob(jobId, req) {
 
   const userKey = favoritesUserKeyFromReq(req);
   if (!userKey) return existing?.kind === "music" ? existing : null;
+
+  const fromAsset = resolveAssetJob(userKey, jobId, MUSIC_PLAYLIST_DOWNLOADS_DIR, {
+    ensurePlayToken,
+    jobs,
+  });
+  if (fromAsset) return fromAsset;
 
   const filePath = resolvePersistedMusicFile(userKey, jobId);
   if (!filePath) return existing?.kind === "music" ? existing : null;
@@ -4864,15 +4881,68 @@ app.post("/api/music/playlists/import", async (req, res) => {
   }
 });
 
-// POST /api/music/play { url } — pełny utwór MP3 (stream przez proxy, nie podgląd iTunes)
+// POST /api/music/play { url, folderId?, trackUrl? } — trwały asset EOS (ensure)
 app.post("/api/music/play", async (req, res) => {
-  const { url } = req.body || {};
+  const { url, folderId, trackUrl } = req.body || {};
   if (!url || !/^https?:\/\//i.test(url) || !/music\.apple\.com/i.test(url)) {
     return res.status(400).json({ error: "Podaj link utworu Apple Music." });
   }
-  const jobId = crypto.randomUUID();
-  startAppleMusicPlayJob({ jobId, url });
-  res.json({ jobId });
+  const userKey = favoritesUserKeyFromReq(req);
+  try {
+    const result = ensureMusicAsset({
+      userKey,
+      url,
+      folderId: folderId || null,
+      trackUrl: trackUrl || url,
+      jobs,
+      sendEvent,
+      ensurePlayToken,
+      downloadsRoot: MUSIC_PLAYLIST_DOWNLOADS_DIR,
+      friendlyError: friendlyAppleMusicError,
+    });
+    res.json({
+      jobId: result.jobId,
+      assetId: result.assetId,
+      reused: !!result.reused,
+      ready: !!result.ready,
+    });
+  } catch (err) {
+    const status = Number(err?.status) || 500;
+    res.status(status).json({ error: err?.message || "Nie udało się przygotować utworu." });
+  }
+});
+
+
+// GET /api/music/assets — trwała biblioteka serwerowa użytkownika
+app.get("/api/music/assets", (req, res) => {
+  const userKey = favoritesUserKeyFromReq(req);
+  if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+  try {
+    // Best-effort migrate legacy playlist MP3s into asset registry
+    try {
+      const lib = listMusicLibrary(req, MUSIC_PLAYLIST_DOWNLOADS_DIR);
+      migrateLegacyMusicAssets(userKey, MUSIC_PLAYLIST_DOWNLOADS_DIR, lib.tracks || []);
+    } catch (err) {
+      console.warn("music assets migrate:", err?.message || err);
+    }
+    res.json(listMusicAssets(userKey, MUSIC_PLAYLIST_DOWNLOADS_DIR));
+  } catch (err) {
+    res.status(500).json({ error: err?.message || "Błąd listy assetów." });
+  }
+});
+
+// DELETE /api/music/assets/:assetId — usuń kopię z serwera EOS
+app.delete("/api/music/assets/:assetId", (req, res) => {
+  const userKey = favoritesUserKeyFromReq(req);
+  if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+  try {
+    const result = deleteMusicAsset(userKey, String(req.params.assetId || "").trim(), MUSIC_PLAYLIST_DOWNLOADS_DIR);
+    const job = jobs.get(result.assetId);
+    if (job) jobs.delete(result.assetId);
+    res.json(result);
+  } catch (err) {
+    res.status(404).json({ error: err?.message || "Asset nie istnieje." });
+  }
 });
 
 // GET /api/music/play-token/:jobId — token do streamu MP3 na Apple TV
@@ -5324,15 +5394,29 @@ app.post("/api/download", async (req, res) => {
   }
 
   if (/music\.apple\.com/i.test(url)) {
-    const userKey = favoritesUserKeyFromReq(req);
-    startAppleMusicDownloadJob({
-      jobId,
-      url,
-      userKey,
-      folderId: req.body?.folderId || null,
-      trackUrl: req.body?.trackUrl || url,
-    });
-    return res.json({ jobId });
+    const musicUserKey = favoritesUserKeyFromReq(req);
+    try {
+      const result = ensureMusicAsset({
+        userKey: musicUserKey,
+        url,
+        folderId: req.body?.folderId || null,
+        trackUrl: req.body?.trackUrl || url,
+        jobs,
+        sendEvent,
+        ensurePlayToken,
+        downloadsRoot: MUSIC_PLAYLIST_DOWNLOADS_DIR,
+        friendlyError: friendlyAppleMusicError,
+      });
+      return res.json({
+        jobId: result.jobId,
+        assetId: result.assetId,
+        reused: !!result.reused,
+        ready: !!result.ready,
+      });
+    } catch (err) {
+      const status = Number(err?.status) || 500;
+      return res.status(status).json({ error: err?.message || "Nie udało się pobrać utworu." });
+    }
   }
 
   if (isMirrorHost(url)) {
@@ -5647,7 +5731,9 @@ app.post("/api/cancel/:jobId", (req, res) => {
   stopJobTransfer(job);
 
   try {
-    if (job.file) {
+    if (job.kind === "music" && job.persistent) {
+      cleanupMusicJobCancel(job);
+    } else if (job.file) {
       if (job.persistent && job.kind === "movie") {
         try {
           fs.unlinkSync(job.file);

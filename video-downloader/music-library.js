@@ -170,7 +170,8 @@ function normalizeTrack(raw, folderId) {
     albumId: String(raw?.albumId || "").slice(0, 40),
     trackNumber: Number(raw?.trackNumber) || 0,
     playlistIndex: Number(raw?.playlistIndex ?? raw?.trackNumber) || 0,
-    downloadJobId: String(raw?.downloadJobId || "").slice(0, 80),
+    downloadJobId: String(raw?.downloadJobId || raw?.serverAssetId || "").slice(0, 80),
+    serverAssetId: String(raw?.serverAssetId || (String(raw?.downloadJobId || "").startsWith("asset-") ? raw.downloadJobId : "") || "").slice(0, 80),
     downloadedAt: Number(raw?.downloadedAt) || 0,
     syncAddedAt: Number(raw?.syncAddedAt) || 0,
     sortOrder: Number(raw?.sortOrder) || 0,
@@ -601,6 +602,7 @@ export function updateTrackDownloadByKey(userKey, folderId, url, downloadJobId) 
   const track = store.tracks.find((t) => t.folderId === folderId && t.url === target);
   if (!track) throw new Error("Utworu nie ma w tym folderze.");
   track.downloadJobId = jobId;
+  if (String(jobId).startsWith("asset-")) track.serverAssetId = jobId;
   track.downloadedAt = Date.now();
   const folder = store.folders.find((f) => f.id === folderId);
   if (folder) folder.updatedAt = Date.now();

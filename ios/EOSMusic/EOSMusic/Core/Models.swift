@@ -120,6 +120,30 @@ struct JobStatusResponse: Codable {
 
 struct DownloadStartResponse: Codable {
     let jobId: String
+    let assetId: String?
+    let reused: Bool?
+    let ready: Bool?
+}
+
+struct MusicAssetItem: Codable, Identifiable, Hashable {
+    var id: String { assetId }
+    let assetId: String
+    let url: String?
+    let title: String?
+    let artist: String?
+    let album: String?
+    let thumbnail: String?
+    let duration: Double?
+    let bytes: Int?
+    let bitrate: Int?
+    let ready: Bool?
+    let acquiredAt: Double?
+}
+
+struct MusicAssetsResponse: Codable {
+    let count: Int
+    let totalBytes: Int
+    let items: [MusicAssetItem]
 }
 
 struct MusicFolder: Codable, Identifiable, Hashable {
@@ -156,10 +180,21 @@ struct MusicTrack: Codable, Identifiable, Hashable {
     let artistId: String?
     let albumId: String?
     let downloadJobId: String?
+    let serverAssetId: String?
 
-    var isDownloaded: Bool {
-        guard let downloadJobId, !downloadJobId.isEmpty else { return false }
-        return true
+    /// Trwała kopia w bibliotece EOS na serwerze (nie mylić z plikiem na iPhonie).
+    var isOnServer: Bool {
+        if let serverAssetId, !serverAssetId.isEmpty { return true }
+        if let downloadJobId, !downloadJobId.isEmpty { return true }
+        return false
+    }
+
+    var isDownloaded: Bool { isOnServer }
+
+    var durableJobId: String? {
+        if let serverAssetId, !serverAssetId.isEmpty { return serverAssetId }
+        if let downloadJobId, !downloadJobId.isEmpty { return downloadJobId }
+        return nil
     }
 
     var artworkURL: URL? { thumbnail.flatMap(URL.init(string:)) }
@@ -175,6 +210,7 @@ struct MusicTrack: Codable, Identifiable, Hashable {
         artistId = playback.artistId
         albumId = playback.albumId
         downloadJobId = playback.downloadJobId
+        serverAssetId = playback.serverAssetId ?? playback.downloadJobId
     }
 }
 
@@ -210,6 +246,7 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
     let albumId: String?
     let folderId: String?
     let downloadJobId: String?
+    let serverAssetId: String?
     let playbackFileURL: URL?
     let externalRelativePath: String?
     let webDAVPath: String?
@@ -250,6 +287,7 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
         duration = nil
         folderId = nil
         downloadJobId = nil
+        serverAssetId = nil
         artistId = nil
         albumId = nil
         playbackFileURL = fileURL
@@ -270,6 +308,7 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
             duration = track.duration
             folderId = track.folderId
             downloadJobId = overrideJobId ?? track.downloadJobId
+            serverAssetId = track.serverAssetId ?? track.downloadJobId
             artistId = track.artistId
             albumId = track.albumId
             playbackFileURL = nil
@@ -289,6 +328,7 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
         duration = track.duration
         folderId = track.folderId
         downloadJobId = overrideJobId ?? track.downloadJobId
+        serverAssetId = track.serverAssetId ?? track.downloadJobId
         artistId = track.artistId
         albumId = track.albumId
         playbackFileURL = nil
@@ -308,6 +348,7 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
         duration = item.duration
         self.folderId = folderId
         downloadJobId = nil
+        serverAssetId = nil
         artistId = item.artistId
         albumId = item.albumId
         playbackFileURL = nil

@@ -142,9 +142,20 @@ final class MusicAPIClient {
 
     // MARK: - Playback
 
-    func startMusicPlay(url: String) async throws -> String {
-        let response: DownloadStartResponse = try await request("POST", path: "/api/music/play", body: ["url": url])
-        return response.jobId
+    func startMusicPlay(url: String, folderId: String? = nil, trackUrl: String? = nil) async throws -> DownloadStartResponse {
+        var body: [String: Any] = ["url": url]
+        if let folderId { body["folderId"] = folderId }
+        if let trackUrl { body["trackUrl"] = trackUrl }
+        return try await request("POST", path: "/api/music/play", body: body)
+    }
+
+    func listMusicAssets() async throws -> MusicAssetsResponse {
+        try await request("GET", path: "/api/music/assets")
+    }
+
+    func deleteMusicAsset(assetId: String) async throws {
+        struct Ok: Codable { let ok: Bool? }
+        let _: Ok = try await request("DELETE", path: "/api/music/assets/\(assetId)")
     }
 
     func waitForMusicPlayReady(jobId: String, timeoutSeconds: Int = 180) async throws {
@@ -175,12 +186,11 @@ final class MusicAPIClient {
             ])
     }
 
-    func startMusicDownload(url: String, folderId: String?, trackUrl: String?) async throws -> String {
+    func startMusicDownload(url: String, folderId: String?, trackUrl: String?) async throws -> DownloadStartResponse {
         var body: [String: Any] = ["url": url]
         if let folderId { body["folderId"] = folderId }
         if let trackUrl { body["trackUrl"] = trackUrl }
-        let response: DownloadStartResponse = try await request("POST", path: "/api/download", body: body)
-        return response.jobId
+        return try await request("POST", path: "/api/download", body: body)
     }
 
     func linkTrackDownload(folderId: String, url: String, downloadJobId: String) async throws -> MusicTrack {

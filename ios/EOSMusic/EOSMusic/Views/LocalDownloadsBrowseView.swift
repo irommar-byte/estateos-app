@@ -68,7 +68,7 @@ struct LocalDownloadsBrowseView: View {
             } header: {
                 Text("Pobrane")
             } footer: {
-                Text("Folder widoczny w Pliki → Na moim iPhonie → \(AppConfig.appDisplayName) → Pobrane.")
+                Text("Lokalne kopie offline. Folder: Pliki → Na moim iPhonie → \(AppConfig.appDisplayName) → Pobrane. Usunięcie stąd nie kasuje biblioteki EOS na serwerze.")
             }
         }
         .listStyle(.insetGrouped)
