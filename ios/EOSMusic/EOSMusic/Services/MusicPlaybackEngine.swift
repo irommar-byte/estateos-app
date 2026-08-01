@@ -94,6 +94,7 @@ final class MusicPlaybackEngine: ObservableObject {
     /// Anuluje zaległe `play()` po `stop()` lub zmianie utworu.
     private var sessionGeneration = 0
     private var activePlayTask: Task<Void, Never>?
+    private var openRetryUsed = false
 
     init(session: MusicPlaybackSession) {
         queue = session.queue
@@ -273,6 +274,7 @@ final class MusicPlaybackEngine: ObservableObject {
         currentTrack = track
         isLoading = true
         errorMessage = nil
+        openRetryUsed = false
         currentTime = 0
         duration = track.duration ?? 0
         isPlaying = false
@@ -380,6 +382,52 @@ final class MusicPlaybackEngine: ObservableObject {
         }
     }
 
+    private func retryOpenIfNeeded(
+        track: MusicPlaybackTrack,
+        queueIndex: Int,
+        generation: Int,
+        reason: String
+    ) async -> Bool {
+        guard generation == sessionGeneration, !openRetryUsed, !track.isExternal else { return false }
+        openRetryUsed = true
+        isLoading = true
+        errorMessage = nil
+        // Brief pause so background persist can finish flipping stream-proxy → local file.
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        guard generation == sessionGeneration else { return false }
+        do {
+            let streamURL = try await resolveStreamURL(for: track)
+            guard generation == sessionGeneration else { return false }
+            loadStream(
+                url: streamURL,
+                track: track,
+                queueIndex: queueIndex,
+                generation: generation,
+                preferFastStart: true
+            )
+            return true
+        } catch {
+            errorMessage = Self.friendlyPlaybackError(error.localizedDescription)
+            isLoading = false
+            isPlaying = false
+            return true
+        }
+    }
+
+    private static func friendlyPlaybackError(_ raw: String) -> String {
+        let lower = raw.lowercased()
+        if lower.contains("nie można otworzyć")
+            || lower.contains("cannot open")
+            || lower.contains("couldn't be opened")
+            || lower.contains("could not be opened")
+            || lower.contains("operation stopped")
+            || lower.contains("-11828")
+            || lower.contains("-11800") {
+            return "Nie udało się uruchomić streamu. Spróbuj ponownie za chwilę."
+        }
+        return raw
+    }
+
     private func loadStream(url: URL, track: MusicPlaybackTrack, queueIndex: Int, generation: Int, preferFastStart: Bool) {
         guard generation == sessionGeneration else { return }
 
@@ -426,7 +474,16 @@ final class MusicPlaybackEngine: ObservableObject {
             Task { @MainActor in
                 guard let self, self.sessionGeneration == generation else { return }
                 if item.status == .failed {
-                    self.errorMessage = item.error?.localizedDescription ?? "Odtwarzanie nie powiodło się."
+                    let raw = item.error?.localizedDescription ?? "Odtwarzanie nie powiodło się."
+                    if await self.retryOpenIfNeeded(
+                        track: track,
+                        queueIndex: queueIndex,
+                        generation: generation,
+                        reason: raw
+                    ) {
+                        return
+                    }
+                    self.errorMessage = Self.friendlyPlaybackError(raw)
                     self.isPlaying = false
                     self.isLoading = false
                 } else if item.status == .readyToPlay {

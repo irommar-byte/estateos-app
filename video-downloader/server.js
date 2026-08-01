@@ -1857,7 +1857,7 @@ async function proxyHlsPlaylist(req, res, job) {
   res.send(body);
 }
 
-async function proxyRemoteUrl(req, res, job, targetUrl) {
+async function proxyRemoteUrl(req, res, job, targetUrl, { forceContentType = null } = {}) {
   const headers = { "User-Agent": UA, Referer: job.streamReferer || "" };
   if (req.headers.range) headers.Range = req.headers.range;
 
@@ -1917,6 +1917,7 @@ async function proxyRemoteUrl(req, res, job, targetUrl) {
       if (req.headers.range) args.push("--range", String(req.headers.range).replace(/^bytes=/, ""));
       args.push(targetUrl);
       res.set("Accept-Ranges", "bytes");
+      if (forceContentType) res.set("Content-Type", forceContentType);
       res.status(200);
       const proc = spawn("curl", args);
       proc.stdout.pipe(res);
@@ -1935,6 +1936,9 @@ async function proxyRemoteUrl(req, res, job, targetUrl) {
     if (["content-type", "content-length", "content-range"].includes(key)) {
       res.set(k, v);
     }
+  }
+  if (forceContentType) {
+    res.set("Content-Type", forceContentType);
   }
   if (/\.m3u8(\?|$)/i.test(targetUrl)) {
     const text = await upstream.text();
@@ -5022,7 +5026,10 @@ app.get("/api/music/stream/:jobId", async (req, res) => {
   }
   if (job.mode === "stream-proxy" && job.streamUrl && job.status === "done") {
     try {
-      return await proxyRemoteUrl(req, res, job, job.streamUrl);
+      // APLMate often serves application/octet-stream — AVPlayer needs audio/mpeg.
+      return await proxyRemoteUrl(req, res, job, job.streamUrl, {
+        forceContentType: "audio/mpeg",
+      });
     } catch (err) {
       console.error("music stream proxy:", err?.message || err);
       return res.status(502).send("Błąd streamu audio.");

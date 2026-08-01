@@ -180,12 +180,13 @@ final class MusicAPIClient {
     }
 
     func musicStreamURL(jobId: String, token: String) -> URL {
-        AppConfig.apiBaseURL
-            .appendingPathComponent("api/music/stream/\(jobId)")
-            .appending(queryItems: [
-                URLQueryItem(name: "token", value: token),
-                URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970))),
-            ])
+        let base = AppConfig.apiBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var components = URLComponents(string: base + "/api/music/stream/\(jobId)")!
+        components.queryItems = [
+            URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970))),
+        ]
+        return components.url!
     }
 
     func startMusicDownload(url: String, folderId: String?, trackUrl: String?) async throws -> DownloadStartResponse {
