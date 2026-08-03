@@ -15,6 +15,10 @@ struct MainTabView: View {
                 .miniPlayerTabInset()
                 .tabItem { Label("Przeglądaj", systemImage: "folder.fill") }
 
+            VideoLibraryView()
+                .miniPlayerTabInset()
+                .tabItem { Label("Wideo", systemImage: "film") }
+
             SettingsView()
                 .miniPlayerTabInset()
                 .tabItem { Label("Konto", systemImage: "person.circle") }

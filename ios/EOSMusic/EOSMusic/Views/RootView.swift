@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ui: UIPreferences
+    @EnvironmentObject private var video: VideoAppModel
 
     var body: some View {
         ZStack {
@@ -49,6 +50,11 @@ struct RootView: View {
                     }
                     .ignoresSafeArea()
                 }
+        }
+        .fullScreenCover(isPresented: $video.isPlayerPresented) {
+            VideoPlayerView(engine: video.engine)
+                .environmentObject(video)
+                .environmentObject(app)
         }
     }
 }

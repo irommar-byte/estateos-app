@@ -2,10 +2,11 @@ import SwiftUI
 
 struct MiniPlayerTabInset: ViewModifier {
     @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var video: VideoAppModel
 
     func body(content: Content) -> some View {
         content.safeAreaInset(edge: .bottom, spacing: 8) {
-            if app.playback.engine != nil, !app.isFullPlayerPresented {
+            if app.playback.engine != nil, !app.isFullPlayerPresented, !video.isPlayerPresented {
                 MiniPlayerBar()
                     .padding(.horizontal, 8)
             }

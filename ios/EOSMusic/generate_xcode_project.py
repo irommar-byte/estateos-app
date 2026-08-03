@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Generates EOSMusic.xcodeproj from Swift sources."""
+"""Generates EOSMusic.xcodeproj from Swift sources + vendored MobileVLCKit.xcframework."""
 import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "EOSMusic"
 OUT = ROOT / "EOSMusic.xcodeproj" / "project.pbxproj"
+VENDOR_XCFRAMEWORK = "Vendor/MobileVLCKit.xcframework"
+FRAMEWORK_NAME = "MobileVLCKit.xcframework"
 
 SWIFT = sorted(p.relative_to(SRC).as_posix() for p in SRC.rglob("*.swift"))
 RES = [
@@ -24,16 +26,21 @@ TARGET = gid()
 SRC_PHASE = gid()
 RES_PHASE = gid()
 FWK_PHASE = gid()
+EMBED_PHASE = gid()
 APP_REF = gid()
 MAIN_GRP = gid()
 EOS_GRP = gid()
 PROD_GRP = gid()
+VENDOR_GRP = gid()
 CL_PROJ = gid()
 CL_TGT = gid()
 DBG_PROJ = gid()
 REL_PROJ = gid()
 DBG_TGT = gid()
 REL_TGT = gid()
+VLC_REF = gid()
+VLC_BF = gid()
+VLC_EMBED_BF = gid()
 
 swift_ref = {f: gid() for f in SWIFT}
 swift_bf = {f: gid() for f in SWIFT}
@@ -63,7 +70,21 @@ for f in SWIFT:
     o(f"\t\t{swift_bf[f]} /* {f} in Sources */ = {{isa = PBXBuildFile; fileRef = {swift_ref[f]} /* {f} */; }};")
 for f in RES:
     o(f"\t\t{res_bf[f]} /* {f} in Resources */ = {{isa = PBXBuildFile; fileRef = {res_ref[f]} /* {f} */; }};")
+o(f"\t\t{VLC_BF} /* {FRAMEWORK_NAME} in Frameworks */ = {{isa = PBXBuildFile; fileRef = {VLC_REF} /* {FRAMEWORK_NAME} */; }};")
+o(f"\t\t{VLC_EMBED_BF} /* {FRAMEWORK_NAME} in Embed Frameworks */ = {{isa = PBXBuildFile; fileRef = {VLC_REF} /* {FRAMEWORK_NAME} */; settings = {{ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }}; }};")
 o("/* End PBXBuildFile section */")
+
+o("\n/* Begin PBXCopyFilesBuildPhase section */")
+o(f"\t\t{EMBED_PHASE} /* Embed Frameworks */ = {{")
+o("\t\t\tisa = PBXCopyFilesBuildPhase;")
+o("\t\t\tbuildActionMask = 2147483647;")
+o(f"\t\t\tdstPath = \"\";")
+o("\t\t\tdstSubfolderSpec = 10;")
+o(f"\t\t\tfiles = ({VLC_EMBED_BF} /* {FRAMEWORK_NAME} in Embed Frameworks */);")
+o("\t\t\tname = \"Embed Frameworks\";")
+o("\t\t\trunOnlyForDeploymentPostprocessing = 0;")
+o("\t\t};")
+o("/* End PBXCopyFilesBuildPhase section */")
 
 o("\n/* Begin PBXFileReference section */")
 o(f"\t\t{APP_REF} /* EOSMusic.app */ = {{isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EOSMusic.app; sourceTree = BUILT_PRODUCTS_DIR; }};")
@@ -72,15 +93,17 @@ for f in SWIFT:
 for f in RES:
     t = "folder.assetcatalog" if f.endswith(".xcassets") else ("text.plist.entitlements" if f.endswith(".entitlements") else "text.plist.xml")
     o(f"\t\t{res_ref[f]} /* {f} */ = {{isa = PBXFileReference; lastKnownFileType = {t}; path = {Path(f).name}; sourceTree = \"<group>\"; }};")
+o(f"\t\t{VLC_REF} /* {FRAMEWORK_NAME} */ = {{isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = {FRAMEWORK_NAME}; path = {VENDOR_XCFRAMEWORK}; sourceTree = \"<group>\"; }};")
 o("/* End PBXFileReference section */")
 
 o("\n/* Begin PBXFrameworksBuildPhase section */")
-o(f"\t\t{FWK_PHASE} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};")
+o(f"\t\t{FWK_PHASE} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({VLC_BF} /* {FRAMEWORK_NAME} in Frameworks */); runOnlyForDeploymentPostprocessing = 0; }};")
 o("/* End PBXFrameworksBuildPhase section */")
 
 o("\n/* Begin PBXGroup section */")
 o(f"\t\t{PROD_GRP} = {{isa = PBXGroup; children = ({APP_REF} /* EOSMusic.app */); name = Products; sourceTree = \"<group>\"; }};")
-o(f"\t\t{MAIN_GRP} = {{isa = PBXGroup; children = ({EOS_GRP} /* EOSMusic */, {PROD_GRP} /* Products */); sourceTree = \"<group>\"; }};")
+o(f"\t\t{VENDOR_GRP} = {{isa = PBXGroup; children = ({VLC_REF} /* {FRAMEWORK_NAME} */); name = Vendor; sourceTree = \"<group>\"; }};")
+o(f"\t\t{MAIN_GRP} = {{isa = PBXGroup; children = ({EOS_GRP} /* EOSMusic */, {VENDOR_GRP} /* Vendor */, {PROD_GRP} /* Products */); sourceTree = \"<group>\"; }};")
 
 for key in sorted(folders.keys(), key=lambda k: (k.count("/"), k)):
     if key == "":
@@ -110,8 +133,9 @@ o("/* End PBXGroup section */")
 o("\n/* Begin PBXNativeTarget section */")
 o(f"\t\t{TARGET} = {{")
 o(f"\t\t\tisa = PBXNativeTarget; buildConfigurationList = {CL_TGT};")
-o(f"\t\t\tbuildPhases = ({SRC_PHASE} /* Sources */, {FWK_PHASE} /* Frameworks */, {RES_PHASE} /* Resources */);")
+o(f"\t\t\tbuildPhases = ({SRC_PHASE} /* Sources */, {FWK_PHASE} /* Frameworks */, {RES_PHASE} /* Resources */, {EMBED_PHASE} /* Embed Frameworks */);")
 o("\t\t\tbuildRules = (); dependencies = (); name = EOSMusic;")
+o("\t\t\tpackageProductDependencies = ();")
 o(f"\t\t\tproductReference = {APP_REF}; productType = \"com.apple.product-type.application\";")
 o("\t\t};")
 o("/* End PBXNativeTarget section */")
@@ -121,6 +145,7 @@ o(f"\t\t{PROJ} = {{")
 o(f"\t\t\tisa = PBXProject; buildConfigurationList = {CL_PROJ}; compatibilityVersion = \"Xcode 14.0\";")
 o("\t\t\tdevelopmentRegion = pl; hasScannedForEncodings = 0;")
 o(f"\t\t\tmainGroup = {MAIN_GRP}; productRefGroup = {PROD_GRP};")
+o("\t\t\tpackageReferences = ();")
 o("\t\t\tprojectDirPath = \"\"; projectRoot = \"\";")
 o(f"\t\t\ttargets = ({TARGET} /* EOSMusic */);")
 o("\t\t};")
@@ -144,11 +169,17 @@ tgt_settings = (
     "ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; "
     "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor; "
     "CODE_SIGN_ENTITLEMENTS = EOSMusic/Resources/EOSMusic.entitlements; "
-    "CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; "
+    "CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 5; "
+    "DEVELOPMENT_TEAM = NW3YW69KL9; "
     "GENERATE_INFOPLIST_FILE = NO; "
     "INFOPLIST_FILE = EOSMusic/Resources/Info.plist; "
+    "INFOPLIST_KEY_CFBundleDisplayName = \"EOS™ Music\"; "
+    "INFOPLIST_KEY_LSApplicationCategoryType = \"public.app-category.music\"; "
     "IPHONEOS_DEPLOYMENT_TARGET = 17.0; "
     "LD_RUNPATH_SEARCH_PATHS = (\"$(inherited)\", \"@executable_path/Frameworks\"); "
+    "FRAMEWORK_SEARCH_PATHS = (\"$(inherited)\", \"$(PROJECT_DIR)/Vendor\"); "
+    "OTHER_LDFLAGS = (\"$(inherited)\", \"-ObjC\"); "
+    "ENABLE_BITCODE = NO; "
     "MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = pl.nostalgie.eosmusic; "
     "PRODUCT_NAME = \"$(TARGET_NAME)\"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; "
     "TARGETED_DEVICE_FAMILY = \"1,2\";"
@@ -266,4 +297,6 @@ workspace_dir.mkdir(parents=True, exist_ok=True)
 """
 )
 
-print(f"Wrote {OUT} ({len(SWIFT)} Swift files)")
+if not (ROOT / VENDOR_XCFRAMEWORK).exists():
+    print(f"WARNING: missing {VENDOR_XCFRAMEWORK} — download before building")
+print(f"Generated {OUT} with {len(SWIFT)} Swift files + vendored {FRAMEWORK_NAME}")

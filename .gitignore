@@ -81,3 +81,10 @@ video-downloader/data/cda-hd-catalog-cache.json
 # StoreKit local config for IAP debugging
 !ios/StoreKit/
 !ios/StoreKit/**
+
+# EOS Music — MobileVLCKit vendored binary (large; download via showbie release 3.7.3)
+ios/EOSMusic/Vendor/*.zip
+ios/EOSMusic/Vendor/MobileVLCKit.xcframework/
+
+# EOS Music local xcodebuild DerivedData
+ios/EOSMusic/build/
