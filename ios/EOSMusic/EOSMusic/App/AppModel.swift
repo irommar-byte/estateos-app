@@ -331,6 +331,31 @@ final class AppModel: ObservableObject {
         isFullPlayerPresented = false
     }
 
+    func playServerAssets(_ assets: [MusicAssetItem], startIndex: Int) async {
+        guard !assets.isEmpty else { return }
+        let queue = assets.map { MusicPlaybackTrack(from: $0) }
+        let session = MusicPlaybackSession(
+            queue: queue,
+            startIndex: min(max(0, startIndex), queue.count - 1),
+            folderId: nil,
+            folderName: "Serwer EOS"
+        )
+        await playback.play(
+            session: session,
+            api: api,
+            jobLookup: { [weak self] url in
+                if let hit = self?.serverAssets.first(where: { $0.url == url }) {
+                    return hit.assetId
+                }
+                return self?.downloadJobId(for: url)
+            },
+            libraryTrackLookup: { [weak self] url in
+                self?.musicTracks.first { $0.url == url }
+            }
+        )
+        isFullPlayerPresented = false
+    }
+
     func playExternalTracks(_ tracks: [ExternalAudioTrack], source: ConnectedMusicSource, startIndex: Int) async {
         let sourceId = source.id
         if !source.isWebDAV {

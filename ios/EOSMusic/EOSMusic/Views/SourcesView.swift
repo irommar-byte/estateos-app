@@ -46,6 +46,13 @@ struct SourcesView: View {
         return "Pobrane · \(count) utworów"
     }
 
+    private var serverLibrarySubtitle: String {
+        let count = app.serverAssetCount
+        if count == 0 { return "Muzyka zapisana trwale na serwerze" }
+        let size = ByteCountFormatter.string(fromByteCount: Int64(app.serverLibraryBytes), countStyle: .file)
+        return "\(count) utworów · \(size)"
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -61,10 +68,22 @@ struct SourcesView: View {
                         )
                     }
                     .disabled(isEditing)
+
+                    NavigationLink {
+                        ServerMusicAssetsView()
+                    } label: {
+                        FilesLocationRow(
+                            title: "Serwer EOS",
+                            subtitle: serverLibrarySubtitle,
+                            systemImage: "externaldrive.fill.badge.checkmark",
+                            tint: EOSTheme.accent
+                        )
+                    }
+                    .disabled(isEditing)
                 } header: {
-                    Text("Na tym urządzeniu")
+                    Text("Biblioteka")
                 } footer: {
-                    Text("Pliki już pobrane do aplikacji — zawsze dostępne offline.")
+                    Text("Pobrane = offline na telefonie. Serwer EOS = trwała kopia w chmurze — stream i pobranie na każde urządzenie.")
                 }
 
                 Section {
@@ -134,6 +153,9 @@ struct SourcesView: View {
                 }
             }
             .environment(\.editMode, $editMode)
+            .task {
+                await app.refreshServerAssets()
+            }
             .sheet(item: $activeLocation) { location in
                 switch location {
                 case .localFolder:

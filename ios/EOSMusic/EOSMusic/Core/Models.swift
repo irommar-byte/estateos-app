@@ -371,6 +371,31 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
         googleDriveFileId = nil
         externalSourceId = nil
     }
+
+    init(from asset: MusicAssetItem) {
+        let resolvedURL = {
+            let raw = asset.url?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return raw.isEmpty ? "eosmusic://asset/\(asset.assetId)" : raw
+        }()
+        id = resolvedURL
+        url = resolvedURL
+        let rawTitle = asset.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        title = rawTitle.isEmpty ? "Utwór" : rawTitle
+        artist = asset.artist
+        album = asset.album
+        thumbnail = asset.thumbnail
+        duration = asset.duration
+        folderId = nil
+        downloadJobId = asset.assetId
+        serverAssetId = asset.assetId
+        artistId = nil
+        albumId = nil
+        playbackFileURL = nil
+        externalRelativePath = nil
+        webDAVPath = nil
+        googleDriveFileId = nil
+        externalSourceId = nil
+    }
 }
 
 struct MusicPlaybackSession: Identifiable {
