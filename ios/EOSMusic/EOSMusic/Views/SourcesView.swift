@@ -1,31 +1,48 @@
 import SwiftUI
 
-private enum CloudLocation: String, Identifiable {
+private enum BrowseLocation: String, Identifiable {
+    case localFolder
     case iCloud
 
     var id: String { rawValue }
 
-    var title: String { "iCloud Drive" }
+    var kind: MusicSourceKind {
+        switch self {
+        case .localFolder: return .localFolder
+        case .iCloud: return .iCloudDrive
+        }
+    }
 
-    var subtitle: String { "Konto iCloud i foldery w chmurze" }
+    var title: String { kind.title }
+    var subtitle: String { kind.subtitle }
+    var systemImage: String { kind.systemImage }
 
-    var systemImage: String { "icloud.fill" }
-
-    var tint: Color { .blue }
+    var tint: Color {
+        switch self {
+        case .localFolder: return .orange
+        case .iCloud: return .blue
+        }
+    }
 }
 
 struct SourcesView: View {
     @EnvironmentObject private var app: AppModel
-    @State private var activeLocation: CloudLocation?
+    @State private var activeLocation: BrowseLocation?
     @State private var editMode: EditMode = .inactive
     @State private var sourceToDelete: ConnectedMusicSource?
     @State private var errorMessage: String?
 
     private var isEditing: Bool { editMode == .active }
 
+    private var sortedSources: [ConnectedMusicSource] {
+        app.sources.sources.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+    }
+
     private var localDeviceSubtitle: String {
         let count = OfflineMusicStore.shared.downloadedFileCount
-        if count == 0 { return "Folder Pobrane — widoczny w aplikacji Pliki" }
+        if count == 0 { return "Utwory pobrane w EOS Music" }
         return "Pobrane · \(count) utworów"
     }
 
@@ -45,30 +62,44 @@ struct SourcesView: View {
                     }
                     .disabled(isEditing)
                 } header: {
-                    Text("Na moim iPhonie")
+                    Text("Na tym urządzeniu")
+                } footer: {
+                    Text("Pliki już pobrane do aplikacji — zawsze dostępne offline.")
                 }
 
                 Section {
                     FilesListButton {
+                        activeLocation = .localFolder
+                    } label: {
+                        FilesLocationRow(
+                            title: BrowseLocation.localFolder.title,
+                            subtitle: BrowseLocation.localFolder.subtitle,
+                            systemImage: BrowseLocation.localFolder.systemImage,
+                            tint: BrowseLocation.localFolder.tint
+                        )
+                    }
+                    .disabled(isEditing)
+
+                    FilesListButton {
                         activeLocation = .iCloud
                     } label: {
                         FilesLocationRow(
-                            title: CloudLocation.iCloud.title,
-                            subtitle: CloudLocation.iCloud.subtitle,
-                            systemImage: CloudLocation.iCloud.systemImage,
-                            tint: CloudLocation.iCloud.tint
+                            title: BrowseLocation.iCloud.title,
+                            subtitle: BrowseLocation.iCloud.subtitle,
+                            systemImage: BrowseLocation.iCloud.systemImage,
+                            tint: BrowseLocation.iCloud.tint
                         )
                     }
                     .disabled(isEditing)
                 } header: {
-                    Text("Lokalizacje")
+                    Text("Dodaj muzykę")
                 } footer: {
-                    Text("Dotknij lokalizacji, aby dodać folder z muzyką — tak jak w aplikacji Pliki.")
+                    Text("Wybierz lokalny folder (np. On My iPhone → Muzyka) albo folder w iCloud Drive. Pliki MP3, M4A i FLAC pojawią się posortowane według wykonawców i albumów.")
                 }
 
-                if !app.sources.sources.isEmpty {
+                if !sortedSources.isEmpty {
                     Section {
-                        ForEach(app.sources.sources) { source in
+                        ForEach(sortedSources) { source in
                             if isEditing {
                                 FilesFolderRow(
                                     name: source.name,
@@ -88,6 +119,8 @@ struct SourcesView: View {
                         .onDelete(perform: deleteSources)
                     } header: {
                         Text("Połączone foldery")
+                    } footer: {
+                        Text("Przesuń w lewo albo użyj Edytuj, aby odłączyć folder. Pliki na dysku pozostaną nietknięte.")
                     }
                 }
             }
@@ -97,13 +130,20 @@ struct SourcesView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     EditButton()
-                        .disabled(app.sources.sources.isEmpty)
+                        .disabled(sortedSources.isEmpty)
                 }
             }
             .environment(\.editMode, $editMode)
             .sheet(item: $activeLocation) { location in
-                ICloudConnectionSheet { name, url in
-                    try app.sources.connectFolder(kind: .iCloudDrive, name: name, folderURL: url)
+                switch location {
+                case .localFolder:
+                    LocalFolderConnectionSheet { name, url in
+                        try app.sources.connectFolder(kind: .localFolder, name: name, folderURL: url)
+                    }
+                case .iCloud:
+                    ICloudConnectionSheet { name, url in
+                        try app.sources.connectFolder(kind: .iCloudDrive, name: name, folderURL: url)
+                    }
                 }
             }
             .alert("Odłączyć folder?", isPresented: Binding(
@@ -139,6 +179,6 @@ struct SourcesView: View {
 
     private func deleteSources(at offsets: IndexSet) {
         guard let index = offsets.first else { return }
-        sourceToDelete = app.sources.sources[index]
+        sourceToDelete = sortedSources[index]
     }
 }

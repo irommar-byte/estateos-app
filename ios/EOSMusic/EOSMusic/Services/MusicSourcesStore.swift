@@ -13,17 +13,7 @@ final class MusicSourcesStore: ObservableObject {
     }
 
     func connectFolder(kind: MusicSourceKind, name: String, folderURL: URL, accountEmail: String? = nil) throws {
-        let targetURL = folderURL.hasDirectoryPath ? folderURL : folderURL.deletingLastPathComponent()
-        let didAccess = targetURL.startAccessingSecurityScopedResource()
-        defer {
-            if didAccess { targetURL.stopAccessingSecurityScopedResource() }
-        }
-
-        let bookmark = try targetURL.bookmarkData(
-            options: [],
-            includingResourceValuesForKeys: nil,
-            relativeTo: nil
-        )
+        let bookmark = try makeFolderBookmark(from: folderURL)
         let source = ConnectedMusicSource(
             id: UUID(),
             kind: kind,
@@ -37,7 +27,42 @@ final class MusicSourcesStore: ObservableObject {
             googleDriveFolderId: nil
         )
         sources.append(source)
+        sources.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         save()
+    }
+
+    /// Re-link a folder after iOS revoked the security-scoped bookmark.
+    func reconnectFolder(sourceId: UUID, folderURL: URL) throws {
+        guard let index = sources.firstIndex(where: { $0.id == sourceId }) else {
+            throw APIError.server("Nie znaleziono źródła.")
+        }
+        endAccess(sourceId: sourceId)
+        let bookmark = try makeFolderBookmark(from: folderURL)
+        sources[index].folderBookmark = bookmark
+        save()
+    }
+
+    private func makeFolderBookmark(from folderURL: URL) throws -> Data {
+        let picked = folderURL
+        let didAccessPicked = picked.startAccessingSecurityScopedResource()
+        defer {
+            if didAccessPicked { picked.stopAccessingSecurityScopedResource() }
+        }
+
+        let targetURL = picked.hasDirectoryPath ? picked : picked.deletingLastPathComponent()
+        let needsParentAccess = targetURL.standardizedFileURL != picked.standardizedFileURL
+        let didAccessParent = needsParentAccess ? targetURL.startAccessingSecurityScopedResource() : false
+        defer {
+            if didAccessParent { targetURL.stopAccessingSecurityScopedResource() }
+        }
+
+        // Prefer bookmarking the directory; if parent isn't scoped, bookmark the picked file URL.
+        let bookmarkURL = (didAccessParent || targetURL.hasDirectoryPath && didAccessPicked) ? targetURL : picked
+        return try bookmarkURL.bookmarkData(
+            options: [],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
     }
 
     func connectGoogleDriveFolder(name: String, folderId: String, email: String) {
@@ -298,7 +323,7 @@ final class MusicSourcesStore: ObservableObject {
             // Jedna szybka próba ponowna znacząco zmniejsza "spróbuj ponownie".
             collectAudio(at: root, relativeTo: root, sourceId: source.id, into: &results)
         }
-        return results.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        return results.sortedForBrowse()
     }
 
     private func collectAudio(at url: URL, relativeTo root: URL, sourceId: UUID, into results: inout [ExternalAudioTrack]) {
@@ -316,13 +341,13 @@ final class MusicSourcesStore: ObservableObject {
             }
             guard isAudioFileName(item.lastPathComponent) else { continue }
             let relative = item.path.replacingOccurrences(of: root.path + "/", with: "")
-            let parsed = parseAudioTitle(from: item.lastPathComponent)
+            let meta = parseAudioMetadata(filename: item.lastPathComponent, relativePath: relative)
             results.append(
                 ExternalAudioTrack(
                     id: "\(sourceId.uuidString)|\(relative)",
-                    title: parsed.title,
-                    artist: parsed.artist,
-                    album: (item.deletingLastPathComponent().lastPathComponent),
+                    title: meta.title,
+                    artist: meta.artist,
+                    album: meta.album,
                     relativePath: relative,
                     fileURL: item,
                     webDAVPath: nil,
@@ -451,7 +476,9 @@ final class MusicSourcesStore: ObservableObject {
             sources = []
             return
         }
-        sources = decoded
+        sources = decoded.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
     }
 
     private func save() {

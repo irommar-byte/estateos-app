@@ -2,6 +2,97 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
+// MARK: - Local folder (On My iPhone / Files)
+
+struct LocalFolderConnectionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let onConnect: (String, URL) throws -> Void
+
+    @State private var folderName = ""
+    @State private var showFolderPicker = false
+    @State private var showFilePicker = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Label {
+                        Text("Dodaj folder z muzyką zapisany na iPhonie lub w aplikacji Pliki — bez konta iCloud.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } icon: {
+                        Image(systemName: "folder.fill")
+                            .foregroundStyle(.orange)
+                    }
+                }
+
+                Section {
+                    TextField("Nazwa w Przeglądaj", text: $folderName, prompt: Text("np. Moja muzyka"))
+
+                    FilesListButton { showFolderPicker = true } label: {
+                        FilesActionRow(icon: "folder.badge.plus", title: "Wybierz folder", iconColor: .orange)
+                    }
+                    FilesListButton { showFilePicker = true } label: {
+                        FilesActionRow(icon: "music.note", title: "Lub wybierz plik audio", iconColor: .orange)
+                    }
+                } header: {
+                    Text("Folder z muzyką")
+                } footer: {
+                    Text("W Plikach wybierz „Na iPhonie” albo zewnętrzny dysk, potem folder z MP3 / M4A / FLAC. Najlepiej struktura Wykonawca → Album → utwory.")
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("Lokalny folder")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Anuluj") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $showFolderPicker) {
+                FolderDocumentPicker { result in
+                    handleFolderImport(result.map { [$0] })
+                    showFolderPicker = false
+                }
+            }
+            .sheet(isPresented: $showFilePicker) {
+                AudioDocumentPicker { result in
+                    handleFolderImport(result.map { [$0] })
+                    showFilePicker = false
+                }
+            }
+            .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "")
+            }
+        }
+    }
+
+    private func handleFolderImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            if (error as NSError).code != NSUserCancelledError {
+                errorMessage = error.localizedDescription
+            }
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            let name = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolved = name.isEmpty ? url.lastPathComponent : name
+            do {
+                try onConnect(resolved, url)
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+// MARK: - iCloud Drive
+
 struct ICloudConnectionSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -70,8 +161,7 @@ struct ICloudConnectionSheet: View {
             }
             .sheet(isPresented: $showFilePicker) {
                 AudioDocumentPicker { result in
-                    let mapped: Result<[URL], Error> = result.map { [$0] }
-                    handleFolderImport(mapped)
+                    handleFolderImport(result.map { [$0] })
                     showFilePicker = false
                 }
             }
@@ -103,7 +193,7 @@ struct ICloudConnectionSheet: View {
     }
 }
 
-private struct FolderDocumentPicker: UIViewControllerRepresentable {
+struct FolderDocumentPicker: UIViewControllerRepresentable {
     let onPick: (Result<URL, Error>) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -131,12 +221,9 @@ private struct FolderDocumentPicker: UIViewControllerRepresentable {
         }
 
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            guard var url = urls.first else {
+            guard let url = urls.first else {
                 onPick(.failure(NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError)))
                 return
-            }
-            if !url.hasDirectoryPath {
-                url = url.deletingLastPathComponent()
             }
             onPick(.success(url))
         }
@@ -147,7 +234,7 @@ private struct FolderDocumentPicker: UIViewControllerRepresentable {
     }
 }
 
-private struct AudioDocumentPicker: UIViewControllerRepresentable {
+struct AudioDocumentPicker: UIViewControllerRepresentable {
     let onPick: (Result<URL, Error>) -> Void
 
     func makeCoordinator() -> FolderDocumentPicker.Coordinator {

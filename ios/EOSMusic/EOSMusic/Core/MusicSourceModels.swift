@@ -1,6 +1,7 @@
 import Foundation
 
 enum MusicSourceKind: String, Codable, CaseIterable, Identifiable {
+    case localFolder
     case iCloudDrive
     case googleDrive
     case qnap
@@ -9,6 +10,7 @@ enum MusicSourceKind: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .localFolder: return "Lokalny folder"
         case .iCloudDrive: return "iCloud Drive"
         case .googleDrive: return "Google Drive"
         case .qnap: return "QNAP"
@@ -17,6 +19,7 @@ enum MusicSourceKind: String, Codable, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
+        case .localFolder: return "Folder na iPhonie lub w aplikacji Pliki"
         case .iCloudDrive: return "Konto iCloud + folder muzyki"
         case .googleDrive: return "Logowanie Google + folder z Drive"
         case .qnap: return "NAS przez WebDAV"
@@ -25,6 +28,7 @@ enum MusicSourceKind: String, Codable, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .localFolder: return "folder.fill"
         case .iCloudDrive: return "icloud.fill"
         case .googleDrive: return "externaldrive.fill"
         case .qnap: return "server.rack"
@@ -89,4 +93,36 @@ func parseAudioTitle(from filename: String) -> (title: String, artist: String?) 
         if !title.isEmpty { return (title, artist.isEmpty ? nil : artist) }
     }
     return (base, nil)
+}
+
+/// Prefer Artist/Album/Track.ext layout; fall back to filename "Artist - Title".
+func parseAudioMetadata(filename: String, relativePath: String) -> (title: String, artist: String?, album: String?) {
+    let parsed = parseAudioTitle(from: filename)
+    let parts = relativePath
+        .split(separator: "/")
+        .map(String.init)
+        .filter { !$0.isEmpty }
+    guard parts.count >= 2 else {
+        return (parsed.title, parsed.artist, nil)
+    }
+    let album = parts[parts.count - 2]
+    let artistFromPath = parts.count >= 3 ? parts[parts.count - 3] : nil
+    let artist = parsed.artist ?? artistFromPath
+    return (parsed.title, artist, album)
+}
+
+extension Array where Element == ExternalAudioTrack {
+    func sortedForBrowse() -> [ExternalAudioTrack] {
+        sorted { lhs, rhs in
+            let la = lhs.artist ?? "Nieznany wykonawca"
+            let ra = rhs.artist ?? "Nieznany wykonawca"
+            let artistCmp = la.localizedCaseInsensitiveCompare(ra)
+            if artistCmp != .orderedSame { return artistCmp == .orderedAscending }
+            let lb = lhs.album ?? ""
+            let rb = rhs.album ?? ""
+            let albumCmp = lb.localizedCaseInsensitiveCompare(rb)
+            if albumCmp != .orderedSame { return albumCmp == .orderedAscending }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
 }
