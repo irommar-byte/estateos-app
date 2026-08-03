@@ -496,19 +496,65 @@ export function importTracksToFolder(req, folderId, rawTracks, { markNewOnSync =
   };
 }
 
+function folderCoverDir(userKey) {
+  return path.join(DATA_DIR, "covers", userKey);
+}
+
+function folderCoverPath(userKey, folderId) {
+  return path.join(folderCoverDir(userKey), `${folderId}.jpg`);
+}
+
+export function readFolderCoverFile(req, folderId) {
+  const userKey = userKeyFromReq(req);
+  const store = readStore(userKey);
+  const folder = store.folders.find((f) => f.id === folderId);
+  if (!folder) throw new Error("Folder nie istnieje.");
+  const file = folderCoverPath(userKey, folderId);
+  if (!fs.existsSync(file)) throw new Error("Brak okładki playlisty.");
+  return { file, folder };
+}
+
+function applyFolderCoverBase64(userKey, folder, coverBase64) {
+  const raw = String(coverBase64 || "");
+  const b64 = raw.replace(/^data:image\/\w+;base64,/i, "").trim();
+  if (!b64) throw new Error("Brak danych okładki.");
+  const buf = Buffer.from(b64, "base64");
+  if (!buf.length || buf.length > 4_500_000) {
+    throw new Error("Okładka jest pusta albo zbyt duża.");
+  }
+  ensureDir(folderCoverDir(userKey));
+  const file = folderCoverPath(userKey, folder.id);
+  fs.writeFileSync(file, buf, { mode: 0o600 });
+  folder.thumbnail = `/api/music/folders/${folder.id}/cover?v=${Date.now()}`.slice(0, 2000);
+  return folder;
+}
+
+/** Update playlist name and/or custom cover art. */
 export function renameMusicFolder(req, folderId, raw, downloadsRoot = null) {
   const userKey = userKeyFromReq(req);
   const name = String(raw?.name || "").trim();
-  if (!name) throw new Error("Podaj nazwę folderu.");
+  const thumbnailUrl = String(raw?.thumbnail || "").trim();
+  const coverBase64 = raw?.coverBase64 || raw?.coverData || "";
+  if (!name && !thumbnailUrl && !coverBase64) {
+    throw new Error("Podaj nazwę albo okładkę folderu.");
+  }
   const store = readStore(userKey);
   const folder = store.folders.find((f) => f.id === folderId);
   if (!folder) throw new Error("Folder nie istnieje.");
   const previousName = folder.name;
-  folder.name = name.slice(0, 120);
+
+  if (name) {
+    folder.name = name.slice(0, 120);
+  }
+  if (coverBase64) {
+    applyFolderCoverBase64(userKey, folder, coverBase64);
+  } else if (thumbnailUrl) {
+    folder.thumbnail = upscaleArtwork(thumbnailUrl, 600).slice(0, 2000);
+  }
   folder.updatedAt = Date.now();
   writeStore(userKey, store);
 
-  if (downloadsRoot) {
+  if (downloadsRoot && name && name !== previousName) {
     try {
       const oldDir = playlistDownloadDir(downloadsRoot, previousName);
       const newDir = playlistDownloadDir(downloadsRoot, folder.name);

@@ -79,6 +79,7 @@ import {
   linkFolderToApplePlaylist,
   syncAppleMusicPlaylistFolder,
   findMusicFolderForImport,
+  readFolderCoverFile,
 } from "./music-library.js";
 import {
   signMoviesToken,
@@ -2683,7 +2684,7 @@ function sendEvent(job, payload) {
 
 // --- App ---------------------------------------------------------------------
 const app = express();
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "6mb" }));
 
 app.use((req, _res, next) => {
   const user = authUserFromRequest(req);
@@ -5113,7 +5114,7 @@ app.post("/api/music/folders", (req, res) => {
   }
 });
 
-// PATCH /api/music/folders/:id { name }
+// PATCH /api/music/folders/:id { name?, thumbnail?, coverBase64? }
 app.patch("/api/music/folders/:id", (req, res) => {
   try {
     const folder = renameMusicFolder(
@@ -5125,7 +5126,20 @@ app.patch("/api/music/folders/:id", (req, res) => {
     res.json({ ok: true, folder });
   } catch (err) {
     const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
-    res.status(code).json({ error: err.message || "Nie udało się zmienić nazwy folderu." });
+    res.status(code).json({ error: err.message || "Nie udało się zaktualizować folderu." });
+  }
+});
+
+// GET /api/music/folders/:id/cover — custom playlist artwork
+app.get("/api/music/folders/:id/cover", (req, res) => {
+  try {
+    const { file } = readFolderCoverFile(req, req.params.id);
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    res.type("image/jpeg");
+    fs.createReadStream(file).pipe(res);
+  } catch (err) {
+    const code = /Brak konta/i.test(err.message || "") ? 401 : 404;
+    res.status(code).json({ error: err.message || "Brak okładki." });
   }
 });
 

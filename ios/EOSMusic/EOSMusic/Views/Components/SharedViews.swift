@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import ImageIO
 
 enum RemoteImageCache {
     static let memory = NSCache<NSURL, UIImage>()
@@ -17,19 +18,86 @@ enum RemoteImageCache {
     }
 }
 
+enum ArtworkLoader {
+    struct Result {
+        let still: UIImage
+        let animated: UIImage?
+    }
+
+    static func load(from data: Data) -> Result? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            guard let still = UIImage(data: data) else { return nil }
+            return Result(still: still, animated: nil)
+        }
+        let count = CGImageSourceGetCount(source)
+        guard count > 0 else {
+            guard let still = UIImage(data: data) else { return nil }
+            return Result(still: still, animated: nil)
+        }
+
+        if count == 1 {
+            guard let still = UIImage(data: data) ?? makeFrame(source, index: 0).map(UIImage.init(cgImage:)) else {
+                return nil
+            }
+            return Result(still: still, animated: nil)
+        }
+
+        var frames: [UIImage] = []
+        var duration: Double = 0
+        frames.reserveCapacity(count)
+        for index in 0..<count {
+            guard let cg = makeFrame(source, index: index) else { continue }
+            frames.append(UIImage(cgImage: cg))
+            duration += frameDuration(source, index: index)
+        }
+        guard let first = frames.first else { return nil }
+        if duration <= 0 {
+            duration = Double(frames.count) * 0.1
+        }
+        let animated = UIImage.animatedImage(with: frames, duration: duration)
+        return Result(still: first, animated: animated)
+    }
+
+    private static func makeFrame(_ source: CGImageSource, index: Int) -> CGImage? {
+        CGImageSourceCreateImageAtIndex(source, index, [kCGImageSourceShouldCache: true] as CFDictionary)
+    }
+
+    private static func frameDuration(_ source: CGImageSource, index: Int) -> Double {
+        guard let props = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any] else {
+            return 0.1
+        }
+        let gif = props[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+        let png = props[kCGImagePropertyPNGDictionary] as? [CFString: Any]
+        let webp = props[kCGImagePropertyWebPDictionary] as? [CFString: Any]
+        let unclamped =
+            (gif?[kCGImagePropertyGIFUnclampedDelayTime] as? Double)
+            ?? (png?[kCGImagePropertyAPNGUnclampedDelayTime] as? Double)
+            ?? (webp?[kCGImagePropertyWebPUnclampedDelayTime] as? Double)
+        let clamped =
+            (gif?[kCGImagePropertyGIFDelayTime] as? Double)
+            ?? (png?[kCGImagePropertyAPNGDelayTime] as? Double)
+            ?? (webp?[kCGImagePropertyWebPDelayTime] as? Double)
+        let value = unclamped ?? clamped ?? 0.1
+        return value < 0.02 ? 0.1 : value
+    }
+}
+
 struct ArtworkImage: View {
     let url: URL?
     var size: CGFloat = 56
     var cornerRadius: CGFloat = 10
     var circleClip = false
 
-    @State private var image: UIImage?
+    @State private var stillImage: UIImage?
+    @State private var animatedImage: UIImage?
     @State private var loadingURL: URL?
 
     var body: some View {
         Group {
-            if let image {
-                Image(uiImage: image)
+            if let animatedImage {
+                AnimatedUIImageView(image: animatedImage)
+            } else if let stillImage {
+                Image(uiImage: stillImage)
                     .resizable()
                     .scaledToFill()
             } else {
@@ -59,32 +127,74 @@ struct ArtworkImage: View {
     @MainActor
     private func loadArtwork() async {
         guard let url else {
-            image = nil
+            stillImage = nil
+            animatedImage = nil
             loadingURL = nil
             return
         }
-        if let cached = RemoteImageCache.image(for: url) {
-            image = cached
-            loadingURL = url
-            return
-        }
         loadingURL = url
+
         if url.isFileURL {
-            image = UIImage(contentsOfFile: url.path)
+            if let data = try? Data(contentsOf: url), let loaded = ArtworkLoader.load(from: data) {
+                stillImage = loaded.still
+                animatedImage = loaded.animated
+                return
+            }
+            stillImage = UIImage(contentsOfFile: url.path)
+            animatedImage = nil
             return
         }
 
         do {
             var request = URLRequest(url: url)
             request.timeoutInterval = 20
+            if url.host == AppConfig.apiBaseURL.host || url.absoluteString.contains("/api/music/folders/") {
+                if let token = SessionStore.load()?.token {
+                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                }
+            }
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-                  let loaded = UIImage(data: data) else { return }
+                  let loaded = ArtworkLoader.load(from: data) else { return }
             guard loadingURL == url else { return }
-            RemoteImageCache.store(loaded, for: url)
-            image = loaded
+            RemoteImageCache.store(loaded.still, for: url)
+            stillImage = loaded.still
+            animatedImage = loaded.animated
         } catch {
-            // Keep placeholder.
+            // Keep placeholder / cached still.
+        }
+    }
+}
+
+/// UIKit animated image keeps GIF/APNG looping forever (SwiftUI Image freezes on frame 0).
+private struct AnimatedUIImageView: UIViewRepresentable {
+    let image: UIImage
+
+    func makeUIView(context: Context) -> UIImageView {
+        let view = UIImageView()
+        view.contentMode = .scaleAspectFill
+        view.clipsToBounds = true
+        view.animationRepeatCount = 0
+        apply(image, to: view)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIImageView, context: Context) {
+        apply(image, to: uiView)
+    }
+
+    private func apply(_ image: UIImage, to view: UIImageView) {
+        if let frames = image.images, !frames.isEmpty {
+            view.animationImages = frames
+            view.animationDuration = image.duration > 0 ? image.duration : Double(frames.count) * 0.1
+            view.image = frames.first
+            if !view.isAnimating {
+                view.startAnimating()
+            }
+        } else {
+            view.stopAnimating()
+            view.animationImages = nil
+            view.image = image
         }
     }
 }

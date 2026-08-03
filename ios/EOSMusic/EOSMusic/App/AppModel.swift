@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import UIKit
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -209,6 +210,26 @@ final class AppModel: ObservableObject {
     func deleteMusicFolder(_ folder: MusicFolder) async throws {
         try await api.deleteMusicFolder(id: folder.id)
         try await refreshMusicLibrary()
+    }
+
+    func updateFolderCover(folderId: String, imageData: Data) async throws {
+        let jpeg = Self.jpegDataForCover(imageData)
+        let base64 = jpeg.base64EncodedString()
+        _ = try await api.updateMusicFolder(id: folderId, coverBase64: base64)
+        try await refreshMusicLibrary()
+    }
+
+    private static func jpegDataForCover(_ data: Data) -> Data {
+        guard let image = UIImage(data: data) else { return data }
+        let maxSide: CGFloat = 900
+        let size = image.size
+        let scale = min(1, maxSide / max(size.width, size.height))
+        let target = CGSize(width: max(1, size.width * scale), height: max(1, size.height * scale))
+        let renderer = UIGraphicsImageRenderer(size: target)
+        let resized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: target))
+        }
+        return resized.jpegData(compressionQuality: 0.82) ?? data
     }
 
     func reorderTracks(in folderId: String, urls: [String]) async throws {

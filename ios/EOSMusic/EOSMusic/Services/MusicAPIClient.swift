@@ -63,6 +63,24 @@ final class MusicAPIClient {
         let _: Ok = try await request("DELETE", path: "/api/music/folders/\(id)")
     }
 
+    func updateMusicFolder(
+        id: String,
+        name: String? = nil,
+        thumbnail: String? = nil,
+        coverBase64: String? = nil
+    ) async throws -> MusicFolder {
+        struct Response: Codable {
+            let ok: Bool?
+            let folder: MusicFolder
+        }
+        var body: [String: Any] = [:]
+        if let name { body["name"] = name }
+        if let thumbnail { body["thumbnail"] = thumbnail }
+        if let coverBase64 { body["coverBase64"] = coverBase64 }
+        let response: Response = try await request("PATCH", path: "/api/music/folders/\(id)", body: body)
+        return response.folder
+    }
+
     func fetchFolderTracks(folderId: String) async throws -> MusicFolderTracksResponse {
         try await request("GET", path: "/api/music/folders/\(folderId)/tracks")
     }

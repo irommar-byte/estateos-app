@@ -156,7 +156,17 @@ struct MusicFolder: Codable, Identifiable, Hashable {
     let thumbnail: String?
     let applePlaylistUrl: String?
 
-    var artworkURL: URL? { thumbnail.flatMap(URL.init(string:)) }
+    var artworkURL: URL? {
+        guard let thumbnail, !thumbnail.isEmpty else { return nil }
+        if thumbnail.hasPrefix("http://") || thumbnail.hasPrefix("https://") || thumbnail.hasPrefix("file:") {
+            return URL(string: thumbnail)
+        }
+        if thumbnail.hasPrefix("/api/") {
+            let base = AppConfig.apiBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            return URL(string: base + thumbnail)
+        }
+        return URL(string: thumbnail)
+    }
 
     var countLabel: String {
         let total = trackCount ?? 0
@@ -182,6 +192,8 @@ struct MusicTrack: Codable, Identifiable, Hashable {
     let albumId: String?
     let downloadJobId: String?
     let serverAssetId: String?
+    /// Unix ms when the track was added to the library (server).
+    let addedAt: Double?
 
     /// Trwała kopia w bibliotece EOS na serwerze (nie mylić z plikiem na iPhonie).
     var isOnServer: Bool {
@@ -212,6 +224,7 @@ struct MusicTrack: Codable, Identifiable, Hashable {
         albumId = playback.albumId
         downloadJobId = playback.downloadJobId
         serverAssetId = playback.serverAssetId ?? playback.downloadJobId
+        addedAt = nil
     }
 }
 

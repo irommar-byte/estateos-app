@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct FolderDetailView: View {
     @EnvironmentObject private var app: AppModel
@@ -13,8 +14,20 @@ struct FolderDetailView: View {
     @State private var trackTitleForSheet = ""
     @State private var offlineRemovalURL: String?
     @State private var offlineRemovalTitle = ""
+    @State private var coverPickerItem: PhotosPickerItem?
+    @State private var isUploadingCover = false
+    @State private var showCoverPicker = false
 
     private var isEditing: Bool { editMode == .active }
+
+    private var liveFolder: MusicFolder {
+        app.musicFolders.first(where: { $0.id == folder.id }) ?? folder
+    }
+
+    private var headerArtworkURL: URL? {
+        if let url = liveFolder.artworkURL { return url }
+        return tracks.first(where: { $0.artworkURL != nil })?.artworkURL
+    }
 
     private var pendingCount: Int {
         tracks.filter { track in
@@ -30,11 +43,29 @@ struct FolderDetailView: View {
                 EOSLoadingView(title: "Wczytuję utwory…")
                     .transition(.opacity.combined(with: .scale(scale: 0.985)))
             } else if tracks.isEmpty {
-                ContentUnavailableView("Brak utworów", systemImage: "music.note", description: Text("Dodaj utwory z wyszukiwarki lub zsynchronizuj playlistę."))
-                    .transition(.opacity)
+                List {
+                    Section {
+                        playlistHeader
+                    }
+                    .listRowBackground(Color.clear)
+                    ContentUnavailableView(
+                        "Brak utworów",
+                        systemImage: "music.note",
+                        description: Text("Dodaj utwory z wyszukiwarki lub zsynchronizuj playlistę.")
+                    )
+                    .listRowBackground(Color.clear)
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+                .transition(.opacity)
             } else {
                 List {
                     if !isEditing {
+                        Section {
+                            playlistHeader
+                        }
+                        .listRowBackground(Color.clear)
+
                         Section {
                             Button {
                                 Task { await playAll(from: 0) }
@@ -72,26 +103,43 @@ struct FolderDetailView: View {
         .animation(.snappy(duration: 0.25), value: isLoading)
         .animation(.snappy(duration: 0.25), value: tracks.count)
         .background(EOSAmbientBackground())
-        .navigationTitle(folder.name)
-        .navigationBarTitleDisplayMode(.large)
+        .navigationTitle(liveFolder.name)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 EditButton()
             }
-            if folder.applePlaylistUrl != nil, !isEditing {
-                ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
                     Button {
-                        Task { await syncPlaylist() }
+                        showCoverPicker = true
                     } label: {
-                        if isSyncing {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                        }
+                        Label(
+                            headerArtworkURL == nil ? "Dodaj okładkę" : "Zmień okładkę",
+                            systemImage: "photo.on.rectangle"
+                        )
                     }
-                    .disabled(isSyncing)
+                    if folder.applePlaylistUrl != nil, !isEditing {
+                        Button {
+                            Task { await syncPlaylist() }
+                        } label: {
+                            Label("Synchronizuj Apple Music", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .disabled(isSyncing)
+                    }
+                } label: {
+                    if isUploadingCover || isSyncing {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
             }
+        }
+        .photosPicker(isPresented: $showCoverPicker, selection: $coverPickerItem, matching: .images)
+        .onChange(of: coverPickerItem) { _, item in
+            guard let item else { return }
+            Task { await uploadCover(from: item) }
         }
         .task { await load() }
         .sheet(item: $trackToAdd) { payload in
@@ -115,6 +163,23 @@ struct FolderDetailView: View {
             }
         } message: {
             Text("„\(offlineRemovalTitle)” zostanie usunięty z telefonu. Utwór pozostanie w playliście.")
+        }
+    }
+
+    private var playlistHeader: some View {
+        LibraryEntityHeader(
+            title: liveFolder.name,
+            subtitle: liveFolder.countLabel,
+            artworkURL: headerArtworkURL,
+            showsPhotoPicker: true,
+            onPickPhoto: { showCoverPicker = true }
+        )
+        .overlay(alignment: .center) {
+            if isUploadingCover {
+                ProgressView()
+                    .padding(12)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
         }
     }
 
@@ -246,6 +311,23 @@ struct FolderDetailView: View {
             Task { await removeTrack(track) }
         } label: {
             Label("Usuń z playlisty", systemImage: "minus.circle")
+        }
+    }
+
+    private func uploadCover(from item: PhotosPickerItem) async {
+        isUploadingCover = true
+        defer {
+            isUploadingCover = false
+            coverPickerItem = nil
+        }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                errorMessage = "Nie udało się odczytać zdjęcia."
+                return
+            }
+            try await app.updateFolderCover(folderId: folder.id, imageData: data)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

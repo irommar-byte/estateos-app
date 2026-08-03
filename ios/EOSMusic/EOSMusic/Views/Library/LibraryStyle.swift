@@ -63,65 +63,40 @@ struct LibraryCategoryRow: View {
 }
 
 struct RecentLibraryItem: Identifiable, Hashable {
-    enum Kind: Hashable {
-        case folder(MusicFolder)
-        case album(id: String)
-    }
-
     let id: String
-    let kind: Kind
+    let track: MusicTrack
     let title: String
     let subtitle: String
     let artworkURL: URL?
 }
 
 enum LibraryData {
-    static func recentItems(folders: [MusicFolder], tracks: [MusicTrack], limit: Int = 8) -> [RecentLibraryItem] {
-        var items: [RecentLibraryItem] = []
+    static func recentTracks(from tracks: [MusicTrack], limit: Int = 12) -> [RecentLibraryItem] {
         var seen = Set<String>()
-
-        for folder in folders where folder.artworkURL != nil {
-            let key = "folder:\(folder.id)"
-            guard seen.insert(key).inserted else { continue }
-            items.append(RecentLibraryItem(
-                id: key,
-                kind: .folder(folder),
-                title: folder.name,
-                subtitle: folder.countLabel,
-                artworkURL: folder.artworkURL
-            ))
-            if items.count >= limit { return items }
+        let ordered = tracks.sorted { lhs, rhs in
+            let la = lhs.addedAt ?? 0
+            let ra = rhs.addedAt ?? 0
+            if la != ra { return la > ra }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
         }
-
-        for track in tracks {
-            let albumKey = track.albumId ?? track.album.map { "album:\($0)|\(track.artist ?? "")" }
-            guard let albumKey else { continue }
-            guard seen.insert(albumKey).inserted else { continue }
-            guard track.albumId != nil || (track.album?.isEmpty == false) else { continue }
+        var items: [RecentLibraryItem] = []
+        for track in ordered {
+            guard seen.insert(track.url).inserted else { continue }
             items.append(RecentLibraryItem(
-                id: albumKey,
-                kind: .album(id: track.albumId ?? albumKey),
-                title: track.album ?? track.title,
-                subtitle: track.artist ?? "Nieznany wykonawca",
+                id: track.url,
+                track: track,
+                title: track.title,
+                subtitle: [track.artist, track.album].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
                 artworkURL: track.artworkURL
             ))
-            if items.count >= limit { return items }
+            if items.count >= limit { break }
         }
-
-        for folder in folders where folder.artworkURL == nil {
-            let key = "folder:\(folder.id)"
-            guard seen.insert(key).inserted else { continue }
-            items.append(RecentLibraryItem(
-                id: key,
-                kind: .folder(folder),
-                title: folder.name,
-                subtitle: folder.countLabel,
-                artworkURL: nil
-            ))
-            if items.count >= limit { return items }
-        }
-
         return items
+    }
+
+    /// Legacy name used by older call sites — recently added songs only.
+    static func recentItems(folders _: [MusicFolder], tracks: [MusicTrack], limit: Int = 12) -> [RecentLibraryItem] {
+        recentTracks(from: tracks, limit: limit)
     }
 
     static func artistGroups(from tracks: [MusicTrack]) -> [LibraryArtistGroup] {
@@ -252,20 +227,83 @@ struct RecentLibraryCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ArtworkImage(url: item.artworkURL, size: 160, cornerRadius: 8)
+            ArtworkImage(url: item.artworkURL, size: 160, cornerRadius: 10)
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
+                .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
 
             Text(item.title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(item.subtitle)
+            Text(item.subtitle.isEmpty ? "Utwór" : item.subtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+/// Shared header: large cover beside title (playlist / album).
+struct LibraryEntityHeader: View {
+    let title: String
+    let subtitle: String?
+    let artworkURL: URL?
+    var showsPhotoPicker = false
+    var onPickPhoto: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            ZStack(alignment: .bottomTrailing) {
+                ArtworkImage(url: artworkURL, size: 112, cornerRadius: 12)
+                    .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+
+                if showsPhotoPicker {
+                    Button {
+                        onPickPhoto?()
+                    } label: {
+                        Image(systemName: artworkURL == nil ? "camera.fill" : "pencil.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(7)
+                            .background(LibraryAccent.icon.gradient, in: Circle())
+                            .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .offset(x: 6, y: 6)
+                    .accessibilityLabel(artworkURL == nil ? "Dodaj okładkę" : "Zmień okładkę")
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                if showsPhotoPicker, artworkURL == nil {
+                    Button {
+                        onPickPhoto?()
+                    } label: {
+                        Label("Wybierz zdjęcie", systemImage: "photo.on.rectangle")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(LibraryAccent.icon)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
     }
 }
 

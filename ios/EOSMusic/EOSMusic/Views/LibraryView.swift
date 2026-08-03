@@ -15,7 +15,7 @@ struct LibraryView: View {
     ]
 
     private var recentItems: [RecentLibraryItem] {
-        LibraryData.recentItems(folders: app.musicFolders, tracks: app.musicTracks)
+        LibraryData.recentTracks(from: app.musicTracks, limit: 12)
     }
 
     var body: some View {
@@ -34,7 +34,32 @@ struct LibraryView: View {
 
                         LazyVGrid(columns: recentColumns, spacing: 20) {
                             ForEach(recentItems) { item in
-                                recentLink(for: item)
+                                Button {
+                                    Task { await playRecent(item.track) }
+                                } label: {
+                                    RecentLibraryCell(item: item)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button {
+                                        Task { await playRecent(item.track) }
+                                    } label: {
+                                        Label("Odtwórz", systemImage: "play.fill")
+                                    }
+                                    if let albumId = item.track.albumId, !albumId.isEmpty {
+                                        NavigationLink {
+                                            AlbumDetailView(albumId: albumId)
+                                        } label: {
+                                            Label("Pokaż album", systemImage: "square.stack")
+                                        }
+                                    } else if let album = item.track.album, !album.isEmpty {
+                                        NavigationLink {
+                                            LibraryAlbumSongsView(albumTitle: album, artist: item.track.artist)
+                                        } label: {
+                                            Label("Pokaż album", systemImage: "square.stack")
+                                        }
+                                    }
+                                }
                             }
                         }
                         .padding(.horizontal, 20)
@@ -51,9 +76,6 @@ struct LibraryView: View {
             .navigationDestination(for: MusicFolder.self) { folder in
                 FolderDetailView(folder: folder)
             }
-            .navigationDestination(for: RecentLibraryItem.self) { item in
-                recentDestination(for: item)
-            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -67,14 +89,14 @@ struct LibraryView: View {
                 }
             }
             .overlay(alignment: .top) {
-                    if app.isLibraryLoading && app.musicTracks.isEmpty {
-                        ProgressView("Ładuję bibliotekę…")
-                            .padding(10)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .padding(.top, 8)
-                    }
+                if app.isLibraryLoading && app.musicTracks.isEmpty {
+                    ProgressView("Ładuję bibliotekę…")
+                        .padding(10)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.top, 8)
                 }
-                .refreshable { await refresh() }
+            }
+            .refreshable { await refresh() }
             .alert("Nowa playlista", isPresented: $showCreateFolder) {
                 TextField("Nazwa", text: $newFolderName)
                 Button("Anuluj", role: .cancel) { newFolderName = "" }
@@ -109,14 +131,6 @@ struct LibraryView: View {
     }
 
     @ViewBuilder
-    private func recentLink(for item: RecentLibraryItem) -> some View {
-        NavigationLink(value: item) {
-            RecentLibraryCell(item: item)
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
     private func destination(for category: LibraryCategory) -> some View {
         switch category {
         case .playlists: LibraryPlaylistsView()
@@ -124,23 +138,6 @@ struct LibraryView: View {
         case .albums: LibraryAlbumsView()
         case .songs: LibrarySongsView()
         case .downloaded: LibraryDownloadedView()
-        }
-    }
-
-    @ViewBuilder
-    private func recentDestination(for item: RecentLibraryItem) -> some View {
-        switch item.kind {
-        case .folder(let folder):
-            FolderDetailView(folder: folder)
-        case .album(let id):
-            if id.hasPrefix("album:") {
-                let parts = id.dropFirst(6).split(separator: "|", maxSplits: 1)
-                let title = String(parts.first ?? "")
-                let artist = parts.count > 1 ? String(parts[1]) : nil
-                LibraryAlbumSongsView(albumTitle: title, artist: artist)
-            } else {
-                AlbumDetailView(albumId: id)
-            }
         }
     }
 
@@ -166,6 +163,13 @@ struct LibraryView: View {
             }
         }
         .presentationDetents([.medium])
+    }
+
+    private func playRecent(_ track: MusicTrack) async {
+        let queue = recentItems.map(\.track)
+        guard let index = queue.firstIndex(where: { $0.url == track.url }) else { return }
+        let folder = app.musicFolders.first(where: { $0.id == track.folderId })
+        await app.playTracks(queue, startIndex: index, folder: folder)
     }
 
     private func refresh() async {

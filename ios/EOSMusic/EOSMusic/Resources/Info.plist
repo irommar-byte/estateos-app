@@ -45,7 +45,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>3</string>
+	<string>4</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
@@ -71,6 +71,8 @@
 	<string>EOS™ Music może używać Face ID do szybkiego logowania.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>EOS™ Music łączy się z Twoim QNAP w sieci lokalnej, aby odtwarzać muzykę przez WebDAV.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>EOS™ Music używa zdjęć do okładki playlisty.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

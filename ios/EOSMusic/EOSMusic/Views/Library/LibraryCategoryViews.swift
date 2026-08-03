@@ -351,8 +351,70 @@ struct LibraryAlbumSongsView: View {
         }
     }
 
+    private var artworkURL: URL? {
+        tracks.first(where: { $0.artworkURL != nil })?.artworkURL
+    }
+
     var body: some View {
-        LibrarySongsListView(tracks: tracks, title: albumTitle)
+        Group {
+            if tracks.isEmpty {
+                ContentUnavailableView("Brak utworów", systemImage: "square.stack", description: Text("Ten album nie ma utworów w bibliotece."))
+            } else {
+                List {
+                    Section {
+                        LibraryEntityHeader(
+                            title: albumTitle,
+                            subtitle: [artist, "\(tracks.count) utworów"].compactMap { $0 }.joined(separator: " · "),
+                            artworkURL: artworkURL
+                        )
+                    }
+                    .listRowBackground(Color.clear)
+
+                    Section {
+                        Button {
+                            Task {
+                                let folder = app.musicFolders.first(where: { $0.id == tracks[0].folderId })
+                                await app.playTracks(tracks, startIndex: 0, folder: folder)
+                            }
+                        } label: {
+                            Label("Odtwórz wszystko", systemImage: "play.fill")
+                                .font(.headline)
+                                .foregroundStyle(EOSTheme.accent)
+                        }
+                    }
+
+                    Section {
+                        ForEach(Array(tracks.enumerated()), id: \.element.url) { index, track in
+                            Button {
+                                Task {
+                                    let folder = app.musicFolders.first(where: { $0.id == track.folderId })
+                                    await app.playTracks(tracks, startIndex: index, folder: folder)
+                                }
+                            } label: {
+                                TrackRowView(
+                                    index: index + 1,
+                                    title: track.title,
+                                    subtitle: track.artist,
+                                    duration: track.duration,
+                                    artworkURL: track.artworkURL,
+                                    isPlaying: app.playback.engine?.currentTrack?.url == track.url,
+                                    downloadState: app.downloads.uiState(
+                                        for: track.url,
+                                        isDownloaded: app.isOfflineAvailable(track.url)
+                                    )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+        }
+        .background(EOSAmbientBackground())
+        .navigationTitle(albumTitle)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

@@ -18,39 +18,29 @@ struct AlbumDetailView: View {
             } else if let detail {
                 List {
                     Section {
-                        HStack(spacing: 16) {
-                            ArtworkImage(
-                                url: detail.album.thumbnail.flatMap(URL.init(string:)),
-                                size: 100,
-                                cornerRadius: 12
-                            )
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(detail.album.title)
-                                    .font(.title3.weight(.bold))
-                                if let artist = detail.album.artist, !artist.isEmpty {
-                                    if let artistId = detail.album.artistId, !artistId.isEmpty {
-                                        NavigationLink {
-                                            ArtistDetailView(artistId: artistId, artistName: artist)
-                                        } label: {
-                                            HStack(spacing: 4) {
-                                                Text(artist)
-                                                if let year = detail.album.releaseYear {
-                                                    Text("· \(year)")
-                                                }
-                                            }
-                                            .font(.subheadline)
-                                            .foregroundStyle(EOSTheme.accent)
-                                        }
-                                        .buttonStyle(.plain)
-                                    } else {
-                                        Text([artist, detail.album.releaseYear].compactMap { $0 }.joined(separator: " · "))
-                                            .font(.subheadline)
-                                            .foregroundStyle(EOSTheme.textSecondary)
-                                    }
-                                }
+                        LibraryEntityHeader(
+                            title: detail.album.title,
+                            subtitle: [
+                                detail.album.artist,
+                                detail.album.releaseYear,
+                                "\(detail.tracks.count) utworów",
+                            ]
+                            .compactMap { $0 }
+                            .filter { !$0.isEmpty }
+                            .joined(separator: " · "),
+                            artworkURL: detail.album.thumbnail.flatMap(URL.init(string:))
+                        )
+
+                        if let artist = detail.album.artist, !artist.isEmpty,
+                           let artistId = detail.album.artistId, !artistId.isEmpty {
+                            NavigationLink {
+                                ArtistDetailView(artistId: artistId, artistName: artist)
+                            } label: {
+                                Label(artist, systemImage: "person.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(EOSTheme.accent)
                             }
                         }
-                        .listRowBackground(Color.clear)
 
                         Button {
                             Task { await app.playCatalogItems(detail.tracks, startIndex: 0) }
@@ -76,6 +66,7 @@ struct AlbumDetailView: View {
                         }
                         .disabled(isAddingAlbum || detail.tracks.isEmpty)
                     }
+                    .listRowBackground(Color.clear)
 
                     Section("\(detail.tracks.count) utworów") {
                         ForEach(Array(detail.tracks.enumerated()), id: \.element.id) { index, track in
