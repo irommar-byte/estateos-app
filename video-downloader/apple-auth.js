@@ -97,22 +97,66 @@ export async function verifyAppleIdentityToken(identityToken) {
   };
 }
 
-export async function loginOrLinkAppleAccount({ identityToken, login, password, linkOnly = false }) {
+export function findAppleLinkForUserId(userId) {
+  const uid = String(userId || "").trim();
+  if (!uid) return null;
+  const links = readLinks();
+  for (const [appleUserId, row] of Object.entries(links)) {
+    if (row?.userId === uid) {
+      return {
+        appleUserId,
+        email: row.email || null,
+        login: row.login || null,
+        linkedAt: row.linkedAt || null,
+      };
+    }
+  }
+  return null;
+}
+
+export async function loginOrLinkAppleAccount({
+  identityToken,
+  login,
+  password,
+  linkOnly = false,
+  sessionUser = null,
+}) {
   const apple = await verifyAppleIdentityToken(identityToken);
   const links = readLinks();
   const existing = links[apple.appleUserId];
 
   if (linkOnly) {
-    if (!login || !password) throw new Error("Podaj login i hasło Nostalgie™, aby powiązać konto Apple.");
-    const account = await validateLineageLogin(login, password);
+    let account = null;
+    if (sessionUser?.userId && sessionUser?.login) {
+      account = {
+        userId: sessionUser.userId,
+        login: sessionUser.login,
+        role: sessionUser.role || "user",
+      };
+    } else if (login && password) {
+      account = await validateLineageLogin(login, password);
+    } else {
+      throw new Error("Zaloguj się na konto Nostalgie™, aby powiązać Apple ID.");
+    }
+    // One Apple ID → one account; also replace any previous Apple link for this user.
+    for (const [id, row] of Object.entries(links)) {
+      if (row?.userId === account.userId && id !== apple.appleUserId) {
+        delete links[id];
+      }
+    }
     links[apple.appleUserId] = {
       userId: account.userId,
       login: account.login,
-      email: apple.email,
+      email: apple.email || existing?.email || null,
       linkedAt: Date.now(),
     };
     writeLinks(links);
-    return { account, linked: true };
+    return {
+      account,
+      linked: true,
+      appleEmail: links[apple.appleUserId].email,
+      appleUserId: apple.appleUserId,
+    };
   }
 
   if (existing?.userId) {
@@ -123,6 +167,8 @@ export async function loginOrLinkAppleAccount({ identityToken, login, password, 
         role: "user",
       },
       linked: true,
+      appleEmail: existing.email || apple.email || null,
+      appleUserId: apple.appleUserId,
     };
   }
 
@@ -135,7 +181,12 @@ export async function loginOrLinkAppleAccount({ identityToken, login, password, 
       linkedAt: Date.now(),
     };
     writeLinks(links);
-    return { account, linked: true };
+    return {
+      account,
+      linked: true,
+      appleEmail: apple.email,
+      appleUserId: apple.appleUserId,
+    };
   }
 
   const err = new Error("Konto Apple nie jest powiązane. Zaloguj się loginem Nostalgie™ przy pierwszym użyciu Apple ID.");
@@ -149,13 +200,19 @@ export function unlinkAppleAccount(appleUserId) {
   writeLinks(links);
 }
 
-export function appleAuthSuccessResponse(res, { account, linked }) {
+export function appleAuthSuccessResponse(res, { account, linked, appleEmail = null, appleUserId = null }) {
   const token = signMoviesToken(account);
   res.json({
     ok: true,
     token,
-    user: { login: account.login, role: account.role },
-    appleLinked: linked,
+    user: {
+      login: account.login,
+      role: account.role || "user",
+      appleLinked: Boolean(linked),
+      appleEmail: appleEmail || null,
+      appleUserId: appleUserId || null,
+    },
+    appleLinked: Boolean(linked),
     expiresIn: Number(process.env.MOVIES_JWT_TTL_SEC || 60 * 60 * 24 * 30),
   });
 }

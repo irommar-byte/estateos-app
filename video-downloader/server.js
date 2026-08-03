@@ -91,6 +91,7 @@ import {
   loginOrLinkAppleAccount,
   unlinkAppleAccount,
   appleAuthSuccessResponse,
+  findAppleLinkForUserId,
 } from "./apple-auth.js";
 import {
   searchAppleMusic,
@@ -4513,11 +4514,13 @@ app.post("/api/auth/login", async (req, res) => {
 app.post("/api/auth/apple", async (req, res) => {
   try {
     const { identityToken, login, password, linkOnly } = req.body || {};
+    const sessionUser = authUserFromRequest(req);
     const result = await loginOrLinkAppleAccount({
       identityToken,
       login,
       password,
       linkOnly: Boolean(linkOnly),
+      sessionUser,
     });
     appleAuthSuccessResponse(res, result);
   } catch (err) {
@@ -4530,6 +4533,13 @@ app.delete("/api/auth/apple/link", (req, res) => {
   try {
     const { appleUserId } = req.body || {};
     if (!appleUserId) return res.status(400).json({ error: "Brak identyfikatora Apple." });
+    const sessionUser = authUserFromRequest(req);
+    if (sessionUser?.userId) {
+      const owned = findAppleLinkForUserId(sessionUser.userId);
+      if (!owned || owned.appleUserId !== String(appleUserId)) {
+        return res.status(403).json({ error: "To Apple ID nie jest powiązane z Twoim kontem." });
+      }
+    }
     unlinkAppleAccount(appleUserId);
     res.json({ ok: true });
   } catch (err) {
@@ -4540,7 +4550,17 @@ app.delete("/api/auth/apple/link", (req, res) => {
 app.get("/api/auth/me", (req, res) => {
   const user = authUserFromRequest(req);
   if (!user) return res.status(401).json({ error: "Brak autoryzacji." });
-  res.json({ ok: true, user: { login: user.login, role: user.role } });
+  const apple = findAppleLinkForUserId(user.userId);
+  res.json({
+    ok: true,
+    user: {
+      login: user.login,
+      role: user.role,
+      appleLinked: Boolean(apple),
+      appleEmail: apple?.email || null,
+      appleUserId: apple?.appleUserId || null,
+    },
+  });
 });
 
 app.get("/api/portal/status", (req, res) => {

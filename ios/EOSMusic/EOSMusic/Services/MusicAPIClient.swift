@@ -24,7 +24,13 @@ final class MusicAPIClient {
         if let login { body["login"] = login }
         if let password { body["password"] = password }
         if linkOnly { body["linkOnly"] = true }
-        let response: AuthLoginResponse = try await request("POST", path: "/api/auth/apple", body: body, authorized: false)
+        // linkOnly uses the current Bearer session when available.
+        let response: AuthLoginResponse = try await request(
+            "POST",
+            path: "/api/auth/apple",
+            body: body,
+            authorized: linkOnly
+        )
         let session = SessionStore.Session(token: response.token, user: response.user)
         try SessionStore.save(session)
         token = response.token
@@ -34,7 +40,7 @@ final class MusicAPIClient {
     func unlinkApple(appleUserId: String) async throws {
         struct Body: Encodable { let appleUserId: String }
         struct Ok: Codable { let ok: Bool? }
-        let _: Ok = try await requestJSON("DELETE", path: "/api/auth/apple/link", encodable: Body(appleUserId: appleUserId), authorized: false)
+        let _: Ok = try await requestJSON("DELETE", path: "/api/auth/apple/link", encodable: Body(appleUserId: appleUserId), authorized: true)
     }
 
     func me() async throws -> AuthUser {

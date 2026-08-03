@@ -47,6 +47,7 @@ final class AppModel: ObservableObject {
         do {
             // Splash only waits for session validation — library loads in-app.
             user = try await api.me()
+            await syncLocalAppleLink(from: user)
             Task { await refreshWorkspace(soft: true) }
         } catch {
             // Only clear session on auth failure; network blips keep the user in-app.
@@ -88,18 +89,56 @@ final class AppModel: ObservableObject {
         Task { await refreshWorkspace(soft: true) }
     }
 
-    func linkAppleAccount(identityToken: String, login: String, password: String) async throws {
-        _ = try await api.loginWithApple(
+    func linkAppleAccount(identityToken: String, login: String? = nil, password: String? = nil) async throws {
+        let session = try await api.loginWithApple(
             identityToken: identityToken,
             login: login,
             password: password,
             linkOnly: true
         )
+        user = session.user
     }
 
     func unlinkAppleAccount(appleUserId: String) async throws {
         try await api.unlinkApple(appleUserId: appleUserId)
         AppleSignInService.shared.clearLink()
+        if var current = user {
+            current.appleLinked = false
+            current.appleEmail = nil
+            current.appleUserId = nil
+            user = current
+            if let session = SessionStore.load() {
+                try? SessionStore.save(SessionStore.Session(token: session.token, user: current))
+            }
+        }
+    }
+
+    func refreshAppleLinkStatus() async {
+        do {
+            let me = try await api.me()
+            user = me
+            if let session = SessionStore.load() {
+                try? SessionStore.save(SessionStore.Session(token: session.token, user: me))
+            }
+            await syncLocalAppleLink(from: me)
+        } catch {
+            // Keep local state on network blips.
+        }
+    }
+
+    private func syncLocalAppleLink(from me: AuthUser?) async {
+        guard let me else { return }
+        if me.isAppleLinked {
+            let existing = AppleSignInService.shared.linkedAccount
+            try? AppleSignInService.shared.storeLink(AppleAccountLink(
+                userId: me.appleUserId ?? existing?.userId ?? "linked",
+                email: me.appleEmail ?? existing?.email,
+                fullName: existing?.fullName,
+                linkedAt: existing?.linkedAt ?? Date()
+            ))
+        } else if AppleSignInService.shared.isLinked {
+            AppleSignInService.shared.clearLink()
+        }
     }
 
     func logout() {
@@ -108,6 +147,7 @@ final class AppModel: ObservableObject {
         isFullPlayerPresented = false
         api.setToken(nil)
         SessionStore.clear()
+        AppleSignInService.shared.clearLink()
         user = nil
         musicFolders = []
         musicTracks = []

@@ -19,6 +19,17 @@ enum APIError: LocalizedError {
 struct AuthUser: Codable, Equatable {
     let login: String
     let role: String
+    var appleLinked: Bool?
+    var appleEmail: String?
+    var appleUserId: String?
+
+    var isAppleLinked: Bool { appleLinked == true }
+
+    var appleDisplayName: String {
+        if let email = appleEmail, !email.isEmpty { return email }
+        if let id = appleUserId, !id.isEmpty { return "Apple ID · \(id.prefix(8))…" }
+        return "Połączono z Apple ID"
+    }
 }
 
 struct AuthLoginResponse: Codable {
@@ -26,6 +37,7 @@ struct AuthLoginResponse: Codable {
     let token: String
     let user: AuthUser
     let expiresIn: Int?
+    let appleLinked: Bool?
 }
 
 struct FavoriteItem: Codable, Identifiable, Hashable {

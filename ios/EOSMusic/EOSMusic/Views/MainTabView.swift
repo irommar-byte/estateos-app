@@ -34,6 +34,17 @@ struct SettingsView: View {
         app.playback.engine != nil && !app.isFullPlayerPresented
     }
 
+    private var isAppleConnected: Bool {
+        app.user?.isAppleLinked == true || apple.isLinked
+    }
+
+    private var appleConnectedLabel: String {
+        if let email = app.user?.appleEmail, !email.isEmpty { return email }
+        if let email = apple.linkedAccount?.email, !email.isEmpty { return email }
+        if let name = apple.linkedAccount?.fullName, !name.isEmpty { return name }
+        return app.user?.appleDisplayName ?? "Połączono z Apple ID"
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -48,12 +59,18 @@ struct SettingsView: View {
                     }
 
                     Section {
-                        if apple.isLinked {
-                            if let email = apple.linkedAccount?.email, !email.isEmpty {
-                                LabeledContent("Apple ID", value: email)
-                            } else {
-                                Label("Połączono z Apple ID", systemImage: "checkmark.circle.fill")
+                        if isAppleConnected {
+                            HStack(spacing: 10) {
+                                Image(systemName: "checkmark.circle.fill")
                                     .foregroundStyle(.green)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Połączono")
+                                        .font(.subheadline.weight(.semibold))
+                                    Text(appleConnectedLabel)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
                             }
                             FilesListButton {
                                 Task { await unlinkApple() }
@@ -68,7 +85,7 @@ struct SettingsView: View {
                                 HStack(spacing: 8) {
                                     Image(systemName: "apple.logo")
                                         .font(.body.weight(.semibold))
-                                    Text("Połącz z Apple ID")
+                                    Text(isAppleBusy ? "Łączenie…" : "Połącz z Apple ID")
                                         .font(.body.weight(.semibold))
                                 }
                                 .frame(maxWidth: .infinity)
@@ -84,6 +101,8 @@ struct SettingsView: View {
                     } footer: {
                         if app.user == nil {
                             Text("Zaloguj się, aby powiązać Apple ID z kontem Nostalgie™.")
+                        } else if isAppleConnected {
+                            Text("Apple ID jest powiązane z kontem „\(app.user?.login ?? "")”. Możesz się nim logować na innych urządzeniach.")
                         } else {
                             Text("Powiąż Apple ID z aktualnie zalogowanym kontem Nostalgie™.")
                         }
@@ -175,6 +194,7 @@ struct SettingsView: View {
             .navigationTitle("Konto")
             .task {
                 await app.refreshServerAssets()
+                await app.refreshAppleLinkStatus()
             }
             .alert("Apple ID", isPresented: Binding(get: { appleMessage != nil }, set: { if !$0 { appleMessage = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -185,26 +205,34 @@ struct SettingsView: View {
     }
 
     private func linkAppleToCurrentAccount() async {
-        guard let saved = CredentialsStore.load() else {
-            appleMessage = "Włącz „Zapamiętaj mnie” przy logowaniu lub zaloguj się ponownie, aby powiązać Apple ID."
+        guard app.user != nil else {
+            appleMessage = "Zaloguj się na konto Nostalgie™, aby powiązać Apple ID."
             return
         }
         isAppleBusy = true
         defer { isAppleBusy = false }
         do {
             let result = try await AppleSignInService.shared.signIn()
+            // Prefer session Bearer link; fall back to remembered password if present.
+            let saved = CredentialsStore.load()
             try await app.linkAppleAccount(
                 identityToken: result.identityToken,
-                login: saved.login,
-                password: saved.password
+                login: saved?.login,
+                password: saved?.password
             )
+            let linkedEmail = app.user?.appleEmail ?? result.email
             try AppleSignInService.shared.storeLink(AppleAccountLink(
-                userId: result.userId,
-                email: result.email,
+                userId: app.user?.appleUserId ?? result.userId,
+                email: linkedEmail,
                 fullName: result.fullName,
                 linkedAt: Date()
             ))
-            appleMessage = "Konto Apple zostało powiązane."
+            await app.refreshAppleLinkStatus()
+            app.presentToast(MusicToast(
+                systemImage: "checkmark.circle.fill",
+                title: "Połączono z Apple ID",
+                subtitle: linkedEmail
+            ))
         } catch {
             if case AppleSignInError.cancelled = error { return }
             appleMessage = error.localizedDescription
@@ -212,12 +240,20 @@ struct SettingsView: View {
     }
 
     private func unlinkApple() async {
-        guard let userId = apple.linkedAccount?.userId else { return }
+        let userId = app.user?.appleUserId ?? apple.linkedAccount?.userId
+        guard let userId, !userId.isEmpty else {
+            appleMessage = "Brak identyfikatora Apple do odłączenia."
+            return
+        }
         isAppleBusy = true
         defer { isAppleBusy = false }
         do {
             try await app.unlinkAppleAccount(appleUserId: userId)
-            appleMessage = "Odłączono Apple ID."
+            app.presentToast(MusicToast(
+                systemImage: "link.badge.plus",
+                title: "Odłączono Apple ID",
+                subtitle: nil
+            ))
         } catch {
             appleMessage = error.localizedDescription
         }
