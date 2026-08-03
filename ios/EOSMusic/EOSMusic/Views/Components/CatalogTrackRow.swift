@@ -12,7 +12,14 @@ struct CatalogTrackRow: View {
     @State private var rowError: String?
 
     private var inLibrary: Bool { app.isInLibrary(item.url) }
+    private var libraryTrack: MusicTrack? { app.musicTracks.first(where: { $0.url == item.url }) }
     private var localFileURL: URL? { OfflineMusicStore.shared.localURL(for: item.url) }
+    private var cloudState: TrackDownloadUIState {
+        app.downloads.uiState(
+            for: item.url,
+            isOnServer: libraryTrack?.isOnServer == true
+        )
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -26,16 +33,30 @@ struct CatalogTrackRow: View {
                     duration: item.duration,
                     artworkURL: item.thumbnail.flatMap(URL.init(string:)),
                     isPlaying: app.playback.engine?.currentTrack?.url == item.url,
-                    downloadState: app.downloads.uiState(
-                        for: item.url,
-                        isDownloaded: app.isOfflineAvailable(item.url)
-                    )
+                    downloadState: cloudState
                 )
             }
             .buttonStyle(.plain)
 
             FavoriteButton(item: item.favoriteItem, size: 16)
                 .frame(width: 28)
+
+            if inLibrary {
+                DownloadCloudButton(
+                    state: cloudState,
+                    size: 20,
+                    onDownload: {
+                        if let track = libraryTrack {
+                            app.downloadTrack(track, folderId: track.folderId)
+                        } else {
+                            Task { await downloadCatalogToDevice() }
+                        }
+                    },
+                    onCancel: { app.cancelDownload(for: item.url) },
+                    onRemoveOffline: { app.removeOfflineDownload(for: item.url) }
+                )
+                .frame(width: 34, height: 34)
+            }
 
             libraryAddButton
         }
@@ -138,6 +159,32 @@ struct CatalogTrackRow: View {
         do {
             try await app.addToLibrary(item.payload)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } catch {
+            rowError = error.localizedDescription
+        }
+    }
+
+    private func downloadCatalogToDevice() async {
+        do {
+            let folderId = try await app.ensurePrimaryLibraryFolderId()
+            let track = MusicTrackPayload(
+                url: item.url,
+                title: item.title,
+                artist: item.uploader ?? item.detail,
+                album: item.album,
+                thumbnail: item.thumbnail,
+                duration: item.duration,
+                quality: nil,
+                source: nil,
+                artistId: item.artistId,
+                albumId: item.albumId
+            )
+            if !app.isInLibrary(item.url) {
+                try await app.addTrackToFolder(folderId: folderId, track: track)
+            }
+            if let libraryTrack = app.musicTracks.first(where: { $0.url == item.url }) {
+                app.downloadTrack(libraryTrack, folderId: folderId)
+            }
         } catch {
             rowError = error.localizedDescription
         }

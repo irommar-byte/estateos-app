@@ -82,9 +82,10 @@ struct AddToPlaylistSheet: View {
         isSaving = true
         defer { isSaving = false }
         do {
-            try await app.addTrackToFolder(folderId: folderId, track: track)
+            let playlistName = app.musicFolders.first(where: { $0.id == folderId })?.name ?? "playlista"
+            try await app.addTrackToFolder(folderId: folderId, track: track, announcePlaylistName: playlistName)
             addedFolderId = folderId
-            try? await Task.sleep(nanoseconds: 400_000_000)
+            try? await Task.sleep(nanoseconds: 350_000_000)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -100,7 +101,7 @@ struct AddToPlaylistSheet: View {
             let folder = try await app.api.createMusicFolder(name: name)
             try await app.refreshMusicLibrary()
             newFolderName = ""
-            try await app.addTrackToFolder(folderId: folder.id, track: track)
+            try await app.addTrackToFolder(folderId: folder.id, track: track, announcePlaylistName: folder.name)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

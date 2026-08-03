@@ -16,6 +16,16 @@ struct RootView: View {
                 MainTabView()
             }
         }
+        .overlay(alignment: .top) {
+            if let toast = app.toast {
+                MusicToastBanner(toast: toast)
+                    .padding(.top, 10)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .onTapGesture { app.dismissToast() }
+                    .zIndex(50)
+            }
+        }
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: app.toast?.id)
         .sheet(isPresented: $app.isFullPlayerPresented) {
             FullPlayerView()
                 .environmentObject(app)

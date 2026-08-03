@@ -15,6 +15,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isLibraryLoading = false
     @Published var libraryError: String?
     @Published var isFullPlayerPresented = false
+    @Published private(set) var toast: MusicToast?
 
     let api = MusicAPIClient()
     let playback = MusicPlaybackService()
@@ -22,6 +23,7 @@ final class AppModel: ObservableObject {
     let sources = MusicSourcesStore()
 
     private var cancellables = Set<AnyCancellable>()
+    private var toastDismissTask: Task<Void, Never>?
 
     init() {
         playback.objectWillChange
@@ -154,9 +156,29 @@ final class AppModel: ObservableObject {
         if isInLibrary(track.url) { return }
         let folderId = try await ensurePrimaryLibraryFolderId()
         try await addTrackToFolder(folderId: folderId, track: track)
-        // Guarantee EOS server copy for stream/download on any device.
-        _ = try? await api.startMusicPlay(url: track.url, folderId: folderId, trackUrl: track.url)
-        await refreshServerAssets()
+        presentToast(.addedToLibrary(trackTitle: track.title))
+    }
+
+    func presentToast(_ toast: MusicToast) {
+        toastDismissTask?.cancel()
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+            self.toast = toast
+        }
+        let id = toast.id
+        toastDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+            guard !Task.isCancelled, self.toast?.id == id else { return }
+            withAnimation(.easeInOut(duration: 0.28)) {
+                self.toast = nil
+            }
+        }
+    }
+
+    func dismissToast() {
+        toastDismissTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.22)) {
+            toast = nil
+        }
     }
 
     func ensurePrimaryLibraryFolderId() async throws -> String {
@@ -187,10 +209,25 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func addTrackToFolder(folderId: String, track: MusicTrackPayload) async throws {
+    func addTrackToFolder(folderId: String, track: MusicTrackPayload, announcePlaylistName: String? = nil) async throws {
         let prepared = try await prepareLibraryPayload(track)
         _ = try await api.addTrackToFolder(folderId: folderId, track: prepared)
         try await refreshMusicLibrary()
+        if let announcePlaylistName {
+            presentToast(.addedToPlaylist(trackTitle: track.title, playlist: announcePlaylistName))
+        }
+        downloads.ensureOnServer(
+            url: track.url,
+            folderId: folderId,
+            api: api,
+            onLibraryChanged: { [weak self] in
+                try? await self?.refreshMusicLibrary()
+                await self?.refreshServerAssets()
+            },
+            onReady: { [weak self] in
+                await self?.presentToast(.savedOnServer(trackTitle: track.title))
+            }
+        )
     }
 
     func addTracksToFolder(folderId: String, tracks: [MusicTrackPayload]) async throws {

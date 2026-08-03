@@ -237,27 +237,32 @@ struct TrackRowView: View {
     var body: some View {
         HStack(spacing: rowSpacing) {
             if let index {
-                if downloadState == .done {
-                    Text("\(index)")
-                        .font(indexFont)
-                        .foregroundStyle(isPlaying ? EOSTheme.accent : EOSTheme.textMuted)
-                        .frame(width: indexWidth, alignment: .trailing)
-                } else if case .downloading = downloadState {
-                    Image(systemName: "icloud")
-                        .font(.caption2)
-                        .foregroundStyle(EOSTheme.textMuted)
-                        .frame(width: indexWidth, alignment: .trailing)
-                } else if downloadState == .onServer {
-                    Image(systemName: "icloud.fill")
-                        .font(.caption2)
-                        .foregroundStyle(EOSTheme.accent.opacity(0.85))
-                        .frame(width: indexWidth, alignment: .trailing)
-                } else {
-                    Image(systemName: "icloud")
-                        .font(.caption2)
-                        .foregroundStyle(EOSTheme.accentSecondary)
-                        .frame(width: indexWidth, alignment: .trailing)
+                Group {
+                    switch downloadState {
+                    case .done:
+                        Text("\(index)")
+                            .font(indexFont)
+                            .foregroundStyle(isPlaying ? EOSTheme.accent : EOSTheme.textMuted)
+                    case .acquiringServer(let progress):
+                        ServerCloudProgressIcon(progress: progress, size: indexWidth)
+                    case .downloading(let progress):
+                        ServerCloudProgressIcon(progress: progress, size: indexWidth)
+                    case .onServer:
+                        Image(systemName: "icloud.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(EOSTheme.accent)
+                            .shadow(color: EOSTheme.accent.opacity(0.45), radius: 3)
+                    case .failed:
+                        Image(systemName: "exclamationmark.icloud")
+                            .font(.caption2)
+                            .foregroundStyle(EOSTheme.accent)
+                    case .idle:
+                        Image(systemName: "icloud")
+                            .font(.caption2)
+                            .foregroundStyle(EOSTheme.accentSecondary)
+                    }
                 }
+                .frame(width: max(indexWidth, 22), alignment: .trailing)
             }
             ArtworkImage(url: artworkURL, size: artSize, cornerRadius: artRadius)
             VStack(alignment: .leading, spacing: textSpacing) {
