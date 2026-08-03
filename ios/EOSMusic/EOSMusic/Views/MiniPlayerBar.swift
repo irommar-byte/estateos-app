@@ -57,15 +57,11 @@ private struct MiniPlayerContent: View {
                 }
                 .buttonStyle(.plain)
 
-                if let folderId = engine.folderId,
-                   let libraryTrack = app.trackForCurrentPlayback() {
+                if !track.isExternal {
                     DownloadCloudButton(
-                        state: app.downloads.uiState(
-                            for: track.url,
-                            isDownloaded: app.isOfflineAvailable(track.url)
-                        ),
+                        state: app.playbackCloudState(for: track),
                         size: 20,
-                        onDownload: { app.downloadTrack(libraryTrack, folderId: folderId) },
+                        onDownload: { app.downloadCurrentPlayback() },
                         onCancel: { app.cancelDownload(for: track.url) },
                         onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
                     )

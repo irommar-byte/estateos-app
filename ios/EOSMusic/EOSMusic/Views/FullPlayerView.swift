@@ -159,15 +159,11 @@ private struct PlayerContent: View {
                     .frame(width: 40, height: 40)
                     .background(.ultraThinMaterial, in: Circle())
             }
-            if let folderId = engine.folderId,
-               let libraryTrack = app.trackForCurrentPlayback() {
+            if !track.isExternal {
                 DownloadCloudButton(
-                    state: app.downloads.uiState(
-                        for: track.url,
-                        isDownloaded: app.isOfflineAvailable(track.url)
-                    ),
+                    state: app.playbackCloudState(for: track),
                     size: 20,
-                    onDownload: { app.downloadTrack(libraryTrack, folderId: folderId) },
+                    onDownload: { app.downloadCurrentPlayback() },
                     onCancel: { app.cancelDownload(for: track.url) },
                     onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
                 )
@@ -211,6 +207,30 @@ private struct PlayerContent: View {
                 .buttonStyle(.plain)
                 .disabled(track.albumId?.isEmpty != false)
                 .opacity(track.albumId?.isEmpty == false ? 1 : 0.55)
+            }
+
+            if track.isExternal {
+                HStack(spacing: 6) {
+                    Image(systemName: "iphone")
+                        .font(.caption.weight(.semibold))
+                    Text(track.playbackFileURL != nil ? "Plik lokalny" : "Źródło zewnętrzne")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(.green)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.green.opacity(0.12), in: Capsule())
+                .padding(.top, layout.tight ? 6 : 8)
+            } else {
+                PlayerStorageStatusBar(
+                    state: app.playbackCloudState(for: track),
+                    onServerHint: app.isOnServer(track.url) || track.isOnServer,
+                    onDownload: { app.downloadCurrentPlayback() },
+                    onCancel: { app.cancelDownload(for: track.url) },
+                    onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
+                )
+                .padding(.top, layout.tight ? 6 : 8)
+                .padding(.horizontal, 4)
             }
         }
         .padding(.horizontal, 8)

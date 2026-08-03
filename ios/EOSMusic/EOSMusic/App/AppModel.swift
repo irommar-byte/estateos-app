@@ -187,6 +187,20 @@ final class AppModel: ObservableObject {
         downloads.isOfflineAvailable(url)
     }
 
+    /// Durable EOS server copy for this URL (library track or assets list).
+    func isOnServer(_ url: String) -> Bool {
+        if musicTracks.first(where: { $0.url == url })?.isOnServer == true { return true }
+        if serverAssets.contains(where: { $0.url == url }) { return true }
+        return false
+    }
+
+    func playbackCloudState(for track: MusicPlaybackTrack) -> TrackDownloadUIState {
+        downloads.uiState(
+            for: track.url,
+            isOnServer: isOnServer(track.url) || track.isOnServer
+        )
+    }
+
     func isInLibrary(_ url: String) -> Bool {
         musicTracks.contains { $0.url == url }
     }
@@ -467,6 +481,36 @@ final class AppModel: ObservableObject {
     func downloadTrack(_ track: MusicTrack, folderId: String) {
         downloads.download(track: track, folderId: folderId, api: api) { [weak self] in
             try? await self?.refreshMusicLibrary()
+            await self?.refreshServerAssets()
+        }
+    }
+
+    /// Full player / mini player: ensure library membership, then download to this iPhone.
+    func downloadCurrentPlayback() {
+        Task { await downloadCurrentPlaybackAsync() }
+    }
+
+    func downloadCurrentPlaybackAsync() async {
+        guard let current = playback.engine?.currentTrack else { return }
+        if current.isExternal {
+            libraryError = "Ten utwór jest z lokalnego źródła — nie trzeba go pobierać."
+            return
+        }
+        do {
+            let folderId: String
+            let track: MusicTrack
+            if let existing = musicTracks.first(where: { $0.url == current.url }) {
+                folderId = existing.folderId
+                track = existing
+            } else {
+                folderId = try await ensurePrimaryLibraryFolderId()
+                try await addTrackToFolder(folderId: folderId, track: current.payload)
+                track = musicTracks.first(where: { $0.url == current.url })
+                    ?? MusicTrack(from: current, folderId: folderId)
+            }
+            downloadTrack(track, folderId: folderId)
+        } catch {
+            libraryError = error.localizedDescription
         }
     }
 
@@ -487,7 +531,7 @@ final class AppModel: ObservableObject {
     func trackForCurrentPlayback() -> MusicTrack? {
         guard let playback = playback.engine?.currentTrack else { return nil }
         if let hit = musicTracks.first(where: { $0.url == playback.url }) { return hit }
-        guard let folderId = playback.folderId else { return nil }
+        guard let folderId = playback.folderId ?? musicFolders.first?.id else { return nil }
         return MusicTrack(from: playback, folderId: folderId)
     }
 

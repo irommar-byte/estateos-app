@@ -280,6 +280,14 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
     let externalSourceId: UUID?
 
     var artworkURL: URL? { thumbnail.flatMap(URL.init(string:)) }
+
+    /// Trwała kopia na serwerze EOS (nie mylić z plikiem lokalnym).
+    var isOnServer: Bool {
+        if let serverAssetId, !serverAssetId.isEmpty { return true }
+        if let downloadJobId, !downloadJobId.isEmpty { return true }
+        return false
+    }
+
     var isExternal: Bool {
         playbackFileURL != nil
             || webDAVPath != nil

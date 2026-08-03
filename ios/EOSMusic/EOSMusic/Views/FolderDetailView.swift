@@ -188,7 +188,7 @@ struct FolderDetailView: View {
         let index = tracks.firstIndex(where: { $0.url == track.url }) ?? 0
         let downloadState = app.downloads.uiState(
             for: track.url,
-            isDownloaded: app.isOfflineAvailable(track.url)
+            isOnServer: track.isOnServer
         )
 
         let rowContent = HStack(spacing: 8) {

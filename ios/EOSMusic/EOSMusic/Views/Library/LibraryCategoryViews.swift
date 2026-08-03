@@ -400,7 +400,7 @@ struct LibraryAlbumSongsView: View {
                                     isPlaying: app.playback.engine?.currentTrack?.url == track.url,
                                     downloadState: app.downloads.uiState(
                                         for: track.url,
-                                        isDownloaded: app.isOfflineAvailable(track.url)
+                                        isOnServer: track.isOnServer
                                     )
                                 )
                             }
@@ -506,7 +506,7 @@ struct LibrarySongsListView: View {
                 isPlaying: app.playback.engine?.currentTrack?.url == track.url,
                 downloadState: app.downloads.uiState(
                     for: track.url,
-                    isDownloaded: app.isOfflineAvailable(track.url)
+                    isOnServer: track.isOnServer
                 )
             )
         }
@@ -537,7 +537,7 @@ struct LibrarySongsListView: View {
                     Label("Wyślij plik", systemImage: "paperplane")
                 }
             }
-            if app.downloads.uiState(for: track.url, isDownloaded: app.isOfflineAvailable(track.url)) != .done {
+            if app.downloads.uiState(for: track.url, isOnServer: track.isOnServer) != .done {
                 Button {
                     app.downloadTrack(track, folderId: track.folderId)
                 } label: {
