@@ -58,7 +58,7 @@ final class VideoAppModel: ObservableObject {
         }
         videosByFolder[folder.id] = items
         onWillStartPlayback?()
-        OrientationLock.shared.preferLandscape()
+        OrientationLock.shared.unlockAll()
         engine.play(
             session: VideoPlaybackSession(
                 items: items,

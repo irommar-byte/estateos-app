@@ -14,6 +14,12 @@ final class OrientationLock {
 
     func unlockAll() {
         mask = .allButUpsideDown
+        // Do not force a specific orientation — follow the device (portrait for vertical videos).
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first else { return }
+        let prefs = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: .allButUpsideDown)
+        scene.requestGeometryUpdate(prefs) { _ in }
     }
 
     func preferLandscape() {

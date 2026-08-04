@@ -10,8 +10,8 @@ struct VideoPlayerView: View {
     @State private var showSubtitleSheet = false
     @State private var showPlaylist = false
     @State private var showMore = false
-    @State private var isSeeking = false
     @State private var scrubTime: Double = 0
+    @State private var isScrubbing = false
 
     init(engine: VideoPlaybackEngine) {
         self.engine = engine
@@ -19,16 +19,25 @@ struct VideoPlayerView: View {
 
     var body: some View {
         GeometryReader { geo in
+            let landscape = geo.size.width > geo.size.height
             ZStack {
                 Color.black.ignoresSafeArea()
 
                 VLCVideoContainer(engine: engine)
                     .ignoresSafeArea()
 
+                // Tap empty video area to toggle controls — does not cover the chrome.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .padding(.top, 56)
+                    .padding(.bottom, landscape ? 110 : 140)
+                    .onTapGesture { toggleControls() }
+
                 if engine.isBuffering {
                     ProgressView()
                         .tint(.white)
-                        .scaleEffect(1.2)
+                        .scaleEffect(1.15)
+                        .allowsHitTesting(false)
                 }
 
                 if let error = engine.errorMessage {
@@ -41,22 +50,28 @@ struct VideoPlayerView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 24)
                     }
+                    .allowsHitTesting(false)
                 }
 
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { toggleControls() }
-
                 if controlsVisible {
-                    controlsOverlay(size: geo.size)
+                    controlsOverlay(landscape: landscape)
                         .transition(.opacity)
                 }
             }
         }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
-        .onAppear { scheduleHide() }
+        .onAppear {
+            OrientationLock.shared.unlockAll()
+            scheduleHide()
+        }
         .onDisappear { hideTask?.cancel() }
+        .onChange(of: engine.hasEnded) { _, ended in
+            if ended {
+                withAnimation(.easeInOut(duration: 0.2)) { controlsVisible = true }
+                hideTask?.cancel()
+            }
+        }
         .sheet(isPresented: $showAudioSheet) {
             VideoAudioTrackSheet(engine: engine)
         }
@@ -80,27 +95,41 @@ struct VideoPlayerView: View {
     }
 
     @ViewBuilder
-    private func controlsOverlay(size: CGSize) -> some View {
+    private func controlsOverlay(landscape: Bool) -> some View {
         VStack(spacing: 0) {
             topBar
                 .padding(.horizontal, 16)
-                .padding(.top, 10)
+                .padding(.top, 8)
 
-            Spacer()
+            Spacer(minLength: 0)
 
             centerTransport
+                .padding(.bottom, 8)
 
-            bottomBar
+            bottomBar(landscape: landscape)
                 .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                .padding(.bottom, 10)
+                .padding(.top, 6)
+                .background(
+                    LinearGradient(
+                        colors: [.clear, .black.opacity(0.72)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea(edges: .bottom)
+                    .allowsHitTesting(false)
+                )
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             LinearGradient(
-                colors: [.black.opacity(0.55), .clear, .clear, .black.opacity(0.7)],
+                colors: [.black.opacity(0.55), .clear],
                 startPoint: .top,
-                endPoint: .bottom
+                endPoint: .center
             )
-            .ignoresSafeArea()
+            .frame(height: 120)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .ignoresSafeArea(edges: .top)
             .allowsHitTesting(false)
         )
     }
@@ -155,7 +184,7 @@ struct VideoPlayerView: View {
     }
 
     private var centerTransport: some View {
-        HStack(spacing: 36) {
+        HStack(spacing: 28) {
             Button {
                 engine.playPrevious(sources: video.sources)
                 bumpControls()
@@ -163,6 +192,7 @@ struct VideoPlayerView: View {
                 Image(systemName: "backward.fill")
                     .font(.title2)
                     .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
             }
 
             Button {
@@ -170,35 +200,33 @@ struct VideoPlayerView: View {
                 bumpControls()
             } label: {
                 Image(systemName: "gobackward.15")
-                    .font(.system(size: 34, weight: .semibold))
+                    .font(.system(size: 30, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 64, height: 64)
+                    .frame(width: 56, height: 56)
                     .background(Color.white.opacity(0.14), in: Circle())
             }
-            .accessibilityLabel("Cofnij 15 sekund")
 
             Button {
                 engine.togglePlayPause()
                 bumpControls()
             } label: {
-                Image(systemName: engine.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 72))
+                Image(systemName: playPauseIcon)
+                    .font(.system(size: 64))
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.white)
+                    .frame(width: 72, height: 72)
             }
-            .accessibilityLabel(engine.isPlaying ? "Pauza" : "Odtwarzaj")
 
             Button {
                 engine.jumpForward15()
                 bumpControls()
             } label: {
                 Image(systemName: "goforward.15")
-                    .font(.system(size: 34, weight: .semibold))
+                    .font(.system(size: 30, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 64, height: 64)
+                    .frame(width: 56, height: 56)
                     .background(Color.white.opacity(0.14), in: Circle())
             }
-            .accessibilityLabel("Do przodu 15 sekund")
 
             Button {
                 engine.playNext(sources: video.sources)
@@ -207,46 +235,40 @@ struct VideoPlayerView: View {
                 Image(systemName: "forward.fill")
                     .font(.title2)
                     .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
             }
         }
-        .padding(.bottom, 18)
     }
 
-    private var bottomBar: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 10) {
-                Text(formatClock(isSeeking ? scrubTime : engine.currentTime))
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 52, alignment: .leading)
+    private var playPauseIcon: String {
+        if engine.hasEnded { return "play.circle.fill" }
+        return engine.isPlaying ? "pause.circle.fill" : "play.circle.fill"
+    }
 
-                Slider(
-                    value: Binding(
-                        get: { isSeeking ? scrubTime : engine.currentTime },
-                        set: { scrubTime = $0 }
-                    ),
-                    in: 0...max(engine.duration, 1),
-                    onEditingChanged: { editing in
-                        isSeeking = editing
-                        if editing {
-                            hideTask?.cancel()
-                            scrubTime = engine.currentTime
-                        } else {
-                            engine.seek(to: scrubTime)
-                            bumpControls()
-                        }
+    private func bottomBar(landscape: Bool) -> some View {
+        VStack(spacing: landscape ? 8 : 12) {
+            VideoScrubber(
+                value: isScrubbing ? scrubTime : engine.currentTime,
+                duration: max(engine.duration, 0.001),
+                onEditingChanged: { editing, time in
+                    if editing {
+                        isScrubbing = true
+                        engine.isUserSeeking = true
+                        hideTask?.cancel()
+                        scrubTime = time
+                    } else {
+                        scrubTime = time
+                        engine.seek(to: time, resume: true)
+                        engine.isUserSeeking = false
+                        isScrubbing = false
+                        bumpControls()
                     }
-                )
-                .tint(EOSTheme.accent)
-
-                Text(formatClock(engine.duration))
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 52, alignment: .trailing)
-            }
+                }
+            )
+            .frame(maxWidth: .infinity)
+            .frame(height: 28)
 
             HStack(spacing: 10) {
-                // Lektor — wyraźny przycisk
                 Button {
                     showAudioSheet = true
                     bumpControls()
@@ -258,9 +280,7 @@ struct VideoPlayerView: View {
                         .padding(.vertical, 10)
                         .background(Color.white.opacity(0.16), in: Capsule())
                 }
-                .accessibilityLabel("Zmień język lektora")
 
-                // Napisy — szybki toggle + long-press sheet
                 Button {
                     if engine.subtitleTracks.isEmpty {
                         showSubtitleSheet = true
@@ -288,7 +308,6 @@ struct VideoPlayerView: View {
                         bumpControls()
                     }
                 )
-                .accessibilityLabel("Napisy — tap włącz/wyłącz, przytrzymaj wybór ścieżki")
 
                 Spacer(minLength: 0)
 
@@ -311,14 +330,14 @@ struct VideoPlayerView: View {
     }
 
     private func toggleControls() {
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(.easeInOut(duration: 0.18)) {
             controlsVisible.toggle()
         }
         if controlsVisible { scheduleHide() }
     }
 
     private func bumpControls() {
-        withAnimation(.easeInOut(duration: 0.15)) { controlsVisible = true }
+        withAnimation(.easeInOut(duration: 0.12)) { controlsVisible = true }
         scheduleHide()
     }
 
@@ -326,10 +345,77 @@ struct VideoPlayerView: View {
         hideTask?.cancel()
         hideTask = Task {
             try? await Task.sleep(nanoseconds: 4_000_000_000)
-            guard !Task.isCancelled, !isSeeking, !showAudioSheet, !showSubtitleSheet, !showPlaylist, !showMore else { return }
-            withAnimation(.easeInOut(duration: 0.25)) {
+            guard !Task.isCancelled, !isScrubbing, !showAudioSheet, !showSubtitleSheet, !showPlaylist, !showMore, !engine.hasEnded else { return }
+            withAnimation(.easeInOut(duration: 0.22)) {
                 controlsVisible = false
             }
+        }
+    }
+}
+
+// MARK: - Full-width scrubber (smooth drag)
+
+private struct VideoScrubber: View {
+    let value: Double
+    let duration: Double
+    let onEditingChanged: (_ editing: Bool, _ time: Double) -> Void
+
+    @State private var dragTime: Double?
+    @State private var trackWidth: CGFloat = 1
+
+    private var displayTime: Double { dragTime ?? value }
+    private var progress: CGFloat {
+        guard duration > 0 else { return 0 }
+        return CGFloat(min(max(displayTime / duration, 0), 1))
+    }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text(formatClock(displayTime))
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text(formatClock(duration))
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+
+            GeometryReader { geo in
+                let width = max(geo.size.width, 1)
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.25))
+                        .frame(height: 5)
+                    Capsule()
+                        .fill(EOSTheme.accent)
+                        .frame(width: max(5, width * progress), height: 5)
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 18, height: 18)
+                        .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                        .offset(x: max(0, width * progress - 9))
+                }
+                .frame(maxHeight: .infinity, alignment: .center)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { gesture in
+                            trackWidth = width
+                            let ratio = min(max(gesture.location.x / width, 0), 1)
+                            let time = Double(ratio) * duration
+                            dragTime = time
+                            onEditingChanged(true, time)
+                        }
+                        .onEnded { gesture in
+                            let ratio = min(max(gesture.location.x / width, 0), 1)
+                            let time = Double(ratio) * duration
+                            dragTime = nil
+                            onEditingChanged(false, time)
+                        }
+                )
+            }
+            .frame(height: 24)
         }
     }
 
@@ -339,9 +425,7 @@ struct VideoPlayerView: View {
         let h = total / 3600
         let m = (total % 3600) / 60
         let s = total % 60
-        if h > 0 {
-            return String(format: "%d:%02d:%02d", h, m, s)
-        }
+        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
         return String(format: "%d:%02d", m, s)
     }
 }
@@ -351,17 +435,29 @@ struct VideoPlayerView: View {
 struct VLCVideoContainer: UIViewRepresentable {
     @ObservedObject var engine: VideoPlaybackEngine
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
+    func makeUIView(context: Context) -> PlayerDrawableView {
+        let view = PlayerDrawableView()
         view.backgroundColor = .black
         view.clipsToBounds = true
+        view.contentMode = .scaleAspectFit
         engine.attach(drawable: view)
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {
+    func updateUIView(_ uiView: PlayerDrawableView, context: Context) {
         if engine.player.drawable as? UIView !== uiView {
             engine.attach(drawable: uiView)
         }
+        uiView.contentMode = engine.aspectMode == .fill ? .scaleAspectFill : .scaleAspectFit
+    }
+}
+
+/// UIView that keeps VLC’s drawable layout filling the available bounds.
+final class PlayerDrawableView: UIView {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // VLC attaches sublayers/subviews — keep them sized to us.
+        layer.sublayers?.forEach { $0.frame = bounds }
+        subviews.forEach { $0.frame = bounds }
     }
 }
