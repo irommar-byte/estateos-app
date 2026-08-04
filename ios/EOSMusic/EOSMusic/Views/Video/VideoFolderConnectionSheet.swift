@@ -63,7 +63,7 @@ struct VideoFolderConnectionSheet: View {
                 } header: {
                     Text("Folder z filmami")
                 } footer: {
-                    Text("Obsługiwane: MKV, AVI, MP4, MOV, M4V, WMV, WebM, TS, M2TS, MPG i inne. Player używa VLC (także HDR).")
+                    Text("Pojedynczy plik (np. MOV/MKV) jest kopiowany do aplikacji i działa od razu. Folder / USB zostaje podpięty z Plików (bookmark). Obsługa: MKV, AVI, MP4, MOV i inne — VLC, także HDR.")
                 }
             }
             .listStyle(.insetGrouped)

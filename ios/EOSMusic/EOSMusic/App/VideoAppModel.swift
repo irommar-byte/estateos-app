@@ -41,7 +41,12 @@ final class VideoAppModel: ObservableObject {
             videosByFolder[folder.id] = items
             libraryError = nil
         } catch {
-            libraryError = error.localizedDescription
+            videosByFolder[folder.id] = []
+            if folder.kind == .folderBookmark, isVideoFileName(folder.name) {
+                libraryError = "Ten wpis pochodzi ze starego dodawania pliku i stracił dostęp. Usuń go (przytrzymaj) i dodaj film ponownie — zostanie skopiowany do aplikacji."
+            } else {
+                libraryError = error.localizedDescription
+            }
         }
     }
 

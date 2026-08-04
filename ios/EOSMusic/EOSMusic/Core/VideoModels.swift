@@ -9,11 +9,59 @@ func isVideoFileName(_ name: String) -> Bool {
     videoExtensions.contains((name as NSString).pathExtension.lowercased())
 }
 
+enum VideoSourceKind: String, Codable, Hashable {
+    /// Security-scoped folder from Pliki / USB / iCloud.
+    case folderBookmark
+    /// Single file copied into the app Documents sandbox (always readable).
+    case sandboxFile
+}
+
 struct ConnectedVideoFolder: Codable, Identifiable, Hashable {
     let id: UUID
     var name: String
     var connectedAt: Date
-    var folderBookmark: Data
+    var kind: VideoSourceKind
+    /// Security-scoped bookmark for external folders. Nil for sandbox files.
+    var folderBookmark: Data?
+    /// Path relative to Documents, e.g. `Wideo/Imports/<id>/film.mov`.
+    var sandboxRelativePath: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, connectedAt, kind, folderBookmark, sandboxRelativePath
+    }
+
+    init(
+        id: UUID,
+        name: String,
+        connectedAt: Date,
+        kind: VideoSourceKind,
+        folderBookmark: Data? = nil,
+        sandboxRelativePath: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.connectedAt = connectedAt
+        self.kind = kind
+        self.folderBookmark = folderBookmark
+        self.sandboxRelativePath = sandboxRelativePath
+    }
+
+    /// Backward-compatible decode for entries saved before `kind` existed.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        connectedAt = try c.decode(Date.self, forKey: .connectedAt)
+        folderBookmark = try c.decodeIfPresent(Data.self, forKey: .folderBookmark)
+        sandboxRelativePath = try c.decodeIfPresent(String.self, forKey: .sandboxRelativePath)
+        if let kind = try c.decodeIfPresent(VideoSourceKind.self, forKey: .kind) {
+            self.kind = kind
+        } else if sandboxRelativePath != nil {
+            self.kind = .sandboxFile
+        } else {
+            self.kind = .folderBookmark
+        }
+    }
 }
 
 struct VideoItem: Identifiable, Hashable {
