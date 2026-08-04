@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 enum LibraryCategory: String, Identifiable, CaseIterable, Hashable {
+    case favorites
     case playlists
     case artists
     case albums
@@ -12,6 +13,7 @@ enum LibraryCategory: String, Identifiable, CaseIterable, Hashable {
 
     var title: String {
         switch self {
+        case .favorites: return "Ulubione"
         case .playlists: return "Playlisty"
         case .artists: return "Wykonawcy"
         case .albums: return "Albumy"
@@ -22,6 +24,7 @@ enum LibraryCategory: String, Identifiable, CaseIterable, Hashable {
 
     var icon: String {
         switch self {
+        case .favorites: return "heart.fill"
         case .playlists: return "music.note.list"
         case .artists: return "mic.fill"
         case .albums: return "square.stack.fill"

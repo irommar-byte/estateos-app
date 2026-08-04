@@ -133,6 +133,7 @@ struct LibraryView: View {
     @ViewBuilder
     private func destination(for category: LibraryCategory) -> some View {
         switch category {
+        case .favorites: FavoritesView()
         case .playlists: LibraryPlaylistsView()
         case .artists: LibraryArtistsView()
         case .albums: LibraryAlbumsView()
