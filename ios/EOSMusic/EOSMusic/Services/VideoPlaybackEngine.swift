@@ -32,6 +32,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     private var lastSubtitleIndex: Int32 = -1
     private var lastPublishedTime: Double = -1
     private var sourcesRef: VideoSourcesStore?
+    private var bufferingRevealTask: Task<Void, Never>?
+    private var isLocalFile = true
 
     var currentItem: VideoItem? {
         guard queue.indices.contains(currentIndex) else { return nil }
@@ -238,12 +240,20 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         do {
             let url = try sources.resolvePlayableURL(for: item)
             _ = sources.beginAccess(folderId: item.folderId)
+            isLocalFile = url.isFileURL
+
             let media = VLCMedia(url: url)
-            media.addOption(":file-caching=300")
-            media.addOption(":network-caching=300")
-            media.addOption(":avcodec-hw=any")
+            if isLocalFile {
+                // Local Files / sandbox — keep decode light; avoid “forever buffering” UI.
+                media.addOption(":file-caching=1200")
+                media.addOption(":live-caching=300")
+            } else {
+                media.addOption(":network-caching=1500")
+                media.addOption(":file-caching=1000")
+            }
 
             // Tear down fully so .ended / .stopped can start cleanly again.
+            bufferingRevealTask?.cancel()
             player.delegate = nil
             player.stop()
             player.media = nil
@@ -254,31 +264,31 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             applyRate()
             applyAspect()
             currentTime = 0
-            // Keep previous duration if known so scrubber doesn't collapse during remount.
             lastPublishedTime = 0
             hasEnded = false
             errorMessage = nil
+            // Never flash the spinner for local files — frame is usually ready immediately.
+            isBuffering = false
 
             if autoplay {
-                isBuffering = true
                 isPlaying = true
                 // Deferred play is required after stop/ended on MobileVLCKit.
                 Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    try? await Task.sleep(nanoseconds: 40_000_000)
                     self.player.play()
                     if !self.player.isPlaying {
-                        try? await Task.sleep(nanoseconds: 120_000_000)
+                        try? await Task.sleep(nanoseconds: 100_000_000)
                         self.player.play()
                     }
                     self.isPlaying = true
-                    self.isBuffering = self.player.state == .buffering
+                    self.clearBuffering()
                     self.refreshTracks()
                     self.syncTime(force: true)
                 }
             } else {
                 isPlaying = false
                 Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    try? await Task.sleep(nanoseconds: 150_000_000)
                     self.refreshTracks()
                     self.syncTime(force: true)
                 }
@@ -286,14 +296,37 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
             isPlaying = false
-            isBuffering = false
+            clearBuffering()
         }
+    }
+
+    private func noteBuffering() {
+        // Local playback reports .buffering constantly (decoder warmup / keyframes).
+        // Only show a spinner for remote streams, and only if it sticks.
+        guard !isLocalFile else {
+            clearBuffering()
+            return
+        }
+        bufferingRevealTask?.cancel()
+        bufferingRevealTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            if self.player.state == .buffering || (!self.player.isPlaying && !self.hasEnded) {
+                self.isBuffering = true
+            }
+        }
+    }
+
+    private func clearBuffering() {
+        bufferingRevealTask?.cancel()
+        bufferingRevealTask = nil
+        if isBuffering { isBuffering = false }
     }
 
     private func markEnded() {
         hasEnded = true
         isPlaying = false
-        isBuffering = false
+        clearBuffering()
         if duration > 0 { currentTime = duration }
     }
 
@@ -360,6 +393,10 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         if let t = player.time.value?.doubleValue {
             let seconds = t / 1000.0
             if force || abs(seconds - lastPublishedTime) >= 0.2 {
+                // Advancing clock ⇒ not stuck buffering.
+                if abs(seconds - lastPublishedTime) >= 0.15 {
+                    clearBuffering()
+                }
                 currentTime = seconds
                 lastPublishedTime = seconds
             }
@@ -372,6 +409,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         }
         let playing = player.isPlaying
         if playing != isPlaying { isPlaying = playing }
+        if playing { clearBuffering() }
     }
 }
 
@@ -382,25 +420,25 @@ extension VideoPlaybackEngine: VLCMediaPlayerDelegate {
             case .error:
                 errorMessage = "Nie udało się odtworzyć pliku (kodek / HDR)."
                 isPlaying = false
-                isBuffering = false
+                clearBuffering()
                 hasEnded = false
             case .buffering:
-                isBuffering = true
+                noteBuffering()
             case .playing:
-                isBuffering = false
+                clearBuffering()
                 isPlaying = true
                 hasEnded = false
                 refreshTracks()
                 syncTime(force: true)
             case .paused:
                 isPlaying = false
-                isBuffering = false
+                clearBuffering()
             case .ended:
                 markEnded()
             case .stopped:
                 // After natural end VLC often goes ended→stopped; keep hasEnded so Play remounts.
                 isPlaying = false
-                isBuffering = false
+                clearBuffering()
                 if hasEnded || isNearEnd {
                     markEnded()
                 }

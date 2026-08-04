@@ -33,10 +33,14 @@ struct VideoPlayerView: View {
                     .padding(.bottom, landscape ? 110 : 140)
                     .onTapGesture { toggleControls() }
 
+                // Local files: never block the picture with a spinner.
+                // Remote: only after prolonged buffering (engine debounces).
                 if engine.isBuffering {
                     ProgressView()
                         .tint(.white)
-                        .scaleEffect(1.15)
+                        .scaleEffect(1.05)
+                        .padding(14)
+                        .background(.black.opacity(0.35), in: Circle())
                         .allowsHitTesting(false)
                 }
 
@@ -63,6 +67,8 @@ struct VideoPlayerView: View {
         .persistentSystemOverlays(.hidden)
         .onAppear {
             OrientationLock.shared.unlockAll()
+            // Keep chrome visible at start so playback doesn't feel “stuck”.
+            controlsVisible = true
             scheduleHide()
         }
         .onDisappear { hideTask?.cancel() }
