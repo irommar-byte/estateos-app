@@ -204,7 +204,7 @@ struct VideoPlayerView: View {
 
             VideoSignalBadgeBar(
                 info: engine.signalInfo,
-                aspectTitle: engine.aspectMode.title
+                aspectTitle: engine.aspectMode.hudLabel
             )
         }
     }
@@ -492,33 +492,131 @@ struct VLCVideoContainer: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PlayerDrawableView {
         let view = PlayerDrawableView()
-        view.backgroundColor = .black
-        view.clipsToBounds = true
-        view.contentMode = .scaleAspectFit
-        engine.attach(drawable: view)
+        engine.attach(host: view)
         return view
     }
 
     func updateUIView(_ uiView: PlayerDrawableView, context: Context) {
-        if engine.player.drawable as? UIView !== uiView {
-            engine.attach(drawable: uiView)
+        if engine.player.drawable as? UIView !== uiView.videoSurface {
+            engine.attach(host: uiView)
+            return
         }
-        uiView.contentMode = {
-            switch engine.aspectMode {
-            case .fillScreen: return .scaleAspectFill
-            case .stretch: return .scaleToFill
-            default: return .scaleAspectFit
-            }
-        }()
+        if uiView.aspectMode != engine.aspectMode {
+            engine.applyAspect(force: true)
+        }
     }
 }
 
-/// UIView that keeps VLC’s drawable layout filling the available bounds.
+/// Host clips; `videoSurface` is the actual VLC drawable and is framed for aspect modes
+/// (same idea as `AVPlayerLayer.videoGravity`).
 final class PlayerDrawableView: UIView {
+    let videoSurface = UIView()
+    var aspectMode: VideoAspectMode = .automatic
+    var sourceSize: CGSize = .zero
+    var onBoundsChange: (() -> Void)?
+
+    private var lastReportedBounds: CGRect = .zero
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        commonInit()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        commonInit()
+    }
+
+    private func commonInit() {
+        backgroundColor = .black
+        clipsToBounds = true
+        videoSurface.backgroundColor = .black
+        videoSurface.isUserInteractionEnabled = false
+        addSubview(videoSurface)
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
-        // VLC attaches sublayers/subviews — keep them sized to us.
-        layer.sublayers?.forEach { $0.frame = bounds }
-        subviews.forEach { $0.frame = bounds }
+        relayoutVideoSurface()
+        if bounds != lastReportedBounds {
+            lastReportedBounds = bounds
+            onBoundsChange?()
+        }
+    }
+
+    func relayoutVideoSurface() {
+        let next = Self.surfaceFrame(mode: aspectMode, sourceSize: sourceSize, in: bounds)
+        if videoSurface.frame != next {
+            videoSurface.frame = next
+        }
+        // VLC attaches GL/Metal layers — keep them filling the surface.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        videoSurface.layer.sublayers?.forEach { $0.frame = videoSurface.bounds }
+        videoSurface.subviews.forEach { $0.frame = videoSurface.bounds }
+        CATransaction.commit()
+    }
+
+    static func surfaceFrame(mode: VideoAspectMode, sourceSize: CGSize, in container: CGRect) -> CGRect {
+        guard container.width > 1, container.height > 1 else { return container }
+
+        switch mode {
+        case .stretch:
+            return container
+
+        case .fillScreen:
+            return scaledRect(
+                aspect: sourceAspect(sourceSize, fallbackIn: container),
+                in: container,
+                fill: true
+            )
+
+        case .automatic, .fitScreen:
+            return scaledRect(
+                aspect: sourceAspect(sourceSize, fallbackIn: container),
+                in: container,
+                fill: false
+            )
+
+        case .ratio16_9, .ratio4_3, .ratio21_9, .ratio2_35, .ratio2_39, .ratio1_1, .ratio3_2, .ratio9_16:
+            let aspect = mode.forcedAspect ?? sourceAspect(sourceSize, fallbackIn: container)
+            return scaledRect(aspect: aspect, in: container, fill: false)
+        }
+    }
+
+    private static func sourceAspect(_ source: CGSize, fallbackIn container: CGRect) -> CGFloat {
+        if source.width > 1, source.height > 1 {
+            return source.width / source.height
+        }
+        return container.width / container.height
+    }
+
+    private static func scaledRect(aspect: CGFloat, in container: CGRect, fill: Bool) -> CGRect {
+        guard aspect > 0.01, aspect < 100 else { return container }
+        let containerAspect = container.width / container.height
+        let size: CGSize
+        if fill {
+            if aspect > containerAspect {
+                let height = container.height
+                size = CGSize(width: height * aspect, height: height)
+            } else {
+                let width = container.width
+                size = CGSize(width: width, height: width / aspect)
+            }
+        } else {
+            if aspect > containerAspect {
+                let width = container.width
+                size = CGSize(width: width, height: width / aspect)
+            } else {
+                let height = container.height
+                size = CGSize(width: height * aspect, height: height)
+            }
+        }
+        return CGRect(
+            x: container.midX - size.width / 2,
+            y: container.midY - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
     }
 }

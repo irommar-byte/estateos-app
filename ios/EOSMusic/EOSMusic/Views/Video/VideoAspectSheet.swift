@@ -12,9 +12,9 @@ struct VideoAspectSheet: View {
                         aspectRow(mode)
                     }
                 } header: {
-                    Text("Dopasowanie do ekranu")
+                    Text("Dopasowanie")
                 } footer: {
-                    Text("Automatyczny zachowuje oryginalne proporcje źródła. Wypełnij przycina krawędzie. Rozciągnij ignoruje proporcje.")
+                    Text("Automatyczny i Dopasuj zachowują oryginalny obraz. Wypełnij przycina krawędzie. Rozciągnij ignoruje proporcje.")
                 }
 
                 Section("Stałe proporcje") {
@@ -24,76 +24,100 @@ struct VideoAspectSheet: View {
                 }
 
                 if engine.signalInfo.hasVideo {
-                    Section("Sygnał źródła") {
+                    Section("Sygnał") {
                         signalRow("Rozdzielczość", engine.signalInfo.resolution)
-                        signalRow("Proporcje źródła", engine.signalInfo.sourceAspect)
+                        signalRow("Proporcje", engine.signalInfo.sourceAspect)
                         signalRow("Klatki", engine.signalInfo.frameRate)
-                        signalRow("Kodek wideo", engine.signalInfo.videoCodec)
-                        signalRow("Kodek audio", engine.signalInfo.audioCodec)
+                        signalRow("Wideo", engine.signalInfo.videoCodecShort.isEmpty ? engine.signalInfo.videoCodec : engine.signalInfo.videoCodecShort)
+                        signalRow("Audio", engine.signalInfo.audioCodecShort.isEmpty ? engine.signalInfo.audioCodec : engine.signalInfo.audioCodecShort)
                         signalRow("Kanały", engine.signalInfo.audioChannels)
                         signalRow("Bitrate", engine.signalInfo.bitrate)
                         signalRow("Kontener", engine.signalInfo.container)
+
                         HStack {
-                            Text("HDR")
+                            Text("Zakres dynamiki")
                             Spacer()
                             if engine.signalInfo.isHDR {
                                 Text(engine.signalInfo.hdrLabel)
-                                    .font(.subheadline.weight(.bold))
+                                    .font(.caption.weight(.bold))
                                     .foregroundStyle(.black)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 4)
                                     .background(Color.yellow, in: Capsule())
                             } else {
                                 Text("SDR")
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        .accessibilityElement(children: .combine)
                     }
                 }
             }
-            .navigationTitle("Proporcje ekranu")
+            .listStyle(.insetGrouped)
+            .navigationTitle("Wyświetlanie")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Gotowe") { dismiss() }
+                        .fontWeight(.semibold)
                 }
             }
         }
         .presentationDetents([.medium, .large])
-        .onAppear { engine.refreshSignalInfo() }
+        .presentationDragIndicator(.visible)
+        .onAppear {
+            engine.refreshSignalInfo()
+            engine.applyAspect(force: true)
+        }
     }
 
     private func aspectRow(_ mode: VideoAspectMode) -> some View {
-        Button {
+        let selected = engine.aspectMode == mode
+        return Button {
+            UISelectionFeedbackGenerator().selectionChanged()
             engine.aspectMode = mode
         } label: {
-            HStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
                 Image(systemName: mode.systemImage)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(EOSTheme.accent)
-                    .frame(width: 28)
+                    .foregroundStyle(selected ? Color.accentColor : .secondary)
+                    .frame(width: 28, alignment: .center)
+                    .symbolRenderingMode(.hierarchical)
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(mode.title)
+                        .font(.body.weight(selected ? .semibold : .regular))
                         .foregroundStyle(.primary)
-                        .font(.body.weight(engine.aspectMode == mode ? .semibold : .regular))
+                        .lineLimit(1)
                     Text(mode.subtitle)
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
-                if engine.aspectMode == mode {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(EOSTheme.accent)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if selected {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
                 }
             }
+            .contentShape(Rectangle())
+            .padding(.vertical, 2)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     @ViewBuilder
     private func signalRow(_ title: String, _ value: String) -> some View {
         if !value.isEmpty {
-            LabeledContent(title, value: value)
+            LabeledContent(title) {
+                Text(value)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+            }
         }
     }
 }
@@ -107,33 +131,55 @@ struct VideoSignalBadgeBar: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 if info.isHDR {
-                    chip(info.hdrLabel, emphasized: true)
+                    chip(info.hdrLabel, style: .hdr)
                 } else if info.hasVideo {
-                    chip("SDR")
+                    chip("SDR", style: .muted)
                 }
                 if !info.resolution.isEmpty { chip(info.resolution) }
                 if !info.frameRate.isEmpty { chip(info.frameRate) }
-                if !info.videoCodec.isEmpty { chip(info.videoCodec) }
-                if !info.audioCodec.isEmpty { chip(info.audioCodec) }
+                if !info.videoCodecShort.isEmpty {
+                    chip(info.videoCodecShort)
+                } else if !info.videoCodec.isEmpty {
+                    chip(info.videoCodec)
+                }
+                if !info.audioCodecShort.isEmpty { chip(info.audioCodecShort) }
                 if !info.audioChannels.isEmpty { chip(info.audioChannels) }
                 if !info.container.isEmpty { chip(info.container) }
                 if !info.bitrate.isEmpty { chip(info.bitrate) }
-                chip(aspectTitle)
-                chip(info.isLocal ? "Lokalnie" : "Sieć")
+                chip(aspectTitle, style: .accent)
+                chip(info.isLocal ? "Lokalnie" : "Sieć", style: .muted)
             }
             .padding(.horizontal, 2)
         }
     }
 
-    private func chip(_ text: String, emphasized: Bool = false) -> some View {
+    private enum ChipStyle {
+        case standard, hdr, accent, muted
+    }
+
+    private func chip(_ text: String, style: ChipStyle = .standard) -> some View {
         Text(text)
-            .font(.caption2.weight(.bold))
-            .foregroundStyle(emphasized ? .black : .white)
+            .font(.caption2.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(foreground(style))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(
-                emphasized ? Color.yellow.opacity(0.95) : Color.white.opacity(0.16),
-                in: Capsule()
-            )
+            .background(background(style), in: Capsule())
+    }
+
+    private func foreground(_ style: ChipStyle) -> Color {
+        switch style {
+        case .hdr: return .black
+        case .accent, .standard, .muted: return .white
+        }
+    }
+
+    private func background(_ style: ChipStyle) -> Color {
+        switch style {
+        case .hdr: return Color.yellow.opacity(0.95)
+        case .accent: return Color.white.opacity(0.28)
+        case .muted: return Color.white.opacity(0.12)
+        case .standard: return Color.white.opacity(0.18)
+        }
     }
 }

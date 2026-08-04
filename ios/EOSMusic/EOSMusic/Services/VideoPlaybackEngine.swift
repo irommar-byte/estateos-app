@@ -22,19 +22,23 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         didSet { applyRate() }
     }
     @Published var aspectMode: VideoAspectMode = .automatic {
-        didSet { applyAspect() }
+        didSet {
+            guard oldValue != aspectMode else { return }
+            applyAspect(force: true)
+        }
     }
 
     /// True while the user is dragging the scrubber — blocks time sync from fighting the thumb.
     var isUserSeeking = false
 
     let player = VLCMediaPlayer()
-    private weak var drawable: UIView?
+    private weak var hostView: PlayerDrawableView?
     private var lastSubtitleIndex: Int32 = -1
     private var lastPublishedTime: Double = -1
     private var sourcesRef: VideoSourcesStore?
     private var bufferingRevealTask: Task<Void, Never>?
     private var isLocalFile = true
+    private var aspectApplyTask: Task<Void, Never>?
 
     var currentItem: VideoItem? {
         guard queue.indices.contains(currentIndex) else { return nil }
@@ -49,12 +53,17 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         player.delegate = self
     }
 
-    func attach(drawable: UIView) {
-        self.drawable = drawable
-        drawable.backgroundColor = .black
-        drawable.contentMode = .scaleAspectFit
-        player.drawable = drawable
-        applyAspect()
+    func attach(host: PlayerDrawableView) {
+        hostView = host
+        host.backgroundColor = .black
+        host.clipsToBounds = true
+        host.onBoundsChange = { [weak self] in
+            Task { @MainActor in
+                self?.applyAspect(force: false)
+            }
+        }
+        player.drawable = host.videoSurface
+        applyAspect(force: true)
     }
 
     func play(session: VideoPlaybackSession, sources: VideoSourcesStore) {
@@ -260,9 +269,11 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             player.delegate = self
 
             player.media = media
-            player.drawable = drawable
+            if let host = hostView {
+                player.drawable = host.videoSurface
+            }
             applyRate()
-            applyAspect()
+            applyAspect(force: true)
             currentTime = 0
             lastPublishedTime = 0
             hasEnded = false
@@ -284,7 +295,12 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                     self.clearBuffering()
                     self.refreshTracks()
                     self.refreshSignalInfo()
+                    self.applyAspect(force: true)
                     self.syncTime(force: true)
+                    // VLC often reports videoSize slightly after first frames.
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    self.refreshSignalInfo()
+                    self.applyAspect(force: true)
                 }
             } else {
                 isPlaying = false
@@ -292,6 +308,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                     try? await Task.sleep(nanoseconds: 150_000_000)
                     self.refreshTracks()
                     self.refreshSignalInfo()
+                    self.applyAspect(force: true)
                     self.syncTime(force: true)
                 }
             }
@@ -379,32 +396,54 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         player.rate = Float(rate.rawValue)
     }
 
-    private func applyAspect() {
-        // Reset crop; set VLC aspect or leave source default.
-        player.videoCropGeometry = nil
-        if let ratio = aspectMode.vlcAspectRatio {
-            ratio.withCString { cstr in
-                player.videoAspectRatio = strdup(cstr)
+    /// Layout-based aspect (AVPlayerLayer-style). VLC always fills `videoSurface`;
+    /// we size/position that surface inside the host. Stretch also forces VLC DAR.
+    func applyAspect(force: Bool) {
+        guard let host = hostView else { return }
+        let bounds = host.bounds
+        guard bounds.width > 2, bounds.height > 2 else {
+            // SwiftUI may attach before first layout — retry once.
+            aspectApplyTask?.cancel()
+            aspectApplyTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                applyAspect(force: true)
             }
+            return
+        }
+
+        let vSize = player.videoSize
+        let source: CGSize = {
+            if vSize.width > 1, vSize.height > 1 { return vSize }
+            if signalInfo.width > 0, signalInfo.height > 0 {
+                return CGSize(width: signalInfo.width, height: signalInfo.height)
+            }
+            return .zero
+        }()
+
+        host.aspectMode = aspectMode
+        host.sourceSize = source
+        host.relayoutVideoSurface()
+
+        // Reset VLC geometry; only stretch needs a forced display aspect.
+        player.videoCropGeometry = nil
+        player.scaleFactor = 0
+        if aspectMode == .stretch {
+            let w = max(1, Int(host.videoSurface.bounds.width.rounded()))
+            let h = max(1, Int(host.videoSurface.bounds.height.rounded()))
+            setVLCAspectRatio("\(w):\(h)")
         } else {
             player.videoAspectRatio = nil
         }
 
-        switch aspectMode {
-        case .fillScreen:
-            player.scaleFactor = 0
-            drawable?.contentMode = .scaleAspectFill
-        case .stretch:
-            player.scaleFactor = 0
-            drawable?.contentMode = .scaleToFill
-        default:
-            player.scaleFactor = 0
-            drawable?.contentMode = .scaleAspectFit
+        if player.drawable as? UIView !== host.videoSurface || force {
+            player.drawable = host.videoSurface
         }
+    }
 
-        if let drawable {
-            player.drawable = nil
-            player.drawable = drawable
+    private func setVLCAspectRatio(_ value: String) {
+        value.withCString { cstr in
+            // libvlc copies immediately; temporary pointer is safe.
+            player.videoAspectRatio = UnsafeMutablePointer(mutating: cstr)
         }
     }
 
@@ -579,6 +618,7 @@ extension VideoPlaybackEngine: VLCMediaPlayerDelegate {
                 hasEnded = false
                 refreshTracks()
                 refreshSignalInfo()
+                applyAspect(force: true)
                 syncTime(force: true)
             case .paused:
                 isPlaying = false

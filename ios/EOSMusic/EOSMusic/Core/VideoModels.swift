@@ -94,7 +94,7 @@ struct VideoTrackOption: Identifiable, Hashable {
     let isSelected: Bool
 }
 
-/// Profesjonalne tryby kadrowania / proporcji (VLC `videoAspectRatio` + UIView contentMode).
+/// Profesjonalne tryby kadrowania / proporcji (layout surface + VLC aspect).
 enum VideoAspectMode: String, CaseIterable, Identifiable {
     case automatic
     case fitScreen
@@ -114,62 +114,73 @@ enum VideoAspectMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .automatic: return "Automatyczny"
-        case .fitScreen: return "Dopasuj do ekranu"
-        case .fillScreen: return "Wypełnij ekran"
+        case .fitScreen: return "Dopasuj"
+        case .fillScreen: return "Wypełnij"
         case .stretch: return "Rozciągnij"
         case .ratio16_9: return "16:9"
         case .ratio4_3: return "4:3"
         case .ratio21_9: return "21:9"
-        case .ratio2_35: return "2.35:1 (Cinema)"
-        case .ratio2_39: return "2.39:1 (Scope)"
+        case .ratio2_35: return "2.35:1"
+        case .ratio2_39: return "2.39:1"
         case .ratio1_1: return "1:1"
         case .ratio3_2: return "3:2"
-        case .ratio9_16: return "9:16 (pion)"
+        case .ratio9_16: return "9:16"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .automatic: return "Oryginalne proporcje źródła"
-        case .fitScreen: return "Cały obraz, czarne pasy jeśli trzeba"
-        case .fillScreen: return "Wypełnia ekran (może przyciąć)"
-        case .stretch: return "Wymusza rozmiar ekranu bez zachowania proporcji"
-        case .ratio16_9: return "HDTV / YouTube"
-        case .ratio4_3: return "Klasyczny TV / DVD"
+        case .automatic: return "Oryginalne proporcje pliku"
+        case .fitScreen: return "Cały obraz · czarne pasy gdy trzeba"
+        case .fillScreen: return "Pełny ekran · może przyciąć krawędzie"
+        case .stretch: return "Wymusza ekran · bez zachowania proporcji"
+        case .ratio16_9: return "HDTV · YouTube · Broadcast"
+        case .ratio4_3: return "Klasyczny TV · DVD"
         case .ratio21_9: return "Ultraszeroki monitor"
         case .ratio2_35: return "Kino panoramiczne"
         case .ratio2_39: return "Anamorphic scope"
         case .ratio1_1: return "Kwadrat"
-        case .ratio3_2: return "Fotografia / klasyczny film"
-        case .ratio9_16: return "Stories / pionowe nagranie"
+        case .ratio3_2: return "Fotografia · klasyczny film"
+        case .ratio9_16: return "Pion · Stories · Reels"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .automatic: return "aspectratio"
-        case .fitScreen: return "rectangle.arrowtriangle.2.inward"
-        case .fillScreen: return "rectangle.arrowtriangle.2.outward"
-        case .stretch: return "arrow.up.left.and.arrow.down.right"
+        case .automatic: return "rectangle.dashed"
+        case .fitScreen: return "arrow.down.right.and.arrow.up.left"
+        case .fillScreen: return "arrow.up.left.and.arrow.down.right"
+        case .stretch: return "arrow.up.backward.and.arrow.down.forward"
         case .ratio16_9, .ratio21_9, .ratio2_35, .ratio2_39: return "rectangle"
         case .ratio4_3, .ratio3_2: return "rectangle.portrait"
         case .ratio1_1: return "square"
-        case .ratio9_16: return "rectangle.portrait.fill"
+        case .ratio9_16: return "rectangle.portrait"
         }
     }
 
-    /// VLC aspect string, or nil to reset.
-    var vlcAspectRatio: String? {
+    /// Stały stosunek szerokość/wysokość ramki, albo `nil` = użyj proporcji źródła / ekranu.
+    var forcedAspect: CGFloat? {
         switch self {
         case .automatic, .fitScreen, .fillScreen, .stretch: return nil
-        case .ratio16_9: return "16:9"
-        case .ratio4_3: return "4:3"
-        case .ratio21_9: return "21:9"
-        case .ratio2_35: return "235:100"
-        case .ratio2_39: return "239:100"
-        case .ratio1_1: return "1:1"
-        case .ratio3_2: return "3:2"
-        case .ratio9_16: return "9:16"
+        case .ratio16_9: return 16.0 / 9.0
+        case .ratio4_3: return 4.0 / 3.0
+        case .ratio21_9: return 21.0 / 9.0
+        case .ratio2_35: return 2.35
+        case .ratio2_39: return 2.39
+        case .ratio1_1: return 1.0
+        case .ratio3_2: return 3.0 / 2.0
+        case .ratio9_16: return 9.0 / 16.0
+        }
+    }
+
+    /// Krótka etykieta HUD (np. „Wypełnij”, „16:9”).
+    var hudLabel: String {
+        switch self {
+        case .automatic: return "Auto"
+        case .fitScreen: return "Dopasuj"
+        case .fillScreen: return "Wypełnij"
+        case .stretch: return "Rozciągnij"
+        default: return title
         }
     }
 
@@ -196,8 +207,37 @@ struct VideoSignalInfo: Equatable {
 
     var hasVideo: Bool { width > 0 || !resolution.isEmpty || !videoCodec.isEmpty }
 
+    /// Krótka nazwa kodeka do chipów (HEVC zamiast pełnego FourCC).
+    var videoCodecShort: String {
+        Self.shortCodec(videoCodec)
+    }
+
+    var audioCodecShort: String {
+        Self.shortCodec(audioCodec)
+    }
+
     var summaryLine: String {
-        [resolution, frameRate, videoCodec].filter { !$0.isEmpty }.joined(separator: " · ")
+        [resolution, frameRate, videoCodecShort].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    static func shortCodec(_ raw: String) -> String {
+        let s = raw.lowercased()
+        if s.contains("hevc") || s.contains("h.265") || s.contains("h265") || s.contains("mpeg-h") { return "HEVC" }
+        if s.contains("avc") || s.contains("h.264") || s.contains("h264") || s.contains("avc1") { return "H.264" }
+        if s.contains("av1") { return "AV1" }
+        if s.contains("vp9") { return "VP9" }
+        if s.contains("vp8") { return "VP8" }
+        if s.contains("prores") { return "ProRes" }
+        if s.contains("aac") { return "AAC" }
+        if s.contains("ac-3") || s.contains("ac3") || s.contains("a52") { return "Dolby Digital" }
+        if s.contains("eac") || s.contains("ec-3") || s.contains("e-ac") { return "Dolby Digital+" }
+        if s.contains("truehd") || s.contains("mlp") { return "TrueHD" }
+        if s.contains("dts") { return "DTS" }
+        if s.contains("flac") { return "FLAC" }
+        if s.contains("opus") { return "Opus" }
+        if s.contains("mp3") || (s.contains("mpeg") && s.contains("audio")) { return "MP3" }
+        if raw.count > 18 { return String(raw.prefix(16)) + "…" }
+        return raw
     }
 }
 
