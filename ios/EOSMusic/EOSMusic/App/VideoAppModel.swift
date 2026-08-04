@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 
@@ -7,12 +8,30 @@ final class VideoAppModel: ObservableObject {
     @Published var libraryError: String?
     @Published private(set) var videosByFolder: [UUID: [VideoItem]] = [:]
     @Published private(set) var isScanning = false
+    /// Bumps when folder list changes so views observing VideoAppModel always refresh.
+    @Published private(set) var foldersVersion: Int = 0
 
     let sources = VideoSourcesStore()
     let engine = VideoPlaybackEngine()
 
     /// Called by host app to pause music when video starts.
     var onWillStartPlayback: (() -> Void)?
+
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        sources.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+                self?.foldersVersion += 1
+            }
+            .store(in: &cancellables)
+        engine.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+    }
+
+    var folders: [ConnectedVideoFolder] { sources.folders }
 
     func refreshFolder(_ folder: ConnectedVideoFolder) async {
         isScanning = true
@@ -61,10 +80,18 @@ final class VideoAppModel: ObservableObject {
 
     func connectFolder(name: String, url: URL) throws {
         try sources.connectFolder(name: name, folderURL: url)
+        foldersVersion += 1
+        objectWillChange.send()
+        if let folder = sources.folders.first(where: { $0.name == name })
+            ?? sources.folders.last {
+            Task { await refreshFolder(folder) }
+        }
     }
 
     func disconnect(_ folder: ConnectedVideoFolder) {
         sources.disconnect(folder)
         videosByFolder.removeValue(forKey: folder.id)
+        foldersVersion += 1
+        objectWillChange.send()
     }
 }

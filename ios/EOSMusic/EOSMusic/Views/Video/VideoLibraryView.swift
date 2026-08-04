@@ -25,7 +25,7 @@ struct VideoLibraryView: View {
                         Text("Dodaj folder z filmami z iPhone’a, iCloud albo zewnętrznego dysku USB w aplikacji Pliki.")
                     }
 
-                    if video.sources.folders.isEmpty {
+                    if video.folders.isEmpty {
                         Section {
                             ContentUnavailableView(
                                 "Brak folderów wideo",
@@ -37,7 +37,7 @@ struct VideoLibraryView: View {
                         }
                     } else {
                         Section("Foldery") {
-                            ForEach(video.sources.folders) { folder in
+                            ForEach(video.folders) { folder in
                                 NavigationLink {
                                     VideoFolderDetailView(folder: folder)
                                         .environmentObject(video)
@@ -75,6 +75,7 @@ struct VideoLibraryView: View {
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
+                .id(video.foldersVersion)
             }
             .navigationTitle("Wideo")
             .sheet(isPresented: $showAddFolder) {
