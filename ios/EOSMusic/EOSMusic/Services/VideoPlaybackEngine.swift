@@ -65,7 +65,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     }
 
     func togglePlayPause() {
-        if hasEnded || player.state == .ended || isNearEnd {
+        // After EOS, MobileVLCKit ignores seek/play — must reload media.
+        if hasEnded || player.state == .ended || (isNearEnd && !player.isPlaying) {
             replayFromStart()
             return
         }
@@ -81,16 +82,27 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
 
     func replayFromStart() {
         hasEnded = false
-        seek(to: 0, resume: true)
+        isBuffering = true
+        isPlaying = true
+        currentTime = 0
+        lastPublishedTime = 0
+        errorMessage = nil
+        // Hard remount — the only reliable restart after VLCMediaPlayerStateEnded.
+        loadCurrent(autoplay: true)
     }
 
     func jumpBackward15() {
+        if hasEnded || player.state == .ended {
+            replayFromStart()
+            return
+        }
         let target = max(0, currentTime - 15)
-        seek(to: target, resume: isPlaying || hasEnded)
+        seek(to: target, resume: isPlaying)
     }
 
     func jumpForward15() {
         guard duration > 0 else { return }
+        if hasEnded { return }
         let target = min(duration, currentTime + 15)
         if target >= duration - 0.15 {
             seek(to: duration, resume: false)
@@ -101,20 +113,39 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     }
 
     func seek(to seconds: Double, resume: Bool? = nil) {
+        if hasEnded || player.state == .ended {
+            // Seeking from ended state is unreliable — remount then seek.
+            let target = seconds
+            let shouldResume = resume ?? true
+            hasEnded = false
+            loadCurrent(autoplay: false)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                applySeek(to: target)
+                if shouldResume {
+                    player.play()
+                    isPlaying = true
+                }
+            }
+            return
+        }
         let shouldResume = resume ?? isPlaying
-        let total = max(duration, 0.001)
+        applySeek(to: seconds)
+        if shouldResume {
+            player.play()
+            isPlaying = true
+        }
+    }
+
+    private func applySeek(to seconds: Double) {
+        let total = max(duration > 1 ? duration : (player.media?.length.value?.doubleValue ?? 0) / 1000.0, 0.001)
         let clamped = min(max(0, seconds), total)
         let ms = Int32((clamped * 1000.0).rounded())
         player.time = VLCTime(int: ms)
-        // Also set position — more reliable on some short/local files.
         player.position = Float(clamped / total)
         currentTime = clamped
         lastPublishedTime = clamped
         hasEnded = false
-        if shouldResume {
-            if !player.isPlaying { player.play() }
-            isPlaying = true
-        }
     }
 
     func playNext(sources: VideoSourcesStore) {
@@ -211,28 +242,51 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             media.addOption(":file-caching=300")
             media.addOption(":network-caching=300")
             media.addOption(":avcodec-hw=any")
+
+            // Tear down fully so .ended / .stopped can start cleanly again.
+            player.delegate = nil
             player.stop()
+            player.media = nil
+            player.delegate = self
+
             player.media = media
             player.drawable = drawable
             applyRate()
             applyAspect()
             currentTime = 0
-            duration = 0
+            // Keep previous duration if known so scrubber doesn't collapse during remount.
             lastPublishedTime = 0
             hasEnded = false
-            if autoplay {
-                player.play()
-                isPlaying = true
-            }
             errorMessage = nil
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 400_000_000)
-                refreshTracks()
-                syncTime(force: true)
+
+            if autoplay {
+                isBuffering = true
+                isPlaying = true
+                // Deferred play is required after stop/ended on MobileVLCKit.
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    self.player.play()
+                    if !self.player.isPlaying {
+                        try? await Task.sleep(nanoseconds: 120_000_000)
+                        self.player.play()
+                    }
+                    self.isPlaying = true
+                    self.isBuffering = self.player.state == .buffering
+                    self.refreshTracks()
+                    self.syncTime(force: true)
+                }
+            } else {
+                isPlaying = false
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    self.refreshTracks()
+                    self.syncTime(force: true)
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
             isPlaying = false
+            isBuffering = false
         }
     }
 
@@ -344,8 +398,12 @@ extension VideoPlaybackEngine: VLCMediaPlayerDelegate {
             case .ended:
                 markEnded()
             case .stopped:
+                // After natural end VLC often goes ended→stopped; keep hasEnded so Play remounts.
                 isPlaying = false
                 isBuffering = false
+                if hasEnded || isNearEnd {
+                    markEnded()
+                }
             default:
                 break
             }

@@ -210,11 +210,18 @@ struct VideoPlayerView: View {
                 engine.togglePlayPause()
                 bumpControls()
             } label: {
-                Image(systemName: playPauseIcon)
-                    .font(.system(size: 64))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.white)
-                    .frame(width: 72, height: 72)
+                VStack(spacing: 4) {
+                    Image(systemName: playPauseIcon)
+                        .font(.system(size: 64))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.white)
+                    if engine.hasEnded {
+                        Text("Od początku")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(width: 88, height: 88)
             }
 
             Button {
