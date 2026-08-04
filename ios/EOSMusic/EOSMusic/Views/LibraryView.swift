@@ -63,11 +63,12 @@ struct LibraryView: View {
                             }
                         }
                         .padding(.horizontal, 20)
-                        .padding(.bottom, 28)
+                        .padding(.bottom, 48)
                     }
                 }
             }
             .background(Color(.systemBackground))
+            .eosScrollClearance()
             .navigationTitle("Biblioteka")
             .navigationBarTitleDisplayMode(.large)
             .navigationDestination(for: LibraryCategory.self) { category in

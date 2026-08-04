@@ -18,6 +18,18 @@ enum EOSTheme {
     )
 }
 
+enum EOSMotion {
+    static let standard = Animation.spring(response: 0.38, dampingFraction: 0.86)
+    static let snappy = Animation.snappy(duration: 0.25)
+    static let soft = Animation.easeInOut(duration: 0.28)
+}
+
+enum EOSLayout {
+    /// Extra scroll padding under the floating mini-player (beyond safeAreaInset).
+    static let miniPlayerScrollClearance: CGFloat = 28
+    static let miniPlayerCorner: CGFloat = 16
+}
+
 enum PlayerEffectsMode: String, CaseIterable, Identifiable {
     case subtle
     case strong
@@ -195,30 +207,49 @@ private struct SettingsSectionBackground: View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
             .fill(Color(uiColor: .secondarySystemGroupedBackground))
             .shadow(
-                color: Color.black.opacity(colorScheme == .light ? 0.08 : 0),
-                radius: 12,
+                color: Color.black.opacity(colorScheme == .light ? 0.1 : 0.35),
+                radius: colorScheme == .light ? 14 : 8,
                 x: 0,
-                y: 5
+                y: colorScheme == .light ? 6 : 3
             )
-            .padding(.vertical, 2)
+            .padding(.vertical, 3)
     }
 }
 
 struct SettingsChoiceRow: View {
     let title: String
+    var subtitle: String? = nil
+    var systemImage: String? = nil
     let isSelected: Bool
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(EOSMotion.snappy) { action() }
+        } label: {
             HStack(spacing: 12) {
-                Text(title)
-                    .foregroundStyle(EOSTheme.textPrimary)
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(EOSTheme.accent)
+                        .frame(width: 26)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .foregroundStyle(EOSTheme.textPrimary)
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Spacer(minLength: 8)
                 if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image(systemName: "checkmark")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(EOSTheme.accent)
+                        .transition(.scale.combined(with: .opacity))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -226,6 +257,7 @@ struct SettingsChoiceRow: View {
             .padding(.vertical, 2)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

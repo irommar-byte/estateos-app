@@ -71,6 +71,7 @@ struct VideoFolderDetailView: View {
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
+            .eosScrollClearance()
             .refreshable { await video.refreshFolder(folder) }
         }
         .navigationTitle(folder.name)

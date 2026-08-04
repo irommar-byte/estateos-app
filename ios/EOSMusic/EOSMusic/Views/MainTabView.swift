@@ -1,6 +1,13 @@
 import SwiftUI
 
 struct MainTabView: View {
+    init() {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithDefaultBackground()
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+    }
+
     var body: some View {
         TabView {
             LibraryView()
@@ -19,251 +26,13 @@ struct MainTabView: View {
                 .miniPlayerTabInset()
                 .tabItem { Label("Wideo", systemImage: "film") }
 
-            SettingsView()
+            AccountView()
                 .miniPlayerTabInset()
-                .tabItem { Label("Konto", systemImage: "person.circle") }
+                .tabItem { Label("Konto", systemImage: "person.crop.circle.fill") }
         }
         .tint(EOSTheme.accent)
     }
 }
-
-struct SettingsView: View {
-    @EnvironmentObject private var app: AppModel
-    @EnvironmentObject private var ui: UIPreferences
-    @ObservedObject private var apple = AppleSignInService.shared
-    @State private var isAppleBusy = false
-    @State private var appleMessage: String?
-
-    private var needsMiniPlayerClearance: Bool {
-        app.playback.engine != nil && !app.isFullPlayerPresented
-    }
-
-    private var isAppleConnected: Bool {
-        app.user?.isAppleLinked == true || apple.isLinked
-    }
-
-    private var appleConnectedLabel: String {
-        if let email = app.user?.appleEmail, !email.isEmpty { return email }
-        if let email = apple.linkedAccount?.email, !email.isEmpty { return email }
-        if let name = apple.linkedAccount?.fullName, !name.isEmpty { return name }
-        return app.user?.appleDisplayName ?? "Połączono z Apple ID"
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                EOSAmbientBackground()
-                    .allowsHitTesting(false)
-
-                List {
-                    if let user = app.user {
-                        Section("Konto Nostalgie™") {
-                            LabeledContent("Login", value: user.login)
-                        }
-                    }
-
-                    Section {
-                        if isAppleConnected {
-                            HStack(spacing: 10) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Połączono")
-                                        .font(.subheadline.weight(.semibold))
-                                    Text(appleConnectedLabel)
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(2)
-                                }
-                            }
-                            FilesListButton {
-                                Task { await unlinkApple() }
-                            } label: {
-                                FilesActionRow(icon: "link.badge.plus", title: "Odłącz Apple ID", iconColor: .red, titleColor: .red)
-                            }
-                            .disabled(isAppleBusy)
-                        } else {
-                            Button {
-                                Task { await linkAppleToCurrentAccount() }
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "apple.logo")
-                                        .font(.body.weight(.semibold))
-                                    Text(isAppleBusy ? "Łączenie…" : "Połącz z Apple ID")
-                                        .font(.body.weight(.semibold))
-                                }
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 44)
-                                .foregroundStyle(.white)
-                                .background(Color.black, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(isAppleBusy || app.user == nil)
-                        }
-                    } header: {
-                        Text("Apple Account")
-                    } footer: {
-                        if app.user == nil {
-                            Text("Zaloguj się, aby powiązać Apple ID z kontem Nostalgie™.")
-                        } else if isAppleConnected {
-                            Text("Apple ID jest powiązane z kontem „\(app.user?.login ?? "")”. Możesz się nim logować na innych urządzeniach.")
-                        } else {
-                            Text("Powiąż Apple ID z aktualnie zalogowanym kontem Nostalgie™.")
-                        }
-                    }
-
-                    Section {
-                        LabeledContent("Folder", value: AppDocuments.downloadsFolderName)
-                        Text("Pliki → Na moim iPhonie → \(AppConfig.appDisplayName) → Pobrane")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Text("Tu trafiają utwory po „Pobierz”. Działają offline. Usunięcie z iPhone’a nie kasuje kopii na serwerze EOS.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        NavigationLink {
-                            LocalDownloadsBrowseView()
-                        } label: {
-                            Label("Przeglądaj i udostępniaj lokalne pliki", systemImage: "folder")
-                        }
-                        LabeledContent("Na tym iPhonie", value: "\(OfflineMusicStore.shared.downloadedFileCount) plików")
-                    } header: {
-                        Text("Na tym iPhonie")
-                    }
-
-                    Section {
-                        LabeledContent("Utwory w bibliotece EOS", value: "\(app.serverAssetCount)")
-                        LabeledContent("Rozmiar na serwerze", value: ByteCountFormatter.string(fromByteCount: Int64(app.serverLibraryBytes), countStyle: .file))
-                        Text("Po pierwszym udanym pozyskaniu utwór zostaje na serwerze EOS (MP3 + okładka + tagi). Na każdym zalogowanym urządzeniu otwiera się od razu — bez ponownego sięgania do źródła pierwotnego.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Text("Pliki serwerowe nie widać w aplikacji Pliki, dopóki nie pobierzesz ich na urządzenie.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        if !app.serverAssets.isEmpty {
-                            NavigationLink {
-                                ServerMusicAssetsView()
-                            } label: {
-                                Label("Lista utworów na serwerze", systemImage: "externaldrive.fill.badge.checkmark")
-                            }
-                        }
-                    } header: {
-                        Text("Biblioteka EOS (serwer)")
-                    } footer: {
-                        Text("Źródło pierwotne jest używane tylko przy pierwszym pozyskaniu utworu. Potem gra i pobiera wyłącznie biblioteka EOS.")
-                    }
-
-                    Section("Motyw") {
-                        ForEach(AppAppearance.allCases) { mode in
-                            SettingsChoiceRow(
-                                title: mode.title,
-                                isSelected: ui.appearance == mode
-                            ) {
-                                ui.appearance = mode
-                            }
-                        }
-                    }
-
-                    Section("Efekty playera") {
-                        ForEach(PlayerEffectsMode.allCases) { mode in
-                            SettingsChoiceRow(
-                                title: mode.title,
-                                isSelected: ui.playerEffectsMode == mode
-                            ) {
-                                ui.playerEffectsMode = mode
-                            }
-                        }
-                    }
-
-                    Section {
-                        Toggle("Ultra Compact (więcej utworów na ekranie)", isOn: $ui.ultraCompact)
-                    }
-
-                    Section("Informacje") {
-                        Link("Polityka prywatności", destination: AppConfig.privacyPolicyURL)
-                        Link("Wsparcie", destination: AppConfig.supportURL)
-                        LabeledContent("Wersja", value: AppConfig.appVersion)
-                    }
-
-                    Section {
-                        Button("Wyloguj się", role: .destructive) {
-                            app.logout()
-                        }
-                    }
-                }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
-                .settingsInsetSurfaces()
-            }
-            .contentMargins(.bottom, needsMiniPlayerClearance ? 36 : 0, for: .scrollContent)
-            .navigationTitle("Konto")
-            .task {
-                await app.refreshServerAssets()
-                await app.refreshAppleLinkStatus()
-            }
-            .alert("Apple ID", isPresented: Binding(get: { appleMessage != nil }, set: { if !$0 { appleMessage = nil } })) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(appleMessage ?? "")
-            }
-        }
-    }
-
-    private func linkAppleToCurrentAccount() async {
-        guard app.user != nil else {
-            appleMessage = "Zaloguj się na konto Nostalgie™, aby powiązać Apple ID."
-            return
-        }
-        isAppleBusy = true
-        defer { isAppleBusy = false }
-        do {
-            let result = try await AppleSignInService.shared.signIn()
-            // Prefer session Bearer link; fall back to remembered password if present.
-            let saved = CredentialsStore.load()
-            try await app.linkAppleAccount(
-                identityToken: result.identityToken,
-                login: saved?.login,
-                password: saved?.password
-            )
-            let linkedEmail = app.user?.appleEmail ?? result.email
-            try AppleSignInService.shared.storeLink(AppleAccountLink(
-                userId: app.user?.appleUserId ?? result.userId,
-                email: linkedEmail,
-                fullName: result.fullName,
-                linkedAt: Date()
-            ))
-            await app.refreshAppleLinkStatus()
-            app.presentToast(MusicToast(
-                systemImage: "checkmark.circle.fill",
-                title: "Połączono z Apple ID",
-                subtitle: linkedEmail
-            ))
-        } catch {
-            if case AppleSignInError.cancelled = error { return }
-            appleMessage = error.localizedDescription
-        }
-    }
-
-    private func unlinkApple() async {
-        let userId = app.user?.appleUserId ?? apple.linkedAccount?.userId
-        guard let userId, !userId.isEmpty else {
-            appleMessage = "Brak identyfikatora Apple do odłączenia."
-            return
-        }
-        isAppleBusy = true
-        defer { isAppleBusy = false }
-        do {
-            try await app.unlinkAppleAccount(appleUserId: userId)
-            app.presentToast(MusicToast(
-                systemImage: "link.badge.plus",
-                title: "Odłączono Apple ID",
-                subtitle: nil
-            ))
-        } catch {
-            appleMessage = error.localizedDescription
-        }
-    }
-}
-
 
 private enum ServerBrowseMode: String, CaseIterable, Identifiable {
     case artists
@@ -403,6 +172,7 @@ struct ServerMusicAssetsView: View {
                         }
                     }
                     .listStyle(.insetGrouped)
+                    .eosScrollClearance()
                     .overlay(alignment: .trailing) {
                         if mode == .songs, selectedArtist == nil, selectedAlbum == nil {
                             AlphabetIndexBar(

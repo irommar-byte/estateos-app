@@ -72,6 +72,7 @@ struct LocalDownloadsBrowseView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .eosScrollClearance()
         .navigationTitle("Na moim iPhonie")
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $searchText, prompt: "Szukaj")

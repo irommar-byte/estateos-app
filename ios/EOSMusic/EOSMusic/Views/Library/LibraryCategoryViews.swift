@@ -70,6 +70,7 @@ struct LibraryPlaylistsView: View {
         .navigationTitle("Playlisty")
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $playlistQuery, prompt: "Szukaj w playlistach")
+        .eosScrollClearance()
         .navigationDestination(for: MusicFolder.self) { folder in
             FolderDetailView(folder: folder)
         }
@@ -227,6 +228,7 @@ struct LibraryArtistsView: View {
         .navigationTitle("Wykonawcy")
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, prompt: "Szukaj w wykonawcach")
+        .eosScrollClearance()
     }
 
     private func artistRow(_ group: LibraryArtistGroup) -> some View {
@@ -321,6 +323,7 @@ struct LibraryAlbumsView: View {
         .navigationTitle("Albumy")
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, prompt: "Szukaj w albumach")
+        .eosScrollClearance()
     }
 
     private func albumRow(_ group: LibraryAlbumGroup) -> some View {
@@ -487,6 +490,7 @@ struct LibrarySongsListView: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, prompt: enablesLibrarySearch ? "Szukaj w utworach" : "Szukaj")
+        .eosScrollClearance()
         .sheet(item: $sharePayload) { payload in
             ActivityView(activityItems: payload.items)
         }
@@ -675,6 +679,7 @@ struct LibraryDownloadedView: View {
         .navigationTitle("Pobrane")
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, prompt: "Szukaj w pobranych")
+        .eosScrollClearance()
         .sheet(item: $sharePayload) { payload in
             ActivityView(activityItems: payload.items)
         }

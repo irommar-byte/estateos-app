@@ -96,12 +96,13 @@ struct FolderDetailView: View {
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
+                .eosScrollClearance()
                 .environment(\.editMode, $editMode)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
-        .animation(.snappy(duration: 0.25), value: isLoading)
-        .animation(.snappy(duration: 0.25), value: tracks.count)
+        .animation(EOSMotion.snappy, value: isLoading)
+        .animation(EOSMotion.snappy, value: tracks.count)
         .background(EOSAmbientBackground())
         .navigationTitle(liveFolder.name)
         .navigationBarTitleDisplayMode(.inline)

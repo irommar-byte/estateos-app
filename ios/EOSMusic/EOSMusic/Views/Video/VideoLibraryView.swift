@@ -75,6 +75,7 @@ struct VideoLibraryView: View {
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
+                .eosScrollClearance()
                 .id(video.foldersVersion)
             }
             .navigationTitle("Wideo")

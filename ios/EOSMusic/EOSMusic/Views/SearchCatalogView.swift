@@ -78,6 +78,7 @@ struct SearchCatalogView: View {
                 .padding(.bottom, 24)
             }
             .background(EOSAmbientBackground())
+            .eosScrollClearance()
             .navigationTitle("Szukaj")
             .searchable(
                 text: $query,

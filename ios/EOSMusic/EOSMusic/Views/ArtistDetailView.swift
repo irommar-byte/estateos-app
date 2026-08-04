@@ -64,11 +64,13 @@ struct ArtistDetailView: View {
                     }
                 }
                 .padding(16)
+                .padding(.bottom, 40)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
-        .animation(.snappy(duration: 0.25), value: isLoading)
+        .animation(EOSMotion.snappy, value: isLoading)
         .background(EOSAmbientBackground())
+        .eosScrollClearance()
         .navigationTitle(detail?.artist.name ?? artistName)
         .navigationBarTitleDisplayMode(.large)
         .task { await load() }

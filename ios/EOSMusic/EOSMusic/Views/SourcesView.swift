@@ -146,6 +146,7 @@ struct SourcesView: View {
             .listStyle(.insetGrouped)
             .navigationTitle("Przeglądaj")
             .navigationBarTitleDisplayMode(.large)
+            .eosScrollClearance()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     EditButton()

@@ -55,6 +55,7 @@ struct FavoritesView: View {
                     }
                 }
                 .listStyle(.plain)
+                .eosScrollClearance()
             }
         }
         .background(Color(.systemBackground))

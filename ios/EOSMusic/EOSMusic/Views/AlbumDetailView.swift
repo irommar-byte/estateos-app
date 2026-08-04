@@ -76,10 +76,11 @@ struct AlbumDetailView: View {
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
+                .eosScrollClearance()
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
-        .animation(.snappy(duration: 0.25), value: isLoading)
+        .animation(EOSMotion.snappy, value: isLoading)
         .background(EOSAmbientBackground())
         .navigationTitle(detail?.album.title ?? "Album")
         .navigationBarTitleDisplayMode(.inline)
