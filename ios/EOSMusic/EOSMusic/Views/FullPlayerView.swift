@@ -20,14 +20,30 @@ private struct PlayerContent: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ui: UIPreferences
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showAddToPlaylist = false
+    @State private var showEffectsSheet = false
     @State private var artistRoute: MusicArtistRoute?
     @State private var albumRoute: MusicAlbumRoute?
     @State private var browseError: String?
+    @State private var thermal = ProcessInfo.processInfo.thermalState
+    @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
 
-    private var effectsMode: PlayerEffectsMode {
-        ui.playerEffectsMode
+    private var preset: PlayerVisualPreset { ui.playerVisualPreset }
+
+    private var policy: PlayerVisualPolicy {
+        PlayerVisualPolicy.resolve(
+            preset: preset,
+            intensity: ui.playerEffectsIntensity,
+            strobeEnabled: ui.playerStrobeEnabled,
+            autoPerformance: ui.playerAutoPerformance,
+            reduceMotion: reduceMotion,
+            lowPower: lowPower,
+            thermal: thermal
+        )
     }
+
+    private var effectsActive: Bool { policy.enabled && preset != .off }
 
     var body: some View {
         NavigationStack {
@@ -46,6 +62,29 @@ private struct PlayerContent: View {
         } message: {
             Text(browseError ?? "")
         }
+        .onAppear { syncAnalyzer() }
+        .onDisappear {
+            // Mini-player: keep light analysis off to save battery.
+            engine.configureVisualAnalysis(enabled: false, fps: 0)
+        }
+        .onChange(of: ui.playerVisualPreset) { _, _ in syncAnalyzer() }
+        .onChange(of: ui.playerEffectsIntensity) { _, _ in syncAnalyzer() }
+        .onChange(of: ui.playerAutoPerformance) { _, _ in syncAnalyzer() }
+        .onChange(of: ui.playerStrobeEnabled) { _, _ in syncAnalyzer() }
+        .onChange(of: thermal) { _, _ in syncAnalyzer() }
+        .onChange(of: lowPower) { _, _ in syncAnalyzer() }
+        .onChange(of: reduceMotion) { _, _ in syncAnalyzer() }
+        .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)) { _ in
+            thermal = ProcessInfo.processInfo.thermalState
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+            lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        }
+    }
+
+    private func syncAnalyzer() {
+        let p = policy
+        engine.configureVisualAnalysis(enabled: p.enabled && app.isFullPlayerPresented, fps: p.analyzerFPS)
     }
 
     @ViewBuilder
@@ -53,7 +92,20 @@ private struct PlayerContent: View {
         GeometryReader { geo in
             let layout = PlayerLayout(height: geo.size.height, width: geo.size.width)
             ZStack {
-                PlayerGlassBackground(isPlaying: engine.isPlaying, mode: effectsMode, audio: engine.audioFrame)
+                PlayerGlassBackground(
+                    isPlaying: engine.isPlaying,
+                    preset: preset,
+                    policy: policy,
+                    audio: engine.audioFrame
+                )
+
+                if effectsActive, policy.allowStrobe {
+                    SafeStrobeOverlay(
+                        isPlaying: engine.isPlaying,
+                        beat: engine.audioFrame.beat,
+                        intensity: policy.intensityScale
+                    )
+                }
 
                 if let track = engine.currentTrack {
                     VStack(spacing: 0) {
@@ -64,19 +116,34 @@ private struct PlayerContent: View {
                         RotatingDiscArtwork(
                             artworkURL: track.artworkURL,
                             isPlaying: engine.isPlaying,
-                            mode: effectsMode,
+                            preset: preset,
+                            policy: policy,
                             audio: engine.audioFrame,
                             canvasSize: layout.discSize
                         )
 
-                        if effectsMode != .off {
+                        if effectsActive {
                             CompactIslandVisualizer(
                                 isPlaying: engine.isPlaying,
-                                isStrong: effectsMode == .strong,
+                                isStrong: preset.isStrong,
+                                intensity: policy.intensityScale,
                                 audio: engine.audioFrame,
-                                compact: layout.tight
+                                compact: layout.tight,
+                                timelineFPS: policy.timelineFPS
                             )
                             .padding(.top, layout.afterDiscGap)
+
+                            if preset.showsMixer, !layout.tight {
+                                FrequencyMixerView(
+                                    audio: engine.audioFrame,
+                                    intensity: policy.intensityScale,
+                                    isPlaying: engine.isPlaying,
+                                    accentPulse: preset == .pulse || preset == .aurora
+                                )
+                                .padding(.top, 10)
+                                .padding(.horizontal, 4)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                            }
                         }
 
                         trackMeta(track: track, layout: layout)
@@ -96,6 +163,14 @@ private struct PlayerContent: View {
                                 .multilineTextAlignment(.center)
                                 .lineLimit(2)
                                 .padding(.horizontal, 20)
+                                .padding(.top, 4)
+                        }
+
+                        if let reason = policy.restrictionReason, effectsActive || preset != .off {
+                            Text(reason)
+                                .font(.caption2)
+                                .foregroundStyle(EOSTheme.textMuted)
+                                .multilineTextAlignment(.center)
                                 .padding(.top, 4)
                         }
 
@@ -126,6 +201,10 @@ private struct PlayerContent: View {
                     .environmentObject(app)
             }
         }
+        .sheet(isPresented: $showEffectsSheet) {
+            PlayerEffectsSheet()
+                .environmentObject(ui)
+        }
     }
 
     private func playerChrome(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
@@ -147,6 +226,16 @@ private struct PlayerContent: View {
                 .padding(.vertical, 6)
                 .background(.ultraThinMaterial, in: Capsule())
             Spacer()
+            Button {
+                showEffectsSheet = true
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(effectsActive ? EOSTheme.accent : EOSTheme.textSecondary)
+                    .frame(width: 40, height: 40)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .accessibilityLabel("Efekty playera")
             FavoriteButton(item: track.favoriteItem, size: 18)
                 .frame(width: 40, height: 40)
                 .background(.ultraThinMaterial, in: Circle())
@@ -348,10 +437,15 @@ private struct PlayerLayout {
 
 private struct PlayerGlassBackground: View {
     let isPlaying: Bool
-    let mode: PlayerEffectsMode
+    let preset: PlayerVisualPreset
+    let policy: PlayerVisualPolicy
     let audio: MusicPlaybackEngine.AudioReactiveFrame
 
     var body: some View {
+        let intensity = policy.intensityScale
+        let drive = audio.visualDrive(isStrong: preset.isStrong, intensity: intensity)
+        let beat = audio.beat * intensity
+
         ZStack {
             Rectangle()
                 .fill(.ultraThinMaterial)
@@ -368,38 +462,83 @@ private struct PlayerGlassBackground: View {
             )
             .ignoresSafeArea()
 
-            if mode == .strong {
-                SoftPlayerBackdrop(isPlaying: isPlaying, audio: audio)
-            } else if mode == .subtle {
-                RadialGradient(
-                    colors: [
-                        EOSTheme.accentSecondary.opacity(isPlaying ? 0.12 : 0.06),
-                        .clear
-                    ],
-                    center: .top,
-                    startRadius: 20,
-                    endRadius: 420
-                )
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
+            if policy.enabled {
+                switch preset {
+                case .vinyl:
+                    RadialGradient(
+                        colors: [
+                            EOSTheme.accentSecondary.opacity(isPlaying ? 0.12 * intensity : 0.06),
+                            .clear
+                        ],
+                        center: .top,
+                        startRadius: 20,
+                        endRadius: 420
+                    )
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                case .spectrum, .pulse:
+                    SoftPlayerBackdrop(isPlaying: isPlaying, audio: audio, intensity: intensity, aurora: false)
+                case .aurora:
+                    SoftPlayerBackdrop(isPlaying: isPlaying, audio: audio, intensity: intensity, aurora: true)
+                    AuroraWaves(isPlaying: isPlaying, drive: drive, beat: beat, fps: policy.timelineFPS)
+                case .off:
+                    EmptyView()
+                }
             }
         }
+    }
+}
+
+private struct AuroraWaves: View {
+    let isPlaying: Bool
+    let drive: Double
+    let beat: Double
+    let fps: Double
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / max(8, fps), paused: !isPlaying || fps < 1)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            Canvas { gc, size in
+                for i in 0..<3 {
+                    let phase = t * (0.35 + Double(i) * 0.12) + Double(i)
+                    let y = size.height * (0.25 + 0.2 * CGFloat(i)) + CGFloat(sin(phase)) * 24
+                    var path = Path()
+                    path.move(to: CGPoint(x: 0, y: y))
+                    for x in stride(from: 0, through: size.width, by: 12) {
+                        let wave = sin(Double(x) * 0.012 + phase) * (18 + drive * 22 + beat * 10)
+                        path.addLine(to: CGPoint(x: x, y: y + CGFloat(wave)))
+                    }
+                    let color = i % 2 == 0 ? EOSTheme.accent : EOSTheme.accentSecondary
+                    gc.stroke(
+                        path,
+                        with: .color(color.opacity(0.12 + drive * 0.18)),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                    )
+                }
+            }
+            .ignoresSafeArea()
+        }
+        .allowsHitTesting(false)
+        .blendMode(.plusLighter)
     }
 }
 
 private struct RotatingDiscArtwork: View {
     let artworkURL: URL?
     let isPlaying: Bool
-    let mode: PlayerEffectsMode
+    let preset: PlayerVisualPreset
+    let policy: PlayerVisualPolicy
     let audio: MusicPlaybackEngine.AudioReactiveFrame
     var canvasSize: CGFloat = 286
 
     var body: some View {
-        let enabled = mode != .off
-        let strong = mode == .strong
-        let drive = audio.visualDrive(isStrong: strong)
-        let beat = min(1, audio.beat * 1.35 + drive * 0.25)
+        let enabled = policy.enabled && preset != .off
+        let strong = preset.isStrong
+        let intensity = policy.intensityScale
+        let drive = audio.visualDrive(isStrong: strong, intensity: intensity)
+        let beat = min(1, (audio.beat * 1.35 + drive * 0.25) * intensity)
         let scale = canvasSize / 320
+        let fps = max(1, policy.timelineFPS)
 
         if !enabled {
             ArtworkImage(url: artworkURL, size: canvasSize * 0.82, cornerRadius: 18)
@@ -411,13 +550,15 @@ private struct RotatingDiscArtwork: View {
                     isStrong: strong,
                     drive: drive,
                     beat: beat,
-                    bars: audio.islandBars
+                    bars: preset == .spectrum || preset == .pulse ? audio.spectrumBands : audio.islandBars,
+                    fps: fps
                 )
 
                 DiscSpinner(
                     artworkURL: artworkURL,
-                    isSpinning: isPlaying,
-                    secondsPerRevolution: strong ? 9 : 11
+                    isSpinning: isPlaying && fps >= 8,
+                    secondsPerRevolution: strong ? 9 : 11,
+                    fps: fps
                 )
                 .equatable()
                 .scaleEffect(isPlaying ? 1 + CGFloat(beat) * (strong ? 0.045 : 0.03) : 1)
@@ -440,15 +581,17 @@ private struct DiscSpinner: View, Equatable {
     let artworkURL: URL?
     let isSpinning: Bool
     let secondsPerRevolution: Double
+    var fps: Double = 30
 
     static func == (lhs: DiscSpinner, rhs: DiscSpinner) -> Bool {
         lhs.artworkURL == rhs.artworkURL
             && lhs.isSpinning == rhs.isSpinning
             && lhs.secondsPerRevolution == rhs.secondsPerRevolution
+            && abs(lhs.fps - rhs.fps) < 0.5
     }
 
     var body: some View {
-        ContinuousSpin(isSpinning: isSpinning, secondsPerRevolution: secondsPerRevolution) {
+        ContinuousSpin(isSpinning: isSpinning, secondsPerRevolution: secondsPerRevolution, fps: fps) {
             VinylDisc(artworkURL: artworkURL)
         }
     }
@@ -457,13 +600,14 @@ private struct DiscSpinner: View, Equatable {
 private struct ContinuousSpin<Content: View>: View {
     let isSpinning: Bool
     let secondsPerRevolution: Double
+    var fps: Double = 30
     @ViewBuilder let content: Content
 
     @State private var spinStartedAt: Date?
     @State private var frozenTurns: Double = 0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isSpinning)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / max(8, fps), paused: !isSpinning)) { context in
             let turns: Double = {
                 if isSpinning, let start = spinStartedAt {
                     return frozenTurns + context.date.timeIntervalSince(start) / max(0.1, secondsPerRevolution)
@@ -596,6 +740,7 @@ private struct MusicReactiveHalo: View {
     let drive: Double
     let beat: Double
     let bars: [Double]
+    var fps: Double = 24
 
     private let vinylRadius: CGFloat = 136
 
@@ -621,7 +766,7 @@ private struct MusicReactiveHalo: View {
                 .scaleEffect(isPlaying ? 1 + CGFloat(beat) * 0.06 + CGFloat(drive) * 0.03 : 1)
                 .animation(.easeOut(duration: 0.09), value: beat)
 
-            TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: !isPlaying)) { context in
+            TimelineView(.animation(minimumInterval: 1.0 / max(8, fps), paused: !isPlaying || fps < 1)) { context in
                 let t = context.date.timeIntervalSinceReferenceDate
                 Canvas { gc, size in
                     let center = CGPoint(x: size.width / 2, y: size.height / 2)
@@ -678,18 +823,21 @@ private struct CompactIslandVisualizer: View {
     @Environment(\.colorScheme) private var colorScheme
     let isPlaying: Bool
     let isStrong: Bool
+    var intensity: Double = 1
     let audio: MusicPlaybackEngine.AudioReactiveFrame
     var compact: Bool = false
+    var timelineFPS: Double = 24
 
     private let barCount = MusicPlaybackEngine.AudioReactiveFrame.islandBarCount
 
     var body: some View {
-        let drive = audio.visualDrive(isStrong: isStrong)
-        let beat = min(1, audio.beat * 1.4)
+        let drive = audio.visualDrive(isStrong: isStrong, intensity: intensity)
+        let beat = min(1, audio.beat * 1.4 * intensity)
         let pillFill = colorScheme == .light
             ? Color.black.opacity(0.9)
             : Color.black.opacity(0.78)
         let barColor = Color.white.opacity(0.95)
+        let _ = timelineFPS // reserved for future TimelineView pacing
 
         HStack(spacing: compact ? 10 : 14) {
             Circle()
@@ -767,14 +915,17 @@ private struct CompactIslandVisualizer: View {
 private struct SoftPlayerBackdrop: View {
     let isPlaying: Bool
     let audio: MusicPlaybackEngine.AudioReactiveFrame
+    var intensity: Double = 1
+    var aurora: Bool = false
 
     var body: some View {
-        let drive = audio.visualDrive(isStrong: true)
-        let beat = audio.beat
+        let drive = audio.visualDrive(isStrong: true, intensity: intensity)
+        let beat = audio.beat * intensity
         ZStack {
             RadialGradient(
                 colors: [
-                    EOSTheme.accentSecondary.opacity(isPlaying ? 0.1 + drive * 0.1 + beat * 0.04 : 0.04),
+                    (aurora ? EOSTheme.accentSecondary : EOSTheme.accentSecondary)
+                        .opacity(isPlaying ? 0.1 + drive * 0.1 + beat * 0.04 : 0.04),
                     .clear
                 ],
                 center: .top,
@@ -786,13 +937,145 @@ private struct SoftPlayerBackdrop: View {
                     EOSTheme.accent.opacity(isPlaying ? 0.07 + drive * 0.08 + beat * 0.03 : 0.03),
                     .clear
                 ],
-                center: .bottomTrailing,
+                center: aurora ? .bottomLeading : .bottomTrailing,
                 startRadius: 10,
                 endRadius: 340
             )
+            if aurora {
+                RadialGradient(
+                    colors: [
+                        Color.cyan.opacity(isPlaying ? 0.05 + drive * 0.06 : 0.02),
+                        .clear
+                    ],
+                    center: .trailing,
+                    startRadius: 8,
+                    endRadius: 300
+                )
+            }
         }
         .ignoresSafeArea()
         .animation(.easeOut(duration: 0.18), value: drive)
         .allowsHitTesting(false)
+    }
+}
+
+/// Compact spectrum mixer — Bass / Mid / Treble meters + 16-band EQ strip.
+private struct FrequencyMixerView: View {
+    let audio: MusicPlaybackEngine.AudioReactiveFrame
+    let intensity: Double
+    let isPlaying: Bool
+    var accentPulse: Bool = false
+
+    private let bandCount = MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCount
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                meter(title: "BASS", value: audio.bass * intensity, color: EOSTheme.accent)
+                meter(title: "MID", value: audio.mid * intensity, color: EOSTheme.accentSecondary)
+                meter(title: "TREBLE", value: audio.treble * intensity, color: Color.cyan)
+            }
+
+            Canvas { gc, size in
+                let spacing: CGFloat = 3
+                let width = max(2, (size.width - spacing * CGFloat(bandCount - 1)) / CGFloat(bandCount))
+                for index in 0..<bandCount {
+                    let level = min(1, audio.spectrumBand(at: index) * (0.85 + intensity * 0.35))
+                    let peak = min(1, audio.peak(at: index) * (0.85 + intensity * 0.35))
+                    let x = CGFloat(index) * (width + spacing)
+                    let barH = max(2, CGFloat(level) * size.height * (isPlaying ? 1 : 0.25))
+                    let rect = CGRect(x: x, y: size.height - barH, width: width, height: barH)
+                    let color = index < 5
+                        ? EOSTheme.accent
+                        : (index < 11 ? EOSTheme.accentSecondary : Color.cyan)
+                    gc.fill(Path(roundedRect: rect, cornerRadius: 2), with: .color(color.opacity(0.55 + level * 0.4)))
+
+                    let peakY = size.height - max(2, CGFloat(peak) * size.height) - 1
+                    let peakRect = CGRect(x: x, y: peakY, width: width, height: 2)
+                    gc.fill(Path(roundedRect: peakRect, cornerRadius: 1), with: .color(.white.opacity(0.75)))
+                }
+            }
+            .frame(height: 44)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.black.opacity(0.28))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 0.6)
+                    )
+            )
+            .shadow(
+                color: accentPulse
+                    ? EOSTheme.accent.opacity(isPlaying ? 0.18 + audio.beat * 0.2 * intensity : 0)
+                    : .clear,
+                radius: 10,
+                y: 2
+            )
+            .animation(nil, value: audio.spectrumBands)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Mikser częstotliwości")
+        .accessibilityValue(
+            "Bass \(Int(audio.bass * 100)), Mid \(Int(audio.mid * 100)), Treble \(Int(audio.treble * 100))"
+        )
+    }
+
+    private func meter(title: String, value: Double, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.1))
+                    Capsule()
+                        .fill(color.opacity(0.85))
+                        .frame(width: max(4, geo.size.width * CGFloat(min(1, value))))
+                }
+            }
+            .frame(height: 5)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// Photosensitive-safe accent flash — max ~3 Hz, no full-screen white.
+private struct SafeStrobeOverlay: View {
+    let isPlaying: Bool
+    let beat: Double
+    let intensity: Double
+
+    @State private var flash: Double = 0
+    @State private var lastFlashAt: TimeInterval = 0
+
+    private let minInterval: TimeInterval = 1.0 / 3.0
+
+    var body: some View {
+        RadialGradient(
+            colors: [
+                EOSTheme.accent.opacity(flash * 0.22 * intensity),
+                EOSTheme.accentSecondary.opacity(flash * 0.1 * intensity),
+                .clear
+            ],
+            center: .center,
+            startRadius: 10,
+            endRadius: 380
+        )
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .blendMode(.plusLighter)
+        .onChange(of: beat) { _, newBeat in
+            guard isPlaying, newBeat > 0.62 else { return }
+            let now = CACurrentMediaTime()
+            guard now - lastFlashAt >= minInterval else { return }
+            lastFlashAt = now
+            withAnimation(.easeOut(duration: 0.05)) { flash = min(1, newBeat) }
+            withAnimation(.easeOut(duration: 0.22).delay(0.05)) { flash = 0 }
+        }
+        .onChange(of: isPlaying) { _, playing in
+            if !playing { flash = 0 }
+        }
     }
 }

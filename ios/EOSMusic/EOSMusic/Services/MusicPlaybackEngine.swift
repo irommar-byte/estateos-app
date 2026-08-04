@@ -28,6 +28,7 @@ enum RepeatMode: String, CaseIterable {
 final class MusicPlaybackEngine: ObservableObject {
     struct AudioReactiveFrame {
         static let islandBarCount = 5
+        static let spectrumBandCount = 16
 
         var level: Double = 0
         var bass: Double = 0
@@ -36,10 +37,16 @@ final class MusicPlaybackEngine: ObservableObject {
         var beat: Double = 0
         /// Wygładzone paski jak w Dynamic Island / ekranie blokady (5 słupków).
         var islandBars: [Double] = Array(repeating: 0, count: islandBarCount)
+        /// Lekkie pasma widma (pseudo-EQ) do miksera.
+        var spectrumBands: [Double] = Array(repeating: 0, count: spectrumBandCount)
+        /// Peak-hold per band for mixer needles.
+        var peakHold: [Double] = Array(repeating: 0, count: spectrumBandCount)
+        /// Overall punch energy 0…1.
+        var energy: Double = 0
 
         /// Płynna siła wizualna: cichy dźwięk = mała, mocny = duża (z headroomem przeciw przesterowi).
-        func visualDrive(isStrong: Bool) -> Double {
-            let gain = isStrong ? 0.88 : 0.76
+        func visualDrive(isStrong: Bool, intensity: Double = 1) -> Double {
+            let gain = (isStrong ? 0.88 : 0.76) * min(1, max(0, intensity))
             let base = level * 0.82 + bass * 0.1
             let punch = beat * 0.52
             let combined = (base + punch) * gain
@@ -47,8 +54,8 @@ final class MusicPlaybackEngine: ObservableObject {
             return pow(min(1, combined), 1.18)
         }
 
-        func spotIntensity(isStrong: Bool) -> Double {
-            let drive = visualDrive(isStrong: isStrong)
+        func spotIntensity(isStrong: Bool, intensity: Double = 1) -> Double {
+            let drive = visualDrive(isStrong: isStrong, intensity: intensity)
             guard drive > 0.015 else { return 0 }
             return pow(min(1, drive * 0.5 + beat * 0.32), 1.12)
         }
@@ -56,6 +63,16 @@ final class MusicPlaybackEngine: ObservableObject {
         func islandBar(at index: Int) -> Double {
             guard islandBars.indices.contains(index) else { return 0 }
             return islandBars[index]
+        }
+
+        func spectrumBand(at index: Int) -> Double {
+            guard spectrumBands.indices.contains(index) else { return 0 }
+            return spectrumBands[index]
+        }
+
+        func peak(at index: Int) -> Double {
+            guard peakHold.indices.contains(index) else { return 0 }
+            return peakHold[index]
         }
     }
 
@@ -68,6 +85,14 @@ final class MusicPlaybackEngine: ObservableObject {
     @Published var repeatMode: RepeatMode = .all
     @Published var errorMessage: String?
     @Published private(set) var audioFrame = AudioReactiveFrame()
+
+    func configureVisualAnalysis(enabled: Bool, fps: Double) {
+        audioAnalyzer.setAnalysisEnabled(enabled)
+        audioAnalyzer.setPublishRate(fps: fps)
+        if !enabled {
+            audioFrame = AudioReactiveFrame()
+        }
+    }
 
     let folderId: String?
     let folderName: String?
@@ -657,20 +682,46 @@ private final class PlayerAudioAnalyzer {
     private struct State {
         var lowLP: Float = 0
         var midLP: Float = 0
+        var bandLP: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCount)
         var prevBass: Float = 0
         var kickEnvelope: Float = 0
         var visualEnvelope: Float = 0
         var lastPeak: Float = 0
         var lastPush: CFTimeInterval = 0
         var islandBars: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.islandBarCount)
+        var spectrumBars: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCount)
+        var peakHold: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCount)
+        var peakHoldAge: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCount)
+        var energy: Float = 0
     }
 
     private var state = State()
     private let lock = NSLock()
     private var push: ((MusicPlaybackEngine.AudioReactiveFrame) -> Void)?
+    /// Target publish rate (Hz). 0 = pause publishing.
+    private var targetFPS: Double = 24
+    private var analysisEnabled = true
 
     private weak var attachedItem: AVPlayerItem?
     private var attachTask: Task<Void, Never>?
+
+    func setPublishRate(fps: Double) {
+        lock.lock()
+        targetFPS = max(0, min(30, fps))
+        lock.unlock()
+    }
+
+    func setAnalysisEnabled(_ enabled: Bool) {
+        lock.lock()
+        analysisEnabled = enabled
+        if !enabled {
+            state = State()
+        }
+        lock.unlock()
+        if !enabled {
+            push?(MusicPlaybackEngine.AudioReactiveFrame())
+        }
+    }
 
     func attach(to item: AVPlayerItem, push: @escaping (MusicPlaybackEngine.AudioReactiveFrame) -> Void) {
         self.push = push
@@ -753,10 +804,17 @@ private final class PlayerAudioAnalyzer {
         let sampleCount = frameCount * channels
         if sampleCount <= 0 { return }
 
+        lock.lock()
+        let enabled = analysisEnabled
+        let fps = targetFPS
+        lock.unlock()
+        guard enabled, fps > 0.5 else { return }
+
         var sumSq: Float = 0
         var lowSq: Float = 0
         var midSq: Float = 0
         var highSq: Float = 0
+        var bandSq = [Float](repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCount)
 
         lock.lock()
         var local = state
@@ -778,6 +836,19 @@ private final class PlayerAudioAnalyzer {
             lowSq += low * low
             midSq += mid * mid
             highSq += high * high
+
+            // Lightweight multi-band IIR bank (log-ish spacing via alpha schedule).
+            for b in 0..<local.bandLP.count {
+                let alpha = 0.018 + Float(b) * 0.028
+                local.bandLP[b] += alpha * (mono - local.bandLP[b])
+                let filtered: Float
+                if b == 0 {
+                    filtered = local.bandLP[b]
+                } else {
+                    filtered = local.bandLP[b] - local.bandLP[b - 1]
+                }
+                bandSq[b] += filtered * filtered
+            }
         }
 
         let inv = 1.0 / Float(max(1, frameCount))
@@ -833,9 +904,39 @@ private final class PlayerAudioAnalyzer {
             }
         }
 
+        // Spectrum bands + peak hold.
+        for index in 0..<bandSq.count {
+            let raw = min(1, sqrt(bandSq[index] * inv) * (7.5 + Float(index) * 0.35))
+            var bar = local.spectrumBars[index]
+            if raw > bar {
+                bar += (raw - bar) * 0.55
+            } else {
+                bar += (raw - bar) * 0.22
+            }
+            local.spectrumBars[index] = max(0, min(1, bar))
+
+            if bar >= local.peakHold[index] {
+                local.peakHold[index] = bar
+                local.peakHoldAge[index] = 0
+            } else {
+                local.peakHoldAge[index] += 1
+                // Hold briefly, then decay slowly (mixer needle feel).
+                if local.peakHoldAge[index] > 8 {
+                    local.peakHold[index] *= 0.92
+                }
+            }
+        }
+
+        let energyTarget = min(1, instantLevel * 0.55 + bassNorm * 0.25 + beatNorm * 0.35)
+        if energyTarget > local.energy {
+            local.energy += (energyTarget - local.energy) * 0.55
+        } else {
+            local.energy *= 0.86
+        }
+
         let now = CACurrentMediaTime()
-        // 24 fps is enough for UI glow/bars and cuts MainActor churn vs 60 fps.
-        let shouldPush = now - local.lastPush >= (1.0 / 24.0)
+        let interval = 1.0 / max(1.0, fps)
+        let shouldPush = now - local.lastPush >= interval
         if shouldPush {
             local.lastPush = now
         }
@@ -849,7 +950,10 @@ private final class PlayerAudioAnalyzer {
             mid: Double(midNorm),
             treble: Double(trebleNorm),
             beat: Double(beatNorm),
-            islandBars: local.islandBars.map(Double.init)
+            islandBars: local.islandBars.map(Double.init),
+            spectrumBands: local.spectrumBars.map(Double.init),
+            peakHold: local.peakHold.map(Double.init),
+            energy: Double(local.energy)
         )
         push?(frame)
     }

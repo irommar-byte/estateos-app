@@ -30,21 +30,152 @@ enum EOSLayout {
     static let miniPlayerCorner: CGFloat = 16
 }
 
-enum PlayerEffectsMode: String, CaseIterable, Identifiable {
-    case subtle
-    case strong
+/// Visual presets for the full player (legacy `subtle`/`strong` map on load).
+enum PlayerVisualPreset: String, CaseIterable, Identifiable {
+    case vinyl
+    case spectrum
+    case aurora
+    case pulse
     case off
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .subtle: return "Delikatne"
-        case .strong: return "Mocniejsze"
+        case .vinyl: return "Vinyl"
+        case .spectrum: return "Spectrum"
+        case .aurora: return "Aurora"
+        case .pulse: return "Pulse"
         case .off: return "Wyłączone"
         }
     }
+
+    var subtitle: String {
+        switch self {
+        case .vinyl: return "Obracająca się płyta i delikatny halo"
+        case .spectrum: return "Mikser częstotliwości + pierścień widma"
+        case .aurora: return "Miękkie fale kolorów wokół okładki"
+        case .pulse: return "Mocny beat-glow i bezpieczne strobo"
+        case .off: return "Statyczna okładka bez efektów"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .vinyl: return "opticaldisc"
+        case .spectrum: return "waveform.path.ecg"
+        case .aurora: return "sparkles"
+        case .pulse: return "bolt.heart.fill"
+        case .off: return "moon.zzz"
+        }
+    }
+
+    var showsMixer: Bool {
+        switch self {
+        case .spectrum, .aurora, .pulse: return true
+        case .vinyl, .off: return false
+        }
+    }
+
+    var isStrong: Bool {
+        switch self {
+        case .spectrum, .pulse: return true
+        case .vinyl, .aurora, .off: return false
+        }
+    }
+
+    var allowsStrobe: Bool { self == .pulse || self == .spectrum }
+
+    /// Map old Account settings (`subtle` / `strong` / `off`).
+    static func migrated(fromStored raw: String?) -> PlayerVisualPreset {
+        switch raw {
+        case "subtle": return .vinyl
+        case "strong": return .spectrum
+        case "off": return .off
+        case let value?:
+            return PlayerVisualPreset(rawValue: value) ?? .vinyl
+        case nil:
+            return .vinyl
+        }
+    }
 }
+
+/// Effective visual budget after user prefs + system limits.
+struct PlayerVisualPolicy: Equatable {
+    var enabled: Bool
+    var allowStrobe: Bool
+    var analyzerFPS: Double
+    var timelineFPS: Double
+    var intensityScale: Double
+    var restrictionReason: String?
+
+    static func resolve(
+        preset: PlayerVisualPreset,
+        intensity: Double,
+        strobeEnabled: Bool,
+        autoPerformance: Bool,
+        reduceMotion: Bool,
+        lowPower: Bool,
+        thermal: ProcessInfo.ThermalState
+    ) -> PlayerVisualPolicy {
+        let clampedIntensity = min(1, max(0, intensity))
+        if preset == .off || reduceMotion {
+            return PlayerVisualPolicy(
+                enabled: false,
+                allowStrobe: false,
+                analyzerFPS: 0,
+                timelineFPS: 0,
+                intensityScale: 0,
+                restrictionReason: reduceMotion && preset != .off
+                    ? "Reduce Motion wyłącza animacje"
+                    : nil
+            )
+        }
+
+        var fps: Double = 24
+        var timeline: Double = 30
+        var reason: String?
+        var scale = clampedIntensity
+
+        if autoPerformance {
+            if thermal == .critical || thermal == .serious {
+                return PlayerVisualPolicy(
+                    enabled: false,
+                    allowStrobe: false,
+                    analyzerFPS: 0,
+                    timelineFPS: 0,
+                    intensityScale: 0,
+                    restrictionReason: "Urządzenie jest gorące — efekty wstrzymane"
+                )
+            }
+            if thermal == .fair || lowPower {
+                fps = 12
+                timeline = 15
+                scale *= 0.72
+                reason = lowPower
+                    ? "Tryb Low Power ogranicza efekty"
+                    : "Ciepłe urządzenie — tryb oszczędny"
+            }
+        }
+
+        let strobeOK = strobeEnabled
+            && preset.allowsStrobe
+            && !reduceMotion
+            && !(autoPerformance && (lowPower || thermal != .nominal))
+
+        return PlayerVisualPolicy(
+            enabled: true,
+            allowStrobe: strobeOK,
+            analyzerFPS: fps,
+            timelineFPS: timeline,
+            intensityScale: scale,
+            restrictionReason: reason
+        )
+    }
+}
+
+/// Compatibility alias used by older call sites / docs.
+typealias PlayerEffectsMode = PlayerVisualPreset
 
 enum AppAppearance: String, CaseIterable, Identifiable {
     case system
@@ -75,22 +206,56 @@ final class UIPreferences: ObservableObject {
     @Published var appearance: AppAppearance {
         didSet { UserDefaults.standard.set(appearance.rawValue, forKey: Self.appearanceKey) }
     }
-    @Published var playerEffectsMode: PlayerEffectsMode {
-        didSet { UserDefaults.standard.set(playerEffectsMode.rawValue, forKey: Self.playerEffectsKey) }
+    /// Preferred visual preset (Vinyl / Spectrum / Aurora / Pulse / Off).
+    @Published var playerVisualPreset: PlayerVisualPreset {
+        didSet { UserDefaults.standard.set(playerVisualPreset.rawValue, forKey: Self.playerEffectsKey) }
+    }
+    /// 0…1 global visual intensity multiplier.
+    @Published var playerEffectsIntensity: Double {
+        didSet { UserDefaults.standard.set(playerEffectsIntensity, forKey: Self.intensityKey) }
+    }
+    /// Safe beat strobe — default off; gated by policy.
+    @Published var playerStrobeEnabled: Bool {
+        didSet { UserDefaults.standard.set(playerStrobeEnabled, forKey: Self.strobeKey) }
+    }
+    /// Auto-throttle on Low Power / thermal stress.
+    @Published var playerAutoPerformance: Bool {
+        didSet { UserDefaults.standard.set(playerAutoPerformance, forKey: Self.autoPerfKey) }
     }
     @Published var ultraCompact: Bool {
         didSet { UserDefaults.standard.set(ultraCompact, forKey: Self.ultraCompactKey) }
     }
 
+    /// Back-compat for call sites still reading `playerEffectsMode`.
+    var playerEffectsMode: PlayerVisualPreset {
+        get { playerVisualPreset }
+        set { playerVisualPreset = newValue }
+    }
+
     private static let appearanceKey = "ui.appearance"
     private static let playerEffectsKey = "ui.playerEffectsMode"
     private static let ultraCompactKey = "ui.ultraCompact"
+    private static let intensityKey = "ui.playerEffectsIntensity"
+    private static let strobeKey = "ui.playerStrobeEnabled"
+    private static let autoPerfKey = "ui.playerAutoPerformance"
 
     init() {
         let storedAppearance = UserDefaults.standard.string(forKey: Self.appearanceKey) ?? AppAppearance.system.rawValue
         appearance = AppAppearance(rawValue: storedAppearance) ?? .system
-        let storedEffects = UserDefaults.standard.string(forKey: Self.playerEffectsKey) ?? PlayerEffectsMode.subtle.rawValue
-        playerEffectsMode = PlayerEffectsMode(rawValue: storedEffects) ?? .subtle
+        playerVisualPreset = PlayerVisualPreset.migrated(
+            fromStored: UserDefaults.standard.string(forKey: Self.playerEffectsKey)
+        )
+        if UserDefaults.standard.object(forKey: Self.intensityKey) != nil {
+            playerEffectsIntensity = min(1, max(0, UserDefaults.standard.double(forKey: Self.intensityKey)))
+        } else {
+            playerEffectsIntensity = 0.72
+        }
+        playerStrobeEnabled = UserDefaults.standard.bool(forKey: Self.strobeKey)
+        if UserDefaults.standard.object(forKey: Self.autoPerfKey) != nil {
+            playerAutoPerformance = UserDefaults.standard.bool(forKey: Self.autoPerfKey)
+        } else {
+            playerAutoPerformance = true
+        }
         if UserDefaults.standard.object(forKey: Self.ultraCompactKey) != nil {
             ultraCompact = UserDefaults.standard.bool(forKey: Self.ultraCompactKey)
         } else {

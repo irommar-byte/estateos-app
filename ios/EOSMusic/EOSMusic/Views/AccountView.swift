@@ -102,16 +102,62 @@ struct AccountView: View {
 
     private var playbackSection: some View {
         Section {
-            ForEach(PlayerEffectsMode.allCases) { mode in
+            ForEach(PlayerVisualPreset.allCases) { preset in
                 SettingsChoiceRow(
-                    title: mode.title,
-                    subtitle: effectsSubtitle(mode),
-                    systemImage: effectsIcon(mode),
-                    isSelected: ui.playerEffectsMode == mode
+                    title: preset.title,
+                    subtitle: preset.subtitle,
+                    systemImage: preset.systemImage,
+                    isSelected: ui.playerVisualPreset == preset
                 ) {
-                    ui.playerEffectsMode = mode
+                    ui.playerVisualPreset = preset
                 }
             }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("Moc efektów", systemImage: "dial.medium.fill")
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text("\(Int((ui.playerEffectsIntensity * 100).rounded()))%")
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(EOSTheme.accent)
+                }
+                Slider(value: $ui.playerEffectsIntensity, in: 0...1, step: 0.01)
+                    .tint(EOSTheme.accent)
+                    .disabled(ui.playerVisualPreset == .off)
+            }
+            .padding(.vertical, 2)
+
+            Toggle(isOn: $ui.playerStrobeEnabled.animation(EOSMotion.snappy)) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Strobo")
+                        Text("Bezpieczne impulsy · max 3/s · Spectrum/Pulse")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "light.max")
+                        .foregroundStyle(EOSTheme.accent)
+                }
+            }
+            .tint(EOSTheme.accent)
+            .disabled(!ui.playerVisualPreset.allowsStrobe)
+
+            Toggle(isOn: $ui.playerAutoPerformance.animation(EOSMotion.snappy)) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Automatyczna wydajność")
+                        Text("Oszczędza baterię i chłodzi urządzenie")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "gauge.with.dots.needle.33percent")
+                        .foregroundStyle(EOSTheme.accent)
+                }
+            }
+            .tint(EOSTheme.accent)
 
             Toggle(isOn: $ui.ultraCompact.animation(EOSMotion.snappy)) {
                 Label {
@@ -130,7 +176,7 @@ struct AccountView: View {
         } header: {
             Text("Odtwarzanie")
         } footer: {
-            Text("Efekty dotyczą pełnego odtwarzacza. Kompaktowa lista zmniejsza odstępy wierszy.")
+            Text("Presety i moc możesz też zmienić w pełnym playerze (ikona suwaków). Efekty są tylko wizualne.")
         }
     }
 
@@ -280,22 +326,6 @@ struct AccountView: View {
     }
 
     // MARK: - Helpers
-
-    private func effectsIcon(_ mode: PlayerEffectsMode) -> String {
-        switch mode {
-        case .subtle: return "sparkles"
-        case .strong: return "waveform"
-        case .off: return "moon.zzz"
-        }
-    }
-
-    private func effectsSubtitle(_ mode: PlayerEffectsMode) -> String {
-        switch mode {
-        case .subtle: return "Lekkie animacje i cienie"
-        case .strong: return "Wyraźniejszy ruch i głębia"
-        case .off: return "Bez efektów wizualnych"
-        }
-    }
 
     private func appearanceIcon(_ mode: AppAppearance) -> String {
         switch mode {
