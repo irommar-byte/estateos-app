@@ -17,10 +17,11 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     @Published private(set) var audioTracks: [VideoTrackOption] = []
     @Published private(set) var subtitleTracks: [VideoTrackOption] = []
     @Published private(set) var subtitlesEnabled = false
+    @Published private(set) var signalInfo = VideoSignalInfo()
     @Published var rate: VideoPlaybackRate = .normal {
         didSet { applyRate() }
     }
-    @Published var aspectMode: VideoAspectMode = .fit {
+    @Published var aspectMode: VideoAspectMode = .automatic {
         didSet { applyAspect() }
     }
 
@@ -84,7 +85,6 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
 
     func replayFromStart() {
         hasEnded = false
-        isBuffering = true
         isPlaying = true
         currentTime = 0
         lastPublishedTime = 0
@@ -283,6 +283,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                     self.isPlaying = true
                     self.clearBuffering()
                     self.refreshTracks()
+                    self.refreshSignalInfo()
                     self.syncTime(force: true)
                 }
             } else {
@@ -290,6 +291,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 150_000_000)
                     self.refreshTracks()
+                    self.refreshSignalInfo()
                     self.syncTime(force: true)
                 }
             }
@@ -378,14 +380,161 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     }
 
     private func applyAspect() {
-        player.videoAspectRatio = nil
+        // Reset crop; set VLC aspect or leave source default.
         player.videoCropGeometry = nil
-        drawable?.contentMode = aspectMode == .fill ? .scaleAspectFill : .scaleAspectFit
-        // Force redraw after rotation / aspect change.
+        if let ratio = aspectMode.vlcAspectRatio {
+            ratio.withCString { cstr in
+                player.videoAspectRatio = strdup(cstr)
+            }
+        } else {
+            player.videoAspectRatio = nil
+        }
+
+        switch aspectMode {
+        case .fillScreen:
+            player.scaleFactor = 0
+            drawable?.contentMode = .scaleAspectFill
+        case .stretch:
+            player.scaleFactor = 0
+            drawable?.contentMode = .scaleToFill
+        default:
+            player.scaleFactor = 0
+            drawable?.contentMode = .scaleAspectFit
+        }
+
         if let drawable {
             player.drawable = nil
             player.drawable = drawable
         }
+    }
+
+    func refreshSignalInfo() {
+        var info = VideoSignalInfo()
+        info.isLocal = isLocalFile
+        if let item = currentItem {
+            info.container = (item.relativePath as NSString).pathExtension.uppercased()
+        }
+
+        let size = player.videoSize
+        if size.width > 1, size.height > 1 {
+            info.width = Int(size.width.rounded())
+            info.height = Int(size.height.rounded())
+            info.resolution = "\(info.width)×\(info.height)"
+            let gcd = greatestCommonDivisor(info.width, info.height)
+            if gcd > 0 {
+                info.sourceAspect = "\(info.width / gcd):\(info.height / gcd)"
+            }
+        }
+
+        guard let media = player.media else {
+            signalInfo = info
+            return
+        }
+
+        let tracks = media.tracksInformation as? [[AnyHashable: Any]] ?? []
+        for track in tracks {
+            let type = (track[VLCMediaTracksInformationType] as? String) ?? ""
+            if type == VLCMediaTracksInformationTypeVideo {
+                if info.width == 0, let w = track[VLCMediaTracksInformationVideoWidth] as? NSNumber {
+                    info.width = w.intValue
+                }
+                if info.height == 0, let h = track[VLCMediaTracksInformationVideoHeight] as? NSNumber {
+                    info.height = h.intValue
+                }
+                if info.width > 0, info.height > 0, info.resolution.isEmpty {
+                    info.resolution = "\(info.width)×\(info.height)"
+                }
+                if let num = track[VLCMediaTracksInformationFrameRate] as? NSNumber,
+                   let den = track[VLCMediaTracksInformationFrameRateDenominator] as? NSNumber,
+                   den.doubleValue > 0 {
+                    let fps = num.doubleValue / den.doubleValue
+                    info.frameRate = String(format: "%.2g fps", fps)
+                }
+                if let sar = track[VLCMediaTracksInformationSourceAspectRatio] as? NSNumber,
+                   let sarDen = track[VLCMediaTracksInformationSourceAspectRatioDenominator] as? NSNumber,
+                   sarDen.intValue > 0 {
+                    info.sourceAspect = "\(sar.intValue):\(sarDen.intValue)"
+                }
+                if let fourcc = track[VLCMediaTracksInformationCodec] as? NSNumber {
+                    let name = VLCMedia.codecName(forFourCC: fourcc.uint32Value, trackType: VLCMediaTracksInformationTypeVideo)
+                    info.videoCodec = name.isEmpty ? fourCCString(fourcc.uint32Value) : name
+                }
+                if let br = track[VLCMediaTracksInformationBitrate] as? NSNumber, br.intValue > 0 {
+                    info.bitrate = formatBitrate(br.intValue)
+                }
+                let desc = ((track[VLCMediaTracksInformationDescription] as? String) ?? "").lowercased()
+                let codecLower = info.videoCodec.lowercased()
+                let hdrHints = ["hdr", "pq", "hlg", "dolby vision", "dvhe", "dvh1", "hdr10"]
+                if hdrHints.contains(where: { desc.contains($0) || codecLower.contains($0) }) {
+                    info.isHDR = true
+                    if desc.contains("dolby") || codecLower.contains("dv") {
+                        info.hdrLabel = "Dolby Vision"
+                    } else if desc.contains("hlg") {
+                        info.hdrLabel = "HLG"
+                    } else if desc.contains("hdr10+") {
+                        info.hdrLabel = "HDR10+"
+                    } else {
+                        info.hdrLabel = "HDR"
+                    }
+                }
+                // HEVC Main 10 / profile heuristics commonly used for HDR encodes.
+                if !info.isHDR,
+                   let profile = track[VLCMediaTracksInformationCodecProfile] as? NSNumber,
+                   codecLower.contains("hevc") || codecLower.contains("h265") {
+                    // Profile 2 is Main 10 — often HDR; show soft HDR badge only with 10-bit hint in description.
+                    if profile.intValue >= 2, desc.contains("10") || desc.contains("main 10") {
+                        info.isHDR = true
+                        info.hdrLabel = "HDR10"
+                    }
+                }
+            } else if type == VLCMediaTracksInformationTypeAudio {
+                if info.audioCodec.isEmpty, let fourcc = track[VLCMediaTracksInformationCodec] as? NSNumber {
+                    let name = VLCMedia.codecName(forFourCC: fourcc.uint32Value, trackType: VLCMediaTracksInformationTypeAudio)
+                    info.audioCodec = name.isEmpty ? fourCCString(fourcc.uint32Value) : name
+                }
+                if let ch = track[VLCMediaTracksInformationAudioChannelsNumber] as? NSNumber, ch.intValue > 0 {
+                    info.audioChannels = ch.intValue == 1 ? "Mono" : (ch.intValue == 2 ? "Stereo" : "\(ch.intValue) ch")
+                }
+                if info.bitrate.isEmpty, let br = track[VLCMediaTracksInformationBitrate] as? NSNumber, br.intValue > 0 {
+                    info.bitrate = formatBitrate(br.intValue)
+                }
+            }
+        }
+
+        if info.resolution.isEmpty, info.width > 0, info.height > 0 {
+            info.resolution = "\(info.width)×\(info.height)"
+        }
+        signalInfo = info
+    }
+
+    private func formatBitrate(_ bps: Int) -> String {
+        if bps >= 1_000_000 {
+            return String(format: "%.1f Mb/s", Double(bps) / 1_000_000.0)
+        }
+        if bps >= 1_000 {
+            return String(format: "%.0f kb/s", Double(bps) / 1_000.0)
+        }
+        return "\(bps) b/s"
+    }
+
+    private func fourCCString(_ value: UInt32) -> String {
+        let bytes: [UInt8] = [
+            UInt8((value >> 24) & 0xff),
+            UInt8((value >> 16) & 0xff),
+            UInt8((value >> 8) & 0xff),
+            UInt8(value & 0xff)
+        ]
+        let chars = bytes.map { b -> Character in
+            let c = b >= 32 && b < 127 ? b : UInt8(Character("?").asciiValue ?? 63)
+            return Character(UnicodeScalar(c))
+        }
+        return String(chars).trimmingCharacters(in: .whitespaces)
+    }
+
+    private func greatestCommonDivisor(_ a: Int, _ b: Int) -> Int {
+        var x = abs(a), y = abs(b)
+        while y != 0 { let t = x % y; x = y; y = t }
+        return x
     }
 
     private func syncTime(force: Bool = false) {
@@ -429,6 +578,7 @@ extension VideoPlaybackEngine: VLCMediaPlayerDelegate {
                 isPlaying = true
                 hasEnded = false
                 refreshTracks()
+                refreshSignalInfo()
                 syncTime(force: true)
             case .paused:
                 isPlaying = false

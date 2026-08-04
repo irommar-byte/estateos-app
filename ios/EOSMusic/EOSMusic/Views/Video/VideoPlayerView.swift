@@ -10,6 +10,7 @@ struct VideoPlayerView: View {
     @State private var showSubtitleSheet = false
     @State private var showPlaylist = false
     @State private var showMore = false
+    @State private var showAspectSheet = false
     @State private var scrubTime: Double = 0
     @State private var isScrubbing = false
 
@@ -29,7 +30,7 @@ struct VideoPlayerView: View {
                 // Tap empty video area to toggle controls — does not cover the chrome.
                 Color.clear
                     .contentShape(Rectangle())
-                    .padding(.top, 56)
+                    .padding(.top, 96)
                     .padding(.bottom, landscape ? 110 : 140)
                     .onTapGesture { toggleControls() }
 
@@ -87,14 +88,14 @@ struct VideoPlayerView: View {
         .sheet(isPresented: $showPlaylist) {
             VideoPlaylistSheet(engine: engine, sources: video.sources)
         }
-        .confirmationDialog("Opcje odtwarzania", isPresented: $showMore, titleVisibility: .visible) {
+        .sheet(isPresented: $showAspectSheet) {
+            VideoAspectSheet(engine: engine)
+        }
+        .confirmationDialog("Prędkość odtwarzania", isPresented: $showMore, titleVisibility: .visible) {
             ForEach(VideoPlaybackRate.allCases) { rate in
                 Button(rate.title + (engine.rate == rate ? " ✓" : "")) {
                     engine.rate = rate
                 }
-            }
-            Button(engine.aspectMode == .fit ? "Wypełnij ekran" : "Dopasuj do ekranu") {
-                engine.aspectMode = engine.aspectMode == .fit ? .fill : .fit
             }
             Button("Anuluj", role: .cancel) {}
         }
@@ -141,51 +142,70 @@ struct VideoPlayerView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 12) {
-            Button {
-                video.dismissPlayer()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(.ultraThinMaterial.opacity(0.55), in: Circle())
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Button {
+                    video.dismissPlayer()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(.ultraThinMaterial.opacity(0.55), in: Circle())
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(engine.currentItem?.title ?? "Wideo")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(engine.folderName)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    showAspectSheet = true
+                    bumpControls()
+                } label: {
+                    Image(systemName: "aspectratio")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(.ultraThinMaterial.opacity(0.55), in: Circle())
+                }
+                .accessibilityLabel("Proporcje ekranu")
+
+                Button {
+                    showPlaylist = true
+                    bumpControls()
+                } label: {
+                    Image(systemName: "list.bullet")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(.ultraThinMaterial.opacity(0.55), in: Circle())
+                }
+
+                Button {
+                    showMore = true
+                    bumpControls()
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(.ultraThinMaterial.opacity(0.55), in: Circle())
+                }
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(engine.currentItem?.title ?? "Wideo")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text(engine.folderName)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.7))
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 8)
-
-            Button {
-                showPlaylist = true
-                bumpControls()
-            } label: {
-                Image(systemName: "list.bullet")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(.ultraThinMaterial.opacity(0.55), in: Circle())
-            }
-
-            Button {
-                showMore = true
-                bumpControls()
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(.ultraThinMaterial.opacity(0.55), in: Circle())
-            }
+            VideoSignalBadgeBar(
+                info: engine.signalInfo,
+                aspectTitle: engine.aspectMode.title
+            )
         }
     }
 
@@ -322,7 +342,29 @@ struct VideoPlayerView: View {
                     }
                 )
 
+                Button {
+                    showAspectSheet = true
+                    bumpControls()
+                } label: {
+                    Label(engine.aspectMode.title, systemImage: "aspectratio")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color.white.opacity(0.16), in: Capsule())
+                }
+
                 Spacer(minLength: 0)
+
+                if engine.signalInfo.isHDR {
+                    Text(engine.signalInfo.hdrLabel)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color.yellow, in: Capsule())
+                }
 
                 Text(engine.rate.title)
                     .font(.caption.weight(.bold))
@@ -358,7 +400,7 @@ struct VideoPlayerView: View {
         hideTask?.cancel()
         hideTask = Task {
             try? await Task.sleep(nanoseconds: 4_000_000_000)
-            guard !Task.isCancelled, !isScrubbing, !showAudioSheet, !showSubtitleSheet, !showPlaylist, !showMore, !engine.hasEnded else { return }
+            guard !Task.isCancelled, !isScrubbing, !showAudioSheet, !showSubtitleSheet, !showPlaylist, !showMore, !showAspectSheet, !engine.hasEnded else { return }
             withAnimation(.easeInOut(duration: 0.22)) {
                 controlsVisible = false
             }
@@ -461,7 +503,13 @@ struct VLCVideoContainer: UIViewRepresentable {
         if engine.player.drawable as? UIView !== uiView {
             engine.attach(drawable: uiView)
         }
-        uiView.contentMode = engine.aspectMode == .fill ? .scaleAspectFill : .scaleAspectFit
+        uiView.contentMode = {
+            switch engine.aspectMode {
+            case .fillScreen: return .scaleAspectFill
+            case .stretch: return .scaleToFill
+            default: return .scaleAspectFit
+            }
+        }()
     }
 }
 

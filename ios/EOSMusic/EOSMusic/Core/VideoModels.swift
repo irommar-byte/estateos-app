@@ -94,17 +94,110 @@ struct VideoTrackOption: Identifiable, Hashable {
     let isSelected: Bool
 }
 
+/// Profesjonalne tryby kadrowania / proporcji (VLC `videoAspectRatio` + UIView contentMode).
 enum VideoAspectMode: String, CaseIterable, Identifiable {
-    case fit
-    case fill
+    case automatic
+    case fitScreen
+    case fillScreen
+    case stretch
+    case ratio16_9
+    case ratio4_3
+    case ratio21_9
+    case ratio2_35
+    case ratio2_39
+    case ratio1_1
+    case ratio3_2
+    case ratio9_16
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .fit: return "Dopasuj"
-        case .fill: return "Wypełnij"
+        case .automatic: return "Automatyczny"
+        case .fitScreen: return "Dopasuj do ekranu"
+        case .fillScreen: return "Wypełnij ekran"
+        case .stretch: return "Rozciągnij"
+        case .ratio16_9: return "16:9"
+        case .ratio4_3: return "4:3"
+        case .ratio21_9: return "21:9"
+        case .ratio2_35: return "2.35:1 (Cinema)"
+        case .ratio2_39: return "2.39:1 (Scope)"
+        case .ratio1_1: return "1:1"
+        case .ratio3_2: return "3:2"
+        case .ratio9_16: return "9:16 (pion)"
         }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .automatic: return "Oryginalne proporcje źródła"
+        case .fitScreen: return "Cały obraz, czarne pasy jeśli trzeba"
+        case .fillScreen: return "Wypełnia ekran (może przyciąć)"
+        case .stretch: return "Wymusza rozmiar ekranu bez zachowania proporcji"
+        case .ratio16_9: return "HDTV / YouTube"
+        case .ratio4_3: return "Klasyczny TV / DVD"
+        case .ratio21_9: return "Ultraszeroki monitor"
+        case .ratio2_35: return "Kino panoramiczne"
+        case .ratio2_39: return "Anamorphic scope"
+        case .ratio1_1: return "Kwadrat"
+        case .ratio3_2: return "Fotografia / klasyczny film"
+        case .ratio9_16: return "Stories / pionowe nagranie"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .automatic: return "aspectratio"
+        case .fitScreen: return "rectangle.arrowtriangle.2.inward"
+        case .fillScreen: return "rectangle.arrowtriangle.2.outward"
+        case .stretch: return "arrow.up.left.and.arrow.down.right"
+        case .ratio16_9, .ratio21_9, .ratio2_35, .ratio2_39: return "rectangle"
+        case .ratio4_3, .ratio3_2: return "rectangle.portrait"
+        case .ratio1_1: return "square"
+        case .ratio9_16: return "rectangle.portrait.fill"
+        }
+    }
+
+    /// VLC aspect string, or nil to reset.
+    var vlcAspectRatio: String? {
+        switch self {
+        case .automatic, .fitScreen, .fillScreen, .stretch: return nil
+        case .ratio16_9: return "16:9"
+        case .ratio4_3: return "4:3"
+        case .ratio21_9: return "21:9"
+        case .ratio2_35: return "235:100"
+        case .ratio2_39: return "239:100"
+        case .ratio1_1: return "1:1"
+        case .ratio3_2: return "3:2"
+        case .ratio9_16: return "9:16"
+        }
+    }
+
+    static var fitModes: [VideoAspectMode] { [.automatic, .fitScreen, .fillScreen, .stretch] }
+    static var fixedRatios: [VideoAspectMode] {
+        [.ratio16_9, .ratio4_3, .ratio21_9, .ratio2_35, .ratio2_39, .ratio3_2, .ratio1_1, .ratio9_16]
+    }
+}
+
+struct VideoSignalInfo: Equatable {
+    var container: String = ""
+    var resolution: String = ""
+    var width: Int = 0
+    var height: Int = 0
+    var frameRate: String = ""
+    var videoCodec: String = ""
+    var audioCodec: String = ""
+    var bitrate: String = ""
+    var sourceAspect: String = ""
+    var isHDR: Bool = false
+    var hdrLabel: String = "HDR"
+    var audioChannels: String = ""
+    var isLocal: Bool = true
+
+    var hasVideo: Bool { width > 0 || !resolution.isEmpty || !videoCodec.isEmpty }
+
+    var summaryLine: String {
+        [resolution, frameRate, videoCodec].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }
 
