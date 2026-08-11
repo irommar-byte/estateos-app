@@ -42,8 +42,27 @@ final class VideoPiPController: NSObject, ObservableObject {
         return Self.isApplePiPContainer(url)
     }
 
+    /// AVPlayer PiP działa dla MP4/MOV/HLS. Streamy CDA-HD (`/api/play/…`) zwykle nie mają
+    /// rozszerzenia w URL — wcześniej wpadały w fallback „tylko mini-player”.
     static func isApplePiPContainer(_ url: URL) -> Bool {
-        ["mp4", "mov", "m4v"].contains(url.pathExtension.lowercased())
+        let ext = url.pathExtension.lowercased()
+        if ["mp4", "mov", "m4v", "m3u8"].contains(ext) { return true }
+
+        let bad = ["mkv", "avi", "wmv", "flv", "webm", "ts", "m2ts", "mpg", "mpeg", "vob", "rmvb", "3gp", "ogv"]
+        if bad.contains(ext) { return false }
+
+        let scheme = (url.scheme ?? "").lowercased()
+        guard scheme == "http" || scheme == "https" else { return false }
+
+        let path = url.path.lowercased()
+        if path.contains("/api/play/")
+            || path.contains("/api/movies/stream/")
+            || path.contains("/api/file/")
+            || path.contains("/api/music/stream/") {
+            return true
+        }
+        // Remote URL bez rozszerzenia — spróbuj PiP; przy nieudanym starcie i tak jest fallback.
+        return ext.isEmpty
     }
 
     func attach(to host: UIView) {

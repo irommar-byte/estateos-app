@@ -272,9 +272,7 @@ struct VideoPlayerView: View {
                             ProgressView()
                                 .tint(.white)
                         } else {
-                            Image(systemName: video.pipController.supportsCurrentItem(engine)
-                                  ? "pip.enter"
-                                  : "arrow.down.right.and.arrow.up.left")
+                            Image(systemName: "pip.enter")
                                 .font(.body.weight(.semibold))
                         }
                     }
@@ -283,11 +281,8 @@ struct VideoPlayerView: View {
                     .background(.ultraThinMaterial.opacity(0.55), in: Circle())
                 }
                 .disabled(video.pipController.isPreparing || !video.pipController.isSystemSupported)
-                .accessibilityLabel(
-                    video.pipController.supportsCurrentItem(engine)
-                    ? "Picture in Picture"
-                    : "Schowaj do mini-playera"
-                )
+                .accessibilityLabel("Picture in Picture")
+                .accessibilityHint("Odtwarzaj w małym oknie nad innymi aplikacjami")
 
                 AirPlayRouteButton()
                     .frame(width: 40, height: 40)
