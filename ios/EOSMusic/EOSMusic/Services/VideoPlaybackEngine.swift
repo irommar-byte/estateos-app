@@ -19,6 +19,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     @Published private(set) var subtitlesEnabled = false
     @Published private(set) var signalInfo = VideoSignalInfo()
     @Published private(set) var currentPlayableURL: URL?
+    /// 0…200 — VLC scale (100 = normal). Shown in HUD for keyboard volume.
+    @Published private(set) var volumeLevel: Int = 100
     @Published var rate: VideoPlaybackRate = .normal {
         didSet { applyRate() }
     }
@@ -45,6 +47,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     private var isLocalFile = true
     private var aspectApplyTask: Task<Void, Never>?
     private var isParkingDrawable = false
+    /// After fullScreenCover reopen — wait for non-zero host bounds before remount.
+    private var pendingExpandRestore = false
     private var audioLifecycleObservers: [NSObjectProtocol] = []
     /// Remembers play intent across audio interruptions.
     private var wantsPlayback = false
@@ -94,7 +98,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     }
 
     func attach(host: PlayerDrawableView) {
-        let wasParked = hostView === parkedHost || isParkingDrawable
+        let wasParked = hostView === parkedHost || isParkingDrawable || pendingExpandRestore
         isParkingDrawable = false
         bindHost(host)
         player.drawable = host.videoSurface
@@ -102,9 +106,53 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         host.layoutIfNeeded()
         applyAspect(force: true)
         // After minimize the previous UIView is destroyed; reassign alone often leaves
-        // audio-only on MKV/HEVC. Soft-kick restores the video pipeline.
+        // audio-only on MKV/HEVC. Soft-kick restores the video pipeline — but only once
+        // the host has a real size (SwiftUI attach often happens at 0×0).
         if wasParked {
-            kickVideoOutput()
+            scheduleExpandRestore()
+        }
+    }
+
+    /// Call from VideoPlayerView.onAppear after reopen.
+    func prepareExpandRestore() {
+        pendingExpandRestore = true
+    }
+
+    /// Soft remount once the drawable host has laid out to a usable size.
+    func scheduleExpandRestore() {
+        pendingExpandRestore = true
+        videoKickTask?.cancel()
+        videoKickTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Wait until SwiftUI gives the host real bounds (black-screen root cause).
+            for _ in 0..<40 {
+                if Task.isCancelled { return }
+                if let host = self.hostView, host.bounds.width > 8, host.bounds.height > 8 {
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            guard !Task.isCancelled else { return }
+            guard let host = self.hostView else { return }
+            host.setNeedsLayout()
+            host.layoutIfNeeded()
+            host.relayoutVideoSurface()
+            self.player.drawable = nil
+            self.player.drawable = host.videoSurface
+            self.applyAspect(force: true)
+            self.pendingExpandRestore = false
+            self.kickVideoOutput()
+            // Extra pass for stubborn MKV/HEVC after cover animation finishes.
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+            if self.player.videoSize == .zero {
+                let time = max(0, self.currentTime)
+                let shouldPlay = self.isPlaying || self.player.isPlaying || self.wantsPlayback
+                self.remountPreservingPosition(at: time, autoplay: shouldPlay)
+            } else {
+                self.applyAspect(force: true)
+                host.relayoutVideoSurface()
+            }
         }
     }
 
@@ -112,11 +160,14 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     func parkDrawable() {
         guard hostView !== parkedHost else { return }
         isParkingDrawable = true
+        pendingExpandRestore = true
         videoKickTask?.cancel()
         bindHost(parkedHost)
-        parkedHost.frame = CGRect(x: 0, y: 0, width: 16, height: 9)
+        // Keep a non-trivial park surface — 16×9 made some codecs drop the video track.
+        parkedHost.frame = CGRect(x: 0, y: 0, width: 320, height: 180)
         parkedHost.setNeedsLayout()
         parkedHost.layoutIfNeeded()
+        parkedHost.relayoutVideoSurface()
         player.drawable = parkedHost.videoSurface
         applyAspect(force: true)
     }
@@ -127,7 +178,15 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         host.clipsToBounds = true
         host.onBoundsChange = { [weak self] in
             Task { @MainActor in
-                self?.applyAspect(force: false)
+                guard let self else { return }
+                self.applyAspect(force: false)
+                // First non-zero layout after expand — remount picture once.
+                if self.pendingExpandRestore,
+                   host.bounds.width > 8,
+                   host.bounds.height > 8 {
+                    self.pendingExpandRestore = false
+                    self.kickVideoOutput()
+                }
             }
         }
     }
@@ -262,6 +321,37 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         } else {
             seek(to: target, resume: isPlaying)
         }
+    }
+
+    /// Keyboard / remote: ← / → seek by seconds.
+    func nudgeSeek(by seconds: Double) {
+        if seconds < 0 {
+            if hasEnded || player.state == .ended {
+                replayFromStart()
+                return
+            }
+            seek(to: max(0, currentTime + seconds), resume: isPlaying || wantsPlayback)
+        } else {
+            guard duration > 0 else { return }
+            if hasEnded { return }
+            let target = min(duration, currentTime + seconds)
+            if target >= duration - 0.15 {
+                seek(to: duration, resume: false)
+                markEnded()
+            } else {
+                seek(to: target, resume: isPlaying || wantsPlayback)
+            }
+        }
+    }
+
+    /// Keyboard: ↑ / ↓ volume. Returns new level 0…200.
+    @discardableResult
+    func nudgeVolume(by delta: Int) -> Int {
+        let current = Int(player.audio?.volume ?? Int32(volumeLevel))
+        let next = min(200, max(0, current + delta))
+        player.audio?.volume = Int32(next)
+        volumeLevel = next
+        return next
     }
 
     func seek(to seconds: Double, resume: Bool? = nil) {
@@ -437,6 +527,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                 player.drawable = host.videoSurface
             }
             applyRate()
+            // Restore last volume (VLC resets on new media).
+            player.audio?.volume = Int32(volumeLevel)
             applyAspect(force: true)
             currentTime = 0
             lastPublishedTime = 0

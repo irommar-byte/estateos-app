@@ -126,6 +126,7 @@ final class VideoAppModel: ObservableObject {
     func expandPlayer() {
         guard engine.currentItem != nil else { return }
         OrientationLock.shared.unlockAll()
+        engine.prepareExpandRestore()
         isPlayerPresented = true
     }
 

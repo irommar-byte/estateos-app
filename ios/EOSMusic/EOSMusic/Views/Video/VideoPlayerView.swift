@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 import UIKit
 
@@ -13,6 +14,9 @@ struct VideoPlayerView: View {
     @State private var showAspectSheet = false
     @State private var scrubTime: Double = 0
     @State private var isScrubbing = false
+    @State private var volumeHUD: String?
+    @State private var volumeHUDTask: Task<Void, Never>?
+    @FocusState private var keysFocused: Bool
 
     init(engine: VideoPlaybackEngine) {
         self.engine = engine
@@ -58,21 +62,69 @@ struct VideoPlayerView: View {
                     .allowsHitTesting(false)
                 }
 
+                if let volumeHUD {
+                    Text(volumeHUD)
+                        .font(.title2.weight(.bold).monospacedDigit())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 14)
+                        .background(.ultraThinMaterial.opacity(0.85), in: Capsule())
+                        .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                        .allowsHitTesting(false)
+                }
+
                 if controlsVisible {
                     controlsOverlay(landscape: landscape)
                         .transition(.opacity)
                 }
+
+                // Captures keyboard when Simulator / Magic Keyboard / Mac is connected.
+                VideoKeyCommandBridge(
+                    onSpace: { handleKeyPlayPause() },
+                    onLeft: { handleKeySeek(-10) },
+                    onRight: { handleKeySeek(10) },
+                    onUp: { handleKeyVolume(+10) },
+                    onDown: { handleKeyVolume(-10) }
+                )
+                .frame(width: 1, height: 1)
+                .opacity(0.01)
+            }
+            .focusable()
+            .focused($keysFocused)
+            .onKeyPress(.space) {
+                handleKeyPlayPause()
+                return .handled
+            }
+            .onKeyPress(.leftArrow) {
+                handleKeySeek(-10)
+                return .handled
+            }
+            .onKeyPress(.rightArrow) {
+                handleKeySeek(10)
+                return .handled
+            }
+            .onKeyPress(.upArrow) {
+                handleKeyVolume(+10)
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                handleKeyVolume(-10)
+                return .handled
             }
         }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .onAppear {
             OrientationLock.shared.unlockAll()
-            // Keep chrome visible at start so playback doesn't feel “stuck”.
             controlsVisible = true
             scheduleHide()
+            keysFocused = true
+            engine.scheduleExpandRestore()
         }
-        .onDisappear { hideTask?.cancel() }
+        .onDisappear {
+            hideTask?.cancel()
+            volumeHUDTask?.cancel()
+        }
         .onChange(of: engine.hasEnded) { _, ended in
             if ended {
                 withAnimation(.easeInOut(duration: 0.2)) { controlsVisible = true }
@@ -109,6 +161,35 @@ struct VideoPlayerView: View {
             Button("OK", role: .cancel) { video.pipController.clearError() }
         } message: {
             Text(video.pipController.errorMessage ?? "")
+        }
+    }
+
+    private func handleKeyPlayPause() {
+        engine.togglePlayPause()
+        bumpControls()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func handleKeySeek(_ delta: Double) {
+        engine.nudgeSeek(by: delta)
+        bumpControls()
+    }
+
+    private func handleKeyVolume(_ delta: Int) {
+        let level = engine.nudgeVolume(by: delta)
+        showVolumeHUD(level)
+        bumpControls()
+    }
+
+    private func showVolumeHUD(_ level: Int) {
+        withAnimation(.easeOut(duration: 0.12)) {
+            volumeHUD = "Głośność \(level)%"
+        }
+        volumeHUDTask?.cancel()
+        volumeHUDTask = Task {
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.2)) { volumeHUD = nil }
         }
     }
 
@@ -206,6 +287,11 @@ struct VideoPlayerView: View {
                     ? "Picture in Picture"
                     : "Schowaj do mini-playera"
                 )
+
+                AirPlayRouteButton()
+                    .frame(width: 40, height: 40)
+                    .background(.ultraThinMaterial.opacity(0.55), in: Circle())
+                    .accessibilityLabel("AirPlay")
 
                 Button {
                     showAspectSheet = true
@@ -629,6 +715,10 @@ struct VLCVideoContainer: UIViewRepresentable {
             engine.attach(host: uiView)
             return
         }
+        if uiView.bounds.width > 8, uiView.bounds.height > 8 {
+            // Host finally has size after expand — finish restore if still pending.
+            uiView.relayoutVideoSurface()
+        }
         if uiView.aspectMode != engine.aspectMode {
             engine.applyAspect(force: true)
         }
@@ -747,4 +837,77 @@ final class PlayerDrawableView: UIView {
             height: size.height
         )
     }
+}
+
+// MARK: - AirPlay + keyboard
+
+struct AirPlayRouteButton: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let picker = AVRoutePickerView()
+        picker.tintColor = .white
+        picker.activeTintColor = UIColor(EOSTheme.accent)
+        picker.prioritizesVideoDevices = true
+        return picker
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+}
+
+/// UIKit key commands — reliable in Simulator and with hardware keyboards.
+struct VideoKeyCommandBridge: UIViewControllerRepresentable {
+    var onSpace: () -> Void
+    var onLeft: () -> Void
+    var onRight: () -> Void
+    var onUp: () -> Void
+    var onDown: () -> Void
+
+    func makeUIViewController(context: Context) -> VideoKeyCommandController {
+        let vc = VideoKeyCommandController()
+        vc.onSpace = onSpace
+        vc.onLeft = onLeft
+        vc.onRight = onRight
+        vc.onUp = onUp
+        vc.onDown = onDown
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: VideoKeyCommandController, context: Context) {
+        uiViewController.onSpace = onSpace
+        uiViewController.onLeft = onLeft
+        uiViewController.onRight = onRight
+        uiViewController.onUp = onUp
+        uiViewController.onDown = onDown
+        uiViewController.becomeFirstResponder()
+    }
+}
+
+final class VideoKeyCommandController: UIViewController {
+    var onSpace: (() -> Void)?
+    var onLeft: (() -> Void)?
+    var onRight: (() -> Void)?
+    var onUp: (() -> Void)?
+    var onDown: (() -> Void)?
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        becomeFirstResponder()
+    }
+
+    override var keyCommands: [UIKeyCommand]? {
+        [
+            UIKeyCommand(input: " ", modifierFlags: [], action: #selector(space)),
+            UIKeyCommand(input: UIKeyCommand.inputLeftArrow, modifierFlags: [], action: #selector(left)),
+            UIKeyCommand(input: UIKeyCommand.inputRightArrow, modifierFlags: [], action: #selector(right)),
+            UIKeyCommand(input: UIKeyCommand.inputUpArrow, modifierFlags: [], action: #selector(up)),
+            UIKeyCommand(input: UIKeyCommand.inputDownArrow, modifierFlags: [], action: #selector(down)),
+        ]
+    }
+
+    @objc private func space() { onSpace?() }
+    @objc private func left() { onLeft?() }
+    @objc private func right() { onRight?() }
+    @objc private func up() { onUp?() }
+    @objc private func down() { onDown?() }
 }
