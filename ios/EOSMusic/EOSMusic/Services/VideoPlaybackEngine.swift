@@ -50,6 +50,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     /// After fullScreenCover reopen — wait for non-zero host bounds before remount.
     private var pendingExpandRestore = false
     private var isExpandRestoring = false
+    /// Exact seconds to resume after minimize (captured in `parkDrawable`).
+    private var parkedResumeTime: Double = 0
     private var audioLifecycleObservers: [NSObjectProtocol] = []
     /// Remembers play intent across audio interruptions.
     private var wantsPlayback = false
@@ -106,8 +108,6 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         host.setNeedsLayout()
         host.layoutIfNeeded()
         applyAspect(force: true)
-        // After minimize the previous UIView is destroyed; reassign alone often leaves
-        // audio-only (especially HTTP/CDA-HD streams). Always run expand restore.
         if wasParked {
             scheduleExpandRestore()
         }
@@ -118,25 +118,27 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         pendingExpandRestore = true
     }
 
-    /// Soft remount once the drawable host has laid out to a usable size.
-    /// Always ends with a hard remount — `videoSize` often stays stale after park,
-    /// so the old “only if videoSize == 0” check left a black picture + audio.
+    /// Restore picture after minimize without restarting the film from 0.
+    /// 1) Soft: keep the same media, rebind drawable (playback continues).
+    /// 2) Hard only if still black — remount with `:start-time=` at parked position.
     func scheduleExpandRestore() {
         pendingExpandRestore = true
         if isExpandRestoring { return }
         isExpandRestoring = true
         videoKickTask?.cancel()
-        let time = max(0, currentTime)
+
+        syncTime(force: true)
+        let resumeAt = max(parkedResumeTime, currentTime, 0)
         let shouldPlay = wantsPlayback || isPlaying || player.isPlaying
+
         videoKickTask = Task { @MainActor [weak self] in
-            defer {
-                Task { @MainActor in self?.isExpandRestoring = false }
-            }
+            defer { self?.isExpandRestoring = false }
             guard let self else { return }
-            // Wait until SwiftUI gives the host real bounds (black-screen root cause #1).
+
             for _ in 0..<60 {
                 if Task.isCancelled { return }
-                if let host = self.hostView, host.bounds.width > 8, host.bounds.height > 8 {
+                if let host = self.hostView, host !== self.parkedHost,
+                   host.bounds.width > 8, host.bounds.height > 8 {
                     break
                 }
                 try? await Task.sleep(nanoseconds: 50_000_000)
@@ -144,49 +146,60 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             guard !Task.isCancelled else { return }
             guard let host = self.hostView, host !== self.parkedHost else { return }
 
+            // —— Soft path: same media, new surface (no restart) ——
             host.setNeedsLayout()
             host.layoutIfNeeded()
             host.relayoutVideoSurface()
             self.player.drawable = nil
             self.player.drawable = host.videoSurface
             self.applyAspect(force: true)
+            host.relayoutVideoSurface()
 
-            // Brief pause so VLC releases the parked GL surface.
-            self.player.pause()
-            try? await Task.sleep(nanoseconds: 80_000_000)
-            guard !Task.isCancelled else { return }
-
-            self.pendingExpandRestore = false
-            // Hard remount is required for network streams and often for MKV/HEVC too.
-            self.remountPreservingPosition(at: time, autoplay: shouldPlay)
-
-            // Second pass after cover animation — catches late layout / token streams.
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            guard !Task.isCancelled else { return }
-            if let host = self.hostView, host !== self.parkedHost {
-                host.relayoutVideoSurface()
-                self.player.drawable = host.videoSurface
-                self.applyAspect(force: true)
-                if self.player.videoSize == .zero || !self.hasLikelyVideoOutput {
-                    self.remountPreservingPosition(at: max(time, self.currentTime), autoplay: shouldPlay || self.wantsPlayback)
+            if shouldPlay {
+                self.wantsPlayback = true
+                AudioSession.activateForPlayback()
+                if !self.player.isPlaying {
+                    self.player.play()
                 }
+                self.isPlaying = true
             }
+
+            // Give GL a moment to paint on the new view.
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            guard !Task.isCancelled else { return }
+            host.relayoutVideoSurface()
+            self.player.drawable = host.videoSurface
+            self.applyAspect(force: true)
+
+            if self.hasLiveVideoOutput(on: host) {
+                self.pendingExpandRestore = false
+                self.parkedResumeTime = 0
+                // Keep timeline in sync — do not seek to 0.
+                if abs(self.currentTime - resumeAt) > 2, resumeAt > 1 {
+                    self.applySeek(to: resumeAt)
+                }
+                return
+            }
+
+            // —— Hard path: reload at exact position (VLC start-time), not from 0 ——
+            self.pendingExpandRestore = false
+            await self.remountPreservingPosition(at: resumeAt, autoplay: shouldPlay)
+            self.parkedResumeTime = 0
         }
     }
 
-    /// Heuristic: audio-only after drawable swap often still reports a stale non-zero videoSize.
-    private var hasLikelyVideoOutput: Bool {
-        guard let host = hostView, host !== parkedHost else { return false }
-        let size = player.videoSize
-        if size.width > 2, size.height > 2 { return true }
-        // VLC sometimes keeps layers but they are empty — require a live surface with sublayers.
+    private func hasLiveVideoOutput(on host: PlayerDrawableView) -> Bool {
         let surface = host.videoSurface
         let hasLayer = !(surface.layer.sublayers ?? []).isEmpty || !surface.subviews.isEmpty
-        return hasLayer && player.isPlaying
+        let size = player.videoSize
+        // Require both a drawable tree and a reported size — audio-only often keeps stale size.
+        return hasLayer && size.width > 2 && size.height > 2
     }
 
     /// Call before dismissing the full-screen player so VLC never loses its drawable.
     func parkDrawable() {
+        syncTime(force: true)
+        parkedResumeTime = max(0, currentTime)
         guard hostView !== parkedHost else {
             pendingExpandRestore = true
             return
@@ -194,16 +207,15 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         isParkingDrawable = true
         pendingExpandRestore = true
         videoKickTask?.cancel()
-        // Snapshot time before teardown races.
-        syncTime(force: true)
+        isExpandRestoring = false
         bindHost(parkedHost)
-        // Keep a non-trivial park surface — tiny 16×9 made some codecs drop the video track.
         parkedHost.frame = CGRect(x: 0, y: 0, width: 320, height: 180)
         parkedHost.setNeedsLayout()
         parkedHost.layoutIfNeeded()
         parkedHost.relayoutVideoSurface()
         player.drawable = parkedHost.videoSurface
         applyAspect(force: true)
+        // Do not pause — keep audio+decode running on the parked surface.
     }
 
     private func bindHost(_ host: PlayerDrawableView) {
@@ -214,7 +226,6 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.applyAspect(force: false)
-                // Trigger restore once when host gains size — guarded by isExpandRestoring.
                 if self.pendingExpandRestore,
                    !self.isExpandRestoring,
                    host !== self.parkedHost,
@@ -226,57 +237,68 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         }
     }
 
-    /// Soft remount at the current timestamp — restores picture after drawable swaps.
+    /// Soft remount helper used by PiP / aspect — prefers continuous playback.
     func kickVideoOutput() {
         guard player.media != nil, currentItem != nil, sourcesRef != nil else { return }
+        guard !isExpandRestoring else { return }
         videoKickTask?.cancel()
-        let time = max(0, currentTime)
+        let time = max(parkedResumeTime, currentTime, 0)
         let shouldPlay = wantsPlayback || isPlaying || player.isPlaying
         videoKickTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            self.player.pause()
-            try? await Task.sleep(nanoseconds: 40_000_000)
-            guard !Task.isCancelled else { return }
             if let host = self.hostView {
-                self.player.drawable = nil
                 self.player.drawable = host.videoSurface
                 host.relayoutVideoSurface()
                 self.applyAspect(force: true)
             }
-            try? await Task.sleep(nanoseconds: 60_000_000)
+            if shouldPlay, !self.player.isPlaying {
+                self.player.play()
+                self.isPlaying = true
+            }
+            try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
-            // Prefer hard remount — soft drawable swap is unreliable after minimize.
-            self.remountPreservingPosition(at: time, autoplay: shouldPlay)
+            if let host = self.hostView, !self.hasLiveVideoOutput(on: host) {
+                await self.remountPreservingPosition(at: time, autoplay: shouldPlay)
+            }
         }
     }
 
-    private func remountPreservingPosition(at seconds: Double, autoplay: Bool) {
+    /// Reload media starting at `seconds` via VLC `:start-time` (reliable for network streams).
+    private func remountPreservingPosition(at seconds: Double, autoplay: Bool) async {
         let resumeAt = max(0, seconds)
-        loadCurrent(autoplay: false)
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 160_000_000)
-            guard let self else { return }
-            if let host = self.hostView {
-                self.player.drawable = host.videoSurface
-                host.relayoutVideoSurface()
-            }
-            self.applySeek(to: resumeAt)
-            if autoplay {
-                self.wantsPlayback = true
-                AudioSession.activateForPlayback()
-                self.player.play()
-                self.isPlaying = true
-                if !self.player.isPlaying {
-                    try? await Task.sleep(nanoseconds: 120_000_000)
-                    self.player.play()
-                    self.isPlaying = true
-                }
-            }
-            try? await Task.sleep(nanoseconds: 220_000_000)
-            self.refreshSignalInfo()
-            self.applyAspect(force: true)
-            self.hostView?.relayoutVideoSurface()
+        loadCurrent(autoplay: false, startAt: resumeAt, cancelPendingKick: false)
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        guard !Task.isCancelled else { return }
+        if let host = hostView {
+            player.drawable = host.videoSurface
+            host.relayoutVideoSurface()
         }
+        // start-time should already place us; nudge seek once media reports length.
+        if resumeAt > 1 {
+            for _ in 0..<20 {
+                let len = (player.media?.length.value?.doubleValue ?? 0) / 1000.0
+                if len > 1 || player.isPlaying { break }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            applySeek(to: resumeAt)
+        }
+        currentTime = resumeAt
+        lastPublishedTime = resumeAt
+        if autoplay {
+            wantsPlayback = true
+            AudioSession.activateForPlayback()
+            player.play()
+            isPlaying = true
+            if !player.isPlaying {
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                player.play()
+                isPlaying = true
+            }
+        }
+        try? await Task.sleep(nanoseconds: 220_000_000)
+        refreshSignalInfo()
+        applyAspect(force: true)
+        hostView?.relayoutVideoSurface()
     }
 
     func play(session: VideoPlaybackSession, sources: VideoSourcesStore) {
@@ -522,7 +544,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         duration > 0 && currentTime >= max(0, duration - 0.4)
     }
 
-    private func loadCurrent(autoplay: Bool) {
+    private func loadCurrent(autoplay: Bool, startAt: Double? = nil, cancelPendingKick: Bool = true) {
         guard let item = currentItem, let sources = sourcesRef else { return }
         do {
             let url = try sources.resolvePlayableURL(for: item)
@@ -545,11 +567,18 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                 media.addOption(":network-caching=1500")
                 media.addOption(":file-caching=1000")
             }
+            // Resume after minimize — VLC seeks unreliably on HTTP until buffered;
+            // start-time opens already at the parked position.
+            if let startAt, startAt > 0.5 {
+                media.addOption(":start-time=\(String(format: "%.3f", startAt))")
+            }
 
             // Tear down fully so .ended / .stopped can start cleanly again.
             bufferingRevealTask?.cancel()
             aspectApplyTask?.cancel()
-            videoKickTask?.cancel()
+            if cancelPendingKick {
+                videoKickTask?.cancel()
+            }
             player.delegate = nil
             player.stop()
             player.media = nil
@@ -563,8 +592,13 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             // Restore last volume (VLC resets on new media).
             player.audio?.volume = Int32(volumeLevel)
             applyAspect(force: true)
-            currentTime = 0
-            lastPublishedTime = 0
+            if let startAt, startAt > 0.5 {
+                currentTime = startAt
+                lastPublishedTime = startAt
+            } else {
+                currentTime = 0
+                lastPublishedTime = 0
+            }
             hasEnded = false
             errorMessage = nil
             // Never flash the spinner for local files — frame is usually ready immediately.
