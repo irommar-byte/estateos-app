@@ -9,10 +9,13 @@ final class OnlineMoviesController: ObservableObject {
     @Published private(set) var isLoadingDownloads = false
     @Published private(set) var homeError: String?
     @Published private(set) var transferStates: [String: OnlineMovieTransferState] = [:]
+    @Published private(set) var isPreparingStream = false
+    @Published private(set) var streamPrepareProgress: Double = 0
     @Published var statusMessage: String?
 
     private weak var api: MusicAPIClient?
     private var activeTasks: [String: Task<Void, Never>] = [:]
+    private var streamTask: Task<Void, Never>?
     private let transfers = BackgroundTransferService.shared
 
     func attach(api: MusicAPIClient) {
@@ -25,6 +28,10 @@ final class OnlineMoviesController: ObservableObject {
         homeError = nil
         statusMessage = nil
         transferStates = [:]
+        isPreparingStream = false
+        streamPrepareProgress = 0
+        streamTask?.cancel()
+        streamTask = nil
         for task in activeTasks.values { task.cancel() }
         activeTasks.removeAll()
     }
@@ -133,6 +140,26 @@ final class OnlineMoviesController: ObservableObject {
         }
     }
 
+    /// Stream online bez pobierania — `/api/preview` → `/api/play`.
+    func watchStream(
+        selection: OnlineMovieSelection,
+        height: Int = 720,
+        video: VideoAppModel
+    ) {
+        streamTask?.cancel()
+        streamTask = Task {
+            await runWatchStream(selection: selection, height: height, video: video)
+        }
+    }
+
+    func cancelStreamPrepare() {
+        streamTask?.cancel()
+        streamTask = nil
+        isPreparingStream = false
+        streamPrepareProgress = 0
+        statusMessage = "Anulowano uruchamianie streamu."
+    }
+
     func playFromServer(selection: OnlineMovieSelection, video: VideoAppModel) async {
         guard let api else { return }
         do {
@@ -157,6 +184,58 @@ final class OnlineMoviesController: ObservableObject {
             return
         }
         await playRemoteOrLocal(url: local, title: selection.title, video: video)
+    }
+
+    private func runWatchStream(
+        selection: OnlineMovieSelection,
+        height: Int,
+        video: VideoAppModel
+    ) async {
+        guard let api else { return }
+        isPreparingStream = true
+        streamPrepareProgress = 0
+        statusMessage = "Uruchamiam stream…"
+        defer {
+            isPreparingStream = false
+            streamTask = nil
+        }
+
+        do {
+            // Lokalna kopia / serwer mają pierwszeństwo (natychmiastowy start).
+            if let local = phoneFileURL(for: selection.url) {
+                statusMessage = nil
+                await playRemoteOrLocal(url: local, title: selection.title, video: video)
+                return
+            }
+            if let existing = jobId(for: selection.url) {
+                let token = try await api.moviePlayToken(jobId: existing)
+                let streamURL = api.movieStreamURL(jobId: existing, token: token.token)
+                statusMessage = nil
+                await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
+                return
+            }
+
+            let preview = try await api.startPreview(url: selection.url, height: height)
+            if preview.instant != true {
+                try await api.waitForPreviewReady(jobId: preview.jobId) { [weak self] progress in
+                    Task { @MainActor in
+                        self?.streamPrepareProgress = progress
+                        self?.statusMessage = String(format: "Przygotowuję stream… %.0f%%", progress)
+                    }
+                }
+            } else {
+                streamPrepareProgress = 100
+            }
+
+            let token = try await api.previewPlayToken(jobId: preview.jobId)
+            let streamURL = api.previewStreamURL(jobId: token.jobId, token: token.token)
+            statusMessage = nil
+            await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
+        } catch is CancellationError {
+            // cancelled
+        } catch {
+            statusMessage = error.localizedDescription
+        }
     }
 
     func deleteServerDownload(url: String) async {

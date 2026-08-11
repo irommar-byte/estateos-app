@@ -366,6 +366,51 @@ final class MusicAPIClient {
         return URL(string: base + "/api/file/\(jobId)")!
     }
 
+    /// Stream / podgląd bez trwałego pobierania (CDA-HD mirror → `/api/play`).
+    func startPreview(url: String, height: Int = 720) async throws -> PreviewResponse {
+        var body: [String: Any] = [
+            "url": url,
+            "playMode": "stream",
+            "height": height == 0 ? "best" : height,
+        ]
+        return try await request("POST", path: "/api/preview", body: body)
+    }
+
+    func previewPlayToken(jobId: String) async throws -> PlayTokenResponse {
+        try await request("GET", path: "/api/play-token/\(jobId)")
+    }
+
+    func waitForPreviewReady(
+        jobId: String,
+        timeoutSeconds: Int = 120,
+        onProgress: ((Double) -> Void)? = nil
+    ) async throws {
+        let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
+        var poll = 0
+        while Date() < deadline {
+            let job = try await fetchJobStatus(jobId: jobId)
+            if job.status == "error" {
+                throw APIError.server(job.error ?? "Odtwarzanie nie powiodło się.")
+            }
+            onProgress?(max(0, min(100, job.progress ?? 0)))
+            if job.ready == true || job.status == "done" { return }
+            poll += 1
+            let ns: UInt64 = poll < 40 ? 400_000_000 : 800_000_000
+            try await Task.sleep(nanoseconds: ns)
+        }
+        throw APIError.server("Przekroczono czas oczekiwania na stream.")
+    }
+
+    func previewStreamURL(jobId: String, token: String) -> URL {
+        let base = AppConfig.apiBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var components = URLComponents(string: base + "/api/play/\(jobId)")!
+        components.queryItems = [
+            URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970))),
+        ]
+        return components.url!
+    }
+
     func cancelJob(jobId: String) async throws {
         struct Ok: Codable { let ok: Bool? }
         let _: Ok = try await request("POST", path: "/api/cancel/\(jobId)")
@@ -425,6 +470,8 @@ final class MusicAPIClient {
             req.timeoutInterval = 20
         } else if path.hasPrefix("/api/info") {
             req.timeoutInterval = 210
+        } else if path.hasPrefix("/api/preview") {
+            req.timeoutInterval = 180
         } else if path.hasPrefix("/api/cda-hd/home") || path.hasPrefix("/api/films/home") {
             req.timeoutInterval = 90
         } else if path.hasPrefix("/api/cda-hd/") || path.hasPrefix("/api/films/") || path.hasPrefix("/api/search") {

@@ -144,33 +144,63 @@ struct OnlineMovieDetailView: View {
 
     private var actionButtons: some View {
         VStack(spacing: 10) {
+            Button {
+                movies.watchStream(selection: selection, height: selectedHeight, video: video)
+            } label: {
+                Label(
+                    movies.isPreparingStream ? "Uruchamiam…" : "Oglądaj",
+                    systemImage: "play.fill"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(OnlineMoviePrimaryButton())
+            .disabled(movies.isPreparingStream || transfer.isBusy)
+
+            if selection.isSerial || info?.isSeries == true {
+                Text("Serial: odcinki odtworzysz z listy poniżej — bez pobierania.")
+                    .font(EOSTypography.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if movies.isPreparingStream {
+                ProgressView(value: movies.streamPrepareProgress, total: 100) {
+                    Text("Stream · bez pobierania")
+                        .font(EOSTypography.caption)
+                }
+                .tint(EOSTheme.accent)
+                Button("Anuluj stream") {
+                    movies.cancelStreamPrepare()
+                }
+                .font(EOSTypography.caption.weight(.semibold))
+            }
+
             if case .onPhone = transfer {
                 Button {
                     Task { await movies.playFromPhone(selection: selection, video: video) }
                 } label: {
-                    Label("Odtwórz z telefonu", systemImage: "play.fill")
+                    Label("Odtwórz z telefonu", systemImage: "iphone")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(OnlineMoviePrimaryButton())
+                .buttonStyle(OnlineMovieSecondaryButton())
             } else if case .onServer = transfer {
                 Button {
                     Task { await movies.playFromServer(selection: selection, video: video) }
                 } label: {
-                    Label("Odtwórz z serwera", systemImage: "play.fill")
+                    Label("Odtwórz z serwera", systemImage: "server.rack")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(OnlineMoviePrimaryButton())
+                .buttonStyle(OnlineMovieSecondaryButton())
             }
 
             HStack(spacing: 10) {
                 Button {
                     movies.downloadToServer(selection: selection, height: selectedHeight)
                 } label: {
-                    Label("Na serwer", systemImage: "server.rack")
+                    Label("Na serwer", systemImage: "arrow.down.to.line")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(OnlineMovieSecondaryButton())
-                .disabled(transfer.isBusy)
+                .disabled(transfer.isBusy || movies.isPreparingStream)
 
                 Button {
                     movies.downloadToPhone(selection: selection, height: selectedHeight, video: video)
@@ -179,14 +209,14 @@ struct OnlineMovieDetailView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(OnlineMovieSecondaryButton(emphasized: true))
-                .disabled(transfer.isBusy)
+                .disabled(transfer.isBusy || movies.isPreparingStream)
             }
         }
     }
 
     private var qualityPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Jakość pobierania")
+            Text("Jakość streamu / pobierania")
                 .font(EOSTypography.headline)
             Picker("Jakość", selection: $selectedHeight) {
                 Text("480p").tag(480)
@@ -238,7 +268,18 @@ struct OnlineMovieDetailView: View {
                 }
             }
             Spacer()
+            Button {
+                movies.watchStream(selection: epSelection, height: selectedHeight, video: video)
+            } label: {
+                Image(systemName: "play.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(EOSTheme.accent)
+            }
+            .disabled(movies.isPreparingStream)
             Menu {
+                Button("Oglądaj (stream)") {
+                    movies.watchStream(selection: epSelection, height: selectedHeight, video: video)
+                }
                 Button("Na serwer") {
                     movies.downloadToServer(selection: epSelection, height: selectedHeight)
                 }
@@ -246,9 +287,9 @@ struct OnlineMovieDetailView: View {
                     movies.downloadToPhone(selection: epSelection, height: selectedHeight, video: video)
                 }
             } label: {
-                Image(systemName: "arrow.down.circle")
+                Image(systemName: "ellipsis.circle")
                     .font(.title3)
-                    .foregroundStyle(EOSTheme.accent)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(10)

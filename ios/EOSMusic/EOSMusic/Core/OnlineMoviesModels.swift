@@ -152,6 +152,19 @@ struct MoviePlayTokenResponse: Codable {
     let expiresIn: Int?
 }
 
+struct PreviewResponse: Codable {
+    let jobId: String
+    let instant: Bool?
+    let mode: String?
+    let purpose: String?
+}
+
+struct PlayTokenResponse: Codable {
+    let jobId: String
+    let token: String
+    let expiresIn: Int?
+}
+
 struct CdaHdLink: Codable, Hashable, Identifiable {
     var id: String { url }
     let name: String
