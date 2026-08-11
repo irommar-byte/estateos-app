@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Compact sheet: Winyl / Okładka / Spectrum / Off — no intensity slider.
+/// Pełne sterowanie wyglądem playera i stroboskopem: wybór trybu + regulacja intensywności i prędkości.
 struct PlayerEffectsSheet: View {
     @EnvironmentObject private var ui: UIPreferences
     @Environment(\.dismiss) private var dismiss
@@ -30,12 +30,81 @@ struct PlayerEffectsSheet: View {
                             isSelected: ui.playerVisualPreset == preset
                         ) {
                             ui.playerVisualPreset = preset
+                            if preset == .strobe {
+                                ui.playerStrobeEnabled = true
+                            }
                         }
                     }
                 } header: {
-                    Text("Wygląd playera")
+                    Text("Tryb wizualny")
                 } footer: {
-                    Text("Winyl obraca płytę. Okładka pulsuje w rytm. Spectrum pokazuje czytelny EQ. Efektów nie da się „kręcić mocą” — są skalibrowane pod czytelność i baterię.")
+                    Text("Wybierz styl playera: obracający się Winyl 12\", pulsująca Okładka, Spectrum EQ lub klubowy Stroboskop.")
+                }
+
+                if ui.playerVisualPreset != .off {
+                    Section {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Label("Intensywność efektów", systemImage: "slider.horizontal.3")
+                                    .font(.subheadline.weight(.medium))
+                                Spacer()
+                                Text("\(Int(ui.playerEffectsIntensity * 100))%")
+                                    .font(.caption.monospacedDigit().weight(.bold))
+                                    .foregroundStyle(EOSTheme.accent)
+                            }
+                            Slider(value: $ui.playerEffectsIntensity, in: 0.15...1.0)
+                                .tint(EOSTheme.accent)
+                        }
+                        .padding(.vertical, 4)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Label("Czułość na bit", systemImage: "waveform.path.badge.plus")
+                                    .font(.subheadline.weight(.medium))
+                                Spacer()
+                                Text("\(Int(ui.playerSensitivity * 100))%")
+                                    .font(.caption.monospacedDigit().weight(.bold))
+                                    .foregroundStyle(EOSTheme.accent)
+                            }
+                            Slider(value: $ui.playerSensitivity, in: 0.2...1.0)
+                                .tint(EOSTheme.accent)
+                        }
+                        .padding(.vertical, 4)
+
+                        if ui.playerVisualPreset == .strobe {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Label("Szybkość / Prędkość błysków", systemImage: "bolt.fill")
+                                        .font(.subheadline.weight(.medium))
+                                    Spacer()
+                                    Text("\(Int(ui.playerStrobeSpeed * 100))%")
+                                        .font(.caption.monospacedDigit().weight(.bold))
+                                        .foregroundStyle(EOSTheme.accent)
+                                }
+                                Slider(value: $ui.playerStrobeSpeed, in: 0.2...1.0)
+                                    .tint(EOSTheme.accent)
+                            }
+                            .padding(.vertical, 4)
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Label("Nasycenie podświetlenia (Drive)", systemImage: "flame.fill")
+                                    .font(.subheadline.weight(.medium))
+                                Spacer()
+                                Text("\(Int(ui.playerDrive * 100))%")
+                                    .font(.caption.monospacedDigit().weight(.bold))
+                                    .foregroundStyle(EOSTheme.accent)
+                            }
+                            Slider(value: $ui.playerDrive, in: 0.0...1.0)
+                                .tint(EOSTheme.accent)
+                        }
+                        .padding(.vertical, 4)
+                    } header: {
+                        Text("Regulacja stroboskopu i dynamiki")
+                    } footer: {
+                        Text("Reguluj natężenie światła, czułość na bas oraz prędkość reakcji stroboskopu.")
+                    }
                 }
 
                 Section {
@@ -43,7 +112,7 @@ struct PlayerEffectsSheet: View {
                         Label {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Automatyczna wydajność")
-                                Text("Ogranicza animacje przy Low Power i wysokiej temperaturze")
+                                Text("Ogranicza animacje przy oszczędzaniu baterii i nagrzaniu")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
@@ -54,17 +123,17 @@ struct PlayerEffectsSheet: View {
                     }
                     .tint(EOSTheme.accent)
                 } header: {
-                    Text("Bateria")
+                    Text("Bateria i wydajność")
                 } footer: {
                     if let reason = policy.restrictionReason {
                         Text(reason)
                     } else {
-                        Text("Efekty są tylko wizualne — nie zmieniają brzmienia.")
+                        Text("Efekty są renderowane płynnie w 60 FPS.")
                     }
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("Player")
+            .navigationTitle("Efekty i Stroboskop")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

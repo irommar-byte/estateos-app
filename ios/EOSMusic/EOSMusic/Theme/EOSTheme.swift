@@ -59,8 +59,8 @@ enum EOSMotion {
     static let standard = Animation.spring(response: 0.38, dampingFraction: 0.86)
     static let snappy = Animation.snappy(duration: 0.25)
     static let soft = Animation.easeInOut(duration: 0.28)
-    /// Sheet mini ↔ full — slightly slower spring for glass depth.
-    static let playerSheet = Animation.spring(response: 0.44, dampingFraction: 0.9, blendDuration: 0.1)
+    /// Sheet mini ↔ full — ultra-fluid spring transition.
+    static let playerSheet = Animation.spring(response: 0.36, dampingFraction: 0.88)
 }
 
 enum EOSLayout {
@@ -76,6 +76,7 @@ enum PlayerVisualPreset: String, CaseIterable, Identifiable {
     case vinyl
     case cover
     case spectrum
+    case strobe
     case off
 
     var id: String { rawValue }
@@ -84,34 +85,37 @@ enum PlayerVisualPreset: String, CaseIterable, Identifiable {
         switch self {
         case .vinyl: return "Winyl"
         case .cover: return "Okładka"
-        case .spectrum: return "Spectrum"
+        case .spectrum: return "Spectrum EQ"
+        case .strobe: return "Stroboskop"
         case .off: return "Wyłączone"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .vinyl: return "Obracająca się płyta"
-        case .cover: return "Okładka drgająca w rytm muzyki"
+        case .vinyl: return "Płyta gramofonowa 12\" z przerywanym pierścieniem"
+        case .cover: return "Okładka tętniąca i reagująca na bas"
         case .spectrum: return "Czytelny mikser częstotliwości EQ"
-        case .off: return "Statyczna okładka bez efektów"
+        case .strobe: return "Błyski i pulsujące światło klubowe pod bit"
+        case .off: return "Czysta okładka bez animacji"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .vinyl: return "opticaldisc"
+        case .vinyl: return "opticaldisc.fill"
         case .cover: return "square.stack.3d.up.fill"
         case .spectrum: return "waveform.path.ecg"
+        case .strobe: return "light.beacon.max.fill"
         case .off: return "moon.zzz"
         }
     }
 
     var showsMixer: Bool { self == .spectrum }
 
-    var isStrong: Bool { self == .spectrum }
+    var isStrong: Bool { self == .spectrum || self == .strobe }
 
-    var allowsStrobe: Bool { false }
+    var allowsStrobe: Bool { self == .strobe }
 
     /// Map old Account / effects settings. Default to Spectrum (UIKit EQ) — vinyl TimelineViews froze devices.
     static func migrated(fromStored raw: String?) -> PlayerVisualPreset {
@@ -119,6 +123,7 @@ enum PlayerVisualPreset: String, CaseIterable, Identifiable {
         case "subtle", "vinyl": return .vinyl
         case "cover", "aurora", "pulse": return .cover
         case "strong", "spectrum": return .spectrum
+        case "strobe": return .strobe
         case "off": return .off
         case let value?:
             return PlayerVisualPreset(rawValue: value) ?? .spectrum
@@ -350,6 +355,10 @@ final class UIPreferences: ObservableObject {
     @Published var playerStrobeEnabled: Bool {
         didSet { UserDefaults.standard.set(playerStrobeEnabled, forKey: Self.strobeKey) }
     }
+    /// Speed / frequency for strobe light flashes (0.2…1.0).
+    @Published var playerStrobeSpeed: Double {
+        didSet { UserDefaults.standard.set(playerStrobeSpeed, forKey: Self.strobeSpeedKey) }
+    }
     /// Auto-throttle on Low Power / thermal stress.
     @Published var playerAutoPerformance: Bool {
         didSet { UserDefaults.standard.set(playerAutoPerformance, forKey: Self.autoPerfKey) }
@@ -376,6 +385,7 @@ final class UIPreferences: ObservableObject {
     private static let driveKey = "ui.playerDrive"
     private static let mixerPowerKey = "ui.playerMixerPowered"
     private static let strobeKey = "ui.playerStrobeEnabled"
+    private static let strobeSpeedKey = "ui.playerStrobeSpeed"
     private static let autoPerfKey = "ui.playerAutoPerformance"
     private static let offlineModeKey = "ui.offlineModeEnabled"
 
@@ -406,6 +416,11 @@ final class UIPreferences: ObservableObject {
             playerMixerPowered = true
         }
         playerStrobeEnabled = UserDefaults.standard.bool(forKey: Self.strobeKey)
+        if UserDefaults.standard.object(forKey: Self.strobeSpeedKey) != nil {
+            playerStrobeSpeed = min(1, max(0.2, UserDefaults.standard.double(forKey: Self.strobeSpeedKey)))
+        } else {
+            playerStrobeSpeed = 0.8
+        }
         if UserDefaults.standard.object(forKey: Self.autoPerfKey) != nil {
             playerAutoPerformance = UserDefaults.standard.bool(forKey: Self.autoPerfKey)
         } else {

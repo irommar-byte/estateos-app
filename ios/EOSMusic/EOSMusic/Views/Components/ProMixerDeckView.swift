@@ -377,18 +377,36 @@ private struct ProMixerVinylThumb: View {
     var body: some View {
         MixerContinuousSpin(isSpinning: isPlaying, secondsPerRevolution: 11) {
             ZStack {
-                Circle()
-                    .fill(Color.black)
-                    .frame(width: size * 0.92, height: size * 0.92)
-                Circle()
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                    .frame(width: size * 0.92, height: size * 0.92)
+                // Picture Disc winyl — cała okładka
                 ArtworkImage(
                     url: artworkURL,
-                    size: size * 0.38,
-                    cornerRadius: size * 0.19,
+                    size: size * 0.92,
+                    cornerRadius: size * 0.46,
+                    circleClip: true,
                     fallbackImage: fallbackImage
                 )
+                .overlay {
+                    VinylGroovesOverlay()
+                        .clipShape(Circle())
+                }
+                .overlay {
+                    // Przerywany pierścień na środku
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.9), Color.white.opacity(0.3)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [6, 4])
+                        )
+                        .frame(width: size * 0.36, height: size * 0.36)
+                }
+                .overlay {
+                    SpindleHub()
+                        .scaleEffect(0.65)
+                }
+                .shadow(color: .black.opacity(0.38), radius: 8, y: 4)
             }
         }
     }
@@ -544,98 +562,75 @@ private struct ProMixerStatusRail: View {
             let frame = visualizer.snapshot(isPlaying: isPlaying)
             let beat = frame.beat
             let level = frame.level
+            let bass = frame.bass
             let clipThreshold = max(0.55, 0.92 - drive * 0.38)
-            let clip = level > clipThreshold || frame.bass > clipThreshold
+            let clip = level > clipThreshold || bass > clipThreshold
 
-            // ViewThatFits guarantees the rail never overflows its container —
-            // it silently falls back to the compact variant on narrow phones.
-            ViewThatFits(in: .horizontal) {
-                fullRail(beat: beat, level: level, clip: clip)
-                mediumRail(beat: beat, level: level, clip: clip)
-                compactRail(beat: beat, clip: clip)
+            HStack(spacing: 6) {
+                // Diody wejściowe i opisy sprzętowe
+                HStack(spacing: 8) {
+                    ProMixerLED(label: "BEAT", color: ProMixerDeckView.labelGreen, lit: isPlaying && beat > 0.4, blink: beat > 0.7)
+                    ProMixerLED(label: "RYTM", color: ProMixerDeckView.labelAmber, lit: isPlaying && bass > 0.25, blink: bass > 0.55)
+                    ProMixerLED(label: "EOS", color: EOSTheme.accent, lit: onServer, blink: onServer && beat > 0.4)
+                }
+
+                Spacer(minLength: 2)
+
+                queueControl(compact: false)
+
+                Spacer(minLength: 2)
+
+                HStack(spacing: 8) {
+                    ProMixerLED(label: "OUT", color: ProMixerDeckView.labelGreen, lit: isPlaying && level > 0.04, blink: false)
+                    ProMixerLED(label: "CLIP", color: ProMixerDeckView.labelRed, lit: clip, blink: clip)
+                }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.black.opacity(0.72))
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(white: 0.12), Color(white: 0.06)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                     .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.18), Color.white.opacity(0.04)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 1
+                            )
                     }
+                    .shadow(color: .black.opacity(0.32), radius: 6, y: 3)
             }
         }
-    }
-
-    private func fullRail(beat: Double, level: Double, clip: Bool) -> some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 10) {
-                ProMixerLED(label: "SIG", color: ProMixerDeckView.labelGreen, lit: isPlaying && level > 0.04, blink: beat > 0.55)
-                ProMixerLED(label: "PK", color: ProMixerDeckView.labelAmber, lit: isPlaying && level > 0.35, blink: beat > 0.7)
-                ProMixerLED(label: "▶", color: ProMixerDeckView.labelGreen, lit: isPlaying, blink: false)
-                ProMixerLED(label: "EOS", color: EOSTheme.accent, lit: onServer, blink: onServer && beat > 0.4)
-                ProMixerLED(label: "SYNC", color: ProMixerDeckView.labelAmber, lit: isPlaying, blink: beat > 0.85)
-            }
-            Spacer(minLength: 8)
-            queuePill
-            Spacer(minLength: 8)
-            HStack(spacing: 10) {
-                ProMixerLED(label: "OUT L", color: ProMixerDeckView.labelGreen, lit: isPlaying, blink: beat > 0.3)
-                ProMixerLED(label: "OUT R", color: ProMixerDeckView.labelGreen, lit: isPlaying, blink: beat > 0.45)
-                ProMixerLED(label: "CLIP", color: ProMixerDeckView.labelRed, lit: clip, blink: clip)
-            }
-        }
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
-    private func mediumRail(beat: Double, level: Double, clip: Bool) -> some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 7) {
-                ProMixerLED(label: "SIG", color: ProMixerDeckView.labelGreen, lit: isPlaying && level > 0.04, blink: beat > 0.55, showsLabel: false)
-                ProMixerLED(label: "▶", color: ProMixerDeckView.labelGreen, lit: isPlaying, blink: false, showsLabel: false)
-                ProMixerLED(label: "EOS", color: EOSTheme.accent, lit: onServer, blink: onServer && beat > 0.4, showsLabel: false)
-            }
-            queuePill
-            HStack(spacing: 7) {
-                ProMixerLED(label: "OUT", color: ProMixerDeckView.labelGreen, lit: isPlaying, blink: beat > 0.3, showsLabel: false)
-                ProMixerLED(label: "CLIP", color: ProMixerDeckView.labelRed, lit: clip, blink: clip, showsLabel: false)
-            }
-        }
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
-    private func compactRail(beat: Double, clip: Bool) -> some View {
-        HStack(spacing: 8) {
-            ProMixerLED(label: "▶", color: ProMixerDeckView.labelGreen, lit: isPlaying, blink: false, showsLabel: false)
-            ProMixerLED(label: "EOS", color: EOSTheme.accent, lit: onServer, blink: onServer && beat > 0.4, showsLabel: false)
-            queueControl(compact: true)
-            Spacer(minLength: 4)
-            ProMixerLED(label: "CLIP", color: ProMixerDeckView.labelRed, lit: clip, blink: clip, showsLabel: false)
-        }
-    }
-
-    @ViewBuilder
-    private var queuePill: some View {
-        queueControl(compact: false)
     }
 
     @ViewBuilder
     private func queueControl(compact: Bool) -> some View {
         let label = Group {
-            if compact {
-                Text(queueLabel)
-                    .font(.caption2.monospacedDigit().weight(.bold))
-            } else {
-                Text(queueLabel)
-                    .font(.caption.monospacedDigit().weight(.bold))
-            }
+            Text(queueLabel)
+                .font(.caption2.monospacedDigit().weight(.bold))
         }
-        .foregroundStyle(ProMixerDeckView.labelGreen.opacity(0.85))
+        .foregroundStyle(ProMixerDeckView.labelGreen.opacity(0.95))
         .lineLimit(1)
-        .minimumScaleFactor(0.7)
-        .padding(.horizontal, compact ? 6 : 10)
-        .padding(.vertical, compact ? 2 : 4)
-        .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
+        .minimumScaleFactor(0.75)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.black.opacity(0.7))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(ProMixerDeckView.labelGreen.opacity(0.25), lineWidth: 0.8)
+                }
+        )
 
         if let onQueueTap {
             Button {
@@ -645,11 +640,9 @@ private struct ProMixerStatusRail: View {
                 label
             }
             .buttonStyle(.plain)
-            .layoutPriority(compact ? 1 : 0)
             .accessibilityLabel("Kolejka odtwarzania, \(queueLabel)")
         } else {
             label
-                .layoutPriority(compact ? 1 : 0)
         }
     }
 }
@@ -659,34 +652,38 @@ private struct ProMixerLED: View {
     let color: Color
     let lit: Bool
     var blink: Bool
-    var showsLabel: Bool = true
 
     @State private var phase = false
 
     var body: some View {
         VStack(spacing: 3) {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: lit
-                            ? [color.opacity(blink && phase ? 1 : 0.85), color.opacity(0.35)]
-                            : [Color(white: 0.12), Color(white: 0.04)],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 6
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.2), lineWidth: 0.8)
+                    .frame(width: 12, height: 12)
+
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: lit
+                                ? [color.opacity(blink && phase ? 1 : 0.88), color.opacity(0.35)]
+                                : [Color(white: 0.16), Color(white: 0.05)],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 6
+                        )
                     )
-                )
-                .frame(width: 10, height: 10)
-                .shadow(color: lit ? color.opacity(blink && phase ? 0.9 : 0.5) : .clear, radius: 4)
-            if showsLabel {
-                Text(label)
-                    .font(.system(size: 7, weight: .heavy, design: .monospaced))
-                    .foregroundStyle(Color.white.opacity(lit ? 0.7 : 0.35))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .frame(width: 9, height: 9)
+                    .shadow(color: lit ? color.opacity(blink && phase ? 0.95 : 0.55) : .clear, radius: 5)
             }
+
+            Text(label)
+                .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                .foregroundStyle(lit ? Color.white : Color.white.opacity(0.48))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
-        .frame(width: showsLabel ? 34 : 16)
+        .frame(minWidth: 26)
         .onAppear {
             guard blink else { return }
             withAnimation(.easeInOut(duration: 0.12).repeatForever(autoreverses: true)) {

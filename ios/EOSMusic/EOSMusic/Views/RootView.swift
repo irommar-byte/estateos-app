@@ -115,9 +115,9 @@ private struct MusicPlayerPresentation<PlayerContent: View>: ViewModifier {
         } else {
             content.sheet(isPresented: $isPresented) {
                 playerContent()
-                    .presentationDetents([.fraction(0.96), .large])
+                    .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
-                    .presentationCornerRadius(34)
+                    .presentationCornerRadius(32)
                     .presentationContentInteraction(.scrolls)
                     .presentationBackground {
                         ZStack {

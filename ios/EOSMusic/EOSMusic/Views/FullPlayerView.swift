@@ -1078,13 +1078,15 @@ private struct PlayerStrobeLayer: View {
     let visualizer: PlayerAudioVisualizer
     let isPlaying: Bool
     let intensity: Double
+    var speed: Double = 0.8
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 8, paused: !isPlaying)) { _ in
+        TimelineView(.animation(minimumInterval: 1.0 / 12, paused: !isPlaying)) { _ in
             SafeStrobeOverlay(
                 isPlaying: isPlaying,
                 beat: visualizer.snapshot(isPlaying: isPlaying).beat,
-                intensity: intensity
+                intensity: intensity,
+                speed: speed
             )
         }
     }
@@ -1167,7 +1169,7 @@ private struct RotatingDiscArtwork: View {
     }
 }
 
-/// Square cover that scales, glows and breathes with the beat.
+/// Proste, proste i wycentrowane zdjęcie albumu — reaguje na bas i bit bez przekrzywiania 3D.
 private struct PulsingCoverArtwork: View {
     let artworkURL: URL?
     let isPlaying: Bool
@@ -1179,41 +1181,62 @@ private struct PulsingCoverArtwork: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 12, paused: !isPlaying)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            let breathe = isPlaying ? sin(t * 2.4) * (lively ? 0.018 : 0.008) : 0
-            let sway = isPlaying ? sin(t * 1.7 + 0.6) * (lively ? 2.4 : 0) : 0
+            let breathe = isPlaying ? sin(t * 2.2) * (lively ? 0.015 : 0.006) : 0
             let pulse = isPlaying
-                ? 1 + CGFloat(beat) * (lively ? 0.07 : 0.055) + CGFloat(drive) * 0.022 + CGFloat(breathe)
+                ? 1 + CGFloat(beat) * (lively ? 0.05 : 0.035) + CGFloat(drive) * 0.018 + CGFloat(breathe)
                 : 1
-            let glow = isPlaying ? (0.16 + drive * 0.26 + beat * 0.24) : 0.1
+            let glow = isPlaying ? (0.16 + drive * 0.22 + beat * 0.2) : 0.08
 
             ZStack {
-                RoundedRectangle(cornerRadius: lively ? 20 : 22, style: .continuous)
+                // Tło poświaty — symetryczne, bez obracania i kładzenia
+                RoundedRectangle(cornerRadius: lively ? 22 : 24, style: .continuous)
                     .fill(
                         RadialGradient(
                             colors: [
-                                EOSTheme.accent.opacity(0.38 * glow),
-                                EOSTheme.accentSecondary.opacity(0.2 * glow),
+                                EOSTheme.accent.opacity(0.32 * glow),
+                                EOSTheme.accentSecondary.opacity(0.18 * glow),
                                 .clear
                             ],
                             center: .center,
-                            startRadius: canvasSize * 0.12,
-                            endRadius: canvasSize * 0.65
+                            startRadius: canvasSize * 0.1,
+                            endRadius: canvasSize * 0.6
                         )
                     )
-                    .frame(width: canvasSize * 1.12, height: canvasSize * 1.12)
-                    .blur(radius: lively ? 22 : 18)
-                    .scaleEffect(pulse * 1.04)
+                    .frame(width: canvasSize * 1.08, height: canvasSize * 1.08)
+                    .blur(radius: lively ? 20 : 16)
+                    .scaleEffect(pulse * 1.02)
 
-                ArtworkImage(url: artworkURL, size: canvasSize * 0.84, cornerRadius: lively ? 16 : 18)
-                    .scaleEffect(pulse)
-                    .rotation3DEffect(.degrees(sway), axis: (x: 0.08, y: 1, z: 0), perspective: 0.4)
-                    .shadow(
-                        color: EOSTheme.accent.opacity(glow),
-                        radius: 18 + CGFloat(beat) * (lively ? 16 : 12),
-                        y: 10
-                    )
+                // Czysta, prosta okładka z podwójną ramką szkła
+                ArtworkImage(
+                    url: artworkURL,
+                    size: canvasSize * 0.85,
+                    cornerRadius: lively ? 18 : 20,
+                    allowAnimated: true
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: lively ? 18 : 20, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.4), Color.white.opacity(0.08)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                }
+                .scaleEffect(pulse)
+                .shadow(
+                    color: .black.opacity(0.28),
+                    radius: 16 + CGFloat(beat) * (lively ? 12 : 8),
+                    y: 8
+                )
+                .shadow(
+                    color: EOSTheme.accent.opacity(glow * 0.6),
+                    radius: 20,
+                    y: 4
+                )
             }
-            .animation(.easeOut(duration: 0.07), value: beat)
+            .animation(.easeOut(duration: 0.08), value: beat)
         }
         .frame(width: canvasSize, height: canvasSize)
     }
@@ -1275,59 +1298,51 @@ private struct ContinuousSpin<Content: View>: View {
     }
 }
 
+/// Płyta winylowa "Picture Disc" — okładka zajmuje cały winyl, na środku przerywany pierścień i wrzeciono.
 private struct VinylDisc: View {
     let artworkURL: URL?
     var fallbackImage: UIImage? = nil
 
     var body: some View {
         ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.12, green: 0.12, blue: 0.14),
-                            Color.black.opacity(0.92)
-                        ],
-                        center: UnitPoint(x: 0.38, y: 0.3),
-                        startRadius: 8,
-                        endRadius: 140
-                    )
-                )
-                .frame(width: 272, height: 272)
-                .overlay {
-                    VinylGroovesOverlay()
-                        .mask {
-                            ZStack {
-                                Circle().fill(.white)
-                                Circle()
-                                    .fill(.black)
-                                    .frame(width: 222, height: 222)
-                                    .blendMode(.destinationOut)
-                            }
-                            .compositingGroup()
-                            .frame(width: 272, height: 272)
-                        }
-                }
-
+            // Cała płyta winylowa to okładka albumu (Picture Disc)
             ArtworkImage(
                 url: artworkURL,
-                size: 236,
-                cornerRadius: 118,
+                size: 272,
+                cornerRadius: 136,
                 circleClip: true,
                 allowAnimated: true,
                 fallbackImage: fallbackImage
             )
-                .overlay {
-                    Circle()
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                }
-                .overlay { SpindleHub() }
-                .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
+            .overlay {
+                // Mikroskopijne rowki winylowe na całej powierzchni
+                VinylGroovesOverlay()
+                    .clipShape(Circle())
+            }
+            .overlay {
+                // Przerywany pierścień na środku płyty
+                Circle()
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.92),
+                                Color.white.opacity(0.25)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [8, 5])
+                    )
+                    .frame(width: 112, height: 108)
+                    .shadow(color: .black.opacity(0.5), radius: 3)
+            }
+            .overlay { SpindleHub() }
+            .shadow(color: .black.opacity(0.4), radius: 14, y: 6)
         }
     }
 }
 
-private struct SpindleHub: View {
+struct SpindleHub: View {
     var body: some View {
         ZStack {
             Circle()
@@ -1364,7 +1379,7 @@ private struct SpindleHub: View {
     }
 }
 
-private struct VinylGroovesOverlay: View {
+struct VinylGroovesOverlay: View {
     var body: some View {
         Canvas { gc, size in
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
@@ -1790,33 +1805,48 @@ private struct SafeStrobeOverlay: View {
     let isPlaying: Bool
     let beat: Double
     let intensity: Double
+    var speed: Double = 0.8
 
     @State private var flash: Double = 0
     @State private var lastFlashAt: TimeInterval = 0
 
-    private let minInterval: TimeInterval = 1.0 / 3.0
+    private var minInterval: TimeInterval {
+        let maxHz = 3.0 + speed * 8.0
+        return 1.0 / maxHz
+    }
+
+    private var beatThreshold: Double {
+        max(0.35, 0.68 - speed * 0.22)
+    }
 
     var body: some View {
-        RadialGradient(
-            colors: [
-                EOSTheme.accent.opacity(flash * 0.22 * intensity),
-                EOSTheme.accentSecondary.opacity(flash * 0.1 * intensity),
-                .clear
-            ],
-            center: .center,
-            startRadius: 10,
-            endRadius: 380
-        )
+        ZStack {
+            RadialGradient(
+                colors: [
+                    EOSTheme.accent.opacity(flash * 0.3 * intensity),
+                    EOSTheme.accentSecondary.opacity(flash * 0.15 * intensity),
+                    .clear
+                ],
+                center: .center,
+                startRadius: 10,
+                endRadius: 400
+            )
+
+            RoundedRectangle(cornerRadius: 32)
+                .stroke(EOSTheme.accent.opacity(flash * 0.4 * intensity), lineWidth: 2)
+                .padding(4)
+        }
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .blendMode(.plusLighter)
         .onChange(of: beat) { _, newBeat in
-            guard isPlaying, newBeat > 0.62 else { return }
+            guard isPlaying, newBeat > beatThreshold else { return }
             let now = CACurrentMediaTime()
             guard now - lastFlashAt >= minInterval else { return }
             lastFlashAt = now
-            withAnimation(.easeOut(duration: 0.05)) { flash = min(1, newBeat) }
-            withAnimation(.easeOut(duration: 0.22).delay(0.05)) { flash = 0 }
+            let flashDuration = max(0.02, 0.08 / max(0.5, speed * 1.5))
+            withAnimation(.easeOut(duration: flashDuration)) { flash = min(1, newBeat * 1.2) }
+            withAnimation(.easeOut(duration: flashDuration * 2.5).delay(flashDuration)) { flash = 0 }
         }
         .onChange(of: isPlaying) { _, playing in
             if !playing { flash = 0 }
