@@ -110,21 +110,23 @@ private struct PlayerContent: View {
                     policy: policy
                 )
 
-                if effectsActive, policy.allowStrobe {
-                    PlayerStrobeLayer(
-                        visualizer: engine.visualizer,
-                        isPlaying: engine.isPlaying,
-                        intensity: policy.intensityScale,
-                        speed: ui.playerStrobeSpeed
-                    )
-                }
-
                 if let track = engine.currentTrack {
                     if layout.wide {
                         widePlayerLayout(track: track, layout: layout)
                     } else {
                         narrowPlayerLayout(track: track, layout: layout)
                     }
+                }
+
+                // Stroboskop na wierzchu całej sceny — błyski widać na całym playerze.
+                if effectsActive, policy.allowStrobe {
+                    PlayerStrobeLayer(
+                        visualizer: engine.visualizer,
+                        isPlaying: engine.isPlaying,
+                        intensity: max(0.55, policy.intensityScale),
+                        speed: ui.playerStrobeSpeed
+                    )
+                    .allowsHitTesting(false)
                 }
             }
         }
@@ -538,24 +540,32 @@ private struct PlayerLayout {
     var compactMixer: Bool { tight || height < 820 }
 
     var discSize: CGFloat {
-        if wide { return min(320, height * 0.42) }
+        // Spectrum: mała okładka w headerze — nigdy nie rozjeżdża EQ.
         if preset.showsMixer {
-            if height < 620 { return 80 }
-            if height < 700 { return 100 }
-            if height < 780 { return 118 }
-            return isPad ? 150 : 130
+            if wide { return min(128, max(88, height * 0.18)) }
+            if height < 620 { return 72 }
+            if height < 700 { return 88 }
+            if height < 780 { return 100 }
+            return isPad ? 118 : 108
         }
-        if height < 620 { return 150 }
-        if height < 700 { return 180 }
-        if height < 780 { return 215 }
-        return isPad ? 260 : 235
+        // Winyl / Okładka / Strobe — większy hero, ale nadal w ramce ekranu.
+        if wide { return min(260, height * 0.36) }
+        if height < 620 { return 148 }
+        if height < 700 { return 176 }
+        if height < 780 { return 210 }
+        return isPad ? 250 : 228
     }
 
     var spectrumHeight: CGFloat {
-        if height < 620 { return 85 }
-        if height < 700 { return 105 }
-        if height < 780 { return 120 }
-        return 138
+        if wide {
+            if height < 560 { return 120 }
+            if height < 700 { return 150 }
+            return 176
+        }
+        if height < 620 { return 96 }
+        if height < 700 { return 112 }
+        if height < 780 { return 128 }
+        return 144
     }
 
     var haloBarCount: Int {
@@ -1097,9 +1107,10 @@ private struct PlayerStrobeLayer: View {
     var speed: Double = 0.8
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 20, paused: !isPlaying)) { _ in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !isPlaying)) { context in
             let frame = visualizer.snapshot(isPlaying: isPlaying)
             StrobeFlashView(
+                date: context.date,
                 isPlaying: isPlaying,
                 beat: frame.beat,
                 bass: frame.bass,
@@ -1111,7 +1122,9 @@ private struct PlayerStrobeLayer: View {
     }
 }
 
+/// Klubowy stroboskop: ostre błyski w rytm basu + prędkość z ustawień.
 private struct StrobeFlashView: View {
+    let date: Date
     let isPlaying: Bool
     let beat: Double
     let bass: Double
@@ -1120,60 +1133,53 @@ private struct StrobeFlashView: View {
     var speed: Double = 0.8
 
     var body: some View {
-        let rawPower = max(beat * 1.25, max(bass * 1.15, level * 0.95))
-        let active = isPlaying && rawPower > 0.12
-        let flash = active ? min(1.0, rawPower * (0.6 + intensity * 0.5) * (0.6 + speed * 0.6)) : 0
+        let rawPower = max(beat * 1.35, max(bass * 1.2, level * 0.9))
+        let hz = 2.0 + speed * 7.0
+        let phase = date.timeIntervalSinceReferenceDate * hz
+        // Ostry gate: krótkie „on”, długa cisza — prawdziwy strobo.
+        let gate = (phase.truncatingRemainder(dividingBy: 1) < (0.12 + speed * 0.08)) ? 1.0 : 0.0
+        let energyGate = rawPower > 0.18 ? 1.0 : (rawPower > 0.08 ? 0.45 : 0)
+        let flash = isPlaying ? min(1, gate * energyGate * (0.55 + intensity * 0.7)) : 0
 
         ZStack {
-            // 1. Rozbłysk biało-neonowy stroboskopu na całe tło playera
+            Color.white.opacity(flash * 0.28)
+                .blendMode(.plusLighter)
+
             RadialGradient(
                 colors: [
-                    Color.white.opacity(flash * 0.55),
-                    EOSTheme.accent.opacity(flash * 0.45),
-                    EOSTheme.accentSecondary.opacity(flash * 0.22),
+                    Color.white.opacity(flash * 0.7),
+                    EOSTheme.accent.opacity(flash * 0.55),
+                    EOSTheme.accentSecondary.opacity(flash * 0.25),
                     .clear
                 ],
                 center: .center,
-                startRadius: 20,
-                endRadius: 580
+                startRadius: 8,
+                endRadius: 520
             )
             .blendMode(.plusLighter)
 
-            // 2. Światła stroboskopowe (reflektory klubowe w górnych narożnikach)
             HStack {
                 Circle()
-                    .fill(Color.white.opacity(flash * 0.9))
-                    .frame(width: 100, height: 100)
-                    .blur(radius: 24)
-                    .offset(x: -30, y: -30)
+                    .fill(Color.white.opacity(flash * 0.95))
+                    .frame(width: 120, height: 120)
+                    .blur(radius: 28)
+                    .offset(x: -40, y: -20)
                 Spacer()
                 Circle()
-                    .fill(EOSTheme.accent.opacity(flash * 0.9))
-                    .frame(width: 100, height: 100)
-                    .blur(radius: 24)
-                    .offset(x: 30, y: -30)
+                    .fill(EOSTheme.accent.opacity(flash * 0.95))
+                    .frame(width: 120, height: 120)
+                    .blur(radius: 28)
+                    .offset(x: 40, y: -20)
             }
             .frame(maxHeight: .infinity, alignment: .top)
 
-            // 3. Neonowa pulsująca ramka krawędziowa
-            RoundedRectangle(cornerRadius: 32, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(flash * 0.75),
-                            EOSTheme.accent.opacity(flash * 0.55),
-                            Color.white.opacity(flash * 0.3)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 3
-                )
-                .padding(4)
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(Color.white.opacity(flash * 0.85), lineWidth: 2.5)
+                .padding(6)
+                .blendMode(.plusLighter)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
-        .animation(.easeOut(duration: 0.05), value: flash)
     }
 }
 

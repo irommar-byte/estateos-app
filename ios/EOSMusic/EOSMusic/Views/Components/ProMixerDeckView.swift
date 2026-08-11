@@ -11,7 +11,7 @@ enum ProMixerDeckView {
     static let labelRed = Color(red: 1, green: 0.22, blue: 0.18)
 }
 
-/// Symetryczna konsola DJ — iPad / szeroki player.
+/// Szeroka konsola — iPad / Mac / landscape. Jedna czytelna kompozycja, zero overflow.
 struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
     let visualizer: PlayerAudioVisualizer
     let isPlaying: Bool
@@ -29,16 +29,18 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
     let artworkURL: URL?
     let fallbackArtwork: UIImage?
     let canvasSize: CGFloat
-    var spectrumHeight: CGFloat = 120
+    var spectrumHeight: CGFloat = 150
     @ViewBuilder var meta: () -> Meta
     @ViewBuilder var status: () -> Status
     @ViewBuilder var storage: () -> Storage
 
+    private var live: Bool { isPlaying && !isLoading }
+
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             ProMixerStatusRail(
                 visualizer: visualizer,
-                isPlaying: isPlaying && !isLoading,
+                isPlaying: live,
                 queueLabel: queueLabel,
                 onQueueTap: onQueueTap,
                 onServer: onServer,
@@ -46,123 +48,75 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
             )
 
             ProMixerChassis {
-                GeometryReader { geo in
-                    let stacked = geo.size.width < 640
-                    Group {
-                        if stacked {
-                            stackedDeck
-                        } else {
-                            horizontalDeck
+                VStack(spacing: 12) {
+                    // Header: okładka + meta — zawsze w jednej linii, w pełni w chassis.
+                    HStack(alignment: .center, spacing: 16) {
+                        artworkBlock
+                            .frame(width: canvasSize, height: canvasSize)
+                            .clipped()
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            meta()
+                            status()
+                            Spacer(minLength: 0)
+                            if preset.showsMixer {
+                                ProMixerNumericDisplay(visualizer: visualizer, isPlaying: live)
+                            }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+
+                    if preset.showsMixer {
+                        HStack(alignment: .center, spacing: 10) {
+                            ProMixerVerticalVU(
+                                visualizer: visualizer,
+                                isPlaying: live,
+                                channel: .left,
+                                width: 28,
+                                compact: true,
+                                drive: drive
+                            )
+
+                            WinampSpectrumHost(
+                                visualizer: visualizer,
+                                isPlaying: live,
+                                intensity: intensity,
+                                bandCount: bandCount,
+                                compact: true
+                            )
+                            .frame(maxWidth: .infinity)
+                            .frame(height: spectrumHeight)
+
+                            ProMixerVerticalVU(
+                                visualizer: visualizer,
+                                isPlaying: live,
+                                channel: .right,
+                                width: 28,
+                                compact: true,
+                                drive: drive
+                            )
+                        }
+
+                        ProMixerStereoBridge(visualizer: visualizer, isPlaying: live)
+                    }
                 }
-                .frame(minHeight: compactMixer ? (preset.showsMixer ? 220 : 160) : (preset.showsMixer ? 280 : 200))
+                .padding(14)
             }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
             storage()
-                .padding(.horizontal, 2)
 
             if preset.showsMixer {
                 ProMixerControlStrip(
                     visualizer: visualizer,
-                    isPlaying: isPlaying && !isLoading,
-                    drive: drive
-                )
-
-                ProMixerBeatChase(
-                    visualizer: visualizer,
-                    isPlaying: isPlaying && !isLoading
+                    isPlaying: live,
+                    drive: drive,
+                    compact: compactMixer
                 )
             }
         }
-        .padding(8)
+        .padding(6)
         .background { ProMixerStageBackground() }
-    }
-
-    private var horizontalDeck: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ProMixerSideColumn(
-                title: "DECK A",
-                visualizer: visualizer,
-                isPlaying: isPlaying && !isLoading,
-                channel: .left,
-                width: 48,
-                drive: drive
-            ) {
-                artworkBlock
-            }
-            .frame(minWidth: 140, maxWidth: .infinity)
-
-            ProMixerMasterSection(
-                visualizer: visualizer,
-                isPlaying: isPlaying && !isLoading,
-                intensity: intensity,
-                bandCount: bandCount,
-                compactMixer: compactMixer,
-                effectsActive: effectsActive
-            )
-            .frame(minWidth: 260, maxWidth: .infinity)
-            .layoutPriority(2)
-
-            ProMixerSideColumn(
-                title: "INFO",
-                visualizer: visualizer,
-                isPlaying: isPlaying && !isLoading,
-                channel: .right,
-                width: 48,
-                drive: drive
-            ) {
-                VStack(alignment: .leading, spacing: 10) {
-                    meta()
-                    status()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(minWidth: 160, maxWidth: .infinity)
-        }
-        .padding(14)
-    }
-
-    private var stackedDeck: some View {
-        VStack(spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
-                ProMixerSideColumn(
-                    title: "L",
-                    visualizer: visualizer,
-                    isPlaying: isPlaying && !isLoading,
-                    channel: .left,
-                    width: 40,
-                    compact: true,
-                    drive: drive
-                ) {
-                    artworkBlock.scaleEffect(0.92)
-                }
-                ProMixerSideColumn(
-                    title: "R",
-                    visualizer: visualizer,
-                    isPlaying: isPlaying && !isLoading,
-                    channel: .right,
-                    width: 40,
-                    compact: true,
-                    drive: drive
-                ) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        meta()
-                        status()
-                    }
-                }
-            }
-            ProMixerMasterSection(
-                visualizer: visualizer,
-                isPlaying: isPlaying && !isLoading,
-                intensity: intensity,
-                bandCount: bandCount,
-                compactMixer: true,
-                effectsActive: effectsActive
-            )
-        }
-        .padding(12)
     }
 
     @ViewBuilder
@@ -171,7 +125,7 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
             PlayerHeroArtworkBridge(
                 artworkURL: artworkURL,
                 fallbackImage: fallbackArtwork,
-                isPlaying: isPlaying && !isLoading,
+                isPlaying: live,
                 preset: preset,
                 policy: policy,
                 canvasSize: canvasSize
@@ -179,16 +133,17 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
         } else {
             ArtworkImage(
                 url: artworkURL,
-                size: canvasSize * 0.82,
+                size: canvasSize * 0.92,
                 cornerRadius: 14,
+                allowAnimated: true,
                 fallbackImage: fallbackArtwork
             )
-            .shadow(color: EOSTheme.accent.opacity(0.18), radius: 14, y: 6)
+            .shadow(color: EOSTheme.accent.opacity(0.16), radius: 12, y: 6)
         }
     }
 }
 
-/// Kompaktowa konsola — iPhone.
+/// Kompaktowa konsola — iPhone. Wszystko w jednym ekranie, bez scrolla i overlapów.
 struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
     let visualizer: PlayerAudioVisualizer
     let isPlaying: Bool
@@ -211,11 +166,13 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
     @ViewBuilder var status: () -> Status
     @ViewBuilder var storage: () -> Storage
 
+    private var live: Bool { isPlaying && !isLoading }
+
     var body: some View {
         VStack(spacing: compactMixer ? 6 : 8) {
             ProMixerStatusRail(
                 visualizer: visualizer,
-                isPlaying: isPlaying && !isLoading,
+                isPlaying: live,
                 queueLabel: queueLabel,
                 onQueueTap: onQueueTap,
                 onServer: onServer,
@@ -223,9 +180,11 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
             )
 
             ProMixerChassis {
-                VStack(spacing: compactMixer ? 6 : 10) {
+                VStack(spacing: compactMixer ? 8 : 10) {
                     artworkThumb
+                        .frame(width: canvasSize, height: canvasSize)
                         .frame(maxWidth: .infinity)
+                        .clipped()
 
                     VStack(spacing: 4) {
                         meta()
@@ -234,34 +193,26 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                     .frame(maxWidth: .infinity)
 
                     if preset.showsMixer {
-                        IslandBarsHost(
-                            visualizer: visualizer,
-                            isPlaying: isPlaying && !isLoading,
-                            compact: true,
-                            prominent: true
-                        )
-                        .frame(height: 22)
-
                         WinampSpectrumHost(
                             visualizer: visualizer,
-                            isPlaying: isPlaying && !isLoading,
+                            isPlaying: live,
                             intensity: intensity,
                             bandCount: bandCount,
                             compact: true
                         )
                         .frame(height: spectrumHeight)
 
-                        ProMixerStereoBridge(visualizer: visualizer, isPlaying: isPlaying && !isLoading)
-                            .padding(.horizontal, 2)
+                        ProMixerStereoBridge(visualizer: visualizer, isPlaying: live)
                     }
                 }
-                .padding(compactMixer ? 8 : 10)
+                .padding(compactMixer ? 10 : 12)
             }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
             if preset.showsMixer {
                 ProMixerControlStrip(
                     visualizer: visualizer,
-                    isPlaying: isPlaying && !isLoading,
+                    isPlaying: live,
                     drive: drive,
                     compact: true
                 )
@@ -277,7 +228,7 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
             PlayerHeroArtworkBridge(
                 artworkURL: artworkURL,
                 fallbackImage: fallbackArtwork,
-                isPlaying: isPlaying && !isLoading,
+                isPlaying: live,
                 preset: preset,
                 policy: policy,
                 canvasSize: canvasSize
@@ -285,8 +236,9 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
         } else {
             ArtworkImage(
                 url: artworkURL,
-                size: canvasSize * 0.82,
+                size: canvasSize * 0.92,
                 cornerRadius: 14,
+                allowAnimated: true,
                 fallbackImage: fallbackArtwork
             )
         }
@@ -447,10 +399,11 @@ private struct ProMixerChassis<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         content()
             .background {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    shape
                         .fill(
                             LinearGradient(
                                 colors: [
@@ -462,7 +415,7 @@ private struct ProMixerChassis<Content: View>: View {
                                 endPoint: .bottomTrailing
                             )
                         )
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    shape
                         .strokeBorder(
                             LinearGradient(
                                 colors: [
@@ -482,6 +435,7 @@ private struct ProMixerChassis<Content: View>: View {
                 .shadow(color: .black.opacity(0.55), radius: 24, y: 14)
                 .shadow(color: EOSTheme.accent.opacity(0.08), radius: 40, y: 0)
             }
+            .clipShape(shape)
             .overlay(alignment: .topLeading) { ProMixerScrew().padding(10) }
             .overlay(alignment: .topTrailing) { ProMixerScrew().padding(10) }
             .overlay(alignment: .bottomLeading) { ProMixerScrew().padding(10) }
@@ -801,7 +755,8 @@ private struct ProMixerVerticalVU: View {
                     .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
             }
         }
-        .frame(height: compact ? 118 : 148)
+        .frame(maxHeight: .infinity)
+        .frame(minHeight: compact ? 96 : 148)
     }
 }
 
