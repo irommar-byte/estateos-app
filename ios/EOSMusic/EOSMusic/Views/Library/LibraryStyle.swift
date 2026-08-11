@@ -41,6 +41,7 @@ enum LibraryAccent {
 struct LibraryCategoryRow: View {
     let icon: String
     let title: String
+    var subtitle: String? = nil
 
     var body: some View {
         HStack(spacing: 16) {
@@ -54,6 +55,48 @@ struct LibraryCategoryRow: View {
                 .foregroundStyle(.primary)
 
             Spacer(minLength: 8)
+
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+    }
+}
+
+struct LibraryDownloadedCategoryRow: View {
+    let count: Int
+    var storage: StorageSnapshot?
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(LibraryAccent.icon)
+                .frame(width: 30, alignment: .center)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Pobrane")
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 8)
+                    Text(count == 1 ? "1 utwór" : "\(count) utworów")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                if let storage {
+                    StorageCapacityBar(snapshot: storage)
+                }
+            }
 
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
@@ -150,6 +193,59 @@ enum LibraryData {
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
+    /// Merges library downloads with local OfflineMusicStore files (works without API).
+    @MainActor
+    static func allLocalDownloads(from tracks: [MusicTrack], isOffline: (String) -> Bool) -> [MusicTrack] {
+        var seen = Set<String>()
+        var result: [MusicTrack] = []
+
+        for track in tracks where isOffline(track.url) {
+            guard seen.insert(track.url).inserted else { continue }
+            result.append(track)
+        }
+
+        for entry in OfflineMusicStore.shared.entries.values {
+            guard OfflineMusicStore.shared.isAvailable(entry.url) else { continue }
+            guard seen.insert(entry.url).inserted else { continue }
+            if let match = tracks.first(where: { $0.url == entry.url }) {
+                result.append(match)
+            } else {
+                result.append(.fromOfflineEntry(entry))
+            }
+        }
+
+        for fileURL in OfflineMusicStore.shared.allLocalAudioFiles() {
+            let key = OfflineMusicStore.shared.entries.first(where: { $0.value.fileName == fileURL.lastPathComponent })?.key
+                ?? "file:\(fileURL.lastPathComponent)"
+            guard seen.insert(key).inserted else { continue }
+            if let entry = OfflineMusicStore.shared.entries[key] {
+                result.append(.fromOfflineEntry(entry))
+            } else {
+                let parsed = parseOfflineFileName(fileURL.deletingPathExtension().lastPathComponent)
+                let date = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey])
+                    .contentModificationDate) ?? Date()
+                result.append(MusicTrack(
+                    folderId: MusicTrack.localOfflineFolderId,
+                    url: key,
+                    title: parsed.title,
+                    artist: parsed.artist,
+                    addedAt: date.timeIntervalSince1970 * 1000
+                ))
+            }
+        }
+
+        return result.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    private static func parseOfflineFileName(_ name: String) -> (title: String, artist: String?) {
+        if let range = name.range(of: " - ") {
+            let artist = String(name[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+            let title = String(name[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+            if !artist.isEmpty, !title.isEmpty { return (title, artist) }
+        }
+        return (name, nil)
+    }
+
     static func search(query: String, folders: [MusicFolder], tracks: [MusicTrack]) -> LibrarySearchResults {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard needle.count >= 2 else { return .empty }
@@ -225,10 +321,46 @@ struct LibraryAlbumGroup: Identifiable, Hashable {
     var trackCount: Int
 }
 
+enum RecentLibraryLayout: String, CaseIterable, Identifiable {
+    case tiles
+    case large
+    case list
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .tiles: return "Kafelki"
+        case .large: return "Duże"
+        case .list: return "Lista"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .tiles: return "square.grid.2x2"
+        case .large: return "rectangle.grid.1x2"
+        case .list: return "list.bullet"
+        }
+    }
+}
+
 struct RecentLibraryCell: View {
     let item: RecentLibraryItem
+    var style: RecentLibraryLayout = .tiles
 
     var body: some View {
+        switch style {
+        case .list:
+            listBody
+        case .large:
+            largeBody
+        case .tiles:
+            tilesBody
+        }
+    }
+
+    private var tilesBody: some View {
         VStack(alignment: .leading, spacing: 8) {
             ArtworkImage(url: item.artworkURL, size: 160, cornerRadius: 10)
                 .frame(maxWidth: .infinity)
@@ -248,6 +380,50 @@ struct RecentLibraryCell: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
+
+    private var largeBody: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ArtworkImage(url: item.artworkURL, size: 280, cornerRadius: 14)
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                Text(item.subtitle.isEmpty ? "Utwór" : item.subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private var listBody: some View {
+        HStack(spacing: 14) {
+            ArtworkImage(url: item.artworkURL, size: 56, cornerRadius: 8)
+                .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(item.subtitle.isEmpty ? "Utwór" : item.subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "play.circle.fill")
+                .font(.title3)
+                .foregroundStyle(LibraryAccent.icon.opacity(0.9))
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
 }
 
 /// Shared header: large cover beside title (playlist / album).
@@ -261,7 +437,7 @@ struct LibraryEntityHeader: View {
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
             ZStack(alignment: .bottomTrailing) {
-                ArtworkImage(url: artworkURL, size: 112, cornerRadius: 12)
+                ArtworkImage(url: artworkURL, size: 112, cornerRadius: 12, allowAnimated: true)
                     .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
 
                 if showsPhotoPicker {

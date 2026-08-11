@@ -36,6 +36,11 @@ enum MusicSourceKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum MusicSourceStorageKind: String, Codable, Hashable {
+    case folderBookmark
+    case sandboxFile
+}
+
 struct ConnectedMusicSource: Codable, Identifiable, Hashable {
     let id: UUID
     var kind: MusicSourceKind
@@ -43,6 +48,9 @@ struct ConnectedMusicSource: Codable, Identifiable, Hashable {
     var connectedAt: Date
     /// Zakładka folderu (iCloud / Google Drive) — security-scoped bookmark.
     var folderBookmark: Data?
+    var storageKind: MusicSourceStorageKind
+    /// Path relative to Documents, e.g. `Imports/Sources/<id>/track.mp3`.
+    var sandboxRelativePath: String?
     /// WebDAV (QNAP)
     var webDAVBaseURL: String?
     var webDAVUsername: String?
@@ -52,6 +60,56 @@ struct ConnectedMusicSource: Codable, Identifiable, Hashable {
 
     var isWebDAV: Bool { kind == .qnap }
     var isGoogleDriveAPI: Bool { kind == .googleDrive && googleDriveFolderId != nil }
+    var isSandboxFile: Bool { storageKind == .sandboxFile }
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, name, connectedAt, folderBookmark, storageKind, sandboxRelativePath
+        case webDAVBaseURL, webDAVUsername, webDAVRootPath, accountEmail, googleDriveFolderId
+    }
+
+    init(
+        id: UUID,
+        kind: MusicSourceKind,
+        name: String,
+        connectedAt: Date,
+        folderBookmark: Data?,
+        storageKind: MusicSourceStorageKind = .folderBookmark,
+        sandboxRelativePath: String? = nil,
+        webDAVBaseURL: String? = nil,
+        webDAVUsername: String? = nil,
+        webDAVRootPath: String? = nil,
+        accountEmail: String? = nil,
+        googleDriveFolderId: String? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.connectedAt = connectedAt
+        self.folderBookmark = folderBookmark
+        self.storageKind = storageKind
+        self.sandboxRelativePath = sandboxRelativePath
+        self.webDAVBaseURL = webDAVBaseURL
+        self.webDAVUsername = webDAVUsername
+        self.webDAVRootPath = webDAVRootPath
+        self.accountEmail = accountEmail
+        self.googleDriveFolderId = googleDriveFolderId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kind = try container.decode(MusicSourceKind.self, forKey: .kind)
+        name = try container.decode(String.self, forKey: .name)
+        connectedAt = try container.decode(Date.self, forKey: .connectedAt)
+        folderBookmark = try container.decodeIfPresent(Data.self, forKey: .folderBookmark)
+        storageKind = try container.decodeIfPresent(MusicSourceStorageKind.self, forKey: .storageKind) ?? .folderBookmark
+        sandboxRelativePath = try container.decodeIfPresent(String.self, forKey: .sandboxRelativePath)
+        webDAVBaseURL = try container.decodeIfPresent(String.self, forKey: .webDAVBaseURL)
+        webDAVUsername = try container.decodeIfPresent(String.self, forKey: .webDAVUsername)
+        webDAVRootPath = try container.decodeIfPresent(String.self, forKey: .webDAVRootPath)
+        accountEmail = try container.decodeIfPresent(String.self, forKey: .accountEmail)
+        googleDriveFolderId = try container.decodeIfPresent(String.self, forKey: .googleDriveFolderId)
+    }
 }
 
 struct ExternalAudioTrack: Identifiable, Hashable {

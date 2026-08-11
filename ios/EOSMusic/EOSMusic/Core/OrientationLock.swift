@@ -38,10 +38,26 @@ final class OrientationLock {
 }
 
 final class AppOrientationDelegate: NSObject, UIApplicationDelegate {
+    weak var appModel: AppModel?
+    weak var videoModel: VideoAppModel?
+
     func application(
         _ application: UIApplication,
         supportedInterfaceOrientationsFor window: UIWindow?
     ) -> UIInterfaceOrientationMask {
         OrientationLock.shared.mask
+    }
+
+    func application(
+        _ app: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        if url.scheme == "pl.nostalgie.eosmusic" {
+            GoogleDriveAuthService.shared.handleOpenURL(url)
+            return true
+        }
+        guard let appModel, let videoModel else { return false }
+        return IncomingMediaRouter.handle(url, app: appModel, video: videoModel)
     }
 }

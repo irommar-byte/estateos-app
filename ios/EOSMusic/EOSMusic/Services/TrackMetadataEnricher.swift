@@ -45,7 +45,9 @@ enum PlaybackArtworkCache {
 }
 
 enum TrackMetadataEnricher {
-  /// Uzupełnia metadane: tagi pliku → biblioteka serwera → katalog Apple Music.
+  /// Uzupełnia metadane: biblioteka / kolejka mają pierwszeństwo przed tagami ID3.
+  /// ID3 tylko wypełnia braki — inaczej zły plik lokalny podmieniał tytuł w mini-playerze
+  /// (kliknięte „La Sovata”, a widać „Get Back” z tagów).
     static func enrich(
         track: MusicPlaybackTrack,
         embedded: EmbeddedTrackMetadata?,
@@ -53,15 +55,6 @@ enum TrackMetadataEnricher {
         api: MusicAPIClient?
     ) async -> MusicPlaybackTrack {
         var result = track
-
-        if let embedded {
-            result = result.applying(
-                title: embedded.title,
-                artist: embedded.artist,
-                album: embedded.album,
-                thumbnail: embedded.cachedArtworkURL(for: track.id) ?? result.thumbnail
-            )
-        }
 
         if let libraryTrack {
             result = result.applying(
@@ -75,8 +68,34 @@ enum TrackMetadataEnricher {
             )
         }
 
+        if let embedded {
+            // Always prefer real cover art from the file when library has none.
+            let embeddedArtURL = embedded.cachedArtworkURL(for: track.id)
+            result = result.applying(
+                title: isBlank(result.title) ? embedded.title : nil,
+                artist: isBlank(result.artist) ? embedded.artist : nil,
+                album: isBlank(result.album) ? embedded.album : nil,
+                thumbnail: isBlank(result.thumbnail) ? (embeddedArtURL ?? result.thumbnail) : nil
+            )
+        }
+
         guard needsCatalogEnrichment(result), let api else { return result }
         return await enrichFromCatalog(result, api: api)
+    }
+
+    /// True when ID3 title clearly disagrees with the track we meant to play.
+    static func embeddedTitleConflicts(expectedTitle: String, embeddedTitle: String?) -> Bool {
+        let expected = normalizedSearchToken(expectedTitle)
+        let embedded = normalizedSearchToken(embeddedTitle ?? "")
+        guard !expected.isEmpty, !embedded.isEmpty else { return false }
+        if expected == embedded { return false }
+        if expected.contains(embedded) || embedded.contains(expected) { return false }
+        return true
+    }
+
+    private static func isBlank(_ value: String?) -> Bool {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty || trimmed == "Utwór"
     }
 
     static func enrichPayload(_ track: MusicTrackPayload, api: MusicAPIClient) async throws -> MusicTrackPayload {
@@ -88,7 +107,7 @@ enum TrackMetadataEnricher {
             title: track.title,
             artist: pick(track.artist, best.uploader ?? best.detail),
             album: pick(track.album, best.album),
-            thumbnail: pick(track.thumbnail, best.thumbnail),
+            thumbnail: pick(track.thumbnail, best.thumbnail) ?? best.thumbnail,
             duration: track.duration ?? best.duration,
             quality: pick(track.quality, "320 kbps"),
             source: pick(track.source, best.source ?? "apple-music"),

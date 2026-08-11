@@ -113,37 +113,6 @@ struct AccountView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Label("Moc efektów", systemImage: "dial.medium.fill")
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Text("\(Int((ui.playerEffectsIntensity * 100).rounded()))%")
-                        .font(.subheadline.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(EOSTheme.accent)
-                }
-                Slider(value: $ui.playerEffectsIntensity, in: 0...1, step: 0.01)
-                    .tint(EOSTheme.accent)
-                    .disabled(ui.playerVisualPreset == .off)
-            }
-            .padding(.vertical, 2)
-
-            Toggle(isOn: $ui.playerStrobeEnabled.animation(EOSMotion.snappy)) {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Strobo")
-                        Text("Bezpieczne impulsy · max 3/s · Spectrum/Pulse")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                } icon: {
-                    Image(systemName: "light.max")
-                        .foregroundStyle(EOSTheme.accent)
-                }
-            }
-            .tint(EOSTheme.accent)
-            .disabled(!ui.playerVisualPreset.allowsStrobe)
-
             Toggle(isOn: $ui.playerAutoPerformance.animation(EOSMotion.snappy)) {
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
@@ -176,7 +145,7 @@ struct AccountView: View {
         } header: {
             Text("Odtwarzanie")
         } footer: {
-            Text("Presety i moc możesz też zmienić w pełnym playerze (ikona suwaków). Efekty są tylko wizualne.")
+            Text("Winyl · Okładka · Spectrum — wybór także w pełnym playerze. Bez suwaka „mocy”.")
         }
     }
 

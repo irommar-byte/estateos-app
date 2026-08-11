@@ -140,10 +140,15 @@ final class MusicAPIClient {
 
     // MARK: - Catalog
 
-    func importAppleMusicPlaylist(url: String, folderName: String? = nil) async throws -> MusicPlaylistImportResponse {
+    func importMusicPlaylist(url: String, folderName: String? = nil) async throws -> MusicPlaylistImportResponse {
         var body: [String: Any] = ["url": url]
         if let folderName { body["folderName"] = folderName }
         return try await request("POST", path: "/api/music/playlists/import", body: body)
+    }
+
+    /// Back-compat alias.
+    func importAppleMusicPlaylist(url: String, folderName: String? = nil) async throws -> MusicPlaylistImportResponse {
+        try await importMusicPlaylist(url: url, folderName: folderName)
     }
 
     func syncAppleMusicPlaylist(folderId: String) async throws {
@@ -182,7 +187,11 @@ final class MusicAPIClient {
         let _: Ok = try await request("DELETE", path: "/api/music/assets/\(assetId)")
     }
 
-    func waitForMusicPlayReady(jobId: String, timeoutSeconds: Int = 180) async throws {
+    func waitForMusicPlayReady(
+        jobId: String,
+        timeoutSeconds: Int = 180,
+        onProgress: ((Double, String) -> Void)? = nil
+    ) async throws {
         let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
         var poll = 0
         while Date() < deadline {
@@ -190,6 +199,8 @@ final class MusicAPIClient {
             if job.status == "error" {
                 throw APIError.server(job.error ?? "Odtwarzanie nie powiodło się.")
             }
+            let pct = max(0, min(100, job.progress ?? 0))
+            onProgress?(pct, job.status)
             if job.ready == true || job.status == "done" { return }
             poll += 1
             // Fast polls while APLMate resolves / early stream opens.

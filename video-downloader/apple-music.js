@@ -352,7 +352,17 @@ export async function fetchAppleMusicPlaylist(inputUrl) {
     redirect: "follow",
     signal: AbortSignal.timeout(45000),
   });
-  if (!res.ok) throw new Error(`Apple Music HTTP ${res.status}`);
+  const isPersonalLibrary = /^pl\.u-/i.test(parsed.playlistId);
+  if (!res.ok) {
+    if (res.status === 404 || isPersonalLibrary) {
+      throw new Error(
+        isPersonalLibrary
+          ? "To wygląda na prywatną playlistę Apple Music (Ulubione / biblioteka). Udostępnij ją publicznie albo wklej link do publicznej playlisty."
+          : "Nie znaleziono playlisty Apple Music. Sprawdź link albo udostępnij playlistę publicznie."
+      );
+    }
+    throw new Error(`Apple Music HTTP ${res.status}`);
+  }
 
   const html = await res.text();
   const titleMatch = html.match(/<meta name="apple:title" content="([^"]*)"/i);
@@ -363,7 +373,11 @@ export async function fetchAppleMusicPlaylist(inputUrl) {
   const trackNums = [...html.matchAll(/property="music:song:track" content="(\d+)"/gi)].map((m) => Number(m[1]));
 
   if (!songUrls.length) {
-    throw new Error("Nie udało się odczytać utworów z playlisty — sprawdź, czy link jest publiczny.");
+    throw new Error(
+      isPersonalLibrary
+        ? "Nie da się zaimportować prywatnej playlisty (np. Favourite Songs). W Apple Music: udostępnij playlistę → skopiuj publiczny link."
+        : "Nie udało się odczytać utworów z playlisty — sprawdź, czy link jest publiczny."
+    );
   }
 
   const entries = songUrls

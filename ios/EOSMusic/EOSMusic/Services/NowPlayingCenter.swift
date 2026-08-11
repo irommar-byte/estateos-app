@@ -20,6 +20,9 @@ final class NowPlayingCenter {
     private var lastTrackID: String?
     private var artworkCache: [String: MPMediaItemArtwork] = [:]
     private var artworkLoadTask: Task<Void, Never>?
+    private var lastElapsedPublish: TimeInterval = -1
+    private var lastPlayingPublish: Bool?
+    private var lastDurationPublish: Double = -1
 
     func activate(
         onNext: @escaping () -> Void,
@@ -73,6 +76,7 @@ final class NowPlayingCenter {
             return .success
         }
         isActive = true
+        UIApplication.shared.beginReceivingRemoteControlEvents()
     }
 
     func update(
@@ -82,11 +86,23 @@ final class NowPlayingCenter {
         isPlaying: Bool,
         queueIndex: Int,
         queueCount: Int,
-        supplemental: SupplementalMetadata? = nil
+        supplemental: SupplementalMetadata? = nil,
+        force: Bool = false
     ) {
         guard isActive else { return }
 
         let trackChanged = lastTrackID != track.id
+        let playingChanged = lastPlayingPublish != isPlaying
+        let durationChanged = abs(lastDurationPublish - duration) > 0.5
+        let elapsedDue = force
+            || trackChanged
+            || playingChanged
+            || lastElapsedPublish < 0
+            || abs(elapsed - lastElapsedPublish) >= 1.0
+
+        // Avoid rewriting lock-screen metadata 4×/sec — that wakes SpringBoard and drains battery.
+        guard trackChanged || playingChanged || durationChanged || elapsedDue || force else { return }
+
         if trackChanged {
             lastTrackID = track.id
             artworkLoadTask?.cancel()
@@ -131,6 +147,9 @@ final class NowPlayingCenter {
         }
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        lastElapsedPublish = elapsed
+        lastPlayingPublish = isPlaying
+        lastDurationPublish = duration
 
         if trackChanged || artworkCache[track.id] == nil {
             loadArtwork(for: track)
@@ -171,6 +190,9 @@ final class NowPlayingCenter {
         artworkLoadTask?.cancel()
         artworkLoadTask = nil
         lastTrackID = nil
+        lastElapsedPublish = -1
+        lastPlayingPublish = nil
+        lastDurationPublish = -1
 
         let center = MPRemoteCommandCenter.shared()
         center.nextTrackCommand.removeTarget(nil)

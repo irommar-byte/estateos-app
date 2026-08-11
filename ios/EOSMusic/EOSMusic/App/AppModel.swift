@@ -10,34 +10,104 @@ final class AppModel: ObservableObject {
     @Published private(set) var musicTracks: [MusicTrack] = []
     @Published private(set) var serverAssetCount: Int = 0
     @Published private(set) var serverLibraryBytes: Int = 0
+    @Published private(set) var serverDiskTotalBytes: Int?
+    @Published private(set) var serverDiskFreeBytes: Int?
     @Published private(set) var serverAssets: [MusicAssetItem] = []
     @Published private(set) var favoriteItems: [FavoriteItem] = []
     @Published private(set) var isLibraryLoading = false
+    @Published private(set) var librarySyncMessage: String?
     @Published var libraryError: String?
     @Published var isFullPlayerPresented = false
     @Published private(set) var toast: MusicToast?
+    @Published var externalOpenPrompt: ExternalOpenPrompt?
+    /// User-forced Offline from the Online/Offline control.
+    /// Canonical sync is `configureOfflineMode(from:)` + `UIPreferences` onChange in `EOSMusicApp` — avoid duplicate fans elsewhere.
+    @Published var offlineModeEnabled = false {
+        didSet {
+            playback.engine?.offlineOnly = isOfflinePlaybackActive
+            if offlineModeEnabled != oldValue {
+                applyOfflineModeChange()
+            }
+        }
+    }
 
     let api = MusicAPIClient()
     let playback = MusicPlaybackService()
     let downloads = MusicDownloadService()
     let sources = MusicSourcesStore()
+    let network = NetworkReachability.shared
+
+    /// True when user forced Offline or the device has no usable network.
+    var isOfflinePlaybackActive: Bool {
+        OfflinePlaybackPolicy.isOfflinePlaybackActive(
+            offlineModeEnabled: offlineModeEnabled,
+            isOnline: network.isOnline
+        )
+    }
+
+    var downloadedLibraryTracks: [MusicTrack] {
+        LibraryData.allLocalDownloads(from: musicTracks) { isOfflineAvailable($0) }
+    }
+
+    /// Tracks visible in library browsing (full library online, downloads only offline).
+    var libraryTracksForBrowsing: [MusicTrack] {
+        isOfflinePlaybackActive ? downloadedLibraryTracks : musicTracks
+    }
+
+    /// Playlists that still have playable content in the current mode.
+    var libraryFoldersForBrowsing: [MusicFolder] {
+        guard isOfflinePlaybackActive else { return musicFolders }
+        let offlineFolderIds = Set(downloadedLibraryTracks.map(\.folderId))
+        return musicFolders.filter { offlineFolderIds.contains($0.id) }
+    }
+
+    func tracksMatchingOfflineAvailability(_ tracks: [MusicTrack]) -> [MusicTrack] {
+        guard isOfflinePlaybackActive else { return tracks }
+        return tracks.filter { isOfflineAvailable($0.url) || $0.isLocalOfflineOnly }
+    }
 
     private var cancellables = Set<AnyCancellable>()
     private var toastDismissTask: Task<Void, Never>?
+    /// Single-flight / stale-guard for overlapping library refreshes.
+    private var workspaceRefreshGeneration = 0
 
     init() {
         playback.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        // Download progress used to republish AppModel ~2×/s and invalidate every list row.
         downloads.objectWillChange
+            .throttle(for: .milliseconds(280), scheduler: RunLoop.main, latest: true)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
-        sources.objectWillChange
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
+        // sources.objectWillChange is not fanned out — SourcesView observes MusicSourcesStore directly.
         OfflineMusicStore.shared.objectWillChange
+            .throttle(for: .milliseconds(200), scheduler: RunLoop.main, latest: true)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        network.objectWillChange
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.objectWillChange.send()
+                self.playback.engine?.offlineOnly = self.isOfflinePlaybackActive
+            }
+            .store(in: &cancellables)
+    }
+
+    func configureOfflineMode(from preferences: UIPreferences) {
+        offlineModeEnabled = preferences.offlineModeEnabled
+        playback.engine?.offlineOnly = isOfflinePlaybackActive
+    }
+
+    private func applyOfflineModeChange() {
+        playback.engine?.offlineOnly = isOfflinePlaybackActive
+        if isOfflinePlaybackActive,
+           let current = playback.engine?.currentTrack,
+           !isOfflineAvailable(current.url),
+           current.playbackFileURL == nil {
+            playback.stop()
+            presentToast(.offlineUnavailable(trackTitle: current.title))
+        }
     }
 
     func bootstrap() async {
@@ -48,6 +118,7 @@ final class AppModel: ObservableObject {
             // Splash only waits for session validation — library loads in-app.
             user = try await api.me()
             await syncLocalAppleLink(from: user)
+            hydrateLibraryFromCacheIfNeeded()
             Task { await refreshWorkspace(soft: true) }
         } catch {
             // Only clear session on auth failure; network blips keep the user in-app.
@@ -61,6 +132,7 @@ final class AppModel: ObservableObject {
                 libraryError = error.localizedDescription
                 // Keep cached session user so Login isn't forced on a blip.
                 user = session.user
+                hydrateLibraryFromCacheIfNeeded()
                 Task { await refreshWorkspace(soft: true) }
             }
         }
@@ -152,27 +224,100 @@ final class AppModel: ObservableObject {
         musicFolders = []
         musicTracks = []
         favoriteItems = []
+        librarySyncMessage = nil
+        LibraryCacheStore.clear()
     }
 
-    /// Library + favorites + assets. Never blocks login/splash.
-    func refreshWorkspace(soft _: Bool = false) async {
-        isLibraryLoading = true
-        defer { isLibraryLoading = false }
-        do {
-            try await refreshMusicLibrary()
-        } catch {
-            libraryError = error.localizedDescription
+    private func hydrateLibraryFromCacheIfNeeded() {
+        guard let login = user?.login else { return }
+        guard musicTracks.isEmpty, musicFolders.isEmpty,
+              let cached = LibraryCacheStore.load(for: login) else { return }
+        musicFolders = cached.folders
+        musicTracks = deduplicatedTracks(cached.tracks)
+        downloads.syncFromTracks(musicTracks)
+    }
+
+    private func applyLibrarySnapshot(_ library: MusicLibraryResponse, hadCache: Bool) {
+        let previousFolderIds = Set(musicFolders.map(\.id))
+        let previousTrackURLs = Set(musicTracks.map(\.url))
+        let newFolders = library.folders.filter { !previousFolderIds.contains($0.id) }
+        let newTracks = deduplicatedTracks(library.tracks).filter { !previousTrackURLs.contains($0.url) }
+        let removedTracks = musicTracks.filter { old in
+            !library.tracks.contains { $0.url == old.url }
         }
-        try? await refreshFavorites()
-        await refreshServerAssets()
-    }
 
-    func refreshMusicLibrary() async throws {
-        let library = try await api.fetchMusicLibrary()
         musicFolders = library.folders
         musicTracks = deduplicatedTracks(library.tracks)
         downloads.syncFromTracks(musicTracks)
         libraryError = nil
+
+        if let login = user?.login {
+            LibraryCacheStore.save(library, for: login)
+        }
+
+        guard hadCache, !isOfflinePlaybackActive else { return }
+        var parts: [String] = []
+        if !newFolders.isEmpty {
+            parts.append("\(newFolders.count) nowych playlist")
+        }
+        if !newTracks.isEmpty {
+            parts.append("\(newTracks.count) nowych utworów")
+        }
+        if !removedTracks.isEmpty {
+            parts.append("\(removedTracks.count) usuniętych")
+        }
+        if parts.isEmpty {
+            librarySyncMessage = "Biblioteka aktualna"
+        } else {
+            librarySyncMessage = "Zaktualizowano: " + parts.joined(separator: ", ")
+            presentToast(MusicToast(
+                systemImage: "arrow.triangle.2.circlepath",
+                title: "Biblioteka zsynchronizowana",
+                subtitle: parts.joined(separator: " · ")
+            ))
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            if self.librarySyncMessage == "Biblioteka aktualna" || self.librarySyncMessage?.hasPrefix("Zaktualizowano") == true {
+                self.librarySyncMessage = nil
+            }
+        }
+    }
+
+    /// Library + favorites + assets. Never blocks login/splash.
+    /// Concurrent callers share one generation token — only the latest result is applied.
+    func refreshWorkspace(soft _: Bool = false) async {
+        workspaceRefreshGeneration &+= 1
+        let generation = workspaceRefreshGeneration
+        let hadCache = !musicTracks.isEmpty || !musicFolders.isEmpty
+        if hadCache, !isOfflinePlaybackActive {
+            librarySyncMessage = "Synchronizuję playlisty online…"
+        }
+        isLibraryLoading = true
+        defer {
+            if generation == workspaceRefreshGeneration {
+                isLibraryLoading = false
+            }
+        }
+        do {
+            try await refreshMusicLibrary(hadCache: hadCache)
+        } catch {
+            guard generation == workspaceRefreshGeneration else { return }
+            libraryError = error.localizedDescription
+            if hadCache {
+                librarySyncMessage = "Sync offline — pokazuję zapisaną bibliotekę"
+            }
+        }
+        guard generation == workspaceRefreshGeneration else { return }
+        try? await refreshFavorites()
+        guard generation == workspaceRefreshGeneration else { return }
+        await refreshServerAssets()
+    }
+
+    func refreshMusicLibrary(hadCache: Bool? = nil) async throws {
+        let hadLocal = hadCache ?? (!musicTracks.isEmpty || !musicFolders.isEmpty)
+        let library = try await api.fetchMusicLibrary()
+        applyLibrarySnapshot(library, hadCache: hadLocal)
     }
 
     func refreshFavorites() async throws {
@@ -293,6 +438,45 @@ final class AppModel: ObservableObject {
         try await refreshMusicLibrary()
     }
 
+    /// Tworzy playlistę albumu, dodaje metadane utworów i kolejkuje zapis na serwer EOS (po kolei, z ponawianiem).
+    func addAlbumToLibrary(albumTitle: String, tracks: [MusicTrackPayload]) async throws -> String {
+        guard !tracks.isEmpty else { throw APIError.server("Album nie ma utworów.") }
+        let folder = try await api.createMusicFolder(name: albumTitle)
+        try await addTracksToFolder(folderId: folder.id, tracks: tracks)
+        queueAlbumOnServer(folderId: folder.id, albumTitle: albumTitle, tracks: tracks)
+        return folder.id
+    }
+
+    private func queueAlbumOnServer(folderId: String, albumTitle: String, tracks: [MusicTrackPayload]) {
+        let items = tracks.map {
+            MusicDownloadService.ServerQueueItem(url: $0.url, folderId: folderId, title: $0.title)
+        }
+        downloads.queueAllOnServerSequentially(
+            label: albumTitle,
+            items: items,
+            api: api,
+            isAlreadyOnServer: { [weak self] url in
+                self?.isOnServer(url) == true
+            },
+            onLibraryChanged: { [weak self] in
+                try? await self?.refreshMusicLibrary()
+                await self?.refreshServerAssets()
+            },
+            onAllComplete: { [weak self] in
+                await self?.presentToast(MusicToast(
+                    systemImage: "externaldrive.fill.badge.checkmark",
+                    title: "Album na serwerze EOS",
+                    subtitle: albumTitle
+                ))
+            }
+        )
+        presentToast(MusicToast(
+            systemImage: "arrow.down.circle.fill",
+            title: "Kolejka pobierania",
+            subtitle: "\(tracks.count) utworów · \(albumTitle)"
+        ))
+    }
+
     func removeTrackFromFolder(folderId: String, url: String) async throws {
         try await api.removeTrackFromFolder(folderId: folderId, url: url)
         try await refreshMusicLibrary()
@@ -304,13 +488,15 @@ final class AppModel: ObservableObject {
     }
 
     func updateFolderCover(folderId: String, imageData: Data) async throws {
-        let jpeg = Self.jpegDataForCover(imageData)
+        let jpeg = await Task.detached(priority: .userInitiated) {
+            Self.jpegDataForCover(imageData)
+        }.value
         let base64 = jpeg.base64EncodedString()
         _ = try await api.updateMusicFolder(id: folderId, coverBase64: base64)
         try await refreshMusicLibrary()
     }
 
-    private static func jpegDataForCover(_ data: Data) -> Data {
+    nonisolated private static func jpegDataForCover(_ data: Data) -> Data {
         guard let image = UIImage(data: data) else { return data }
         let maxSide: CGFloat = 900
         let size = image.size
@@ -335,6 +521,8 @@ final class AppModel: ObservableObject {
             let response = try await api.listMusicAssets()
             serverAssetCount = response.count
             serverLibraryBytes = response.totalBytes
+            serverDiskTotalBytes = response.diskTotalBytes
+            serverDiskFreeBytes = response.diskFreeBytes
             serverAssets = response.items
         } catch {
             // Zachowaj ostatnie wartości — Settings i tak pokazuje ścieżki lokalne.
@@ -356,20 +544,55 @@ final class AppModel: ObservableObject {
     }
 
     func minimizePlayer() {
-        isFullPlayerPresented = false
+        withAnimation(EOSMotion.playerSheet) {
+            isFullPlayerPresented = false
+        }
     }
 
     func expandPlayer() {
         guard playback.engine != nil else { return }
-        isFullPlayerPresented = true
+        withAnimation(EOSMotion.playerSheet) {
+            isFullPlayerPresented = true
+        }
     }
 
     func playTracks(_ tracks: [MusicTrack], startIndex: Int, folder: MusicFolder?) async {
-        let enriched = tracks.map { track -> MusicPlaybackTrack in
+        var queueTracks = tracks
+        var start = startIndex
+
+        if isOfflinePlaybackActive {
+            let offline = tracks.filter { isOfflineAvailable($0.url) || $0.isLocalOfflineOnly }
+            guard !offline.isEmpty else {
+                let title = tracks.indices.contains(startIndex) ? tracks[startIndex].title : "Utwór"
+                presentToast(.offlineUnavailable(trackTitle: title))
+                return
+            }
+            let preferredURL = tracks.indices.contains(startIndex) ? tracks[startIndex].url : nil
+            queueTracks = offline
+            if let preferredURL, let idx = offline.firstIndex(where: { $0.url == preferredURL }) {
+                start = idx
+            } else {
+                if let preferredURL, !isOfflineAvailable(preferredURL) {
+                    let title = tracks.indices.contains(startIndex) ? tracks[startIndex].title : "Utwór"
+                    presentToast(.offlineUnavailable(trackTitle: title))
+                }
+                start = 0
+            }
+        }
+
+        let enriched = queueTracks.map { track -> MusicPlaybackTrack in
             let jobId = track.durableJobId
                 ?? musicTracks.first(where: { $0.url == track.url })?.durableJobId
             return MusicPlaybackTrack(from: track, downloadJobId: jobId)
         }
+        // Prefer the exact tapped URL even if offline filtering reshuffled indices.
+        let preferredURL = tracks.indices.contains(startIndex) ? tracks[startIndex].url : nil
+        var resolvedStart = start
+        if let preferredURL,
+           let idx = enriched.firstIndex(where: { $0.url == preferredURL }) {
+            resolvedStart = idx
+        }
+        resolvedStart = min(max(0, resolvedStart), max(0, enriched.count - 1))
         let externalSourceIds = Set(enriched.compactMap(\.externalSourceId))
         for sourceId in externalSourceIds {
             if let source = sources.sources.first(where: { $0.id == sourceId }), !source.isWebDAV {
@@ -378,9 +601,9 @@ final class AppModel: ObservableObject {
         }
         let session = MusicPlaybackSession(
             queue: enriched,
-            startIndex: startIndex,
+            startIndex: resolvedStart,
             folderId: folder?.id,
-            folderName: folder?.name
+            folderName: folder?.name ?? (isOfflinePlaybackActive ? "Pobrane" : nil)
         )
         let needsExternalResolver = !externalSourceIds.isEmpty
         await playback.play(
@@ -390,12 +613,15 @@ final class AppModel: ObservableObject {
                 self?.downloadJobId(for: url)
             },
             libraryTrackLookup: { [weak self] url in
-                self?.musicTracks.first { $0.url == url }
+                guard let self else { return nil }
+                if let hit = self.musicTracks.first(where: { $0.url == url }) { return hit }
+                return self.downloadedLibraryTracks.first(where: { $0.url == url })
             },
             externalFileResolver: needsExternalResolver ? { [weak self] track in
                 guard let self else { throw APIError.server("Błąd odtwarzania.") }
                 return try await self.sources.resolvePlayableFile(for: track)
             } : nil,
+            offlineOnly: isOfflinePlaybackActive,
             onTeardown: { [weak self] in
                 guard let self else { return }
                 for sourceId in externalSourceIds {
@@ -407,8 +633,25 @@ final class AppModel: ObservableObject {
     }
 
     func playCatalogItems(_ items: [SearchResultItem], startIndex: Int) async {
-        let queue = items.map { MusicPlaybackTrack(from: $0) }
-        let session = MusicPlaybackSession(queue: queue, startIndex: startIndex, folderId: nil, folderName: nil)
+        var queueItems = items
+        var start = startIndex
+        if isOfflinePlaybackActive {
+            let offline = items.filter { isOfflineAvailable($0.url) }
+            guard !offline.isEmpty else {
+                let title = items.indices.contains(startIndex) ? items[startIndex].title : "Utwór"
+                presentToast(.offlineUnavailable(trackTitle: title))
+                return
+            }
+            let preferred = items.indices.contains(startIndex) ? items[startIndex].url : nil
+            queueItems = offline
+            if let preferred, let idx = offline.firstIndex(where: { $0.url == preferred }) {
+                start = idx
+            } else {
+                start = 0
+            }
+        }
+        let queue = queueItems.map { MusicPlaybackTrack(from: $0) }
+        let session = MusicPlaybackSession(queue: queue, startIndex: start, folderId: nil, folderName: nil)
         await playback.play(
             session: session,
             api: api,
@@ -419,17 +662,37 @@ final class AppModel: ObservableObject {
                 self?.musicTracks.first { $0.url == url }
             }
         )
+        playback.engine?.offlineOnly = isOfflinePlaybackActive
         isFullPlayerPresented = false
     }
 
     func playServerAssets(_ assets: [MusicAssetItem], startIndex: Int) async {
         guard !assets.isEmpty else { return }
-        let queue = assets.map { MusicPlaybackTrack(from: $0) }
+        var playable = assets
+        var start = startIndex
+        if isOfflinePlaybackActive {
+            playable = assets.filter { asset in
+                guard let url = asset.url else { return false }
+                return isOfflineAvailable(url)
+            }
+            guard !playable.isEmpty else {
+                let title = assets.indices.contains(startIndex) ? (assets[startIndex].title ?? "Utwór") : "Utwór"
+                presentToast(.offlineUnavailable(trackTitle: title))
+                return
+            }
+            let preferred = assets.indices.contains(startIndex) ? assets[startIndex].url : nil
+            if let preferred, let idx = playable.firstIndex(where: { $0.url == preferred }) {
+                start = idx
+            } else {
+                start = 0
+            }
+        }
+        let queue = playable.map { MusicPlaybackTrack(from: $0) }
         let session = MusicPlaybackSession(
             queue: queue,
-            startIndex: min(max(0, startIndex), queue.count - 1),
+            startIndex: min(max(0, start), queue.count - 1),
             folderId: nil,
-            folderName: "Serwer EOS"
+            folderName: isOfflinePlaybackActive ? "Pobrane" : "Serwer EOS"
         )
         await playback.play(
             session: session,
@@ -442,9 +705,79 @@ final class AppModel: ObservableObject {
             },
             libraryTrackLookup: { [weak self] url in
                 self?.musicTracks.first { $0.url == url }
-            }
+            },
+            offlineOnly: isOfflinePlaybackActive
         )
         isFullPlayerPresented = false
+    }
+
+    func presentExternalOpen(_ prompt: ExternalOpenPrompt) {
+        externalOpenPrompt = prompt
+    }
+
+    func dismissExternalOpenPrompt() {
+        externalOpenPrompt = nil
+    }
+
+    func resolveExternalOpen(as kind: ExternalMediaKind, video: VideoAppModel) async {
+        guard let prompt = externalOpenPrompt else { return }
+        let url = prompt.sourceURL
+        dismissExternalOpenPrompt()
+        switch kind {
+        case .audio:
+            await playExternalAudioFile(at: url)
+        case .video:
+            await video.openExternalVideo(at: url)
+        }
+    }
+
+    func playExternalAudioFile(at sourceURL: URL) async {
+        do {
+            let localURL = try importOpenedAudioFile(from: sourceURL)
+            let title = localURL.deletingPathExtension().lastPathComponent
+            let track = MusicPlaybackTrack(openedLocalFile: localURL, title: title)
+            let session = MusicPlaybackSession(
+                queue: [track],
+                startIndex: 0,
+                folderId: nil,
+                folderName: "Otwarty plik"
+            )
+            await playback.play(
+                session: session,
+                api: api,
+                jobLookup: { _ in nil },
+                libraryTrackLookup: { _ in nil },
+                externalFileResolver: { track in
+                    guard let file = track.playbackFileURL else {
+                        throw APIError.server("Brak pliku do odtworzenia.")
+                    }
+                    return file
+                }
+            )
+            playback.engine?.offlineOnly = isOfflinePlaybackActive
+            isFullPlayerPresented = true
+        } catch {
+            libraryError = error.localizedDescription
+        }
+    }
+
+    private func importOpenedAudioFile(from source: URL) throws -> URL {
+        AppDocuments.ensureStructure()
+        if source.path.hasPrefix(AppDocuments.root.path) {
+            return source
+        }
+
+        let accessed = source.startAccessingSecurityScopedResource()
+        defer { if accessed { source.stopAccessingSecurityScopedResource() } }
+
+        let dir = AppDocuments.audioImports.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dest = dir.appendingPathComponent(source.lastPathComponent)
+        if FileManager.default.fileExists(atPath: dest.path) {
+            try FileManager.default.removeItem(at: dest)
+        }
+        try FileManager.default.copyItem(at: source, to: dest)
+        return dest
     }
 
     func playExternalTracks(_ tracks: [ExternalAudioTrack], source: ConnectedMusicSource, startIndex: Int) async {

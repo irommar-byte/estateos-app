@@ -37,21 +37,28 @@ struct FolderDetailView: View {
         }.count
     }
 
+    /// Visible playlist rows — offline mode shows only downloaded tracks.
+    private var displayTracks: [MusicTrack] {
+        app.tracksMatchingOfflineAvailability(tracks)
+    }
+
     var body: some View {
         Group {
             if isLoading {
                 EOSLoadingView(title: "Wczytuję utwory…")
                     .transition(.opacity.combined(with: .scale(scale: 0.985)))
-            } else if tracks.isEmpty {
+            } else if displayTracks.isEmpty {
                 List {
                     Section {
                         playlistHeader
                     }
                     .listRowBackground(Color.clear)
                     ContentUnavailableView(
-                        "Brak utworów",
-                        systemImage: "music.note",
-                        description: Text("Dodaj utwory z wyszukiwarki lub zsynchronizuj playlistę.")
+                        app.isOfflinePlaybackActive ? "Brak pobranych w tej playliście" : "Brak utworów",
+                        systemImage: app.isOfflinePlaybackActive ? "airplane" : "music.note",
+                        description: Text(app.isOfflinePlaybackActive
+                            ? "Pobierz utwory online, aby odtwarzać tę playlistę offline."
+                            : "Dodaj utwory z wyszukiwarki lub zsynchronizuj playlistę.")
                     )
                     .listRowBackground(Color.clear)
                 }
@@ -75,7 +82,7 @@ struct FolderDetailView: View {
                                     .foregroundStyle(EOSTheme.accent)
                             }
 
-                            if pendingCount > 0 {
+                            if pendingCount > 0, !app.isOfflinePlaybackActive {
                                 Button {
                                     app.downloadAll(in: tracks, folderId: folder.id)
                                 } label: {
@@ -86,12 +93,14 @@ struct FolderDetailView: View {
                             }
                         }
                     }
-                    Section("\(tracks.count) utworów") {
-                        ForEach(tracks) { track in
+                    Section(app.isOfflinePlaybackActive
+                            ? "\(displayTracks.count) pobranych"
+                            : "\(displayTracks.count) utworów") {
+                        ForEach(displayTracks) { track in
                             trackRow(for: track)
                         }
-                        .onMove(perform: moveTracks)
-                        .onDelete(perform: deleteTracks)
+                        .onMove(perform: app.isOfflinePlaybackActive ? nil : moveTracks)
+                        .onDelete(perform: app.isOfflinePlaybackActive ? nil : deleteTracks)
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -109,6 +118,7 @@ struct FolderDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 EditButton()
+                    .disabled(app.isOfflinePlaybackActive)
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -186,7 +196,7 @@ struct FolderDetailView: View {
 
     @ViewBuilder
     private func trackRow(for track: MusicTrack) -> some View {
-        let index = tracks.firstIndex(where: { $0.url == track.url }) ?? 0
+        let index = displayTracks.firstIndex(where: { $0.url == track.url }) ?? 0
         let downloadState = app.downloads.uiState(
             for: track.url,
             isOnServer: track.isOnServer
@@ -369,17 +379,34 @@ struct FolderDetailView: View {
     private func load() async {
         isLoading = true
         defer { isLoading = false }
+
+        // Prefer cached library tracks so Offline works without the API.
+        let cached = app.musicTracks.filter { $0.folderId == folder.id }
+        if !cached.isEmpty {
+            tracks = cached
+        }
+
+        if app.isOfflinePlaybackActive {
+            if tracks.isEmpty {
+                tracks = app.downloadedLibraryTracks.filter { $0.folderId == folder.id }
+            }
+            return
+        }
+
         do {
             let response = try await app.api.fetchFolderTracks(folderId: folder.id)
             tracks = response.tracks
             app.downloads.syncFromTracks(tracks)
         } catch {
-            errorMessage = error.localizedDescription
+            if tracks.isEmpty {
+                errorMessage = error.localizedDescription
+            }
+            // Keep cached tracks when network fails.
         }
     }
 
     private func playAll(from index: Int) async {
-        await app.playTracks(tracks, startIndex: index, folder: folder)
+        await app.playTracks(displayTracks, startIndex: index, folder: folder)
     }
 
     private func syncPlaylist() async {

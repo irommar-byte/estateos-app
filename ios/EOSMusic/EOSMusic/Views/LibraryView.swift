@@ -2,20 +2,46 @@ import SwiftUI
 
 struct LibraryView: View {
     @EnvironmentObject private var app: AppModel
+    @AppStorage("ui.recentLibraryLayout") private var recentLayoutRaw = RecentLibraryLayout.tiles.rawValue
     @State private var isRefreshing = false
     @State private var showCreateFolder = false
     @State private var showImportSheet = false
     @State private var newFolderName = ""
     @State private var importURL = ""
+    @State private var isImporting = false
+    @State private var importError: String?
     @State private var errorMessage: String?
+    @State private var deviceStorage: StorageSnapshot?
+    @State private var cachedRecentItems: [RecentLibraryItem] = []
 
-    private let recentColumns = [
-        GridItem(.flexible(), spacing: 16),
-        GridItem(.flexible(), spacing: 16),
-    ]
+    private var recentLayout: RecentLibraryLayout {
+        RecentLibraryLayout(rawValue: recentLayoutRaw) ?? .tiles
+    }
 
-    private var recentItems: [RecentLibraryItem] {
-        LibraryData.recentTracks(from: app.musicTracks, limit: 12)
+    private var recentColumns: [GridItem] {
+        switch recentLayout {
+        case .tiles:
+            return [
+                GridItem(.flexible(), spacing: 16),
+                GridItem(.flexible(), spacing: 16),
+            ]
+        case .large:
+            return [GridItem(.flexible(), spacing: 16)]
+        case .list:
+            return [GridItem(.flexible())]
+        }
+    }
+
+    private var recentItems: [RecentLibraryItem] { cachedRecentItems }
+
+    private var recentRebuildToken: String {
+        let tracks = app.libraryTracksForBrowsing
+        let limit = recentLayout == .large ? 8 : 12
+        return "\(tracks.count)|\(limit)|\(app.isOfflinePlaybackActive)|\(tracks.first?.url ?? "")|\(tracks.last?.addedAt ?? 0)"
+    }
+
+    private var downloadedCount: Int {
+        app.downloadedLibraryTracks.count
     }
 
     var body: some View {
@@ -25,51 +51,40 @@ struct LibraryView: View {
                     categoryList
 
                     if !recentItems.isEmpty {
-                        Text("Ostatnio dodane")
-                            .font(.title2.weight(.bold))
-                            .foregroundStyle(.primary)
+                        recentSectionHeader
                             .padding(.horizontal, 20)
                             .padding(.top, 28)
                             .padding(.bottom, 14)
 
-                        LazyVGrid(columns: recentColumns, spacing: 20) {
+                        LazyVGrid(columns: recentColumns, spacing: recentLayout == .list ? 4 : 20) {
                             ForEach(recentItems) { item in
                                 Button {
                                     Task { await playRecent(item.track) }
                                 } label: {
-                                    RecentLibraryCell(item: item)
+                                    RecentLibraryCell(item: item, style: recentLayout)
                                 }
                                 .buttonStyle(.plain)
                                 .contextMenu {
-                                    Button {
-                                        Task { await playRecent(item.track) }
-                                    } label: {
-                                        Label("Odtwórz", systemImage: "play.fill")
-                                    }
-                                    if let albumId = item.track.albumId, !albumId.isEmpty {
-                                        NavigationLink {
-                                            AlbumDetailView(albumId: albumId)
-                                        } label: {
-                                            Label("Pokaż album", systemImage: "square.stack")
-                                        }
-                                    } else if let album = item.track.album, !album.isEmpty {
-                                        NavigationLink {
-                                            LibraryAlbumSongsView(albumTitle: album, artist: item.track.artist)
-                                        } label: {
-                                            Label("Pokaż album", systemImage: "square.stack")
-                                        }
-                                    }
+                                    recentContextMenu(for: item)
                                 }
                             }
                         }
                         .padding(.horizontal, 20)
                         .padding(.bottom, 48)
+                        .animation(EOSMotion.snappy, value: recentLayoutRaw)
+                    } else if app.isOfflinePlaybackActive {
+                        ContentUnavailableView(
+                            "Brak pobranych utworów",
+                            systemImage: "arrow.down.circle",
+                            description: Text("Pobierz utwory online, a potem włącz Offline u góry — będą tu dostępne bez internetu.")
+                        )
+                        .padding(.top, 40)
+                        .padding(.bottom, 48)
                     }
                 }
             }
             .background(Color(.systemBackground))
-            .eosScrollClearance()
-            .navigationTitle("Biblioteka")
+            .navigationTitle(app.isOfflinePlaybackActive ? "Biblioteka · Offline" : "Biblioteka")
             .navigationBarTitleDisplayMode(.large)
             .navigationDestination(for: LibraryCategory.self) { category in
                 destination(for: category)
@@ -81,8 +96,14 @@ struct LibraryView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("Nowa playlista") { showCreateFolder = true }
-                        Button("Import playlisty") { showImportSheet = true }
+                            .disabled(app.isOfflinePlaybackActive)
+                        Button("Import playlisty") {
+                            importError = nil
+                            showImportSheet = true
+                        }
+                            .disabled(app.isOfflinePlaybackActive)
                         Button("Odśwież") { Task { await refresh() } }
+                            .disabled(app.isOfflinePlaybackActive)
                     } label: {
                         Image(systemName: "plus")
                             .font(.body.weight(.semibold))
@@ -90,14 +111,23 @@ struct LibraryView: View {
                 }
             }
             .overlay(alignment: .top) {
-                if app.isLibraryLoading && app.musicTracks.isEmpty {
-                    ProgressView("Ładuję bibliotekę…")
+                if app.isLibraryLoading && app.musicTracks.isEmpty && !app.isOfflinePlaybackActive {
+                    ProgressView("Pierwsze ładowanie biblioteki…")
                         .padding(10)
                         .background(.ultraThinMaterial, in: Capsule())
                         .padding(.top, 8)
                 }
             }
             .refreshable { await refresh() }
+            .task(id: recentRebuildToken) {
+                rebuildRecentItems()
+            }
+            .onAppear {
+                deviceStorage = StorageCapacityReader.deviceVolume()
+                if cachedRecentItems.isEmpty {
+                    rebuildRecentItems()
+                }
+            }
             .alert("Nowa playlista", isPresented: $showCreateFolder) {
                 TextField("Nazwa", text: $newFolderName)
                 Button("Anuluj", role: .cancel) { newFolderName = "" }
@@ -114,11 +144,77 @@ struct LibraryView: View {
         }
     }
 
+    private func rebuildRecentItems() {
+        let limit = recentLayout == .large ? 8 : 12
+        cachedRecentItems = LibraryData.recentTracks(from: app.libraryTracksForBrowsing, limit: limit)
+    }
+
+    private var recentSectionHeader: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(app.isOfflinePlaybackActive ? "Niedawno pobrane" : "Ostatnio dodane")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.primary)
+            Spacer(minLength: 8)
+            Menu {
+                Picker("Układ", selection: $recentLayoutRaw) {
+                    ForEach(RecentLibraryLayout.allCases) { layout in
+                        Label(layout.title, systemImage: layout.systemImage)
+                            .tag(layout.rawValue)
+                    }
+                }
+            } label: {
+                Image(systemName: recentLayout.systemImage)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(LibraryAccent.icon)
+                    .frame(width: 36, height: 36)
+                    .background(Color(.secondarySystemBackground), in: Circle())
+            }
+            .accessibilityLabel("Układ ostatnio dodanych")
+        }
+    }
+
+    @ViewBuilder
+    private func recentContextMenu(for item: RecentLibraryItem) -> some View {
+        Button {
+            Task { await playRecent(item.track) }
+        } label: {
+            Label("Odtwórz", systemImage: "play.fill")
+        }
+        if let albumId = item.track.albumId, !albumId.isEmpty {
+            NavigationLink {
+                AlbumBrowseDestination(
+                    albumId: albumId,
+                    albumTitle: item.track.album,
+                    artist: item.track.artist
+                )
+            } label: {
+                Label("Pokaż album", systemImage: "square.stack")
+            }
+        } else if let album = item.track.album, !album.isEmpty {
+            NavigationLink {
+                LibraryAlbumSongsView(albumTitle: album, artist: item.track.artist)
+            } label: {
+                Label("Pokaż album", systemImage: "square.stack")
+            }
+        }
+    }
+
     private var categoryList: some View {
         VStack(spacing: 0) {
             ForEach(Array(LibraryCategory.allCases.enumerated()), id: \.element.id) { index, category in
                 NavigationLink(value: category) {
-                    LibraryCategoryRow(icon: category.icon, title: category.title)
+                    if category == .downloaded {
+                        LibraryDownloadedCategoryRow(
+                            count: downloadedCount,
+                            storage: deviceStorage
+                        )
+                    } else {
+                        LibraryCategoryRow(
+                            icon: category.icon,
+                            title: category.title,
+                            subtitle: categorySubtitle(category)
+                        )
+                    }
                 }
                 .buttonStyle(.plain)
 
@@ -129,6 +225,26 @@ struct LibraryView: View {
             }
         }
         .padding(.top, 4)
+    }
+
+    private func categorySubtitle(_ category: LibraryCategory) -> String? {
+        guard app.isOfflinePlaybackActive else { return nil }
+        switch category {
+        case .favorites:
+            let n = app.favoriteItems.filter { $0.type == "music" && app.isOfflineAvailable($0.url) }.count
+            return n > 0 ? "\(n) offline" : "Brak offline"
+        case .playlists:
+            let n = app.libraryFoldersForBrowsing.count
+            return n > 0 ? "\(n)" : "Brak offline"
+        case .artists:
+            return "\(LibraryData.artistGroups(from: app.libraryTracksForBrowsing).count)"
+        case .albums:
+            return "\(LibraryData.albumGroups(from: app.libraryTracksForBrowsing).count)"
+        case .songs:
+            return "\(app.libraryTracksForBrowsing.count)"
+        case .downloaded:
+            return nil
+        }
     }
 
     @ViewBuilder
@@ -146,25 +262,62 @@ struct LibraryView: View {
     private var importSheet: some View {
         NavigationStack {
             Form {
-                Section("Link Apple Music") {
-                    TextField("https://music.apple.com/…", text: $importURL)
-                        .textContentType(.URL)
-                        .autocapitalization(.none)
-                }
                 Section {
-                    Button("Importuj playlistę") { Task { await importPlaylist() } }
-                        .disabled(importURL.trimmingCharacters(in: .whitespaces).isEmpty)
+                    TextField("https://music.apple.com/… lub open.spotify.com/…", text: $importURL)
+                        .textContentType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .disabled(isImporting)
+                } header: {
+                    Text("Link playlisty")
+                } footer: {
+                    Text("Apple Music (publiczna playlista) albo Spotify. Prywatne „Ulubione” / Favourite Songs zwykle się nie dadzą zaimportować — udostępnij playlistę albo użyj publicznej.")
+                }
+
+                if let importError {
+                    Section {
+                        Text(importError)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                Section {
+                    Button {
+                        Task { await importPlaylist() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if isImporting {
+                                ProgressView()
+                                    .padding(.trailing, 8)
+                                Text("Importuję…")
+                            } else {
+                                Text("Importuj playlistę")
+                            }
+                            Spacer()
+                        }
+                    }
+                    .disabled(isImporting || importURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .navigationTitle("Import playlisty")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Anuluj") { showImportSheet = false; importURL = "" }
+                    Button("Anuluj") {
+                        guard !isImporting else { return }
+                        showImportSheet = false
+                        importURL = ""
+                        importError = nil
+                    }
+                    .disabled(isImporting)
                 }
             }
+            .interactiveDismissDisabled(isImporting)
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
     }
 
     private func playRecent(_ track: MusicTrack) async {
@@ -175,6 +328,10 @@ struct LibraryView: View {
     }
 
     private func refresh() async {
+        if app.isOfflinePlaybackActive {
+            deviceStorage = StorageCapacityReader.deviceVolume()
+            return
+        }
         isRefreshing = true
         defer { isRefreshing = false }
         do {
@@ -183,6 +340,7 @@ struct LibraryView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+        deviceStorage = StorageCapacityReader.deviceVolume()
     }
 
     private func createFolder() async {
@@ -198,15 +356,19 @@ struct LibraryView: View {
     }
 
     private func importPlaylist() async {
-        let url = importURL.trimmingCharacters(in: .whitespaces)
-        guard !url.isEmpty else { return }
+        let url = importURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty, !isImporting else { return }
+        importError = nil
+        isImporting = true
+        defer { isImporting = false }
         do {
-            _ = try await app.api.importAppleMusicPlaylist(url: url)
+            _ = try await app.api.importMusicPlaylist(url: url)
             importURL = ""
+            importError = nil
             showImportSheet = false
             try await app.refreshMusicLibrary()
         } catch {
-            errorMessage = error.localizedDescription
+            importError = error.localizedDescription
         }
     }
 }

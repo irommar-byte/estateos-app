@@ -23,6 +23,14 @@ enum GoogleDriveClientError: LocalizedError {
 struct GoogleDriveClient {
     let accessToken: String
 
+    private static let downloadSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 120
+        config.timeoutIntervalForResource = 600
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }()
+
     func listChildren(folderId: String) async throws -> [GoogleDriveItem] {
         let q = "'\(folderId)' in parents and trashed=false"
         let encoded = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
@@ -44,14 +52,22 @@ struct GoogleDriveClient {
     func downloadTemporaryFile(fileId: String, filename: String) async throws -> URL {
         var request = URLRequest(url: URL(string: "https://www.googleapis.com/drive/v3/files/\(fileId)?alt=media")!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+        request.timeoutInterval = 180
+        let (tempURL, response) = try await Self.downloadSession.download(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw GoogleDriveClientError.server("Brak odpowiedzi Google Drive.")
+        }
+        if http.statusCode == 401 { throw GoogleDriveClientError.unauthorized }
+        guard http.statusCode < 400 else {
             throw GoogleDriveClientError.server("Nie udało się pobrać pliku z Google Drive.")
         }
         let safeName = filename.replacingOccurrences(of: "/", with: "_")
-        let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "_" + safeName)
-        try data.write(to: temp, options: .atomic)
-        return temp
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "_" + safeName)
+        if FileManager.default.fileExists(atPath: dest.path) {
+            try FileManager.default.removeItem(at: dest)
+        }
+        try FileManager.default.moveItem(at: tempURL, to: dest)
+        return dest
     }
 
     private func collectAudio(folderId: String, into results: inout [GoogleDriveItem]) async throws {

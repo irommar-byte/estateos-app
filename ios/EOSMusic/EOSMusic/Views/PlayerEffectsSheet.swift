@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Apple-style sheet for player visual presets, intensity and safe strobe.
+/// Compact sheet: Winyl / Okładka / Spectrum / Off — no intensity slider.
 struct PlayerEffectsSheet: View {
     @EnvironmentObject private var ui: UIPreferences
     @Environment(\.dismiss) private var dismiss
@@ -11,8 +11,6 @@ struct PlayerEffectsSheet: View {
     private var policy: PlayerVisualPolicy {
         PlayerVisualPolicy.resolve(
             preset: ui.playerVisualPreset,
-            intensity: ui.playerEffectsIntensity,
-            strobeEnabled: ui.playerStrobeEnabled,
             autoPerformance: ui.playerAutoPerformance,
             reduceMotion: reduceMotion,
             lowPower: lowPower,
@@ -35,48 +33,17 @@ struct PlayerEffectsSheet: View {
                         }
                     }
                 } header: {
-                    Text("Preset")
+                    Text("Wygląd playera")
                 } footer: {
-                    Text("Spectrum i Pulse pokazują mikser częstotliwości. Wyłączone usuwa wszystkie efekty.")
+                    Text("Winyl obraca płytę. Okładka pulsuje w rytm. Spectrum pokazuje czytelny EQ. Efektów nie da się „kręcić mocą” — są skalibrowane pod czytelność i baterię.")
                 }
 
                 Section {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("Moc efektów")
-                                .font(.body.weight(.semibold))
-                            Spacer()
-                            Text("\(Int((ui.playerEffectsIntensity * 100).rounded()))%")
-                                .font(.subheadline.monospacedDigit().weight(.semibold))
-                                .foregroundStyle(EOSTheme.accent)
-                        }
-                        Slider(value: $ui.playerEffectsIntensity, in: 0...1, step: 0.01)
-                            .tint(EOSTheme.accent)
-                            .disabled(ui.playerVisualPreset == .off)
-                    }
-                    .padding(.vertical, 4)
-
-                    Toggle(isOn: $ui.playerStrobeEnabled.animation(EOSMotion.snappy)) {
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Strobo")
-                                Text(strobeFooter)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } icon: {
-                            Image(systemName: "light.max")
-                                .foregroundStyle(EOSTheme.accent)
-                        }
-                    }
-                    .tint(EOSTheme.accent)
-                    .disabled(!ui.playerVisualPreset.allowsStrobe || ui.playerVisualPreset == .off)
-
                     Toggle(isOn: $ui.playerAutoPerformance.animation(EOSMotion.snappy)) {
                         Label {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Automatyczna wydajność")
-                                Text("Ogranicza efekty przy Low Power i wysokiej temperaturze")
+                                Text("Ogranicza animacje przy Low Power i wysokiej temperaturze")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
@@ -87,19 +54,17 @@ struct PlayerEffectsSheet: View {
                     }
                     .tint(EOSTheme.accent)
                 } header: {
-                    Text("Kontrola")
+                    Text("Bateria")
                 } footer: {
                     if let reason = policy.restrictionReason {
                         Text(reason)
-                    } else if ui.playerStrobeEnabled {
-                        Text("Strobo: maksymalnie 3 impulsy/s, bez pełnoekranowych białych błysków.")
                     } else {
-                        Text("Efekty są wizualne — nie zmieniają brzmienia utworu.")
+                        Text("Efekty są tylko wizualne — nie zmieniają brzmienia.")
                     }
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("Efekty playera")
+            .navigationTitle("Player")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -116,21 +81,5 @@ struct PlayerEffectsSheet: View {
         .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
             lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
         }
-    }
-
-    private var strobeFooter: String {
-        if !ui.playerVisualPreset.allowsStrobe {
-            return "Dostępne w Spectrum i Pulse"
-        }
-        if reduceMotion {
-            return "Wyłączone przez Reduce Motion"
-        }
-        if policy.allowStrobe {
-            return "Bezpieczne impulsy zsynchronizowane z beatem"
-        }
-        if ui.playerStrobeEnabled {
-            return "Tymczasowo ograniczone przez system"
-        }
-        return "Domyślnie wyłączone · max 3 impulsy/s"
     }
 }

@@ -38,22 +38,29 @@ struct SearchCatalogView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Picker("Zakres", selection: $scope) {
-                        ForEach(SearchScope.allCases) { item in
-                            Text(item.title).tag(item)
+                    if app.isOfflinePlaybackActive {
+                        Label("Szukaj tylko w pobranych (Offline)", systemImage: "airplane")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(EOSTheme.accent)
+                            .padding(.top, 4)
+                    } else {
+                        Picker("Zakres", selection: $scope) {
+                            ForEach(SearchScope.allCases) { item in
+                                Text(item.title).tag(item)
+                            }
                         }
+                        .pickerStyle(.segmented)
+                        .padding(.top, 4)
                     }
-                    .pickerStyle(.segmented)
-                    .padding(.top, 4)
 
                     if isSearching {
                         ProgressView("Szukam…")
                             .frame(maxWidth: .infinity)
                             .padding(.top, 40)
                     } else if hasResults {
-                        if scope == .catalog, let catalogResults {
+                        if effectiveScope == .catalog, let catalogResults {
                             catalogContent(catalogResults)
-                        } else if scope == .library {
+                        } else if effectiveScope == .library {
                             libraryContent(libraryResults)
                         }
                     } else if submittedQuery != nil {
@@ -79,14 +86,22 @@ struct SearchCatalogView: View {
             }
             .background(EOSAmbientBackground())
             .eosScrollClearance()
-            .navigationTitle("Szukaj")
+            .navigationTitle(app.isOfflinePlaybackActive ? "Szukaj · Offline" : "Szukaj")
             .searchable(
                 text: $query,
-                prompt: scope == .library ? "Szukaj w bibliotece…" : "Wykonawca, album, utwór…"
+                prompt: app.isOfflinePlaybackActive
+                    ? "Szukaj w pobranych…"
+                    : (scope == .library ? "Szukaj w bibliotece…" : "Wykonawca, album, utwór…")
             )
             .onSubmit(of: .search) { scheduleSearch(immediate: true) }
             .onChange(of: query) { _, _ in scheduleSearch(immediate: false) }
             .onChange(of: scope) { _, _ in
+                catalogResults = nil
+                libraryResults = .empty
+                scheduleSearch(immediate: true)
+            }
+            .onChange(of: app.isOfflinePlaybackActive) { _, offline in
+                if offline { scope = .library }
                 catalogResults = nil
                 libraryResults = .empty
                 scheduleSearch(immediate: true)
@@ -107,10 +122,14 @@ struct SearchCatalogView: View {
         return q.count >= 2 ? q : nil
     }
 
+    private var effectiveScope: SearchScope {
+        app.isOfflinePlaybackActive ? .library : scope
+    }
+
     private var hasResults: Bool {
-        switch scope {
+        switch effectiveScope {
         case .catalog:
-            return catalogResults != nil
+            return catalogResults != nil && !app.isOfflinePlaybackActive
         case .library:
             return submittedQuery != nil && !libraryResults.isEmpty
         }
@@ -133,7 +152,7 @@ struct SearchCatalogView: View {
                     HStack(spacing: 12) {
                         ForEach(data.artists) { artist in
                             NavigationLink {
-                                ArtistDetailView(artistId: artist.id, artistName: artist.name)
+                                ArtistBrowseDestination(artistId: artist.id, artistName: artist.name)
                             } label: {
                                 ArtistChip(artist: artist)
                             }
@@ -218,20 +237,10 @@ struct SearchCatalogView: View {
             sectionHeader("Wykonawcy")
             VStack(spacing: 0) {
                 ForEach(Array(data.artists.prefix(12).enumerated()), id: \.element.id) { index, artist in
-                    Group {
-                        if let artistId = artist.artistId {
-                            NavigationLink {
-                                ArtistDetailView(artistId: artistId, artistName: artist.name)
-                            } label: {
-                                libraryArtistRow(artist)
-                            }
-                        } else {
-                            NavigationLink {
-                                LibraryArtistSongsView(artistName: artist.name)
-                            } label: {
-                                libraryArtistRow(artist)
-                            }
-                        }
+                    NavigationLink {
+                        ArtistBrowseDestination(artistId: artist.artistId, artistName: artist.name)
+                    } label: {
+                        libraryArtistRow(artist)
                     }
                     .buttonStyle(.plain)
                     if index < min(11, data.artists.count - 1) {
@@ -247,20 +256,14 @@ struct SearchCatalogView: View {
             sectionHeader("Albumy")
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
                 ForEach(data.albums.prefix(12)) { album in
-                    Group {
-                        if let albumId = album.albumId, !albumId.isEmpty {
-                            NavigationLink {
-                                AlbumDetailView(albumId: albumId)
-                            } label: {
-                                LibraryAlbumGridCell(group: album)
-                            }
-                        } else {
-                            NavigationLink {
-                                LibraryAlbumSongsView(albumTitle: album.title, artist: album.artist)
-                            } label: {
-                                LibraryAlbumGridCell(group: album)
-                            }
-                        }
+                    NavigationLink {
+                        AlbumBrowseDestination(
+                            albumId: album.albumId,
+                            albumTitle: album.title,
+                            artist: album.artist
+                        )
+                    } label: {
+                        LibraryAlbumGridCell(group: album)
                     }
                     .buttonStyle(.plain)
                 }
@@ -369,7 +372,12 @@ struct SearchCatalogView: View {
         isSearching = true
         defer { isSearching = false }
 
-        switch scope {
+        let effectiveScope: SearchScope = app.isOfflinePlaybackActive ? .library : scope
+        if app.isOfflinePlaybackActive, scope != .library {
+            scope = .library
+        }
+
+        switch effectiveScope {
         case .catalog:
             do {
                 catalogResults = try await app.api.searchMusicCatalog(query: query)
@@ -383,8 +391,8 @@ struct SearchCatalogView: View {
             catalogResults = nil
             libraryResults = LibraryData.search(
                 query: query,
-                folders: app.musicFolders,
-                tracks: app.musicTracks
+                folders: app.libraryFoldersForBrowsing,
+                tracks: app.libraryTracksForBrowsing
             )
         }
     }

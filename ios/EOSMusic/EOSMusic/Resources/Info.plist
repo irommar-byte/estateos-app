@@ -9,30 +9,31 @@
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>mp3</string>
+				<string>m4a</string>
+				<string>aac</string>
+				<string>flac</string>
+				<string>wav</string>
+				<string>aiff</string>
+				<string>aif</string>
+				<string>alac</string>
+			</array>
 			<key>CFBundleTypeName</key>
 			<string>Audio</string>
 			<key>LSHandlerRank</key>
-			<string>Alternate</string>
+			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.mp3</string>
 				<string>public.mpeg-4-audio</string>
 				<string>public.audio</string>
+				<string>public.aiff-audio</string>
+				<string>public.wav</string>
 			</array>
 		</dict>
 		<dict>
-			<key>CFBundleTypeName</key>
-			<string>Video</string>
-			<key>LSHandlerRank</key>
-			<string>Alternate</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>public.movie</string>
-				<string>public.avi</string>
-				<string>public.mpeg-4</string>
-				<string>com.apple.quicktime-movie</string>
-				<string>public.mpeg</string>
-			</array>
 			<key>CFBundleTypeExtensions</key>
 			<array>
 				<string>mkv</string>
@@ -47,6 +48,18 @@
 				<string>m2ts</string>
 				<string>mpg</string>
 				<string>mpeg</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>Video</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.movie</string>
+				<string>public.avi</string>
+				<string>public.mpeg-4</string>
+				<string>com.apple.quicktime-movie</string>
+				<string>public.mpeg</string>
 			</array>
 		</dict>
 	</array>
@@ -74,7 +87,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>5</string>
+	<string>14</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
@@ -102,8 +115,6 @@
 	<string>EOS™ Music łączy się z Twoim QNAP w sieci lokalnej, aby odtwarzać muzykę przez WebDAV.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>EOS™ Music używa zdjęć do okładki playlisty.</string>
-	<key>RCTNewArchEnabled</key>
-	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

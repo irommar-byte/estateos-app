@@ -95,7 +95,13 @@ struct WebDAVClient {
     }
 
     func streamURL(relativePath: String) -> URL {
-        url(forRelativePath: relativePath)
+        let target = url(forRelativePath: relativePath)
+        guard var components = URLComponents(url: target, resolvingAgainstBaseURL: false) else {
+            return target
+        }
+        components.user = username
+        components.password = password
+        return components.url ?? target
     }
 
     private func url(forRelativePath relativePath: String) -> URL {

@@ -9,6 +9,8 @@ enum AppConfig {
     static let credentialsService = "pl.nostalgie.eosmusic.credentials"
 
     static let appDisplayName = "EOS™ Music"
+    /// Miękki limit biblioteki na serwerze, gdy API nie zwraca statystyk dysku VPS.
+    static let serverStorageQuotaBytes: Int64 = 100 * 1024 * 1024 * 1024
     static let appVersion = "1.0.0"
     static let userAgent = "EOSMusic-iOS/1.0"
 

@@ -1,6 +1,8 @@
 import AVFoundation
+import Accelerate
 import Combine
 import MediaToolbox
+import os
 import SwiftUI
 import UIKit
 
@@ -28,21 +30,22 @@ enum RepeatMode: String, CaseIterable {
 final class MusicPlaybackEngine: ObservableObject {
     struct AudioReactiveFrame {
         static let islandBarCount = 5
-        static let spectrumBandCount = 16
+        /// 24 bands — classic Winamp density without SwiftUI thrash (UIKit host).
+        static let spectrumBandCountStandard = 24
+        static let spectrumBandCountDense = 32
+        static let spectrumBandCountMax = spectrumBandCountDense
 
         var level: Double = 0
         var bass: Double = 0
         var mid: Double = 0
         var treble: Double = 0
         var beat: Double = 0
-        /// Wygładzone paski jak w Dynamic Island / ekranie blokady (5 słupków).
         var islandBars: [Double] = Array(repeating: 0, count: islandBarCount)
-        /// Lekkie pasma widma (pseudo-EQ) do miksera.
-        var spectrumBands: [Double] = Array(repeating: 0, count: spectrumBandCount)
-        /// Peak-hold per band for mixer needles.
-        var peakHold: [Double] = Array(repeating: 0, count: spectrumBandCount)
-        /// Overall punch energy 0…1.
+        /// Surowe cele pasma 0…1 z analizy audio (bez envelope UI).
+        var spectrumBands: [Double] = Array(repeating: 0, count: spectrumBandCountMax)
+        var peakHold: [Double] = Array(repeating: 0, count: spectrumBandCountMax)
         var energy: Double = 0
+        var activeSpectrumBands: Int = spectrumBandCountStandard
 
         /// Płynna siła wizualna: cichy dźwięk = mała, mocny = duża (z headroomem przeciw przesterowi).
         func visualDrive(isStrong: Bool, intensity: Double = 1) -> Double {
@@ -60,39 +63,209 @@ final class MusicPlaybackEngine: ObservableObject {
             return pow(min(1, drive * 0.5 + beat * 0.32), 1.12)
         }
 
+        /// Cheap pseudo-reactive frame — no MTAudioProcessingTap / FFT (those pegged CPU ~110% on device).
+        static func synthesize(at time: TimeInterval, isPlaying: Bool) -> AudioReactiveFrame {
+            guard isPlaying else {
+                var idle = AudioReactiveFrame()
+                idle.level = 0.04
+                idle.bass = 0.05
+                idle.mid = 0.04
+                idle.treble = 0.03
+                idle.energy = 0.04
+                idle.islandBars = [0.12, 0.18, 0.22, 0.16, 0.1]
+                idle.activeSpectrumBands = spectrumBandCountStandard
+                for i in 0..<spectrumBandCountStandard {
+                    idle.spectrumBands[i] = 0.04 + Double(i % 3) * 0.01
+                }
+                return idle
+            }
+
+            // Fast, punchy pseudo-spectrum — high temporal energy so EQ feels live.
+            let kick = max(0, sin(time * .pi * 4.6))
+            let kickPulse = pow(kick, 3.4)
+            let snare = max(0, sin(time * .pi * 4.6 + 1.05))
+            let snarePulse = pow(snare, 4.2) * 0.7
+            let hat = max(0, sin(time * .pi * 9.2 + 0.4))
+            let hatPulse = pow(hat, 5.0) * 0.55
+            let shimmer = 0.5 + 0.5 * sin(time * 17.5)
+            let flutter = 0.5 + 0.5 * sin(time * 31.0)
+
+            var frame = AudioReactiveFrame()
+            frame.beat = min(1, kickPulse * 1.0 + snarePulse * 0.4)
+            frame.bass = min(1, 0.22 + kickPulse * 0.85 + 0.1 * sin(time * 3.1))
+            frame.mid = min(1, 0.18 + snarePulse * 0.7 + 0.22 * shimmer)
+            frame.treble = min(1, 0.14 + hatPulse * 0.75 + 0.28 * flutter + snarePulse * 0.2)
+            frame.level = min(1, frame.bass * 0.42 + frame.mid * 0.33 + frame.treble * 0.25)
+            frame.energy = frame.level
+            frame.activeSpectrumBands = spectrumBandCountStandard
+
+            let count = spectrumBandCountStandard
+            // Quantize time so bands "spark" in quick steps (~45 Hz motion).
+            let spark = floor(time * 45.0)
+            for i in 0..<count {
+                let t = Double(i) / Double(max(1, count - 1))
+                let bassWeight = exp(-t * 3.4)
+                let midWeight = exp(-pow(t - 0.42, 2) * 11)
+                let trebleWeight = exp(-pow(t - 0.88, 2) * 16)
+                let wander = 0.42 + 0.58 * sin(time * (4.8 + t * 9.0) + Double(i) * 0.85)
+                let seed = sin((spark + Double(i) * 17.13) * 12.9898) * 43758.5453
+                let noise = seed - floor(seed)
+                let punch = kickPulse * bassWeight * 1.15 + snarePulse * midWeight + hatPulse * trebleWeight
+                let raw = (frame.bass * bassWeight + frame.mid * midWeight + frame.treble * trebleWeight) * wander
+                    + punch * 0.75
+                    + noise * (0.08 + trebleWeight * 0.22)
+                    + 0.1 * sin(time * 22 + Double(i) * 1.3)
+                frame.spectrumBands[i] = min(1, max(0.02, raw))
+            }
+
+            frame.islandBars = [
+                min(1, frame.bass * 0.95),
+                min(1, frame.bass * 0.35 + frame.mid * 0.55),
+                min(1, frame.level * 0.85 + frame.beat * 0.2),
+                min(1, frame.mid * 0.5 + frame.treble * 0.4),
+                min(1, frame.treble * 0.8 + frame.beat * 0.15)
+            ]
+            return frame
+        }
+
         func islandBar(at index: Int) -> Double {
             guard islandBars.indices.contains(index) else { return 0 }
             return islandBars[index]
         }
 
         func spectrumBand(at index: Int) -> Double {
-            guard spectrumBands.indices.contains(index) else { return 0 }
+            guard index < activeSpectrumBands, spectrumBands.indices.contains(index) else { return 0 }
             return spectrumBands[index]
         }
 
         func peak(at index: Int) -> Double {
-            guard peakHold.indices.contains(index) else { return 0 }
+            guard index < activeSpectrumBands, peakHold.indices.contains(index) else { return 0 }
             return peakHold[index]
         }
     }
 
+    func setSpectrumBandCount(_ count: Int) {
+        audioAnalyzer.setBandCount(count)
+    }
+
     @Published private(set) var currentTrack: MusicPlaybackTrack?
+    /// Embedded / hydrated cover bitmap — keeps iPad hero + mini-player from showing empty note placeholders.
+    @Published private(set) var displayArtwork: UIImage?
     @Published private(set) var isPlaying = false
     @Published private(set) var isLoading = false
-    @Published private(set) var currentTime: Double = 0
-    @Published private(set) var duration: Double = 0
+    /// Not @Published — buffering flicker must not rebuild FullPlayer / lists.
+    private(set) var isBuffering = false {
+        didSet { statusFlags.isBuffering = isBuffering }
+    }
+    let statusFlags = PlaybackStatusFlags()
+    /// Cached only for seek / skip heuristics — UI reads `livePlaybackTime()` (no 0.5s publish).
+    private(set) var currentTime: Double = 0
+    private(set) var duration: Double = 0
     @Published var shuffleEnabled = false
     @Published var repeatMode: RepeatMode = .all
     @Published var errorMessage: String?
-    @Published private(set) var audioFrame = AudioReactiveFrame()
+    /// When true, never open network streams — local files only.
+    var offlineOnly = false
+    let visualizer = PlayerAudioVisualizer()
 
-    func configureVisualAnalysis(enabled: Bool, fps: Double) {
-        audioAnalyzer.setAnalysisEnabled(enabled)
-        audioAnalyzer.setPublishRate(fps: fps)
-        if !enabled {
-            audioFrame = AudioReactiveFrame()
+    /// Live AVPlayer clock — no Combine / @Published, safe to poll from scrubber TimelineView.
+    func livePlaybackTime() -> Double {
+        if let seconds = player?.currentTime().seconds, seconds.isFinite, seconds >= 0 {
+            return seconds
+        }
+        return currentTime
+    }
+
+    func liveDuration() -> Double {
+        if let seconds = player?.currentItem?.duration.seconds, seconds.isFinite, seconds > 0 {
+            return seconds
+        }
+        return max(0, duration)
+    }
+
+    var audioFrame: AudioReactiveFrame { visualizer.frame }
+
+    /// Lekka analiza PCM → visualizer (lock, bez SwiftUI publish).
+    /// Mini: tylko RMS / island. Full Spectrum: FFT bin average na tickach publish.
+    func syncVisualAnalysis(
+        surface: PlayerVisualSurface,
+        policy: PlayerVisualPolicy,
+        needsSpectrum: Bool,
+        isPlaying: Bool,
+        isLoading: Bool
+    ) {
+        let wantsAnalysis = surface != .none
+            && policy.enabled
+            && isPlaying
+            && !isLoading
+            && policy.analyzerFPS > 0.5
+        // Keep analyzing through brief ready-remote buffer blips — otherwise EQ dies while "Buforowanie…" flashes.
+
+        let fps: Double
+        if wantsAnalysis {
+            switch surface {
+            case .none:
+                fps = 0
+            case .mini:
+                // Island bars only — keep cheap.
+                fps = min(18, max(12, policy.analyzerFPS))
+            case .full:
+                fps = needsSpectrum
+                    ? min(22, max(16, policy.analyzerFPS))
+                    : min(16, max(12, policy.analyzerFPS))
+            }
+        } else {
+            fps = 0
+        }
+
+        let active = wantsAnalysis && fps > 0.5
+        visualAnalysisEnabled = active
+        visualAnalysisFPS = fps
+        visualNeedsSpectrum = active && needsSpectrum
+        audioAnalyzer.setSpectrumEnabled(visualNeedsSpectrum)
+
+        if active {
+            audioAnalyzer.setAnalysisEnabled(true)
+            audioAnalyzer.setPublishRate(fps: fps)
+            if let item = player?.currentItem {
+                audioAnalyzer.ensureAttached(to: item)
+            }
+        } else {
+            // Soft off: stop EQ/FFT publish, but keep MTAudioProcessingTap attached while
+            // audio is still playing. Detaching audioMix on scene resign/background causes
+            // a ~1s stutter when switching apps or collapsing the player.
+            audioAnalyzer.setAnalysisEnabled(false, publishEmptyOnDisable: false)
+            audioAnalyzer.setPublishRate(fps: 0)
+            audioAnalyzer.setSpectrumEnabled(false)
+            if !isPlaying {
+                audioAnalyzer.detach(from: player?.currentItem)
+                visualizer.reset()
+            }
         }
     }
+
+    func stopVisualAnalysisHard() {
+        visualAnalysisEnabled = false
+        visualAnalysisFPS = 0
+        audioAnalyzer.setAnalysisEnabled(false, publishEmptyOnDisable: true)
+        audioAnalyzer.setPublishRate(fps: 0)
+        audioAnalyzer.setSpectrumEnabled(false)
+        audioAnalyzer.detach(from: player?.currentItem)
+        audioAnalyzer.reset()
+        visualizer.reset()
+    }
+
+    private func reattachVisualAnalysis(for item: AVPlayerItem) {
+        guard visualAnalysisEnabled, visualAnalysisFPS > 0.5 else {
+            audioAnalyzer.detach(from: item)
+            return
+        }
+        audioAnalyzer.ensureAttached(to: item)
+    }
+
+    private var visualAnalysisEnabled = false
+    private var visualAnalysisFPS: Double = 0
+    private var visualNeedsSpectrum = false
 
     let folderId: String?
     let folderName: String?
@@ -106,7 +279,11 @@ final class MusicPlaybackEngine: ObservableObject {
     private var failObserver: NSObjectProtocol?
     private var statusObserver: NSKeyValueObservation?
     private var rateObserver: NSKeyValueObservation?
+    private var timeControlObserver: NSKeyValueObservation?
+    private var likelyToKeepUpObserver: NSKeyValueObservation?
     private var seekObserver: NSObjectProtocol?
+    private var audioLifecycleObservers: [NSObjectProtocol] = []
+    private var resumeAfterInterruption = false
     private var api: MusicAPIClient?
     private var jobLookup: ((String) -> String?)?
     private var libraryTrackLookup: ((String) -> MusicTrack?)?
@@ -119,7 +296,24 @@ final class MusicPlaybackEngine: ObservableObject {
     /// Anuluje zaległe `play()` po `stop()` lub zmianie utworu.
     private var sessionGeneration = 0
     private var activePlayTask: Task<Void, Never>?
-    private var openRetryUsed = false
+    private var streamRecoveryAttempts = 0
+    private var continuousPlayingSince: Date?
+    private var stalledObserver: NSObjectProtocol?
+    /// True while the user/engine intends continuous playback (survives temporary rate=0 stalls).
+    private var playbackDesired = false
+    private var activeStreamJobId: String?
+    private var tokenExpiresAt: Date?
+    /// Reuse play-tokens across skip/prefetch — avoids an extra RTT when the file is already on server.
+    private var playTokenCache: [String: CachedPlayToken] = [:]
+    private var streamOpenSignpost: OSSignpostID?
+    private var currentStreamIsRemote = false
+    /// Known-ready remote assets start snappy; cold/unready streams keep a safer buffer.
+    private var currentStreamIsReadyRemote = false
+
+    private struct CachedPlayToken {
+        let token: String
+        let expiresAt: Date?
+    }
 
     init(session: MusicPlaybackSession) {
         queue = session.queue
@@ -155,6 +349,50 @@ final class MusicPlaybackEngine: ObservableObject {
             guard let seconds = note.userInfo?["time"] as? Double else { return }
             Task { @MainActor in self?.seek(to: seconds) }
         }
+        installAudioLifecycleObservers()
+    }
+
+    private func installAudioLifecycleObservers() {
+        removeAudioLifecycleObservers()
+        let center = NotificationCenter.default
+        audioLifecycleObservers = [
+            center.addObserver(forName: .eosAudioSessionNeedsResume, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, self.resumeAfterInterruption || self.playbackDesired else { return }
+                    self.resumeAfterInterruption = false
+                    self.playbackDesired = true
+                    AudioSession.activateForPlayback(force: true)
+                    guard self.currentTrack != nil, self.player != nil else { return }
+                    // Only call play() if we actually stopped — avoids a restart hitch.
+                    if (self.player?.rate ?? 0) < 0.01 {
+                        self.player?.play()
+                    }
+                    self.syncPlayingState()
+                    self.refreshNowPlaying(force: true)
+                }
+            },
+            center.addObserver(forName: .eosAudioSessionInterrupted, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.resumeAfterInterruption = self.playbackDesired || self.isPlaying || (self.player?.rate ?? 0) > 0
+                    self.syncPlayingState()
+                    self.refreshNowPlaying(force: true)
+                }
+            },
+            center.addObserver(forName: .eosAudioSessionRouteLost, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    self?.playbackDesired = false
+                    self?.pause()
+                }
+            },
+        ]
+    }
+
+    private func removeAudioLifecycleObservers() {
+        for observer in audioLifecycleObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        audioLifecycleObservers = []
     }
 
     var queuePositionLabel: String {
@@ -181,16 +419,24 @@ final class MusicPlaybackEngine: ObservableObject {
         activePlayTask = nil
         teardownPlayer()
         currentTrack = nil
+        displayArtwork = nil
         isPlaying = false
         isLoading = false
+        isBuffering = false
+        playbackDesired = false
+        streamRecoveryAttempts = 0
+        continuousPlayingSince = nil
+        activeStreamJobId = nil
+        tokenExpiresAt = nil
         currentTime = 0
+        duration = 0
         nowPlaying.deactivate()
-        audioAnalyzer.reset()
-        audioFrame = AudioReactiveFrame()
+        stopVisualAnalysisHard()
         if let seekObserver {
             NotificationCenter.default.removeObserver(seekObserver)
         }
         seekObserver = nil
+        removeAudioLifecycleObservers()
         onTeardown?()
         onTeardown = nil
     }
@@ -198,31 +444,37 @@ final class MusicPlaybackEngine: ObservableObject {
     func togglePlayPause() {
         guard let player else { return }
         if isPlaying {
+            playbackDesired = false
             player.pause()
         } else {
+            playbackDesired = true
+            AudioSession.activateForPlayback()
             player.play()
         }
         syncPlayingState()
-        refreshNowPlaying()
+        refreshNowPlaying(force: true)
     }
 
     func pause() {
+        playbackDesired = false
         player?.pause()
         syncPlayingState()
-        refreshNowPlaying()
+        refreshNowPlaying(force: true)
     }
 
     func resume() {
+        playbackDesired = true
+        AudioSession.activateForPlayback()
         player?.play()
         syncPlayingState()
-        refreshNowPlaying()
+        refreshNowPlaying(force: true)
     }
 
     func seek(to seconds: Double) {
         let time = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
         player?.seek(to: time)
-        currentTime = seconds
-        refreshNowPlaying()
+        currentTime = max(0, seconds)
+        refreshNowPlaying(force: true)
     }
 
     func skipNext() async {
@@ -239,7 +491,7 @@ final class MusicPlaybackEngine: ObservableObject {
 
     func skipPrevious() async {
         guard !queue.isEmpty else { return }
-        if currentTime > 3 {
+        if livePlaybackTime() > 3 {
             seek(to: 0)
             return
         }
@@ -297,33 +549,73 @@ final class MusicPlaybackEngine: ObservableObject {
         teardownPlayer()
 
         currentTrack = track
+        displayArtwork = nil
         isLoading = true
+        isBuffering = false
+        setPlaybackActivity(
+            .resolvingStream,
+            title: "Przygotowuję odtwarzanie",
+            detail: track.title
+        )
         errorMessage = nil
-        openRetryUsed = false
+        streamRecoveryAttempts = 0
+        continuousPlayingSince = nil
+        activeStreamJobId = nil
+        tokenExpiresAt = nil
+        currentStreamIsReadyRemote = false
         currentTime = 0
         duration = track.duration ?? 0
         isPlaying = false
         supplementalNowPlayingMetadata = nil
 
+        let openSignpost = EOSPerfLog.intervalBegin("StreamOpen")
+        streamOpenSignpost = openSignpost
+        EOSPerfLog.stream.info(
+            "stream start title=\(track.title, privacy: .public) external=\(track.isExternal) onServer=\(self.isDownloaded(track))"
+        )
+
         do {
-            let streamURL = try await resolveStreamURL(for: track)
-            guard generation == sessionGeneration, !Task.isCancelled else { return }
+            let streamURL = try await resolveStreamURL(for: track, forceRefresh: false)
+            guard generation == sessionGeneration, !Task.isCancelled else {
+                EOSPerfLog.intervalEnd("StreamOpen", id: openSignpost)
+                streamOpenSignpost = nil
+                return
+            }
             loadStream(
                 url: streamURL,
                 track: track,
                 queueIndex: index,
                 generation: generation,
-                preferFastStart: true
+                resumeAt: 0,
+                readyRemote: !streamURL.isFileURL && isDownloaded(track)
             )
             Task { [weak self] in
                 await self?.prefetchUpcoming(from: index, generation: generation)
             }
         } catch {
+            EOSPerfLog.intervalEnd("StreamOpen", id: openSignpost)
+            streamOpenSignpost = nil
             guard generation == sessionGeneration else { return }
             isLoading = false
+            isBuffering = false
+            setPlaybackActivity(.error, title: "Nie można odtworzyć", detail: error.localizedDescription)
             errorMessage = error.localizedDescription
             isPlaying = false
         }
+    }
+
+    private func setPlaybackActivity(
+        _ phase: PlaybackActivitySnapshot.Phase,
+        title: String,
+        detail: String = "",
+        progress: Double? = nil
+    ) {
+        statusFlags.activity = PlaybackActivitySnapshot(
+            phase: phase,
+            title: title,
+            detail: detail,
+            progress: progress
+        )
     }
 
     private func isDownloaded(_ track: MusicPlaybackTrack) -> Bool {
@@ -334,7 +626,7 @@ final class MusicPlaybackEngine: ObservableObject {
         return false
     }
 
-    private func resolveStreamURL(for track: MusicPlaybackTrack) async throws -> URL {
+    private func resolveStreamURL(for track: MusicPlaybackTrack, forceRefresh: Bool) async throws -> URL {
         if track.isExternal {
             if let resolver = externalFileResolver {
                 return try await resolver(track)
@@ -348,23 +640,65 @@ final class MusicPlaybackEngine: ObservableObject {
         guard let api else { throw APIError.server("Brak połączenia z serwerem.") }
 
         if let local = OfflineMusicStore.shared.localURL(for: track.url) {
-            return local
+            let useLocal: Bool
+            if offlineOnly {
+                useLocal = true
+            } else {
+                // Wrong download / swapped file: ID3 says another song — prefer server stream while online.
+                useLocal = !(await localFileConflicts(with: track, at: local))
+            }
+            if useLocal {
+                activeStreamJobId = nil
+                tokenExpiresAt = nil
+                setPlaybackActivity(.openingLocal, title: "Plik lokalny", detail: "Odtwarzam z iPhone'a")
+                return local
+            }
+            EOSPerfLog.stream.warning(
+                "local file metadata conflict title=\(track.title, privacy: .public) — streaming from server"
+            )
+        }
+
+        if offlineOnly {
+            throw APIError.server("Tryb Offline — utwór nie jest pobrany na to urządzenie.")
         }
 
         let knownIds = [track.serverAssetId, track.downloadJobId, jobLookup?(track.url)]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
 
+        // Ready-on-server path: reuse warm token, else one cheap play-token GET — never waitForReady.
         for jobId in knownIds {
+            if !forceRefresh, let cached = cachedPlayToken(for: jobId) {
+                activateStreamToken(jobId: jobId, token: cached.token, expiresAt: cached.expiresAt)
+                setPlaybackActivity(
+                    .onServerConnecting,
+                    title: "Na serwerze EOS",
+                    detail: "Łączę ze streamem (cache tokenu)"
+                )
+                EOSPerfLog.stream.debug("token cache hit job=\(jobId, privacy: .public)")
+                return api.musicStreamURL(jobId: jobId, token: cached.token)
+            }
             do {
+                setPlaybackActivity(
+                    .onServerConnecting,
+                    title: "Na serwerze EOS",
+                    detail: "Pobieram token odtwarzania…"
+                )
                 let token = try await api.musicPlayToken(jobId: jobId)
+                rememberStreamToken(jobId: jobId, token: token.token, expiresIn: token.expiresIn)
                 return api.musicStreamURL(jobId: jobId, token: token.token)
             } catch {
-                // Stale id — fall through to ensure.
+                // Stale id — try next / fall through to ensure.
                 continue
             }
         }
 
+        setPlaybackActivity(
+            .preparingServer,
+            title: "Przygotowanie na serwerze",
+            detail: "Łączę z Apple Music / APLMate…",
+            progress: 3
+        )
         let ensure = try await api.startMusicPlay(
             url: track.url,
             folderId: track.folderId,
@@ -372,39 +706,123 @@ final class MusicPlaybackEngine: ObservableObject {
         )
         let jobId = ensure.jobId
         if let token = ensure.token, !token.isEmpty, ensure.ready == true {
+            rememberStreamToken(jobId: jobId, token: token, expiresIn: nil)
+            setPlaybackActivity(.onServerConnecting, title: "Stream gotowy", detail: "Otwieram odtwarzacz…")
             return api.musicStreamURL(jobId: jobId, token: token)
         }
         if ensure.ready != true {
-            try await api.waitForMusicPlayReady(jobId: jobId)
+            try await api.waitForMusicPlayReady(jobId: jobId) { [weak self] progress, status in
+                Task { @MainActor in
+                    self?.setPlaybackActivity(
+                        .preparingServer,
+                        title: "Przygotowanie na serwerze",
+                        detail: Self.serverStatusCaption(status),
+                        progress: progress
+                    )
+                }
+            }
         }
+        setPlaybackActivity(.onServerConnecting, title: "Stream gotowy", detail: "Pobieram token…")
         let token = try await api.musicPlayToken(jobId: jobId)
+        rememberStreamToken(jobId: jobId, token: token.token, expiresIn: token.expiresIn)
         return api.musicStreamURL(jobId: jobId, token: token.token)
     }
 
-    /// Warm the next 1–2 tracks so skip feels instant.
-    private func prefetchUpcoming(from index: Int, generation: Int) async {
-        guard generation == sessionGeneration, let api else { return }
-        let upcoming = [1, 2].compactMap { offset -> MusicPlaybackTrack? in
-            let cursor = orderCursor + offset
-            guard cursor >= 0, cursor < playOrder.count else { return nil }
-            let qi = playOrder[cursor]
-            guard queue.indices.contains(qi) else { return nil }
-            return queue[qi]
+    private static func serverStatusCaption(_ status: String) -> String {
+        switch status {
+        case "preparing": return "Analiza utworu Apple Music…"
+        case "starting": return "Start zadania na serwerze…"
+        case "downloading": return "Zapis trwa — stream już może grać"
+        case "done": return "Gotowe — łączę ze streamem"
+        default: return status.isEmpty ? "Czekam na serwer…" : status
         }
-        for track in upcoming {
-            guard generation == sessionGeneration else { return }
-            if track.isExternal { continue }
-            if OfflineMusicStore.shared.localURL(for: track.url) != nil { continue }
-            let known = [track.serverAssetId, track.downloadJobId, jobLookup?(track.url)]
-                .compactMap { $0 }
-                .contains { !$0.isEmpty }
-            if known { continue }
-            _ = try? await api.startMusicPlay(
-                url: track.url,
-                folderId: track.folderId ?? folderId,
-                trackUrl: track.url
+    }
+
+    private func localFileConflicts(with track: MusicPlaybackTrack, at fileURL: URL) async -> Bool {
+        let asset = AVURLAsset(url: fileURL)
+        guard let embedded = await parseEmbeddedMetadata(from: asset) else { return false }
+        let conflicts = TrackMetadataEnricher.embeddedTitleConflicts(
+            expectedTitle: track.title,
+            embeddedTitle: embedded.title
+        )
+        if conflicts {
+            EOSPerfLog.stream.warning(
+                "ID3 mismatch expected=\(track.title, privacy: .public) embedded=\(embedded.title ?? "nil", privacy: .public)"
             )
         }
+        return conflicts
+    }
+
+    private func rememberStreamToken(jobId: String, token: String, expiresIn: Int?) {
+        let expiresAt = (expiresIn ?? 0) > 0
+            ? Date().addingTimeInterval(TimeInterval(expiresIn!))
+            : nil
+        playTokenCache[jobId] = CachedPlayToken(token: token, expiresAt: expiresAt)
+        activateStreamToken(jobId: jobId, token: token, expiresAt: expiresAt)
+        if let expiresIn, expiresIn > 0 {
+            EOSPerfLog.stream.debug("token stored job=\(jobId, privacy: .public) expiresIn=\(expiresIn)s")
+        }
+    }
+
+    private func activateStreamToken(jobId: String, token: String, expiresAt: Date?) {
+        _ = token
+        activeStreamJobId = jobId
+        tokenExpiresAt = expiresAt
+    }
+
+    private func cachedPlayToken(for jobId: String) -> CachedPlayToken? {
+        guard let entry = playTokenCache[jobId] else { return nil }
+        if let expiresAt = entry.expiresAt, Date().addingTimeInterval(45) >= expiresAt {
+            playTokenCache.removeValue(forKey: jobId)
+            return nil
+        }
+        return entry
+    }
+
+    private func tokenNeedsRefreshBeforeRemount() -> Bool {
+        guard let tokenExpiresAt else { return false }
+        // Refresh ~45s before expiry so remount does not race the cutoff.
+        return Date().addingTimeInterval(45) >= tokenExpiresAt
+    }
+
+    private func isTokenAuthFailure(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        return lower.contains("403")
+            || lower.contains("401")
+            || lower.contains("unauthorized")
+            || lower.contains("forbidden")
+    }
+
+    /// Warm the next track so skip feels instant — never compete with active user downloads.
+    private func prefetchUpcoming(from index: Int, generation: Int) async {
+        guard generation == sessionGeneration, let api, !offlineOnly else { return }
+        guard !MusicDownloadService.hasActiveDownloads else { return }
+        let nextCursor = orderCursor + 1
+        guard nextCursor >= 0, nextCursor < playOrder.count else { return }
+        let qi = playOrder[nextCursor]
+        guard queue.indices.contains(qi) else { return }
+        let track = queue[qi]
+        if track.isExternal { return }
+        if OfflineMusicStore.shared.localURL(for: track.url) != nil { return }
+
+        let knownIds = [track.serverAssetId, track.downloadJobId, jobLookup?(track.url)]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+
+        if let jobId = knownIds.first {
+            // Warm token into cache so skip/next feels instant for ready server files.
+            if cachedPlayToken(for: jobId) != nil { return }
+            if let token = try? await api.musicPlayToken(jobId: jobId) {
+                rememberStreamToken(jobId: jobId, token: token.token, expiresIn: token.expiresIn)
+            }
+            return
+        }
+
+        _ = try? await api.startMusicPlay(
+            url: track.url,
+            folderId: track.folderId ?? folderId,
+            trackUrl: track.url
+        )
     }
 
     private func retryOpenIfNeeded(
@@ -413,28 +831,116 @@ final class MusicPlaybackEngine: ObservableObject {
         generation: Int,
         reason: String
     ) async -> Bool {
-        guard generation == sessionGeneration, !openRetryUsed, !track.isExternal else { return false }
-        openRetryUsed = true
+        await attemptStreamRecovery(
+            track: track,
+            queueIndex: queueIndex,
+            generation: generation,
+            resumeAt: currentTime,
+            reason: reason
+        )
+    }
+
+    /// Remount stream after stall / mid-play failure, keeping position when possible.
+    private func recoverFromStreamDisruption(
+        track: MusicPlaybackTrack,
+        queueIndex: Int,
+        generation: Int,
+        at seconds: Double,
+        reason: String = "stall/disruption"
+    ) async {
+        let handled = await attemptStreamRecovery(
+            track: track,
+            queueIndex: queueIndex,
+            generation: generation,
+            resumeAt: seconds,
+            reason: reason
+        )
+        if !handled {
+            errorMessage = Self.friendlyPlaybackError(reason)
+            isPlaying = false
+            isLoading = false
+            isBuffering = false
+            refreshNowPlaying(force: true)
+        }
+    }
+
+    @discardableResult
+    private func attemptStreamRecovery(
+        track: MusicPlaybackTrack,
+        queueIndex: Int,
+        generation: Int,
+        resumeAt: Double,
+        reason: String
+    ) async -> Bool {
+        guard generation == sessionGeneration, !track.isExternal else { return false }
+
+        let authFailure = isTokenAuthFailure(reason)
+        if StreamRecoveryPolicy.isFatalPlaybackError(reason), !authFailure {
+            EOSPerfLog.stream.error("fatal stream error — stop retrying: \(reason, privacy: .public)")
+            return false
+        }
+
+        guard let delay = StreamRecoveryPolicy.delayNanoseconds(afterAttempt: streamRecoveryAttempts) else {
+            EOSPerfLog.stream.error("stream recovery exhausted after \(self.streamRecoveryAttempts) attempts")
+            errorMessage = "Odtwarzanie przerwane."
+            isPlaying = false
+            isLoading = false
+            isBuffering = false
+            refreshNowPlaying(force: true)
+            return true
+        }
+
+        let attempt = streamRecoveryAttempts
+        streamRecoveryAttempts += 1
+        continuousPlayingSince = nil
         isLoading = true
         errorMessage = nil
-        // Brief pause so background persist can finish flipping stream-proxy → local file.
-        try? await Task.sleep(nanoseconds: 700_000_000)
-        guard generation == sessionGeneration else { return false }
+
+        let recoverySignpost = EOSPerfLog.intervalBegin("StreamRecovery")
+        EOSPerfLog.stream.info(
+            "stream recovery attempt=\(attempt + 1) resumeAt=\(resumeAt, format: .fixed(precision: 1)) reason=\(reason, privacy: .public) authRefresh=\(authFailure || self.tokenNeedsRefreshBeforeRemount())"
+        )
+
+        try? await Task.sleep(nanoseconds: delay)
+        guard generation == sessionGeneration else {
+            EOSPerfLog.intervalEnd("StreamRecovery", id: recoverySignpost)
+            return true
+        }
+
+        AudioSession.activateForPlayback()
         do {
-            let streamURL = try await resolveStreamURL(for: track)
-            guard generation == sessionGeneration else { return false }
+            let forceRefresh = authFailure || tokenNeedsRefreshBeforeRemount()
+            let streamURL = try await resolveStreamURL(for: track, forceRefresh: forceRefresh)
+            guard generation == sessionGeneration else {
+                EOSPerfLog.intervalEnd("StreamRecovery", id: recoverySignpost)
+                return true
+            }
             loadStream(
                 url: streamURL,
                 track: track,
                 queueIndex: queueIndex,
                 generation: generation,
-                preferFastStart: true
+                resumeAt: max(0, resumeAt),
+                readyRemote: !streamURL.isFileURL && isDownloaded(track)
             )
+            EOSPerfLog.intervalEnd("StreamRecovery", id: recoverySignpost)
             return true
         } catch {
-            errorMessage = Self.friendlyPlaybackError(error.localizedDescription)
+            EOSPerfLog.intervalEnd("StreamRecovery", id: recoverySignpost)
+            let message = error.localizedDescription
+            if StreamRecoveryPolicy.isFatalPlaybackError(message), !isTokenAuthFailure(message) {
+                errorMessage = Self.friendlyPlaybackError(message)
+                isLoading = false
+                isPlaying = false
+                isBuffering = false
+                refreshNowPlaying(force: true)
+                return true
+            }
+            errorMessage = Self.friendlyPlaybackError(message)
             isLoading = false
             isPlaying = false
+            isBuffering = false
+            refreshNowPlaying(force: true)
             return true
         }
     }
@@ -453,45 +959,84 @@ final class MusicPlaybackEngine: ObservableObject {
         return raw
     }
 
-    private func loadStream(url: URL, track: MusicPlaybackTrack, queueIndex: Int, generation: Int, preferFastStart: Bool) {
+    private func loadStream(
+        url: URL,
+        track: MusicPlaybackTrack,
+        queueIndex: Int,
+        generation: Int,
+        resumeAt: Double,
+        readyRemote: Bool = false
+    ) {
         guard generation == sessionGeneration else { return }
 
+        if readyRemote {
+            setPlaybackActivity(.onServerConnecting, title: "Na serwerze EOS", detail: "Start odtwarzania…")
+        } else if url.isFileURL {
+            setPlaybackActivity(.openingLocal, title: "Plik lokalny", detail: "Buforuję audio…")
+        } else {
+            setPlaybackActivity(.connectingStream, title: "Łączę ze streamem", detail: track.title)
+        }
+
         cleanupObservers()
+        audioAnalyzer.detach(from: player?.currentItem)
+
         AudioSession.activateForPlayback()
 
         let item = AVPlayerItem(url: url)
-        audioAnalyzer.attach(to: item) { [weak self] frame in
-            Task { @MainActor in
-                self?.audioFrame = frame
-            }
+        currentStreamIsRemote = !url.isFileURL
+        currentStreamIsReadyRemote = readyRemote && currentStreamIsRemote
+        if currentStreamIsReadyRemote {
+            // File already on NAS/server — start ASAP; recovery path handles mid-track blips.
+            item.preferredForwardBufferDuration = 0.5
+        } else if currentStreamIsRemote {
+            // Cold / still-preparing streams: larger buffer reduces mid-track death.
+            item.preferredForwardBufferDuration = 6
+        }
+        // Push live frames off the audio thread into a lock — UIKit hosts poll (no SwiftUI storm).
+        audioAnalyzer.setPublishHandler { [weak self] frame in
+            self?.visualizer.apply(frame)
         }
         let newPlayer = AVPlayer(playerItem: item)
-        newPlayer.automaticallyWaitsToMinimizeStalling = !preferFastStart
+        // Local + ready-remote: snappy. Unready remote: wait for buffer.
+        newPlayer.automaticallyWaitsToMinimizeStalling = currentStreamIsRemote && !currentStreamIsReadyRemote
         player = newPlayer
+        reattachVisualAnalysis(for: item)
         Task { [weak self] in
             await self?.hydratePlaybackMetadata(from: item, queueIndex: queueIndex, generation: generation)
         }
 
-        timeObserver = newPlayer.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
-            queue: .main
-        ) { [weak self] time in
-            Task { @MainActor in
-                guard let self, self.sessionGeneration == generation else { return }
-                self.currentTime = max(0, time.seconds)
-                if self.duration <= 0, let d = newPlayer.currentItem?.duration.seconds, d.isFinite, d > 0 {
-                    self.duration = d
-                }
-                self.syncPlayingState()
-                self.refreshNowPlaying()
-            }
+        // NO periodic time observer — the old 0.5s tick published UI / Now Playing and
+        // produced a metronomic hitch (EQ + controls freezing every half-second).
+        // Scrubber polls `livePlaybackTime()`; lock screen advances via playbackRate.
+        if let existing = timeObserver {
+            newPlayer.removeTimeObserver(existing)
+            timeObserver = nil
         }
 
         rateObserver = newPlayer.observe(\.rate, options: [.new]) { [weak self] player, _ in
             Task { @MainActor in
                 guard let self, self.sessionGeneration == generation else { return }
+                let t = player.currentTime().seconds
+                if t.isFinite {
+                    self.currentTime = max(0, t)
+                }
                 self.syncPlayingState()
-                self.refreshNowPlaying()
+                self.refreshNowPlaying(force: true)
+            }
+        }
+
+        timeControlObserver = newPlayer.observe(\.timeControlStatus, options: [.new, .initial]) { [weak self] _, _ in
+            Task { @MainActor in
+                guard let self, self.sessionGeneration == generation else { return }
+                self.updateBufferingState()
+                self.syncPlayingState()
+            }
+        }
+
+        likelyToKeepUpObserver = item.observe(\.isPlaybackLikelyToKeepUp, options: [.new, .initial]) { [weak self] _, _ in
+            Task { @MainActor in
+                guard let self, self.sessionGeneration == generation else { return }
+                self.updateBufferingState()
             }
         }
 
@@ -511,11 +1056,25 @@ final class MusicPlaybackEngine: ObservableObject {
                     self.errorMessage = Self.friendlyPlaybackError(raw)
                     self.isPlaying = false
                     self.isLoading = false
+                    self.isBuffering = false
                 } else if item.status == .readyToPlay {
                     self.isLoading = false
+                    let d = item.duration.seconds
+                    if d.isFinite, d > 0 {
+                        self.duration = d
+                    }
+                    self.updateBufferingState()
+                    if !self.isBuffering {
+                        self.setPlaybackActivity(.playing, title: "Odtwarzanie", detail: track.title)
+                    }
+                    if let signpost = self.streamOpenSignpost {
+                        EOSPerfLog.intervalEnd("StreamOpen", id: signpost)
+                        self.streamOpenSignpost = nil
+                        EOSPerfLog.stream.info("stream ready title=\(track.title, privacy: .public)")
+                    }
+                    self.reattachVisualAnalysis(for: item)
                     self.syncPlayingState()
-                    self.audioAnalyzer.ensureAttached(to: item)
-                    self.refreshNowPlaying()
+                    self.refreshNowPlaying(force: true)
                 }
             }
         }
@@ -541,17 +1100,137 @@ final class MusicPlaybackEngine: ObservableObject {
             forName: .AVPlayerItemFailedToPlayToEndTime,
             object: item,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] note in
             Task { @MainActor in
                 guard let self, self.sessionGeneration == generation else { return }
-                self.errorMessage = "Odtwarzanie przerwane."
-                self.isPlaying = false
+                let raw = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error)?.localizedDescription
+                    ?? "Odtwarzanie przerwane."
+                if StreamRecoveryPolicy.isFatalPlaybackError(raw), !self.isTokenAuthFailure(raw) {
+                    self.errorMessage = Self.friendlyPlaybackError(raw)
+                    self.isPlaying = false
+                    self.isLoading = false
+                    self.isBuffering = false
+                    self.refreshNowPlaying(force: true)
+                    return
+                }
+                await self.recoverFromStreamDisruption(
+                    track: track,
+                    queueIndex: queueIndex,
+                    generation: generation,
+                    at: self.currentTime,
+                    reason: raw
+                )
             }
         }
 
-        newPlayer.play()
-        syncPlayingState()
-        refreshNowPlaying()
+        stalledObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemPlaybackStalled,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.sessionGeneration == generation, self.playbackDesired else { return }
+                self.updateBufferingState()
+                AudioSession.activateForPlayback()
+                // Give the buffer a moment, then nudge play; remount if still dead.
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                guard self.sessionGeneration == generation, self.playbackDesired else { return }
+                self.player?.play()
+                self.syncPlayingState()
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                guard self.sessionGeneration == generation, self.playbackDesired else { return }
+                if (self.player?.rate ?? 0) < 0.01 {
+                    await self.recoverFromStreamDisruption(
+                        track: track,
+                        queueIndex: queueIndex,
+                        generation: generation,
+                        at: self.currentTime
+                    )
+                }
+            }
+        }
+
+        playbackDesired = true
+        updateBufferingState()
+        if resumeAt > 0.5 {
+            let seekTime = CMTime(seconds: resumeAt, preferredTimescale: 600)
+            newPlayer.seek(to: seekTime) { [weak self] finished in
+                Task { @MainActor in
+                    guard let self, finished, self.sessionGeneration == generation else { return }
+                    self.currentTime = resumeAt
+                    self.player?.play()
+                    self.syncPlayingState()
+                    self.refreshNowPlaying(force: true)
+                }
+            }
+        } else {
+            newPlayer.play()
+            syncPlayingState()
+            refreshNowPlaying(force: true)
+        }
+    }
+
+    private func updateBufferingState() {
+        guard let player, currentStreamIsRemote, playbackDesired else {
+            if isBuffering {
+                isBuffering = false
+                applyBufferingVisualSideEffects()
+            }
+            return
+        }
+
+        let waiting = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+        let keepUp = player.currentItem?.isPlaybackLikelyToKeepUp ?? true
+        let buffering: Bool
+        if currentStreamIsReadyRemote {
+            // Already on server — don't flash "Buforowanie…" during normal open.
+            // Only show if we actually stall mid-track after playback has begun.
+            let elapsed = livePlaybackTime()
+            buffering = waiting && elapsed > 1.5 && (player.rate < 0.01 || !keepUp)
+        } else {
+            buffering = waiting || (!keepUp && (isPlaying || isLoading || player.rate < 0.01))
+        }
+
+        if isBuffering != buffering {
+            isBuffering = buffering
+            applyBufferingVisualSideEffects()
+        }
+        if buffering {
+            let pct = streamBufferPercent()
+            setPlaybackActivity(
+                .buffering,
+                title: "Buforowanie",
+                detail: currentStreamIsReadyRemote
+                    ? "Czekam na dane ze serwera EOS…"
+                    : "Czekam na pierwsze dane streamu…",
+                progress: pct
+            )
+        } else if !isLoading, player.currentItem?.status == .readyToPlay, isPlaying || playbackDesired {
+            setPlaybackActivity(.playing, title: "Odtwarzanie", detail: currentTrack?.title ?? "")
+        }
+    }
+
+    private func streamBufferPercent() -> Double? {
+        guard let item = player?.currentItem else { return nil }
+        let duration = item.duration.seconds
+        guard duration.isFinite, duration > 0 else { return nil }
+        let loaded = item.loadedTimeRanges
+            .compactMap { $0.timeRangeValue.end.seconds }
+            .max() ?? 0
+        guard loaded.isFinite, loaded > 0 else { return nil }
+        return min(100, max(0, (loaded / duration) * 100))
+    }
+
+    private func applyBufferingVisualSideEffects() {
+        // Never tear down live EQ for ready-on-server streams — UI was freezing visuals on every blip.
+        if currentStreamIsReadyRemote { return }
+        if isBuffering {
+            audioAnalyzer.setAnalysisEnabled(false, publishEmptyOnDisable: false)
+            audioAnalyzer.setSpectrumEnabled(false)
+        } else if visualAnalysisEnabled {
+            audioAnalyzer.setAnalysisEnabled(true)
+            audioAnalyzer.setSpectrumEnabled(visualNeedsSpectrum)
+        }
     }
 
     private func syncPlayingState() {
@@ -562,19 +1241,38 @@ final class MusicPlaybackEngine: ObservableObject {
         }
         if playing {
             isLoading = false
+            if continuousPlayingSince == nil {
+                continuousPlayingSince = Date()
+            } else if let start = continuousPlayingSince,
+                      StreamRecoveryPolicy.shouldResetAttemptCount(
+                        stablePlaybackDuration: Date().timeIntervalSince(start)
+                      ) {
+                if streamRecoveryAttempts > 0 {
+                    EOSPerfLog.stream.debug("stream recovery attempts reset after stable playback")
+                }
+                streamRecoveryAttempts = 0
+                continuousPlayingSince = Date()
+            }
+        } else if player?.timeControlStatus != .waitingToPlayAtSpecifiedRate {
+            continuousPlayingSince = nil
         }
+        updateBufferingState()
     }
 
-    private func refreshNowPlaying() {
+    private func refreshNowPlaying(force: Bool = false) {
         guard let track = currentTrack else { return }
+        // Prefer live AVPlayer clock — iOS advances lock-screen elapsed via playbackRate.
+        let elapsed = livePlaybackTime()
+        currentTime = elapsed
         nowPlaying.update(
             track: track,
-            duration: duration,
-            elapsed: currentTime,
+            duration: liveDuration(),
+            elapsed: elapsed,
             isPlaying: isPlaying,
             queueIndex: orderCursor,
             queueCount: queue.count,
-            supplemental: supplementalNowPlayingMetadata
+            supplemental: supplementalNowPlayingMetadata,
+            force: force
         )
     }
 
@@ -597,8 +1295,38 @@ final class MusicPlaybackEngine: ObservableObject {
         queue[queueIndex] = enriched
         if currentTrack?.id == enriched.id {
             currentTrack = enriched
+            if let art = embedded?.artwork {
+                displayArtwork = art
+            } else if displayArtwork != nil, enriched.artworkURL == nil {
+                displayArtwork = nil
+            }
+            if displayArtwork == nil, let artURL = enriched.artworkURL {
+                let trackID = enriched.id
+                Task { [weak self] in
+                    let loaded = await ArtworkDecodeActor.shared.load(
+                        url: artURL,
+                        maxPixelSize: 512,
+                        allowAnimated: false,
+                        timeout: 12
+                    )
+                    guard let self, let image = loaded?.still else { return }
+                    guard self.sessionGeneration == generation, self.currentTrack?.id == trackID else { return }
+                    self.displayArtwork = image
+                }
+            }
         }
-        supplementalNowPlayingMetadata = embedded?.asSupplemental
+        if let embedded,
+           TrackMetadataEnricher.embeddedTitleConflicts(expectedTitle: baseTrack.title, embeddedTitle: embedded.title) {
+            // Keep lock-screen / Now Playing aligned with the tapped track, not rogue ID3.
+            supplementalNowPlayingMetadata = NowPlayingCenter.SupplementalMetadata(
+                title: nil,
+                artist: nil,
+                album: nil,
+                artwork: embedded.artwork
+            )
+        } else {
+            supplementalNowPlayingMetadata = embedded?.asSupplemental
+        }
         refreshNowPlaying()
     }
 
@@ -655,11 +1383,17 @@ final class MusicPlaybackEngine: ObservableObject {
     }
 
     private func teardownPlayer() {
+        if let signpost = streamOpenSignpost {
+            EOSPerfLog.intervalEnd("StreamOpen", id: signpost)
+            streamOpenSignpost = nil
+        }
         cleanupObservers()
         player?.pause()
         audioAnalyzer.detach(from: player?.currentItem)
         player?.replaceCurrentItem(with: nil)
         player = nil
+        isBuffering = false
+        currentStreamIsRemote = false
     }
 
     private func cleanupObservers() {
@@ -669,12 +1403,83 @@ final class MusicPlaybackEngine: ObservableObject {
         timeObserver = nil
         rateObserver?.invalidate()
         rateObserver = nil
+        timeControlObserver?.invalidate()
+        timeControlObserver = nil
+        likelyToKeepUpObserver?.invalidate()
+        likelyToKeepUpObserver = nil
         statusObserver?.invalidate()
         statusObserver = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         if let failObserver { NotificationCenter.default.removeObserver(failObserver) }
+        if let stalledObserver { NotificationCenter.default.removeObserver(stalledObserver) }
         endObserver = nil
         failObserver = nil
+        stalledObserver = nil
+    }
+}
+
+/// Real FFT 512 — jak Nullsoft FFT w vis_classic.
+private final class WinampFFTProcessor {
+    private let size = 512
+    private let binCount = 256
+    private let log2n: vDSP_Length = 9
+    private let setup: FFTSetup
+    private var window: [Float]
+    private var input: [Float]
+    private var real: [Float]
+    private var imag: [Float]
+    private var magnitudes: [Float]
+
+    init() {
+        guard let setup = vDSP_create_fftsetup(9, FFTRadix(kFFTRadix2)) else {
+            fatalError("WinampFFTProcessor: brak FFT setup")
+        }
+        self.setup = setup
+        window = [Float](repeating: 0, count: 512)
+        input = [Float](repeating: 0, count: 512)
+        real = [Float](repeating: 0, count: 256)
+        imag = [Float](repeating: 0, count: 256)
+        magnitudes = [Float](repeating: 0, count: 256)
+        vDSP_hann_window(&window, vDSP_Length(size), Int32(vDSP_HANN_NORM))
+    }
+
+    deinit {
+        vDSP_destroy_fftsetup(setup)
+    }
+
+    func spectrumBytes(from samples: [Float], count: Int, scale: Float) -> [UInt8] {
+        guard count >= 64 else { return [UInt8](repeating: 0, count: binCount) }
+        let start = max(0, count - size)
+        input.withUnsafeMutableBufferPointer { dst in
+            dst.initialize(repeating: 0)
+            let copyCount = min(size, count - start)
+            _ = samples.withUnsafeBufferPointer { src in
+                dst.baseAddress!.update(from: src.baseAddress!.advanced(by: start), count: copyCount)
+            }
+        }
+        vDSP_vmul(input, 1, window, 1, &input, 1, vDSP_Length(size))
+
+        real.withUnsafeMutableBufferPointer { realBP in
+            imag.withUnsafeMutableBufferPointer { imagBP in
+                var split = DSPSplitComplex(realp: realBP.baseAddress!, imagp: imagBP.baseAddress!)
+                for index in 0..<binCount {
+                    split.realp[index] = input[index * 2]
+                    split.imagp[index] = input[index * 2 + 1]
+                }
+                vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(FFT_FORWARD))
+                var norm = Float(2.0 / Float(size))
+                vDSP_vsmul(split.realp, 1, &norm, split.realp, 1, vDSP_Length(binCount))
+                vDSP_vsmul(split.imagp, 1, &norm, split.imagp, 1, vDSP_Length(binCount))
+                vDSP_zvabs(&split, 1, &magnitudes, 1, vDSP_Length(binCount))
+            }
+        }
+
+        let invScale = max(0.08, scale)
+        return magnitudes.map { mag in
+            let compressed = log1pf(mag * 48.0 / invScale)
+            let value = Int(compressed * 72.0)
+            return UInt8(min(255, max(0, value)))
+        }
     }
 }
 
@@ -682,25 +1487,145 @@ private final class PlayerAudioAnalyzer {
     private struct State {
         var lowLP: Float = 0
         var midLP: Float = 0
-        var bandLP: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCount)
         var prevBass: Float = 0
         var kickEnvelope: Float = 0
         var visualEnvelope: Float = 0
         var lastPeak: Float = 0
         var lastPush: CFTimeInterval = 0
         var islandBars: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.islandBarCount)
-        var spectrumBars: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCount)
-        var peakHold: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCount)
-        var peakHoldAge: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCount)
+        var bandTargets: [Int] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountMax)
         var energy: Float = 0
+        var monoScratch: [Float] = Array(repeating: 0, count: 2048)
+        var ringBuffer: [Float] = Array(repeating: 0, count: 512)
+        var ringWrite = 0
+        var ringFilled = 0
     }
 
     private var state = State()
     private let lock = NSLock()
-    private var push: ((MusicPlaybackEngine.AudioReactiveFrame) -> Void)?
+    private var publishHandler: ((MusicPlaybackEngine.AudioReactiveFrame) -> Void)?
     /// Target publish rate (Hz). 0 = pause publishing.
-    private var targetFPS: Double = 24
-    private var analysisEnabled = true
+    private var targetFPS: Double = 0
+    private var analysisEnabled = false
+    /// Full FFT/Goertzel only for Spectrum mixer; mini/vinyl use cheap RMS island path.
+    private var spectrumEnabled = false
+    private var activeBandCount = MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard
+    private var sampleRate: Float = 44_100
+    private let fft = WinampFFTProcessor()
+    private let barTable32: [Int]
+    private let barTable64: [Int]
+    private let fftScale: Float = 1.4
+
+    private var barTable: [Int] {
+        activeBandCount >= MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountDense ? barTable64 : barTable32
+    }
+
+    private static func bandCenterHz(index: Int, count: Int) -> Float {
+        let minHz: Float = 55
+        let maxHz: Float = 16_000
+        let t = Float(index) / Float(max(1, count - 1))
+        return minHz * pow(maxHz / minHz, t)
+    }
+
+    private static func goertzelMagnitude(_ samples: [Float], count: Int, targetHz: Float, sampleRate: Float) -> Float {
+        let n = min(count, samples.count)
+        guard n > 16 else { return 0 }
+        let k = Int(0.5 + Float(n) * targetHz / sampleRate)
+        guard k > 0 else { return 0 }
+        let w = 2 * Float.pi * Float(k) / Float(n)
+        let coeff = 2 * cos(w)
+        let cosW = cos(w)
+        let sinW = sin(w)
+        var s0: Float = 0
+        var s1: Float = 0
+        var s2: Float = 0
+        for index in 0..<n {
+            s0 = coeff * s1 - s2 + samples[index]
+            s2 = s1
+            s1 = s0
+        }
+        let real = s1 - s2 * cosW
+        let imag = s2 * sinW
+        return sqrt(real * real + imag * imag) / Float(n)
+    }
+
+    init() {
+        barTable32 = Self.logBarTable(
+            binCount: 256,
+            sampleRate: 44_100,
+            lastBarCutHz: 16_000,
+            bars: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard
+        )
+        barTable64 = Self.logBarTable(
+            binCount: 256,
+            sampleRate: 44_100,
+            lastBarCutHz: 16_000,
+            bars: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountDense
+        )
+    }
+
+    func setBandCount(_ count: Int) {
+        lock.lock()
+        activeBandCount = count >= MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountDense
+            ? MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountDense
+            : MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard
+        state = State()
+        lock.unlock()
+    }
+
+    fileprivate func setSampleRate(_ rate: Float) {
+        lock.lock()
+        sampleRate = max(8_000, rate)
+        lock.unlock()
+    }
+
+    /// Logarytmiczna dystrybucja binów FFT — port vis_classic LogBarValueTable.
+    private static func logBarTable(binCount: Int, sampleRate: Int, lastBarCutHz: Int, bars: Int) -> [Int] {
+        var table = Array(repeating: 1, count: bars)
+        var notAssigned = binCount - bars
+        var lastAssign = bars - 1
+        guard notAssigned > 0 else { return table }
+
+        let fDiv = pow(Double(notAssigned), 1.0 / Double(bars))
+        func assignCount(_ remaining: Int) -> Int {
+            max(1, Int(Double(remaining) - Double(remaining) / fDiv + 0.5))
+        }
+
+        if lastBarCutHz > sampleRate / 10_000 {
+            let halfSample = sampleRate / 2
+            if halfSample > lastBarCutHz {
+                let highBinDiv = Double(halfSample) / Double(halfSample - lastBarCutHz)
+                if 1 + notAssigned - Int(Double(notAssigned) / fDiv) < Int(Double(binCount) / highBinDiv) {
+                    table[bars - 1] = max(1, Int(Double(binCount) / highBinDiv))
+                    notAssigned = binCount - (bars - 1) - table[bars - 1]
+                    lastAssign = bars - 2
+                }
+            }
+        }
+
+        var assign = assignCount(notAssigned)
+        while notAssigned > 0 {
+            for index in stride(from: lastAssign, through: 0, by: -1) where notAssigned > 0 {
+                table[index] += assign
+                notAssigned -= assign
+                assign = assignCount(notAssigned)
+            }
+        }
+        return table
+    }
+
+    private static func averageLevel(low: Int, high: Int, spectrum: [UInt8]) -> Int {
+        guard low < high, low >= 0, high <= spectrum.count else { return 0 }
+        var sum = 0
+        for index in low..<high { sum += Int(spectrum[index]) }
+        return sum / (high - low)
+    }
+
+    /// Soft-knee 0…1 — widoczny ruch przy cichym materiale, miękki limit u góry.
+    private static func softNormalize(_ value: Float, gain: Float) -> Float {
+        let x = max(0, value * gain)
+        return min(0.96, x / (1 + x * 0.36))
+    }
 
     private weak var attachedItem: AVPlayerItem?
     private var attachTask: Task<Void, Never>?
@@ -711,20 +1636,30 @@ private final class PlayerAudioAnalyzer {
         lock.unlock()
     }
 
-    func setAnalysisEnabled(_ enabled: Bool) {
+    func setAnalysisEnabled(_ enabled: Bool, publishEmptyOnDisable: Bool = true) {
         lock.lock()
         analysisEnabled = enabled
         if !enabled {
             state = State()
         }
         lock.unlock()
-        if !enabled {
-            push?(MusicPlaybackEngine.AudioReactiveFrame())
+        if !enabled, publishEmptyOnDisable {
+            publishHandler?(MusicPlaybackEngine.AudioReactiveFrame())
         }
     }
 
+    func setSpectrumEnabled(_ enabled: Bool) {
+        lock.lock()
+        spectrumEnabled = enabled
+        lock.unlock()
+    }
+
+    func setPublishHandler(_ push: @escaping (MusicPlaybackEngine.AudioReactiveFrame) -> Void) {
+        publishHandler = push
+    }
+
     func attach(to item: AVPlayerItem, push: @escaping (MusicPlaybackEngine.AudioReactiveFrame) -> Void) {
-        self.push = push
+        publishHandler = push
         attachedItem = item
         attachTask?.cancel()
         attachTask = Task { [weak self, weak item] in
@@ -739,17 +1674,14 @@ private final class PlayerAudioAnalyzer {
     }
 
     func ensureAttached(to item: AVPlayerItem) {
-        guard item.audioMix == nil else { return }
-        attachTask?.cancel()
-        attachTask = Task { [weak self, weak item] in
-            guard let self, let item, !Task.isCancelled else { return }
-            let tracks = (try? await item.asset.loadTracks(withMediaType: .audio)) ?? []
-            guard let audioTrack = tracks.first, !Task.isCancelled else { return }
-            await MainActor.run {
-                guard self.attachedItem === item else { return }
-                self.installTap(on: item, audioTrack: audioTrack)
-            }
-        }
+        guard let push = publishHandler else { return }
+        lock.lock()
+        let enabled = analysisEnabled
+        let fps = targetFPS
+        lock.unlock()
+        guard enabled, fps > 0.5 else { return }
+        if attachedItem === item, item.audioMix != nil { return }
+        attach(to: item, push: push)
     }
 
     func detach(from item: AVPlayerItem?) {
@@ -807,6 +1739,7 @@ private final class PlayerAudioAnalyzer {
         lock.lock()
         let enabled = analysisEnabled
         let fps = targetFPS
+        let wantsSpectrum = spectrumEnabled
         lock.unlock()
         guard enabled, fps > 0.5 else { return }
 
@@ -814,16 +1747,33 @@ private final class PlayerAudioAnalyzer {
         var lowSq: Float = 0
         var midSq: Float = 0
         var highSq: Float = 0
-        var bandSq = [Float](repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCount)
 
         lock.lock()
         var local = state
-        for i in stride(from: 0, to: sampleCount, by: channels) {
+        let bandCount = activeBandCount
+        let table = barTable
+        let sampleRateLocked = sampleRate
+        let scratchCap = local.monoScratch.count
+        var monoCount = 0
+
+        // Downsample mono fill when we only need island RMS — still accurate enough for 5 bars.
+        let step = wantsSpectrum ? channels : max(channels, channels * 2)
+        for i in stride(from: 0, to: sampleCount, by: step) {
             var mono: Float = 0
             for c in 0..<channels {
                 mono += samplePtr[i + c]
             }
             mono /= Float(channels)
+
+            if wantsSpectrum, monoCount < scratchCap {
+                local.monoScratch[monoCount] = mono
+                monoCount += 1
+            }
+            if wantsSpectrum {
+                local.ringBuffer[local.ringWrite % local.ringBuffer.count] = mono
+                local.ringWrite += 1
+                local.ringFilled = min(local.ringBuffer.count, local.ringFilled + 1)
+            }
 
             local.lowLP += 0.02 * (mono - local.lowLP)
             local.midLP += 0.12 * (mono - local.midLP)
@@ -836,22 +1786,10 @@ private final class PlayerAudioAnalyzer {
             lowSq += low * low
             midSq += mid * mid
             highSq += high * high
-
-            // Lightweight multi-band IIR bank (log-ish spacing via alpha schedule).
-            for b in 0..<local.bandLP.count {
-                let alpha = 0.018 + Float(b) * 0.028
-                local.bandLP[b] += alpha * (mono - local.bandLP[b])
-                let filtered: Float
-                if b == 0 {
-                    filtered = local.bandLP[b]
-                } else {
-                    filtered = local.bandLP[b] - local.bandLP[b - 1]
-                }
-                bandSq[b] += filtered * filtered
-            }
         }
 
-        let inv = 1.0 / Float(max(1, frameCount))
+        let samplesUsed = Float(max(1, (sampleCount + step - 1) / step))
+        let inv = 1.0 / samplesUsed
         let rms = sqrt(sumSq * inv)
         let bass = sqrt(lowSq * inv)
         let mid = sqrt(midSq * inv)
@@ -866,19 +1804,19 @@ private final class PlayerAudioAnalyzer {
             local.kickEnvelope *= 0.76
         }
 
-        let instantLevel = min(1, rms * 5.2)
+        let instantLevel = min(1, rms * 4.8)
         if instantLevel > local.visualEnvelope {
-            local.visualEnvelope += (instantLevel - local.visualEnvelope) * 0.82
+            local.visualEnvelope += (instantLevel - local.visualEnvelope) * 0.78
         } else {
-            let release = 0.72 + min(0.22, local.lastPeak * 0.34)
+            let release = 0.68 + min(0.18, local.lastPeak * 0.28)
             local.visualEnvelope *= release
         }
-        local.lastPeak = max(instantLevel, local.lastPeak * 0.93)
+        local.lastPeak = max(instantLevel, local.lastPeak * 0.91)
 
-        let bassNorm = min(1, bass * 9.5)
-        let midNorm = min(1, mid * 9.5)
-        let trebleNorm = min(1, treble * 9.5)
-        let beatNorm = min(1, local.kickEnvelope * 36)
+        let bassNorm = Self.softNormalize(bass, gain: 7.8)
+        let midNorm = Self.softNormalize(mid, gain: 7.2)
+        let trebleNorm = Self.softNormalize(treble, gain: 6.8)
+        let beatNorm = min(1, local.kickEnvelope * 28)
         let targets: [Float] = [
             min(1, bassNorm * 0.88),
             min(1, bassNorm * 0.28 + midNorm * 0.58),
@@ -904,29 +1842,6 @@ private final class PlayerAudioAnalyzer {
             }
         }
 
-        // Spectrum bands + peak hold.
-        for index in 0..<bandSq.count {
-            let raw = min(1, sqrt(bandSq[index] * inv) * (7.5 + Float(index) * 0.35))
-            var bar = local.spectrumBars[index]
-            if raw > bar {
-                bar += (raw - bar) * 0.55
-            } else {
-                bar += (raw - bar) * 0.22
-            }
-            local.spectrumBars[index] = max(0, min(1, bar))
-
-            if bar >= local.peakHold[index] {
-                local.peakHold[index] = bar
-                local.peakHoldAge[index] = 0
-            } else {
-                local.peakHoldAge[index] += 1
-                // Hold briefly, then decay slowly (mixer needle feel).
-                if local.peakHoldAge[index] > 8 {
-                    local.peakHold[index] *= 0.92
-                }
-            }
-        }
-
         let energyTarget = min(1, instantLevel * 0.55 + bassNorm * 0.25 + beatNorm * 0.35)
         if energyTarget > local.energy {
             local.energy += (energyTarget - local.energy) * 0.55
@@ -937,25 +1852,106 @@ private final class PlayerAudioAnalyzer {
         let now = CACurrentMediaTime()
         let interval = 1.0 / max(1.0, fps)
         let shouldPush = now - local.lastPush >= interval
+        var publishFrame: MusicPlaybackEngine.AudioReactiveFrame?
+
+        // FFT + Goertzel only on publish ticks and only when Spectrum UI needs it.
+        if shouldPush, wantsSpectrum {
+            var fftWindow = [Float](repeating: 0, count: local.ringBuffer.count)
+            if local.ringFilled >= local.ringBuffer.count {
+                let start = local.ringWrite % local.ringBuffer.count
+                for index in 0..<local.ringBuffer.count {
+                    fftWindow[index] = local.ringBuffer[(start + index) % local.ringBuffer.count]
+                }
+            } else if monoCount > 0 {
+                let copyCount = min(monoCount, fftWindow.count)
+                for index in 0..<copyCount {
+                    fftWindow[index] = local.monoScratch[index]
+                }
+            }
+
+            let goertzelSampleCount: Int
+            if local.ringFilled >= local.ringBuffer.count {
+                goertzelSampleCount = local.ringBuffer.count
+            } else {
+                goertzelSampleCount = min(monoCount, fftWindow.count)
+            }
+
+            let spectrum = fft.spectrumBytes(from: fftWindow, count: goertzelSampleCount, scale: fftScale)
+            var low = 0
+            for index in 0..<bandCount {
+                let high = min(spectrum.count, low + table[index])
+                // FFT bins only — Goertzel×N was cooking the CPU while music played.
+                let newLevel = Self.averageLevel(low: low, high: high, spectrum: spectrum)
+                local.bandTargets[index] = max(local.bandTargets[index], newLevel)
+                low = high
+            }
+
+            if local.bandTargets.prefix(bandCount).max() ?? 0 < 8, instantLevel > 0.018 {
+                let bassLevel = Int(min(255, bassNorm * 240))
+                let midLevel = Int(min(255, midNorm * 230))
+                let trebleLevel = Int(min(255, trebleNorm * 220))
+                let bassEnd = max(1, bandCount / 4)
+                let midEnd = max(bassEnd + 1, bandCount * 11 / 20)
+                for index in 0..<bandCount {
+                    let fallback: Int
+                    if index < bassEnd {
+                        fallback = bassLevel
+                    } else if index < midEnd {
+                        fallback = midLevel
+                    } else {
+                        fallback = trebleLevel
+                    }
+                    local.bandTargets[index] = max(local.bandTargets[index], fallback + (index * 3) % 11)
+                }
+            }
+        }
+
         if shouldPush {
             local.lastPush = now
+
+            var spectrumBands = Array(repeating: 0.0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountMax)
+            if wantsSpectrum {
+                for index in 0..<bandCount {
+                    spectrumBands[index] = Double(local.bandTargets[index]) / 255.0
+                    local.bandTargets[index] = 0
+                }
+            }
+
+            let spectrumPeak = spectrumBands.prefix(bandCount).max() ?? 0
+            let bassEnd = max(1, bandCount / 4)
+            let midEnd = max(bassEnd + 1, bandCount * 11 / 20)
+            let bassVU: Double
+            let midVU: Double
+            let trebleVU: Double
+            if wantsSpectrum, spectrumPeak > 0 {
+                bassVU = max(Double(bassNorm), spectrumBands.prefix(bassEnd).max() ?? 0)
+                midVU = max(Double(midNorm), spectrumBands[bassEnd..<midEnd].max() ?? 0)
+                trebleVU = max(Double(trebleNorm), spectrumBands[midEnd..<bandCount].max() ?? 0)
+            } else {
+                bassVU = Double(bassNorm)
+                midVU = Double(midNorm)
+                trebleVU = Double(trebleNorm)
+            }
+
+            publishFrame = MusicPlaybackEngine.AudioReactiveFrame(
+                level: Double(local.visualEnvelope),
+                bass: bassVU,
+                mid: midVU,
+                treble: trebleVU,
+                beat: Double(beatNorm),
+                islandBars: local.islandBars.map(Double.init),
+                spectrumBands: spectrumBands,
+                peakHold: spectrumBands,
+                energy: Double(local.energy),
+                activeSpectrumBands: wantsSpectrum ? bandCount : 0
+            )
         }
         state = local
         lock.unlock()
 
-        guard shouldPush else { return }
-        let frame = MusicPlaybackEngine.AudioReactiveFrame(
-            level: Double(local.visualEnvelope),
-            bass: Double(bassNorm),
-            mid: Double(midNorm),
-            treble: Double(trebleNorm),
-            beat: Double(beatNorm),
-            islandBars: local.islandBars.map(Double.init),
-            spectrumBands: local.spectrumBars.map(Double.init),
-            peakHold: local.peakHold.map(Double.init),
-            energy: Double(local.energy)
-        )
-        push?(frame)
+        if let publishFrame {
+            publishHandler?(publishFrame)
+        }
     }
 }
 
@@ -968,7 +1964,11 @@ private func tapInit(
 }
 
 private func tapFinalize(tap: MTAudioProcessingTap) {}
-private func tapPrepare(tap: MTAudioProcessingTap, maxFrames: CMItemCount, processingFormat: UnsafePointer<AudioStreamBasicDescription>) {}
+private func tapPrepare(tap: MTAudioProcessingTap, maxFrames: CMItemCount, processingFormat: UnsafePointer<AudioStreamBasicDescription>) {
+    let storage = MTAudioProcessingTapGetStorage(tap)
+    let analyzer = Unmanaged<PlayerAudioAnalyzer>.fromOpaque(storage).takeUnretainedValue()
+    analyzer.setSampleRate(Float(processingFormat.pointee.mSampleRate))
+}
 private func tapUnprepare(tap: MTAudioProcessingTap) {}
 
 private func tapProcess(
@@ -1001,5 +2001,88 @@ private func tapProcess(
 private extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+struct PlaybackActivitySnapshot: Equatable {
+    enum Phase: Equatable {
+        case idle
+        case openingLocal
+        case onServerConnecting
+        case resolvingStream
+        case preparingServer
+        case connectingStream
+        case buffering
+        case playing
+        case error
+
+        var showsSpinner: Bool {
+            switch self {
+            case .idle, .playing, .onServerConnecting, .openingLocal: return false
+            default: return true
+            }
+        }
+
+        var systemImage: String? {
+            switch self {
+            case .onServerConnecting: return "checkmark.icloud.fill"
+            case .openingLocal: return "iphone"
+            case .error: return "exclamationmark.triangle.fill"
+            default: return nil
+            }
+        }
+    }
+
+    var phase: Phase = .idle
+    var title: String = ""
+    var detail: String = ""
+    /// 0…100 when known (serwer / bufor).
+    var progress: Double?
+
+    static let idle = PlaybackActivitySnapshot()
+}
+
+@MainActor
+final class PlaybackStatusFlags: ObservableObject {
+    @Published var isBuffering = false
+    @Published var activity = PlaybackActivitySnapshot.idle
+}
+
+/// Thread-safe live audio frame store — UIKit polls; never triggers SwiftUI body rebuilds.
+final class PlayerAudioVisualizer: ObservableObject, @unchecked Sendable {
+    private let lock = NSLock()
+    private var latest = MusicPlaybackEngine.AudioReactiveFrame()
+    private var lastLiveAt: CFTimeInterval = 0
+
+    var frame: MusicPlaybackEngine.AudioReactiveFrame { snapshot(isPlaying: true) }
+
+    func snapshot(isPlaying: Bool = true) -> MusicPlaybackEngine.AudioReactiveFrame {
+        lock.lock()
+        let frame = latest
+        let age = CACurrentMediaTime() - lastLiveAt
+        lock.unlock()
+
+        guard isPlaying else {
+            return MusicPlaybackEngine.AudioReactiveFrame.synthesize(at: 0, isPlaying: false)
+        }
+        // Real PCM frames only — no fake “automatic waves”.
+        if lastLiveAt > 0, age < 0.8 {
+            return frame
+        }
+        return frame
+    }
+
+    func apply(_ frame: MusicPlaybackEngine.AudioReactiveFrame) {
+        lock.lock()
+        latest = frame
+        lastLiveAt = CACurrentMediaTime()
+        lock.unlock()
+    }
+
+    func reset() {
+        lock.lock()
+        latest = MusicPlaybackEngine.AudioReactiveFrame()
+        lastLiveAt = 0
+        lock.unlock()
     }
 }

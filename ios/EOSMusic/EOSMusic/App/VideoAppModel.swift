@@ -13,6 +13,7 @@ final class VideoAppModel: ObservableObject {
 
     let sources = VideoSourcesStore()
     let engine = VideoPlaybackEngine()
+    let pipController = VideoPiPController()
 
     /// Called by host app to pause music when video starts.
     var onWillStartPlayback: (() -> Void)?
@@ -26,9 +27,29 @@ final class VideoAppModel: ObservableObject {
                 self?.foldersVersion += 1
             }
             .store(in: &cancellables)
-        engine.objectWillChange
+        Publishers.MergeMany(
+            engine.$queue.map { _ in () }.eraseToAnyPublisher(),
+            engine.$currentIndex.map { _ in () }.eraseToAnyPublisher(),
+            engine.$isPlaying.map { _ in () }.eraseToAnyPublisher(),
+            engine.$hasEnded.map { _ in () }.eraseToAnyPublisher(),
+            engine.$errorMessage.map { _ in () }.eraseToAnyPublisher()
+        )
+        // Intentionally skip currentTime — VideoMiniPlayer / VideoPlayerView observe engine directly.
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _ in self?.objectWillChange.send() }
+        .store(in: &cancellables)
+        pipController.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        pipController.onStarted = { [weak self] in
+            self?.minimizePlayer()
+        }
+        pipController.onRestore = { [weak self] in
+            self?.expandPlayer()
+        }
+        pipController.onFallbackMinimize = { [weak self] in
+            self?.minimizePlayer()
+        }
     }
 
     var folders: [ConnectedVideoFolder] { sources.folders }
@@ -77,10 +98,30 @@ final class VideoAppModel: ObservableObject {
         play(folder: folder, startIndex: index)
     }
 
-    func dismissPlayer() {
+    func minimizePlayer() {
+        engine.parkDrawable()
+        isPlayerPresented = false
+        OrientationLock.shared.lockPortrait()
+    }
+
+    func expandPlayer() {
+        guard engine.currentItem != nil else { return }
+        OrientationLock.shared.unlockAll()
+        isPlayerPresented = true
+    }
+
+    func stopAndClosePlayer() {
+        pipController.stopAndDiscard()
         engine.stop()
         isPlayerPresented = false
         OrientationLock.shared.lockPortrait()
+        // VLC may have rewritten AVAudioSession — reclaim music-ready category.
+        AudioSession.activateForPlayback()
+    }
+
+    /// Compatibility for older call sites that explicitly meant stop.
+    func dismissPlayer() {
+        stopAndClosePlayer()
     }
 
     func connectFolder(name: String, url: URL) throws {
@@ -90,6 +131,23 @@ final class VideoAppModel: ObservableObject {
         if let folder = sources.folders.first(where: { $0.name == name })
             ?? sources.folders.last {
             Task { await refreshFolder(folder) }
+        }
+    }
+
+    func openExternalVideo(at url: URL) async {
+        onWillStartPlayback?()
+        do {
+            let displayName = url.deletingPathExtension().lastPathComponent
+            try connectFolder(name: displayName.isEmpty ? url.lastPathComponent : displayName, url: url)
+            guard let folder = sources.folders.last else {
+                libraryError = "Nie udało się dodać pliku wideo."
+                return
+            }
+            await refreshFolder(folder)
+            play(folder: folder, startIndex: 0)
+            libraryError = nil
+        } catch {
+            libraryError = error.localizedDescription
         }
     }
 

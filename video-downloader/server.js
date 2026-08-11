@@ -105,6 +105,11 @@ import {
   resolveAppleMusicDownloadUrl,
 } from "./apple-music.js";
 import {
+  fetchSpotifyPlaylist,
+  isSpotifyPlaylistUrl,
+  parseSpotifyPlaylistUrl,
+} from "./spotify-music.js";
+import {
   ensureMusicAsset,
   resolveAssetJob,
   listMusicAssets,
@@ -4822,16 +4827,36 @@ app.get("/api/music/catalog/album/:id", async (req, res) => {
   }
 });
 
+
+async function fetchPlaylistForImport(rawUrl) {
+  const url = String(rawUrl || "").trim();
+  if (isSpotifyPlaylistUrl(url) || parseSpotifyPlaylistUrl(url)) {
+    return fetchSpotifyPlaylist(url);
+  }
+  if (/spotify\.com|spotify:playlist|spotify:album|spotify\.link/i.test(url)) {
+    return fetchSpotifyPlaylist(url);
+  }
+  return fetchAppleMusicPlaylist(url);
+}
+
+function friendlyPlaylistImportError(err) {
+  const msg = String(err?.message || err || "");
+  if (/Spotify|Apple Music|playlisty|publiczn|prywatn|Favourite|Ulubione|dopasować/i.test(msg)) {
+    return msg;
+  }
+  return friendlyAppleMusicError(err);
+}
+
 // GET /api/music/catalog/playlist?url= — podgląd playlisty Apple Music
 app.get("/api/music/catalog/playlist", async (req, res) => {
   const url = String(req.query.url || "").trim();
-  if (!url) return res.status(400).json({ error: "Podaj link playlisty Apple Music." });
+  if (!url) return res.status(400).json({ error: "Podaj link playlisty Apple Music lub Spotify." });
   try {
-    const data = await fetchAppleMusicPlaylist(url);
+    const data = await fetchPlaylistForImport(url);
     res.json(data);
   } catch (err) {
     console.error("music playlist preview:", err?.message || err);
-    res.status(400).json({ error: friendlyAppleMusicError(err) });
+    res.status(400).json({ error: friendlyPlaylistImportError(err) });
   }
 });
 
@@ -4839,10 +4864,10 @@ app.get("/api/music/catalog/playlist", async (req, res) => {
 app.post("/api/music/playlists/import", async (req, res) => {
   const { url, folderId, folderName } = req.body || {};
   const rawUrl = String(url || "").trim();
-  if (!rawUrl) return res.status(400).json({ error: "Podaj link playlisty Apple Music." });
+  if (!rawUrl) return res.status(400).json({ error: "Podaj link playlisty Apple Music lub Spotify." });
 
   try {
-    const data = await fetchAppleMusicPlaylist(rawUrl);
+    const data = await fetchPlaylistForImport(rawUrl);
     let folder;
 
     if (folderId) {
@@ -4902,7 +4927,7 @@ app.post("/api/music/playlists/import", async (req, res) => {
   } catch (err) {
     console.error("music playlist import:", err?.message || err);
     const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
-    res.status(code).json({ error: friendlyAppleMusicError(err) });
+    res.status(code).json({ error: friendlyPlaylistImportError(err) });
   }
 });
 
@@ -5193,7 +5218,7 @@ app.post("/api/music/folders/:id/sync-playlist", async (req, res) => {
     if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
 
     if (bodyUrl) {
-      const preview = await fetchAppleMusicPlaylist(bodyUrl);
+      const preview = await fetchPlaylistForImport(bodyUrl);
       linkFolderToApplePlaylist(userKey, folderId, {
         url: bodyUrl,
         playlistId: preview.playlist?.id,
@@ -5205,7 +5230,7 @@ app.post("/api/music/folders/:id/sync-playlist", async (req, res) => {
     const result = await syncAppleMusicPlaylistFolder(
       req,
       folderId,
-      fetchAppleMusicPlaylist,
+      fetchPlaylistForImport,
       MUSIC_PLAYLIST_DOWNLOADS_DIR
     );
     res.json(result);

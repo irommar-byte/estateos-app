@@ -157,6 +157,8 @@ struct MusicAssetsResponse: Codable {
     let count: Int
     let totalBytes: Int
     let items: [MusicAssetItem]
+    let diskTotalBytes: Int?
+    let diskFreeBytes: Int?
 }
 
 struct MusicFolder: Codable, Identifiable, Hashable {
@@ -216,6 +218,11 @@ struct MusicTrack: Codable, Identifiable, Hashable {
 
     var isDownloaded: Bool { isOnServer }
 
+    /// Local-only synthetic row (not part of a server playlist).
+    var isLocalOfflineOnly: Bool { folderId == Self.localOfflineFolderId }
+
+    static let localOfflineFolderId = "local-offline"
+
     var durableJobId: String? {
         if let serverAssetId, !serverAssetId.isEmpty { return serverAssetId }
         if let downloadJobId, !downloadJobId.isEmpty { return downloadJobId }
@@ -224,19 +231,62 @@ struct MusicTrack: Codable, Identifiable, Hashable {
 
     var artworkURL: URL? { thumbnail.flatMap(URL.init(string:)) }
 
-    init(from playback: MusicPlaybackTrack, folderId: String) {
+    init(
+        folderId: String,
+        url: String,
+        title: String,
+        artist: String? = nil,
+        album: String? = nil,
+        thumbnail: String? = nil,
+        duration: Double? = nil,
+        artistId: String? = nil,
+        albumId: String? = nil,
+        downloadJobId: String? = nil,
+        serverAssetId: String? = nil,
+        addedAt: Double? = nil
+    ) {
         self.folderId = folderId
-        url = playback.url
-        title = playback.title
-        artist = playback.artist
-        album = playback.album
-        thumbnail = playback.thumbnail
-        duration = playback.duration
-        artistId = playback.artistId
-        albumId = playback.albumId
-        downloadJobId = playback.downloadJobId
-        serverAssetId = playback.serverAssetId ?? playback.downloadJobId
-        addedAt = nil
+        self.url = url
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.thumbnail = thumbnail
+        self.duration = duration
+        self.artistId = artistId
+        self.albumId = albumId
+        self.downloadJobId = downloadJobId
+        self.serverAssetId = serverAssetId
+        self.addedAt = addedAt
+    }
+
+    init(from playback: MusicPlaybackTrack, folderId: String) {
+        self.init(
+            folderId: folderId,
+            url: playback.url,
+            title: playback.title,
+            artist: playback.artist,
+            album: playback.album,
+            thumbnail: playback.thumbnail,
+            duration: playback.duration,
+            artistId: playback.artistId,
+            albumId: playback.albumId,
+            downloadJobId: playback.downloadJobId,
+            serverAssetId: playback.serverAssetId ?? playback.downloadJobId,
+            addedAt: nil
+        )
+    }
+
+    /// Builds a library row from a local offline file / index entry.
+    static func fromOfflineEntry(_ entry: OfflineTrackEntry) -> MusicTrack {
+        MusicTrack(
+            folderId: localOfflineFolderId,
+            url: entry.url,
+            title: entry.title,
+            artist: entry.artist,
+            album: nil,
+            downloadJobId: entry.downloadJobId,
+            addedAt: entry.savedAt.timeIntervalSince1970 * 1000
+        )
     }
 }
 
@@ -372,6 +422,28 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
         externalSourceId = nil
     }
 
+    /// Single file opened via „Otwórz za pomocą” / Pliki.
+    init(openedLocalFile fileURL: URL, title: String, artist: String? = nil, album: String? = nil) {
+        let stable = "eos-opened://\(fileURL.path)"
+        id = stable
+        url = stable
+        self.title = title
+        self.artist = artist
+        self.album = album
+        thumbnail = nil
+        duration = nil
+        folderId = nil
+        downloadJobId = nil
+        serverAssetId = nil
+        artistId = nil
+        albumId = nil
+        playbackFileURL = fileURL
+        externalRelativePath = nil
+        webDAVPath = nil
+        googleDriveFileId = nil
+        externalSourceId = nil
+    }
+
     init(from item: SearchResultItem, folderId: String? = nil) {
         id = item.url
         url = item.url
@@ -442,14 +514,19 @@ struct MusicPlaybackSession: Identifiable {
 }
 
 struct MusicArtistRoute: Hashable, Identifiable {
-    var id: String { artistId }
+    var id: String { artistId.isEmpty ? artistName : artistId }
     let artistId: String
     let artistName: String
 }
 
 struct MusicAlbumRoute: Hashable, Identifiable {
-    var id: String { albumId }
+    var id: String {
+        if !albumId.isEmpty { return albumId }
+        return [albumTitle, artist].compactMap { $0 }.joined(separator: "|")
+    }
     let albumId: String
+    let albumTitle: String?
+    let artist: String?
 }
 
 struct MusicTrackPayload: Codable {

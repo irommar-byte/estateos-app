@@ -21,10 +21,20 @@ enum AppDocuments {
         videoRoot.appendingPathComponent("Imports", isDirectory: true)
     }
 
+    static var audioImports: URL {
+        root.appendingPathComponent("Imports/Audio", isDirectory: true)
+    }
+
+    static var musicSourceImports: URL {
+        root.appendingPathComponent("Imports/Sources", isDirectory: true)
+    }
+
     static func ensureStructure() {
         let fm = FileManager.default
         try? fm.createDirectory(at: downloads, withIntermediateDirectories: true)
         try? fm.createDirectory(at: videoImports, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: audioImports, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: musicSourceImports, withIntermediateDirectories: true)
         let readme = root.appendingPathComponent("O aplikacji.txt")
         if !fm.fileExists(atPath: readme.path) {
             let text = """

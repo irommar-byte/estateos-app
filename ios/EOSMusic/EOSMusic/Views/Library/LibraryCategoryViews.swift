@@ -23,18 +23,20 @@ struct LibraryPlaylistsView: View {
 
     private var filteredFolders: [MusicFolder] {
         let q = playlistQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base = app.musicFolders
+        let base = app.libraryFoldersForBrowsing
         guard q.count >= 1 else { return base }
         return base.filter { $0.name.localizedCaseInsensitiveContains(q) }
     }
 
     var body: some View {
         Group {
-            if app.musicFolders.isEmpty {
+            if app.libraryFoldersForBrowsing.isEmpty {
                 ContentUnavailableView(
-                    "Brak playlist",
+                    app.isOfflinePlaybackActive ? "Brak playlist offline" : "Brak playlist",
                     systemImage: "music.note.list",
-                    description: Text("Utwórz playlistę przyciskiem + w Bibliotece.")
+                    description: Text(app.isOfflinePlaybackActive
+                        ? "Pobierz utwory z playlisty, aby zobaczyć ją w trybie Offline."
+                        : "Utwórz playlistę przyciskiem + w Bibliotece.")
                 )
             } else {
                 if isGrid {
@@ -131,7 +133,7 @@ struct LibraryPlaylistsView: View {
 
     private func playlistCard(_ folder: MusicFolder) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            ArtworkImage(url: playlistArtwork(for: folder), size: 160, cornerRadius: 10)
+            ArtworkImage(url: playlistArtwork(for: folder), size: 160, cornerRadius: 10, allowAnimated: true)
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1, contentMode: .fit)
 
@@ -149,7 +151,7 @@ struct LibraryPlaylistsView: View {
 
     private func playlistArtwork(for folder: MusicFolder) -> URL? {
         if let art = folder.artworkURL { return art }
-        return app.musicTracks.first(where: { $0.folderId == folder.id })?.artworkURL
+        return app.libraryTracksForBrowsing.first(where: { $0.folderId == folder.id })?.artworkURL
     }
 
     private func deleteFolders(at offsets: IndexSet) {
@@ -174,7 +176,7 @@ struct LibraryArtistsView: View {
     @State private var query = ""
 
     private var groups: [LibraryArtistGroup] {
-        let all = LibraryData.artistGroups(from: app.musicTracks)
+        let all = LibraryData.artistGroups(from: app.libraryTracksForBrowsing)
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard q.count >= 1 else { return all }
         return all.filter { $0.name.localizedCaseInsensitiveContains(q) }
@@ -188,9 +190,17 @@ struct LibraryArtistsView: View {
         Group {
             if groups.isEmpty {
                 ContentUnavailableView(
-                    query.isEmpty ? "Brak wykonawców" : "Brak wyników",
+                    query.isEmpty
+                        ? (app.isOfflinePlaybackActive ? "Brak wykonawców offline" : "Brak wykonawców")
+                        : "Brak wyników",
                     systemImage: "mic",
-                    description: Text(query.isEmpty ? "Dodaj utwory do playlist." : "Spróbuj innej frazy w bibliotece.")
+                    description: Text(
+                        query.isEmpty
+                            ? (app.isOfflinePlaybackActive
+                                ? "Pobierz utwory, aby zobaczyć wykonawców offline."
+                                : "Dodaj utwory do playlist.")
+                            : "Spróbuj innej frazy w bibliotece."
+                    )
                 )
             } else {
                 ScrollViewReader { proxy in
@@ -198,18 +208,10 @@ struct LibraryArtistsView: View {
                         ForEach(sections, id: \.key) { section in
                             Section {
                                 ForEach(section.items) { group in
-                                    if let artistId = group.artistId {
-                                        NavigationLink {
-                                            ArtistDetailView(artistId: artistId, artistName: group.name)
-                                        } label: {
-                                            artistRow(group)
-                                        }
-                                    } else {
-                                        NavigationLink {
-                                            LibraryArtistSongsView(artistName: group.name)
-                                        } label: {
-                                            artistRow(group)
-                                        }
+                                    NavigationLink {
+                                        artistDestination(for: group)
+                                    } label: {
+                                        artistRow(group)
                                     }
                                 }
                             } header: {
@@ -242,20 +244,132 @@ struct LibraryArtistsView: View {
         }
         .padding(.vertical, 2)
     }
+
+    @ViewBuilder
+    private func artistDestination(for group: LibraryArtistGroup) -> some View {
+        ArtistBrowseDestination(artistId: group.artistId, artistName: group.name)
+    }
 }
 
 struct LibraryArtistSongsView: View {
     @EnvironmentObject private var app: AppModel
     let artistName: String
+    @State private var query = ""
 
-    private var tracks: [MusicTrack] {
-        app.musicTracks.filter {
-            ($0.artist ?? "Nieznany wykonawca") == artistName
+    private var allTracks: [MusicTrack] {
+        app.libraryTracksForBrowsing.filter {
+            ($0.artist ?? "Nieznany wykonawca")
+                .localizedCaseInsensitiveCompare(artistName) == .orderedSame
+        }
+    }
+
+    /// Apple Music artist songs: album → title (dense flat list, no A–Z sections).
+    private var sortedTracks: [MusicTrack] {
+        allTracks.sorted { (lhs: MusicTrack, rhs: MusicTrack) -> Bool in
+            let la = lhs.album ?? ""
+            let ra = rhs.album ?? ""
+            let albumCmp = la.localizedCaseInsensitiveCompare(ra)
+            if albumCmp != .orderedSame { return albumCmp == .orderedAscending }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+
+    private var filteredTracks: [MusicTrack] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard q.count >= 1 else { return sortedTracks }
+        return sortedTracks.filter {
+            $0.title.localizedCaseInsensitiveContains(q)
+                || ($0.album?.localizedCaseInsensitiveContains(q) == true)
         }
     }
 
     var body: some View {
-        LibrarySongsListView(tracks: tracks, title: artistName)
+        Group {
+            if allTracks.isEmpty {
+                ContentUnavailableView(
+                    "Brak utworów",
+                    systemImage: "music.note",
+                    description: Text(
+                        app.isOfflinePlaybackActive
+                            ? "Brak pobranych utworów tego artysty."
+                            : "Brak utworów w bibliotece."
+                    )
+                )
+            } else if filteredTracks.isEmpty {
+                ContentUnavailableView.search(text: query)
+            } else {
+                List {
+                    Section {
+                        Button {
+                            Task { await play(at: 0) }
+                        } label: {
+                            Label("Odtwórz wszystko", systemImage: "play.fill")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(EOSTheme.accent)
+                        }
+                        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+
+                        Button {
+                            Task { await playShuffled() }
+                        } label: {
+                            Label("Losowo", systemImage: "shuffle")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(EOSTheme.accent)
+                        }
+                        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                    }
+
+                    Section {
+                        ForEach(Array(filteredTracks.enumerated()), id: \.element.url) { index, track in
+                            Button {
+                                Task { await play(at: index) }
+                            } label: {
+                                TrackRowView(
+                                    index: index + 1,
+                                    title: track.title,
+                                    subtitle: track.album,
+                                    duration: track.duration,
+                                    artworkURL: track.artworkURL,
+                                    isPlaying: app.playback.engine?.currentTrack?.url == track.url,
+                                    downloadState: app.downloads.uiState(
+                                        for: track.url,
+                                        isOnServer: track.isOnServer
+                                    )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 16))
+                        }
+                    } header: {
+                        Text("\(filteredTracks.count) utworów")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .textCase(nil)
+                    }
+                }
+                .listStyle(.plain)
+                .environment(\.defaultMinListRowHeight, 52)
+            }
+        }
+        .navigationTitle(artistName)
+        .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $query, prompt: "Szukaj")
+        .eosScrollClearance()
+    }
+
+    private func play(at index: Int) async {
+        let queue = filteredTracks
+        guard queue.indices.contains(index) else { return }
+        let folder = app.musicFolders.first(where: { $0.id == queue[index].folderId })
+        await app.playTracks(queue, startIndex: index, folder: folder)
+    }
+
+    private func playShuffled() async {
+        var queue = filteredTracks
+        guard !queue.isEmpty else { return }
+        queue.shuffle()
+        let folder = app.musicFolders.first(where: { $0.id == queue[0].folderId })
+        await app.playTracks(queue, startIndex: 0, folder: folder)
     }
 }
 
@@ -266,7 +380,7 @@ struct LibraryAlbumsView: View {
     @State private var query = ""
 
     private var groups: [LibraryAlbumGroup] {
-        let all = LibraryData.albumGroups(from: app.musicTracks)
+        let all = LibraryData.albumGroups(from: app.libraryTracksForBrowsing)
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard q.count >= 1 else { return all }
         return all.filter {
@@ -283,9 +397,17 @@ struct LibraryAlbumsView: View {
         Group {
             if groups.isEmpty {
                 ContentUnavailableView(
-                    query.isEmpty ? "Brak albumów" : "Brak wyników",
+                    query.isEmpty
+                        ? (app.isOfflinePlaybackActive ? "Brak albumów offline" : "Brak albumów")
+                        : "Brak wyników",
                     systemImage: "square.stack",
-                    description: Text(query.isEmpty ? "Dodaj utwory z metadanymi albumu." : "Spróbuj innej frazy w bibliotece.")
+                    description: Text(
+                        query.isEmpty
+                            ? (app.isOfflinePlaybackActive
+                                ? "Pobierz utwory, aby zobaczyć albumy offline."
+                                : "Dodaj utwory z metadanymi albumu.")
+                            : "Spróbuj innej frazy w bibliotece."
+                    )
                 )
             } else {
                 ScrollViewReader { proxy in
@@ -293,18 +415,10 @@ struct LibraryAlbumsView: View {
                         ForEach(sections, id: \.key) { section in
                             Section {
                                 ForEach(section.items) { group in
-                                    if let albumId = group.albumId, !albumId.isEmpty {
-                                        NavigationLink {
-                                            AlbumDetailView(albumId: albumId)
-                                        } label: {
-                                            albumRow(group)
-                                        }
-                                    } else {
-                                        NavigationLink {
-                                            LibraryAlbumSongsView(albumTitle: group.title, artist: group.artist)
-                                        } label: {
-                                            albumRow(group)
-                                        }
+                                    NavigationLink {
+                                        albumDestination(for: group)
+                                    } label: {
+                                        albumRow(group)
                                     }
                                 }
                             } header: {
@@ -338,8 +452,21 @@ struct LibraryAlbumsView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            Spacer(minLength: 8)
+            Text("\(group.trackCount)")
+                .font(.body)
+                .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func albumDestination(for group: LibraryAlbumGroup) -> some View {
+        AlbumBrowseDestination(
+            albumId: group.albumId,
+            albumTitle: group.title,
+            artist: group.artist
+        )
     }
 }
 
@@ -349,8 +476,9 @@ struct LibraryAlbumSongsView: View {
     let artist: String?
 
     private var tracks: [MusicTrack] {
-        app.musicTracks.filter { track in
-            track.album == albumTitle && (artist == nil || track.artist == artist)
+        app.libraryTracksForBrowsing.filter { track in
+            track.album?.localizedCaseInsensitiveCompare(albumTitle) == .orderedSame
+                && (artist == nil || track.artist?.localizedCaseInsensitiveCompare(artist!) == .orderedSame)
         }
     }
 
@@ -428,8 +556,8 @@ struct LibrarySongsView: View {
 
     var body: some View {
         LibrarySongsListView(
-            tracks: app.musicTracks.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending },
-            title: "Utwory",
+            tracks: app.libraryTracksForBrowsing.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending },
+            title: app.isOfflinePlaybackActive ? "Utwory · Offline" : "Utwory",
             enablesLibrarySearch: true
         )
     }
@@ -443,24 +571,17 @@ struct LibrarySongsListView: View {
 
     @State private var query = ""
     @State private var sharePayload: SharePayload?
+    @State private var filteredTracks: [MusicTrack] = []
+    @State private var sections: [LibraryAlphabetSection<MusicTrack>] = []
+    @State private var displayIndexByURL: [String: Int] = [:]
 
-    private var filtered: [MusicTrack] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard enablesLibrarySearch, q.count >= 1 else { return tracks }
-        return tracks.filter {
-            $0.title.localizedCaseInsensitiveContains(q)
-                || ($0.artist?.localizedCaseInsensitiveContains(q) == true)
-                || ($0.album?.localizedCaseInsensitiveContains(q) == true)
-        }
-    }
-
-    private var sections: [(key: String, items: [MusicTrack])] {
-        LibraryAlphabet.group(filtered) { $0.title }
+    private var sectionRebuildToken: String {
+        "\(tracks.count)|\(query)|\(tracks.first?.url ?? "")|\(tracks.last?.url ?? "")"
     }
 
     var body: some View {
         Group {
-            if filtered.isEmpty {
+            if filteredTracks.isEmpty {
                 ContentUnavailableView(
                     query.isEmpty ? "Brak utworów" : "Brak wyników",
                     systemImage: "music.note",
@@ -469,10 +590,14 @@ struct LibrarySongsListView: View {
             } else {
                 ScrollViewReader { proxy in
                     List {
-                        ForEach(sections, id: \.key) { section in
+                        ForEach(sections) { section in
                             Section {
-                                ForEach(Array(section.items.enumerated()), id: \.element.url) { _, track in
-                                    songRow(track)
+                                ForEach(section.items) { track in
+                                    songRow(
+                                        track,
+                                        displayIndex: displayIndexByURL[track.url] ?? 1
+                                    )
+                                    .listRowInsets(EdgeInsets(top: 3, leading: 16, bottom: 3, trailing: 28))
                                 }
                             } header: {
                                 Text(section.key)
@@ -483,6 +608,7 @@ struct LibrarySongsListView: View {
                         }
                     }
                     .listStyle(.plain)
+                    .environment(\.defaultMinListRowHeight, 52)
                     .modifier(AlphabetJumpOverlay(sections: sections.map(\.key), proxy: proxy))
                 }
             }
@@ -491,18 +617,40 @@ struct LibrarySongsListView: View {
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, prompt: enablesLibrarySearch ? "Szukaj w utworach" : "Szukaj")
         .eosScrollClearance()
+        .task(id: sectionRebuildToken) {
+            rebuildSections()
+        }
+        .onChange(of: query) { _, _ in
+            rebuildSections()
+        }
         .sheet(item: $sharePayload) { payload in
             ActivityView(activityItems: payload.items)
         }
     }
 
-    private func songRow(_ track: MusicTrack) -> some View {
-        let index = filtered.firstIndex(where: { $0.url == track.url }).map { $0 + 1 } ?? 1
-        return Button {
+    private func rebuildSections() {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered: [MusicTrack]
+        if enablesLibrarySearch, q.count >= 1 {
+            filtered = tracks.filter {
+                $0.title.localizedCaseInsensitiveContains(q)
+                    || ($0.artist?.localizedCaseInsensitiveContains(q) == true)
+                    || ($0.album?.localizedCaseInsensitiveContains(q) == true)
+            }
+        } else {
+            filtered = tracks
+        }
+        filteredTracks = filtered
+        sections = LibrarySnapshotBuilder.alphabetSections(from: filtered) { $0.title }
+        displayIndexByURL = LibrarySnapshotBuilder.displayIndices(sections: sections)
+    }
+
+    private func songRow(_ track: MusicTrack, displayIndex: Int) -> some View {
+        Button {
             Task { await play(track: track) }
         } label: {
             TrackRowView(
-                index: index,
+                index: displayIndex,
                 title: track.title,
                 subtitle: track.artist,
                 duration: track.duration,
@@ -559,9 +707,9 @@ struct LibrarySongsListView: View {
     }
 
     private func play(track: MusicTrack) async {
-        guard let index = filtered.firstIndex(where: { $0.url == track.url }) else { return }
+        guard let index = filteredTracks.firstIndex(where: { $0.url == track.url }) else { return }
         let folder = app.musicFolders.first(where: { $0.id == track.folderId })
-        await app.playTracks(filtered, startIndex: index, folder: folder)
+        await app.playTracks(filteredTracks, startIndex: index, folder: folder)
     }
 }
 
@@ -575,104 +723,145 @@ private struct SharePayload: Identifiable {
 
 // MARK: - Downloaded
 
+private enum DownloadedBrowseMode: String, CaseIterable, Identifiable {
+    case songs
+    case artists
+    case albums
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .songs: return "Utwory"
+        case .artists: return "Wykonawcy"
+        case .albums: return "Albumy"
+        }
+    }
+}
+
 struct LibraryDownloadedView: View {
     @EnvironmentObject private var app: AppModel
+    @ObservedObject private var offlineStore = OfflineMusicStore.shared
     @State private var errorMessage: String?
     @State private var query = ""
     @State private var sharePayload: SharePayload?
+    @State private var deviceStorage: StorageSnapshot?
+    @State private var mode: DownloadedBrowseMode = .songs
+    @State private var editMode: EditMode = .inactive
+    @State private var trackPendingDelete: MusicTrack?
+    @State private var cachedTracks: [MusicTrack] = []
+    @State private var cachedSections: [(key: String, items: [MusicTrack])] = []
+    @State private var sizeByURL: [String: Int64] = [:]
+    @State private var totalDownloadedBytes: Int64 = 0
+    @State private var displayIndexByURL: [String: Int] = [:]
 
-    private var tracks: [MusicTrack] {
-        let all = LibraryData.downloadedTracks(from: app.musicTracks) { app.isOfflineAvailable($0) }
+    private var filteredTracks: [MusicTrack] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard q.count >= 1 else { return all }
-        return all.filter {
+        guard q.count >= 1 else { return cachedTracks }
+        return cachedTracks.filter {
             $0.title.localizedCaseInsensitiveContains(q)
                 || ($0.artist?.localizedCaseInsensitiveContains(q) == true)
+                || ($0.album?.localizedCaseInsensitiveContains(q) == true)
         }
-    }
-
-    private var sections: [(key: String, items: [MusicTrack])] {
-        LibraryAlphabet.group(tracks) { $0.title }
     }
 
     var body: some View {
         Group {
-            if tracks.isEmpty {
+            if cachedTracks.isEmpty {
                 ContentUnavailableView(
-                    query.isEmpty ? "Brak pobranych utworów" : "Brak wyników",
+                    "Brak pobranych utworów",
                     systemImage: "arrow.down.circle",
-                    description: Text(query.isEmpty
-                        ? "Pobierz utwory z playlisty, aby odtwarzać offline i udostępniać pliki."
-                        : "Szukaj tylko wśród pobranych z biblioteki.")
+                    description: Text("Pobierz utwory z playlisty, aby odtwarzać offline i udostępniać pliki.")
                 )
+            } else if filteredTracks.isEmpty {
+                ContentUnavailableView.search(text: query)
             } else {
                 ScrollViewReader { proxy in
                     List {
-                        ForEach(sections, id: \.key) { section in
-                            Section {
-                                ForEach(Array(section.items.enumerated()), id: \.element.url) { index, track in
-                                    Button {
-                                        Task { await play(track: track) }
-                                    } label: {
-                                        TrackRowView(
-                                            index: (tracks.firstIndex(where: { $0.url == track.url }) ?? index) + 1,
-                                            title: track.title,
-                                            subtitle: track.artist,
-                                            duration: track.duration,
-                                            artworkURL: track.artworkURL,
-                                            isPlaying: app.playback.engine?.currentTrack?.url == track.url,
-                                            downloadState: .done
+                        Section {
+                            if let deviceStorage {
+                                StorageCapacityBar(snapshot: deviceStorage, showsLegend: true)
+                                    .padding(.vertical, 2)
+                            }
+                            HStack {
+                                Label("\(filteredTracks.count) utworów", systemImage: "arrow.down.circle.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(ByteCountFormatter.string(fromByteCount: totalDownloadedBytes, countStyle: .file))
+                                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Button {
+                                Task { await play(track: filteredTracks[0]) }
+                            } label: {
+                                Label("Odtwórz wszystko", systemImage: "play.fill")
+                                    .font(.headline)
+                                    .foregroundStyle(EOSTheme.accent)
+                            }
+                        } header: {
+                            Text("Na tym iPhonie")
+                        }
+
+                        Section {
+                            Picker("Sortowanie", selection: $mode) {
+                                ForEach(DownloadedBrowseMode.allCases) { item in
+                                    Text(item.title).tag(item)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        }
+
+                        ForEach(cachedSections, id: \.key) { section in
+                            if mode == .songs {
+                                Section {
+                                    ForEach(Array(section.items.enumerated()), id: \.element.url) { index, track in
+                                        downloadedRow(
+                                            track: track,
+                                            indexInSection: index,
+                                            sectionTracks: section.items,
+                                            useLocalIndex: false
                                         )
                                     }
-                                    .buttonStyle(.plain)
-                                    .contextMenu {
-                                        Button {
-                                            Task { await play(track: track) }
-                                        } label: {
-                                            Label("Odtwórz", systemImage: "play.fill")
-                                        }
-                                        Button {
-                                            let text: String = {
-                                                if let artist = track.artist, !artist.isEmpty {
-                                                    return "\(track.title) — \(artist)"
-                                                }
-                                                return track.title
-                                            }()
-                                            sharePayload = .text(text)
-                                        } label: {
-                                            Label("Udostępnij", systemImage: "square.and.arrow.up")
-                                        }
-                                        if let local = OfflineMusicStore.shared.localURL(for: track.url) {
-                                            Button {
-                                                sharePayload = .file(local)
-                                            } label: {
-                                                Label("Wyślij plik", systemImage: "paperplane")
-                                            }
-                                        }
-                                        Button(role: .destructive) {
-                                            Task { await deleteDownloaded(track) }
-                                        } label: {
-                                            Label("Usuń z iPhone’a", systemImage: "trash")
-                                        }
+                                    .onDelete { offsets in
+                                        deleteOffsets(offsets, in: section.items)
                                     }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                        Button(role: .destructive) {
-                                            Task { await deleteDownloaded(track) }
-                                        } label: {
-                                            Label("Usuń", systemImage: "trash")
+                                } header: {
+                                    Text(section.key)
+                                        .font(.footnote.weight(.bold))
+                                        .foregroundStyle(.secondary)
+                                        .id(section.key)
+                                }
+                            } else {
+                                Section {
+                                    DisclosureGroup {
+                                        ForEach(Array(section.items.enumerated()), id: \.element.url) { index, track in
+                                            downloadedRow(
+                                                track: track,
+                                                indexInSection: index,
+                                                sectionTracks: section.items,
+                                                useLocalIndex: true
+                                            )
                                         }
+                                        .onDelete { offsets in
+                                            deleteOffsets(offsets, in: section.items)
+                                        }
+                                    } label: {
+                                        downloadedGroupHeader(sectionKey: section.key, tracks: section.items)
                                     }
                                 }
-                            } header: {
-                                Text(section.key)
-                                    .font(.footnote.weight(.bold))
-                                    .foregroundStyle(.secondary)
-                                    .id(section.key)
                             }
                         }
                     }
-                    .listStyle(.plain)
-                    .modifier(AlphabetJumpOverlay(sections: sections.map(\.key), proxy: proxy))
+                    .listStyle(.insetGrouped)
+                    .environment(\.editMode, $editMode)
+                    .modifier(AlphabetJumpOverlay(
+                        sections: mode == .songs ? cachedSections.map(\.key) : [],
+                        proxy: proxy
+                    ))
                 }
             }
         }
@@ -680,8 +869,39 @@ struct LibraryDownloadedView: View {
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, prompt: "Szukaj w pobranych")
         .eosScrollClearance()
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                EditButton()
+                    .disabled(cachedTracks.isEmpty)
+            }
+        }
+        .onAppear {
+            deviceStorage = StorageCapacityReader.deviceVolume()
+            rebuildCache()
+        }
+        .onChange(of: offlineStore.entries.count) { _, _ in rebuildCache() }
+        .onChange(of: app.musicTracks.count) { _, _ in rebuildCache() }
+        .onChange(of: query) { _, _ in rebuildCache() }
+        .onChange(of: mode) { _, _ in rebuildCache() }
         .sheet(item: $sharePayload) { payload in
             ActivityView(activityItems: payload.items)
+        }
+        .confirmationDialog(
+            "Usunąć z iPhone’a?",
+            isPresented: Binding(get: { trackPendingDelete != nil }, set: { if !$0 { trackPendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Usuń lokalną kopię", role: .destructive) {
+                if let track = trackPendingDelete {
+                    Task { await deleteDownloaded(track) }
+                }
+                trackPendingDelete = nil
+            }
+            Button("Anuluj", role: .cancel) { trackPendingDelete = nil }
+        } message: {
+            if let track = trackPendingDelete {
+                Text("„\(track.title)” zniknie z urządzenia. Kopia na serwerze EOS pozostanie.")
+            }
         }
         .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -690,19 +910,240 @@ struct LibraryDownloadedView: View {
         }
     }
 
-    private func play(track: MusicTrack) async {
-        guard let index = tracks.firstIndex(where: { $0.url == track.url }) else { return }
+    private func rebuildCache() {
+        let tracks = app.downloadedLibraryTracks
+        cachedTracks = tracks
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered: [MusicTrack]
+        if q.count >= 1 {
+            filtered = tracks.filter {
+                $0.title.localizedCaseInsensitiveContains(q)
+                    || ($0.artist?.localizedCaseInsensitiveContains(q) == true)
+                    || ($0.album?.localizedCaseInsensitiveContains(q) == true)
+            }
+        } else {
+            filtered = tracks
+        }
+
+        sizeByURL = OfflineMusicStore.shared.cachedSizes(for: filtered.map(\.url))
+        totalDownloadedBytes = sizeByURL.values.reduce(0, +)
+
+        switch mode {
+        case .songs:
+            let sorted = filtered.sorted {
+                $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
+            cachedSections = LibraryAlphabet.group(sorted) { $0.title }
+            var indexMap: [String: Int] = [:]
+            for (i, track) in sorted.enumerated() {
+                indexMap[track.url] = i + 1
+            }
+            displayIndexByURL = indexMap
+        case .artists:
+            let sorted = filtered.sorted { lhs, rhs in
+                let la = lhs.artist ?? "Nieznany wykonawca"
+                let ra = rhs.artist ?? "Nieznany wykonawca"
+                let cmp = la.localizedCaseInsensitiveCompare(ra)
+                if cmp != .orderedSame { return cmp == .orderedAscending }
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+            cachedSections = Dictionary(grouping: sorted) { track -> String in
+                let name = track.artist?.trimmingCharacters(in: .whitespacesAndNewlines)
+                return (name?.isEmpty == false) ? name! : "Nieznany wykonawca"
+            }
+            .map { (key: $0.key, items: $0.value) }
+            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
+            displayIndexByURL = [:]
+        case .albums:
+            let sorted = filtered.sorted { lhs, rhs in
+                let la = lhs.album ?? "Bez albumu"
+                let ra = rhs.album ?? "Bez albumu"
+                let cmp = la.localizedCaseInsensitiveCompare(ra)
+                if cmp != .orderedSame { return cmp == .orderedAscending }
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+            cachedSections = Dictionary(grouping: sorted) { track -> String in
+                let album = track.album?.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let album, !album.isEmpty else { return "Bez albumu" }
+                if let artist = track.artist, !artist.isEmpty {
+                    return "\(album) · \(artist)"
+                }
+                return album
+            }
+            .map { (key: $0.key, items: $0.value) }
+            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
+            displayIndexByURL = [:]
+        }
+    }
+
+    @ViewBuilder
+    private func downloadedGroupHeader(sectionKey: String, tracks: [MusicTrack]) -> some View {
+        let bytes = tracks.reduce(Int64(0)) { $0 + (sizeByURL[$1.url] ?? 0) }
+        let sizeLabel = bytes > 0
+            ? ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+            : nil
+
+        HStack(spacing: 14) {
+            // Offline list: skip remote artwork fetches that stall scroll.
+            ArtworkImage(
+                url: nil,
+                size: 52,
+                cornerRadius: mode == .artists ? 26 : 8
+            )
+            .shadow(color: .black.opacity(0.08), radius: 4, y: 2)
+
+            VStack(alignment: .leading, spacing: 3) {
+                if mode == .albums {
+                    let parts = sectionKey.split(separator: "·", maxSplits: 1).map {
+                        $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                    Text(parts.first ?? sectionKey)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                    if parts.count > 1, !parts[1].isEmpty {
+                        Text(parts[1])
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text(sectionKey)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                }
+
+                Text([
+                    "\(tracks.count) utworów",
+                    sizeLabel
+                ].compactMap { $0 }.joined(separator: " · "))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 4)
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func downloadedRow(
+        track: MusicTrack,
+        indexInSection: Int,
+        sectionTracks: [MusicTrack],
+        useLocalIndex: Bool
+    ) -> some View {
+        let displayIndex = useLocalIndex
+            ? indexInSection + 1
+            : (displayIndexByURL[track.url] ?? indexInSection + 1)
+        let size = sizeByURL[track.url]
+        let sizeLabel = size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+        let subtitle: String = {
+            switch mode {
+            case .songs:
+                return [track.artist, track.album].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+            case .artists:
+                return track.album ?? "Utwór"
+            case .albums:
+                return track.artist ?? "Utwór"
+            }
+        }()
+
+        Button {
+            Task { await playDownloaded(track: track, sectionTracks: sectionTracks) }
+        } label: {
+            TrackRowView(
+                index: displayIndex,
+                title: track.title,
+                subtitle: subtitle.isEmpty ? nil : subtitle,
+                duration: track.duration,
+                // Don't fetch remote covers while flinging offline lists — was freezing scroll.
+                artworkURL: nil,
+                isPlaying: app.playback.engine?.currentTrack?.url == track.url,
+                downloadState: .done,
+                detailLabel: sizeLabel,
+                showsOfflineBadge: true
+            )
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                Task { await playDownloaded(track: track, sectionTracks: sectionTracks) }
+            } label: {
+                Label("Odtwórz", systemImage: "play.fill")
+            }
+            if let sizeLabel {
+                Text("Rozmiar: \(sizeLabel)")
+            }
+            Button {
+                let text: String = {
+                    if let artist = track.artist, !artist.isEmpty {
+                        return "\(track.title) — \(artist)"
+                    }
+                    return track.title
+                }()
+                sharePayload = .text(text)
+            } label: {
+                Label("Udostępnij", systemImage: "square.and.arrow.up")
+            }
+            if let local = OfflineMusicStore.shared.localURL(for: track.url) {
+                Button {
+                    sharePayload = .file(local)
+                } label: {
+                    Label("Wyślij plik", systemImage: "paperplane")
+                }
+            }
+            Button(role: .destructive) {
+                trackPendingDelete = track
+            } label: {
+                Label("Usuń z iPhone’a", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                trackPendingDelete = track
+            } label: {
+                Label("Usuń", systemImage: "trash")
+            }
+        }
+    }
+
+    private func deleteOffsets(_ offsets: IndexSet, in sectionTracks: [MusicTrack]) {
+        for index in offsets {
+            guard sectionTracks.indices.contains(index) else { continue }
+            Task { await deleteDownloaded(sectionTracks[index]) }
+        }
+    }
+
+    /// Songs mode must use the full downloaded list (not one alphabet letter), keyed by URL.
+    /// Artists/albums keep the section as the natural queue.
+    private func playDownloaded(track: MusicTrack, sectionTracks: [MusicTrack]) async {
+        let playQueue: [MusicTrack]
+        switch mode {
+        case .songs:
+            playQueue = filteredTracks
+        case .artists, .albums:
+            playQueue = sectionTracks
+        }
+        await play(track: track, queue: playQueue)
+    }
+
+    private func play(track: MusicTrack, queue: [MusicTrack]? = nil) async {
+        let playQueue = queue ?? filteredTracks
+        guard let index = playQueue.firstIndex(where: { $0.url == track.url }) else {
+            // Fallback: still start the tapped track even if list identity drifted.
+            await app.playTracks([track], startIndex: 0, folder: app.musicFolders.first(where: { $0.id == track.folderId }))
+            return
+        }
         let folder = app.musicFolders.first(where: { $0.id == track.folderId })
-        await app.playTracks(tracks, startIndex: index, folder: folder)
+        await app.playTracks(playQueue, startIndex: index, folder: folder)
     }
 
     private func deleteDownloaded(_ track: MusicTrack) async {
         app.cancelDownload(for: track.url)
         app.removeOfflineDownload(for: track.url)
-        do {
-            try await app.removeTrackFromFolder(folderId: track.folderId, url: track.url)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        deviceStorage = StorageCapacityReader.deviceVolume()
     }
 }

@@ -9,7 +9,9 @@ struct FavoritesView: View {
     @State private var sharePayload: SharePayload?
 
     private var musicFavorites: [FavoriteItem] {
-        app.favoriteItems.filter { $0.type == "music" }
+        let base = app.favoriteItems.filter { $0.type == "music" }
+        guard app.isOfflinePlaybackActive else { return base }
+        return base.filter { app.isOfflineAvailable($0.url) }
     }
 
     private var filtered: [FavoriteItem] {
@@ -59,7 +61,7 @@ struct FavoritesView: View {
             }
         }
         .background(Color(.systemBackground))
-        .navigationTitle("Ulubione")
+        .navigationTitle(app.isOfflinePlaybackActive ? "Ulubione · Offline" : "Ulubione")
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, prompt: "Szukaj w ulubionych")
         .toolbar {
@@ -87,6 +89,9 @@ struct FavoritesView: View {
     }
 
     private var emptyDescription: String {
+        if app.isOfflinePlaybackActive {
+            return "Żadne ulubione nie są pobrane na to urządzenie. Włącz Online, pobierz utwory, potem wróć do Offline."
+        }
         if app.user == nil {
             return "Zaloguj się, aby zapisywać ulubione na swoim koncie."
         }
@@ -196,6 +201,10 @@ struct FavoritesView: View {
     }
 
     private func load(showSpinner: Bool) async {
+        if app.isOfflinePlaybackActive {
+            // Keep last known favorites; filter is applied in musicFavorites.
+            return
+        }
         if showSpinner { isLoading = true }
         defer { isLoading = false }
         do {
@@ -208,6 +217,17 @@ struct FavoritesView: View {
     private func play(from index: Int) async {
         let source = filtered.isEmpty ? musicFavorites : filtered
         guard source.indices.contains(index) else { return }
+
+        // Prefer library tracks (local files resolve correctly when offline).
+        let libraryQueue = source.compactMap { fav -> MusicTrack? in
+            app.musicTracks.first(where: { $0.url == fav.url })
+                ?? app.downloadedLibraryTracks.first(where: { $0.url == fav.url })
+        }
+        if libraryQueue.count == source.count {
+            await app.playTracks(libraryQueue, startIndex: index, folder: nil)
+            return
+        }
+
         let items = source.map { fav -> SearchResultItem in
             SearchResultItem(
                 title: fav.title,
@@ -223,7 +243,6 @@ struct FavoritesView: View {
                 trackNumber: nil
             )
         }
-        // Map filtered index back into the played queue (filtered list itself).
         await app.playCatalogItems(items, startIndex: index)
     }
 }

@@ -12,6 +12,16 @@ struct AlbumDetailView: View {
 
     var body: some View {
         Group {
+            if app.isOfflinePlaybackActive {
+                AlbumBrowseDestination(albumId: albumId, albumTitle: nil, artist: nil)
+            } else {
+                catalogBody
+            }
+        }
+    }
+
+    private var catalogBody: some View {
+        Group {
             if isLoading {
                 EOSLoadingView(title: "Ładuję album…")
                     .transition(.opacity.combined(with: .scale(scale: 0.985)))
@@ -34,7 +44,7 @@ struct AlbumDetailView: View {
                         if let artist = detail.album.artist, !artist.isEmpty,
                            let artistId = detail.album.artistId, !artistId.isEmpty {
                             NavigationLink {
-                                ArtistDetailView(artistId: artistId, artistName: artist)
+                                ArtistBrowseDestination(artistId: artistId, artistName: artist)
                             } label: {
                                 Label(artist, systemImage: "person.fill")
                                     .font(.subheadline.weight(.semibold))
@@ -61,10 +71,20 @@ struct AlbumDetailView: View {
                                 if isAddingAlbum {
                                     ProgressView()
                                         .controlSize(.small)
+                                } else if let queue = app.downloads.bulkServerQueue, queue.label == detail.album.title {
+                                    Text("\(queue.completed)/\(queue.total)")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(EOSTheme.accent)
                                 }
                             }
                         }
                         .disabled(isAddingAlbum || detail.tracks.isEmpty)
+
+                        if let queue = app.downloads.bulkServerQueue, queue.label == detail.album.title {
+                            ServerDownloadQueuePanel(queue: queue) {
+                                app.downloads.cancelBulkServerQueue()
+                            }
+                        }
                     }
                     .listRowBackground(Color.clear)
 
@@ -84,7 +104,10 @@ struct AlbumDetailView: View {
         .background(EOSAmbientBackground())
         .navigationTitle(detail?.album.title ?? "Album")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
+        .task {
+            guard !app.isOfflinePlaybackActive else { return }
+            await load()
+        }
         .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -112,9 +135,11 @@ struct AlbumDetailView: View {
         isAddingAlbum = true
         defer { isAddingAlbum = false }
         do {
-            let folder = try await app.api.createMusicFolder(name: detail.album.title)
-            try await app.addTracksToFolder(folderId: folder.id, tracks: detail.tracks.map(\.payload))
-            successMessage = "Dodano album „\(detail.album.title)” do biblioteki."
+            _ = try await app.addAlbumToLibrary(
+                albumTitle: detail.album.title,
+                tracks: detail.tracks.map(\.payload)
+            )
+            successMessage = "Dodano „\(detail.album.title)” — utwory trafiają na serwer EOS po kolei."
         } catch {
             errorMessage = error.localizedDescription
         }

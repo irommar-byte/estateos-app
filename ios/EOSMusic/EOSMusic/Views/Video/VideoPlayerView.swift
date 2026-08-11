@@ -99,6 +99,17 @@ struct VideoPlayerView: View {
             }
             Button("Anuluj", role: .cancel) {}
         }
+        .alert(
+            "Picture in Picture",
+            isPresented: Binding(
+                get: { video.pipController.errorMessage != nil },
+                set: { if !$0 { video.pipController.clearError() } }
+            )
+        ) {
+            Button("OK", role: .cancel) { video.pipController.clearError() }
+        } message: {
+            Text(video.pipController.errorMessage ?? "")
+        }
     }
 
     @ViewBuilder
@@ -145,14 +156,15 @@ struct VideoPlayerView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 Button {
-                    video.dismissPlayer()
+                    video.minimizePlayer()
                 } label: {
-                    Image(systemName: "xmark")
+                    Image(systemName: "chevron.down")
                         .font(.body.weight(.bold))
                         .foregroundStyle(.white)
                         .frame(width: 40, height: 40)
                         .background(.ultraThinMaterial.opacity(0.55), in: Circle())
                 }
+                .accessibilityLabel("Schowaj player")
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(engine.currentItem?.title ?? "Wideo")
@@ -166,6 +178,34 @@ struct VideoPlayerView: View {
                 }
 
                 Spacer(minLength: 8)
+
+                Button {
+                    Task {
+                        await video.pipController.start(engine: engine)
+                        bumpControls()
+                    }
+                } label: {
+                    Group {
+                        if video.pipController.isPreparing {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: video.pipController.supportsCurrentItem(engine)
+                                  ? "pip.enter"
+                                  : "arrow.down.right.and.arrow.up.left")
+                                .font(.body.weight(.semibold))
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(.ultraThinMaterial.opacity(0.55), in: Circle())
+                }
+                .disabled(video.pipController.isPreparing || !video.pipController.isSystemSupported)
+                .accessibilityLabel(
+                    video.pipController.supportsCurrentItem(engine)
+                    ? "Picture in Picture"
+                    : "Schowaj do mini-playera"
+                )
 
                 Button {
                     showAspectSheet = true
@@ -281,6 +321,7 @@ struct VideoPlayerView: View {
     private func bottomBar(landscape: Bool) -> some View {
         VStack(spacing: landscape ? 8 : 12) {
             VideoScrubber(
+                thumbnails: engine.thumbnailGenerator,
                 value: isScrubbing ? scrubTime : engine.currentTime,
                 duration: max(engine.duration, 0.001),
                 onEditingChanged: { editing, time in
@@ -299,7 +340,7 @@ struct VideoPlayerView: View {
                 }
             )
             .frame(maxWidth: .infinity)
-            .frame(height: 28)
+            .frame(height: 78)
 
             HStack(spacing: 10) {
                 Button {
@@ -411,13 +452,12 @@ struct VideoPlayerView: View {
 // MARK: - Full-width scrubber (smooth drag)
 
 private struct VideoScrubber: View {
+    @ObservedObject var thumbnails: VideoThumbnailGenerator
     let value: Double
     let duration: Double
     let onEditingChanged: (_ editing: Bool, _ time: Double) -> Void
 
     @State private var dragTime: Double?
-    @State private var trackWidth: CGFloat = 1
-
     private var displayTime: Double { dragTime ?? value }
     private var progress: CGFloat {
         guard duration > 0 else { return 0 }
@@ -425,7 +465,7 @@ private struct VideoScrubber: View {
     }
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 6) {
             HStack {
                 Text(formatClock(displayTime))
                     .font(.caption.monospacedDigit().weight(.semibold))
@@ -439,24 +479,44 @@ private struct VideoScrubber: View {
             GeometryReader { geo in
                 let width = max(geo.size.width, 1)
                 ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.25))
-                        .frame(height: 5)
-                    Capsule()
-                        .fill(EOSTheme.accent)
-                        .frame(width: max(5, width * progress), height: 5)
+                    filmstrip(width: width)
+
+                    Rectangle()
+                        .fill(EOSTheme.accent.opacity(0.26))
+                        .frame(width: max(3, width * progress))
+
+                    Rectangle()
+                        .fill(Color.white)
+                        .frame(width: 2, height: 48)
+                        .shadow(color: .black.opacity(0.6), radius: 2)
+                        .offset(x: min(max(0, width * progress - 1), width - 2))
+
                     Circle()
                         .fill(Color.white)
-                        .frame(width: 18, height: 18)
-                        .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
-                        .offset(x: max(0, width * progress - 9))
+                        .frame(width: 16, height: 16)
+                        .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
+                        .offset(x: min(max(0, width * progress - 8), width - 16))
                 }
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(Color.white.opacity(0.28), lineWidth: 0.7)
+                )
                 .frame(maxHeight: .infinity, alignment: .center)
                 .contentShape(Rectangle())
+                .overlay(alignment: .topLeading) {
+                    if dragTime != nil {
+                        previewBubble
+                            .offset(
+                                x: min(max(0, width * progress - 80), max(0, width - 160)),
+                                y: -104
+                            )
+                            .transition(.scale(scale: 0.92).combined(with: .opacity))
+                    }
+                }
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { gesture in
-                            trackWidth = width
                             let ratio = min(max(gesture.location.x / width, 0), 1)
                             let time = Double(ratio) * duration
                             dragTime = time
@@ -470,8 +530,76 @@ private struct VideoScrubber: View {
                         }
                 )
             }
-            .frame(height: 24)
+            .frame(height: 48)
         }
+        .animation(.easeOut(duration: 0.14), value: dragTime != nil)
+    }
+
+    @ViewBuilder
+    private func filmstrip(width: CGFloat) -> some View {
+        if thumbnails.frames.isEmpty {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(Color.white.opacity(0.16))
+                HStack(spacing: 5) {
+                    if thumbnails.isGenerating {
+                        ProgressView()
+                            .tint(.white)
+                            .controlSize(.small)
+                        Text("Przygotowuję podgląd kliszy…")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.82))
+                    } else {
+                        Image(systemName: "film")
+                        Text("Przesuń, aby wyszukać fragment")
+                            .font(.caption2.weight(.semibold))
+                    }
+                }
+                .foregroundStyle(.white.opacity(0.8))
+            }
+        } else {
+            HStack(spacing: 1) {
+                ForEach(thumbnails.frames) { frame in
+                    Image(uiImage: frame.image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: max(14, width / CGFloat(thumbnails.frames.count)), height: 48)
+                        .clipped()
+                }
+            }
+        }
+    }
+
+    private var previewBubble: some View {
+        VStack(spacing: 4) {
+            Group {
+                if let frame = thumbnails.nearestFrame(to: Double(progress)) {
+                    Image(uiImage: frame.image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    ZStack {
+                        Color.black
+                        Image(systemName: "film")
+                            .font(.title2)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                }
+            }
+            .frame(width: 152, height: 82)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            Text(formatClock(displayTime))
+                .font(.caption.monospacedDigit().weight(.bold))
+                .foregroundStyle(.white)
+        }
+        .padding(4)
+        .background(Color.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(Color.white.opacity(0.4), lineWidth: 0.7)
+        )
+        .shadow(color: .black.opacity(0.65), radius: 12, y: 5)
     }
 
     private func formatClock(_ seconds: Double) -> String {

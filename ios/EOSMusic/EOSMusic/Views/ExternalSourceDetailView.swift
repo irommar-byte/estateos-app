@@ -86,11 +86,18 @@ struct ExternalSourceDetailView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.985)))
             } else if needsReconnect {
                 ContentUnavailableView {
-                    Label("Brak dostępu do folderu", systemImage: "folder.badge.questionmark")
+                    Label(
+                        source.isSandboxFile ? "Brak lokalnej kopii" : "Brak dostępu do folderu",
+                        systemImage: source.isSandboxFile ? "doc.badge.arrow.up" : "folder.badge.questionmark"
+                    )
                 } description: {
-                    Text("iOS odwołał dostęp. Wybierz ten sam folder ponownie — muzyka wróci do listy.")
+                    Text(
+                        source.isSandboxFile
+                            ? "Plik zniknął z aplikacji. Wybierz go ponownie — zostanie skopiowany do EOS Music."
+                            : "iOS odwołał dostęp. Wybierz ten sam folder ponownie — muzyka wróci do listy."
+                    )
                 } actions: {
-                    Button("Wybierz folder ponownie") {
+                    Button(source.isSandboxFile ? "Wybierz plik ponownie" : "Wybierz folder ponownie") {
                         showReconnectPicker = true
                     }
                     .buttonStyle(.borderedProminent)
@@ -319,6 +326,8 @@ struct ExternalSourceDetailView: View {
             errorMessage = message
             needsReconnect = message.localizedCaseInsensitiveContains("dostępu")
                 || message.localizedCaseInsensitiveContains("połącz ponownie")
+                || message.localizedCaseInsensitiveContains("lokalnej kopii")
+                || message.localizedCaseInsensitiveContains("zniknęła")
             if needsReconnect {
                 tracks = []
             }

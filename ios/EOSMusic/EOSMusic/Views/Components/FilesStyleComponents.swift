@@ -29,6 +29,8 @@ struct FilesLocationRow: View {
     let subtitle: String
     let systemImage: String
     let tint: Color
+    var storage: StorageSnapshot?
+    var storageLibraryOnly = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -44,6 +46,10 @@ struct FilesLocationRow: View {
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let storage {
+                    StorageCapacityBar(snapshot: storage, libraryOnly: storageLibraryOnly)
+                        .padding(.top, 6)
+                }
             }
             Spacer(minLength: 0)
         }

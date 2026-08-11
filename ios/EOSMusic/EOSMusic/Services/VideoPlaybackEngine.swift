@@ -18,6 +18,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     @Published private(set) var subtitleTracks: [VideoTrackOption] = []
     @Published private(set) var subtitlesEnabled = false
     @Published private(set) var signalInfo = VideoSignalInfo()
+    @Published private(set) var currentPlayableURL: URL?
     @Published var rate: VideoPlaybackRate = .normal {
         didSet { applyRate() }
     }
@@ -32,13 +33,23 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     var isUserSeeking = false
 
     let player = VLCMediaPlayer()
+    let thumbnailGenerator = VideoThumbnailGenerator()
+    /// Keeps VLC's OpenGL/Metal drawable alive while the full-screen cover is dismissed.
+    private let parkedHost = PlayerDrawableView(frame: CGRect(x: 0, y: 0, width: 16, height: 9))
     private weak var hostView: PlayerDrawableView?
     private var lastSubtitleIndex: Int32 = -1
     private var lastPublishedTime: Double = -1
     private var sourcesRef: VideoSourcesStore?
     private var bufferingRevealTask: Task<Void, Never>?
+    private var videoKickTask: Task<Void, Never>?
     private var isLocalFile = true
     private var aspectApplyTask: Task<Void, Never>?
+    private var isParkingDrawable = false
+    private var audioLifecycleObservers: [NSObjectProtocol] = []
+    /// Remembers play intent across audio interruptions.
+    private var wantsPlayback = false
+    /// Folder whose security-scoped access is currently held via `beginAccess`.
+    private var accessedFolderId: UUID?
 
     var currentItem: VideoItem? {
         guard queue.indices.contains(currentIndex) else { return nil }
@@ -51,9 +62,66 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     override init() {
         super.init()
         player.delegate = self
+        installAudioLifecycleObservers()
+    }
+
+    deinit {
+        for observer in audioLifecycleObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    private func installAudioLifecycleObservers() {
+        let center = NotificationCenter.default
+        audioLifecycleObservers = [
+            center.addObserver(forName: .eosAudioSessionNeedsResume, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, self.wantsPlayback, self.currentItem != nil else { return }
+                    AudioSession.activateForPlayback()
+                    self.player.play()
+                    self.isPlaying = true
+                }
+            },
+            center.addObserver(forName: .eosAudioSessionRouteLost, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.wantsPlayback = false
+                    self.player.pause()
+                    self.isPlaying = false
+                }
+            },
+        ]
     }
 
     func attach(host: PlayerDrawableView) {
+        let wasParked = hostView === parkedHost || isParkingDrawable
+        isParkingDrawable = false
+        bindHost(host)
+        player.drawable = host.videoSurface
+        host.setNeedsLayout()
+        host.layoutIfNeeded()
+        applyAspect(force: true)
+        // After minimize the previous UIView is destroyed; reassign alone often leaves
+        // audio-only on MKV/HEVC. Soft-kick restores the video pipeline.
+        if wasParked {
+            kickVideoOutput()
+        }
+    }
+
+    /// Call before dismissing the full-screen player so VLC never loses its drawable.
+    func parkDrawable() {
+        guard hostView !== parkedHost else { return }
+        isParkingDrawable = true
+        videoKickTask?.cancel()
+        bindHost(parkedHost)
+        parkedHost.frame = CGRect(x: 0, y: 0, width: 16, height: 9)
+        parkedHost.setNeedsLayout()
+        parkedHost.layoutIfNeeded()
+        player.drawable = parkedHost.videoSurface
+        applyAspect(force: true)
+    }
+
+    private func bindHost(_ host: PlayerDrawableView) {
         hostView = host
         host.backgroundColor = .black
         host.clipsToBounds = true
@@ -62,8 +130,61 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                 self?.applyAspect(force: false)
             }
         }
-        player.drawable = host.videoSurface
-        applyAspect(force: true)
+    }
+
+    /// Soft remount at the current timestamp — restores picture after drawable swaps.
+    func kickVideoOutput() {
+        guard player.media != nil, currentItem != nil, sourcesRef != nil else { return }
+        videoKickTask?.cancel()
+        let time = max(0, currentTime)
+        let shouldPlay = isPlaying || player.isPlaying
+        videoKickTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Brief pause gives VLC time to bind the new surface.
+            self.player.pause()
+            try? await Task.sleep(nanoseconds: 40_000_000)
+            guard !Task.isCancelled else { return }
+            if let host = self.hostView {
+                self.player.drawable = nil
+                self.player.drawable = host.videoSurface
+                host.relayoutVideoSurface()
+                self.applyAspect(force: true)
+            }
+            try? await Task.sleep(nanoseconds: 60_000_000)
+            guard !Task.isCancelled else { return }
+            if time > 0.4 {
+                self.applySeek(to: time)
+            }
+            if shouldPlay {
+                self.player.play()
+                self.isPlaying = true
+                self.hasEnded = false
+            }
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            guard !Task.isCancelled else { return }
+            self.refreshSignalInfo()
+            self.applyAspect(force: true)
+            // If still no video size, force a full remount — last resort for stubborn MKV.
+            if self.player.videoSize == .zero, self.currentItem != nil {
+                self.remountPreservingPosition(at: time, autoplay: shouldPlay)
+            }
+        }
+    }
+
+    private func remountPreservingPosition(at seconds: Double, autoplay: Bool) {
+        loadCurrent(autoplay: false)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 140_000_000)
+            guard let self else { return }
+            self.applySeek(to: seconds)
+            if autoplay {
+                self.player.play()
+                self.isPlaying = true
+            }
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            self.refreshSignalInfo()
+            self.applyAspect(force: true)
+        }
     }
 
     func play(session: VideoPlaybackSession, sources: VideoSourcesStore) {
@@ -73,6 +194,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         currentIndex = min(max(0, session.startIndex), max(0, session.items.count - 1))
         errorMessage = nil
         hasEnded = false
+        wantsPlayback = true
+        AudioSession.activateForPlayback()
         loadCurrent(autoplay: true)
     }
 
@@ -83,13 +206,31 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             return
         }
         if player.isPlaying {
+            wantsPlayback = false
             player.pause()
             isPlaying = false
         } else {
+            wantsPlayback = true
+            AudioSession.activateForPlayback()
             player.play()
             isPlaying = true
             hasEnded = false
         }
+    }
+
+    func pauseForPictureInPicture() {
+        player.pause()
+        isPlaying = false
+        clearBuffering()
+    }
+
+    func resumeAfterPictureInPicture(at seconds: Double, resume: Bool) {
+        seek(to: seconds, resume: resume)
+        if !resume {
+            player.pause()
+            isPlaying = false
+        }
+        kickVideoOutput()
     }
 
     func replayFromStart() {
@@ -225,6 +366,14 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     }
 
     func stop() {
+        videoKickTask?.cancel()
+        bufferingRevealTask?.cancel()
+        aspectApplyTask?.cancel()
+        videoKickTask = nil
+        bufferingRevealTask = nil
+        aspectApplyTask = nil
+        thumbnailGenerator.cancel()
+        wantsPlayback = false
         player.stop()
         isPlaying = false
         hasEnded = false
@@ -235,7 +384,13 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         audioTracks = []
         subtitleTracks = []
         subtitlesEnabled = false
+        currentPlayableURL = nil
+        sourcesRef?.endAllAccess()
+        accessedFolderId = nil
         sourcesRef = nil
+        isParkingDrawable = false
+        hostView = nil
+        player.drawable = nil
     }
 
     // MARK: - Private
@@ -248,8 +403,15 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         guard let item = currentItem, let sources = sourcesRef else { return }
         do {
             let url = try sources.resolvePlayableURL(for: item)
+            let previousFolder = accessedFolderId
             _ = sources.beginAccess(folderId: item.folderId)
+            accessedFolderId = item.folderId
+            if let previousFolder, previousFolder != item.folderId {
+                sources.endAccess(folderId: previousFolder)
+            }
             isLocalFile = url.isFileURL
+            currentPlayableURL = url
+            thumbnailGenerator.cancel()
 
             let media = VLCMedia(url: url)
             if isLocalFile {
@@ -263,6 +425,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
 
             // Tear down fully so .ended / .stopped can start cleanly again.
             bufferingRevealTask?.cancel()
+            aspectApplyTask?.cancel()
+            videoKickTask?.cancel()
             player.delegate = nil
             player.stop()
             player.media = nil
@@ -283,6 +447,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
 
             if autoplay {
                 isPlaying = true
+                wantsPlayback = true
+                AudioSession.activateForPlayback()
                 // Deferred play is required after stop/ended on MobileVLCKit.
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 40_000_000)
@@ -301,6 +467,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                     try? await Task.sleep(nanoseconds: 250_000_000)
                     self.refreshSignalInfo()
                     self.applyAspect(force: true)
+                    self.prepareFilmstrip(for: url)
                 }
             } else {
                 isPlaying = false
@@ -310,6 +477,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                     self.refreshSignalInfo()
                     self.applyAspect(force: true)
                     self.syncTime(force: true)
+                    self.prepareFilmstrip(for: url)
                 }
             }
         } catch {
@@ -317,6 +485,28 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             isPlaying = false
             clearBuffering()
         }
+    }
+
+    private func prepareFilmstrip(for url: URL) {
+        guard currentPlayableURL == url else { return }
+        let knownDuration = max(
+            duration,
+            (player.media?.length.value?.doubleValue ?? 0) / 1000.0
+        )
+        guard knownDuration > 1 else {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                guard let self, self.currentPlayableURL == url else { return }
+                let retryDuration = max(
+                    self.duration,
+                    (self.player.media?.length.value?.doubleValue ?? 0) / 1000.0
+                )
+                guard retryDuration > 1 else { return }
+                self.thumbnailGenerator.generate(url: url, duration: retryDuration, count: 20)
+            }
+            return
+        }
+        thumbnailGenerator.generate(url: url, duration: knownDuration, count: 20)
     }
 
     private func noteBuffering() {

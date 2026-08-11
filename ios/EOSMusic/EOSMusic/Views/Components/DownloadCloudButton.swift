@@ -263,6 +263,14 @@ struct MusicToast: Identifiable, Equatable {
             subtitle: trackTitle
         )
     }
+
+    static func offlineUnavailable(trackTitle: String) -> MusicToast {
+        MusicToast(
+            systemImage: "airplane",
+            title: "Niedostępne offline",
+            subtitle: "„\(trackTitle)” nie jest pobrany na to urządzenie"
+        )
+    }
 }
 
 struct MusicToastBanner: View {

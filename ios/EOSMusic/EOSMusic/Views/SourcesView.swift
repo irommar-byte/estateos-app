@@ -27,15 +27,27 @@ private enum BrowseLocation: String, Identifiable {
 
 struct SourcesView: View {
     @EnvironmentObject private var app: AppModel
+
+    var body: some View {
+        // Observe MusicSourcesStore directly (AppModel no longer fans out sources.objectWillChange).
+        SourcesViewBody(sources: app.sources)
+    }
+}
+
+/// Inner body so `@ObservedObject` tracks `MusicSourcesStore` without AppModel republish.
+private struct SourcesViewBody: View {
+    @EnvironmentObject private var app: AppModel
+    @ObservedObject var sources: MusicSourcesStore
     @State private var activeLocation: BrowseLocation?
     @State private var editMode: EditMode = .inactive
     @State private var sourceToDelete: ConnectedMusicSource?
     @State private var errorMessage: String?
+    @State private var deviceStorage: StorageSnapshot?
 
     private var isEditing: Bool { editMode == .active }
 
     private var sortedSources: [ConnectedMusicSource] {
-        app.sources.sources.sorted {
+        sources.sources.sorted {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
     }
@@ -53,6 +65,25 @@ struct SourcesView: View {
         return "\(count) utworów · \(size)"
     }
 
+    private var serverStorage: StorageSnapshot? {
+        if let disk = StorageCapacityReader.serverDisk(
+            libraryBytes: app.serverLibraryBytes,
+            diskTotalBytes: app.serverDiskTotalBytes,
+            diskFreeBytes: app.serverDiskFreeBytes
+        ) {
+            return disk
+        }
+        return StorageCapacityReader.serverLibraryOnly(libraryBytes: app.serverLibraryBytes)
+    }
+
+    private var serverStorageIsLibraryOnly: Bool {
+        app.serverDiskTotalBytes == nil || (app.serverDiskTotalBytes ?? 0) <= 0
+    }
+
+    private func refreshStorageStats() {
+        deviceStorage = StorageCapacityReader.deviceVolume()
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -64,7 +95,8 @@ struct SourcesView: View {
                             title: AppConfig.appDisplayName,
                             subtitle: localDeviceSubtitle,
                             systemImage: "iphone",
-                            tint: Color(white: 0.45)
+                            tint: Color(white: 0.45),
+                            storage: deviceStorage
                         )
                     }
                     .disabled(isEditing)
@@ -76,7 +108,9 @@ struct SourcesView: View {
                             title: "Serwer EOS",
                             subtitle: serverLibrarySubtitle,
                             systemImage: "externaldrive.fill.badge.checkmark",
-                            tint: EOSTheme.accent
+                            tint: EOSTheme.accent,
+                            storage: serverStorage,
+                            storageLibraryOnly: serverStorageIsLibraryOnly
                         )
                     }
                     .disabled(isEditing)
@@ -155,17 +189,21 @@ struct SourcesView: View {
             }
             .environment(\.editMode, $editMode)
             .task {
+                refreshStorageStats()
                 await app.refreshServerAssets()
+            }
+            .onAppear {
+                refreshStorageStats()
             }
             .sheet(item: $activeLocation) { location in
                 switch location {
                 case .localFolder:
                     LocalFolderConnectionSheet { name, url in
-                        try app.sources.connectFolder(kind: .localFolder, name: name, folderURL: url)
+                        try sources.connectFolder(kind: .localFolder, name: name, folderURL: url)
                     }
                 case .iCloud:
                     ICloudConnectionSheet { name, url in
-                        try app.sources.connectFolder(kind: .iCloudDrive, name: name, folderURL: url)
+                        try sources.connectFolder(kind: .iCloudDrive, name: name, folderURL: url)
                     }
                 }
             }
@@ -175,7 +213,7 @@ struct SourcesView: View {
             )) {
                 Button("Odłącz", role: .destructive) {
                     if let source = sourceToDelete {
-                        app.sources.disconnect(source)
+                        sources.disconnect(source)
                     }
                     sourceToDelete = nil
                 }
@@ -194,10 +232,16 @@ struct SourcesView: View {
     }
 
     private func sourceDetail(_ source: ConnectedMusicSource) -> String {
-        if let email = source.accountEmail, !email.isEmpty {
-            return "\(source.kind.title) · \(email)"
+        let kindLabel: String
+        if source.isSandboxFile {
+            kindLabel = "Plik lokalny"
+        } else {
+            kindLabel = source.kind.title
         }
-        return source.kind.title
+        if let email = source.accountEmail, !email.isEmpty {
+            return "\(kindLabel) · \(email)"
+        }
+        return kindLabel
     }
 
     private func deleteSources(at offsets: IndexSet) {

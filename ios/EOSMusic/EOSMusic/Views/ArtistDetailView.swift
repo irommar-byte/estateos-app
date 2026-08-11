@@ -21,6 +21,17 @@ struct ArtistDetailView: View {
     }
 
     var body: some View {
+        Group {
+            if app.isOfflinePlaybackActive {
+                // Catalog artist page is online-only; offline users land on local songs.
+                LibraryArtistSongsView(artistName: artistName)
+            } else {
+                catalogBody
+            }
+        }
+    }
+
+    private var catalogBody: some View {
         ScrollView {
             if isLoading {
                 EOSLoadingView(title: "Ładuję artystę…")
@@ -35,7 +46,11 @@ struct ArtistDetailView: View {
                         LazyVGrid(columns: albumColumns, spacing: 12) {
                             ForEach(sortedAlbums) { album in
                                 NavigationLink {
-                                    AlbumDetailView(albumId: album.id)
+                                    AlbumBrowseDestination(
+                                        albumId: album.id,
+                                        albumTitle: album.title,
+                                        artist: album.artist ?? detail.artist.name
+                                    )
                                 } label: {
                                     VStack(alignment: .leading, spacing: 6) {
                                         ArtworkImage(url: album.thumbnail.flatMap(URL.init(string:)), size: 140, cornerRadius: 10)
@@ -73,7 +88,10 @@ struct ArtistDetailView: View {
         .eosScrollClearance()
         .navigationTitle(detail?.artist.name ?? artistName)
         .navigationBarTitleDisplayMode(.large)
-        .task { await load() }
+        .task {
+            guard !app.isOfflinePlaybackActive else { return }
+            await load()
+        }
         .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {

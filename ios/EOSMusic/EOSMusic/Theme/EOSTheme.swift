@@ -22,40 +22,41 @@ enum EOSMotion {
     static let standard = Animation.spring(response: 0.38, dampingFraction: 0.86)
     static let snappy = Animation.snappy(duration: 0.25)
     static let soft = Animation.easeInOut(duration: 0.28)
+    /// Sheet mini ↔ full — slightly slower spring for glass depth.
+    static let playerSheet = Animation.spring(response: 0.44, dampingFraction: 0.9, blendDuration: 0.1)
 }
 
 enum EOSLayout {
-    /// Extra scroll padding under the floating mini-player (beyond safeAreaInset).
-    static let miniPlayerScrollClearance: CGFloat = 28
+    /// Bottom scroll room so the last row clears the floating mini-player.
+    /// Nested NavigationStack Lists often ignore parent `safeAreaInset`, so this must be
+    /// roughly the bar height (≈62) + gap — not a token 28 pt.
+    static let miniPlayerScrollClearance: CGFloat = 100
     static let miniPlayerCorner: CGFloat = 16
 }
 
-/// Visual presets for the full player (legacy `subtle`/`strong` map on load).
+/// Visual presets for the full player (legacy values map on load).
 enum PlayerVisualPreset: String, CaseIterable, Identifiable {
     case vinyl
+    case cover
     case spectrum
-    case aurora
-    case pulse
     case off
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .vinyl: return "Vinyl"
+        case .vinyl: return "Winyl"
+        case .cover: return "Okładka"
         case .spectrum: return "Spectrum"
-        case .aurora: return "Aurora"
-        case .pulse: return "Pulse"
         case .off: return "Wyłączone"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .vinyl: return "Obracająca się płyta i delikatny halo"
-        case .spectrum: return "Mikser częstotliwości + pierścień widma"
-        case .aurora: return "Miękkie fale kolorów wokół okładki"
-        case .pulse: return "Mocny beat-glow i bezpieczne strobo"
+        case .vinyl: return "Obracająca się płyta"
+        case .cover: return "Okładka drgająca w rytm muzyki"
+        case .spectrum: return "Czytelny mikser częstotliwości EQ"
         case .off: return "Statyczna okładka bez efektów"
         }
     }
@@ -63,39 +64,29 @@ enum PlayerVisualPreset: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .vinyl: return "opticaldisc"
+        case .cover: return "square.stack.3d.up.fill"
         case .spectrum: return "waveform.path.ecg"
-        case .aurora: return "sparkles"
-        case .pulse: return "bolt.heart.fill"
         case .off: return "moon.zzz"
         }
     }
 
-    var showsMixer: Bool {
-        switch self {
-        case .spectrum, .aurora, .pulse: return true
-        case .vinyl, .off: return false
-        }
-    }
+    var showsMixer: Bool { self == .spectrum }
 
-    var isStrong: Bool {
-        switch self {
-        case .spectrum, .pulse: return true
-        case .vinyl, .aurora, .off: return false
-        }
-    }
+    var isStrong: Bool { self == .spectrum }
 
-    var allowsStrobe: Bool { self == .pulse || self == .spectrum }
+    var allowsStrobe: Bool { false }
 
-    /// Map old Account settings (`subtle` / `strong` / `off`).
+    /// Map old Account / effects settings. Default to Spectrum (UIKit EQ) — vinyl TimelineViews froze devices.
     static func migrated(fromStored raw: String?) -> PlayerVisualPreset {
         switch raw {
-        case "subtle": return .vinyl
-        case "strong": return .spectrum
+        case "subtle", "vinyl": return .vinyl
+        case "cover", "aurora", "pulse": return .cover
+        case "strong", "spectrum": return .spectrum
         case "off": return .off
         case let value?:
-            return PlayerVisualPreset(rawValue: value) ?? .vinyl
+            return PlayerVisualPreset(rawValue: value) ?? .spectrum
         case nil:
-            return .vinyl
+            return .spectrum
         }
     }
 }
@@ -111,29 +102,40 @@ struct PlayerVisualPolicy: Equatable {
 
     static func resolve(
         preset: PlayerVisualPreset,
-        intensity: Double,
-        strobeEnabled: Bool,
+        intensity: Double = 0.88,
+        strobeEnabled: Bool = false,
         autoPerformance: Bool,
         reduceMotion: Bool,
         lowPower: Bool,
         thermal: ProcessInfo.ThermalState
     ) -> PlayerVisualPolicy {
         let clampedIntensity = min(1, max(0, intensity))
-        if preset == .off || reduceMotion {
+        if preset == .off {
             return PlayerVisualPolicy(
                 enabled: false,
                 allowStrobe: false,
                 analyzerFPS: 0,
                 timelineFPS: 0,
                 intensityScale: 0,
-                restrictionReason: reduceMotion && preset != .off
-                    ? "Reduce Motion wyłącza animacje"
-                    : nil
+                restrictionReason: nil
             )
         }
 
-        var fps: Double = 24
-        var timeline: Double = 30
+        if reduceMotion {
+            // Keep cheap live analyzer so EQ/island still follow the song; no spinning chrome.
+            return PlayerVisualPolicy(
+                enabled: true,
+                allowStrobe: false,
+                analyzerFPS: preset == .spectrum ? 14 : 12,
+                timelineFPS: 0,
+                intensityScale: clampedIntensity * 0.75,
+                restrictionReason: "Reduce Motion — bez obrotu"
+            )
+        }
+
+        // Analyzer FPS feeds PCM → visualizer lock. UI timelines stay at 0 (UIKit hosts poll).
+        var fps: Double = preset == .spectrum ? 20 : 16
+        let timeline: Double = 0
         var reason: String?
         var scale = clampedIntensity
 
@@ -149,28 +151,109 @@ struct PlayerVisualPolicy: Equatable {
                 )
             }
             if thermal == .fair || lowPower {
-                fps = 12
-                timeline = 15
-                scale *= 0.72
+                fps = preset == .spectrum ? 14 : 12
+                scale *= 0.7
                 reason = lowPower
                     ? "Tryb Low Power ogranicza efekty"
                     : "Ciepłe urządzenie — tryb oszczędny"
             }
+        } else if lowPower || thermal == .fair {
+            fps = preset == .spectrum ? 16 : 12
+            scale *= 0.8
         }
-
-        let strobeOK = strobeEnabled
-            && preset.allowsStrobe
-            && !reduceMotion
-            && !(autoPerformance && (lowPower || thermal != .nominal))
 
         return PlayerVisualPolicy(
             enabled: true,
-            allowStrobe: strobeOK,
+            allowStrobe: false,
             analyzerFPS: fps,
             timelineFPS: timeline,
             intensityScale: scale,
             restrictionReason: reason
         )
+    }
+}
+
+/// Where the music player UI is shown — drives analyzer FPS without touching AVPlayerItem.
+enum PlayerVisualSurface: Equatable {
+    case none
+    case mini
+    case full
+}
+
+/// Single lifecycle for audio-reactive visuals (mini island, full EQ, background).
+struct PlayerVisualAnalysisSync: ViewModifier {
+    @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var ui: UIPreferences
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var thermal = ProcessInfo.processInfo.thermalState
+    @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { sync() }
+            .onChange(of: syncTrigger) { _, _ in sync() }
+            .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)) { _ in
+                thermal = ProcessInfo.processInfo.thermalState
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+                lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+            }
+    }
+
+    private var syncTrigger: String {
+        let engine = app.playback.engine
+        return [
+            app.isFullPlayerPresented.description,
+            engine?.isPlaying.description ?? "nil",
+            engine?.isLoading.description ?? "nil",
+            engine?.currentTrack?.id ?? "nil",
+            ui.playerVisualPreset.rawValue,
+            ui.playerAutoPerformance.description,
+            reduceMotion.description,
+            lowPower.description,
+            String(thermal.rawValue),
+            scenePhase == .active ? "active" : "inactive"
+        ].joined(separator: "|")
+    }
+
+    private func sync() {
+        guard let engine = app.playback.engine else { return }
+
+        let policy = PlayerVisualPolicy.resolve(
+            preset: ui.playerVisualPreset,
+            autoPerformance: ui.playerAutoPerformance,
+            reduceMotion: reduceMotion,
+            lowPower: lowPower,
+            thermal: thermal
+        )
+
+        let surface: PlayerVisualSurface
+        // Keep analysis soft-off in background — engine leaves the audio tap attached
+        // while playing so switching apps does not stutter.
+        if scenePhase != .active {
+            surface = .none
+        } else if app.isFullPlayerPresented {
+            surface = .full
+        } else if engine.currentTrack != nil {
+            surface = .mini
+        } else {
+            surface = .none
+        }
+
+        engine.syncVisualAnalysis(
+            surface: surface,
+            policy: policy,
+            needsSpectrum: surface == .full && ui.playerVisualPreset.showsMixer,
+            isPlaying: engine.isPlaying,
+            isLoading: engine.isLoading
+        )
+    }
+}
+
+extension View {
+    func syncPlayerVisualAnalysis() -> some View {
+        modifier(PlayerVisualAnalysisSync())
     }
 }
 
@@ -225,6 +308,10 @@ final class UIPreferences: ObservableObject {
     @Published var ultraCompact: Bool {
         didSet { UserDefaults.standard.set(ultraCompact, forKey: Self.ultraCompactKey) }
     }
+    /// Forced Offline mode — play only local downloads, skip network streams.
+    @Published var offlineModeEnabled: Bool {
+        didSet { UserDefaults.standard.set(offlineModeEnabled, forKey: Self.offlineModeKey) }
+    }
 
     /// Back-compat for call sites still reading `playerEffectsMode`.
     var playerEffectsMode: PlayerVisualPreset {
@@ -238,6 +325,7 @@ final class UIPreferences: ObservableObject {
     private static let intensityKey = "ui.playerEffectsIntensity"
     private static let strobeKey = "ui.playerStrobeEnabled"
     private static let autoPerfKey = "ui.playerAutoPerformance"
+    private static let offlineModeKey = "ui.offlineModeEnabled"
 
     init() {
         let storedAppearance = UserDefaults.standard.string(forKey: Self.appearanceKey) ?? AppAppearance.system.rawValue
@@ -261,6 +349,7 @@ final class UIPreferences: ObservableObject {
         } else {
             ultraCompact = false
         }
+        offlineModeEnabled = UserDefaults.standard.bool(forKey: Self.offlineModeKey)
     }
 }
 

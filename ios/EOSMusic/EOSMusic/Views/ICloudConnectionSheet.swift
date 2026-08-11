@@ -2,6 +2,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
+private var audioImportTypes: [UTType] {
+    var types: [UTType] = [.mp3, .mpeg4Audio, .audio, .aiff, .wav]
+    if let flac = UTType(filenameExtension: "flac") { types.append(flac) }
+    if let aac = UTType(filenameExtension: "aac") { types.append(aac) }
+    if let alac = UTType(filenameExtension: "alac") { types.append(alac) }
+    return types
+}
+
 // MARK: - Local folder (On My iPhone / Files)
 
 struct LocalFolderConnectionSheet: View {
@@ -12,6 +20,7 @@ struct LocalFolderConnectionSheet: View {
     @State private var folderName = ""
     @State private var showFolderPicker = false
     @State private var showFilePicker = false
+    @State private var isConnecting = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -31,16 +40,27 @@ struct LocalFolderConnectionSheet: View {
                 Section {
                     TextField("Nazwa w Przeglądaj", text: $folderName, prompt: Text("np. Moja muzyka"))
 
-                    FilesListButton { showFolderPicker = true } label: {
+                    Button { showFolderPicker = true } label: {
                         FilesActionRow(icon: "folder.badge.plus", title: "Wybierz folder", iconColor: .orange)
                     }
-                    FilesListButton { showFilePicker = true } label: {
+                    .disabled(isConnecting)
+
+                    Button { showFilePicker = true } label: {
                         FilesActionRow(icon: "music.note", title: "Lub wybierz plik audio", iconColor: .orange)
+                    }
+                    .disabled(isConnecting)
+
+                    if isConnecting {
+                        HStack {
+                            ProgressView()
+                            Text("Dodaję…")
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 } header: {
                     Text("Folder z muzyką")
                 } footer: {
-                    Text("W Plikach wybierz „Na iPhonie” albo zewnętrzny dysk, potem folder z MP3 / M4A / FLAC. Najlepiej struktura Wykonawca → Album → utwory.")
+                    Text("Pojedynczy plik jest kopiowany do aplikacji i działa od razu. Folder zostaje podpięty z Plików (bookmark). MP3, M4A, FLAC, WAV.")
                 }
             }
             .listStyle(.insetGrouped)
@@ -49,19 +69,22 @@ struct LocalFolderConnectionSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Anuluj") { dismiss() }
+                        .disabled(isConnecting)
                 }
             }
-            .sheet(isPresented: $showFolderPicker) {
-                FolderDocumentPicker { result in
-                    handleFolderImport(result.map { [$0] })
-                    showFolderPicker = false
-                }
+            .fileImporter(
+                isPresented: $showFolderPicker,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false
+            ) { result in
+                handleImport(result)
             }
-            .sheet(isPresented: $showFilePicker) {
-                AudioDocumentPicker { result in
-                    handleFolderImport(result.map { [$0] })
-                    showFilePicker = false
-                }
+            .fileImporter(
+                isPresented: $showFilePicker,
+                allowedContentTypes: audioImportTypes,
+                allowsMultipleSelection: false
+            ) { result in
+                handleImport(result)
             }
             .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -71,22 +94,33 @@ struct LocalFolderConnectionSheet: View {
         }
     }
 
-    private func handleFolderImport(_ result: Result<[URL], Error>) {
+    private func handleImport(_ result: Result<[URL], Error>) {
         switch result {
         case .failure(let error):
-            if (error as NSError).code != NSUserCancelledError {
-                errorMessage = error.localizedDescription
-            }
+            let ns = error as NSError
+            if ns.domain == NSCocoaErrorDomain, ns.code == NSUserCancelledError { return }
+            if ns.code == NSUserCancelledError { return }
+            errorMessage = error.localizedDescription
         case .success(let urls):
             guard let url = urls.first else { return }
-            let name = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
-            let resolved = name.isEmpty ? url.lastPathComponent : name
-            do {
-                try onConnect(resolved, url)
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-            }
+            connect(url: url)
+        }
+    }
+
+    private func connect(url: URL) {
+        isConnecting = true
+        defer { isConnecting = false }
+
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+
+        let name = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolved = name.isEmpty ? url.deletingPathExtension().lastPathComponent : name
+        do {
+            try onConnect(resolved, url)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }
@@ -102,6 +136,7 @@ struct ICloudConnectionSheet: View {
     @State private var folderName = ""
     @State private var showFolderPicker = false
     @State private var showFilePicker = false
+    @State private var isConnecting = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -131,16 +166,27 @@ struct ICloudConnectionSheet: View {
                     Section {
                         TextField("Nazwa folderu", text: $folderName, prompt: Text("Moja muzyka"))
 
-                        FilesListButton { showFolderPicker = true } label: {
+                        Button { showFolderPicker = true } label: {
                             FilesActionRow(icon: "folder.badge.plus", title: "Wybierz folder", iconColor: .blue)
                         }
-                        FilesListButton { showFilePicker = true } label: {
+                        .disabled(isConnecting)
+
+                        Button { showFilePicker = true } label: {
                             FilesActionRow(icon: "music.note", title: "Lub wybierz plik audio", iconColor: .blue)
+                        }
+                        .disabled(isConnecting)
+
+                        if isConnecting {
+                            HStack {
+                                ProgressView()
+                                Text("Dodaję…")
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     } header: {
                         Text("Folder z muzyką")
                     } footer: {
-                        Text("Wybierz folder z plikami MP3, M4A lub FLAC. Jeśli dostawca nie pozwala wybrać folderu (Open jest nieaktywne), wybierz dowolny plik audio — użyjemy jego folderu.")
+                        Text("Pojedynczy plik jest kopiowany do aplikacji. Folder pozostaje w iCloud z dostępem przez bookmark.")
                     }
                 }
             }
@@ -150,20 +196,23 @@ struct ICloudConnectionSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Anuluj") { dismiss() }
+                        .disabled(isConnecting)
                 }
             }
             .onAppear { accountState = ICloudAccountService.currentState() }
-            .sheet(isPresented: $showFolderPicker) {
-                FolderDocumentPicker { result in
-                    handleFolderImport(result.map { [$0] })
-                    showFolderPicker = false
-                }
+            .fileImporter(
+                isPresented: $showFolderPicker,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false
+            ) { result in
+                handleImport(result)
             }
-            .sheet(isPresented: $showFilePicker) {
-                AudioDocumentPicker { result in
-                    handleFolderImport(result.map { [$0] })
-                    showFilePicker = false
-                }
+            .fileImporter(
+                isPresented: $showFilePicker,
+                allowedContentTypes: audioImportTypes,
+                allowsMultipleSelection: false
+            ) { result in
+                handleImport(result)
             }
             .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -173,84 +222,33 @@ struct ICloudConnectionSheet: View {
         }
     }
 
-    private func handleFolderImport(_ result: Result<[URL], Error>) {
+    private func handleImport(_ result: Result<[URL], Error>) {
         switch result {
         case .failure(let error):
-            if (error as NSError).code != NSUserCancelledError {
-                errorMessage = error.localizedDescription
-            }
+            let ns = error as NSError
+            if ns.domain == NSCocoaErrorDomain, ns.code == NSUserCancelledError { return }
+            if ns.code == NSUserCancelledError { return }
+            errorMessage = error.localizedDescription
         case .success(let urls):
             guard let url = urls.first else { return }
-            let name = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
-            let resolved = name.isEmpty ? url.lastPathComponent : name
-            do {
-                try onConnect(resolved, url)
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-            }
+            connect(url: url)
         }
     }
-}
 
-struct FolderDocumentPicker: UIViewControllerRepresentable {
-    let onPick: (Result<URL, Error>) -> Void
+    private func connect(url: URL) {
+        isConnecting = true
+        defer { isConnecting = false }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onPick: onPick)
-    }
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
 
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(
-            forOpeningContentTypes: [.folder],
-            asCopy: false
-        )
-        picker.delegate = context.coordinator
-        picker.allowsMultipleSelection = false
-        picker.directoryURL = nil
-        return picker
-    }
-
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
-
-    final class Coordinator: NSObject, UIDocumentPickerDelegate {
-        let onPick: (Result<URL, Error>) -> Void
-
-        init(onPick: @escaping (Result<URL, Error>) -> Void) {
-            self.onPick = onPick
-        }
-
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            guard let url = urls.first else {
-                onPick(.failure(NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError)))
-                return
-            }
-            onPick(.success(url))
-        }
-
-        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-            onPick(.failure(NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError)))
+        let name = folderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolved = name.isEmpty ? url.deletingPathExtension().lastPathComponent : name
+        do {
+            try onConnect(resolved, url)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
-}
-
-struct AudioDocumentPicker: UIViewControllerRepresentable {
-    let onPick: (Result<URL, Error>) -> Void
-
-    func makeCoordinator() -> FolderDocumentPicker.Coordinator {
-        FolderDocumentPicker.Coordinator(onPick: onPick)
-    }
-
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(
-            forOpeningContentTypes: [.audio],
-            asCopy: false
-        )
-        picker.delegate = context.coordinator
-        picker.allowsMultipleSelection = false
-        picker.directoryURL = nil
-        return picker
-    }
-
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
 }

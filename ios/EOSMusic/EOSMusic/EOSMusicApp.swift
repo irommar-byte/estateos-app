@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Combine
 
 @main
 struct EOSMusicApp: App {
@@ -15,21 +16,35 @@ struct EOSMusicApp: App {
                 .environmentObject(ui)
                 .environmentObject(video)
                 .preferredColorScheme(ui.appearance.preferredColorScheme)
-                .id(ui.appearance.rawValue)
                 .task {
+                    orientationDelegate.appModel = app
+                    orientationDelegate.videoModel = video
                     video.onWillStartPlayback = {
                         app.playback.stop()
                         app.isFullPlayerPresented = false
                         AudioSession.activateForPlayback()
                     }
+                    // Single ownership of AppModel.offlineModeEnabled ← UIPreferences.
+                    app.configureOfflineMode(from: ui)
                     await app.bootstrap()
                 }
+                .onChange(of: ui.offlineModeEnabled) { _, value in
+                    app.offlineModeEnabled = value
+                }
                 .onOpenURL { url in
-                    GoogleDriveAuthService.shared.handleOpenURL(url)
+                    if url.scheme == "pl.nostalgie.eosmusic" {
+                        GoogleDriveAuthService.shared.handleOpenURL(url)
+                        return
+                    }
+                    _ = IncomingMediaRouter.handle(url, app: app, video: video)
                 }
                 .onAppear {
                     AppDocuments.ensureStructure()
                     UIApplication.shared.beginReceivingRemoteControlEvents()
+                    AudioSession.activateForPlayback()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    AudioSession.reinforceIfNeeded()
                 }
         }
     }

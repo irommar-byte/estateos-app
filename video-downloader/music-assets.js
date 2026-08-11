@@ -551,6 +551,7 @@ export async function ensureMusicAsset({
         appleUrl: url,
         destPath: partPath,
         trackMeta: track,
+        downloadUrl: downloadUrl,
         onProgress: (pct) => {
           if (job.cancelled) return;
           // Keep stream-proxy playable while bytes land on disk.

@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var ui: UIPreferences
+
     init() {
         let appearance = UITabBarAppearance()
         appearance.configureWithDefaultBackground()
@@ -9,31 +12,124 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        TabView {
-            LibraryView()
-                .miniPlayerTabInset()
-                .tabItem { Label("Biblioteka", systemImage: "music.note.list") }
+        VStack(spacing: 0) {
+            GlobalOfflineModeBar()
+                .environmentObject(app)
+                .environmentObject(ui)
 
-            SearchCatalogView()
-                .miniPlayerTabInset()
-                .tabItem { Label("Szukaj", systemImage: "magnifyingglass") }
+            if let sync = app.librarySyncMessage, !app.isOfflinePlaybackActive {
+                LibrarySyncStatusBar(
+                    message: sync,
+                    showsSpinner: app.isLibraryLoading
+                )
+            }
 
-            SourcesView()
-                .miniPlayerTabInset()
-                .tabItem { Label("Przeglądaj", systemImage: "folder.fill") }
+            if let queue = app.downloads.bulkServerQueue {
+                ServerDownloadQueuePanel(queue: queue) {
+                    app.downloads.cancelBulkServerQueue()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            }
 
-            VideoLibraryView()
-                .miniPlayerTabInset()
-                .tabItem { Label("Wideo", systemImage: "film") }
+            TabView {
+                LibraryView()
+                    .miniPlayerTabInset()
+                    .tabItem { Label("Biblioteka", systemImage: "music.note.list") }
 
-            AccountView()
-                .miniPlayerTabInset()
-                .tabItem { Label("Konto", systemImage: "person.crop.circle.fill") }
+                SearchCatalogView()
+                    .miniPlayerTabInset()
+                    .tabItem { Label("Szukaj", systemImage: "magnifyingglass") }
+
+                SourcesView()
+                    .miniPlayerTabInset()
+                    .tabItem { Label("Przeglądaj", systemImage: "folder.fill") }
+
+                VideoLibraryView()
+                    .miniPlayerTabInset()
+                    .tabItem { Label("Wideo", systemImage: "film") }
+
+                AccountView()
+                    .miniPlayerTabInset()
+                    .tabItem { Label("Konto", systemImage: "person.crop.circle.fill") }
+            }
+            .tint(EOSTheme.accent)
         }
-        .tint(EOSTheme.accent)
+        .background(Color(.systemBackground).ignoresSafeArea())
+        // Offline sync lives in EOSMusicApp (configureOfflineMode + onChange); picker writes both.
+        .syncPlayerVisualAnalysis()
     }
 }
 
+/// Compact Apple-style Online/Offline control pinned above every tab.
+private struct GlobalOfflineModeBar: View {
+    @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var ui: UIPreferences
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                OnlineOfflineModeGlyph(
+                    isOffline: ui.offlineModeEnabled,
+                    networkOnline: app.network.isOnline,
+                    size: 17
+                )
+                .frame(width: 26)
+
+                Picker("Tryb", selection: Binding(
+                    get: { ui.offlineModeEnabled },
+                    set: { enabled in
+                        withAnimation(.spring(response: 0.48, dampingFraction: 0.78)) {
+                            ui.offlineModeEnabled = enabled
+                            app.offlineModeEnabled = enabled
+                        }
+                    }
+                )) {
+                    Text("Online").tag(false)
+                    Text("Offline").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 280)
+
+                Spacer(minLength: 0)
+
+                if app.isOfflinePlaybackActive {
+                    Text("\(app.downloadedLibraryTracks.count)")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(EOSTheme.accent, in: Capsule())
+                        .accessibilityLabel("Pobrane utwory")
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+
+            if app.isOfflinePlaybackActive || !app.network.isOnline {
+                Text(statusCaption)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+            }
+
+            Divider()
+        }
+        .background(.bar)
+    }
+
+    private var statusCaption: String {
+        if ui.offlineModeEnabled {
+            return "Offline · Biblioteka, Szukaj i player pokazują tylko pobrane."
+        }
+        if !app.network.isOnline {
+            return "Brak sieci · włącz Offline, aby przeglądać pobrane."
+        }
+        return ""
+    }
+}
 private enum ServerBrowseMode: String, CaseIterable, Identifiable {
     case artists
     case albums
@@ -357,18 +453,19 @@ struct ServerMusicAssetsView: View {
     private func downloadAndShare(_ asset: MusicAssetItem) async {
         guard let url = asset.url, !url.isEmpty else { return }
         do {
-            let ensure = try await app.api.startMusicPlay(url: url)
-            if ensure.ready != true {
-                try await app.api.waitForMusicPlayReady(jobId: ensure.jobId)
+            if let existing = OfflineMusicStore.shared.localURL(for: url) {
+                sharePayload = SharePayload(url: existing)
+                return
             }
-            let token = try await app.api.musicPlayToken(jobId: ensure.jobId)
-            let request = app.api.streamURLRequest(jobId: ensure.jobId, token: token.token)
-            try await OfflineMusicStore.shared.save(
-                request: request,
-                trackUrl: url,
+            // Route through MusicDownloadService so concurrency / retry / progress stay shared.
+            try await app.downloads.downloadAssetToDevice(
+                url: url,
                 title: asset.title ?? "Utwór",
                 artist: asset.artist,
-                downloadJobId: ensure.jobId
+                api: app.api,
+                onLibraryChanged: { [weak app] in
+                    await app?.refreshServerAssets()
+                }
             )
             if let local = OfflineMusicStore.shared.localURL(for: url) {
                 sharePayload = SharePayload(url: local)
