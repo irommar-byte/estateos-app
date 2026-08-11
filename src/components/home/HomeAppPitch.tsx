@@ -100,10 +100,6 @@ export default function HomeAppPitch() {
           <AppStoreBadgeLink
             androidComingSoon
             androidSoonLabel={p.androidSoon}
-            androidBetaLabel={p.androidBetaLabel}
-            androidBetaBadge={p.androidBetaBadge}
-            showAndroidBetaHint
-            androidBetaHint={p.androidBetaHint}
             label={dict.footer.appStore}
           />
         </motion.div>

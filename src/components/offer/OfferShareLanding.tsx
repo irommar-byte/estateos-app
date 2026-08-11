@@ -244,7 +244,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
                     <p className="mb-3 text-[9px] font-black uppercase tracking-[0.2em] text-[#5c5c66]">
                       Pobierz aplikację
                     </p>
-                    <AppStoreBadgeLink compact androidComingSoon showAndroidBetaHint />
+                    <AppStoreBadgeLink compact androidComingSoon />
                   </div>
                 </div>
               </div>

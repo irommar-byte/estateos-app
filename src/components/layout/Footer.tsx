@@ -25,8 +25,6 @@ export default function Footer() {
                 label={dict.footer.appStore}
                 androidComingSoon
                 androidSoonLabel={dict.homeAppPitch.androidSoon}
-                androidBetaLabel={dict.homeAppPitch.androidBetaLabel}
-                androidBetaBadge={dict.homeAppPitch.androidBetaBadge}
               />
             </div>
           </div>

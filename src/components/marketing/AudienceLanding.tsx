@@ -141,10 +141,6 @@ export default function AudienceLanding({ audience }: { audience: AudienceKey })
               label={dict.footer.appStore}
               androidComingSoon
               androidSoonLabel={dict.homeAppPitch.androidSoon}
-              androidBetaLabel={dict.homeAppPitch.androidBetaLabel}
-              androidBetaBadge={dict.homeAppPitch.androidBetaBadge}
-              showAndroidBetaHint
-              androidBetaHint={dict.homeAppPitch.androidBetaHint}
             />
           </div>
         </motion.div>
