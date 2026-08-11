@@ -5,6 +5,7 @@ struct MainTabView: View {
     @EnvironmentObject private var ui: UIPreferences
 
     init() {
+        EOSTypography.configureGlobalAppearance()
         let appearance = UITabBarAppearance()
         appearance.configureWithDefaultBackground()
         UITabBar.appearance().standardAppearance = appearance
@@ -72,6 +73,7 @@ private struct GlobalOfflineModeBar: View {
                 OnlineOfflineModeGlyph(
                     isOffline: ui.offlineModeEnabled,
                     networkOnline: app.network.isOnline,
+                    isBusy: app.isNetworkBusy,
                     size: 17
                 )
                 .frame(width: 26)

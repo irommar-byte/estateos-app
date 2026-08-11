@@ -25,8 +25,10 @@ private struct PlayerContent: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showAddToPlaylist = false
     @State private var showEffectsSheet = false
+    @State private var showQueueSheet = false
     @State private var artistRoute: MusicArtistRoute?
     @State private var albumRoute: MusicAlbumRoute?
     @State private var browseError: String?
@@ -97,9 +99,7 @@ private struct PlayerContent: View {
                 horizontalSizeClass: horizontalSizeClass
             )
             ZStack {
-                ProMixerStageBackground()
-                    .ignoresSafeArea()
-                    .opacity(0.92)
+                PlayerStageBackdrop(colorScheme: colorScheme)
 
                 PlayerGlassBackground(
                     visualizer: engine.visualizer,
@@ -136,6 +136,9 @@ private struct PlayerContent: View {
                 .environmentObject(ui)
                 .presentationDetents(UIDevice.current.userInterfaceIdiom == .pad ? [.large] : [.medium, .large])
         }
+        .sheet(isPresented: $showQueueSheet) {
+            PlaybackQueueSheet(engine: engine)
+        }
     }
 
     private func narrowPlayerLayout(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
@@ -154,6 +157,7 @@ private struct PlayerContent: View {
                         bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
                         compactMixer: layout.compactMixer,
                         queueLabel: engine.queuePositionLabel,
+                        onQueueTap: { showQueueSheet = true },
                         onServer: app.isOnServer(track.url) || track.isOnServer,
                         effectsActive: effectsActive,
                         preset: preset,
@@ -196,6 +200,7 @@ private struct PlayerContent: View {
                     bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
                     compactMixer: layout.compactMixer,
                     queueLabel: engine.queuePositionLabel,
+                    onQueueTap: { showQueueSheet = true },
                     onServer: app.isOnServer(track.url) || track.isOnServer,
                     effectsActive: effectsActive,
                     preset: preset,
@@ -311,12 +316,23 @@ private struct PlayerContent: View {
                     .background(.ultraThinMaterial, in: Circle())
             }
             Spacer()
-            Text(engine.queuePositionLabel)
-                .font(.caption.weight(.semibold))
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showQueueSheet = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "list.bullet")
+                        .font(.caption2.weight(.semibold))
+                    Text(engine.queuePositionLabel)
+                        .font(EOSTypography.monoDigit)
+                }
                 .foregroundStyle(EOSTheme.textMuted)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(.ultraThinMaterial, in: Capsule())
+            }
+            .buttonStyle(EOSPressableStyle())
+            .accessibilityLabel("Kolejka odtwarzania, \(engine.queuePositionLabel)")
             Spacer()
             Button {
                 showEffectsSheet = true
@@ -1792,6 +1808,37 @@ private struct SafeStrobeOverlay: View {
         }
         .onChange(of: isPlaying) { _, playing in
             if !playing { flash = 0 }
+        }
+    }
+}
+
+/// Tło pełnego playera — jasny motyw: systemowe tło + delikatna poświata; ciemny: studio rack.
+private struct PlayerStageBackdrop: View {
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        ZStack {
+            if colorScheme == .dark {
+                ProMixerStageBackground()
+                    .ignoresSafeArea()
+                    .opacity(0.92)
+            } else {
+                EOSTheme.background.ignoresSafeArea()
+                RadialGradient(
+                    colors: [EOSTheme.accentSecondary.opacity(0.08), .clear],
+                    center: .topLeading,
+                    startRadius: 0,
+                    endRadius: 420
+                )
+                .ignoresSafeArea()
+                RadialGradient(
+                    colors: [EOSTheme.accent.opacity(0.06), .clear],
+                    center: .bottomTrailing,
+                    startRadius: 0,
+                    endRadius: 360
+                )
+                .ignoresSafeArea()
+            }
         }
     }
 }

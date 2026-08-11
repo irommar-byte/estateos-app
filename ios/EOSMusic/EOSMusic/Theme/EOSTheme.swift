@@ -10,12 +10,49 @@ enum EOSTheme {
     static let textPrimary = Color.primary
     static let textSecondary = Color.secondary
     static let textMuted = Color(uiColor: .tertiaryLabel)
+    static let statusOnline = Color(uiColor: .systemGreen)
+    static let statusOffline = Color(uiColor: .systemRed)
 
     static let gradient = LinearGradient(
         colors: [accent, accentSecondary],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
+}
+
+/// Spójna typografia w stylu Apple Music — zaokrąglone nagłówki, czytelne metadane.
+enum EOSTypography {
+    static func configureGlobalAppearance() {
+        let navBar = UINavigationBar.appearance()
+        navBar.largeTitleTextAttributes = [
+            .font: UIFont.systemFont(ofSize: 34, weight: .bold),
+            .kern: 0.2
+        ]
+        navBar.titleTextAttributes = [
+            .font: UIFont.systemFont(ofSize: 17, weight: .semibold)
+        ]
+
+        let tabBar = UITabBarItem.appearance()
+        tabBar.setTitleTextAttributes([
+            .font: UIFont.systemFont(ofSize: 10, weight: .semibold)
+        ], for: .normal)
+    }
+
+    static var largeTitle: Font { .system(.largeTitle, design: .rounded, weight: .bold) }
+    static var title: Font { .system(.title2, design: .rounded, weight: .bold) }
+    static var title3: Font { .system(.title3, design: .rounded, weight: .semibold) }
+    static var headline: Font { .system(.headline, design: .default, weight: .semibold) }
+    static var body: Font { .system(.body, design: .default, weight: .regular) }
+    static var bodySemibold: Font { .system(.body, design: .default, weight: .semibold) }
+    static var callout: Font { .system(.callout, design: .default, weight: .regular) }
+    static var subheadline: Font { .system(.subheadline, design: .default, weight: .medium) }
+    static var footnote: Font { .system(.footnote, design: .default, weight: .regular) }
+    static var caption: Font { .system(.caption, design: .default, weight: .medium) }
+    static var captionBold: Font { .system(.caption, design: .default, weight: .bold) }
+    static var caption2Medium: Font { .system(.caption2, design: .default, weight: .medium) }
+    static var microLabel: Font { .system(size: 10, weight: .medium) }
+    static var sectionLabel: Font { .system(.caption, design: .default, weight: .bold) }
+    static var monoDigit: Font { .system(.caption, design: .monospaced, weight: .semibold) }
 }
 
 enum EOSMotion {

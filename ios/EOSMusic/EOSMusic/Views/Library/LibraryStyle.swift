@@ -248,7 +248,7 @@ enum LibraryData {
 
     static func search(query: String, folders: [MusicFolder], tracks: [MusicTrack]) -> LibrarySearchResults {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard needle.count >= 2 else { return .empty }
+        guard needle.count >= 1 else { return .empty }
 
         let matchingTracks = tracks.filter { track in
             matches(needle, track.title)
@@ -289,6 +289,110 @@ enum LibraryData {
     private static func matches(_ query: String, _ value: String?) -> Bool {
         guard let value else { return false }
         return value.localizedCaseInsensitiveContains(query)
+    }
+
+    /// Błyskawiczne podpowiedzi z biblioteki (1+ znak) — jak Apple Music.
+    static func quickSuggestions(
+        query: String,
+        folders: [MusicFolder],
+        tracks: [MusicTrack],
+        limit: Int = 12
+    ) -> [SearchSuggestion] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return [] }
+
+        var seen = Set<String>()
+        var results: [SearchSuggestion] = []
+
+        func append(_ suggestion: SearchSuggestion) {
+            guard seen.insert(suggestion.id).inserted else { return }
+            guard results.count < limit else { return }
+            results.append(suggestion)
+        }
+
+        for folder in folders where prefixMatch(needle, folder.name) {
+            append(SearchSuggestion(
+                id: "pl-\(folder.id)",
+                title: folder.name,
+                subtitle: folder.countLabel,
+                icon: "music.note.list",
+                kind: .playlist
+            ))
+        }
+
+        for group in artistGroups(from: tracks) where prefixMatch(needle, group.name) {
+            append(SearchSuggestion(
+                id: "ar-\(group.id)",
+                title: group.name,
+                subtitle: "\(group.trackCount) utw.",
+                icon: "person.fill",
+                kind: .artist
+            ))
+        }
+
+        for group in albumGroups(from: tracks) where prefixMatch(needle, group.title) || prefixMatch(needle, group.artist) {
+            append(SearchSuggestion(
+                id: "al-\(group.id)",
+                title: group.title,
+                subtitle: group.artist,
+                icon: "square.stack.fill",
+                kind: .album
+            ))
+        }
+
+        for track in tracks where prefixMatch(needle, track.title) || prefixMatch(needle, track.artist) {
+            append(SearchSuggestion(
+                id: "tr-\(track.url)",
+                title: track.title,
+                subtitle: track.artist,
+                icon: "music.note",
+                kind: .song
+            ))
+        }
+
+        return results
+    }
+
+    private static func prefixMatch(_ query: String, _ value: String?) -> Bool {
+        guard let value else { return false }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        return trimmed.localizedCaseInsensitiveContains(query)
+    }
+}
+
+struct SearchSuggestion: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let subtitle: String?
+    let icon: String
+    let kind: Kind
+
+    enum Kind: String, Hashable {
+        case artist, album, song, playlist, recent
+    }
+}
+
+enum SearchRecentStore {
+    private static let key = "eos.search.recent"
+    private static let maxCount = 8
+
+    static func load() -> [String] {
+        UserDefaults.standard.stringArray(forKey: key) ?? []
+    }
+
+    static func remember(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { return }
+        var items = load().filter { $0.compare(trimmed, options: .caseInsensitive) != .orderedSame }
+        items.insert(trimmed, at: 0)
+        UserDefaults.standard.set(Array(items.prefix(maxCount)), forKey: key)
+    }
+
+    static func remove(_ query: String) {
+        var items = load()
+        items.removeAll { $0.compare(query, options: .caseInsensitive) == .orderedSame }
+        UserDefaults.standard.set(items, forKey: key)
     }
 }
 

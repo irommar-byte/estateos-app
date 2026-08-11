@@ -86,6 +86,9 @@ final class NowPlayingCenter {
         isPlaying: Bool,
         queueIndex: Int,
         queueCount: Int,
+        collectionTitle: String? = nil,
+        repeatMode: RepeatMode = .off,
+        shuffleEnabled: Bool = false,
         supplemental: SupplementalMetadata? = nil,
         force: Bool = false
     ) {
@@ -118,15 +121,25 @@ final class NowPlayingCenter {
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
 
-        if let artist = resolvedText(supplemental?.artist, fallback: track.artist) {
-            info[MPMediaItemPropertyArtist] = artist
-        } else {
-            info.removeValue(forKey: MPMediaItemPropertyArtist)
-        }
-        if let album = resolvedText(supplemental?.album, fallback: track.album) {
+        if let collectionTitle, !collectionTitle.isEmpty {
+            info[MPMediaItemPropertyAlbumTitle] = collectionTitle
+        } else if let album = resolvedText(supplemental?.album, fallback: track.album) {
             info[MPMediaItemPropertyAlbumTitle] = album
         } else {
             info.removeValue(forKey: MPMediaItemPropertyAlbumTitle)
+        }
+
+        if let artist = resolvedText(supplemental?.artist, fallback: track.artist) {
+            var artistLine = artist
+            if shuffleEnabled { artistLine += " · losowo" }
+            if repeatMode == .one {
+                artistLine += " · powtórz utwór"
+            } else if repeatMode == .all {
+                artistLine += " · powtórz listę"
+            }
+            info[MPMediaItemPropertyArtist] = artistLine
+        } else {
+            info.removeValue(forKey: MPMediaItemPropertyArtist)
         }
         if duration > 0 {
             info[MPMediaItemPropertyPlaybackDuration] = duration

@@ -65,12 +65,14 @@ final class MusicPlaybackService: ObservableObject {
         )
         newEngine.offlineOnly = offlineOnly
         engine = newEngine
+        BluetoothMediaBrowser.shared.attach(engine: newEngine)
         await newEngine.start()
     }
 
     func stop() {
         engine?.stop()
         engine = nil
+        BluetoothMediaBrowser.shared.attach(engine: nil)
         teardownHandler?()
         teardownHandler = nil
     }

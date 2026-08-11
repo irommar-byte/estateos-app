@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Airplane (Offline, red) ↔ Wi‑Fi (Online + connected, green) with iPhone-like fly-away / cascade.
+/// Wi‑Fi statyczne gdy połączenie OK · animacja tylko przy sync / pobieraniu / szukaniu.
 struct OnlineOfflineModeGlyph: View {
     let isOffline: Bool
     let networkOnline: Bool
+    var isBusy: Bool = false
     var size: CGFloat = 18
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -12,14 +13,17 @@ struct OnlineOfflineModeGlyph: View {
     private var wifiSymbol: String { networkOnline ? "wifi" : "wifi.slash" }
     private var wifiColor: Color {
         if !networkOnline { return EOSTheme.accent }
-        return Color.green
+        return EOSTheme.statusOnline
+    }
+    private var shouldAnimateWifi: Bool {
+        !showsAirplane && networkOnline && isBusy && !reduceMotion
     }
 
     var body: some View {
         ZStack {
             Image(systemName: "airplane")
                 .font(.system(size: size, weight: .semibold))
-                .foregroundStyle(Color.red)
+                .foregroundStyle(EOSTheme.statusOffline)
                 .opacity(showsAirplane ? 1 : 0)
                 .offset(
                     x: showsAirplane || reduceMotion ? 0 : 26,
@@ -36,12 +40,21 @@ struct OnlineOfflineModeGlyph: View {
                 .symbolEffect(
                     .variableColor.iterative.reversing,
                     options: .speed(0.85),
-                    isActive: !showsAirplane && networkOnline && !reduceMotion
+                    isActive: shouldAnimateWifi
                 )
+                .symbolEffect(.pulse, options: .speed(0.5), isActive: shouldAnimateWifi)
         }
         .frame(width: size + 6, height: size + 4)
-        .accessibilityHidden(true)
+        .accessibilityLabel(accessibilityText)
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.48, dampingFraction: 0.78), value: showsAirplane)
         .animation(.easeInOut(duration: 0.25), value: networkOnline)
+        .animation(.easeInOut(duration: 0.2), value: isBusy)
+    }
+
+    private var accessibilityText: String {
+        if showsAirplane { return "Tryb offline" }
+        if !networkOnline { return "Brak sieci" }
+        if isBusy { return "Połączono — synchronizacja w toku" }
+        return "Połączono z siecią"
     }
 }

@@ -20,7 +20,9 @@ struct SearchCatalogView: View {
     @State private var query = ""
     @State private var catalogResults: MusicCatalogSearchResponse?
     @State private var libraryResults = LibrarySearchResults.empty
-    @State private var isSearching = false
+    @State private var instantSuggestions: [SearchSuggestion] = []
+    @State private var recentQueries: [String] = []
+    @State private var isSearchingCatalog = false
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
     @State private var sharePayload: LibrarySharePayload?
@@ -37,52 +39,34 @@ struct SearchCatalogView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    if app.isOfflinePlaybackActive {
-                        Label("Szukaj tylko w pobranych (Offline)", systemImage: "airplane")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(EOSTheme.accent)
-                            .padding(.top, 4)
-                    } else {
+                VStack(alignment: .leading, spacing: 18) {
+                    searchStatusStrip
+
+                    if !app.isOfflinePlaybackActive {
                         Picker("Zakres", selection: $scope) {
                             ForEach(SearchScope.allCases) { item in
                                 Text(item.title).tag(item)
                             }
                         }
                         .pickerStyle(.segmented)
-                        .padding(.top, 4)
                     }
 
-                    if isSearching {
-                        ProgressView("Szukam…")
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 40)
-                    } else if hasResults {
-                        if effectiveScope == .catalog, let catalogResults {
-                            catalogContent(catalogResults)
-                        } else if effectiveScope == .library {
-                            libraryContent(libraryResults)
-                        }
-                    } else if submittedQuery != nil {
-                        ContentUnavailableView(
-                            "Brak wyników",
-                            systemImage: "magnifyingglass",
-                            description: Text("Spróbuj innej frazy w „\(scope.title)”")
-                        )
-                        .padding(.top, 32)
-                    } else {
-                        ContentUnavailableView(
-                            scope == .catalog ? "Cała Muzyka" : "Moja Biblioteka",
-                            systemImage: scope == .catalog ? "music.note.list" : "books.vertical",
-                            description: Text(scope == .catalog
-                                ? "Wpisz wykonawcę, album lub utwór z katalogu Apple Music."
-                                : "Szukaj w playlistach, wykonawcach, albumach i utworach.")
-                        )
-                        .padding(.top, 32)
+                    if !trimmedQuery.isEmpty {
+                        suggestionsSection
+                    } else if !recentQueries.isEmpty {
+                        recentSection
                     }
+
+                    if isSearchingCatalog && effectiveScope == .catalog && !app.isOfflinePlaybackActive {
+                        catalogLoadingStrip
+                    }
+
+                    resultsBody
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
+                .animation(EOSMotion.soft, value: trimmedQuery)
+                .animation(EOSMotion.soft, value: isSearchingCatalog)
             }
             .background(EOSAmbientBackground())
             .eosScrollClearance()
@@ -91,21 +75,19 @@ struct SearchCatalogView: View {
                 text: $query,
                 prompt: app.isOfflinePlaybackActive
                     ? "Szukaj w pobranych…"
-                    : (scope == .library ? "Szukaj w bibliotece…" : "Wykonawca, album, utwór…")
+                    : (scope == .library ? "W bibliotece, wykonawca, album…" : "Apple Music, wykonawca, album…")
             )
-            .onSubmit(of: .search) { scheduleSearch(immediate: true) }
-            .onChange(of: query) { _, _ in scheduleSearch(immediate: false) }
-            .onChange(of: scope) { _, _ in
-                catalogResults = nil
-                libraryResults = .empty
+            .onSubmit(of: .search) {
                 scheduleSearch(immediate: true)
+                if let q = submittedQuery { SearchRecentStore.remember(q) }
             }
+            .onChange(of: query) { _, _ in refreshInstantContent() }
+            .onChange(of: scope) { _, _ in resetAndSearch() }
             .onChange(of: app.isOfflinePlaybackActive) { _, offline in
                 if offline { scope = .library }
-                catalogResults = nil
-                libraryResults = .empty
-                scheduleSearch(immediate: true)
+                resetAndSearch()
             }
+            .onAppear { recentQueries = SearchRecentStore.load() }
             .sheet(item: $sharePayload) { payload in
                 ActivityView(activityItems: payload.items)
             }
@@ -117,34 +99,145 @@ struct SearchCatalogView: View {
         }
     }
 
-    private var submittedQuery: String? {
-        let q = query.trimmingCharacters(in: .whitespaces)
-        return q.count >= 2 ? q : nil
+    // MARK: - Status & banners
+
+    @ViewBuilder
+    private var searchStatusStrip: some View {
+        if app.isOfflinePlaybackActive {
+            HStack(spacing: 8) {
+                Image(systemName: "airplane")
+                    .foregroundStyle(EOSTheme.statusOffline)
+                Text("Offline · szukasz tylko w pobranych utworach")
+                    .font(EOSTypography.caption)
+                    .foregroundStyle(EOSTheme.textSecondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(EOSTheme.statusOffline.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        } else if !app.network.isOnline {
+            HStack(spacing: 8) {
+                Image(systemName: "wifi.slash")
+                    .foregroundStyle(EOSTheme.accent)
+                Text("Brak sieci · włącz Offline albo poczekaj na połączenie")
+                    .font(EOSTypography.caption)
+                    .foregroundStyle(EOSTheme.textSecondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(EOSTheme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        } else if isSearchingCatalog {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Szukam w Apple Music…")
+                    .font(EOSTypography.caption)
+                    .foregroundStyle(EOSTheme.textSecondary)
+            }
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
     }
 
-    private var effectiveScope: SearchScope {
-        app.isOfflinePlaybackActive ? .library : scope
+    private var catalogLoadingStrip: some View {
+        VStack(spacing: 6) {
+            ProgressView()
+                .tint(EOSTheme.accent)
+            Text("Odświeżam katalog online…")
+                .font(EOSTypography.caption)
+                .foregroundStyle(EOSTheme.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
     }
 
-    private var hasResults: Bool {
-        switch effectiveScope {
-        case .catalog:
-            return catalogResults != nil && !app.isOfflinePlaybackActive
-        case .library:
-            return submittedQuery != nil && !libraryResults.isEmpty
+    // MARK: - Suggestions & recent
+
+    @ViewBuilder
+    private var suggestionsSection: some View {
+        if !instantSuggestions.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("PODPOWIEDZI")
+                    .font(EOSTypography.sectionLabel)
+                    .foregroundStyle(EOSTheme.textMuted)
+                    .tracking(1.1)
+
+                FlowSuggestionGrid(suggestions: instantSuggestions) { suggestion in
+                    query = suggestion.title
+                    scheduleSearch(immediate: true)
+                }
+            }
+            .transition(.opacity.combined(with: .scale(scale: 0.98)))
         }
     }
 
     @ViewBuilder
-    private func catalogContent(_ data: MusicCatalogSearchResponse) -> some View {
-        if data.artists.isEmpty && data.albums.isEmpty && data.songs.isEmpty {
+    private var recentSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("OSTATNIE")
+                .font(EOSTypography.sectionLabel)
+                .foregroundStyle(EOSTheme.textMuted)
+                .tracking(1.1)
+
+            FlowSuggestionGrid(
+                suggestions: recentQueries.map {
+                    SearchSuggestion(id: "recent-\($0)", title: $0, subtitle: nil, icon: "clock.arrow.circlepath", kind: .recent)
+                }
+            ) { suggestion in
+                query = suggestion.title
+                scheduleSearch(immediate: true)
+            }
+        }
+    }
+
+    // MARK: - Results
+
+    @ViewBuilder
+    private var resultsBody: some View {
+        if hasResults {
+            if effectiveScope == .catalog, let catalogResults, !app.isOfflinePlaybackActive {
+                if !instantLibraryResults.isEmpty {
+                    sectionHeader("W twojej bibliotece")
+                    libraryContent(instantLibraryResults, compact: true)
+                        .padding(.bottom, 8)
+                }
+                catalogContent(catalogResults)
+            } else if effectiveScope == .library || app.isOfflinePlaybackActive {
+                libraryContent(libraryResults, compact: false)
+            }
+        } else if submittedQuery != nil {
             ContentUnavailableView(
                 "Brak wyników",
                 systemImage: "magnifyingglass",
-                description: Text("Spróbuj innej frazy w Apple Music.")
+                description: Text("Spróbuj innej frazy dla „\(submittedQuery ?? "")”")
             )
-            .frame(maxWidth: .infinity)
-            .padding(.top, 24)
+            .padding(.top, 28)
+        } else if trimmedQuery.isEmpty {
+            ContentUnavailableView(
+                scope == .catalog ? "Cała Muzyka" : "Moja Biblioteka",
+                systemImage: scope == .catalog ? "music.note.list" : "books.vertical",
+                description: Text(scope == .catalog
+                    ? "Wpisz 2–3 litery — podpowiedzi i wyniki pojawią się od razu."
+                    : "Szukaj w playlistach, wykonawcach, albumach i utworach.")
+            )
+            .padding(.top, 28)
+        }
+    }
+
+    // MARK: - Catalog / library sections (unchanged structure, refined type)
+
+    @ViewBuilder
+    private func catalogContent(_ data: MusicCatalogSearchResponse) -> some View {
+        if data.artists.isEmpty && data.albums.isEmpty && data.songs.isEmpty {
+            if instantLibraryResults.isEmpty {
+                ContentUnavailableView(
+                    "Brak w Apple Music",
+                    systemImage: "magnifyingglass",
+                    description: Text("Spróbuj innej frazy.")
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.top, 16)
+            }
         } else {
             if !data.artists.isEmpty {
                 sectionHeader("Wykonawcy")
@@ -193,11 +286,13 @@ struct SearchCatalogView: View {
     }
 
     @ViewBuilder
-    private func libraryContent(_ data: LibrarySearchResults) -> some View {
-        if !data.playlists.isEmpty {
+    private func libraryContent(_ data: LibrarySearchResults, compact: Bool) -> some View {
+        if data.isEmpty && compact {
+            EmptyView()
+        } else if !data.playlists.isEmpty {
             sectionHeader("Playlisty")
             VStack(spacing: 0) {
-                ForEach(Array(data.playlists.prefix(12).enumerated()), id: \.element.id) { index, folder in
+                ForEach(Array(data.playlists.prefix(compact ? 4 : 12).enumerated()), id: \.element.id) { index, folder in
                     NavigationLink {
                         FolderDetailView(folder: folder)
                     } label: {
@@ -209,22 +304,22 @@ struct SearchCatalogView: View {
                             )
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(folder.name)
-                                    .font(.subheadline.weight(.semibold))
+                                    .font(EOSTypography.bodySemibold)
                                     .foregroundStyle(EOSTheme.textPrimary)
                                     .lineLimit(1)
                                 Text(folder.countLabel)
-                                    .font(.caption)
+                                    .font(EOSTypography.caption)
                                     .foregroundStyle(EOSTheme.textSecondary)
                             }
                             Spacer(minLength: 0)
                             Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
+                                .font(EOSTypography.captionBold)
                                 .foregroundStyle(EOSTheme.textMuted)
                         }
                         .padding(.vertical, 8)
                     }
                     .buttonStyle(.plain)
-                    if index < min(11, data.playlists.count - 1) {
+                    if index < min(compact ? 3 : 11, data.playlists.count - 1) {
                         Divider().opacity(0.2)
                     }
                 }
@@ -236,14 +331,14 @@ struct SearchCatalogView: View {
         if !data.artists.isEmpty {
             sectionHeader("Wykonawcy")
             VStack(spacing: 0) {
-                ForEach(Array(data.artists.prefix(12).enumerated()), id: \.element.id) { index, artist in
+                ForEach(Array(data.artists.prefix(compact ? 4 : 12).enumerated()), id: \.element.id) { index, artist in
                     NavigationLink {
                         ArtistBrowseDestination(artistId: artist.artistId, artistName: artist.name)
                     } label: {
                         libraryArtistRow(artist)
                     }
                     .buttonStyle(.plain)
-                    if index < min(11, data.artists.count - 1) {
+                    if index < min(compact ? 3 : 11, data.artists.count - 1) {
                         Divider().opacity(0.2)
                     }
                 }
@@ -252,7 +347,7 @@ struct SearchCatalogView: View {
             .eosCard()
         }
 
-        if !data.albums.isEmpty {
+        if !data.albums.isEmpty && !compact {
             sectionHeader("Albumy")
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
                 ForEach(data.albums.prefix(12)) { album in
@@ -273,7 +368,7 @@ struct SearchCatalogView: View {
         if !data.songs.isEmpty {
             sectionHeader("Utwory")
             VStack(spacing: 0) {
-                ForEach(Array(data.songs.prefix(20).enumerated()), id: \.element.url) { index, track in
+                ForEach(Array(data.songs.prefix(compact ? 6 : 20).enumerated()), id: \.element.url) { index, track in
                     Button {
                         Task { await playLibraryTrack(track, in: data.songs) }
                     } label: {
@@ -291,32 +386,7 @@ struct SearchCatalogView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .contextMenu {
-                        Button {
-                            Task { await playLibraryTrack(track, in: data.songs) }
-                        } label: {
-                            Label("Odtwórz", systemImage: "play.fill")
-                        }
-                        Button {
-                            let text: String = {
-                                if let artist = track.artist, !artist.isEmpty {
-                                    return "\(track.title) — \(artist)"
-                                }
-                                return track.title
-                            }()
-                            sharePayload = LibrarySharePayload(items: [text])
-                        } label: {
-                            Label("Udostępnij", systemImage: "square.and.arrow.up")
-                        }
-                        if let local = OfflineMusicStore.shared.localURL(for: track.url) {
-                            Button {
-                                sharePayload = LibrarySharePayload(items: [local])
-                            } label: {
-                                Label("Wyślij plik", systemImage: "paperplane")
-                            }
-                        }
-                    }
-                    if index < min(19, data.songs.count - 1) {
+                    if index < min(compact ? 5 : 19, data.songs.count - 1) {
                         Divider().opacity(0.2)
                     }
                 }
@@ -329,14 +399,14 @@ struct SearchCatalogView: View {
     private func libraryArtistRow(_ artist: LibraryArtistGroup) -> some View {
         HStack {
             Text(artist.name)
-                .font(.subheadline.weight(.semibold))
+                .font(EOSTypography.bodySemibold)
                 .foregroundStyle(EOSTheme.textPrimary)
             Spacer()
             Text("\(artist.trackCount)")
-                .font(.caption)
+                .font(EOSTypography.caption)
                 .foregroundStyle(EOSTheme.textSecondary)
             Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
+                .font(EOSTypography.captionBold)
                 .foregroundStyle(EOSTheme.textMuted)
         }
         .padding(.vertical, 8)
@@ -344,56 +414,136 @@ struct SearchCatalogView: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title.uppercased())
-            .font(.caption.weight(.bold))
+            .font(EOSTypography.sectionLabel)
             .foregroundStyle(EOSTheme.textMuted)
             .tracking(1.2)
+            .padding(.top, 4)
+    }
+
+    // MARK: - Search logic
+
+    private var trimmedQuery: String {
+        query.trimmingCharacters(in: .whitespaces)
+    }
+
+    private var submittedQuery: String? {
+        trimmedQuery.count >= minQueryLength ? trimmedQuery : nil
+    }
+
+    private var minQueryLength: Int {
+        effectiveScope == .library || app.isOfflinePlaybackActive ? 1 : 2
+    }
+
+    private var effectiveScope: SearchScope {
+        app.isOfflinePlaybackActive ? .library : scope
+    }
+
+    private var instantLibraryResults: LibrarySearchResults {
+        guard trimmedQuery.count >= 1 else { return .empty }
+        return LibraryData.search(
+            query: trimmedQuery,
+            folders: app.libraryFoldersForBrowsing,
+            tracks: app.libraryTracksForBrowsing
+        )
+    }
+
+    private var hasResults: Bool {
+        switch effectiveScope {
+        case .catalog:
+            if app.isOfflinePlaybackActive { return submittedQuery != nil && !libraryResults.isEmpty }
+            return (catalogResults != nil && !(catalogResults?.artists.isEmpty == true && catalogResults?.albums.isEmpty == true && catalogResults?.songs.isEmpty == true))
+                || !instantLibraryResults.isEmpty
+        case .library:
+            return submittedQuery != nil && !libraryResults.isEmpty
+        }
+    }
+
+    private func resetAndSearch() {
+        catalogResults = nil
+        libraryResults = .empty
+        scheduleSearch(immediate: true)
+    }
+
+    private func refreshInstantContent() {
+        let q = trimmedQuery
+        instantSuggestions = LibraryData.quickSuggestions(
+            query: q,
+            folders: app.libraryFoldersForBrowsing,
+            tracks: app.libraryTracksForBrowsing
+        )
+
+        if q.count >= 1 {
+            libraryResults = instantLibraryResults
+        } else {
+            libraryResults = .empty
+            catalogResults = nil
+        }
+
+        scheduleSearch(immediate: false)
     }
 
     private func scheduleSearch(immediate: Bool) {
         searchTask?.cancel()
-        let q = query.trimmingCharacters(in: .whitespaces)
-        guard q.count >= 2 else {
+        let q = trimmedQuery
+        guard q.count >= minQueryLength else {
             catalogResults = nil
-            libraryResults = .empty
-            isSearching = false
+            if q.isEmpty { libraryResults = .empty }
+            isSearchingCatalog = false
+            app.isCatalogSearching = false
+            return
+        }
+
+        if effectiveScope == .library || app.isOfflinePlaybackActive {
+            libraryResults = LibraryData.search(
+                query: q,
+                folders: app.libraryFoldersForBrowsing,
+                tracks: app.libraryTracksForBrowsing
+            )
+            isSearchingCatalog = false
+            app.isCatalogSearching = false
             return
         }
 
         searchTask = Task {
             if !immediate {
-                try? await Task.sleep(nanoseconds: 350_000_000)
+                try? await Task.sleep(nanoseconds: 220_000_000)
             }
             guard !Task.isCancelled else { return }
-            await search(query: q)
+            await searchCatalog(query: q)
         }
     }
 
-    private func search(query: String) async {
-        isSearching = true
-        defer { isSearching = false }
-
-        let effectiveScope: SearchScope = app.isOfflinePlaybackActive ? .library : scope
-        if app.isOfflinePlaybackActive, scope != .library {
-            scope = .library
-        }
-
-        switch effectiveScope {
-        case .catalog:
-            do {
-                catalogResults = try await app.api.searchMusicCatalog(query: query)
-                libraryResults = .empty
-            } catch {
-                if !Task.isCancelled {
-                    errorMessage = error.localizedDescription
-                }
-            }
-        case .library:
-            catalogResults = nil
+    private func searchCatalog(query: String) async {
+        guard !app.isOfflinePlaybackActive, app.network.isOnline else {
             libraryResults = LibraryData.search(
                 query: query,
                 folders: app.libraryFoldersForBrowsing,
                 tracks: app.libraryTracksForBrowsing
             )
+            return
+        }
+
+        isSearchingCatalog = true
+        app.isCatalogSearching = true
+        defer {
+            isSearchingCatalog = false
+            app.isCatalogSearching = false
+        }
+
+        libraryResults = LibraryData.search(
+            query: query,
+            folders: app.libraryFoldersForBrowsing,
+            tracks: app.libraryTracksForBrowsing
+        )
+
+        do {
+            catalogResults = try await app.api.searchMusicCatalog(query: query)
+            SearchRecentStore.remember(query)
+            recentQueries = SearchRecentStore.load()
+        } catch {
+            if !Task.isCancelled {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -401,6 +551,52 @@ struct SearchCatalogView: View {
         guard let index = queue.firstIndex(where: { $0.url == track.url }) else { return }
         let folder = app.musicFolders.first(where: { $0.id == track.folderId })
         await app.playTracks(queue, startIndex: index, folder: folder)
+    }
+}
+
+// MARK: - Suggestion chips
+
+private struct FlowSuggestionGrid: View {
+    let suggestions: [SearchSuggestion]
+    var onSelect: (SearchSuggestion) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(suggestions) { item in
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onSelect(item)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: item.icon)
+                                .font(EOSTypography.captionBold)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(item.title)
+                                    .font(EOSTypography.captionBold)
+                                    .lineLimit(1)
+                                if let subtitle = item.subtitle, !subtitle.isEmpty {
+                                    Text(subtitle)
+                                        .font(EOSTypography.microLabel)
+                                        .foregroundStyle(EOSTheme.textMuted)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                        .foregroundStyle(EOSTheme.textPrimary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .stroke(EOSTheme.cardBorder.opacity(0.6), lineWidth: 0.5)
+                        }
+                    }
+                    .buttonStyle(EOSPressableStyle())
+                }
+            }
+            .padding(.vertical, 2)
+        }
     }
 }
 
@@ -416,7 +612,7 @@ private struct ArtistChip: View {
         VStack(spacing: 8) {
             ArtworkImage(url: artist.thumbnail.flatMap(URL.init(string:)), size: 72, cornerRadius: 36)
             Text(artist.name)
-                .font(.caption.weight(.semibold))
+                .font(EOSTypography.captionBold)
                 .foregroundStyle(EOSTheme.textPrimary)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
@@ -432,11 +628,11 @@ private struct AlbumGridCell: View {
         VStack(alignment: .leading, spacing: 6) {
             ArtworkImage(url: album.thumbnail.flatMap(URL.init(string:)), size: 140, cornerRadius: 10)
             Text(album.title)
-                .font(.caption.weight(.semibold))
+                .font(EOSTypography.captionBold)
                 .foregroundStyle(EOSTheme.textPrimary)
                 .lineLimit(2)
             Text([album.artist, album.releaseYear].compactMap { $0 }.joined(separator: " · "))
-                .font(.caption2)
+                .font(EOSTypography.caption2Medium)
                 .foregroundStyle(EOSTheme.textSecondary)
                 .lineLimit(1)
         }
@@ -450,11 +646,11 @@ private struct LibraryAlbumGridCell: View {
         VStack(alignment: .leading, spacing: 6) {
             ArtworkImage(url: group.artworkURL, size: 140, cornerRadius: 10)
             Text(group.title)
-                .font(.caption.weight(.semibold))
+                .font(EOSTypography.captionBold)
                 .foregroundStyle(EOSTheme.textPrimary)
                 .lineLimit(2)
             Text([group.artist, "\(group.trackCount) utw."].compactMap { $0 }.joined(separator: " · "))
-                .font(.caption2)
+                .font(EOSTypography.caption2Medium)
                 .foregroundStyle(EOSTheme.textSecondary)
                 .lineLimit(1)
         }

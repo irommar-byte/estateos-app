@@ -40,6 +40,7 @@ struct EOSMusicApp: App {
                 }
                 .onAppear {
                     AppDocuments.ensureStructure()
+                    BluetoothMediaBrowser.shared.activate()
                     UIApplication.shared.beginReceivingRemoteControlEvents()
                     AudioSession.activateForPlayback()
                 }

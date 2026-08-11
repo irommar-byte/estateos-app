@@ -45,6 +45,16 @@ final class AppModel: ObservableObject {
         )
     }
 
+    /// Sync / pobieranie / wyszukiwanie katalogu — animacja Wi‑Fi w pasku Online.
+    @Published var isCatalogSearching = false
+
+    var isNetworkBusy: Bool {
+        isLibraryLoading
+            || isCatalogSearching
+            || downloads.bulkServerQueue != nil
+            || MusicDownloadService.hasActiveDownloads
+    }
+
     var downloadedLibraryTracks: [MusicTrack] {
         LibraryData.allLocalDownloads(from: musicTracks) { isOfflineAvailable($0) }
     }

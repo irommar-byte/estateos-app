@@ -24,6 +24,25 @@ enum RepeatMode: String, CaseIterable {
         case .one: return "repeat.1"
         }
     }
+
+    var queueHint: String {
+        switch self {
+        case .off: return "Po ostatnim utworze odtwarzanie się zatrzyma."
+        case .all: return "Po ostatnim utworze wraca na początek listy."
+        case .one: return "Ten sam utwór odtwarza się w kółko."
+        }
+    }
+}
+
+/// One row in the visible playback order (respects shuffle).
+struct PlaybackQueueRow: Identifiable, Equatable {
+    let orderIndex: Int
+    let displayNumber: Int
+    let track: MusicPlaybackTrack
+    let isCurrent: Bool
+    let isPast: Bool
+
+    var id: String { "\(orderIndex)-\(track.id)" }
 }
 
 @MainActor
@@ -272,7 +291,11 @@ final class MusicPlaybackEngine: ObservableObject {
 
     private var queue: [MusicPlaybackTrack] = []
     private var playOrder: [Int] = []
-    private var orderCursor = 0
+    private var orderCursor = 0 {
+        didSet { currentQueueIndex = orderCursor }
+    }
+    /// Published mirror of `orderCursor` — drives queue UI without polling AVPlayer.
+    @Published private(set) var currentQueueIndex = 0
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
@@ -397,7 +420,32 @@ final class MusicPlaybackEngine: ObservableObject {
 
     var queuePositionLabel: String {
         guard !queue.isEmpty else { return "" }
-        return "\(orderCursor + 1) / \(queue.count)"
+        return "\(orderCursor + 1) / \(playOrder.count)"
+    }
+
+    /// Playlist / folder name when playback started from a collection.
+    var queueSourceTitle: String? {
+        guard let folderName, !folderName.isEmpty else { return nil }
+        return folderName
+    }
+
+    var playbackQueueRows: [PlaybackQueueRow] {
+        playOrder.enumerated().map { idx, queueIndex in
+            PlaybackQueueRow(
+                orderIndex: idx,
+                displayNumber: idx + 1,
+                track: queue[queueIndex],
+                isCurrent: idx == orderCursor,
+                isPast: idx < orderCursor
+            )
+        }
+    }
+
+    /// Jump to a specific position in the current play order (0-based).
+    func jumpToOrderIndex(_ index: Int) async {
+        guard index >= 0, index < playOrder.count else { return }
+        await playOrderIndex(index, generation: sessionGeneration)
+        BluetoothMediaBrowser.shared.reloadQueue(from: self)
     }
 
     func start() async {
@@ -510,6 +558,7 @@ final class MusicPlaybackEngine: ObservableObject {
         shuffleEnabled.toggle()
         let anchor = playOrder[safe: orderCursor] ?? 0
         rebuildPlayOrder(shuffled: shuffleEnabled, anchor: anchor)
+        BluetoothMediaBrowser.shared.reloadQueue(from: self)
     }
 
     func cycleRepeatMode() {
@@ -518,6 +567,7 @@ final class MusicPlaybackEngine: ObservableObject {
         case .all: repeatMode = .one
         case .one: repeatMode = .off
         }
+        BluetoothMediaBrowser.shared.reloadQueue(from: self)
     }
 
     private func rebuildPlayOrder(shuffled: Bool, anchor: Int) {
@@ -1270,10 +1320,14 @@ final class MusicPlaybackEngine: ObservableObject {
             elapsed: elapsed,
             isPlaying: isPlaying,
             queueIndex: orderCursor,
-            queueCount: queue.count,
+            queueCount: playOrder.count,
+            collectionTitle: queueSourceTitle,
+            repeatMode: repeatMode,
+            shuffleEnabled: shuffleEnabled,
             supplemental: supplementalNowPlayingMetadata,
             force: force
         )
+        BluetoothMediaBrowser.shared.reloadQueue(from: self)
     }
 
     private func hydratePlaybackMetadata(from item: AVPlayerItem, queueIndex: Int, generation: Int) async {

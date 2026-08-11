@@ -21,6 +21,7 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
     let bandCount: Int
     let compactMixer: Bool
     let queueLabel: String
+    var onQueueTap: (() -> Void)? = nil
     let onServer: Bool
     let effectsActive: Bool
     let preset: PlayerVisualPreset
@@ -38,6 +39,7 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
                 visualizer: visualizer,
                 isPlaying: isPlaying && !isLoading,
                 queueLabel: queueLabel,
+                onQueueTap: onQueueTap,
                 onServer: onServer,
                 drive: drive
             )
@@ -193,6 +195,7 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
     let bandCount: Int
     let compactMixer: Bool
     let queueLabel: String
+    var onQueueTap: (() -> Void)? = nil
     let onServer: Bool
     let effectsActive: Bool
     let preset: PlayerVisualPreset
@@ -210,6 +213,7 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                 visualizer: visualizer,
                 isPlaying: isPlaying && !isLoading,
                 queueLabel: queueLabel,
+                onQueueTap: onQueueTap,
                 onServer: onServer,
                 drive: drive
             )
@@ -471,6 +475,8 @@ private struct ProMixerChassis<Content: View>: View {
 
 /// Jednolite tło studia — player wygląda jak jedna obudowa, nie wklejka.
 struct ProMixerStageBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         RoundedRectangle(cornerRadius: 20, style: .continuous)
             .fill(
@@ -495,7 +501,7 @@ struct ProMixerStageBackground: View {
                         lineWidth: 1
                     )
             }
-            .shadow(color: .black.opacity(0.35), radius: 28, y: 16)
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.35 : 0.14), radius: colorScheme == .dark ? 28 : 18, y: colorScheme == .dark ? 16 : 10)
     }
 }
 
@@ -529,6 +535,7 @@ private struct ProMixerStatusRail: View {
     let visualizer: PlayerAudioVisualizer
     let isPlaying: Bool
     let queueLabel: String
+    var onQueueTap: (() -> Void)? = nil
     var onServer: Bool
     var drive: Double = 0.4
 
@@ -601,25 +608,49 @@ private struct ProMixerStatusRail: View {
         HStack(spacing: 8) {
             ProMixerLED(label: "▶", color: ProMixerDeckView.labelGreen, lit: isPlaying, blink: false, showsLabel: false)
             ProMixerLED(label: "EOS", color: EOSTheme.accent, lit: onServer, blink: onServer && beat > 0.4, showsLabel: false)
-            Text(queueLabel)
-                .font(.caption2.monospacedDigit().weight(.bold))
-                .foregroundStyle(ProMixerDeckView.labelGreen.opacity(0.85))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .layoutPriority(1)
+            queueControl(compact: true)
             Spacer(minLength: 4)
             ProMixerLED(label: "CLIP", color: ProMixerDeckView.labelRed, lit: clip, blink: clip, showsLabel: false)
         }
     }
 
+    @ViewBuilder
     private var queuePill: some View {
-        Text(queueLabel)
-            .font(.caption.monospacedDigit().weight(.bold))
-            .foregroundStyle(ProMixerDeckView.labelGreen.opacity(0.85))
-            .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
+        queueControl(compact: false)
+    }
+
+    @ViewBuilder
+    private func queueControl(compact: Bool) -> some View {
+        let label = Group {
+            if compact {
+                Text(queueLabel)
+                    .font(.caption2.monospacedDigit().weight(.bold))
+            } else {
+                Text(queueLabel)
+                    .font(.caption.monospacedDigit().weight(.bold))
+            }
+        }
+        .foregroundStyle(ProMixerDeckView.labelGreen.opacity(0.85))
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .padding(.horizontal, compact ? 6 : 10)
+        .padding(.vertical, compact ? 2 : 4)
+        .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
+
+        if let onQueueTap {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onQueueTap()
+            } label: {
+                label
+            }
+            .buttonStyle(.plain)
+            .layoutPriority(compact ? 1 : 0)
+            .accessibilityLabel("Kolejka odtwarzania, \(queueLabel)")
+        } else {
+            label
+                .layoutPriority(compact ? 1 : 0)
+        }
     }
 }
 

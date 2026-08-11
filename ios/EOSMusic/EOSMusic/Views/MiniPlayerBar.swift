@@ -221,6 +221,7 @@ private struct MiniPlayerContent: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ui: UIPreferences
     @Environment(\.colorScheme) private var colorScheme
+    @State private var showQueueSheet = false
 
     init(engine: MusicPlaybackEngine) {
         self.engine = engine
@@ -282,6 +283,20 @@ private struct MiniPlayerContent: View {
                     )
                 }
 
+                if engine.playbackQueueRows.count > 1 {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showQueueSheet = true
+                    } label: {
+                        Text(engine.queuePositionLabel)
+                            .font(EOSTypography.monoDigit)
+                            .foregroundStyle(EOSTheme.textSecondary)
+                            .frame(minWidth: 36, minHeight: 36)
+                    }
+                    .buttonStyle(EOSPressableStyle())
+                    .accessibilityLabel("Kolejka, \(engine.queuePositionLabel)")
+                }
+
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     engine.togglePlayPause()
@@ -333,6 +348,9 @@ private struct MiniPlayerContent: View {
                 RoundedRectangle(cornerRadius: EOSLayout.miniPlayerCorner, style: .continuous)
                     .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.14 : 0.06), lineWidth: 0.5)
             )
+            .sheet(isPresented: $showQueueSheet) {
+                PlaybackQueueSheet(engine: engine)
+            }
         }
     }
 }

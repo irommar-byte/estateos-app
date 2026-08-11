@@ -30,6 +30,7 @@
 		56FE5B885AE349599CF27897 /* VideoThumbnailGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F124C6F8CC64A72BD27BFD2 /* VideoThumbnailGenerator.swift */; };
 		59497E54E1C34479B76C5A9E /* EOSPerfLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C038B5DAE764BE88771049B /* EOSPerfLog.swift */; };
 		5B69AE0FBD8F47E595246DAD /* NowPlayingCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDCE8A10202040AD82889389 /* NowPlayingCenter.swift */; };
+		C1D2E3F4A5B6478901234567 /* BluetoothMediaBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6478901234567 /* BluetoothMediaBrowser.swift */; };
 		5F0B75BB09E84A529A875241 /* MusicDownloadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8BDF04C41D54301AD0E7451 /* MusicDownloadService.swift */; };
 		61F9FF2007064849A353D358 /* LibrarySnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2CC262B478047158DA5C2AD /* LibrarySnapshot.swift */; };
 		65E731C94C814CEFB8832639 /* IslandBarsHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98491F33228E4E40BAC8285D /* IslandBarsHost.swift */; };
@@ -61,6 +62,7 @@
 		983FE7A59E0F4AFC834C9C44 /* GoogleOAuth.plist in Resources */ = {isa = PBXBuildFile; fileRef = 41AD273CA3394ED091A7B063 /* GoogleOAuth.plist */; };
 		98446919FFC54C30ACA16CA5 /* SharedViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD0FA005773B483E9E3E1ACF /* SharedViews.swift */; };
 		9856D40E47954E14A33BF95C /* PlayerEffectsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89EC8157EFD4338BBF66CB6 /* PlayerEffectsSheet.swift */; };
+		A7B8C9D0E1F2438596071829 /* PlaybackQueueSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A85B74C3D24E1F9A0B1C2D /* PlaybackQueueSheet.swift */; };
 		9D58118DDE9749C8A8B4BC77 /* FolderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCF3BE2A4454FBFB7088B60 /* FolderDetailView.swift */; };
 		A094D3BC2FC6499093E0FCB7 /* VideoFolderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58ACE58C6ABE40329C104F02 /* VideoFolderDetailView.swift */; };
 		A0C5D43E368D4A45A2C1641A /* VideoSourcesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D78A99E50A6423BB3B3A949 /* VideoSourcesStore.swift */; };
@@ -189,11 +191,13 @@
 		B2CC262B478047158DA5C2AD /* LibrarySnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySnapshot.swift; sourceTree = "<group>"; };
 		B5320F6B70FB459EA2D3DEE2 /* GoogleDriveAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveAuthService.swift; sourceTree = "<group>"; };
 		B8270089141742F5A18A7164 /* OfflinePlaybackPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflinePlaybackPolicyTests.swift; sourceTree = "<group>"; };
+		96A85B74C3D24E1F9A0B1C2D /* PlaybackQueueSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackQueueSheet.swift; sourceTree = "<group>"; };
 		B89EC8157EFD4338BBF66CB6 /* PlayerEffectsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerEffectsSheet.swift; sourceTree = "<group>"; };
 		B958EB79027849C596398D0A /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		BB46F69CEF04435D9C88ABFD /* EOSMusicApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSMusicApp.swift; sourceTree = "<group>"; };
 		BC2C0AA9264B4A1CAAE50A6D /* AudioSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSession.swift; sourceTree = "<group>"; };
 		BDCE8A10202040AD82889389 /* NowPlayingCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingCenter.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6478901234567 /* BluetoothMediaBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothMediaBrowser.swift; sourceTree = "<group>"; };
 		C0A753A1C8624211A27FD430 /* AlbumDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumDetailView.swift; sourceTree = "<group>"; };
 		C3D4E5F6A7B849901234567 /* ProMixerDeckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProMixerDeckView.swift; sourceTree = "<group>"; };
 		CD878ABF430849D0A821C4C9 /* FavoritesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesView.swift; sourceTree = "<group>"; };
@@ -259,6 +263,7 @@
 				F4CF6D9012E14F94A8DCB67A /* MusicSourcesStore.swift */,
 				7AEBEC020288443081737E02 /* NetworkReachability.swift */,
 				BDCE8A10202040AD82889389 /* NowPlayingCenter.swift */,
+				B1C2D3E4F5A6478901234567 /* BluetoothMediaBrowser.swift */,
 				F18EC14213954663B92DB163 /* OfflineMusicStore.swift */,
 				8AC6D1BF98294B80B4A209C9 /* QnapDiscoveryService.swift */,
 				D192D4D1D5804AAF9EAA8E8C /* QnapWebDAVDefaults.swift */,
@@ -373,6 +378,7 @@
 				B958EB79027849C596398D0A /* MainTabView.swift */,
 				2F8F8F0E7BA04EE59F050927 /* MiniPlayerBar.swift */,
 				B89EC8157EFD4338BBF66CB6 /* PlayerEffectsSheet.swift */,
+				96A85B74C3D24E1F9A0B1C2D /* PlaybackQueueSheet.swift */,
 				7662C5526ED24868B37CFDC7 /* QnapConnectionSheet.swift */,
 				0BCB96B22538406FB0201E4B /* RootView.swift */,
 				E055AF64E9A5415D80C42FE6 /* SearchCatalogView.swift */,
@@ -549,6 +555,7 @@
 				95098A73B445409FB55E7512 /* MusicSourcesStore.swift in Sources */,
 				F306AF9005914938B26BD0AA /* NetworkReachability.swift in Sources */,
 				5B69AE0FBD8F47E595246DAD /* NowPlayingCenter.swift in Sources */,
+				C1D2E3F4A5B6478901234567 /* BluetoothMediaBrowser.swift in Sources */,
 				9496E80ACD0F47B2906BBF57 /* OfflineMusicStore.swift in Sources */,
 				3B7DC47447D44B9881E8F4FE /* QnapDiscoveryService.swift in Sources */,
 				6A86B2526C7C49BE80950A87 /* QnapWebDAVDefaults.swift in Sources */,
@@ -592,6 +599,7 @@
 				CF0D7F000C0746AAB662D398 /* MainTabView.swift in Sources */,
 				6E5948D747854D4AA1B5ABCF /* MiniPlayerBar.swift in Sources */,
 				9856D40E47954E14A33BF95C /* PlayerEffectsSheet.swift in Sources */,
+				A7B8C9D0E1F2438596071829 /* PlaybackQueueSheet.swift in Sources */,
 				40D79210432343F2AA3E386C /* QnapConnectionSheet.swift in Sources */,
 				CFC98784DD4747F4932101DD /* RootView.swift in Sources */,
 				73F39A409D4148079B1F4FAA /* SearchCatalogView.swift in Sources */,
