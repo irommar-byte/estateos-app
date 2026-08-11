@@ -31,6 +31,8 @@
 		59497E54E1C34479B76C5A9E /* EOSPerfLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C038B5DAE764BE88771049B /* EOSPerfLog.swift */; };
 		5B69AE0FBD8F47E595246DAD /* NowPlayingCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDCE8A10202040AD82889389 /* NowPlayingCenter.swift */; };
 		C1D2E3F4A5B6478901234567 /* BluetoothMediaBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6478901234567 /* BluetoothMediaBrowser.swift */; };
+		D2E3F4A5B6C7489012345678 /* OpenedAudioRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D3E4F5A6B7489012345678 /* OpenedAudioRegistry.swift */; };
+		E3F4A5B6C7D8490123456789 /* OpenedAudioImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E4F5A6B7C8490123456789 /* OpenedAudioImportService.swift */; };
 		5F0B75BB09E84A529A875241 /* MusicDownloadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8BDF04C41D54301AD0E7451 /* MusicDownloadService.swift */; };
 		61F9FF2007064849A353D358 /* LibrarySnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2CC262B478047158DA5C2AD /* LibrarySnapshot.swift */; };
 		65E731C94C814CEFB8832639 /* IslandBarsHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98491F33228E4E40BAC8285D /* IslandBarsHost.swift */; };
@@ -197,6 +199,8 @@
 		BB46F69CEF04435D9C88ABFD /* EOSMusicApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSMusicApp.swift; sourceTree = "<group>"; };
 		BC2C0AA9264B4A1CAAE50A6D /* AudioSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSession.swift; sourceTree = "<group>"; };
 		BDCE8A10202040AD82889389 /* NowPlayingCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingCenter.swift; sourceTree = "<group>"; };
+		C2D3E4F5A6B7489012345678 /* OpenedAudioRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenedAudioRegistry.swift; sourceTree = "<group>"; };
+		D3E4F5A6B7C8490123456789 /* OpenedAudioImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenedAudioImportService.swift; sourceTree = "<group>"; };
 		B1C2D3E4F5A6478901234567 /* BluetoothMediaBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothMediaBrowser.swift; sourceTree = "<group>"; };
 		C0A753A1C8624211A27FD430 /* AlbumDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumDetailView.swift; sourceTree = "<group>"; };
 		C3D4E5F6A7B849901234567 /* ProMixerDeckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProMixerDeckView.swift; sourceTree = "<group>"; };
@@ -263,6 +267,8 @@
 				F4CF6D9012E14F94A8DCB67A /* MusicSourcesStore.swift */,
 				7AEBEC020288443081737E02 /* NetworkReachability.swift */,
 				BDCE8A10202040AD82889389 /* NowPlayingCenter.swift */,
+				C2D3E4F5A6B7489012345678 /* OpenedAudioRegistry.swift */,
+				D3E4F5A6B7C8490123456789 /* OpenedAudioImportService.swift */,
 				B1C2D3E4F5A6478901234567 /* BluetoothMediaBrowser.swift */,
 				F18EC14213954663B92DB163 /* OfflineMusicStore.swift */,
 				8AC6D1BF98294B80B4A209C9 /* QnapDiscoveryService.swift */,
@@ -555,6 +561,8 @@
 				95098A73B445409FB55E7512 /* MusicSourcesStore.swift in Sources */,
 				F306AF9005914938B26BD0AA /* NetworkReachability.swift in Sources */,
 				5B69AE0FBD8F47E595246DAD /* NowPlayingCenter.swift in Sources */,
+				D2E3F4A5B6C7489012345678 /* OpenedAudioRegistry.swift in Sources */,
+				E3F4A5B6C7D8490123456789 /* OpenedAudioImportService.swift in Sources */,
 				C1D2E3F4A5B6478901234567 /* BluetoothMediaBrowser.swift in Sources */,
 				9496E80ACD0F47B2906BBF57 /* OfflineMusicStore.swift in Sources */,
 				3B7DC47447D44B9881E8F4FE /* QnapDiscoveryService.swift in Sources */,

@@ -339,11 +339,14 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
     }
 
     var isExternal: Bool {
-        playbackFileURL != nil
-            || webDAVPath != nil
-            || googleDriveFileId != nil
-            || externalSourceId != nil
-            || ExternalTrackReference.isLibraryURL(url)
+        if OpenedAudioRegistry.isOpenedLibraryURL(url) { return false }
+        if playbackFileURL != nil { return true }
+        if webDAVPath != nil || googleDriveFileId != nil || externalSourceId != nil { return true }
+        return ExternalTrackReference.isLibraryURL(url)
+    }
+
+    var isOpenedLocalImport: Bool {
+        OpenedAudioRegistry.isOpenedLibraryURL(url)
     }
 
     init(
@@ -415,7 +418,9 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
         serverAssetId = track.serverAssetId ?? track.downloadJobId
         artistId = track.artistId
         albumId = track.albumId
-        playbackFileURL = nil
+        playbackFileURL = OpenedAudioRegistry.isOpenedLibraryURL(track.url)
+            ? OpenedAudioRegistry.localURL(for: track.url)
+            : nil
         externalRelativePath = nil
         webDAVPath = nil
         googleDriveFileId = nil
@@ -423,15 +428,14 @@ struct MusicPlaybackTrack: Identifiable, Hashable {
     }
 
     /// Single file opened via „Otwórz za pomocą” / Pliki.
-    init(openedLocalFile fileURL: URL, title: String, artist: String? = nil, album: String? = nil) {
-        let stable = "eos-opened://\(fileURL.path)"
-        id = stable
-        url = stable
+    init(openedLocalFile fileURL: URL, libraryURL: String, title: String, artist: String? = nil, album: String? = nil, duration: Double? = nil) {
+        id = libraryURL
+        url = libraryURL
         self.title = title
         self.artist = artist
         self.album = album
         thumbnail = nil
-        duration = nil
+        self.duration = duration
         folderId = nil
         downloadJobId = nil
         serverAssetId = nil
@@ -566,7 +570,7 @@ extension MusicPlaybackTrack {
             thumbnail: thumbnail,
             duration: duration,
             quality: "320 kbps",
-            source: isExternal ? "external-file" : "apple-music",
+            source: isOpenedLocalImport ? "opened-file" : (isExternal ? "external-file" : "apple-music"),
             artistId: artistId,
             albumId: albumId
         )

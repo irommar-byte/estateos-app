@@ -743,22 +743,41 @@ final class AppModel: ObservableObject {
 
     func playExternalAudioFile(at sourceURL: URL) async {
         do {
-            let localURL = try importOpenedAudioFile(from: sourceURL)
-            let title = localURL.deletingPathExtension().lastPathComponent
-            let track = MusicPlaybackTrack(openedLocalFile: localURL, title: title)
+            let imported = try OpenedAudioImportService.importFile(from: sourceURL)
+
+            if SessionStore.load() != nil {
+                try await addOpenedImportToLibrary(imported)
+            } else {
+                presentToast(MusicToast(
+                    systemImage: "person.crop.circle.badge.plus",
+                    title: "Odtwarzam plik",
+                    subtitle: "Zaloguj się, aby dodać do biblioteki i wysłać na serwer"
+                ))
+            }
+
+            let track = MusicPlaybackTrack(
+                openedLocalFile: imported.localURL,
+                libraryURL: imported.libraryURL,
+                title: imported.title,
+                artist: imported.artist,
+                album: imported.album,
+                duration: imported.duration
+            )
             let session = MusicPlaybackSession(
                 queue: [track],
                 startIndex: 0,
                 folderId: nil,
-                folderName: "Otwarty plik"
+                folderName: "Importowane"
             )
             await playback.play(
                 session: session,
                 api: api,
                 jobLookup: { _ in nil },
-                libraryTrackLookup: { _ in nil },
+                libraryTrackLookup: { [weak self] url in
+                    self?.musicTracks.first { $0.url == url }
+                },
                 externalFileResolver: { track in
-                    guard let file = track.playbackFileURL else {
+                    guard let file = track.playbackFileURL ?? OpenedAudioRegistry.localURL(for: track.url) else {
                         throw APIError.server("Brak pliku do odtworzenia.")
                     }
                     return file
@@ -771,23 +790,42 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func importOpenedAudioFile(from source: URL) throws -> URL {
-        AppDocuments.ensureStructure()
-        if source.path.hasPrefix(AppDocuments.root.path) {
-            return source
+    /// Dodaje importowany plik do biblioteki i kolejkuje upload na serwer EOS.
+    private func addOpenedImportToLibrary(_ imported: OpenedAudioImportResult) async throws {
+        if isInLibrary(imported.libraryURL) {
+            if let existing = musicTracks.first(where: { $0.url == imported.libraryURL }),
+               !existing.isOnServer {
+                downloads.ensureOnServer(
+                    url: imported.libraryURL,
+                    folderId: existing.folderId,
+                    api: api,
+                    onLibraryChanged: { [weak self] in
+                        try? await self?.refreshMusicLibrary()
+                        await self?.refreshServerAssets()
+                    },
+                    onReady: { [weak self] in
+                        await self?.presentToast(.savedOnServer(trackTitle: imported.title))
+                    }
+                )
+            }
+            return
         }
 
-        let accessed = source.startAccessingSecurityScopedResource()
-        defer { if accessed { source.stopAccessingSecurityScopedResource() } }
-
-        let dir = AppDocuments.audioImports.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dest = dir.appendingPathComponent(source.lastPathComponent)
-        if FileManager.default.fileExists(atPath: dest.path) {
-            try FileManager.default.removeItem(at: dest)
-        }
-        try FileManager.default.copyItem(at: source, to: dest)
-        return dest
+        let payload = MusicTrackPayload(
+            url: imported.libraryURL,
+            title: imported.title,
+            artist: imported.artist,
+            album: imported.album,
+            thumbnail: nil,
+            duration: imported.duration,
+            quality: nil,
+            source: "opened-file",
+            artistId: nil,
+            albumId: nil
+        )
+        let folderId = try await ensurePrimaryLibraryFolderId()
+        try await addTrackToFolder(folderId: folderId, track: payload, announcePlaylistName: "Importowane")
+        presentToast(.addedToLibrary(trackTitle: imported.title))
     }
 
     func playExternalTracks(_ tracks: [ExternalAudioTrack], source: ConnectedMusicSource, startIndex: Int) async {
@@ -835,6 +873,10 @@ final class AppModel: ObservableObject {
 
     func downloadCurrentPlaybackAsync() async {
         guard let current = playback.engine?.currentTrack else { return }
+        if current.isOpenedLocalImport {
+            await uploadOpenedImportToServer(current)
+            return
+        }
         if current.isExternal {
             presentToast(MusicToast(
                 systemImage: "iphone",
@@ -929,6 +971,62 @@ final class AppModel: ObservableObject {
     }
 
     private func prepareLibraryPayload(_ track: MusicTrackPayload) async throws -> MusicTrackPayload {
-        try await TrackMetadataEnricher.enrichPayload(track, api: api)
+        if track.source == "opened-file" { return track }
+        return try await TrackMetadataEnricher.enrichPayload(track, api: api)
+    }
+
+    private func uploadOpenedImportToServer(_ track: MusicPlaybackTrack) async {
+        guard SessionStore.load() != nil else {
+            presentToast(MusicToast(
+                systemImage: "person.crop.circle",
+                title: "Zaloguj się",
+                subtitle: "Aby wysłać plik na serwer EOS"
+            ))
+            return
+        }
+        guard let local = track.playbackFileURL ?? OpenedAudioRegistry.localURL(for: track.url) else {
+            presentToast(MusicToast(
+                systemImage: "exclamationmark.triangle",
+                title: "Brak pliku",
+                subtitle: track.title
+            ))
+            return
+        }
+        do {
+            let folderId: String
+            if let existing = musicTracks.first(where: { $0.url == track.url }) {
+                folderId = existing.folderId
+            } else {
+                folderId = try await ensurePrimaryLibraryFolderId()
+                try await addTrackToFolder(folderId: folderId, track: track.payload)
+            }
+            presentToast(MusicToast(
+                systemImage: "icloud.and.arrow.up",
+                title: "Wysyłam na serwer",
+                subtitle: track.title
+            ))
+            downloads.ensureOpenedFileOnServer(
+                url: track.url,
+                localFile: local,
+                folderId: folderId,
+                title: track.title,
+                artist: track.artist,
+                album: track.album,
+                api: api,
+                onLibraryChanged: { [weak self] in
+                    try? await self?.refreshMusicLibrary()
+                    await self?.refreshServerAssets()
+                },
+                onReady: { [weak self] in
+                    await self?.presentToast(.savedOnServer(trackTitle: track.title))
+                }
+            )
+        } catch {
+            presentToast(MusicToast(
+                systemImage: "exclamationmark.icloud",
+                title: "Nie udało się dodać",
+                subtitle: error.localizedDescription
+            ))
+        }
     }
 }

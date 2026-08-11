@@ -19,11 +19,16 @@
 				<string>aiff</string>
 				<string>aif</string>
 				<string>alac</string>
+				<string>ogg</string>
+				<string>opus</string>
+				<string>caf</string>
 			</array>
 			<key>CFBundleTypeName</key>
 			<string>Audio</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
 			<key>LSHandlerRank</key>
-			<string>Owner</string>
+			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.mp3</string>
@@ -31,6 +36,7 @@
 				<string>public.audio</string>
 				<string>public.aiff-audio</string>
 				<string>public.wav</string>
+				<string>org.xiph.opus-audio</string>
 			</array>
 		</dict>
 		<dict>

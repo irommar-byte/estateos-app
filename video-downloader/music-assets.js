@@ -40,12 +40,13 @@ function sanitizePathSegment(name) {
 }
 
 export function canonicalMusicKey(url) {
+  const raw = String(url || "").trim();
+  if (/^eosmusic:\/\/opened\//i.test(raw)) {
+    return `opened:${raw.slice("eosmusic://opened/".length)}`;
+  }
   const trackId = parseAppleMusicTrackId(url);
   if (trackId) return `apple:${trackId}`;
-  const normalized = String(url || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[?#].*$/, "");
+  const normalized = raw.toLowerCase().replace(/[?#].*$/, "");
   return `url:${crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 24)}`;
 }
 
@@ -693,3 +694,120 @@ export function cleanupMusicJobCancel(job) {
     } catch {}
   }
 }
+
+/**
+ * Import a user-provided audio file (opened from Files / share sheet) as a durable EOS asset.
+ */
+export async function importLocalMusicAsset({
+  userKey,
+  url,
+  title,
+  artist = "",
+  album = "",
+  fileBuffer,
+  fileName,
+  folderId = null,
+  trackUrl = null,
+  jobs,
+  ensurePlayToken,
+  downloadsRoot,
+}) {
+  if (!userKey) {
+    const err = new Error("Zaloguj się, aby zapisać muzykę w bibliotece EOS.");
+    err.status = 401;
+    throw err;
+  }
+  if (!url || !/^eosmusic:\/\/opened\//i.test(String(url))) {
+    const err = new Error("Nieprawidłowy identyfikator importowanego pliku.");
+    err.status = 400;
+    throw err;
+  }
+  if (!fileBuffer || !Buffer.isBuffer(fileBuffer) || fileBuffer.length < 32 * 1024) {
+    const err = new Error("Plik audio jest za mały lub uszkodzony.");
+    err.status = 400;
+    throw err;
+  }
+
+  const assetId = stableAssetId(userKey, url);
+  const existing = findAssetByUrl(userKey, url);
+  if (existing && assetFileReady(downloadsRoot, existing)) {
+    const job = restoreJobFromAsset({ ...existing, userKey }, downloadsRoot, { ensurePlayToken, jobs });
+    if (folderId && (trackUrl || url)) {
+      try {
+        updateTrackDownloadByKey(userKey, folderId, trackUrl || url, assetId);
+      } catch {}
+    }
+    return {
+      jobId: assetId,
+      assetId,
+      reused: true,
+      ready: true,
+      token: ensurePlayToken ? ensurePlayToken(job) : null,
+    };
+  }
+
+  const safeName = String(fileName || "import.mp3").replace(/[^\p{L}\p{N}\-_. ]/gu, "_").slice(0, 120) || "import.mp3";
+  const relativePath = buildRelativePath(
+    userKey,
+    { uploader: artist || "Import", album: album || "Otwarte pliki", title: title || safeName },
+    safeName.endsWith(".mp3") ? safeName : `${safeName.replace(/\.[^.]+$/, "")}.mp3`
+  );
+  const destPath = assetAbsolutePath(downloadsRoot, relativePath);
+  ensureDir(path.dirname(destPath));
+
+  fs.writeFileSync(destPath, fileBuffer);
+
+  let probe = { duration: 0, bytes: fileBuffer.length, bitrate: 0, codec: "mp3" };
+  try {
+    probe = probeMp3(destPath);
+  } catch {
+    /* keep size */
+  }
+
+  upsertAsset(userKey, {
+    assetId,
+    userKey,
+    canonicalKey: canonicalMusicKey(url),
+    url,
+    title: title || safeName,
+    artist: artist || "",
+    album: album || "",
+    thumbnail: "",
+    relativePath,
+    bytes: probe.bytes,
+    duration: probe.duration,
+    bitrate: probe.bitrate,
+    codec: probe.codec,
+    checksum: fileSha256(destPath),
+    acquiredAt: Date.now(),
+    ready: true,
+  });
+
+  const job = restoreJobFromAsset(
+    {
+      assetId,
+      userKey,
+      url,
+      relativePath,
+    },
+    downloadsRoot,
+    { ensurePlayToken, jobs }
+  );
+
+  if (folderId && (trackUrl || url)) {
+    try {
+      updateTrackDownloadByKey(userKey, folderId, trackUrl || url, assetId);
+    } catch (err) {
+      console.warn("music local import link:", err?.message || err);
+    }
+  }
+
+  return {
+    jobId: assetId,
+    assetId,
+    reused: false,
+    ready: true,
+    token: ensurePlayToken && job ? ensurePlayToken(job) : null,
+  };
+}
+

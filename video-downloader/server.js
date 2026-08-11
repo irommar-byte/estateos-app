@@ -115,6 +115,7 @@ import {
   listMusicAssets,
   deleteMusicAsset,
   migrateLegacyMusicAssets,
+  importLocalMusicAsset,
   cleanupMusicJobCancel,
   findAssetByUrl,
   assetFileReady,
@@ -4928,6 +4929,52 @@ app.post("/api/music/playlists/import", async (req, res) => {
     console.error("music playlist import:", err?.message || err);
     const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
     res.status(code).json({ error: friendlyPlaylistImportError(err) });
+  }
+});
+
+
+// POST /api/music/upload-local { url, folderId?, title?, artist?, album?, fileName, fileBase64 }
+app.post("/api/music/upload-local", express.json({ limit: "96mb" }), async (req, res) => {
+  const userKey = favoritesUserKeyFromReq(req);
+  if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+  const { url, folderId, title, artist, album, fileName, fileBase64 } = req.body || {};
+  if (!url || !/^eosmusic:\/\/opened\//i.test(String(url))) {
+    return res.status(400).json({ error: "Nieprawidłowy identyfikator importowanego pliku." });
+  }
+  if (!fileBase64 || typeof fileBase64 !== "string") {
+    return res.status(400).json({ error: "Brak pliku audio." });
+  }
+  let fileBuffer;
+  try {
+    fileBuffer = Buffer.from(fileBase64, "base64");
+  } catch {
+    return res.status(400).json({ error: "Nie udało się odczytać pliku." });
+  }
+  try {
+    const result = await importLocalMusicAsset({
+      userKey,
+      url: String(url),
+      title: String(title || fileName || "Import"),
+      artist: String(artist || ""),
+      album: String(album || ""),
+      fileBuffer,
+      fileName: String(fileName || "import.mp3"),
+      folderId: folderId || null,
+      trackUrl: String(url),
+      jobs,
+      ensurePlayToken,
+      downloadsRoot: MUSIC_PLAYLIST_DOWNLOADS_DIR,
+    });
+    res.json({
+      jobId: result.jobId,
+      assetId: result.assetId,
+      reused: !!result.reused,
+      ready: !!result.ready,
+      token: result.token || undefined,
+    });
+  } catch (err) {
+    const status = Number(err?.status) || 500;
+    res.status(status).json({ error: err?.message || "Nie udało się zapisać pliku na serwerze." });
   }
 });
 

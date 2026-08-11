@@ -424,7 +424,18 @@ private struct PlayerContent: View {
                 .opacity(track.albumId?.isEmpty == false ? 1 : 0.55)
             }
 
-            if track.isExternal {
+            if track.isOpenedLocalImport {
+                PlayerStorageStatusBar(
+                    state: app.playbackCloudState(for: track),
+                    onServerHint: app.isOnServer(track.url) || track.isOnServer,
+                    layout: .compact,
+                    onDownload: { app.downloadCurrentPlayback() },
+                    onCancel: { app.cancelDownload(for: track.url) },
+                    onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
+                )
+                .padding(.top, layout.tight ? 6 : 8)
+                .padding(.horizontal, 4)
+            } else if track.isExternal {
                 HStack(spacing: 6) {
                     Image(systemName: "iphone")
                         .font(.caption.weight(.semibold))

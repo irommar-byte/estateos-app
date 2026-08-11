@@ -178,6 +178,31 @@ final class MusicAPIClient {
         return try await request("POST", path: "/api/music/play", body: body)
     }
 
+    /// Upload pliku otwartego z Plików / „Otwórz w EOS Music” na serwer EOS.
+    func uploadLocalMusicFile(
+        url: String,
+        folderId: String?,
+        title: String,
+        artist: String?,
+        album: String?,
+        fileName: String,
+        fileData: Data
+    ) async throws -> DownloadStartResponse {
+        let body: [String: Any] = [
+            "url": url,
+            "folderId": folderId as Any,
+            "title": title,
+            "artist": artist as Any,
+            "album": album as Any,
+            "fileName": fileName,
+            "fileBase64": fileData.base64EncodedString(),
+        ]
+        var req = makeRequest(method: "POST", path: "/api/music/upload-local", authorized: true)
+        req.timeoutInterval = 300
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try await perform(req)
+    }
+
     func listMusicAssets() async throws -> MusicAssetsResponse {
         try await request("GET", path: "/api/music/assets")
     }

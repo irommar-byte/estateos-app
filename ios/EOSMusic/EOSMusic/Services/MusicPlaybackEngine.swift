@@ -687,6 +687,13 @@ final class MusicPlaybackEngine: ObservableObject {
             throw APIError.server("Nie można odtworzyć pliku ze źródła.")
         }
 
+        if let openedLocal = OpenedAudioRegistry.localURL(for: track.url) {
+            activeStreamJobId = nil
+            tokenExpiresAt = nil
+            setPlaybackActivity(.openingLocal, title: "Importowany plik", detail: "Odtwarzam z iPhone'a")
+            return openedLocal
+        }
+
         guard let api else { throw APIError.server("Brak połączenia z serwerem.") }
 
         if let local = OfflineMusicStore.shared.localURL(for: track.url) {

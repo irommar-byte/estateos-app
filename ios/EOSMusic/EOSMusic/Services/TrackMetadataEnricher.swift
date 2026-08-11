@@ -139,7 +139,8 @@ enum TrackMetadataEnricher {
     }
 
     private static func needsCatalogEnrichment(_ track: MusicTrackPayload) -> Bool {
-        needsCatalogEnrichment(
+        if track.source == "opened-file" { return false }
+        return needsCatalogEnrichment(
             thumbnail: track.thumbnail,
             album: track.album,
             artistId: track.artistId,

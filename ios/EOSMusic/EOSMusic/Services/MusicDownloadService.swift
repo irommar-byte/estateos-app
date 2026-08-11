@@ -292,6 +292,18 @@ final class MusicDownloadService: ObservableObject {
         onAcquireProgress: ((Double) -> Void)? = nil
     ) async throws {
         states[url] = .acquiringServer(progress: 3)
+
+        if OpenedAudioRegistry.isOpenedLibraryURL(url) {
+            try await acquireOpenedFileOnServer(
+                url: url,
+                folderId: folderId,
+                api: api,
+                onLibraryChanged: onLibraryChanged,
+                onAcquireProgress: onAcquireProgress
+            )
+            return
+        }
+
         let ensure = try await api.startMusicPlay(
             url: url,
             folderId: folderId,
@@ -320,6 +332,83 @@ final class MusicDownloadService: ObservableObject {
         wasOnServer[url] = true
         scheduleLibraryRefresh(onLibraryChanged)
         if Task.isCancelled { throw CancellationError() }
+    }
+
+    private func acquireOpenedFileOnServer(
+        url: String,
+        folderId: String?,
+        api: MusicAPIClient,
+        onLibraryChanged: (() async -> Void)? = nil,
+        onAcquireProgress: ((Double) -> Void)? = nil
+    ) async throws {
+        guard let local = OpenedAudioRegistry.localURL(for: url) else {
+            throw APIError.server("Brak lokalnego pliku do wysłania na serwer.")
+        }
+        let meta = OpenedAudioRegistry.entry(for: url)
+        let fileData = try Data(contentsOf: local)
+        onAcquireProgress?(12)
+        states[url] = .acquiringServer(progress: 18)
+        let ensure = try await api.uploadLocalMusicFile(
+            url: url,
+            folderId: folderId,
+            title: meta?.title ?? local.deletingPathExtension().lastPathComponent,
+            artist: meta?.artist,
+            album: meta?.album,
+            fileName: local.lastPathComponent,
+            fileData: fileData
+        )
+        let jobId = ensure.jobId
+        if ensure.ready != true {
+            try await pollServerAcquire(
+                jobId: jobId,
+                trackUrl: url,
+                api: api,
+                onProgress: onAcquireProgress
+            )
+        } else {
+            states[url] = .acquiringServer(progress: 96)
+            onAcquireProgress?(96)
+        }
+        if let folderId {
+            _ = try? await api.linkTrackDownload(
+                folderId: folderId,
+                url: url,
+                downloadJobId: jobId
+            )
+        }
+        wasOnServer[url] = true
+        scheduleLibraryRefresh(onLibraryChanged)
+        if Task.isCancelled { throw CancellationError() }
+    }
+
+    /// Jawne wywołanie uploadu otwartego pliku (np. z playera).
+    func ensureOpenedFileOnServer(
+        url: String,
+        localFile: URL,
+        folderId: String,
+        title: String,
+        artist: String?,
+        album: String?,
+        api: MusicAPIClient,
+        onLibraryChanged: (() async -> Void)? = nil,
+        onReady: (() async -> Void)? = nil
+    ) {
+        if let hash = OpenedAudioRegistry.contentHash(from: url) {
+            OpenedAudioRegistry.register(
+                localFile: localFile,
+                contentHash: hash,
+                title: title,
+                artist: artist,
+                album: album
+            )
+        }
+        ensureOnServer(
+            url: url,
+            folderId: folderId,
+            api: api,
+            onLibraryChanged: onLibraryChanged,
+            onReady: onReady
+        )
     }
 
     func download(
