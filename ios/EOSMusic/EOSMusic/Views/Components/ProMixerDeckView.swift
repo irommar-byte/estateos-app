@@ -29,12 +29,13 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
     let artworkURL: URL?
     let fallbackArtwork: UIImage?
     let canvasSize: CGFloat
+    var spectrumHeight: CGFloat = 120
     @ViewBuilder var meta: () -> Meta
     @ViewBuilder var status: () -> Status
     @ViewBuilder var storage: () -> Storage
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             ProMixerStatusRail(
                 visualizer: visualizer,
                 isPlaying: isPlaying && !isLoading,
@@ -56,24 +57,26 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
                     }
                     .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
                 }
-                .frame(minHeight: compactMixer ? 300 : 360)
+                .frame(minHeight: compactMixer ? (preset.showsMixer ? 220 : 160) : (preset.showsMixer ? 280 : 200))
             }
 
             storage()
                 .padding(.horizontal, 2)
 
-            ProMixerControlStrip(
-                visualizer: visualizer,
-                isPlaying: isPlaying && !isLoading,
-                drive: drive
-            )
+            if preset.showsMixer {
+                ProMixerControlStrip(
+                    visualizer: visualizer,
+                    isPlaying: isPlaying && !isLoading,
+                    drive: drive
+                )
 
-            ProMixerBeatChase(
-                visualizer: visualizer,
-                isPlaying: isPlaying && !isLoading
-            )
+                ProMixerBeatChase(
+                    visualizer: visualizer,
+                    isPlaying: isPlaying && !isLoading
+                )
+            }
         }
-        .padding(10)
+        .padding(8)
         .background { ProMixerStageBackground() }
     }
 
@@ -203,12 +206,13 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
     let artworkURL: URL?
     let fallbackArtwork: UIImage?
     let canvasSize: CGFloat
+    var spectrumHeight: CGFloat = 110
     @ViewBuilder var meta: () -> Meta
     @ViewBuilder var status: () -> Status
     @ViewBuilder var storage: () -> Storage
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: compactMixer ? 6 : 8) {
             ProMixerStatusRail(
                 visualizer: visualizer,
                 isPlaying: isPlaying && !isLoading,
@@ -219,57 +223,51 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
             )
 
             ProMixerChassis {
-                VStack(spacing: 14) {
+                VStack(spacing: compactMixer ? 6 : 10) {
                     artworkThumb
                         .frame(maxWidth: .infinity)
 
-                    VStack(spacing: 8) {
+                    VStack(spacing: 4) {
                         meta()
                         status()
                     }
                     .frame(maxWidth: .infinity)
 
-                    if effectsActive {
+                    if preset.showsMixer {
                         IslandBarsHost(
                             visualizer: visualizer,
                             isPlaying: isPlaying && !isLoading,
-                            compact: false,
+                            compact: true,
                             prominent: true
                         )
-                        .frame(height: 34)
+                        .frame(height: 22)
 
                         WinampSpectrumHost(
                             visualizer: visualizer,
                             isPlaying: isPlaying && !isLoading,
                             intensity: intensity,
                             bandCount: bandCount,
-                            compact: compactMixer
+                            compact: true
                         )
-                        .frame(height: compactMixer ? 168 : 196)
+                        .frame(height: spectrumHeight)
 
                         ProMixerStereoBridge(visualizer: visualizer, isPlaying: isPlaying && !isLoading)
                             .padding(.horizontal, 2)
                     }
                 }
-                .padding(14)
+                .padding(compactMixer ? 8 : 10)
             }
 
-            storage()
-
-            ProMixerControlStrip(
-                visualizer: visualizer,
-                isPlaying: isPlaying && !isLoading,
-                drive: drive,
-                compact: true
-            )
-
-            ProMixerBeatChase(
-                visualizer: visualizer,
-                isPlaying: isPlaying && !isLoading,
-                compact: true
-            )
+            if preset.showsMixer {
+                ProMixerControlStrip(
+                    visualizer: visualizer,
+                    isPlaying: isPlaying && !isLoading,
+                    drive: drive,
+                    compact: true
+                )
+            }
         }
-        .padding(8)
+        .padding(4)
         .background { ProMixerStageBackground() }
     }
 

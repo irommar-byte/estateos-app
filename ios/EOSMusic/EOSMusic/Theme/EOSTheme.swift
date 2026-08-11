@@ -204,9 +204,11 @@ struct PlayerVisualPolicy: Equatable {
             scale *= 0.8
         }
 
+        let canStrobe = (preset == .strobe || strobeEnabled) && thermal != .critical && thermal != .serious
+
         return PlayerVisualPolicy(
             enabled: true,
-            allowStrobe: false,
+            allowStrobe: canStrobe,
             analyzerFPS: fps,
             timelineFPS: timeline,
             intensityScale: scale,

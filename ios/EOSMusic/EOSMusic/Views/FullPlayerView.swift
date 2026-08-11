@@ -48,6 +48,7 @@ private struct PlayerContent: View {
         return PlayerVisualPolicy.resolve(
             preset: effectivePreset,
             intensity: mixIntensity,
+            strobeEnabled: ui.playerStrobeEnabled || effectivePreset == .strobe,
             autoPerformance: ui.playerAutoPerformance,
             reduceMotion: reduceMotion,
             lowPower: lowPower,
@@ -96,7 +97,8 @@ private struct PlayerContent: View {
             let layout = PlayerLayout(
                 height: geo.size.height,
                 width: geo.size.width,
-                horizontalSizeClass: horizontalSizeClass
+                horizontalSizeClass: horizontalSizeClass,
+                preset: preset
             )
             ZStack {
                 PlayerStageBackdrop(colorScheme: colorScheme)
@@ -112,7 +114,8 @@ private struct PlayerContent: View {
                     PlayerStrobeLayer(
                         visualizer: engine.visualizer,
                         isPlaying: engine.isPlaying,
-                        intensity: policy.intensityScale
+                        intensity: policy.intensityScale,
+                        speed: ui.playerStrobeSpeed
                     )
                 }
 
@@ -145,35 +148,34 @@ private struct PlayerContent: View {
         VStack(spacing: 0) {
             playerChrome(track: track, layout: layout)
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    Spacer(minLength: layout.topGap)
-                    ProMixerNarrowConsole(
-                        visualizer: engine.visualizer,
-                        isPlaying: engine.isPlaying,
-                        isLoading: engine.isLoading,
-                        intensity: mixerIntensity,
-                        drive: ui.playerDrive,
-                        bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
-                        compactMixer: layout.compactMixer,
-                        queueLabel: engine.queuePositionLabel,
-                        onQueueTap: { showQueueSheet = true },
-                        onServer: app.isOnServer(track.url) || track.isOnServer,
-                        effectsActive: effectsActive,
-                        preset: preset,
-                        policy: policy,
-                        artworkURL: track.artworkURL,
-                        fallbackArtwork: engine.displayArtwork,
-                        canvasSize: layout.discSize
-                    ) {
-                        trackMeta(track: track, layout: layout, includeStorage: false)
-                    } status: {
-                        playerStatusSection(layout: layout)
-                    } storage: {
-                        EmptyView()
-                    }
-                    Spacer(minLength: layout.bottomGap)
+            VStack(spacing: 0) {
+                Spacer(minLength: layout.topGap)
+                ProMixerNarrowConsole(
+                    visualizer: engine.visualizer,
+                    isPlaying: engine.isPlaying,
+                    isLoading: engine.isLoading,
+                    intensity: mixerIntensity,
+                    drive: ui.playerDrive,
+                    bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
+                    compactMixer: layout.compactMixer,
+                    queueLabel: engine.queuePositionLabel,
+                    onQueueTap: { showQueueSheet = true },
+                    onServer: app.isOnServer(track.url) || track.isOnServer,
+                    effectsActive: effectsActive,
+                    preset: preset,
+                    policy: policy,
+                    artworkURL: track.artworkURL,
+                    fallbackArtwork: engine.displayArtwork,
+                    canvasSize: layout.discSize,
+                    spectrumHeight: layout.spectrumHeight
+                ) {
+                    trackMeta(track: track, layout: layout, includeStorage: false)
+                } status: {
+                    playerStatusSection(layout: layout)
+                } storage: {
+                    EmptyView()
                 }
+                Spacer(minLength: layout.bottomGap)
             }
             .frame(maxHeight: .infinity)
 
@@ -189,7 +191,8 @@ private struct PlayerContent: View {
         VStack(spacing: 0) {
             playerChrome(track: track, layout: layout)
 
-            ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 0) {
+                Spacer(minLength: layout.topGap)
                 ProMixerWideConsole(
                     visualizer: engine.visualizer,
                     isPlaying: engine.isPlaying,
@@ -206,7 +209,8 @@ private struct PlayerContent: View {
                     policy: policy,
                     artworkURL: track.artworkURL,
                     fallbackArtwork: engine.displayArtwork,
-                    canvasSize: layout.discSize
+                    canvasSize: layout.discSize,
+                    spectrumHeight: layout.spectrumHeight
                 ) {
                     trackMeta(track: track, layout: layout, includeStorage: false)
                 } status: {
@@ -214,8 +218,7 @@ private struct PlayerContent: View {
                 } storage: {
                     EmptyView()
                 }
-                .padding(.top, layout.topGap)
-                .padding(.bottom, layout.bottomGap)
+                Spacer(minLength: layout.bottomGap)
             }
             .frame(maxHeight: .infinity)
 
@@ -520,26 +523,39 @@ private struct PlayerLayout {
     let height: CGFloat
     let width: CGFloat
     let isPad: Bool
+    let preset: PlayerVisualPreset
 
-    init(height: CGFloat, width: CGFloat, horizontalSizeClass: UserInterfaceSizeClass?) {
+    init(height: CGFloat, width: CGFloat, horizontalSizeClass: UserInterfaceSizeClass?, preset: PlayerVisualPreset = .spectrum) {
         self.height = height
         self.width = width
         self.isPad = UIDevice.current.userInterfaceIdiom == .pad || horizontalSizeClass == .regular
+        self.preset = preset
     }
 
-    // Aspect/size driven, not idiom driven — iPhone landscape gets the side-by-side
-    // deck too instead of squeezing the tall phone layout into a short height.
     var wide: Bool { width >= 640 && width > height * 1.05 }
-    var tight: Bool { isPad ? height < 560 : height < 680 }
-    var compact: Bool { isPad ? height < 640 : height < 760 }
+    var tight: Bool { isPad ? height < 580 : height < 680 }
+    var compact: Bool { isPad ? height < 650 : height < 760 }
     var compactMixer: Bool { tight || height < 820 }
 
     var discSize: CGFloat {
-        if wide { return min(340, height * 0.46) }
-        if height < 620 { return 176 }
-        if height < 700 { return 210 }
-        if height < 780 { return 248 }
-        return isPad ? 300 : 286
+        if wide { return min(320, height * 0.42) }
+        if preset.showsMixer {
+            if height < 620 { return 80 }
+            if height < 700 { return 100 }
+            if height < 780 { return 118 }
+            return isPad ? 150 : 130
+        }
+        if height < 620 { return 150 }
+        if height < 700 { return 180 }
+        if height < 780 { return 215 }
+        return isPad ? 260 : 235
+    }
+
+    var spectrumHeight: CGFloat {
+        if height < 620 { return 85 }
+        if height < 700 { return 105 }
+        if height < 780 { return 120 }
+        return 138
     }
 
     var haloBarCount: Int {
@@ -548,15 +564,15 @@ private struct PlayerLayout {
         return 52
     }
 
-    var playButtonSize: CGFloat { tight ? 56 : (compact ? 62 : 68) }
-    var topGap: CGFloat { tight ? 4 : (compact ? 8 : 14) }
-    var afterDiscGap: CGFloat { tight ? 8 : 12 }
-    var metaGap: CGFloat { tight ? 8 : 12 }
-    var bottomGap: CGFloat { tight ? 6 : 12 }
-    var chromeTop: CGFloat { tight ? 4 : 8 }
-    var safeBottom: CGFloat { isPad ? 16 : (tight ? 6 : 10) }
-    var horizontalPadding: CGFloat { wide ? 36 : (width > 700 ? 28 : 16) }
-    var maxContentWidth: CGFloat { wide ? min(width - 32, 1180) : (isPad ? 680 : 560) }
+    var playButtonSize: CGFloat { tight ? 50 : (compact ? 56 : 62) }
+    var topGap: CGFloat { tight ? 2 : (compact ? 4 : 6) }
+    var afterDiscGap: CGFloat { tight ? 4 : 8 }
+    var metaGap: CGFloat { tight ? 4 : 8 }
+    var bottomGap: CGFloat { tight ? 2 : (compact ? 4 : 6) }
+    var chromeTop: CGFloat { tight ? 2 : 6 }
+    var safeBottom: CGFloat { isPad ? 10 : (tight ? 2 : 6) }
+    var horizontalPadding: CGFloat { wide ? 28 : (width > 700 ? 24 : 12) }
+    var maxContentWidth: CGFloat { wide ? min(width - 32, 1180) : (isPad ? 640 : 540) }
     var wideArtColumnWidth: CGFloat { min(420, width * 0.42) }
     var wideColumnGap: CGFloat { 32 }
 }
@@ -1081,14 +1097,83 @@ private struct PlayerStrobeLayer: View {
     var speed: Double = 0.8
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 12, paused: !isPlaying)) { _ in
-            SafeStrobeOverlay(
+        TimelineView(.animation(minimumInterval: 1.0 / 20, paused: !isPlaying)) { _ in
+            let frame = visualizer.snapshot(isPlaying: isPlaying)
+            StrobeFlashView(
                 isPlaying: isPlaying,
-                beat: visualizer.snapshot(isPlaying: isPlaying).beat,
+                beat: frame.beat,
+                bass: frame.bass,
+                level: frame.level,
                 intensity: intensity,
                 speed: speed
             )
         }
+    }
+}
+
+private struct StrobeFlashView: View {
+    let isPlaying: Bool
+    let beat: Double
+    let bass: Double
+    let level: Double
+    let intensity: Double
+    var speed: Double = 0.8
+
+    var body: some View {
+        let rawPower = max(beat * 1.25, max(bass * 1.15, level * 0.95))
+        let active = isPlaying && rawPower > 0.12
+        let flash = active ? min(1.0, rawPower * (0.6 + intensity * 0.5) * (0.6 + speed * 0.6)) : 0
+
+        ZStack {
+            // 1. Rozbłysk biało-neonowy stroboskopu na całe tło playera
+            RadialGradient(
+                colors: [
+                    Color.white.opacity(flash * 0.55),
+                    EOSTheme.accent.opacity(flash * 0.45),
+                    EOSTheme.accentSecondary.opacity(flash * 0.22),
+                    .clear
+                ],
+                center: .center,
+                startRadius: 20,
+                endRadius: 580
+            )
+            .blendMode(.plusLighter)
+
+            // 2. Światła stroboskopowe (reflektory klubowe w górnych narożnikach)
+            HStack {
+                Circle()
+                    .fill(Color.white.opacity(flash * 0.9))
+                    .frame(width: 100, height: 100)
+                    .blur(radius: 24)
+                    .offset(x: -30, y: -30)
+                Spacer()
+                Circle()
+                    .fill(EOSTheme.accent.opacity(flash * 0.9))
+                    .frame(width: 100, height: 100)
+                    .blur(radius: 24)
+                    .offset(x: 30, y: -30)
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+
+            // 3. Neonowa pulsująca ramka krawędziowa
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(flash * 0.75),
+                            EOSTheme.accent.opacity(flash * 0.55),
+                            Color.white.opacity(flash * 0.3)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 3
+                )
+                .padding(4)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .animation(.easeOut(duration: 0.05), value: flash)
     }
 }
 
@@ -1797,60 +1882,6 @@ private struct FrequencyMixerView: View {
             return k >= 10 ? String(format: "%.0fk", k) : String(format: "%.1fk", k)
         }
         return String(format: "%.0f", hz)
-    }
-}
-
-/// Photosensitive-safe accent flash — max ~3 Hz, no full-screen white.
-private struct SafeStrobeOverlay: View {
-    let isPlaying: Bool
-    let beat: Double
-    let intensity: Double
-    var speed: Double = 0.8
-
-    @State private var flash: Double = 0
-    @State private var lastFlashAt: TimeInterval = 0
-
-    private var minInterval: TimeInterval {
-        let maxHz = 3.0 + speed * 8.0
-        return 1.0 / maxHz
-    }
-
-    private var beatThreshold: Double {
-        max(0.35, 0.68 - speed * 0.22)
-    }
-
-    var body: some View {
-        ZStack {
-            RadialGradient(
-                colors: [
-                    EOSTheme.accent.opacity(flash * 0.3 * intensity),
-                    EOSTheme.accentSecondary.opacity(flash * 0.15 * intensity),
-                    .clear
-                ],
-                center: .center,
-                startRadius: 10,
-                endRadius: 400
-            )
-
-            RoundedRectangle(cornerRadius: 32)
-                .stroke(EOSTheme.accent.opacity(flash * 0.4 * intensity), lineWidth: 2)
-                .padding(4)
-        }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-        .blendMode(.plusLighter)
-        .onChange(of: beat) { _, newBeat in
-            guard isPlaying, newBeat > beatThreshold else { return }
-            let now = CACurrentMediaTime()
-            guard now - lastFlashAt >= minInterval else { return }
-            lastFlashAt = now
-            let flashDuration = max(0.02, 0.08 / max(0.5, speed * 1.5))
-            withAnimation(.easeOut(duration: flashDuration)) { flash = min(1, newBeat * 1.2) }
-            withAnimation(.easeOut(duration: flashDuration * 2.5).delay(flashDuration)) { flash = 0 }
-        }
-        .onChange(of: isPlaying) { _, playing in
-            if !playing { flash = 0 }
-        }
     }
 }
 

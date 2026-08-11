@@ -11,6 +11,7 @@ struct PlayerEffectsSheet: View {
     private var policy: PlayerVisualPolicy {
         PlayerVisualPolicy.resolve(
             preset: ui.playerVisualPreset,
+            strobeEnabled: ui.playerStrobeEnabled || ui.playerVisualPreset == .strobe,
             autoPerformance: ui.playerAutoPerformance,
             reduceMotion: reduceMotion,
             lowPower: lowPower,
