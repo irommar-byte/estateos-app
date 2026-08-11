@@ -19,6 +19,7 @@ struct EOSMusicApp: App {
                 .task {
                     orientationDelegate.appModel = app
                     orientationDelegate.videoModel = video
+                    orientationDelegate.flushPendingMediaIfNeeded()
                     video.onWillStartPlayback = {
                         app.playback.stop()
                         app.isFullPlayerPresented = false
@@ -27,6 +28,7 @@ struct EOSMusicApp: App {
                     // Single ownership of AppModel.offlineModeEnabled ← UIPreferences.
                     app.configureOfflineMode(from: ui)
                     await app.bootstrap()
+                    orientationDelegate.flushPendingMediaIfNeeded()
                 }
                 .onChange(of: ui.offlineModeEnabled) { _, value in
                     app.offlineModeEnabled = value

@@ -119,12 +119,13 @@ private struct PlayerContent: View {
                 }
 
                 // Stroboskop na wierzchu całej sceny — błyski widać na całym playerze.
-                if effectsActive, policy.allowStrobe {
+                if policy.allowStrobe {
                     PlayerStrobeLayer(
                         visualizer: engine.visualizer,
                         isPlaying: engine.isPlaying,
-                        intensity: max(0.55, policy.intensityScale),
-                        speed: ui.playerStrobeSpeed
+                        intensity: max(0.7, policy.intensityScale),
+                        speed: ui.playerStrobeSpeed,
+                        colorScheme: colorScheme
                     )
                     .allowsHitTesting(false)
                 }
@@ -1105,9 +1106,12 @@ private struct PlayerStrobeLayer: View {
     let isPlaying: Bool
     let intensity: Double
     var speed: Double = 0.8
+    var colorScheme: ColorScheme = .dark
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !isPlaying)) { context in
+        // Nie pauzuj timeline tylko dlatego, że nie ma jeszcze beatów z analizatora —
+        // STROBO ma tykać rytmem ustawień nawet przy cichym utworze.
+        TimelineView(.animation(minimumInterval: 1.0 / 36, paused: !isPlaying)) { context in
             let frame = visualizer.snapshot(isPlaying: isPlaying)
             StrobeFlashView(
                 date: context.date,
@@ -1116,13 +1120,14 @@ private struct PlayerStrobeLayer: View {
                 bass: frame.bass,
                 level: frame.level,
                 intensity: intensity,
-                speed: speed
+                speed: speed,
+                colorScheme: colorScheme
             )
         }
     }
 }
 
-/// Klubowy stroboskop: ostre błyski w rytm basu + prędkość z ustawień.
+/// Klubowy stroboskop: ostre błyski w czasie + wzmocnienie od basu.
 private struct StrobeFlashView: View {
     let date: Date
     let isPlaying: Bool
@@ -1131,36 +1136,42 @@ private struct StrobeFlashView: View {
     let level: Double
     let intensity: Double
     var speed: Double = 0.8
+    var colorScheme: ColorScheme = .dark
 
     var body: some View {
         let rawPower = max(beat * 1.35, max(bass * 1.2, level * 0.9))
-        let hz = 2.0 + speed * 7.0
+        let hz = 2.2 + speed * 8.0
         let phase = date.timeIntervalSinceReferenceDate * hz
         // Ostry gate: krótkie „on”, długa cisza — prawdziwy strobo.
-        let gate = (phase.truncatingRemainder(dividingBy: 1) < (0.12 + speed * 0.08)) ? 1.0 : 0.0
-        let energyGate = rawPower > 0.18 ? 1.0 : (rawPower > 0.08 ? 0.45 : 0)
-        let flash = isPlaying ? min(1, gate * energyGate * (0.55 + intensity * 0.7)) : 0
+        let duty = 0.14 + speed * 0.1
+        let gate = (phase.truncatingRemainder(dividingBy: 1) < duty) ? 1.0 : 0.0
+        // Zawsze błyskaj w rytmie — audio tylko wzmacnia, nigdy nie gasi całkowicie.
+        let boost = 0.72 + min(0.45, rawPower * 0.9)
+        let flash = isPlaying ? min(1, gate * boost * (0.65 + intensity * 0.55)) : 0
+        let isLight = colorScheme == .light
+        let flashCore = isLight ? Color.black : Color.white
+        let flashAccent = isLight ? EOSTheme.accent : Color.white
 
         ZStack {
-            Color.white.opacity(flash * 0.28)
-                .blendMode(.plusLighter)
+            flashCore.opacity(flash * (isLight ? 0.42 : 0.32))
+                .blendMode(isLight ? .multiply : .plusLighter)
 
             RadialGradient(
                 colors: [
-                    Color.white.opacity(flash * 0.7),
-                    EOSTheme.accent.opacity(flash * 0.55),
-                    EOSTheme.accentSecondary.opacity(flash * 0.25),
+                    flashAccent.opacity(flash * (isLight ? 0.55 : 0.75)),
+                    EOSTheme.accent.opacity(flash * 0.6),
+                    EOSTheme.accentSecondary.opacity(flash * 0.3),
                     .clear
                 ],
                 center: .center,
                 startRadius: 8,
                 endRadius: 520
             )
-            .blendMode(.plusLighter)
+            .blendMode(isLight ? .normal : .plusLighter)
 
             HStack {
                 Circle()
-                    .fill(Color.white.opacity(flash * 0.95))
+                    .fill(flashCore.opacity(flash * 0.9))
                     .frame(width: 120, height: 120)
                     .blur(radius: 28)
                     .offset(x: -40, y: -20)
@@ -1174,9 +1185,9 @@ private struct StrobeFlashView: View {
             .frame(maxHeight: .infinity, alignment: .top)
 
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(Color.white.opacity(flash * 0.85), lineWidth: 2.5)
+                .stroke(flashAccent.opacity(flash * 0.9), lineWidth: 2.5)
                 .padding(6)
-                .blendMode(.plusLighter)
+                .blendMode(isLight ? .normal : .plusLighter)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)

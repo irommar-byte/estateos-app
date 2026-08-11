@@ -165,11 +165,13 @@ struct PlayerVisualPolicy: Equatable {
 
         if reduceMotion {
             // Keep cheap live analyzer so EQ/island still follow the song; no spinning chrome.
+            // Explicit strobe (preset / toggle) still allowed — user asked for it.
+            let wantsStrobe = preset == .strobe || strobeEnabled
             return PlayerVisualPolicy(
                 enabled: true,
-                allowStrobe: false,
+                allowStrobe: wantsStrobe && thermal != .critical && thermal != .serious,
                 analyzerFPS: preset == .spectrum ? 14 : 12,
-                timelineFPS: 0,
+                timelineFPS: wantsStrobe ? 24 : 0,
                 intensityScale: clampedIntensity * 0.75,
                 restrictionReason: "Reduce Motion — bez obrotu"
             )
@@ -253,6 +255,8 @@ struct PlayerVisualAnalysisSync: ViewModifier {
             engine?.isLoading.description ?? "nil",
             engine?.currentTrack?.id ?? "nil",
             ui.playerVisualPreset.rawValue,
+            ui.playerMixerPowered.description,
+            ui.playerStrobeEnabled.description,
             ui.playerAutoPerformance.description,
             reduceMotion.description,
             lowPower.description,
@@ -264,8 +268,11 @@ struct PlayerVisualAnalysisSync: ViewModifier {
     private func sync() {
         guard let engine = app.playback.engine else { return }
 
+        let effectivePreset: PlayerVisualPreset = ui.playerMixerPowered ? ui.playerVisualPreset : .off
         let policy = PlayerVisualPolicy.resolve(
-            preset: ui.playerVisualPreset,
+            preset: effectivePreset,
+            intensity: ui.playerEffectsIntensity * ui.playerSensitivity,
+            strobeEnabled: ui.playerStrobeEnabled || effectivePreset == .strobe,
             autoPerformance: ui.playerAutoPerformance,
             reduceMotion: reduceMotion,
             lowPower: lowPower,

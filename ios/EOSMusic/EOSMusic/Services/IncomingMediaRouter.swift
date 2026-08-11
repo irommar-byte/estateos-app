@@ -19,17 +19,24 @@ enum IncomingMediaRouter {
     static func handle(_ url: URL, app: AppModel, video: VideoAppModel) -> Bool {
         guard isMediaFileURL(url) else { return false }
 
-        let accessed = url.startAccessingSecurityScopedResource()
-        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-
         let name = url.lastPathComponent
         let audio = isAudioFileName(name)
         let videoCapable = isVideoFileName(name)
 
+        // Skopiuj do sandboxu ZANIM zwolnimy security-scope — inaczej async Task
+        // nie ma już prawa czytać pliku z Files / Telegram / Share Sheet.
+        let staged: URL
+        do {
+            staged = try stageIntoSandbox(url)
+        } catch {
+            app.libraryError = "Nie udało się otworzyć pliku: \(error.localizedDescription)"
+            return true
+        }
+
         if isAmbiguousMediaFile(url) {
             app.presentExternalOpen(
                 ExternalOpenPrompt(
-                    sourceURL: url,
+                    sourceURL: staged,
                     fileName: name,
                     suggestedAudio: audio || videoCapable,
                     suggestedVideo: videoCapable
@@ -39,12 +46,12 @@ enum IncomingMediaRouter {
         }
 
         if audio {
-            Task { await app.playExternalAudioFile(at: url) }
+            Task { await app.playExternalAudioFile(at: staged) }
             return true
         }
 
         if videoCapable {
-            Task { await video.openExternalVideo(at: url) }
+            Task { await video.openExternalVideo(at: staged) }
             return true
         }
 
@@ -52,12 +59,36 @@ enum IncomingMediaRouter {
         return true
     }
 
+    /// Natychmiastowa kopia do Documents — działa nawet gdy źródło jest tymczasowe.
+    private static func stageIntoSandbox(_ source: URL) throws -> URL {
+        let accessed = source.startAccessingSecurityScopedResource()
+        defer { if accessed { source.stopAccessingSecurityScopedResource() } }
+
+        AppDocuments.ensureStructure()
+        let safeName = source.lastPathComponent
+            .replacingOccurrences(of: "/", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fileName = safeName.isEmpty ? "import.mp3" : safeName
+        let folder = isVideoFileName(fileName) ? AppDocuments.videoImports : AppDocuments.audioImports
+        let dest = folder
+            .appendingPathComponent("inbox-\(UUID().uuidString.prefix(8))-\(fileName)", isDirectory: false)
+
+        if FileManager.default.fileExists(atPath: dest.path) {
+            try FileManager.default.removeItem(at: dest)
+        }
+        try FileManager.default.copyItem(at: source, to: dest)
+        return dest
+    }
+
     static func isMediaFileURL(_ url: URL) -> Bool {
         if url.scheme == "pl.nostalgie.eosmusic" { return false }
-        guard url.isFileURL else { return false }
-        let name = url.lastPathComponent
-        guard !name.isEmpty, name != "/" else { return false }
-        return isAudioFileName(name) || isVideoFileName(name)
+        // file:// oraz rzadkie warianty Open In
+        if url.isFileURL {
+            let name = url.lastPathComponent
+            guard !name.isEmpty, name != "/" else { return false }
+            return isAudioFileName(name) || isVideoFileName(name)
+        }
+        return false
     }
 
     /// mp4 / mov / m4v can be opened as music or video.

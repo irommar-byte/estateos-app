@@ -40,6 +40,8 @@ final class OrientationLock {
 final class AppOrientationDelegate: NSObject, UIApplicationDelegate {
     weak var appModel: AppModel?
     weak var videoModel: VideoAppModel?
+    /// Open In przy zimnym starcie potrafi dojść zanim View ustawi modele.
+    private var pendingMediaURL: URL?
 
     func application(
         _ application: UIApplication,
@@ -57,7 +59,17 @@ final class AppOrientationDelegate: NSObject, UIApplicationDelegate {
             GoogleDriveAuthService.shared.handleOpenURL(url)
             return true
         }
-        guard let appModel, let videoModel else { return false }
+        guard let appModel, let videoModel else {
+            pendingMediaURL = url
+            return true
+        }
         return IncomingMediaRouter.handle(url, app: appModel, video: videoModel)
+    }
+
+    @MainActor
+    func flushPendingMediaIfNeeded() {
+        guard let url = pendingMediaURL, let appModel, let videoModel else { return }
+        pendingMediaURL = nil
+        _ = IncomingMediaRouter.handle(url, app: appModel, video: videoModel)
     }
 }

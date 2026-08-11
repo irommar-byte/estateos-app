@@ -761,8 +761,19 @@ final class AppModel: ObservableObject {
         do {
             let imported = try OpenedAudioImportService.importFile(from: sourceURL)
 
+            // Odtwarzanie nigdy nie zależy od udanego dodania do biblioteki / sieci.
             if SessionStore.load() != nil {
-                try await addOpenedImportToLibrary(imported)
+                Task {
+                    do {
+                        try await addOpenedImportToLibrary(imported)
+                    } catch {
+                        presentToast(MusicToast(
+                            systemImage: "exclamationmark.triangle",
+                            title: "Odtwarzam lokalnie",
+                            subtitle: "Nie dodano do biblioteki: \(error.localizedDescription)"
+                        ))
+                    }
+                }
             } else {
                 presentToast(MusicToast(
                     systemImage: "person.crop.circle.badge.plus",
@@ -803,6 +814,11 @@ final class AppModel: ObservableObject {
             isFullPlayerPresented = true
         } catch {
             libraryError = error.localizedDescription
+            presentToast(MusicToast(
+                systemImage: "exclamationmark.triangle",
+                title: "Nie udało się otworzyć",
+                subtitle: error.localizedDescription
+            ))
         }
     }
 
