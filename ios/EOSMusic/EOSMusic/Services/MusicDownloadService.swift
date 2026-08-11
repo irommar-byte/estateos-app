@@ -451,6 +451,24 @@ final class MusicDownloadService: ObservableObject {
         api: MusicAPIClient,
         onLibraryChanged: @escaping () async -> Void
     ) async throws {
+        if offline.isAvailable(track.url) {
+            states[track.url] = .done
+            return
+        }
+
+        // Already on EOS server — skip second APLMate acquire; transfer only.
+        if track.isOnServer || wasOnServer[track.url] == true,
+           let jobId = track.durableJobId {
+            try await transferServerJobToDevice(
+                jobId: jobId,
+                track: track,
+                folderId: folderId,
+                api: api,
+                onLibraryChanged: onLibraryChanged
+            )
+            return
+        }
+
         states[track.url] = .acquiringServer(progress: 3)
 
         let jobId: String = try await coordinator.withPhaseSlot(trackUrl: track.url, kind: .serverAcquire) {
@@ -476,8 +494,24 @@ final class MusicDownloadService: ObservableObject {
             return jobId
         }
 
+        try await transferServerJobToDevice(
+            jobId: jobId,
+            track: track,
+            folderId: folderId,
+            api: api,
+            onLibraryChanged: onLibraryChanged
+        )
+    }
+
+    private func transferServerJobToDevice(
+        jobId: String,
+        track: MusicTrack,
+        folderId: String,
+        api: MusicAPIClient,
+        onLibraryChanged: @escaping () async -> Void
+    ) async throws {
         try await coordinator.withPhaseSlot(trackUrl: track.url, kind: .deviceTransfer) {
-            self.states[track.url] = .downloading(progress: 55)
+            self.states[track.url] = .downloading(progress: 8)
             let playToken = try await api.musicPlayToken(jobId: jobId)
             var request = api.streamURLRequest(jobId: jobId, token: playToken.token)
             request.timeoutInterval = 3600
@@ -489,9 +523,9 @@ final class MusicDownloadService: ObservableObject {
                 downloadJobId: jobId
             ) { [weak self] fraction in
                 Task { @MainActor in
-                    let progress = 55 + fraction * 45
+                    let progress = 8 + fraction * 92
                     if case .downloading(let old)? = self?.states[track.url],
-                       abs(old - progress) < 8,
+                       abs(old - progress) < 6,
                        fraction < 0.99 {
                         return
                     }
@@ -499,7 +533,14 @@ final class MusicDownloadService: ObservableObject {
                 }
             }
             self.states[track.url] = .done
-            EOSPerfLog.download.info("download done track=\(track.url, privacy: .public)")
+            self.wasOnServer[track.url] = true
+            _ = try? await api.linkTrackDownload(
+                folderId: folderId,
+                url: track.url,
+                downloadJobId: jobId
+            )
+            self.scheduleLibraryRefresh(onLibraryChanged)
+            EOSPerfLog.download.info("device transfer done track=\(track.url, privacy: .public)")
         }
     }
 

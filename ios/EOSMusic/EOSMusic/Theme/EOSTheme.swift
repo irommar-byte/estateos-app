@@ -297,6 +297,18 @@ final class UIPreferences: ObservableObject {
     @Published var playerEffectsIntensity: Double {
         didSet { UserDefaults.standard.set(playerEffectsIntensity, forKey: Self.intensityKey) }
     }
+    /// Mikser: czułość reakcji diod / VU (0…1).
+    @Published var playerSensitivity: Double {
+        didSet { UserDefaults.standard.set(playerSensitivity, forKey: Self.sensitivityKey) }
+    }
+    /// Mikser: drive / przester wizualny (0…1) — wcześniejszy CLIP i saturacja.
+    @Published var playerDrive: Double {
+        didSet { UserDefaults.standard.set(playerDrive, forKey: Self.driveKey) }
+    }
+    /// Mikser: master power — wyłącza reaktywne diody (EQ zostaje).
+    @Published var playerMixerPowered: Bool {
+        didSet { UserDefaults.standard.set(playerMixerPowered, forKey: Self.mixerPowerKey) }
+    }
     /// Safe beat strobe — default off; gated by policy.
     @Published var playerStrobeEnabled: Bool {
         didSet { UserDefaults.standard.set(playerStrobeEnabled, forKey: Self.strobeKey) }
@@ -323,6 +335,9 @@ final class UIPreferences: ObservableObject {
     private static let playerEffectsKey = "ui.playerEffectsMode"
     private static let ultraCompactKey = "ui.ultraCompact"
     private static let intensityKey = "ui.playerEffectsIntensity"
+    private static let sensitivityKey = "ui.playerSensitivity"
+    private static let driveKey = "ui.playerDrive"
+    private static let mixerPowerKey = "ui.playerMixerPowered"
     private static let strobeKey = "ui.playerStrobeEnabled"
     private static let autoPerfKey = "ui.playerAutoPerformance"
     private static let offlineModeKey = "ui.offlineModeEnabled"
@@ -337,6 +352,21 @@ final class UIPreferences: ObservableObject {
             playerEffectsIntensity = min(1, max(0, UserDefaults.standard.double(forKey: Self.intensityKey)))
         } else {
             playerEffectsIntensity = 0.72
+        }
+        if UserDefaults.standard.object(forKey: Self.sensitivityKey) != nil {
+            playerSensitivity = min(1, max(0.15, UserDefaults.standard.double(forKey: Self.sensitivityKey)))
+        } else {
+            playerSensitivity = 0.78
+        }
+        if UserDefaults.standard.object(forKey: Self.driveKey) != nil {
+            playerDrive = min(1, max(0, UserDefaults.standard.double(forKey: Self.driveKey)))
+        } else {
+            playerDrive = 0.42
+        }
+        if UserDefaults.standard.object(forKey: Self.mixerPowerKey) != nil {
+            playerMixerPowered = UserDefaults.standard.bool(forKey: Self.mixerPowerKey)
+        } else {
+            playerMixerPowered = true
         }
         playerStrobeEnabled = UserDefaults.standard.bool(forKey: Self.strobeKey)
         if UserDefaults.standard.object(forKey: Self.autoPerfKey) != nil {

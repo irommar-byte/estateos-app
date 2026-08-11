@@ -41,13 +41,20 @@ private struct PlayerContent: View {
     private var preset: PlayerVisualPreset { ui.playerVisualPreset }
 
     private var policy: PlayerVisualPolicy {
-        PlayerVisualPolicy.resolve(
-            preset: preset,
+        let effectivePreset: PlayerVisualPreset = ui.playerMixerPowered ? preset : .off
+        let mixIntensity = ui.playerEffectsIntensity * ui.playerSensitivity * (ui.playerMixerPowered ? 1 : 0.15)
+        return PlayerVisualPolicy.resolve(
+            preset: effectivePreset,
+            intensity: mixIntensity,
             autoPerformance: ui.playerAutoPerformance,
             reduceMotion: reduceMotion,
             lowPower: lowPower,
             thermal: thermal
         )
+    }
+
+    private var mixerIntensity: Double {
+        policy.intensityScale * (0.65 + ui.playerDrive * 0.7)
     }
 
     private var effectsActive: Bool { policy.enabled && preset != .off }
@@ -90,6 +97,10 @@ private struct PlayerContent: View {
                 horizontalSizeClass: horizontalSizeClass
             )
             ZStack {
+                ProMixerStageBackground()
+                    .ignoresSafeArea()
+                    .opacity(0.92)
+
                 PlayerGlassBackground(
                     visualizer: engine.visualizer,
                     isPlaying: engine.isPlaying,
@@ -134,10 +145,29 @@ private struct PlayerContent: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 0) {
                     Spacer(minLength: layout.topGap)
-                    playerArtworkSection(layout: layout, track: track)
-                    trackMeta(track: track, layout: layout)
-                        .padding(.top, layout.metaGap)
-                    playerStatusSection(layout: layout)
+                    ProMixerNarrowConsole(
+                        visualizer: engine.visualizer,
+                        isPlaying: engine.isPlaying,
+                        isLoading: engine.isLoading,
+                        intensity: mixerIntensity,
+                        drive: ui.playerDrive,
+                        bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
+                        compactMixer: layout.compactMixer,
+                        queueLabel: engine.queuePositionLabel,
+                        onServer: app.isOnServer(track.url) || track.isOnServer,
+                        effectsActive: effectsActive,
+                        preset: preset,
+                        policy: policy,
+                        artworkURL: track.artworkURL,
+                        fallbackArtwork: engine.displayArtwork,
+                        canvasSize: layout.discSize
+                    ) {
+                        trackMeta(track: track, layout: layout, includeStorage: false)
+                    } status: {
+                        playerStatusSection(layout: layout)
+                    } storage: {
+                        playerStorageBar(track: track, layout: layout)
+                    }
                     Spacer(minLength: layout.bottomGap)
                 }
             }
@@ -157,17 +187,28 @@ private struct PlayerContent: View {
             playerChrome(track: track, layout: layout)
 
             ScrollView(.vertical, showsIndicators: false) {
-                HStack(alignment: .top, spacing: layout.wideColumnGap) {
-                    VStack(spacing: layout.afterDiscGap) {
-                        playerArtworkSection(layout: layout, track: track)
-                    }
-                    .frame(maxWidth: layout.wideArtColumnWidth)
-
-                    VStack(spacing: layout.metaGap) {
-                        trackMeta(track: track, layout: layout)
-                        playerStatusSection(layout: layout)
-                    }
-                    .frame(maxWidth: .infinity)
+                ProMixerWideConsole(
+                    visualizer: engine.visualizer,
+                    isPlaying: engine.isPlaying,
+                    isLoading: engine.isLoading,
+                    intensity: mixerIntensity,
+                    drive: ui.playerDrive,
+                    bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
+                    compactMixer: layout.compactMixer,
+                    queueLabel: engine.queuePositionLabel,
+                    onServer: app.isOnServer(track.url) || track.isOnServer,
+                    effectsActive: effectsActive,
+                    preset: preset,
+                    policy: policy,
+                    artworkURL: track.artworkURL,
+                    fallbackArtwork: engine.displayArtwork,
+                    canvasSize: layout.discSize
+                ) {
+                    trackMeta(track: track, layout: layout, includeStorage: false)
+                } status: {
+                    playerStatusSection(layout: layout)
+                } storage: {
+                    playerStorageBar(track: track, layout: layout)
                 }
                 .padding(.top, layout.topGap)
                 .padding(.bottom, layout.bottomGap)
@@ -314,12 +355,28 @@ private struct PlayerContent: View {
         .padding(.top, layout.chromeTop)
     }
 
-    private func trackMeta(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
+    private func playerStorageBar(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
+        Group {
+            if !track.isExternal {
+                PlayerStorageStatusBar(
+                    state: app.playbackCloudState(for: track),
+                    onServerHint: app.isOnServer(track.url) || track.isOnServer,
+                    layout: layout.wide ? .horizontal : .compact,
+                    onDownload: { app.downloadCurrentPlayback() },
+                    onCancel: { app.cancelDownload(for: track.url) },
+                    onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
+                )
+            }
+        }
+    }
+
+    private func trackMeta(track: MusicPlaybackTrack, layout: PlayerLayout, includeStorage: Bool = true) -> some View {
         VStack(spacing: layout.tight ? 3 : 5) {
             Text(track.title)
-                .font(layout.tight ? .title3.weight(.bold) : .title2.weight(.bold))
+                .font(layout.wide ? .title2.weight(.bold) : (layout.tight ? .title3.weight(.bold) : .title2.weight(.bold)))
                 .foregroundStyle(EOSTheme.textPrimary)
-                .multilineTextAlignment(.center)
+                .multilineTextAlignment(layout.wide ? .leading : .center)
+                .frame(maxWidth: .infinity, alignment: layout.wide ? .leading : .center)
                 .lineLimit(2)
                 .minimumScaleFactor(0.85)
             if let artist = track.artist, !artist.isEmpty {
@@ -331,6 +388,7 @@ private struct PlayerContent: View {
                         .foregroundStyle(EOSTheme.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.9)
+                        .frame(maxWidth: .infinity, alignment: layout.wide ? .leading : .center)
                 }
                 .buttonStyle(.plain)
             }
@@ -343,6 +401,7 @@ private struct PlayerContent: View {
                         .foregroundStyle(EOSTheme.textMuted)
                         .lineLimit(1)
                         .minimumScaleFactor(0.9)
+                        .frame(maxWidth: .infinity, alignment: layout.wide ? .leading : .center)
                 }
                 .buttonStyle(.plain)
                 .disabled(track.albumId?.isEmpty != false)
@@ -361,10 +420,11 @@ private struct PlayerContent: View {
                 .padding(.vertical, 7)
                 .background(Color.green.opacity(0.12), in: Capsule())
                 .padding(.top, layout.tight ? 6 : 8)
-            } else {
+            } else if includeStorage {
                 PlayerStorageStatusBar(
                     state: app.playbackCloudState(for: track),
                     onServerHint: app.isOnServer(track.url) || track.isOnServer,
+                    layout: .compact,
                     onDownload: { app.downloadCurrentPlayback() },
                     onCancel: { app.cancelDownload(for: track.url) },
                     onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
@@ -381,44 +441,11 @@ private struct PlayerContent: View {
     }
 
     private func transportControls(layout: PlayerLayout) -> some View {
-        HStack(spacing: layout.tight ? 22 : 28) {
-            Button { engine.toggleShuffle() } label: {
-                Image(systemName: "shuffle")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(engine.shuffleEnabled ? EOSTheme.accent : EOSTheme.textMuted)
-            }
-            Button { Task { await engine.skipPrevious() } } label: {
-                Image(systemName: "backward.fill")
-                    .font(.title3)
-            }
-            Button { engine.togglePlayPause() } label: {
-                Group {
-                    if engine.isLoading {
-                        ProgressView()
-                            .controlSize(.large)
-                            .frame(width: layout.playButtonSize, height: layout.playButtonSize)
-                    } else {
-                        Image(systemName: engine.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: layout.playButtonSize))
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(EOSTheme.textPrimary)
-                            .shadow(color: EOSTheme.accent.opacity(0.18), radius: 12, y: 4)
-                    }
-                }
-            }
-            .disabled(engine.isLoading)
-            Button { Task { await engine.skipNext() } } label: {
-                Image(systemName: "forward.fill")
-                    .font(.title3)
-            }
-            Button { engine.cycleRepeatMode() } label: {
-                Image(systemName: engine.repeatMode.icon)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(engine.repeatMode != .off ? EOSTheme.accent : EOSTheme.textMuted)
-            }
-        }
-        .foregroundStyle(EOSTheme.textPrimary)
-        .padding(.vertical, layout.tight ? 4 : 8)
+        ProMixerTransportDeck(
+            engine: engine,
+            playButtonSize: layout.playButtonSize,
+            tight: layout.tight
+        )
     }
 
     private func openAlbum(for track: MusicPlaybackTrack) {
@@ -483,7 +510,9 @@ private struct PlayerLayout {
         self.isPad = UIDevice.current.userInterfaceIdiom == .pad || horizontalSizeClass == .regular
     }
 
-    var wide: Bool { isPad && width >= 720 && width > height * 0.82 }
+    // Aspect/size driven, not idiom driven — iPhone landscape gets the side-by-side
+    // deck too instead of squeezing the tall phone layout into a short height.
+    var wide: Bool { width >= 640 && width > height * 1.05 }
     var tight: Bool { isPad ? height < 560 : height < 680 }
     var compact: Bool { isPad ? height < 640 : height < 760 }
     var compactMixer: Bool { tight || height < 820 }
@@ -510,7 +539,7 @@ private struct PlayerLayout {
     var chromeTop: CGFloat { tight ? 4 : 8 }
     var safeBottom: CGFloat { isPad ? 16 : (tight ? 6 : 10) }
     var horizontalPadding: CGFloat { wide ? 36 : (width > 700 ? 28 : 16) }
-    var maxContentWidth: CGFloat { wide ? min(width - 48, 980) : (isPad ? 680 : 560) }
+    var maxContentWidth: CGFloat { wide ? min(width - 32, 1180) : (isPad ? 680 : 560) }
     var wideArtColumnWidth: CGFloat { min(420, width * 0.42) }
     var wideColumnGap: CGFloat { 32 }
 }
@@ -889,37 +918,35 @@ private struct PlayerProgressSlider: View {
     @State private var scrubTime: Double = 0
 
     var body: some View {
-        // Poll AVPlayer directly — no 0.5s Combine publish that hitch-stepped the whole player.
-        TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+        // Poll AVPlayer directly at 10Hz — smooth enough to feel precise without
+        // fighting the render loop; no 0.5s Combine publish that hitch-stepped the player.
+        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
             let time = isScrubbing ? scrubTime : engine.livePlaybackTime()
             let duration = max(engine.liveDuration(), 1)
             VStack(spacing: 6) {
-                Slider(
-                    value: Binding(
-                        get: { time },
-                        set: { newValue in
-                            isScrubbing = true
-                            scrubTime = newValue
-                        }
-                    ),
-                    in: 0...duration,
-                    onEditingChanged: { editing in
-                        if editing {
-                            isScrubbing = true
-                            scrubTime = engine.livePlaybackTime()
-                        } else {
-                            engine.seek(to: scrubTime)
-                            isScrubbing = false
-                        }
+                PrecisionScrubBar(
+                    progress: duration > 0 ? min(1, max(0, time / duration)) : 0,
+                    isScrubbing: isScrubbing,
+                    accentTime: formatDuration(time),
+                    onScrubChange: { fraction in
+                        isScrubbing = true
+                        scrubTime = fraction * duration
+                    },
+                    onScrubEnd: { fraction in
+                        let target = fraction * duration
+                        scrubTime = target
+                        engine.seek(to: target)
+                        isScrubbing = false
                     }
                 )
-                .tint(EOSTheme.accent)
+                .frame(height: tight ? 26 : 32)
+
                 HStack {
                     Text(formatDuration(time))
                     Spacer()
                     Text(formatDuration(duration))
                 }
-                .font(.caption2.monospacedDigit())
+                .font(.caption2.monospacedDigit().weight(.semibold))
                 .foregroundStyle(EOSTheme.textMuted)
             }
             .padding(.horizontal, 4)
@@ -933,6 +960,89 @@ private struct PlayerProgressSlider: View {
         let m = total / 60
         let s = total % 60
         return String(format: "%d:%02d", m, s)
+    }
+}
+
+/// Pixel-precise scrub bar — tap anywhere to jump, drag for fine control,
+/// with haptic ticks at grab/release like a real transport wheel.
+private struct PrecisionScrubBar: View {
+    let progress: Double
+    let isScrubbing: Bool
+    let accentTime: String
+    let onScrubChange: (Double) -> Void
+    let onScrubEnd: (Double) -> Void
+
+    @State private var dragFraction: Double?
+    @GestureState private var isPressing = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let trackHeight: CGFloat = isPressing || isScrubbing ? 8 : 5
+            let shown = dragFraction ?? progress
+            let knobDiameter: CGFloat = isPressing || isScrubbing ? 22 : 14
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(height: trackHeight)
+
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [EOSTheme.accentSecondary, EOSTheme.accent],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(trackHeight, width * shown), height: trackHeight)
+                    .shadow(color: EOSTheme.accent.opacity(isPressing || isScrubbing ? 0.6 : 0.25), radius: 6)
+
+                Circle()
+                    .fill(Color.white)
+                    .overlay {
+                        Circle().stroke(EOSTheme.accent.opacity(0.5), lineWidth: 1.5)
+                    }
+                    .frame(width: knobDiameter, height: knobDiameter)
+                    .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+                    .offset(x: min(max(0, width * shown - knobDiameter / 2), max(0, width - knobDiameter)))
+
+                if isPressing || isScrubbing {
+                    Text(accentTime)
+                        .font(.caption2.monospacedDigit().weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(EOSTheme.accent, in: Capsule())
+                        .offset(
+                            x: min(max(0, width * shown - 22), max(0, width - 44)),
+                            y: -26
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .updating($isPressing) { _, state, _ in state = true }
+                    .onChanged { drag in
+                        if dragFraction == nil {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                        let fraction = min(1, max(0, drag.location.x / max(1, width)))
+                        dragFraction = fraction
+                        onScrubChange(fraction)
+                    }
+                    .onEnded { drag in
+                        let fraction = min(1, max(0, drag.location.x / max(1, width)))
+                        onScrubEnd(fraction)
+                        dragFraction = nil
+                        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    }
+            )
+            .animation(.easeOut(duration: 0.15), value: isPressing || isScrubbing)
+        }
     }
 }
 

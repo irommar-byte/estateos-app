@@ -826,8 +826,20 @@ final class AppModel: ObservableObject {
     func downloadCurrentPlaybackAsync() async {
         guard let current = playback.engine?.currentTrack else { return }
         if current.isExternal {
-            libraryError = "Ten utwór jest z lokalnego źródła — nie trzeba go pobierać."
+            presentToast(MusicToast(
+                systemImage: "iphone",
+                title: "Plik lokalny",
+                subtitle: "Ten utwór nie wymaga pobierania"
+            ))
             return
+        }
+        let alreadyOnServer = isOnServer(current.url) || current.isOnServer
+        if alreadyOnServer {
+            presentToast(MusicToast(
+                systemImage: "arrow.down.circle.fill",
+                title: "Pobieranie na iPhone",
+                subtitle: current.title
+            ))
         }
         do {
             let folderId: String
@@ -841,9 +853,31 @@ final class AppModel: ObservableObject {
                 track = musicTracks.first(where: { $0.url == current.url })
                     ?? MusicTrack(from: current, folderId: folderId)
             }
-            downloadTrack(track, folderId: folderId)
+            var resolved = track
+            if resolved.durableJobId == nil,
+               let jobId = current.serverAssetId ?? current.downloadJobId {
+                resolved = MusicTrack(
+                    folderId: track.folderId,
+                    url: track.url,
+                    title: track.title,
+                    artist: track.artist,
+                    album: track.album,
+                    thumbnail: track.thumbnail,
+                    duration: track.duration,
+                    artistId: track.artistId,
+                    albumId: track.albumId,
+                    downloadJobId: jobId,
+                    serverAssetId: jobId,
+                    addedAt: track.addedAt
+                )
+            }
+            downloadTrack(resolved, folderId: folderId)
         } catch {
-            libraryError = error.localizedDescription
+            presentToast(MusicToast(
+                systemImage: "exclamationmark.icloud",
+                title: "Nie udało się pobrać",
+                subtitle: error.localizedDescription
+            ))
         }
     }
 

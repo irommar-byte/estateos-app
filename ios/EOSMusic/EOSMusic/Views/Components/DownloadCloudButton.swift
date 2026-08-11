@@ -115,9 +115,12 @@ struct ServerCloudProgressIcon: View {
 struct PlayerStorageStatusBar: View {
     let state: TrackDownloadUIState
     var onServerHint: Bool = false
+    var layout: Layout = .horizontal
     var onDownload: () -> Void = {}
     var onCancel: () -> Void = {}
     var onRemoveOffline: () -> Void = {}
+
+    enum Layout { case horizontal, compact }
 
     private var showsServerChip: Bool {
         switch state {
@@ -170,67 +173,109 @@ struct PlayerStorageStatusBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: statusIcon)
-                    .font(.caption.weight(.semibold))
-                Text(statusTitle)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(statusColor)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(statusColor.opacity(0.12), in: Capsule())
-
-            if case .done = state, showsServerChip {
-                HStack(spacing: 4) {
-                    Image(systemName: "icloud.fill")
-                        .font(.caption2.weight(.semibold))
-                    Text("Serwer")
-                        .font(.caption2.weight(.semibold))
-                }
-                .foregroundStyle(EOSTheme.accent)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 7)
-                .background(EOSTheme.accent.opacity(0.12), in: Capsule())
-            }
-
-            Spacer(minLength: 4)
-
-            if let label = downloadLabel {
-                Button {
-                    switch state {
-                    case .acquiringServer, .downloading: onCancel()
-                    default: onDownload()
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: state.isBusy ? "xmark" : "arrow.down.to.line")
-                            .font(.caption.weight(.bold))
-                        Text(label)
-                            .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(EOSTheme.accent, in: Capsule())
-                }
-                .buttonStyle(.plain)
+        Group {
+            if layout == .compact {
+                compactBody
             } else {
-                Button(action: onRemoveOffline) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.green)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(.ultraThinMaterial, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Na iPhonie — usuń lokalną kopię")
+                horizontalBody
             }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private var horizontalBody: some View {
+        HStack(spacing: 8) {
+            statusChip
+            if case .done = state, showsServerChip {
+                serverChip
+            }
+            Spacer(minLength: 4)
+            actionControl
+        }
+    }
+
+    private var compactBody: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                statusChip
+                if case .done = state, showsServerChip {
+                    serverChip
+                }
+            }
+            actionControl
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var actionControl: some View {
+        if let label = downloadLabel {
+            Button {
+                switch state {
+                case .acquiringServer, .downloading: onCancel()
+                default: onDownload()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: state.isBusy ? "xmark" : "arrow.down.to.line")
+                        .font(.caption.weight(.bold))
+                    Text(label)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, layout == .compact ? 14 : 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: layout == .compact ? .infinity : nil, alignment: .center)
+                .background(EOSTheme.accent, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        } else {
+            Button(action: onRemoveOffline) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.body.weight(.semibold))
+                    Text("Na iPhonie")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(.green)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: layout == .compact ? .infinity : nil)
+                .background(.ultraThinMaterial, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Na iPhonie — usuń lokalną kopię")
+        }
+    }
+
+    private var statusChip: some View {
+        HStack(spacing: 6) {
+            Image(systemName: statusIcon)
+                .font(.caption.weight(.semibold))
+            Text(statusTitle)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .foregroundStyle(statusColor)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(statusColor.opacity(0.12), in: Capsule())
+    }
+
+    private var serverChip: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "icloud.fill")
+                .font(.caption2.weight(.semibold))
+            Text("Serwer")
+                .font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(EOSTheme.accent)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(EOSTheme.accent.opacity(0.12), in: Capsule())
     }
 }
 

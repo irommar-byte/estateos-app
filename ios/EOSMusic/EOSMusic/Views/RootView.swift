@@ -5,6 +5,7 @@ struct RootView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ui: UIPreferences
     @EnvironmentObject private var video: VideoAppModel
+    @State private var showLaunchIntro = true
 
     private var prefersFullScreenPlayer: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
@@ -14,13 +15,32 @@ struct RootView: View {
         ZStack {
             EOSAmbientBackground()
 
-            if app.isBootstrapping {
-                EOSLoadingView(title: "Ładuję…")
+            if showLaunchIntro {
+                EOSLaunchIntroView()
+                    .transition(.opacity.combined(with: .scale(scale: 1.03)))
+                    .zIndex(10)
             } else if app.user == nil {
                 LoginView()
+                    .transition(.opacity)
             } else {
                 MainTabView()
+                    .transition(.opacity)
             }
+        }
+        .animation(.easeInOut(duration: 0.55), value: showLaunchIntro)
+        .task {
+            // Guarantee the intro is visible long enough to read, even when the
+            // cached session/library make bootstrap resolve almost instantly.
+            let start = Date()
+            while app.isBootstrapping {
+                try? await Task.sleep(nanoseconds: 40_000_000)
+            }
+            let minimumDuration = 1.35
+            let elapsed = Date().timeIntervalSince(start)
+            if elapsed < minimumDuration {
+                try? await Task.sleep(nanoseconds: UInt64((minimumDuration - elapsed) * 1_000_000_000))
+            }
+            showLaunchIntro = false
         }
         .overlay(alignment: .top) {
             if let toast = app.toast {
@@ -101,13 +121,14 @@ private struct MusicPlayerPresentation<PlayerContent: View>: ViewModifier {
                     .presentationContentInteraction(.scrolls)
                     .presentationBackground {
                         ZStack {
-                            EOSTheme.background.opacity(0.42)
-                            Rectangle().fill(.ultraThinMaterial)
+                            Color(red: 0.06, green: 0.06, blue: 0.08).opacity(0.96)
+                            ProMixerStageBackground()
+                                .opacity(0.35)
                             LinearGradient(
                                 colors: [
-                                    EOSTheme.accentSecondary.opacity(0.14),
+                                    EOSTheme.accentSecondary.opacity(0.1),
                                     .clear,
-                                    EOSTheme.accent.opacity(0.1)
+                                    EOSTheme.accent.opacity(0.08)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
