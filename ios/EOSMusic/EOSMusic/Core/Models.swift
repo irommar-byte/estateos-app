@@ -68,6 +68,24 @@ struct SearchResultItem: Codable, Identifiable, Hashable {
     let artistId: String?
     let albumId: String?
     let trackNumber: Int?
+    /// CDA-HD / film catalog extras (optional for Apple Music rows).
+    let quality: String?
+    let rating: Double?
+    let views: Double?
+    let isSerial: Bool?
+    let premium: Bool?
+    let previewUrl: String?
+
+    var artworkURL: URL? {
+        guard let thumbnail, !thumbnail.isEmpty else { return nil }
+        return URL(string: thumbnail)
+    }
+
+    var looksLikeSeries: Bool {
+        if isSerial == true { return true }
+        let hay = "\(title) \(detail ?? "") \(url)".lowercased()
+        return hay.contains("serial") || hay.contains("/serial") || hay.contains("sezon")
+    }
 }
 
 struct MusicArtist: Codable, Identifiable, Hashable {
@@ -135,6 +153,8 @@ struct DownloadStartResponse: Codable {
     let assetId: String?
     let reused: Bool?
     let ready: Bool?
+    let status: String?
+    let progress: Double?
     let token: String?
 }
 

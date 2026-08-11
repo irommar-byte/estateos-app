@@ -189,7 +189,16 @@ function isTokenizedPlay(req) {
 function isPublicPath(req) {
   const raw = req.path || req.originalUrl || req.url || "";
   if (req.method === "POST" && raw.includes("/api/auth/login")) return true;
-  if (req.method === "GET" && (raw.includes("/api/cda-hd/latest") || raw.includes("/api/cda-hd/catalog") || raw.includes("/api/films/catalog") || raw.includes("/api/films/home") || raw.includes("/api/thumb"))) {
+  if (
+    req.method === "GET" &&
+    (raw.includes("/api/cda-hd/latest") ||
+      raw.includes("/api/cda-hd/catalog") ||
+      raw.includes("/api/cda-hd/home") ||
+      raw.includes("/api/films/catalog") ||
+      raw.includes("/api/films/home") ||
+      raw.includes("/api/films/service-home") ||
+      raw.includes("/api/thumb"))
+  ) {
     return true;
   }
   return false;

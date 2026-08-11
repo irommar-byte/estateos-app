@@ -240,7 +240,13 @@ struct FavoritesView: View {
                 duration: fav.duration,
                 artistId: nil,
                 albumId: nil,
-                trackNumber: nil
+                trackNumber: nil,
+                quality: nil,
+                rating: nil,
+                views: nil,
+                isSerial: nil,
+                premium: nil,
+                previewUrl: nil
             )
         }
         await app.playCatalogItems(items, startIndex: index)

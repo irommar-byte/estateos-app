@@ -35,6 +35,7 @@ final class AppModel: ObservableObject {
     let api = MusicAPIClient()
     let playback = MusicPlaybackService()
     let downloads = MusicDownloadService()
+    let onlineMovies = OnlineMoviesController()
     let sources = MusicSourcesStore()
     let network = NetworkReachability.shared
 
@@ -83,11 +84,16 @@ final class AppModel: ObservableObject {
     private var workspaceRefreshGeneration = 0
 
     init() {
+        onlineMovies.attach(api: api)
         playback.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         // Download progress used to republish AppModel ~2×/s and invalidate every list row.
         downloads.objectWillChange
+            .throttle(for: .milliseconds(280), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        onlineMovies.objectWillChange
             .throttle(for: .milliseconds(280), scheduler: RunLoop.main, latest: true)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -131,6 +137,7 @@ final class AppModel: ObservableObject {
             await syncLocalAppleLink(from: user)
             hydrateLibraryFromCacheIfNeeded()
             Task { await refreshWorkspace(soft: true) }
+            Task { await onlineMovies.refreshDownloads() }
         } catch {
             // Only clear session on auth failure; network blips keep the user in-app.
             if case APIError.unauthorized = error {
@@ -237,6 +244,7 @@ final class AppModel: ObservableObject {
         favoriteItems = []
         librarySyncMessage = nil
         LibraryCacheStore.clear()
+        onlineMovies.reset()
     }
 
     private func hydrateLibraryFromCacheIfNeeded() {

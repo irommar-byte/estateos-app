@@ -98,6 +98,25 @@ final class VideoAppModel: ObservableObject {
         play(folder: folder, startIndex: index)
     }
 
+    /// Stream / odtwórz pojedynczy plik (lokalny lub HTTP z CDA-HD).
+    func playStandalone(url: URL, title: String, folderName: String = "CDA-HD") {
+        onWillStartPlayback?()
+        OrientationLock.shared.unlockAll()
+        let item = VideoItem(
+            id: url.absoluteString,
+            title: title,
+            relativePath: title,
+            fileURL: url,
+            fileSize: nil,
+            folderId: UUID()
+        )
+        engine.play(
+            session: VideoPlaybackSession(items: [item], startIndex: 0, folderName: folderName),
+            sources: sources
+        )
+        isPlayerPresented = true
+    }
+
     func minimizePlayer() {
         engine.parkDrawable()
         isPlayerPresented = false

@@ -105,8 +105,13 @@ final class VideoSourcesStore: ObservableObject {
             }
             return url
         }
-        if let file = item.fileURL, FileManager.default.fileExists(atPath: file.path) {
-            return file
+        if let file = item.fileURL {
+            if !file.isFileURL {
+                return file
+            }
+            if FileManager.default.fileExists(atPath: file.path) {
+                return file
+            }
         }
         guard let root = beginAccess(folderId: item.folderId) else {
             throw APIError.server("Brak dostępu do folderu wideo.")

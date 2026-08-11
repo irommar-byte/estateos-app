@@ -256,6 +256,121 @@ final class MusicAPIClient {
         return try await request("POST", path: "/api/download", body: body)
     }
 
+    // MARK: - CDA-HD / Online movies
+
+    func fetchCdaHdHome(limit: Int = 22) async throws -> FilmsHomeResponse {
+        try await request("GET", path: "/api/cda-hd/home?limit=\(limit)", authorized: true)
+    }
+
+    func fetchFilmsHome(limit: Int = 16) async throws -> FilmsHomeResponse {
+        try await request("GET", path: "/api/films/home?limit=\(limit)", authorized: true)
+    }
+
+    func fetchCdaHdCatalog(
+        mode: FilmsCatalogMode,
+        type: FilmsCatalogKind = .all,
+        page: Int = 1,
+        pageSize: Int = 24
+    ) async throws -> CdaHdCatalogResponse {
+        try await request(
+            "GET",
+            path: "/api/films/catalog?source=cda-hd&mode=\(mode.rawValue)&type=\(type.rawValue)&page=\(page)&pageSize=\(pageSize)",
+            authorized: true
+        )
+    }
+
+    func searchCdaHd(query: String, page: Int = 1, pageSize: Int = 24) async throws -> SearchResponse {
+        try await request(
+            "POST",
+            path: "/api/search",
+            body: [
+                "query": query,
+                "source": "cda-hd",
+                "page": page,
+                "pageSize": pageSize,
+                "limit": 48,
+            ]
+        )
+    }
+
+    func fetchVideoInfo(url: String) async throws -> VideoInfoResponse {
+        try await request("POST", path: "/api/info", body: ["url": url])
+    }
+
+    func startMovieDownload(
+        url: String,
+        height: Int = 720,
+        title: String? = nil,
+        thumbnail: String? = nil,
+        source: String? = nil
+    ) async throws -> DownloadStartResponse {
+        var body: [String: Any] = [
+            "url": url,
+            "height": height == 0 ? "best" : height,
+            "container": "mp4",
+            "kind": "video",
+        ]
+        if let title, !title.isEmpty { body["title"] = title }
+        if let thumbnail, !thumbnail.isEmpty { body["thumbnail"] = thumbnail }
+        if let source, !source.isEmpty { body["source"] = source }
+        return try await request("POST", path: "/api/download", body: body)
+    }
+
+    func fetchMovieDownloads() async throws -> MovieDownloadsResponse {
+        try await request("GET", path: "/api/movies/downloads")
+    }
+
+    func linkMovieDownload(
+        url: String,
+        title: String,
+        downloadJobId: String,
+        thumbnail: String? = nil,
+        source: String? = nil,
+        filename: String? = nil
+    ) async throws -> MovieDownload {
+        var body: [String: Any] = [
+            "url": url,
+            "title": title,
+            "downloadJobId": downloadJobId,
+        ]
+        if let thumbnail, !thumbnail.isEmpty { body["thumbnail"] = thumbnail }
+        if let source, !source.isEmpty { body["source"] = source }
+        if let filename, !filename.isEmpty { body["filename"] = filename }
+        struct Response: Codable { let download: MovieDownload }
+        let response: Response = try await request("PATCH", path: "/api/movies/downloads/link", body: body)
+        return response.download
+    }
+
+    func deleteMovieDownload(url: String) async throws {
+        struct Ok: Codable { let ok: Bool? }
+        let encoded = url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? url
+        let _: Ok = try await request("DELETE", path: "/api/movies/downloads?url=\(encoded)")
+    }
+
+    func moviePlayToken(jobId: String) async throws -> MoviePlayTokenResponse {
+        try await request("GET", path: "/api/movies/play-token/\(jobId)")
+    }
+
+    func movieStreamURL(jobId: String, token: String) -> URL {
+        let base = AppConfig.apiBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var components = URLComponents(string: base + "/api/movies/stream/\(jobId)")!
+        components.queryItems = [
+            URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970))),
+        ]
+        return components.url!
+    }
+
+    func movieFileURL(jobId: String) -> URL {
+        let base = AppConfig.apiBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return URL(string: base + "/api/file/\(jobId)")!
+    }
+
+    func cancelJob(jobId: String) async throws {
+        struct Ok: Codable { let ok: Bool? }
+        let _: Ok = try await request("POST", path: "/api/cancel/\(jobId)")
+    }
+
     func linkTrackDownload(folderId: String, url: String, downloadJobId: String) async throws -> MusicTrack {
         struct Response: Codable { let track: MusicTrack }
         let response: Response = try await request(
@@ -308,6 +423,14 @@ final class MusicAPIClient {
         // Proxy + large libraries — fail fast instead of spinning for 60s+.
         if path.hasPrefix("/api/auth/") {
             req.timeoutInterval = 20
+        } else if path.hasPrefix("/api/info") {
+            req.timeoutInterval = 210
+        } else if path.hasPrefix("/api/cda-hd/home") || path.hasPrefix("/api/films/home") {
+            req.timeoutInterval = 90
+        } else if path.hasPrefix("/api/cda-hd/") || path.hasPrefix("/api/films/") || path.hasPrefix("/api/search") {
+            req.timeoutInterval = 60
+        } else if path.hasPrefix("/api/download") || path.hasPrefix("/api/job/") {
+            req.timeoutInterval = 45
         } else if path.hasPrefix("/api/music/library") || path.hasPrefix("/api/music/assets") {
             req.timeoutInterval = 45
         } else {
