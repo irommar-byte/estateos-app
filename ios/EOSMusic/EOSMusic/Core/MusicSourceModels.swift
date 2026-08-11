@@ -137,7 +137,7 @@ struct ExternalAudioTrack: Identifiable, Hashable {
     }
 }
 
-private let audioExtensions: Set<String> = ["mp3", "m4a", "aac", "flac", "wav", "aiff", "aif", "alac"]
+private let audioExtensions: Set<String> = ["mp3", "m4a", "aac", "flac", "wav", "aiff", "aif", "alac", "ogg", "opus", "caf"]
 
 func isAudioFileName(_ name: String) -> Bool {
     audioExtensions.contains((name as NSString).pathExtension.lowercased())
