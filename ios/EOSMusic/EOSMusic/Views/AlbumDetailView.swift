@@ -38,7 +38,12 @@ struct AlbumDetailView: View {
                             .compactMap { $0 }
                             .filter { !$0.isEmpty }
                             .joined(separator: " · "),
-                            artworkURL: detail.album.thumbnail.flatMap(URL.init(string:))
+                            // Brak okładki albumu → użyj okładki pierwszego utworu.
+                            artworkURL: (
+                                detail.album.thumbnail
+                                    ?? detail.tracks.first(where: { $0.thumbnail?.isEmpty == false })?.thumbnail
+                            )
+                            .flatMap(URL.init(string:))
                         )
 
                         if let artist = detail.album.artist, !artist.isEmpty,

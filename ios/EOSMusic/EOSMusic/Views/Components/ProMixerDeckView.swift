@@ -1120,9 +1120,15 @@ struct ProMixerTransportDeck: View {
     @ObservedObject var engine: MusicPlaybackEngine
     let playButtonSize: CGFloat
     var tight: Bool = false
+    /// Deck bez własnej obudowy — rodzic (dolna konsola playera) dostarcza tło.
+    var bare: Bool = false
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isLight: Bool { colorScheme == .light }
 
     var body: some View {
-        HStack(spacing: tight ? 18 : 24) {
+        HStack(spacing: tight ? 16 : 22) {
             transportButton("shuffle", active: engine.shuffleEnabled) {
                 engine.toggleShuffle()
             }
@@ -1130,47 +1136,7 @@ struct ProMixerTransportDeck: View {
                 Task { await engine.skipPrevious() }
             }
 
-            Button { engine.togglePlayPause() } label: {
-                ZStack {
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    Color(white: 0.22),
-                                    Color(white: 0.08),
-                                    Color.black
-                                ],
-                                center: .topLeading,
-                                startRadius: 4,
-                                endRadius: playButtonSize
-                            )
-                        )
-                        .frame(width: playButtonSize + 8, height: playButtonSize + 8)
-                        .overlay {
-                            Circle()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.35), Color.white.opacity(0.08)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 1.5
-                                )
-                        }
-                        .shadow(color: EOSTheme.accent.opacity(engine.isPlaying ? 0.35 : 0.12), radius: 14, y: 4)
-
-                    if engine.isLoading {
-                        ProgressView()
-                            .controlSize(.large)
-                    } else {
-                        Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: playButtonSize * 0.38, weight: .bold))
-                            .foregroundStyle(.white)
-                            .offset(x: engine.isPlaying ? 0 : 2)
-                    }
-                }
-            }
-            .disabled(engine.isLoading)
+            playPauseButton
 
             transportButton("forward.fill", size: .title3) {
                 Task { await engine.skipNext() }
@@ -1183,15 +1149,117 @@ struct ProMixerTransportDeck: View {
         .padding(.horizontal, 16)
         .padding(.vertical, tight ? 8 : 12)
         .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.black.opacity(0.55))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
-                }
+            if !bare {
+                deckChassis
+            }
         }
         .padding(.vertical, tight ? 2 : 4)
     }
+
+    // MARK: Play / pause — wypukła „kula” z głębią 3D, adaptacyjna do motywu
+
+    private var playPauseButton: some View {
+        Button {
+            engine.togglePlayPause()
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(playSphereFill)
+                    .frame(width: playButtonSize + 8, height: playButtonSize + 8)
+                    .overlay {
+                        // Górny błysk — efekt wypukłości.
+                        Circle()
+                            .stroke(
+                                LinearGradient(
+                                    colors: isLight
+                                        ? [Color.white, Color.white.opacity(0.15)]
+                                        : [Color.white.opacity(0.35), Color.white.opacity(0.08)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.5
+                            )
+                    }
+                    .overlay(alignment: .top) {
+                        Ellipse()
+                            .fill(Color.white.opacity(isLight ? 0.85 : 0.16))
+                            .frame(width: playButtonSize * 0.62, height: playButtonSize * 0.28)
+                            .blur(radius: 5)
+                            .offset(y: 5)
+                            .allowsHitTesting(false)
+                    }
+                    .shadow(
+                        color: .black.opacity(isLight ? 0.16 : 0.5),
+                        radius: isLight ? 12 : 10,
+                        y: isLight ? 7 : 6
+                    )
+                    .shadow(color: EOSTheme.accent.opacity(engine.isPlaying ? 0.4 : 0.14), radius: 16, y: 4)
+
+                if engine.isLoading {
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(isLight ? EOSTheme.accent : .white)
+                } else {
+                    Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: playButtonSize * 0.38, weight: .bold))
+                        .foregroundStyle(playGlyphStyle)
+                        .contentTransition(.symbolEffect(.replace.downUp.byLayer))
+                        .offset(x: engine.isPlaying ? 0 : 2)
+                        .shadow(color: EOSTheme.accent.opacity(isLight ? 0.25 : 0), radius: 6, y: 2)
+                }
+            }
+            .scaleEffect(engine.isPlaying ? 1 : 0.97)
+            .animation(EOSMotion.snappy, value: engine.isPlaying)
+        }
+        .buttonStyle(TransportPressStyle())
+        .disabled(engine.isLoading)
+        .accessibilityLabel(engine.isPlaying ? "Pauza" : "Odtwarzaj")
+    }
+
+    private var playSphereFill: some ShapeStyle {
+        if isLight {
+            // Biała, wypukła kula — pasuje do jasnego motywu zamiast czarnego krążka.
+            return AnyShapeStyle(
+                RadialGradient(
+                    colors: [
+                        Color.white,
+                        Color(white: 0.97),
+                        Color(white: 0.88)
+                    ],
+                    center: .topLeading,
+                    startRadius: 4,
+                    endRadius: playButtonSize + 6
+                )
+            )
+        }
+        return AnyShapeStyle(
+            RadialGradient(
+                colors: [
+                    Color(white: 0.22),
+                    Color(white: 0.08),
+                    Color.black
+                ],
+                center: .topLeading,
+                startRadius: 4,
+                endRadius: playButtonSize
+            )
+        )
+    }
+
+    private var playGlyphStyle: some ShapeStyle {
+        if isLight {
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: [EOSTheme.accent, EOSTheme.accentSecondary],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+        }
+        return AnyShapeStyle(Color.white)
+    }
+
+    // MARK: Boczne przyciski — miękkie, wypukłe pastylki
 
     private func transportButton(
         _ systemName: String,
@@ -1202,10 +1270,93 @@ struct ProMixerTransportDeck: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(size.weight(.semibold))
-                .foregroundStyle(active ? EOSTheme.accent : EOSTheme.textMuted)
-                .frame(width: 40, height: 40)
-                .background(Color.white.opacity(0.04), in: Circle())
+                .foregroundStyle(active ? EOSTheme.accent : EOSTheme.textSecondary)
+                .symbolEffect(.bounce, value: active)
+                .frame(width: 42, height: 42)
+                .background {
+                    Circle()
+                        .fill(sideButtonFill(active: active))
+                        .overlay {
+                            Circle()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: isLight
+                                            ? [Color.white.opacity(0.9), Color.black.opacity(0.05)]
+                                            : [Color.white.opacity(0.14), Color.white.opacity(0.02)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1
+                                )
+                        }
+                        .shadow(
+                            color: .black.opacity(isLight ? 0.1 : 0.35),
+                            radius: isLight ? 5 : 6,
+                            y: isLight ? 3 : 4
+                        )
+                        .shadow(
+                            color: active ? EOSTheme.accent.opacity(0.28) : .clear,
+                            radius: 8,
+                            y: 2
+                        )
+                }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TransportPressStyle())
+    }
+
+    private func sideButtonFill(active: Bool) -> some ShapeStyle {
+        if isLight {
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: active
+                        ? [EOSTheme.accent.opacity(0.14), EOSTheme.accent.opacity(0.06)]
+                        : [Color.white, Color(white: 0.93)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        }
+        return AnyShapeStyle(
+            LinearGradient(
+                colors: active
+                    ? [EOSTheme.accent.opacity(0.24), EOSTheme.accent.opacity(0.1)]
+                    : [Color.white.opacity(0.1), Color.white.opacity(0.03)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+
+    private var deckChassis: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(
+                isLight
+                    ? AnyShapeStyle(
+                        LinearGradient(
+                            colors: [Color.white, Color(white: 0.96)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    : AnyShapeStyle(Color.black.opacity(0.55))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(
+                        isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.1),
+                        lineWidth: isLight ? 1 : 0.5
+                    )
+            }
+            .shadow(color: .black.opacity(isLight ? 0.1 : 0.3), radius: 14, y: 8)
+    }
+}
+
+/// Sprężysty docisk przycisków transportu — fizyczna reakcja jak na sprzęcie DJ.
+struct TransportPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.88 : 1)
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(.spring(response: 0.28, dampingFraction: 0.55), value: configuration.isPressed)
     }
 }

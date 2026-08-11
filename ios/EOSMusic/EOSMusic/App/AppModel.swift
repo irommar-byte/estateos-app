@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import UIKit
+import ImageIO
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -498,12 +499,27 @@ final class AppModel: ObservableObject {
     }
 
     func updateFolderCover(folderId: String, imageData: Data) async throws {
-        let jpeg = await Task.detached(priority: .userInitiated) {
-            Self.jpegDataForCover(imageData)
+        let payload = await Task.detached(priority: .userInitiated) {
+            Self.coverUploadData(imageData)
         }.value
-        let base64 = jpeg.base64EncodedString()
+        let base64 = payload.base64EncodedString()
         _ = try await api.updateMusicFolder(id: folderId, coverBase64: base64)
         try await refreshMusicLibrary()
+    }
+
+    /// Animowane GIF/APNG/WebP idą na serwer bez rekompresji (JPEG zabijał animację);
+    /// statyczne zdjęcia nadal zmniejszamy do JPEG.
+    nonisolated private static func coverUploadData(_ data: Data) -> Data {
+        let serverLimit = 4_200_000 // limit serwera to 4,5 MB — zostaw margines na base64/nagłówki
+        if isAnimatedImageData(data), data.count <= serverLimit {
+            return data
+        }
+        return jpegDataForCover(data)
+    }
+
+    nonisolated private static func isAnimatedImageData(_ data: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return false }
+        return CGImageSourceGetCount(source) > 1
     }
 
     nonisolated private static func jpegDataForCover(_ data: Data) -> Data {

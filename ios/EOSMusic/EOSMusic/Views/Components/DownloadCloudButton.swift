@@ -13,18 +13,22 @@ struct DownloadCloudButton: View {
             case .done:
                 Button(action: onRemoveOffline) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: size))
-                        .foregroundStyle(.green.opacity(0.85))
+                        .font(.system(size: size * 0.92, weight: .medium))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(EOSTheme.statusOnline)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Na tym iPhonie — dotknij, aby usunąć lokalną kopię (serwer zostaje)")
 
             case .onServer:
+                // Stonowana chmurka: miękka pastylka zamiast świecącej czerwieni.
                 Button(action: onDownload) {
                     Image(systemName: "icloud.fill")
-                        .font(.system(size: size, weight: .semibold))
-                        .foregroundStyle(EOSTheme.accent)
-                        .shadow(color: EOSTheme.accent.opacity(0.55), radius: 5, y: 0)
+                        .font(.system(size: size * 0.82, weight: .medium))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(EOSTheme.accent.opacity(0.88))
+                        .padding(size * 0.24)
+                        .background(EOSTheme.accent.opacity(0.1), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Na serwerze EOS — pobierz na ten iPhone")
@@ -53,7 +57,8 @@ struct DownloadCloudButton: View {
             case .failed:
                 Button(action: onDownload) {
                     Image(systemName: "exclamationmark.icloud")
-                        .font(.system(size: size))
+                        .font(.system(size: size * 0.9))
+                        .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(EOSTheme.accent)
                 }
                 .buttonStyle(.plain)
@@ -62,13 +67,17 @@ struct DownloadCloudButton: View {
             case .idle:
                 Button(action: onDownload) {
                     Image(systemName: "icloud.and.arrow.down")
-                        .font(.system(size: size))
-                        .foregroundStyle(EOSTheme.accentSecondary)
+                        .font(.system(size: size * 0.82, weight: .medium))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(EOSTheme.accentSecondary.opacity(0.9))
+                        .padding(size * 0.24)
+                        .background(EOSTheme.accentSecondary.opacity(0.09), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Pobierz do biblioteki EOS i na ten iPhone")
             }
         }
+        .animation(EOSMotion.snappy, value: state.isBusy)
     }
 }
 
@@ -98,8 +107,8 @@ struct ServerCloudProgressIcon: View {
                 }
         }
         .frame(width: size + 4, height: size + 2)
-        .opacity(animateBreath ? (pulse ? 0.48 : 1) : 1)
-        .shadow(color: EOSTheme.accent.opacity(0.22 + 0.4 * pct), radius: pulse && animateBreath ? 7 : 4)
+        .opacity(animateBreath ? (pulse ? 0.55 : 1) : 1)
+        .shadow(color: EOSTheme.accent.opacity(0.12 + 0.22 * pct), radius: pulse && animateBreath ? 5 : 3)
         .onAppear {
             guard animateBreath else { return }
             withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) {

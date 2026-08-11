@@ -170,15 +170,14 @@ private struct PlayerContent: View {
                     } status: {
                         playerStatusSection(layout: layout)
                     } storage: {
-                        playerStorageBar(track: track, layout: layout)
+                        EmptyView()
                     }
                     Spacer(minLength: layout.bottomGap)
                 }
             }
             .frame(maxHeight: .infinity)
 
-            playbackSlider(layout: layout)
-            transportControls(layout: layout)
+            playerBottomConsole(track: track, layout: layout)
             playerFooter(layout: layout)
         }
         .padding(.horizontal, layout.horizontalPadding)
@@ -213,15 +212,14 @@ private struct PlayerContent: View {
                 } status: {
                     playerStatusSection(layout: layout)
                 } storage: {
-                    playerStorageBar(track: track, layout: layout)
+                    EmptyView()
                 }
                 .padding(.top, layout.topGap)
                 .padding(.bottom, layout.bottomGap)
             }
             .frame(maxHeight: .infinity)
 
-            playbackSlider(layout: layout)
-            transportControls(layout: layout)
+            playerBottomConsole(track: track, layout: layout)
             playerFooter(layout: layout)
         }
         .padding(.horizontal, layout.horizontalPadding)
@@ -371,18 +369,18 @@ private struct PlayerContent: View {
         .padding(.top, layout.chromeTop)
     }
 
+    @ViewBuilder
     private func playerStorageBar(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
-        Group {
-            if !track.isExternal {
-                PlayerStorageStatusBar(
-                    state: app.playbackCloudState(for: track),
-                    onServerHint: app.isOnServer(track.url) || track.isOnServer,
-                    layout: layout.wide ? .horizontal : .compact,
-                    onDownload: { app.downloadCurrentPlayback() },
-                    onCancel: { app.cancelDownload(for: track.url) },
-                    onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
-                )
-            }
+        if !track.isExternal || track.isOpenedLocalImport {
+            PlayerStorageStatusBar(
+                state: app.playbackCloudState(for: track),
+                onServerHint: app.isOnServer(track.url) || track.isOnServer,
+                layout: .horizontal,
+                onDownload: { app.downloadCurrentPlayback() },
+                onCancel: { app.cancelDownload(for: track.url) },
+                onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
+            )
+            .padding(.horizontal, 2)
         }
     }
 
@@ -424,18 +422,7 @@ private struct PlayerContent: View {
                 .opacity(track.albumId?.isEmpty == false ? 1 : 0.55)
             }
 
-            if track.isOpenedLocalImport {
-                PlayerStorageStatusBar(
-                    state: app.playbackCloudState(for: track),
-                    onServerHint: app.isOnServer(track.url) || track.isOnServer,
-                    layout: .compact,
-                    onDownload: { app.downloadCurrentPlayback() },
-                    onCancel: { app.cancelDownload(for: track.url) },
-                    onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
-                )
-                .padding(.top, layout.tight ? 6 : 8)
-                .padding(.horizontal, 4)
-            } else if track.isExternal {
+            if track.isExternal, !track.isOpenedLocalImport {
                 HStack(spacing: 6) {
                     Image(systemName: "iphone")
                         .font(.caption.weight(.semibold))
@@ -447,17 +434,6 @@ private struct PlayerContent: View {
                 .padding(.vertical, 7)
                 .background(Color.green.opacity(0.12), in: Capsule())
                 .padding(.top, layout.tight ? 6 : 8)
-            } else if includeStorage {
-                PlayerStorageStatusBar(
-                    state: app.playbackCloudState(for: track),
-                    onServerHint: app.isOnServer(track.url) || track.isOnServer,
-                    layout: .compact,
-                    onDownload: { app.downloadCurrentPlayback() },
-                    onCancel: { app.cancelDownload(for: track.url) },
-                    onRemoveOffline: { app.removeOfflineDownload(for: track.url) }
-                )
-                .padding(.top, layout.tight ? 6 : 8)
-                .padding(.horizontal, 4)
             }
         }
         .padding(.horizontal, 8)
@@ -467,12 +443,26 @@ private struct PlayerContent: View {
         PlayerProgressSlider(engine: engine, tight: layout.tight)
     }
 
-    private func transportControls(layout: PlayerLayout) -> some View {
-        ProMixerTransportDeck(
-            engine: engine,
-            playButtonSize: layout.playButtonSize,
-            tight: layout.tight
-        )
+    /// Jedna spójna karta na dole playera: status utworu (zawsze widoczny),
+    /// suwak i transport — z głębią 3D, biała na jasnym motywie.
+    private func playerBottomConsole(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
+        VStack(spacing: layout.tight ? 4 : 6) {
+            playerStorageBar(track: track, layout: layout)
+            playbackSlider(layout: layout)
+            ProMixerTransportDeck(
+                engine: engine,
+                playButtonSize: layout.playButtonSize,
+                tight: layout.tight,
+                bare: true
+            )
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, layout.tight ? 10 : 12)
+        .padding(.bottom, layout.tight ? 4 : 6)
+        .background {
+            PlayerBottomConsoleSurface(colorScheme: colorScheme)
+        }
+        .padding(.top, 6)
     }
 
     private func openAlbum(for track: MusicPlaybackTrack) {
@@ -1010,8 +1000,13 @@ private struct PrecisionScrubBar: View {
             let knobDiameter: CGFloat = isPressing || isScrubbing ? 22 : 14
 
             ZStack(alignment: .leading) {
+                // Wpuszczony tor — czytelny na obu motywach (wcześniej biały znikał na białym).
                 Capsule()
-                    .fill(Color.white.opacity(0.12))
+                    .fill(Color.primary.opacity(0.1))
+                    .overlay {
+                        Capsule()
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    }
                     .frame(height: trackHeight)
 
                 Capsule()
@@ -1023,15 +1018,21 @@ private struct PrecisionScrubBar: View {
                         )
                     )
                     .frame(width: max(trackHeight, width * shown), height: trackHeight)
-                    .shadow(color: EOSTheme.accent.opacity(isPressing || isScrubbing ? 0.6 : 0.25), radius: 6)
+                    .shadow(color: EOSTheme.accent.opacity(isPressing || isScrubbing ? 0.55 : 0.22), radius: 6)
 
                 Circle()
-                    .fill(Color.white)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white, Color(white: 0.92)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                     .overlay {
                         Circle().stroke(EOSTheme.accent.opacity(0.5), lineWidth: 1.5)
                     }
                     .frame(width: knobDiameter, height: knobDiameter)
-                    .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+                    .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
                     .offset(x: min(max(0, width * shown - knobDiameter / 2), max(0, width - knobDiameter)))
 
                 if isPressing || isScrubbing {
@@ -1824,6 +1825,63 @@ private struct SafeStrobeOverlay: View {
 }
 
 /// Tło pełnego playera — jasny motyw: systemowe tło + delikatna poświata; ciemny: studio rack.
+/// Tło dolnej konsoli playera — biała karta z miękkim światłem u góry na jasnym
+/// motywie, ciemne szkło na ciemnym. Jedna bryła zamiast trzech luźnych elementów.
+private struct PlayerBottomConsoleSurface: View {
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
+        Group {
+            if colorScheme == .dark {
+                shape
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(white: 0.13).opacity(0.92),
+                                Color(white: 0.07).opacity(0.94)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .overlay {
+                        shape.stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.14), Color.white.opacity(0.03)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                    }
+                    .shadow(color: .black.opacity(0.45), radius: 22, y: -6)
+            } else {
+                shape
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white, Color(white: 0.965)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .overlay {
+                        shape.stroke(
+                            LinearGradient(
+                                colors: [Color.white, Color.black.opacity(0.05)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                    }
+                    .shadow(color: .black.opacity(0.1), radius: 20, y: 10)
+                    .shadow(color: EOSTheme.accent.opacity(0.05), radius: 30, y: 4)
+            }
+        }
+    }
+}
+
 private struct PlayerStageBackdrop: View {
     let colorScheme: ColorScheme
 

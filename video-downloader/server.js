@@ -5222,12 +5222,29 @@ app.patch("/api/music/folders/:id", (req, res) => {
   }
 });
 
+// Covers are stored as raw uploaded bytes (may be GIF/PNG/WebP, not only JPEG) —
+// sniff magic bytes so animated GIFs render in web clients too.
+function sniffImageContentType(file) {
+  try {
+    const fd = fs.openSync(file, "r");
+    const head = Buffer.alloc(12);
+    fs.readSync(fd, head, 0, 12, 0);
+    fs.closeSync(fd);
+    if (head.slice(0, 4).toString("ascii") === "GIF8") return "image/gif";
+    if (head[0] === 0x89 && head.slice(1, 4).toString("ascii") === "PNG") return "image/png";
+    if (head.slice(0, 4).toString("ascii") === "RIFF" && head.slice(8, 12).toString("ascii") === "WEBP") {
+      return "image/webp";
+    }
+  } catch {}
+  return "image/jpeg";
+}
+
 // GET /api/music/folders/:id/cover — custom playlist artwork
 app.get("/api/music/folders/:id/cover", (req, res) => {
   try {
     const { file } = readFolderCoverFile(req, req.params.id);
     res.setHeader("Cache-Control", "private, max-age=86400");
-    res.type("image/jpeg");
+    res.type(sniffImageContentType(file));
     fs.createReadStream(file).pipe(res);
   } catch (err) {
     const code = /Brak konta/i.test(err.message || "") ? 401 : 404;

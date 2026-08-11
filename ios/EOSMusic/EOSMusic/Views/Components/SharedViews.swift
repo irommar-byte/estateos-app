@@ -390,18 +390,28 @@ struct TrackRowView: View {
                     case .downloading(let progress):
                         ServerCloudProgressIcon(progress: progress, size: indexWidth)
                     case .onServer:
+                        // Stonowana, ale zawsze widoczna: „utwór jest na serwerze EOS".
                         Image(systemName: "icloud.fill")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(EOSTheme.accent)
-                            .shadow(color: EOSTheme.accent.opacity(0.45), radius: 3)
+                            .font(.system(size: 10, weight: .medium))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(EOSTheme.accent.opacity(0.85))
+                            .frame(width: 20, height: 20)
+                            .background(EOSTheme.accent.opacity(0.1), in: Circle())
+                            .accessibilityLabel("Na serwerze EOS")
                     case .failed:
                         Image(systemName: "exclamationmark.icloud")
                             .font(.caption2)
+                            .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(EOSTheme.accent)
                     case .idle:
-                        Image(systemName: "icloud")
-                            .font(.caption2)
-                            .foregroundStyle(EOSTheme.accentSecondary)
+                        // „Do pobrania" — delikatna fioletowa pastylka.
+                        Image(systemName: "icloud.and.arrow.down")
+                            .font(.system(size: 10, weight: .medium))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(EOSTheme.accentSecondary.opacity(0.9))
+                            .frame(width: 20, height: 20)
+                            .background(EOSTheme.accentSecondary.opacity(0.09), in: Circle())
+                            .accessibilityLabel("Do pobrania")
                     }
                 }
                 .frame(width: max(indexWidth, 22), alignment: .trailing)
