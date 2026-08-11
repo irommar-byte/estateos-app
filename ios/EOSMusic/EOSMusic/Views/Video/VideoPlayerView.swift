@@ -119,6 +119,7 @@ struct VideoPlayerView: View {
             controlsVisible = true
             scheduleHide()
             keysFocused = true
+            engine.prepareExpandRestore()
             engine.scheduleExpandRestore()
         }
         .onDisappear {
@@ -716,7 +717,6 @@ struct VLCVideoContainer: UIViewRepresentable {
             return
         }
         if uiView.bounds.width > 8, uiView.bounds.height > 8 {
-            // Host finally has size after expand — finish restore if still pending.
             uiView.relayoutVideoSurface()
         }
         if uiView.aspectMode != engine.aspectMode {
