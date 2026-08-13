@@ -23,19 +23,22 @@ async function requireAdmin() {
   });
 }
 
+/** Lista CENTRALA — ograniczona głębokość, żeby zakładka otwierała się szybko. */
 const USER_ADMIN_INCLUDE = {
   offers: {
     select: { id: true, title: true, price: true, status: true },
     orderBy: { createdAt: 'desc' as const },
+    take: 40,
   },
   radarPreference: true,
   radarSearchHistory: {
     orderBy: { searchedAt: 'desc' as const },
-    take: 8,
+    take: 5,
   },
   discoveryProfile: true,
   devices: {
     orderBy: { lastSyncedAt: 'desc' as const },
+    take: 6,
   },
   _count: {
     select: {

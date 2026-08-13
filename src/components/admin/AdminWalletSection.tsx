@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Coins, Loader2, Ticket, Wallet } from "lucide-react";
+import { Coins, Loader2, Minus, Plus, Ticket, Wallet } from "lucide-react";
 import type { WalletSnapshot, WalletTimelineEntry } from "@/lib/walletLedger";
 
 function formatDate(value: string | null | undefined) {
@@ -31,15 +31,22 @@ export default function AdminWalletSection({
   userId,
   initialSnapshot,
   compact = false,
+  onSnapshotChange,
 }: {
   userId: number;
   initialSnapshot?: WalletSnapshot;
   compact?: boolean;
+  onSnapshotChange?: (snapshot: WalletSnapshot) => void;
 }) {
   const [snapshot, setSnapshot] = useState<WalletSnapshot | null>(initialSnapshot ?? null);
   const [timeline, setTimeline] = useState<WalletTimelineEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [amount, setAmount] = useState("1");
+  const [reason, setReason] = useState("");
+  const [extendDays, setExtendDays] = useState("30");
+  const [busy, setBusy] = useState(false);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
 
   const loadWallet = useCallback(async () => {
     setLoading(true);
@@ -53,16 +60,70 @@ export default function AdminWalletSection({
       }
       setSnapshot(data.snapshot);
       setTimeline(Array.isArray(data.timeline) ? data.timeline : []);
+      if (data.snapshot) onSnapshotChange?.(data.snapshot);
     } catch {
       setError("Błąd sieci przy pobieraniu portfela.");
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, onSnapshotChange]);
 
   useEffect(() => {
     void loadWallet();
   }, [loadWallet]);
+
+  const adjustCredits = async (sign: 1 | -1) => {
+    const n = Math.floor(Number(amount));
+    if (!Number.isFinite(n) || n <= 0) {
+      setActionMsg("Podaj dodatnią liczbę całkowitą.");
+      return;
+    }
+    const delta = sign * n;
+    const label =
+      sign > 0
+        ? `Dodać ${n} kredyt(ów) PLUS temu użytkownikowi?`
+        : `Odebrać ${n} kredyt(ów) PLUS temu użytkownikowi?`;
+    if (!confirm(label)) return;
+
+    setBusy(true);
+    setActionMsg(null);
+    try {
+      const body: Record<string, unknown> = {
+        delta,
+        reason: reason.trim() || (sign > 0 ? "Nadanie kredytów przez admina" : "Odjęcie kredytów przez admina"),
+      };
+      if (sign > 0) {
+        const days = Math.floor(Number(extendDays));
+        if (Number.isFinite(days) && days > 0) body.setExpiresDays = days;
+      }
+      const res = await fetch(`/api/admin/users/${userId}/wallet`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setActionMsg(data?.error || "Nie udało się zmienić kredytów.");
+        return;
+      }
+      if (data.snapshot) {
+        setSnapshot(data.snapshot);
+        onSnapshotChange?.(data.snapshot);
+      }
+      if (Array.isArray(data.timeline)) setTimeline(data.timeline);
+      setActionMsg(
+        data.unchanged
+          ? data.message || "Bez zmian."
+          : `Saldo: ${data.previous} → ${data.next} (${data.applied > 0 ? "+" : ""}${data.applied})`,
+      );
+      setReason("");
+    } catch {
+      setActionMsg("Błąd sieci przy zmianie kredytów.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   if (loading && !snapshot) {
     return (
@@ -127,6 +188,67 @@ export default function AdminWalletSection({
             </div>
           </>
         ) : null}
+      </div>
+
+      <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-3">
+        <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-300">
+          Korekta kredytów PLUS
+        </p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <label className="block text-[10px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">
+            Liczba
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-[var(--eos-border)] bg-[var(--eos-card)] px-2.5 py-2 text-sm font-semibold outline-none focus:border-emerald-500/45"
+            />
+          </label>
+          <label className="block text-[10px] font-bold uppercase tracking-wide text-[var(--eos-subtle)] sm:col-span-2">
+            Powód (opcjonalnie)
+            <input
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="np. rekompensata / korekta błędu"
+              className="mt-1 w-full rounded-lg border border-[var(--eos-border)] bg-[var(--eos-card)] px-2.5 py-2 text-sm outline-none focus:border-emerald-500/45"
+            />
+          </label>
+        </div>
+        <label className="mt-2 block text-[10px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">
+          Przy dodaniu — ważność (dni)
+          <input
+            type="number"
+            min={1}
+            max={730}
+            value={extendDays}
+            onChange={(e) => setExtendDays(e.target.value)}
+            className="mt-1 w-full max-w-[8rem] rounded-lg border border-[var(--eos-border)] bg-[var(--eos-card)] px-2.5 py-2 text-sm outline-none focus:border-emerald-500/45"
+          />
+        </label>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void adjustCredits(1)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-emerald-700 hover:bg-emerald-500/15 disabled:opacity-50 dark:text-emerald-300"
+          >
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            Dodaj
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void adjustCredits(-1)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-red-600 hover:bg-red-500/15 disabled:opacity-50 dark:text-red-400"
+          >
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Minus size={14} />}
+            Odbierz
+          </button>
+        </div>
+        {actionMsg ? <p className="mt-2 text-[11px] font-semibold text-[var(--eos-muted)]">{actionMsg}</p> : null}
       </div>
 
       <div>

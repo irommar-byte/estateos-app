@@ -1,22 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArchiveX,
   Building2,
-  Calendar,
   ChevronRight,
   Edit3,
   ExternalLink,
   Home,
   Loader2,
   MapPin,
+  RefreshCw,
   Search,
   Trash2,
   User,
+  UserCog,
   X,
 } from "lucide-react";
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
@@ -43,6 +44,7 @@ type AdminOffer = {
     planType?: string | null;
     isPro?: boolean;
     buyerType?: string | null;
+    role?: string | null;
   } | null;
   images?: unknown;
   imageUrl?: unknown;
@@ -50,6 +52,15 @@ type AdminOffer = {
   sourceIsActive?: boolean | null;
   sourceListingExpired?: boolean;
   sourceLastCheckAt?: string | null;
+};
+
+type LookupUser = {
+  id: number;
+  name?: string | null;
+  email?: string | null;
+  role?: string | null;
+  planType?: string | null;
+  isPro?: boolean;
 };
 
 function isArchived(offer: AdminOffer) {
@@ -111,34 +122,84 @@ function ownerType(offer: AdminOffer) {
 export default function AdminOffersWorkspace() {
   const router = useRouter();
   const [offers, setOffers] = useState<AdminOffer[]>([]);
+  const [counts, setCounts] = useState({ pending: 0, active: 0, archived: 0, total: 0 });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<OfferTab>("pending");
   const [searchTerm, setSearchTerm] = useState("");
+  const [ownerQuery, setOwnerQuery] = useState("");
+  const [ownerHits, setOwnerHits] = useState<LookupUser[]>([]);
+  const [ownerSearching, setOwnerSearching] = useState(false);
+  const [ownerBusy, setOwnerBusy] = useState(false);
+  const [ownerMsg, setOwnerMsg] = useState<string | null>(null);
 
-  const fetchOffers = async () => {
+  const fetchOffers = useCallback(async (opts?: { soft?: boolean }) => {
+    if (opts?.soft) setRefreshing(true);
+    else setLoading(true);
     try {
       const res = await fetch("/api/admin/offers", { cache: "no-store" });
       const data = await res.json();
-      if (data?.success && Array.isArray(data.offers)) setOffers(data.offers);
-      else if (Array.isArray(data)) setOffers(data);
-      else setOffers([]);
+      if (data?.success && Array.isArray(data.offers)) {
+        setOffers(data.offers);
+        if (data.counts) {
+          setCounts({
+            pending: Number(data.counts.pending) || 0,
+            active: Number(data.counts.active) || 0,
+            archived: Number(data.counts.archived) || 0,
+            total: Number(data.counts.total) || data.offers.length,
+          });
+        } else {
+          const c = { pending: 0, active: 0, archived: 0, total: data.offers.length };
+          for (const o of data.offers as AdminOffer[]) c[tabForOffer(o)] += 1;
+          setCounts(c);
+        }
+      } else if (Array.isArray(data)) {
+        setOffers(data);
+      } else {
+        setOffers([]);
+      }
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void fetchOffers();
-  }, []);
+  }, [fetchOffers]);
 
-  const counts = useMemo(() => {
-    const c = { pending: 0, active: 0, archived: 0 };
-    for (const o of offers) c[tabForOffer(o)] += 1;
-    return c;
-  }, [offers]);
+  useEffect(() => {
+    const q = ownerQuery.trim();
+    if (q.length < 1) {
+      setOwnerHits([]);
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      setOwnerSearching(true);
+      try {
+        const res = await fetch(`/api/admin/users/lookup?q=${encodeURIComponent(q)}`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && data?.success && Array.isArray(data.users)) {
+          setOwnerHits(data.users);
+        }
+      } catch {
+        if (!cancelled) setOwnerHits([]);
+      } finally {
+        if (!cancelled) setOwnerSearching(false);
+      }
+    }, 220);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [ownerQuery]);
 
   const filteredOffers = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -156,13 +217,28 @@ export default function AdminOffersWorkspace() {
           String(o.city || "").toLowerCase().includes(q) ||
           String(o.district || "").toLowerCase().includes(q) ||
           owner.includes(q) ||
-          email.includes(q)
+          email.includes(q) ||
+          String(o.userId || "").includes(q)
         );
       })
-      .sort((a, b) => Date.parse(String(b.updatedAt || b.createdAt || 0)) - Date.parse(String(a.updatedAt || a.createdAt || 0)));
+      .sort(
+        (a, b) =>
+          Date.parse(String(b.updatedAt || b.createdAt || 0)) -
+          Date.parse(String(a.updatedAt || a.createdAt || 0)),
+      );
   }, [offers, activeTab, searchTerm]);
 
   const selectedOffer = selectedId ? offers.find((o) => o.id === selectedId) ?? null : null;
+
+  const patchLocalOffer = (id: number, patch: Partial<AdminOffer>) => {
+    setOffers((prev) => {
+      const next = prev.map((o) => (o.id === id ? { ...o, ...patch } : o));
+      const c = { pending: 0, active: 0, archived: 0, total: next.length };
+      for (const o of next) c[tabForOffer(o)] += 1;
+      setCounts(c);
+      return next;
+    });
+  };
 
   const handleUpdateStatus = async (id: number, status: string, verificationStatus?: string) => {
     const res = await fetch("/api/admin/offers", {
@@ -175,25 +251,88 @@ export default function AdminOffersWorkspace() {
       alert(data?.error || "Nie udało się zaktualizować oferty.");
       return;
     }
-    await fetchOffers();
+    if (data.offer) {
+      patchLocalOffer(id, {
+        status: data.offer.status,
+        expiresAt: data.offer.expiresAt,
+        verificationStatus: verificationStatus || data.offer.verificationStatus,
+        user: data.offer.user ?? undefined,
+        userId: data.offer.userId,
+        updatedAt: data.offer.updatedAt || new Date().toISOString(),
+      });
+    } else {
+      await fetchOffers({ soft: true });
+    }
   };
 
   const handleForceArchive = async (id: number) => {
     if (!confirm("Wymusić archiwizację tej oferty?")) return;
-    await fetch("/api/admin/offers", {
+    const res = await fetch("/api/admin/offers", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status: "ARCHIVED" }),
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) {
+      alert(data?.error || "Nie udało się zarchiwizować.");
+      return;
+    }
     setSelectedId(null);
-    await fetchOffers();
+    if (data.offer) patchLocalOffer(id, { status: "ARCHIVED", expiresAt: data.offer.expiresAt });
+    else await fetchOffers({ soft: true });
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Na pewno usunąć ofertę na stałe?")) return;
-    await fetch(`/api/admin/offers?id=${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/admin/offers?id=${id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) {
+      alert(data?.error || "Nie udało się usunąć.");
+      return;
+    }
     setSelectedId(null);
-    await fetchOffers();
+    setOffers((prev) => {
+      const next = prev.filter((o) => o.id !== id);
+      const c = { pending: 0, active: 0, archived: 0, total: next.length };
+      for (const o of next) c[tabForOffer(o)] += 1;
+      setCounts(c);
+      return next;
+    });
+  };
+
+  const handleReassignOwner = async (nextUserId: number) => {
+    if (!selectedOffer) return;
+    if (nextUserId === Number(selectedOffer.userId || selectedOffer.user?.id)) {
+      setOwnerMsg("Oferta jest już przypisana do tego użytkownika.");
+      return;
+    }
+    if (!confirm(`Przypisać ofertę #${selectedOffer.id} do użytkownika #${nextUserId}?`)) return;
+    setOwnerBusy(true);
+    setOwnerMsg(null);
+    try {
+      const res = await fetch("/api/admin/offers", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selectedOffer.id, userId: nextUserId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setOwnerMsg(data?.error || "Nie udało się zmienić właściciela.");
+        return;
+      }
+      patchLocalOffer(selectedOffer.id, {
+        userId: data.offer?.userId ?? nextUserId,
+        user: data.offer?.user ?? null,
+        updatedAt: data.offer?.updatedAt || new Date().toISOString(),
+      });
+      setOwnerMsg(`Przypisano do #${nextUserId}`);
+      setOwnerQuery("");
+      setOwnerHits([]);
+    } catch {
+      setOwnerMsg("Błąd sieci przy zmianie właściciela.");
+    } finally {
+      setOwnerBusy(false);
+    }
   };
 
   const tabs: { id: OfferTab; label: string; count: number; accent: string }[] = [
@@ -222,21 +361,32 @@ export default function AdminOffersWorkspace() {
               <span className="text-emerald-500">.</span>
             </h1>
             <p className="mt-1 text-sm text-[var(--eos-muted)]">
-              {offers.length} ofert łącznie · kompaktowy widok z podglądem i właścicielem
+              {counts.total} ofert · szybki podgląd, właściciel i akcje admina
             </p>
           </div>
-          <div className="group relative w-full lg:max-w-sm">
-            <Search
-              className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--eos-subtle)] group-focus-within:text-emerald-500"
-              aria-hidden
-            />
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Szukaj: ID, tytuł, miasto, właściciel…"
-              className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] py-2.5 pl-10 pr-3 text-sm text-[var(--eos-text)] outline-none placeholder:text-[var(--eos-muted)] focus:border-emerald-500/45"
-            />
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:max-w-md">
+            <div className="group relative min-w-0 flex-1">
+              <Search
+                className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--eos-subtle)] group-focus-within:text-emerald-500"
+                aria-hidden
+              />
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Szukaj: ID, tytuł, miasto, właściciel…"
+                className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] py-2.5 pl-10 pr-3 text-sm text-[var(--eos-text)] outline-none placeholder:text-[var(--eos-muted)] focus:border-emerald-500/45"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void fetchOffers({ soft: true })}
+              disabled={refreshing || loading}
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2.5 text-[10px] font-black uppercase tracking-wide text-[var(--eos-muted)] hover:border-emerald-500/35 hover:text-emerald-600 disabled:opacity-50 dark:hover:text-emerald-400"
+            >
+              <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+              Odśwież
+            </button>
           </div>
         </header>
 
@@ -303,12 +453,17 @@ export default function AdminOffersWorkspace() {
                     <li key={offer.id}>
                       <button
                         type="button"
-                        onClick={() => setSelectedId(offer.id)}
+                        onClick={() => {
+                          setSelectedId(offer.id);
+                          setOwnerQuery("");
+                          setOwnerHits([]);
+                          setOwnerMsg(null);
+                        }}
                         className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors sm:gap-3.5 sm:px-3.5 ${
                           sourceExpired
                             ? selected
-                              ? "bg-red-500/12 border-l-2 border-red-500"
-                              : "bg-red-500/[0.06] border-l-2 border-red-500/70 hover:bg-red-500/10"
+                              ? "border-l-2 border-red-500 bg-red-500/12"
+                              : "border-l-2 border-red-500/70 bg-red-500/[0.06] hover:bg-red-500/10"
                             : selected
                               ? "bg-emerald-500/8"
                               : "hover:bg-[var(--eos-bg)]"
@@ -326,12 +481,16 @@ export default function AdminOffersWorkspace() {
 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
-                            <p className={`line-clamp-1 text-[13px] font-bold leading-snug sm:text-sm ${
-                              sourceExpired ? "text-red-700 dark:text-red-300" : "text-[var(--eos-text)]"
-                            }`}>
+                            <p
+                              className={`line-clamp-1 text-[13px] font-bold leading-snug sm:text-sm ${
+                                sourceExpired ? "text-red-700 dark:text-red-300" : "text-[var(--eos-text)]"
+                              }`}
+                            >
                               {offer.title || `Oferta #${offer.id}`}
                             </p>
-                            <span className="shrink-0 font-mono text-[10px] font-bold text-[var(--eos-subtle)]">#{offer.id}</span>
+                            <span className="shrink-0 font-mono text-[10px] font-bold text-[var(--eos-subtle)]">
+                              #{offer.id}
+                            </span>
                           </div>
                           <p className="mt-0.5 line-clamp-1 text-[11px] text-[var(--eos-muted)]">
                             {[offer.district, offer.city].filter(Boolean).join(" · ") || "—"} · {formatPrice(offer.price)}
@@ -340,7 +499,9 @@ export default function AdminOffersWorkspace() {
                             <span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${st.cls}`}>
                               {st.label}
                             </span>
-                            <span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${verify.cls}`}>
+                            <span
+                              className={`rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${verify.cls}`}
+                            >
                               {verify.label}
                             </span>
                             {sourceExpired ? (
@@ -349,15 +510,11 @@ export default function AdminOffersWorkspace() {
                               </span>
                             ) : null}
                             {ownerId > 0 ? (
-                              <Link
-                                href={`/centrala/uzytkownicy?userId=${ownerId}`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="inline-flex max-w-[min(100%,12rem)] items-center gap-1 rounded-md border border-[var(--eos-border)] bg-[var(--eos-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--eos-text)] hover:border-emerald-500/40 hover:text-emerald-600 dark:hover:text-emerald-400"
-                              >
+                              <span className="inline-flex max-w-[min(100%,12rem)] items-center gap-1 rounded-md border border-[var(--eos-border)] bg-[var(--eos-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--eos-text)]">
                                 <User size={10} className="shrink-0" />
                                 <span className="truncate">{ownerLabel(offer)}</span>
-                                <span className="text-[9px] text-[var(--eos-subtle)]">· {ownerType(offer)}</span>
-                              </Link>
+                                <span className="text-[9px] text-[var(--eos-subtle)]">· #{ownerId}</span>
+                              </span>
                             ) : null}
                           </div>
                         </div>
@@ -381,7 +538,7 @@ export default function AdminOffersWorkspace() {
                 initial={{ opacity: 0, x: 12 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 12 }}
-                className="w-full shrink-0 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] xl:sticky xl:top-28 xl:w-[380px]"
+                className="w-full shrink-0 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] xl:sticky xl:top-28 xl:w-[400px]"
               >
                 {(() => {
                   const thumb = resolveOfferPrimaryImage(selectedOffer);
@@ -409,12 +566,14 @@ export default function AdminOffersWorkspace() {
                         </button>
                       </div>
 
-                      <div className="space-y-4 p-4">
+                      <div className="custom-scrollbar max-h-[calc(100vh-14rem)] space-y-4 overflow-y-auto p-4">
                         <div>
                           <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
                             Oferta #{selectedOffer.id}
                           </p>
-                          <h2 className="mt-1 text-base font-black leading-snug">{selectedOffer.title || "Bez tytułu"}</h2>
+                          <h2 className="mt-1 text-base font-black leading-snug">
+                            {selectedOffer.title || "Bez tytułu"}
+                          </h2>
                           <p className="mt-1 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
                             {formatPrice(selectedOffer.price)}
                           </p>
@@ -422,43 +581,106 @@ export default function AdminOffersWorkspace() {
 
                         <dl className="grid grid-cols-2 gap-2 text-[11px]">
                           <div className="rounded-lg border border-[var(--eos-border)] bg-[var(--eos-bg)] px-2.5 py-2">
-                            <dt className="text-[9px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">Lokalizacja</dt>
+                            <dt className="text-[9px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">
+                              Lokalizacja
+                            </dt>
                             <dd className="mt-0.5 font-semibold leading-snug">
                               {[selectedOffer.district, selectedOffer.city].filter(Boolean).join(", ") || "—"}
                             </dd>
                           </div>
                           <div className="rounded-lg border border-[var(--eos-border)] bg-[var(--eos-bg)] px-2.5 py-2">
-                            <dt className="text-[9px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">Ważność</dt>
+                            <dt className="text-[9px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">
+                              Ważność
+                            </dt>
                             <dd className="mt-0.5 font-semibold">{formatDate(selectedOffer.expiresAt)}</dd>
                           </div>
                           <div className="rounded-lg border border-[var(--eos-border)] bg-[var(--eos-bg)] px-2.5 py-2">
-                            <dt className="text-[9px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">Utworzono</dt>
+                            <dt className="text-[9px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">
+                              Utworzono
+                            </dt>
                             <dd className="mt-0.5 font-semibold">{formatDate(selectedOffer.createdAt)}</dd>
                           </div>
                           <div className="rounded-lg border border-[var(--eos-border)] bg-[var(--eos-bg)] px-2.5 py-2">
-                            <dt className="text-[9px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">Dokumenty</dt>
-                            <dd className="mt-0.5 font-semibold">{verificationMeta(selectedOffer.verificationStatus).label}</dd>
+                            <dt className="text-[9px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">
+                              Dokumenty
+                            </dt>
+                            <dd className="mt-0.5 font-semibold">
+                              {verificationMeta(selectedOffer.verificationStatus).label}
+                            </dd>
                           </div>
                         </dl>
 
-                        {ownerId > 0 ? (
-                          <Link
-                            href={`/centrala/uzytkownicy?userId=${ownerId}`}
-                            className="flex items-center gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg)] p-3 transition-colors hover:border-emerald-500/35"
-                          >
-                            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--eos-card)] text-sm font-black text-emerald-600 dark:text-emerald-400">
-                              {ownerLabel(selectedOffer).charAt(0).toUpperCase()}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">Właściciel</p>
-                              <p className="truncate text-sm font-bold">{ownerLabel(selectedOffer)}</p>
-                              <p className="truncate text-[11px] text-[var(--eos-muted)]">
-                                {selectedOffer.user?.email || "—"} · {ownerType(selectedOffer)}
-                              </p>
-                            </div>
-                            <ChevronRight size={16} className="shrink-0 text-[var(--eos-subtle)]" />
-                          </Link>
-                        ) : null}
+                        <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg)] p-3">
+                          <div className="mb-2 flex items-center gap-2">
+                            <UserCog size={14} className="text-emerald-500" />
+                            <p className="text-[10px] font-black uppercase tracking-wide text-[var(--eos-subtle)]">
+                              Właściciel / userId
+                            </p>
+                          </div>
+                          {ownerId > 0 ? (
+                            <Link
+                              href={`/centrala/uzytkownicy?userId=${ownerId}`}
+                              className="mb-3 flex items-center gap-3 rounded-lg border border-[var(--eos-border)] bg-[var(--eos-card)] p-2.5 transition-colors hover:border-emerald-500/35"
+                            >
+                              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[var(--eos-bg)] text-sm font-black text-emerald-600 dark:text-emerald-400">
+                                {ownerLabel(selectedOffer).charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-bold">{ownerLabel(selectedOffer)}</p>
+                                <p className="truncate text-[11px] text-[var(--eos-muted)]">
+                                  #{ownerId} · {selectedOffer.user?.email || "—"} · {ownerType(selectedOffer)}
+                                </p>
+                              </div>
+                              <ChevronRight size={14} className="shrink-0 text-[var(--eos-subtle)]" />
+                            </Link>
+                          ) : (
+                            <p className="mb-3 text-xs text-[var(--eos-muted)]">Brak przypisanego użytkownika.</p>
+                          )}
+
+                          <label className="block text-[10px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">
+                            Przypisz do innego użytkownika
+                            <input
+                              type="search"
+                              value={ownerQuery}
+                              onChange={(e) => setOwnerQuery(e.target.value)}
+                              placeholder="ID, e-mail lub nazwa…"
+                              className="mt-1 w-full rounded-lg border border-[var(--eos-border)] bg-[var(--eos-card)] px-2.5 py-2 text-sm outline-none focus:border-emerald-500/45"
+                            />
+                          </label>
+                          {ownerSearching ? (
+                            <p className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--eos-muted)]">
+                              <Loader2 size={12} className="animate-spin" /> Szukam…
+                            </p>
+                          ) : null}
+                          {ownerHits.length > 0 ? (
+                            <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto">
+                              {ownerHits.map((u) => (
+                                <li key={u.id}>
+                                  <button
+                                    type="button"
+                                    disabled={ownerBusy}
+                                    onClick={() => void handleReassignOwner(u.id)}
+                                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-[var(--eos-border)] bg-[var(--eos-card)] px-2.5 py-2 text-left text-xs hover:border-emerald-500/40 disabled:opacity-50"
+                                  >
+                                    <span className="min-w-0 truncate">
+                                      <span className="font-bold">#{u.id}</span>{" "}
+                                      {u.name || u.email?.split("@")[0] || "—"}
+                                      <span className="block truncate text-[10px] text-[var(--eos-muted)]">
+                                        {u.email}
+                                      </span>
+                                    </span>
+                                    <span className="shrink-0 text-[9px] font-bold uppercase text-emerald-600 dark:text-emerald-400">
+                                      Przypisz
+                                    </span>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          {ownerMsg ? (
+                            <p className="mt-2 text-[11px] font-semibold text-[var(--eos-muted)]">{ownerMsg}</p>
+                          ) : null}
+                        </div>
 
                         <div className="flex gap-2">
                           <button
@@ -547,12 +769,12 @@ export default function AdminOffersWorkspace() {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="hidden rounded-2xl border border-dashed border-[var(--eos-border)] bg-[var(--eos-card)]/50 p-8 text-center xl:flex xl:w-[380px] xl:flex-col xl:justify-center"
+                className="hidden rounded-2xl border border-dashed border-[var(--eos-border)] bg-[var(--eos-card)]/50 p-8 text-center xl:flex xl:w-[400px] xl:flex-col xl:justify-center"
               >
                 <MapPin className="mx-auto mb-3 size-8 text-[var(--eos-subtle)]" />
                 <p className="text-sm font-semibold text-[var(--eos-text)]">Wybierz ofertę z listy</p>
                 <p className="mt-1 text-xs text-[var(--eos-muted)]">
-                  Zobaczysz zdjęcie, właściciela i akcje moderacji.
+                  Zmiana właściciela, moderacja statusu i dokumenty — w jednym panelu.
                 </p>
               </motion.div>
             )}
