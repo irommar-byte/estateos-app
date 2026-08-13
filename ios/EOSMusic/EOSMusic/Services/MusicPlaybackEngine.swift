@@ -1329,6 +1329,7 @@ final class MusicPlaybackEngine: ObservableObject {
             queueIndex: orderCursor,
             queueCount: playOrder.count,
             collectionTitle: queueSourceTitle,
+            externalContentIdentifier: BluetoothMediaBrowser.queueContentIdentifier(orderIndex: orderCursor),
             repeatMode: repeatMode,
             shuffleEnabled: shuffleEnabled,
             supplemental: supplementalNowPlayingMetadata,

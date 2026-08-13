@@ -20,6 +20,7 @@ struct EOSMusicApp: App {
                     orientationDelegate.appModel = app
                     orientationDelegate.videoModel = video
                     orientationDelegate.flushPendingMediaIfNeeded()
+                    BluetoothMediaBrowser.shared.activate()
                     video.onWillStartPlayback = {
                         app.playback.stop()
                         app.isFullPlayerPresented = false
@@ -48,6 +49,7 @@ struct EOSMusicApp: App {
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                     AudioSession.reinforceIfNeeded()
+                    BluetoothMediaBrowser.shared.reloadQueue(from: app.playback.engine)
                 }
         }
     }

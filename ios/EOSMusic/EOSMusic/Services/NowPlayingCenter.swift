@@ -87,6 +87,7 @@ final class NowPlayingCenter {
         queueIndex: Int,
         queueCount: Int,
         collectionTitle: String? = nil,
+        externalContentIdentifier: String? = nil,
         repeatMode: RepeatMode = .off,
         shuffleEnabled: Bool = false,
         supplemental: SupplementalMetadata? = nil,
@@ -123,6 +124,8 @@ final class NowPlayingCenter {
 
         if let collectionTitle, !collectionTitle.isEmpty {
             info[MPMediaItemPropertyAlbumTitle] = collectionTitle
+            // NBT/iDrive pokazuje albumTitle jako nazwę playlisty w widoku BT.
+            info[MPMediaItemPropertyAlbumArtist] = "EOS Music"
         } else if let album = resolvedText(supplemental?.album, fallback: track.album) {
             info[MPMediaItemPropertyAlbumTitle] = album
         } else {
@@ -147,6 +150,11 @@ final class NowPlayingCenter {
         if queueCount > 0 {
             info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = queueIndex
             info[MPNowPlayingInfoPropertyPlaybackQueueCount] = queueCount
+        }
+        if let externalContentIdentifier, !externalContentIdentifier.isEmpty {
+            info[MPNowPlayingInfoPropertyExternalContentIdentifier] = externalContentIdentifier
+        } else {
+            info.removeValue(forKey: MPNowPlayingInfoPropertyExternalContentIdentifier)
         }
 
         if let embeddedArtwork = supplemental?.artwork {

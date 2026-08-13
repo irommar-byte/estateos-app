@@ -92,6 +92,9 @@ final class AppModel: ObservableObject {
     init() {
         onlineMovies.attach(api: api)
         movieDownloads.attach(api: api, onlineMovies: onlineMovies)
+        BluetoothMediaBrowser.shared.playFromLibrary = { [weak self] tracks, index, folder in
+            await self?.playTracks(tracks, startIndex: index, folder: folder)
+        }
         playback.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -136,6 +139,14 @@ final class AppModel: ObservableObject {
             playback.stop()
             presentToast(.offlineUnavailable(trackTitle: current.title))
         }
+        syncBluetoothLibraryBrowse()
+    }
+
+    private func syncBluetoothLibraryBrowse() {
+        BluetoothMediaBrowser.shared.updateLibrary(
+            folders: libraryFoldersForBrowsing,
+            tracks: libraryTracksForBrowsing
+        )
     }
 
     func bootstrap() async {
@@ -266,6 +277,7 @@ final class AppModel: ObservableObject {
         musicFolders = cached.folders
         musicTracks = deduplicatedTracks(cached.tracks)
         downloads.syncFromTracks(musicTracks)
+        syncBluetoothLibraryBrowse()
     }
 
     private func applyLibrarySnapshot(_ library: MusicLibraryResponse, hadCache: Bool) {
@@ -281,6 +293,7 @@ final class AppModel: ObservableObject {
         musicTracks = deduplicatedTracks(library.tracks)
         downloads.syncFromTracks(musicTracks)
         libraryError = nil
+        syncBluetoothLibraryBrowse()
 
         if let login = user?.login {
             LibraryCacheStore.save(library, for: login)
