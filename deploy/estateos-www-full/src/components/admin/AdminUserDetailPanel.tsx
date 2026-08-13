@@ -620,9 +620,9 @@ export default function AdminUserDetailPanel({
         </Section>
       ) : null}
 
-      <Section title="Kredyty i kupony" icon={<Wallet size={12} className="text-emerald-500" />}>
+      <Section title="Kredyty i kupony (dodaj / odbierz)" icon={<Wallet size={12} className="text-emerald-500" />}>
         <div className="px-4 py-4">
-          <AdminWalletSection userId={user.id} initialSnapshot={user.wallet} />
+          <AdminWalletSection userId={user.id} initialSnapshot={user.wallet} onSnapshotChange={() => onRefresh?.()} />
         </div>
       </Section>
 

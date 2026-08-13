@@ -8,10 +8,8 @@ import { extractVerificationMeta, setVerificationStatusInDescription, type Offer
 import { completeAdminOfferApproval, adminForceArchiveOffer, adminReactivateArchivedOffer } from '@/lib/offerPublication';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 import { deleteOfferCompletely } from '@/lib/deleteOfferCompletely';
-import {
-  batchRefreshOfferSourceStatusIfStale,
-  listOfferImportSourceMeta,
-} from '@/lib/offerPrivateNotes';
+import { listOfferImportSourceMeta } from '@/lib/offerPrivateNotes';
+import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 
 type AdminUser = { id: number; role: string } | null;
 
@@ -59,38 +57,141 @@ function normalizeVerificationStatus(rawStatus: unknown): OfferVerificationStatu
   return null;
 }
 
-export async function GET() {
+function offerTab(offer: { status?: string | null; expiresAt?: Date | string | null }): 'pending' | 'active' | 'archived' {
+  const status = String(offer.status || '').toUpperCase();
+  const expired =
+    Boolean(offer.expiresAt) && new Date(offer.expiresAt as Date | string).getTime() < Date.now();
+  if (status === 'ARCHIVED' || expired) return 'archived';
+  if (status === 'ACTIVE') return 'active';
+  return 'pending';
+}
+
+/** Lista admina: bez pełnego opisu i galerii — tylko miniatura + metadane. */
+function slimOfferImages(images: string | null | undefined) {
+  const thumb = resolveOfferPrimaryImage({ images });
+  return thumb ? JSON.stringify([thumb]) : null;
+}
+
+export async function GET(req: Request) {
   try {
     const admin = await requireAdmin();
     if (!admin || admin.role !== 'ADMIN') {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const offers = await prisma.offer.findMany({ include: { user: true }, orderBy: { createdAt: 'desc' } });
+    const url = new URL(req.url);
+    const segmentRaw = String(url.searchParams.get('segment') || 'all').trim().toLowerCase();
+    const segment =
+      segmentRaw === 'pending' || segmentRaw === 'active' || segmentRaw === 'archived'
+        ? segmentRaw
+        : 'all';
+    const q = String(url.searchParams.get('q') || '').trim().toLowerCase();
+    const limitRaw = Number(url.searchParams.get('limit') || 0);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.floor(limitRaw), 1000) : 0;
+
+    const offers = await prisma.offer.findMany({
+      select: {
+        id: true,
+        title: true,
+        city: true,
+        district: true,
+        price: true,
+        status: true,
+        expiresAt: true,
+        createdAt: true,
+        updatedAt: true,
+        advertiserType: true,
+        userId: true,
+        images: true,
+        description: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            planType: true,
+            isPro: true,
+            buyerType: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
     const offerIds = offers.map((o) => o.id);
-    const sourceMetaBefore = await listOfferImportSourceMeta(offerIds);
-    const refreshTargets = offers
-      .filter((o) => sourceMetaBefore.has(o.id))
-      .map((o) => ({ offerId: o.id, userId: Number(o.userId) }));
-    if (refreshTargets.length > 0) {
-      await batchRefreshOfferSourceStatusIfStale(refreshTargets, { concurrency: 6 });
-    }
+    // Tylko cache z DB — bez synchronicznych HTTP do Otodom/OLX (to blokowało otwarcie zakładki).
     const sourceMeta = await listOfferImportSourceMeta(offerIds);
 
+    const counts = { pending: 0, active: 0, archived: 0, total: offers.length };
     const enriched = offers.map((offer) => {
+      const tab = offerTab(offer);
+      counts[tab] += 1;
       const { verification } = extractVerificationMeta(offer.description);
       const source = sourceMeta.get(offer.id);
       return {
-        ...offer,
+        id: offer.id,
+        title: offer.title,
+        city: offer.city,
+        district: offer.district,
+        price: offer.price,
+        status: offer.status,
+        expiresAt: offer.expiresAt,
+        createdAt: offer.createdAt,
+        updatedAt: offer.updatedAt,
+        advertiserType: offer.advertiserType,
+        userId: offer.userId,
+        images: slimOfferImages(offer.images),
+        user: offer.user,
         verificationStatus: verification.status,
         importExternalUrl: source?.importExternalUrl ?? null,
         sourceIsActive: source?.sourceIsActive ?? null,
         sourceListingExpired: source?.sourceIsActive === false,
         sourceLastCheckAt: source?.sourceLastCheckAt ?? null,
+        _tab: tab as 'pending' | 'active' | 'archived',
       };
     });
-    return NextResponse.json({ success: true, offers: enriched });
-  } catch (error) { return NextResponse.json({ success: false, error: String(error) }, { status: 500 }); }
+
+    let filtered = enriched;
+    if (segment !== 'all') {
+      filtered = filtered.filter((o) => o._tab === segment);
+    }
+    if (q) {
+      const qId = Number(q);
+      filtered = filtered.filter((o) => {
+        if (Number.isFinite(qId) && qId > 0 && o.id === qId) return true;
+        const owner = String(o.user?.name || o.user?.email || '').toLowerCase();
+        const email = String(o.user?.email || '').toLowerCase();
+        return (
+          String(o.id).includes(q) ||
+          String(o.title || '').toLowerCase().includes(q) ||
+          String(o.city || '').toLowerCase().includes(q) ||
+          String(o.district || '').toLowerCase().includes(q) ||
+          owner.includes(q) ||
+          email.includes(q) ||
+          String(o.userId).includes(q)
+        );
+      });
+    }
+
+    const sliced = limit > 0 ? filtered.slice(0, limit) : filtered;
+    const payload = sliced.map(({ _tab, ...rest }) => rest);
+
+    return NextResponse.json({
+      success: true,
+      offers: payload,
+      counts,
+      meta: {
+        segment,
+        q: q || null,
+        returned: payload.length,
+        matched: filtered.length,
+        total: counts.total,
+      },
+    });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
+  }
 }
 
 export async function PUT(req: Request) {
@@ -100,39 +201,146 @@ export async function PUT(req: Request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id, status, verificationStatus } = await req.json();
-    const normalizedStatus = normalizeStatus(status);
-    const normalizedVerificationStatus = normalizeVerificationStatus(verificationStatus);
+    const body = await req.json();
+    const { id, status, verificationStatus, userId: nextUserIdRaw } = body;
+    const offerId = Number(id);
+    if (!Number.isFinite(offerId) || offerId <= 0) {
+      return NextResponse.json({ success: false, error: 'Nieprawidłowe ID oferty.' }, { status: 400 });
+    }
 
-    // === SILNIK ALERTÓW - tylko przy zmianie na ACTIVE ===
-    const existing = await prisma.offer.findUnique({ where: { id: Number(id) } });
+    const existing = await prisma.offer.findUnique({ where: { id: offerId } });
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Oferta nie istnieje.' }, { status: 404 });
+    }
 
-    const nextDescription = normalizedVerificationStatus
-      ? setVerificationStatusInDescription(existing?.description || '', normalizedVerificationStatus)
-      : undefined;
+    // Samo przeniesienie właściciela (bez zmiany statusu).
+    const wantsReassign = nextUserIdRaw !== undefined && nextUserIdRaw !== null && nextUserIdRaw !== '';
+    const wantsStatus = status !== undefined && status !== null && String(status).trim() !== '';
+    const wantsVerification =
+      verificationStatus !== undefined &&
+      verificationStatus !== null &&
+      String(verificationStatus).trim() !== '';
 
-    if (normalizedStatus === 'ARCHIVED') {
-      if (!existing) {
-        return NextResponse.json({ success: false, error: 'Oferta nie istnieje.' }, { status: 404 });
+    if (wantsReassign && !wantsStatus && !wantsVerification) {
+      const nextUserId = Number(nextUserIdRaw);
+      if (!Number.isFinite(nextUserId) || nextUserId <= 0) {
+        return NextResponse.json({ success: false, error: 'Nieprawidłowe ID użytkownika.' }, { status: 400 });
+      }
+      if (nextUserId === Number(existing.userId)) {
+        const current = await prisma.offer.findUnique({
+          where: { id: offerId },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                planType: true,
+                isPro: true,
+                buyerType: true,
+                role: true,
+              },
+            },
+          },
+        });
+        return NextResponse.json({ success: true, offer: current });
       }
 
-      await adminForceArchiveOffer(Number(id));
+      const target = await prisma.user.findUnique({
+        where: { id: nextUserId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          planType: true,
+          isPro: true,
+          buyerType: true,
+          role: true,
+        },
+      });
+      if (!target) {
+        return NextResponse.json({ success: false, error: 'Użytkownik docelowy nie istnieje.' }, { status: 404 });
+      }
 
-      const updated = await prisma.offer.findUnique({ where: { id: Number(id) } });
+      const updated = await prisma.offer.update({
+        where: { id: offerId },
+        data: { userId: nextUserId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              planType: true,
+              isPro: true,
+              buyerType: true,
+              role: true,
+            },
+          },
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        offer: updated,
+        reassigned: true,
+        previousUserId: existing.userId,
+      });
+    }
+
+    const normalizedStatus = normalizeStatus(status ?? existing.status);
+    const normalizedVerificationStatus = normalizeVerificationStatus(verificationStatus);
+
+    const nextDescription = normalizedVerificationStatus
+      ? setVerificationStatusInDescription(existing.description || '', normalizedVerificationStatus)
+      : undefined;
+
+    if (wantsReassign) {
+      const nextUserId = Number(nextUserIdRaw);
+      if (!Number.isFinite(nextUserId) || nextUserId <= 0) {
+        return NextResponse.json({ success: false, error: 'Nieprawidłowe ID użytkownika.' }, { status: 400 });
+      }
+      const target = await prisma.user.findUnique({ where: { id: nextUserId }, select: { id: true } });
+      if (!target) {
+        return NextResponse.json({ success: false, error: 'Użytkownik docelowy nie istnieje.' }, { status: 404 });
+      }
+    }
+
+    if (normalizedStatus === 'ARCHIVED') {
+      await adminForceArchiveOffer(offerId);
+      if (wantsReassign) {
+        await prisma.offer.update({
+          where: { id: offerId },
+          data: { userId: Number(nextUserIdRaw) },
+        });
+      }
+      const updated = await prisma.offer.findUnique({
+        where: { id: offerId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              planType: true,
+              isPro: true,
+              buyerType: true,
+              role: true,
+            },
+          },
+        },
+      });
       return NextResponse.json({ success: true, offer: updated });
     }
 
     if (normalizedStatus === 'ACTIVE') {
-      if (!existing) {
-        return NextResponse.json({ success: false, error: 'Oferta nie istnieje.' }, { status: 404 });
-      }
-
+      const ownerUserId = wantsReassign ? Number(nextUserIdRaw) : Number(existing.userId);
       const wasArchived = String(existing.status).toUpperCase() === 'ARCHIVED';
 
       if (wasArchived) {
         const reactivation = await adminReactivateArchivedOffer({
-          offerId: Number(id),
-          ownerUserId: Number(existing.userId),
+          offerId,
+          ownerUserId,
         });
         if (!reactivation.ok) {
           return NextResponse.json(
@@ -142,11 +350,25 @@ export async function PUT(req: Request) {
         }
 
         const updated = await prisma.offer.update({
-          where: { id: Number(id) },
+          where: { id: offerId },
           data: {
             status: 'ACTIVE',
             expiresAt: reactivation.endsAt,
+            ...(wantsReassign ? { userId: ownerUserId } : {}),
             ...(nextDescription !== undefined ? { description: nextDescription } : {}),
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                planType: true,
+                isPro: true,
+                buyerType: true,
+                role: true,
+              },
+            },
           },
         });
 
@@ -154,8 +376,8 @@ export async function PUT(req: Request) {
       }
 
       const approval = await completeAdminOfferApproval({
-        offerId: Number(id),
-        ownerUserId: Number(existing.userId),
+        offerId,
+        ownerUserId,
         onFreeFirstCouponUsed: markProfilePromoCardUsed,
       });
 
@@ -167,11 +389,25 @@ export async function PUT(req: Request) {
       }
 
       const updated = await prisma.offer.update({
-        where: { id: Number(id) },
+        where: { id: offerId },
         data: {
           status: 'ACTIVE',
           expiresAt: approval.endsAt,
+          ...(wantsReassign ? { userId: ownerUserId } : {}),
           ...(nextDescription !== undefined ? { description: nextDescription } : {}),
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              planType: true,
+              isPro: true,
+              buyerType: true,
+              role: true,
+            },
+          },
         },
       });
 
@@ -179,10 +415,24 @@ export async function PUT(req: Request) {
     }
 
     const updated = await prisma.offer.update({
-      where: { id: Number(id) },
+      where: { id: offerId },
       data: {
         status: normalizedStatus,
+        ...(wantsReassign ? { userId: Number(nextUserIdRaw) } : {}),
         ...(nextDescription !== undefined ? { description: nextDescription } : {}),
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            planType: true,
+            isPro: true,
+            buyerType: true,
+            role: true,
+          },
+        },
       },
     });
 
@@ -213,7 +463,7 @@ export async function DELETE(req: Request) {
     if (String(existing.status).toUpperCase() !== 'ARCHIVED') {
       return NextResponse.json(
         { success: false, error: 'Trwałe usuwanie dostępne tylko dla ofert zarchiwizowanych.' },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
