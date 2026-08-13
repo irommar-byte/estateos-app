@@ -302,14 +302,20 @@ final class MusicAPIClient {
         height: Int = 720,
         title: String? = nil,
         thumbnail: String? = nil,
-        source: String? = nil
+        source: String? = nil,
+        kind: String = "video",
+        container: String = "mp4",
+        audioBitrate: Int? = nil
     ) async throws -> DownloadStartResponse {
         var body: [String: Any] = [
             "url": url,
             "height": height == 0 ? "best" : height,
-            "container": "mp4",
-            "kind": "video",
+            "container": container,
+            "kind": kind,
         ]
+        if kind == "audio", let audioBitrate {
+            body["audioBitrate"] = audioBitrate == 0 ? "best" : audioBitrate
+        }
         if let title, !title.isEmpty { body["title"] = title }
         if let thumbnail, !thumbnail.isEmpty { body["thumbnail"] = thumbnail }
         if let source, !source.isEmpty { body["source"] = source }

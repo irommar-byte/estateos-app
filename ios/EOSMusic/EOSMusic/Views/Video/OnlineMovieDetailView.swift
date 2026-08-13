@@ -10,9 +10,11 @@ struct OnlineMovieDetailView: View {
     @State private var info: VideoInfoResponse?
     @State private var isLoadingInfo = false
     @State private var infoError: String?
-    @State private var selectedHeight = 720
+    @State private var showDownloadSheet = false
+    @State private var showSeriesEpisodes = false
 
     private var movies: OnlineMoviesController { app.onlineMovies }
+    private var downloads: MovieDownloadService { app.movieDownloads }
     private var transfer: OnlineMovieTransferState { movies.transferState(for: selection.url) }
     private var meta: CdaHdMeta? { info?.cdaHd }
 
@@ -27,33 +29,14 @@ struct OnlineMovieDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .bottomLeading) {
-                    OnlineMovieBackdrop(url: posterURL)
-                        .frame(height: 360)
-                        .frame(maxWidth: .infinity)
-                        .clipped()
-
-                    LinearGradient(
-                        colors: [.clear, Color(.systemBackground).opacity(0.85), Color(.systemBackground)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("CDA-HD")
-                            .font(EOSTypography.captionBold)
-                            .tracking(1.1)
-                            .foregroundStyle(EOSTheme.accent)
-                        Text(displayTitle)
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
-                            .foregroundStyle(.primary)
-                        metaChips
-                    }
-                    .padding(20)
-                }
+                hero
 
                 VStack(alignment: .leading, spacing: 18) {
                     actionButtons
+
+                    if downloads.activeBatch != nil {
+                        MovieDownloadQueueBanner(service: downloads)
+                    }
 
                     if transfer.isBusy {
                         ProgressView(value: transfer.progressPercent, total: 100) {
@@ -61,76 +44,90 @@ struct OnlineMovieDetailView: View {
                                 .font(EOSTypography.caption)
                         }
                         .tint(EOSTheme.accent)
-                        Button("Anuluj") {
-                            movies.cancelTransfer(url: selection.url)
-                        }
-                        .font(EOSTypography.caption.weight(.semibold))
+                        Button("Anuluj") { movies.cancelTransfer(url: selection.url) }
+                            .font(EOSTypography.caption.weight(.semibold))
                     }
 
                     if case .failed(let message) = transfer {
-                        Text(message)
-                            .font(EOSTypography.caption)
-                            .foregroundStyle(.red)
+                        Text(message).font(EOSTypography.caption).foregroundStyle(.red)
                     }
 
-                    if let description = meta?.description, !description.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Opis")
-                                .font(EOSTypography.headline)
-                            Text(description)
-                                .font(EOSTypography.body)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if isLoadingInfo {
-                        ProgressView("Wczytuję szczegóły…")
-                    } else if let infoError {
-                        Text(infoError)
-                            .font(EOSTypography.caption)
-                            .foregroundStyle(.orange)
-                    }
-
-                    if let cast = meta?.cast, !cast.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Obsada")
-                                .font(EOSTypography.headline)
-                            Text(cast.prefix(12).map(\.name).joined(separator: " · "))
-                                .font(EOSTypography.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    descriptionBlock
+                    castBlock
 
                     if let info, info.isSeries, !info.playableEpisodes.isEmpty {
-                        episodesSection(info)
+                        seriesShortcut(info)
                     }
-
-                    qualityPicker
                 }
                 .padding(20)
             }
         }
         .background(Color(.systemBackground))
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $showSeriesEpisodes) {
+            if let info {
+                OnlineSeriesEpisodesView(info: info)
+                    .environmentObject(app)
+                    .environmentObject(video)
+            }
+        }
+        .sheet(isPresented: $showDownloadSheet) {
+            if let info {
+                MediaDownloadOptionsSheet(
+                    title: displayTitle,
+                    info: info,
+                    itemCount: 1,
+                    totalDuration: info.duration,
+                    itemsSubtitle: "1 pozycja · folder MOVIES/ na serwerze"
+                ) { format, quality, destination in
+                    startSingleDownload(format: format, quality: quality, destination: destination)
+                }
+            }
+        }
         .task {
             await loadInfo()
             await movies.refreshDownloads()
         }
     }
 
+    private var hero: some View {
+        ZStack(alignment: .bottomLeading) {
+            OnlineMovieBackdrop(url: posterURL)
+                .frame(height: 360)
+                .frame(maxWidth: .infinity)
+                .clipped()
+
+            LinearGradient(
+                colors: [.clear, Color(.systemBackground).opacity(0.85), Color(.systemBackground)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("CDA-HD")
+                    .font(EOSTypography.captionBold)
+                    .tracking(1.1)
+                    .foregroundStyle(EOSTheme.accent)
+                Text(displayTitle)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                metaChips
+            }
+            .padding(20)
+        }
+    }
+
     @ViewBuilder
     private var metaChips: some View {
         HStack(spacing: 8) {
-            if let year = meta?.year {
-                chip("\(year)")
-            }
+            if let year = meta?.year { chip("\(year)") }
             if let duration = meta?.duration ?? selection.duration, duration > 0 {
                 chip(formatDuration(duration))
             }
-            if selection.isSerial || info?.isSeries == true {
-                chip("Serial")
-            }
+            if selection.isSerial || info?.isSeries == true { chip("Serial") }
             if let rating = meta?.rating?.value, rating > 0 {
                 chip(String(format: "%.1f ★", rating))
             }
+            OnlineMovieTransferBadge(state: transfer)
         }
     }
 
@@ -144,167 +141,141 @@ struct OnlineMovieDetailView: View {
 
     private var actionButtons: some View {
         VStack(spacing: 10) {
-            Button {
-                movies.watchStream(selection: selection, height: selectedHeight, video: video)
-            } label: {
-                Label(
-                    movies.isPreparingStream ? "Uruchamiam…" : "Oglądaj",
-                    systemImage: "play.fill"
-                )
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(OnlineMoviePrimaryButton())
-            .disabled(movies.isPreparingStream || transfer.isBusy)
-
-            if selection.isSerial || info?.isSeries == true {
-                Text("Serial: odcinki odtworzysz z listy poniżej — bez pobierania.")
-                    .font(EOSTypography.caption)
-                    .foregroundStyle(.secondary)
+            if let info, info.isSeries, !info.playableEpisodes.isEmpty {
+                Button {
+                    showSeriesEpisodes = true
+                } label: {
+                    Label("Odcinki i sezony", systemImage: "list.bullet.rectangle.portrait")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(OnlineMoviePrimaryButton())
+            } else {
+                Button {
+                    movies.watchStream(selection: selection, height: 720, video: video)
+                } label: {
+                    Label(movies.isPreparingStream ? "Uruchamiam…" : "Oglądaj", systemImage: "play.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(OnlineMoviePrimaryButton())
+                .disabled(movies.isPreparingStream || transfer.isBusy)
             }
 
             if movies.isPreparingStream {
                 ProgressView(value: movies.streamPrepareProgress, total: 100) {
-                    Text("Stream · bez pobierania")
-                        .font(EOSTypography.caption)
+                    Text("Przygotowuję stream…").font(EOSTypography.caption)
                 }
                 .tint(EOSTheme.accent)
-                Button("Anuluj stream") {
-                    movies.cancelStreamPrepare()
-                }
-                .font(EOSTypography.caption.weight(.semibold))
+                Button("Anuluj") { movies.cancelStreamPrepare() }
+                    .font(EOSTypography.caption.weight(.semibold))
             }
 
-            if case .onPhone = transfer {
-                Button {
-                    Task { await movies.playFromPhone(selection: selection, video: video) }
-                } label: {
-                    Label("Odtwórz z telefonu", systemImage: "iphone")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(OnlineMovieSecondaryButton())
-            } else if case .onServer = transfer {
-                Button {
-                    Task { await movies.playFromServer(selection: selection, video: video) }
-                } label: {
-                    Label("Odtwórz z serwera", systemImage: "server.rack")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(OnlineMovieSecondaryButton())
-            }
+            playbackButtons
 
-            HStack(spacing: 10) {
-                Button {
-                    movies.downloadToServer(selection: selection, height: selectedHeight)
-                } label: {
-                    Label("Na serwer", systemImage: "arrow.down.to.line")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(OnlineMovieSecondaryButton())
-                .disabled(transfer.isBusy || movies.isPreparingStream)
-
-                Button {
-                    movies.downloadToPhone(selection: selection, height: selectedHeight, video: video)
-                } label: {
-                    Label("Na iPhone", systemImage: "iphone.and.arrow.down")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(OnlineMovieSecondaryButton(emphasized: true))
-                .disabled(transfer.isBusy || movies.isPreparingStream)
-            }
-        }
-    }
-
-    private var qualityPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Jakość streamu / pobierania")
-                .font(EOSTypography.headline)
-            Picker("Jakość", selection: $selectedHeight) {
-                Text("480p").tag(480)
-                Text("720p").tag(720)
-                Text("1080p").tag(1080)
-                Text("Najlepsza").tag(0)
-            }
-            .pickerStyle(.segmented)
-        }
-    }
-
-    private func episodesSection(_ info: VideoInfoResponse) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Odcinki")
-                .font(EOSTypography.headline)
-
-            if let seasons = info.seasons, !seasons.isEmpty {
-                ForEach(seasons) { season in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(season.title ?? "Sezon \(season.seasonNumber ?? 0)")
-                            .font(EOSTypography.subheadline.weight(.semibold))
-                        ForEach(season.episodes ?? []) { episode in
-                            episodeRow(episode)
-                        }
-                    }
-                }
-            } else {
-                ForEach(info.playableEpisodes) { episode in
-                    episodeRow(episode)
-                }
-            }
-        }
-    }
-
-    private func episodeRow(_ episode: EpisodeItem) -> some View {
-        let epSelection = OnlineMovieSelection(episode: episode, source: selection.source)
-        return HStack(spacing: 12) {
-            OnlineMovieBackdrop(url: episode.thumbnail.flatMap(URL.init(string:)))
-                .frame(width: 72, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(episode.title)
-                    .font(EOSTypography.subheadline.weight(.semibold))
-                    .lineLimit(2)
-                if let duration = episode.duration, duration > 0 {
-                    Text(formatDuration(duration))
-                        .font(EOSTypography.caption2Medium)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
             Button {
-                movies.watchStream(selection: epSelection, height: selectedHeight, video: video)
+                if info != nil {
+                    showDownloadSheet = true
+                } else {
+                    movies.downloadToServer(selection: selection)
+                }
             } label: {
-                Image(systemName: "play.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(EOSTheme.accent)
+                Label("Pobierz…", systemImage: "arrow.down.circle")
+                    .frame(maxWidth: .infinity)
             }
-            .disabled(movies.isPreparingStream)
-            Menu {
-                Button("Oglądaj (stream)") {
-                    movies.watchStream(selection: epSelection, height: selectedHeight, video: video)
-                }
-                Button("Na serwer") {
-                    movies.downloadToServer(selection: epSelection, height: selectedHeight)
-                }
-                Button("Na iPhone") {
-                    movies.downloadToPhone(selection: epSelection, height: selectedHeight, video: video)
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.title3)
+            .buttonStyle(OnlineMovieSecondaryButton(emphasized: true))
+            .disabled(transfer.isBusy || movies.isPreparingStream || info == nil)
+        }
+    }
+
+    @ViewBuilder
+    private var playbackButtons: some View {
+        if case .onPhone = transfer {
+            Button { Task { await movies.playFromPhone(selection: selection, video: video) } } label: {
+                Label("Odtwórz z telefonu", systemImage: "iphone").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(OnlineMovieSecondaryButton())
+        } else if case .onServer = transfer {
+            Button { Task { await movies.playFromServer(selection: selection, video: video) } } label: {
+                Label("Odtwórz z serwera", systemImage: "server.rack").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(OnlineMovieSecondaryButton())
+        }
+    }
+
+    @ViewBuilder
+    private var descriptionBlock: some View {
+        if let description = meta?.description, !description.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Opis").font(EOSTypography.headline)
+                Text(description).font(EOSTypography.body).foregroundStyle(.secondary)
+            }
+        } else if isLoadingInfo {
+            ProgressView("Wczytuję szczegóły…")
+        } else if let infoError {
+            Text(infoError).font(EOSTypography.caption).foregroundStyle(.orange)
+        }
+    }
+
+    @ViewBuilder
+    private var castBlock: some View {
+        if let cast = meta?.cast, !cast.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Obsada").font(EOSTypography.headline)
+                Text(cast.prefix(12).map(\.name).joined(separator: " · "))
+                    .font(EOSTypography.callout)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(10)
-        .background(EOSTheme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func seriesShortcut(_ info: VideoInfoResponse) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("\(info.playableEpisodes.count) odcinków · pobieraj sezon lub cały serial")
+                .font(EOSTypography.caption)
+                .foregroundStyle(.secondary)
+            Button {
+                showSeriesEpisodes = true
+            } label: {
+                Label("Otwórz listę odcinków", systemImage: "chevron.right")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(OnlineMovieSecondaryButton())
+        }
     }
 
     private var transferLabel: String {
         switch transfer {
-        case .acquiringServer(let p):
-            return String(format: "Serwer · %.0f%%", p)
-        case .downloadingPhone(let p):
-            return String(format: "iPhone · %.0f%%", p)
-        default:
-            return "Pobieranie…"
+        case .acquiringServer(let p): return String(format: "Serwer · %.0f%%", p)
+        case .downloadingPhone(let p): return String(format: "iPhone · %.0f%%", p)
+        default: return "Pobieranie…"
         }
+    }
+
+    private func startSingleDownload(
+        format: MediaDownloadFormat,
+        quality: MediaQualityOption,
+        destination: OnlineMovieDownloadDestination
+    ) {
+        guard let info else { return }
+        let options = info.qualityOptions(for: format)
+        let item = MovieDownloadQueueItem(
+            url: selection.url,
+            title: displayTitle,
+            thumbnail: selection.thumbnail ?? info.thumbnail,
+            source: selection.source
+        )
+        if destination == .serverAndPhone {
+            movies.downloadToPhone(selection: selection, height: MediaQualityOption.apiHeight(for: quality, options: options), video: video)
+            return
+        }
+        downloads.startBatch(
+            items: [item],
+            label: displayTitle,
+            thumbnail: selection.thumbnail,
+            contextKey: selection.url,
+            format: format,
+            quality: quality,
+            destination: .server
+        )
     }
 
     private func loadInfo() async {
@@ -333,11 +304,11 @@ private struct OnlineMoviePrimaryButton: ButtonStyle {
             .font(EOSTypography.headline)
             .padding(.vertical, 14)
             .foregroundStyle(.white)
-            .background(EOSTheme.accent.opacity(configuration.isPressed ? 0.75 : 1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(EOSTheme.accent.opacity(configuration.isPressed ? 0.75 : 1), in: RoundedRectangle(cornerRadius: 14))
     }
 }
 
-private struct OnlineMovieSecondaryButton: ButtonStyle {
+struct OnlineMovieSecondaryButton: ButtonStyle {
     var emphasized = false
 
     func makeBody(configuration: Configuration) -> some View {
@@ -346,15 +317,9 @@ private struct OnlineMovieSecondaryButton: ButtonStyle {
             .padding(.vertical, 12)
             .foregroundStyle(emphasized ? .white : .primary)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 14)
                     .fill(emphasized ? EOSTheme.accentSecondary.opacity(configuration.isPressed ? 0.7 : 1) : EOSTheme.card)
             )
-            .overlay {
-                if !emphasized {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                }
-            }
     }
 }
 
@@ -370,9 +335,7 @@ struct OnlineMovieBackdrop: View {
                 endPoint: .bottomTrailing
             )
             if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
+                Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Image(systemName: "film")
                     .font(.system(size: 42, weight: .medium))
@@ -380,10 +343,7 @@ struct OnlineMovieBackdrop: View {
             }
         }
         .task(id: url?.absoluteString) {
-            guard let url else {
-                image = nil
-                return
-            }
+            guard let url else { image = nil; return }
             if let cached = RemoteImageCache.image(for: url, maxPixelSize: 900) {
                 image = cached
                 return

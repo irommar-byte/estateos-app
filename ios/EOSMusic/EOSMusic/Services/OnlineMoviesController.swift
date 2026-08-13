@@ -144,11 +144,19 @@ final class OnlineMoviesController: ObservableObject {
     func watchStream(
         selection: OnlineMovieSelection,
         height: Int = 720,
-        video: VideoAppModel
+        video: VideoAppModel,
+        episodeQueue: [EpisodeItem]? = nil,
+        seriesTitle: String? = nil
     ) {
         streamTask?.cancel()
         streamTask = Task {
-            await runWatchStream(selection: selection, height: height, video: video)
+            await runWatchStream(
+                selection: selection,
+                height: height,
+                video: video,
+                episodeQueue: episodeQueue,
+                seriesTitle: seriesTitle
+            )
         }
     }
 
@@ -189,7 +197,9 @@ final class OnlineMoviesController: ObservableObject {
     private func runWatchStream(
         selection: OnlineMovieSelection,
         height: Int,
-        video: VideoAppModel
+        video: VideoAppModel,
+        episodeQueue: [EpisodeItem]? = nil,
+        seriesTitle: String? = nil
     ) async {
         guard let api else { return }
         isPreparingStream = true
@@ -230,7 +240,20 @@ final class OnlineMoviesController: ObservableObject {
             let token = try await api.previewPlayToken(jobId: preview.jobId)
             let streamURL = api.previewStreamURL(jobId: token.jobId, token: token.token)
             statusMessage = nil
-            await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
+            if let queue = episodeQueue, !queue.isEmpty {
+                await playEpisodeQueue(
+                    episodes: queue,
+                    startURL: selection.url,
+                    streamURLForEpisode: { ep in
+                        if ep.url == selection.url { return streamURL }
+                        return nil
+                    },
+                    seriesTitle: seriesTitle ?? selection.title,
+                    video: video
+                )
+            } else {
+                await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
+            }
         } catch is CancellationError {
             // cancelled
         } catch {
@@ -316,10 +339,107 @@ final class OnlineMoviesController: ObservableObject {
         activeTasks[key] = nil
     }
 
+    func pullToPhoneAfterServer(
+        selection: OnlineMovieSelection,
+        jobId: String,
+        video: VideoAppModel? = nil,
+        onProgress: ((Double) -> Void)? = nil
+    ) async throws {
+        try await pullToPhone(selection: selection, jobId: jobId, video: video, onProgress: onProgress)
+    }
+
+    /// Odtwarzaj serial jak playlistę Netflix — auto-następny odcinek w VideoPlayerView.
+    func playEpisodeQueue(
+        episodes: [EpisodeItem],
+        startURL: String,
+        streamURLForEpisode: (EpisodeItem) -> URL?,
+        seriesTitle: String,
+        video: VideoAppModel
+    ) async {
+        guard let startIdx = episodes.firstIndex(where: { $0.url == startURL }) else {
+            statusMessage = "Nie znaleziono odcinka w kolejce."
+            return
+        }
+
+        let slice = Array(episodes[startIdx...])
+        var items: [VideoItem] = []
+        for episode in slice {
+            let title = serverDownloadTitle(seriesTitle: seriesTitle, episode: episode)
+            var fileURL = streamURLForEpisode(episode)
+            if fileURL == nil, let local = phoneFileURL(for: episode.url) {
+                fileURL = local
+            } else if fileURL == nil, let jobId = jobId(for: episode.url), let api {
+                if let token = try? await api.moviePlayToken(jobId: jobId) {
+                    fileURL = api.movieStreamURL(jobId: jobId, token: token.token)
+                }
+            }
+            items.append(VideoItem(
+                id: episode.url,
+                title: title,
+                relativePath: episode.title,
+                fileURL: fileURL,
+                fileSize: nil,
+                folderId: UUID()
+            ))
+        }
+
+        guard let firstPlayable = items.firstIndex(where: { $0.fileURL != nil }) else {
+            statusMessage = "Nie udało się uruchomić odtwarzania."
+            return
+        }
+
+        episodeStreamContext = EpisodeStreamContext(
+            seriesTitle: seriesTitle,
+            episodes: slice,
+            streamHeight: 720
+        )
+
+        video.onWillStartPlayback?()
+        OrientationLock.shared.unlockAll()
+        video.engine.play(
+            session: VideoPlaybackSession(
+                items: items,
+                startIndex: firstPlayable,
+                folderName: seriesTitle
+            ),
+            sources: video.sources
+        )
+        video.isPlayerPresented = true
+    }
+
+    private struct EpisodeStreamContext {
+        let seriesTitle: String
+        let episodes: [EpisodeItem]
+        let streamHeight: Int
+    }
+
+    private var episodeStreamContext: EpisodeStreamContext?
+
+    func advanceToNextStreamingEpisode(video: VideoAppModel) async {
+        guard episodeStreamContext != nil else {
+            if video.engine.hasNext {
+                video.engine.playNext(sources: video.sources)
+            }
+            return
+        }
+        await video.engine.advanceStreamingEpisode(sources: video.sources) { [weak self] item in
+            guard let self, let api = self.api else {
+                throw APIError.unauthorized
+            }
+            let preview = try await api.startPreview(url: item.id, height: self.episodeStreamContext?.streamHeight ?? 720)
+            if preview.instant != true {
+                try await api.waitForPreviewReady(jobId: preview.jobId) { _ in }
+            }
+            let token = try await api.previewPlayToken(jobId: preview.jobId)
+            return api.previewStreamURL(jobId: token.jobId, token: token.token)
+        }
+    }
+
     private func pullToPhone(
         selection: OnlineMovieSelection,
         jobId: String,
-        video: VideoAppModel
+        video: VideoAppModel? = nil,
+        onProgress: ((Double) -> Void)? = nil
     ) async throws {
         guard let api else { return }
         let key = selection.url
@@ -343,9 +463,11 @@ final class OnlineMoviesController: ObservableObject {
             request: request,
             partURL: partURL,
             trackKey: "movie:\(key)",
-            onProgress: { [weak self] fraction in
+            onProgress: { fraction in
+                let pct = min(100, max(0, fraction * 100))
+                onProgress?(pct)
                 Task { @MainActor in
-                    self?.transferStates[key] = .downloadingPhone(progress: min(100, max(0, fraction * 100)))
+                    self.transferStates[key] = .downloadingPhone(progress: pct)
                 }
             }
         )
@@ -359,7 +481,9 @@ final class OnlineMoviesController: ObservableObject {
         try? FileManager.default.removeItem(at: partURL)
 
         rememberPhoneFile(url: key, fileURL: dest)
-        try video.connectFolder(name: selection.title, url: dest)
+        if let video {
+            try video.connectFolder(name: selection.title, url: dest)
+        }
         transferStates[key] = .onPhone
         statusMessage = "Film zapisany na telefonie."
         UINotificationFeedbackGenerator().notificationOccurred(.success)

@@ -36,6 +36,7 @@ final class AppModel: ObservableObject {
     let playback = MusicPlaybackService()
     let downloads = MusicDownloadService()
     let onlineMovies = OnlineMoviesController()
+    let movieDownloads = MovieDownloadService()
     let sources = MusicSourcesStore()
     let network = NetworkReachability.shared
 
@@ -55,6 +56,11 @@ final class AppModel: ObservableObject {
             || isCatalogSearching
             || downloads.bulkServerQueue != nil
             || MusicDownloadService.hasActiveDownloads
+            || movieDownloads.isRunning
+    }
+
+    func isMovieDownloaded(url: String) -> Bool {
+        onlineMovies.jobId(for: url) != nil
     }
 
     var downloadedLibraryTracks: [MusicTrack] {
@@ -85,6 +91,7 @@ final class AppModel: ObservableObject {
 
     init() {
         onlineMovies.attach(api: api)
+        movieDownloads.attach(api: api, onlineMovies: onlineMovies)
         playback.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -94,6 +101,10 @@ final class AppModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         onlineMovies.objectWillChange
+            .throttle(for: .milliseconds(280), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        movieDownloads.objectWillChange
             .throttle(for: .milliseconds(280), scheduler: RunLoop.main, latest: true)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -245,6 +256,7 @@ final class AppModel: ObservableObject {
         librarySyncMessage = nil
         LibraryCacheStore.clear()
         onlineMovies.reset()
+        movieDownloads.clearFinishedBatch()
     }
 
     private func hydrateLibraryFromCacheIfNeeded() {

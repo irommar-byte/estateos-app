@@ -94,7 +94,47 @@ struct ServerDownloadQueuePanel: View {
     }
 }
 
-/// Status odtwarzania — co czekamy, % postępu, czy utwór jest na serwerze.
+/// Kolejka pobierania filmów / seriali CDA-HD (jak muzyka).
+struct MovieDownloadQueuePanel: View {
+    let batch: MovieDownloadBatch
+    @ObservedObject var service: MovieDownloadService
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("CDA-HD → serwer", systemImage: "film.fill")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text("\(service.completedCount)/\(service.totalCount)")
+                    .font(.caption.monospacedDigit().weight(.bold))
+                    .foregroundStyle(EOSTheme.accent)
+                if service.isRunning {
+                    Button("Anuluj", role: .cancel) { service.cancelBatch() }
+                        .font(.caption2.weight(.semibold))
+                }
+            }
+
+            ProgressView(value: service.overallProgress)
+                .tint(EOSTheme.accent)
+
+            if let title = service.activeItemTitle {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text("Teraz: \(title)")
+                        .font(.caption2.weight(.semibold))
+                        .lineLimit(1)
+                }
+            }
+
+            Text(batch.label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
 struct PlaybackActivityLine: View {
     let activity: PlaybackActivitySnapshot
     var compact: Bool = false

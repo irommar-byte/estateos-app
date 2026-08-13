@@ -33,6 +33,12 @@ struct MainTabView: View {
                 .padding(.vertical, 6)
             }
 
+            if let batch = app.movieDownloads.activeBatch {
+                MovieDownloadQueuePanel(batch: batch, service: app.movieDownloads)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+            }
+
             TabView {
                 LibraryView()
                     .miniPlayerTabInset()

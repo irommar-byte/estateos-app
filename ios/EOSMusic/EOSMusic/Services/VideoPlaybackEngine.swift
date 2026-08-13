@@ -11,6 +11,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var isBuffering = false
     @Published private(set) var hasEnded = false
+    @Published private(set) var isLoadingStreamAdvance = false
     @Published private(set) var currentTime: Double = 0
     @Published private(set) var duration: Double = 0
     @Published private(set) var errorMessage: String?
@@ -447,13 +448,48 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
 
     func playNext(sources: VideoSourcesStore) {
         sourcesRef = sources
-        guard hasNext else {
-            // Loop current when it's the only/last item — feels like “play again”.
-            replayFromStart()
-            return
-        }
+        guard hasNext else { return }
         currentIndex += 1
+        hasEnded = false
         loadCurrent(autoplay: true)
+    }
+
+    func replaceQueueItem(at index: Int, fileURL: URL) {
+        guard queue.indices.contains(index) else { return }
+        let old = queue[index]
+        queue[index] = VideoItem(
+            id: old.id,
+            title: old.title,
+            relativePath: old.relativePath,
+            fileURL: fileURL,
+            fileSize: old.fileSize,
+            folderId: old.folderId
+        )
+    }
+
+    /// Auto-następny odcinek (Netflix) — resolver dostarcza URL streamu dla kolejnej pozycji.
+    func advanceStreamingEpisode(
+        sources: VideoSourcesStore,
+        resolver: (VideoItem) async throws -> URL
+    ) async {
+        guard hasNext, !isLoadingStreamAdvance else { return }
+        isLoadingStreamAdvance = true
+        defer { isLoadingStreamAdvance = false }
+        let nextIndex = currentIndex + 1
+        guard queue.indices.contains(nextIndex) else { return }
+        let nextItem = queue[nextIndex]
+        do {
+            let url: URL
+            if let existing = nextItem.fileURL, !existing.isFileURL || FileManager.default.fileExists(atPath: existing.path) {
+                url = existing
+            } else {
+                url = try await resolver(nextItem)
+            }
+            replaceQueueItem(at: nextIndex, fileURL: url)
+            playNext(sources: sources)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func playPrevious(sources: VideoSourcesStore) {

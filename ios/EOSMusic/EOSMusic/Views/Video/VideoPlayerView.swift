@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 
 struct VideoPlayerView: View {
+    @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var video: VideoAppModel
     @ObservedObject private var engine: VideoPlaybackEngine
     @State private var controlsVisible = true
@@ -130,6 +131,11 @@ struct VideoPlayerView: View {
             if ended {
                 withAnimation(.easeInOut(duration: 0.2)) { controlsVisible = true }
                 hideTask?.cancel()
+                if engine.hasNext {
+                    Task {
+                        await app.onlineMovies.advanceToNextStreamingEpisode(video: video)
+                    }
+                }
             }
         }
         .sheet(isPresented: $showAudioSheet) {

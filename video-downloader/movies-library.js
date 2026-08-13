@@ -141,17 +141,34 @@ export function seriesFolderFromTitle(title) {
   return name || null;
 }
 
+/** "Show · Sezon 2 · Odcinek 3" → "Sezon 2" */
+export function seasonFolderFromTitle(title) {
+  const raw = String(title || "");
+  const m =
+    raw.match(/[·]\s*Sezon\s*(\d+)/i) ||
+    raw.match(/[·]\s*S(\d{1,2})E/i);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return `Sezon ${n}`;
+}
+
 export function moviesFileDestPath(downloadsRoot, { title, jobId }, { ensureDir = true } = {}) {
   const filename = buildMovieFilename({ title, jobId });
   const moviesDir = moviesDownloadDir(downloadsRoot);
   const seriesDir = seriesFolderFromTitle(title);
+  const seasonDir = seasonFolderFromTitle(title);
   if (seriesDir) {
-    const dir = path.join(moviesDir, seriesDir);
+    const dir = path.join(moviesDir, seriesDir, seasonDir || "");
     if (ensureDir) fs.mkdirSync(dir, { recursive: true });
+    const relativeName = seasonDir
+      ? path.join(seriesDir, seasonDir, filename)
+      : path.join(seriesDir, filename);
     return {
       filePath: path.join(dir, filename),
-      relativeName: path.join(seriesDir, filename),
+      relativeName,
       seriesDir,
+      seasonDir,
     };
   }
   if (ensureDir) fs.mkdirSync(moviesDir, { recursive: true });
@@ -159,6 +176,7 @@ export function moviesFileDestPath(downloadsRoot, { title, jobId }, { ensureDir 
     filePath: path.join(moviesDir, filename),
     relativeName: filename,
     seriesDir: null,
+    seasonDir: null,
   };
 }
 
