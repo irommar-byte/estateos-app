@@ -9,6 +9,7 @@ import {
   offerSharePrintFilename,
   printOfferShareBrochure,
 } from '@/lib/offerSharePrint';
+import { eosBtn } from '@/components/ui/eosButtonStyles';
 
 type OfferSharePrintActionsProps = {
   card: OfferShareCard;
@@ -56,11 +57,7 @@ export default function OfferSharePrintActions({ card }: OfferSharePrintActionsP
   return (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={onPrint}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-black/10 bg-white/60 px-5 py-3 text-xs font-bold uppercase tracking-widest text-[#141416] transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white"
-        >
+        <button type="button" onClick={onPrint} className={eosBtn('secondary', { block: true })}>
           <Printer size={14} />
           Wydrukuj
         </button>
@@ -68,7 +65,7 @@ export default function OfferSharePrintActions({ card }: OfferSharePrintActionsP
           type="button"
           onClick={() => void onPdf()}
           disabled={pdfBusy}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#b8922e]/35 bg-[#b8922e]/10 px-5 py-3 text-xs font-bold uppercase tracking-widest text-[#8a6e2f] transition hover:bg-[#b8922e]/15 disabled:opacity-60 dark:text-[#d4af37]"
+          className={eosBtn('promote', { block: true })}
         >
           <Download size={14} />
           {pdfBusy ? 'Generuję PDF…' : 'Pobierz PDF'}

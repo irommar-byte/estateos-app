@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { CalendarDays, MessageCircle, Star } from "lucide-react";
 import type { OfferSharePublisher } from "@/lib/offerShareLanding";
+import { eosBtn } from "@/components/ui/eosButtonStyles";
 
 function initialsFrom(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -80,19 +81,11 @@ export default function OfferSharePublisherCard({
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={onScheduleVisit}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-black shadow-[0_8px_24px_rgba(16,185,129,0.28)] transition hover:bg-emerald-400"
-        >
+        <button type="button" onClick={onScheduleVisit} className={eosBtn("home", { block: true })}>
           <CalendarDays size={15} />
           Umów wizytę
         </button>
-        <button
-          type="button"
-          onClick={onWriteMessage}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-black/10 bg-white/70 px-4 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#141416] transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white"
-        >
+        <button type="button" onClick={onWriteMessage} className={eosBtn("secondary", { block: true })}>
           <MessageCircle size={15} />
           Napisz wiadomość
         </button>

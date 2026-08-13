@@ -874,16 +874,21 @@ html.light .premium-home-shell {
 
 .premium-hero-cta-secondary {
   color: #ffffff !important;
-  background-color: rgba(8, 8, 10, 0.72) !important;
-  border-color: rgba(255, 255, 255, 0.22) !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.38) !important;
   box-shadow:
-    0 16px 34px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 12px 28px rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .premium-hero-cta-secondary:hover {
-  background-color: rgba(255, 255, 255, 0.12) !important;
-  border-color: rgba(255, 255, 255, 0.32) !important;
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  border-color: rgba(255, 255, 255, 0.55) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
 }
 
 .premium-hero-cta-link {
@@ -1680,6 +1685,7 @@ html.light .eos-nav-admin {
   background: linear-gradient(180deg, rgba(5, 150, 105, 0.2), rgba(5, 150, 105, 0.1)) !important;
   border-color: rgba(5, 150, 105, 0.42) !important;
   color: #047857 !important;
+  -webkit-text-fill-color: #047857 !important;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.9) inset,
     0 6px 18px rgba(5, 150, 105, 0.22) !important;
@@ -1688,7 +1694,26 @@ html.light .eos-nav-admin {
 html.light .eos-nav-admin:hover {
   background: var(--eos-accent) !important;
   color: #022c22 !important;
+  -webkit-text-fill-color: #022c22 !important;
   box-shadow: 0 8px 24px rgba(5, 150, 105, 0.35) !important;
+}
+
+/* Dark — czytelny emerald, bez czarnego atramentu z CTA shield */
+html:not(.light) .eos-nav-admin {
+  background: color-mix(in srgb, var(--eos-accent) 18%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--eos-accent) 45%, transparent) !important;
+  color: #6ee7b7 !important;
+  -webkit-text-fill-color: #6ee7b7 !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 8px 22px rgba(16, 185, 129, 0.18) !important;
+}
+
+html:not(.light) .eos-nav-admin:hover {
+  background: var(--eos-accent) !important;
+  color: #022c22 !important;
+  -webkit-text-fill-color: #022c22 !important;
+  box-shadow: 0 10px 28px rgba(16, 185, 129, 0.4) !important;
 }
 
 html.light .eos-nav-link {
@@ -4076,9 +4101,9 @@ html:not(.light) a[class~="bg-red-400"] {
   -webkit-text-fill-color: #4c0519 !important;
 }
 
-/* Token CSS accent — czytelny atrament na --eos-accent */
-button[class*="bg-[var(--eos-accent)]"],
-a[class*="bg-[var(--eos-accent)]"] {
+/* Token CSS accent — TYLKO dokładna klasa tła (nie hover:bg-[...], nie soft). */
+button[class~="bg-[var(--eos-accent)]"],
+a[class~="bg-[var(--eos-accent)]"] {
   color: #0a0a0a !important;
   -webkit-text-fill-color: #0a0a0a !important;
 }
@@ -4089,8 +4114,24 @@ button[class~="bg-emerald-400"] *,
 a[class~="bg-emerald-400"] *,
 button[class~="bg-sky-500"] *,
 a[class~="bg-sky-500"] *,
-button[class*="bg-[var(--eos-accent)]"] *,
-a[class*="bg-[var(--eos-accent)]"] * {
+button[class~="bg-[var(--eos-accent)]"] *,
+a[class~="bg-[var(--eos-accent)]"] * {
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+}
+
+/*
+  Legacy: bg-[#141416] + dark:bg-white w tej samej className.
+  Shield wymusza biały atrament na bg-[#141416] → biały-na-białym w dark.
+  Preferuj eos-btn; ten override łata pozostałe call-site’y.
+*/
+html:not(.light) a[class~="bg-[#141416]"][class*="dark:bg-white"],
+html:not(.light) button[class~="bg-[#141416]"][class*="dark:bg-white"] {
+  color: #0a0a0a !important;
+  -webkit-text-fill-color: #0a0a0a !important;
+}
+html:not(.light) a[class~="bg-[#141416]"][class*="dark:bg-white"] *,
+html:not(.light) button[class~="bg-[#141416]"][class*="dark:bg-white"] * {
   color: inherit !important;
   -webkit-text-fill-color: inherit !important;
 }

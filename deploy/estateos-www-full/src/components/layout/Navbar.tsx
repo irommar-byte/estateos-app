@@ -369,7 +369,7 @@ export default function Navbar() {
                   <button
                     type="button"
                     onClick={() => router.push("/centrala")}
-                    className="eos-nav-admin shrink-0 rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black xl:px-3.5 xl:text-[10px] xl:tracking-[0.14em]"
+                    className="eos-nav-admin shrink-0 rounded-full px-2.5 py-2 text-[9px] font-black uppercase tracking-[0.1em] transition-all xl:px-3.5 xl:text-[10px] xl:tracking-[0.14em]"
                   >
                     {manageLabelShort}
                   </button>
