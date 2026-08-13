@@ -9,6 +9,7 @@ import {
   ESTATEOS_APP_STORE_URL,
   ESTATEOS_PLAY_STORE_URL,
 } from '@/lib/estateosAppLinks';
+import { eosBtn } from '@/components/ui/eosButtonStyles';
 
 type Props = {
   offerId: number;
@@ -39,12 +40,8 @@ export default function OfferShareOpenInAppButton({ offerId, canonicalUrl }: Pro
 
   return (
     <div className="space-y-2">
-      <button
-        type="button"
-        onClick={handleClick}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-[#b8922e]/35 bg-gradient-to-r from-[#faf8f2] to-white px-5 py-4 text-[11px] font-black uppercase tracking-[0.16em] text-[#141416] shadow-[0_8px_24px_rgba(184,146,46,0.12)] transition hover:border-[#b8922e]/55 dark:from-[#141416] dark:to-[#101014] dark:text-white"
-      >
-        <Smartphone size={16} className="text-[#b8922e]" />
+      <button type="button" onClick={handleClick} className={eosBtn('promote', { block: true, size: 'lg' })}>
+        <Smartphone size={16} />
         {label}
       </button>
       {hint ? (

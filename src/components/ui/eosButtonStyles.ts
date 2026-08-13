@@ -3,9 +3,14 @@
  *
  * Use `eosBtn("primary")` on <button>/<a>/<Link>, or <EosButton variant="primary" />.
  *
+ * DO NOT invent one-off CTA recipes like:
+ *   bg-[#141416] … dark:bg-white dark:text-black
+ *   bg-white/60 … text-[#141416] without dark pair
+ *   hover:bg-[var(--eos-accent)] on soft pills (CTA shield used to match this and force black ink)
+ *
  * Variants:
  * - primary   — filled contrast (black on light / white on dark)
- * - secondary — glass outline
+ * - secondary — glass outline (readable on both themes)
  * - home      — EstateOS™Home solid emerald
  * - car       — EstateOS™Car solid sky
  * - call      — solid green CTA for phone

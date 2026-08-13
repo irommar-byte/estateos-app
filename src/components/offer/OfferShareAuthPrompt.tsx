@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import Link from 'next/link';
 import { CalendarIcon, MessageCircle, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { buildAuthHref, type OfferShareIntentKind } from '@/lib/offerShareIntent';
+import { eosBtn } from '@/components/ui/eosButtonStyles';
 
 type Props = {
   isOpen: boolean;
@@ -122,17 +123,11 @@ export default function OfferShareAuthPrompt({
             </div>
 
             <div className="space-y-2 border-t border-black/8 px-6 py-5 dark:border-white/10">
-              <Link
-                href={registerHref}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#141416] px-5 py-4 text-[11px] font-black uppercase tracking-[0.18em] text-white transition hover:bg-black dark:bg-white dark:text-black"
-              >
+              <Link href={registerHref} className={eosBtn('primary', { block: true, size: 'lg' })}>
                 <Sparkles size={15} />
                 Załóż bezpłatne konto
               </Link>
-              <Link
-                href={loginHref}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-black/10 bg-white/80 px-5 py-3.5 text-[11px] font-black uppercase tracking-[0.18em] text-[#141416] transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white"
-              >
+              <Link href={loginHref} className={eosBtn('secondary', { block: true })}>
                 Mam już konto — zaloguj się
               </Link>
             </div>

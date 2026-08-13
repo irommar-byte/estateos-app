@@ -22,6 +22,7 @@ import OfferShareMessageModal from '@/components/offer/OfferShareMessageModal';
 import OfferSharePrintActions from '@/components/offer/OfferSharePrintActions';
 import OfferSharePrintBrochure from '@/components/offer/OfferSharePrintBrochure';
 import { loadOfferShareIntent, resumeOfferShareIntent } from '@/lib/offerShareIntent';
+import { eosBtn } from '@/components/ui/eosButtonStyles';
 
 export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
   const [activeImage, setActiveImage] = useState(0);
@@ -75,7 +76,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
           <article className="overflow-hidden rounded-[25px] border border-black/10 bg-[#fafaf8] dark:border-white/10 dark:bg-[#101014]">
             <header className="border-b border-black/10 px-4 py-3 dark:border-white/10">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-baseline gap-2 text-[9px] font-bold uppercase tracking-[0.22em] text-[#5c5c66]">
+                <div className="flex items-baseline gap-2 text-[9px] font-bold uppercase tracking-[0.22em] text-[#5c5c66] dark:text-[#9a9aa8]">
                   <strong className="text-[11px] tracking-[0.18em] text-[#141416] dark:text-white">
                     EstateOS™
                   </strong>
@@ -134,7 +135,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
 
             <div className="space-y-5 p-5">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#5c5c66]">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#5c5c66] dark:text-[#9a9aa8]">
                   {card.summaryLine}
                 </p>
                 <p className="mt-2 text-3xl font-black tracking-tight text-[#141416] dark:text-white">
@@ -145,7 +146,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {card.area != null ? (
                   <div className="rounded-2xl border border-black/10 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66]">Metraż</p>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66] dark:text-[#9a9aa8]">Metraż</p>
                     <p className="mt-1 flex items-center gap-1 text-sm font-bold">
                       <Ruler size={14} className="text-emerald-500" />
                       {card.area} m²
@@ -154,13 +155,13 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
                 ) : null}
                 {card.rooms != null ? (
                   <div className="rounded-2xl border border-black/10 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66]">Pokoje</p>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66] dark:text-[#9a9aa8]">Pokoje</p>
                     <p className="mt-1 text-sm font-bold">{card.rooms}</p>
                   </div>
                 ) : null}
                 {card.floor != null ? (
                   <div className="rounded-2xl border border-black/10 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66]">Piętro</p>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66] dark:text-[#9a9aa8]">Piętro</p>
                     <p className="mt-1 text-sm font-bold">{card.floor}</p>
                   </div>
                 ) : null}
@@ -194,18 +195,11 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
               </p>
 
               <div className="flex flex-col gap-3">
-                <Link
-                  href={card.fullOfferPath}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#141416] px-5 py-4 text-sm font-black uppercase tracking-widest text-white transition hover:bg-black dark:bg-white dark:text-black dark:hover:bg-white/90"
-                >
+                <Link href={card.fullOfferPath} className={eosBtn('primary', { block: true, size: 'lg' })}>
                   Zobacz pełną ofertę
                   <ArrowRight size={16} />
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => void copyLink()}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-black/10 bg-white/60 px-5 py-3 text-xs font-bold uppercase tracking-widest text-[#141416] transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white"
-                >
+                <button type="button" onClick={() => void copyLink()} className={eosBtn('secondary', { block: true })}>
                   <Copy size={14} />
                   {copied ? 'Skopiowano link' : 'Kopiuj link wizytówki'}
                 </button>
@@ -225,23 +219,17 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
                     nieruchomości zamiast kolejnego portalu ogłoszeń.
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <Link
-                      href="/dla-agencji"
-                      className="inline-flex items-center gap-1 rounded-full border border-[#b8922e]/30 bg-[#b8922e]/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#8a6e2f] dark:text-[#d4af37]"
-                    >
+                    <Link href="/dla-agencji" className={eosBtn('promote', { size: 'sm' })}>
                       <Building2 size={12} />
                       Biuro za 0 zł
                     </Link>
-                    <Link
-                      href="https://estateos.pl"
-                      className="inline-flex items-center gap-1 rounded-full border border-black/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#5c5c66] dark:border-white/15"
-                    >
+                    <Link href="https://estateos.pl" className={eosBtn('secondary', { size: 'sm' })}>
                       estateos.pl
                       <ExternalLink size={11} />
                     </Link>
                   </div>
-                  <div className="mt-5 rounded-2xl border border-black/8 bg-white/60 p-4 dark:border-white/10 dark:bg-white/[0.03]">
-                    <p className="mb-3 text-[9px] font-black uppercase tracking-[0.2em] text-[#5c5c66]">
+                  <div className="mt-5 rounded-2xl border border-black/8 bg-white/80 p-4 dark:border-white/10 dark:bg-white/[0.06]">
+                    <p className="mb-3 text-[9px] font-black uppercase tracking-[0.2em] text-[#5c5c66] dark:text-[#9a9aa8]">
                       Pobierz aplikację
                     </p>
                     <AppStoreBadgeLink compact androidComingSoon />
