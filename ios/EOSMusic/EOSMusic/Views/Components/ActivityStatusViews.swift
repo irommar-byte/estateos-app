@@ -94,7 +94,7 @@ struct ServerDownloadQueuePanel: View {
     }
 }
 
-/// Kolejka pobierania filmów / seriali CDA-HD (jak muzyka).
+/// Kolejka pobierania filmów / seriali EOS™LIBRARY (jak muzyka).
 struct MovieDownloadQueuePanel: View {
     let batch: MovieDownloadBatch
     @ObservedObject var service: MovieDownloadService
@@ -102,7 +102,7 @@ struct MovieDownloadQueuePanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("CDA-HD → serwer", systemImage: "film.fill")
+                Label("\(EOSLibraryBrand.displayName) → serwer", systemImage: "film.fill")
                     .font(.caption.weight(.semibold))
                 Spacer()
                 Text("\(service.completedCount)/\(service.totalCount)")

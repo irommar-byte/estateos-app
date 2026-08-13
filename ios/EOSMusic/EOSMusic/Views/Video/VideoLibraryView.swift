@@ -17,7 +17,7 @@ struct VideoLibraryView: View {
 
         var title: String {
             switch self {
-            case .online: return "Filmy online"
+            case .online: return EOSLibraryBrand.displayName
             case .folders: return "Foldery"
             case .downloads: return "Pobrane"
             }
@@ -55,7 +55,7 @@ struct VideoLibraryView: View {
                     }
                 }
             }
-            .navigationTitle(section == .online ? "CDA-HD" : "Wideo")
+            .navigationTitle(section == .online ? EOSLibraryBrand.displayName : "Wideo")
             .navigationBarTitleDisplayMode(.large)
             .sheet(isPresented: $showAddFolder) {
                 VideoFolderConnectionSheet { name, url in

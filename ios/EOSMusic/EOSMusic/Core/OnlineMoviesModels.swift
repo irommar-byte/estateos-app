@@ -1,5 +1,17 @@
 import Foundation
 
+/// Marka katalogu filmów online w UI (bez ujawniania źródła backendu).
+enum EOSLibraryBrand {
+    static let displayName = "EOS™LIBRARY"
+
+    static func sanitize(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "CDA-HD", with: displayName, options: .caseInsensitive)
+            .replacingOccurrences(of: "CDA HD", with: displayName, options: .caseInsensitive)
+            .replacingOccurrences(of: "cda-hd", with: displayName, options: .caseInsensitive)
+    }
+}
+
 typealias FilmsCatalogMode = OnlineMoviesCatalogMode
 typealias FilmsCatalogKind = OnlineMoviesCatalogKind
 

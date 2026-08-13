@@ -27,7 +27,7 @@ struct OnlineMoviesDownloadsView: View {
                 ContentUnavailableView(
                     "Brak filmów na serwerze",
                     systemImage: "externaldrive",
-                    description: Text("Pobierz z CDA-HD — pliki trafią do MOVIES/Serial/Sezon/ na VPS.")
+                    description: Text("Pobierz z EOS™LIBRARY — pliki trafią do MOVIES/Serial/Sezon/ na VPS.")
                 )
             } else {
                 List {

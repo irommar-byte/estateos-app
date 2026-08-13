@@ -108,7 +108,7 @@ struct OnlineMovieDetailView: View {
                 )
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("CDA-HD")
+                    Text(EOSLibraryBrand.displayName)
                         .font(EOSTypography.captionBold)
                         .tracking(1.1)
                         .foregroundStyle(EOSTheme.accent)

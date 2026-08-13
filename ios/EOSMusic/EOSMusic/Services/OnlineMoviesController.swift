@@ -59,7 +59,7 @@ final class OnlineMoviesController: ObservableObject {
             } else {
                 shelves = response.shelves
             }
-            homeError = shelves.isEmpty ? "Brak pozycji CDA-HD. Spróbuj ponownie za chwilę." : nil
+            homeError = shelves.isEmpty ? "Brak pozycji w \(EOSLibraryBrand.displayName). Spróbuj ponownie za chwilę." : nil
         } catch {
             if shelves.isEmpty {
                 homeError = error.localizedDescription

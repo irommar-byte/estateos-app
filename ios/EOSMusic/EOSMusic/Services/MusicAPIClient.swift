@@ -256,7 +256,7 @@ final class MusicAPIClient {
         return try await request("POST", path: "/api/download", body: body)
     }
 
-    // MARK: - CDA-HD / Online movies
+    // MARK: - EOS™LIBRARY / Online movies
 
     func fetchCdaHdHome(limit: Int = 22) async throws -> FilmsHomeResponse {
         try await request("GET", path: "/api/cda-hd/home?limit=\(limit)", authorized: true)
@@ -372,7 +372,7 @@ final class MusicAPIClient {
         return URL(string: base + "/api/file/\(jobId)")!
     }
 
-    /// Stream / podgląd bez trwałego pobierania (CDA-HD mirror → `/api/play`).
+    /// Stream / podgląd bez trwałego pobierania (EOS™LIBRARY → `/api/play`).
     func startPreview(url: String, height: Int = 720) async throws -> PreviewResponse {
         var body: [String: Any] = [
             "url": url,

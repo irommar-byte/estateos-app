@@ -68,7 +68,7 @@ struct SearchResultItem: Codable, Identifiable, Hashable {
     let artistId: String?
     let albumId: String?
     let trackNumber: Int?
-    /// CDA-HD / film catalog extras (optional for Apple Music rows).
+    /// EOS™LIBRARY / film catalog extras (optional for Apple Music rows).
     let quality: String?
     let rating: Double?
     let views: Double?

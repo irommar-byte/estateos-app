@@ -122,7 +122,7 @@ final class VideoPiPController: NSObject, ObservableObject {
         externalSeek(to: target, resume: avPlayer.rate > 0 || engine?.isPlaying == true)
     }
 
-    /// AVPlayer PiP działa dla MP4/MOV/HLS. Streamy CDA-HD (`/api/play/…`) zwykle nie mają
+    /// AVPlayer PiP działa dla MP4/MOV/HLS. Streamy EOS™LIBRARY (`/api/play/…`) zwykle nie mają
     /// rozszerzenia w URL — wcześniej wpadały w fallback „tylko mini-player”.
     static func isApplePiPContainer(_ url: URL) -> Bool {
         let ext = url.pathExtension.lowercased()
@@ -237,7 +237,7 @@ final class VideoPiPController: NSObject, ObservableObject {
         if ["mkv", "avi", "wmv", "webm", "flv", "ts", "m2ts"].contains(ext) {
             return "Ten format (\(ext.uppercased())) — AirPlay przesyła tylko dźwięk. Pobierz MP4 albo użyj Lustrzanego odbicia ekranu."
         }
-        return "Ten plik nie obsługuje AirPlay wideo w EOS. Spróbuj streamu CDA-HD / MP4 albo Lustrzane odbicie."
+        return "Ten plik nie obsługuje AirPlay wideo w EOS. Spróbuj streamu z \(EOSLibraryBrand.displayName) / MP4 albo Lustrzane odbicie."
     }
 
     private func beginExternalPlayback(engine: VideoPlaybackEngine) async {
@@ -296,7 +296,7 @@ final class VideoPiPController: NSObject, ObservableObject {
         airPlayNotice = nil
 
         if transferToVLC, let engineRef {
-            engineRef.resumeAfterExternalPlayback(
+            engineRef.resumeFromAVKitHandoff(
                 at: seconds.isFinite ? seconds : engineRef.currentTime,
                 resume: shouldResume
             )

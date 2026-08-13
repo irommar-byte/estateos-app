@@ -13,7 +13,7 @@ private struct PendingDownloadBatch: Identifiable {
     let label: String
 }
 
-/// Lista odcinków serialu CDA-HD — pobieranie sezonu / całości + odtwarzanie w kolejce.
+/// Lista odcinków serialu EOS™LIBRARY — pobieranie sezonu / całości + odtwarzanie w kolejce.
 struct OnlineSeriesEpisodesView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var video: VideoAppModel

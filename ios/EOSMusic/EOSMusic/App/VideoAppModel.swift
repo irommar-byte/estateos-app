@@ -98,8 +98,8 @@ final class VideoAppModel: ObservableObject {
         play(folder: folder, startIndex: index)
     }
 
-    /// Stream / odtwórz pojedynczy plik (lokalny lub HTTP z CDA-HD).
-    func playStandalone(url: URL, title: String, folderName: String = "CDA-HD") {
+    /// Stream / odtwórz pojedynczy plik (lokalny lub HTTP z EOS™LIBRARY).
+    func playStandalone(url: URL, title: String, folderName: String = EOSLibraryBrand.displayName) {
         onWillStartPlayback?()
         OrientationLock.shared.unlockAll()
         let item = VideoItem(

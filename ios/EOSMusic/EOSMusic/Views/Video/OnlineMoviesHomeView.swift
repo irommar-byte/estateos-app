@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// CDA-HD — półki w stylu Apple TV Movies.
+/// EOS™LIBRARY — półki w stylu Apple TV Movies.
 struct OnlineMoviesHomeView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var video: VideoAppModel
@@ -24,14 +24,14 @@ struct OnlineMoviesHomeView: View {
                 if let heroItem {
                     heroBanner(heroItem)
                 } else if movies.isLoadingHome {
-                    ProgressView("Ładuję CDA-HD…")
+                    ProgressView("Ładuję \(EOSLibraryBrand.displayName)…")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 80)
                 }
 
                 if let error = movies.homeError, movies.shelves.isEmpty {
                     ContentUnavailableView(
-                        "CDA-HD niedostępne",
+                        "\(EOSLibraryBrand.displayName) niedostępne",
                         systemImage: "exclamationmark.triangle",
                         description: Text(error)
                     )
@@ -65,7 +65,7 @@ struct OnlineMoviesHomeView: View {
             await movies.refreshDownloads()
         }
         .eosScrollClearance()
-        .searchable(text: $searchText, prompt: "Szukaj w CDA-HD")
+        .searchable(text: $searchText, prompt: "Szukaj w \(EOSLibraryBrand.displayName)")
         .onChange(of: searchText) { _, value in
             Task { await runSearch(value) }
         }
@@ -137,7 +137,7 @@ struct OnlineMoviesHomeView: View {
                 )
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("CDA-HD")
+                    Text(EOSLibraryBrand.displayName)
                         .font(EOSTypography.captionBold)
                         .tracking(1.2)
                         .foregroundStyle(EOSTheme.accent)
@@ -182,10 +182,10 @@ struct OnlineMoviesHomeView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(shelf.title)
+                    Text(EOSLibraryBrand.sanitize(shelf.title))
                         .font(EOSTypography.title3)
                     if let subtitle = shelf.subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
+                        Text(EOSLibraryBrand.sanitize(subtitle))
                             .font(EOSTypography.caption)
                             .foregroundStyle(.secondary)
                     }
