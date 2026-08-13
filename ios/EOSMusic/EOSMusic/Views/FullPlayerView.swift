@@ -122,9 +122,12 @@ private struct PlayerContent: View {
                 if policy.allowStrobe {
                     PlayerStrobeLayer(
                         visualizer: engine.visualizer,
-                        isPlaying: engine.isPlaying,
+                        isPlaying: engine.isPlaying && !engine.isLoading,
                         intensity: max(0.7, policy.intensityScale),
                         speed: ui.playerStrobeSpeed,
+                        brightness: ui.playerStrobeBrightness,
+                        sensitivity: ui.playerSensitivity,
+                        trackID: engine.currentTrack?.id,
                         colorScheme: colorScheme
                     )
                     .allowsHitTesting(false)
@@ -170,7 +173,8 @@ private struct PlayerContent: View {
                     artworkURL: track.artworkURL,
                     fallbackArtwork: engine.displayArtwork,
                     canvasSize: layout.discSize,
-                    spectrumHeight: layout.spectrumHeight
+                    spectrumHeight: layout.spectrumBlockHeight,
+                    expandSpectrum: layout.isPad
                 ) {
                     trackMeta(track: track, layout: layout, includeStorage: false)
                 } status: {
@@ -213,7 +217,7 @@ private struct PlayerContent: View {
                     artworkURL: track.artworkURL,
                     fallbackArtwork: engine.displayArtwork,
                     canvasSize: layout.discSize,
-                    spectrumHeight: layout.spectrumHeight
+                    spectrumHeight: layout.spectrumBlockHeight
                 ) {
                     trackMeta(track: track, layout: layout, includeStorage: false)
                 } status: {
@@ -561,12 +565,33 @@ private struct PlayerLayout {
         if wide {
             if height < 560 { return 120 }
             if height < 700 { return 150 }
-            return 176
+            return isPad ? min(240, height * 0.22) : 176
         }
+        if isPad {
+            return min(280, max(160, height * 0.24))
+        }
+        if width < 340 { return 88 }
         if height < 620 { return 96 }
         if height < 700 { return 112 }
         if height < 780 { return 128 }
         return 144
+    }
+
+    /// Wysokość bloku EQ — na iPadzie i dużych ekranach wypełnia więcej sceny.
+    var spectrumBlockHeight: CGFloat {
+        if isPad {
+            return min(320, max(170, height * 0.28))
+        }
+        if wide {
+            return spectrumHeight
+        }
+        return spectrumHeight
+    }
+
+    var sideVUWidth: CGFloat {
+        if width < 340 { return 20 }
+        if width < 390 { return 22 }
+        return isPad ? 32 : 26
     }
 
     var haloBarCount: Int {
@@ -582,8 +607,14 @@ private struct PlayerLayout {
     var bottomGap: CGFloat { tight ? 2 : (compact ? 4 : 6) }
     var chromeTop: CGFloat { tight ? 2 : 6 }
     var safeBottom: CGFloat { isPad ? 10 : (tight ? 2 : 6) }
-    var horizontalPadding: CGFloat { wide ? 28 : (width > 700 ? 24 : 12) }
-    var maxContentWidth: CGFloat { wide ? min(width - 32, 1180) : (isPad ? 640 : 540) }
+    var horizontalPadding: CGFloat { wide ? 28 : (width > 700 ? 24 : (width < 340 ? 8 : 12)) }
+    var maxContentWidth: CGFloat {
+        if wide { return min(width - 32, 1200) }
+        if isPad {
+            return width > 820 ? min(width * 0.9, 960) : min(width * 0.94, 720)
+        }
+        return min(width - 16, 540)
+    }
     var wideArtColumnWidth: CGFloat { min(420, width * 0.42) }
     var wideColumnGap: CGFloat { 32 }
 }
@@ -1106,61 +1137,66 @@ private struct PlayerStrobeLayer: View {
     let isPlaying: Bool
     let intensity: Double
     var speed: Double = 0.8
+    var brightness: Double = 0.72
+    var sensitivity: Double = 0.78
+    var trackID: String?
     var colorScheme: ColorScheme = .dark
 
+    @StateObject private var beatDriver = StrobeBeatDriver()
+
     var body: some View {
-        // Nie pauzuj timeline tylko dlatego, że nie ma jeszcze beatów z analizatora —
-        // STROBO ma tykać rytmem ustawień nawet przy cichym utworze.
-        TimelineView(.animation(minimumInterval: 1.0 / 36, paused: !isPlaying)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 45, paused: !isPlaying)) { context in
             let frame = visualizer.snapshot(isPlaying: isPlaying)
-            StrobeFlashView(
-                date: context.date,
-                isPlaying: isPlaying,
+            let t = context.date.timeIntervalSinceReferenceDate
+            let flash = beatDriver.flashAmount(
+                at: t,
                 beat: frame.beat,
                 bass: frame.bass,
                 level: frame.level,
-                intensity: intensity,
+                isPlaying: isPlaying,
                 speed: speed,
+                sensitivity: sensitivity
+            )
+            StrobeFlashView(
+                flash: flash,
+                isPlaying: isPlaying,
+                intensity: intensity,
+                brightness: brightness,
                 colorScheme: colorScheme
             )
+        }
+        .onChange(of: trackID) { _, _ in
+            beatDriver.reset()
+        }
+        .onChange(of: isPlaying) { _, playing in
+            if !playing { beatDriver.reset() }
         }
     }
 }
 
-/// Klubowy stroboskop: ostre błyski w czasie + wzmocnienie od basu.
+/// Klubowy stroboskop: ostre błyski zsynchronizowane z bitem + regulowana jasność.
 private struct StrobeFlashView: View {
-    let date: Date
+    let flash: Double
     let isPlaying: Bool
-    let beat: Double
-    let bass: Double
-    let level: Double
     let intensity: Double
-    var speed: Double = 0.8
+    var brightness: Double = 0.72
     var colorScheme: ColorScheme = .dark
 
     var body: some View {
-        let rawPower = max(beat * 1.35, max(bass * 1.2, level * 0.9))
-        let hz = 2.2 + speed * 8.0
-        let phase = date.timeIntervalSinceReferenceDate * hz
-        // Ostry gate: krótkie „on”, długa cisza — prawdziwy strobo.
-        let duty = 0.14 + speed * 0.1
-        let gate = (phase.truncatingRemainder(dividingBy: 1) < duty) ? 1.0 : 0.0
-        // Zawsze błyskaj w rytmie — audio tylko wzmacnia, nigdy nie gasi całkowicie.
-        let boost = 0.72 + min(0.45, rawPower * 0.9)
-        let flash = isPlaying ? min(1, gate * boost * (0.65 + intensity * 0.55)) : 0
+        let power = isPlaying ? min(1, flash * brightness * (0.55 + intensity * 0.65)) : 0
         let isLight = colorScheme == .light
         let flashCore = isLight ? Color.black : Color.white
         let flashAccent = isLight ? EOSTheme.accent : Color.white
 
         ZStack {
-            flashCore.opacity(flash * (isLight ? 0.42 : 0.32))
+            flashCore.opacity(power * (isLight ? 0.5 : 0.38))
                 .blendMode(isLight ? .multiply : .plusLighter)
 
             RadialGradient(
                 colors: [
-                    flashAccent.opacity(flash * (isLight ? 0.55 : 0.75)),
-                    EOSTheme.accent.opacity(flash * 0.6),
-                    EOSTheme.accentSecondary.opacity(flash * 0.3),
+                    flashAccent.opacity(power * (isLight ? 0.62 : 0.82)),
+                    EOSTheme.accent.opacity(power * 0.65),
+                    EOSTheme.accentSecondary.opacity(power * 0.32),
                     .clear
                 ],
                 center: .center,
@@ -1171,13 +1207,13 @@ private struct StrobeFlashView: View {
 
             HStack {
                 Circle()
-                    .fill(flashCore.opacity(flash * 0.9))
+                    .fill(flashCore.opacity(power * 0.92))
                     .frame(width: 120, height: 120)
                     .blur(radius: 28)
                     .offset(x: -40, y: -20)
                 Spacer()
                 Circle()
-                    .fill(EOSTheme.accent.opacity(flash * 0.95))
+                    .fill(EOSTheme.accent.opacity(power * 0.95))
                     .frame(width: 120, height: 120)
                     .blur(radius: 28)
                     .offset(x: 40, y: -20)
@@ -1185,7 +1221,7 @@ private struct StrobeFlashView: View {
             .frame(maxHeight: .infinity, alignment: .top)
 
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(flashAccent.opacity(flash * 0.9), lineWidth: 2.5)
+                .stroke(flashAccent.opacity(power * 0.92), lineWidth: 2.5)
                 .padding(6)
                 .blendMode(isLight ? .normal : .plusLighter)
         }

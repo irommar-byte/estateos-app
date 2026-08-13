@@ -368,6 +368,10 @@ final class UIPreferences: ObservableObject {
     @Published var playerStrobeSpeed: Double {
         didSet { UserDefaults.standard.set(playerStrobeSpeed, forKey: Self.strobeSpeedKey) }
     }
+    /// Jasność stroboskopu (0.15…1.0).
+    @Published var playerStrobeBrightness: Double {
+        didSet { UserDefaults.standard.set(playerStrobeBrightness, forKey: Self.strobeBrightnessKey) }
+    }
     /// Auto-throttle on Low Power / thermal stress.
     @Published var playerAutoPerformance: Bool {
         didSet { UserDefaults.standard.set(playerAutoPerformance, forKey: Self.autoPerfKey) }
@@ -395,6 +399,7 @@ final class UIPreferences: ObservableObject {
     private static let mixerPowerKey = "ui.playerMixerPowered"
     private static let strobeKey = "ui.playerStrobeEnabled"
     private static let strobeSpeedKey = "ui.playerStrobeSpeed"
+    private static let strobeBrightnessKey = "ui.playerStrobeBrightness"
     private static let autoPerfKey = "ui.playerAutoPerformance"
     private static let offlineModeKey = "ui.offlineModeEnabled"
 
@@ -429,6 +434,11 @@ final class UIPreferences: ObservableObject {
             playerStrobeSpeed = min(1, max(0.2, UserDefaults.standard.double(forKey: Self.strobeSpeedKey)))
         } else {
             playerStrobeSpeed = 0.8
+        }
+        if UserDefaults.standard.object(forKey: Self.strobeBrightnessKey) != nil {
+            playerStrobeBrightness = min(1, max(0.15, UserDefaults.standard.double(forKey: Self.strobeBrightnessKey)))
+        } else {
+            playerStrobeBrightness = 0.72
         }
         if UserDefaults.standard.object(forKey: Self.autoPerfKey) != nil {
             playerAutoPerformance = UserDefaults.standard.bool(forKey: Self.autoPerfKey)
@@ -603,6 +613,63 @@ struct SettingsChoiceRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// Wykrywa uderzenia bitu z analizatora PCM i generuje krótkie okna błysku (klubowy stroboskop).
+final class StrobeBeatDriver: ObservableObject {
+    private var lastBeat: Double = 0
+    private var flashUntil: TimeInterval = 0
+    private var lastBeatHitAt: TimeInterval = 0
+    private var lastFallbackTick: TimeInterval = 0
+
+    func reset() {
+        lastBeat = 0
+        flashUntil = 0
+        lastBeatHitAt = 0
+        lastFallbackTick = 0
+    }
+
+    func flashAmount(
+        at time: TimeInterval,
+        beat: Double,
+        bass: Double,
+        level: Double,
+        isPlaying: Bool,
+        speed: Double,
+        sensitivity: Double
+    ) -> Double {
+        guard isPlaying else {
+            reset()
+            return 0
+        }
+
+        let sens = min(1, max(0.15, sensitivity))
+        let threshold = 0.22 + (1 - sens) * 0.38
+        let bassHit = bass >= (0.38 + (1 - sens) * 0.22) && beat >= threshold * 0.85
+        let beatOnset = (beat >= threshold && lastBeat < threshold - 0.04) || bassHit
+
+        lastBeat = beat * 0.55 + lastBeat * 0.45
+
+        if beatOnset {
+            let flashDuration = 0.028 + (1 - speed) * 0.045
+            flashUntil = max(flashUntil, time + flashDuration)
+            lastBeatHitAt = time
+        }
+
+        let bpm = 72 + speed * 108
+        let fallbackInterval = 60.0 / bpm
+        if time - lastFallbackTick >= fallbackInterval {
+            lastFallbackTick = time
+            if time - lastBeatHitAt > 0.85, level > 0.04 {
+                flashUntil = max(flashUntil, time + 0.032)
+            }
+        }
+
+        guard time < flashUntil else { return 0 }
+        let tail = flashUntil - time
+        let window = 0.03 + (1 - speed) * 0.05
+        return min(1, tail / window)
     }
 }
 

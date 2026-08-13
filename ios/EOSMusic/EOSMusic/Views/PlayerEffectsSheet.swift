@@ -72,7 +72,7 @@ struct PlayerEffectsSheet: View {
                         }
                         .padding(.vertical, 4)
 
-                        if ui.playerVisualPreset == .strobe {
+                        if ui.playerVisualPreset == .strobe || ui.playerStrobeEnabled {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Label("Szybkość / Prędkość błysków", systemImage: "bolt.fill")
@@ -83,6 +83,20 @@ struct PlayerEffectsSheet: View {
                                         .foregroundStyle(EOSTheme.accent)
                                 }
                                 Slider(value: $ui.playerStrobeSpeed, in: 0.2...1.0)
+                                    .tint(EOSTheme.accent)
+                            }
+                            .padding(.vertical, 4)
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Label("Jasność stroboskopu", systemImage: "sun.max.fill")
+                                        .font(.subheadline.weight(.medium))
+                                    Spacer()
+                                    Text("\(Int(ui.playerStrobeBrightness * 100))%")
+                                        .font(.caption.monospacedDigit().weight(.bold))
+                                        .foregroundStyle(EOSTheme.accent)
+                                }
+                                Slider(value: $ui.playerStrobeBrightness, in: 0.15...1.0)
                                     .tint(EOSTheme.accent)
                             }
                             .padding(.vertical, 4)
@@ -104,7 +118,7 @@ struct PlayerEffectsSheet: View {
                     } header: {
                         Text("Regulacja stroboskopu i dynamiki")
                     } footer: {
-                        Text("Reguluj natężenie światła, czułość na bas oraz prędkość reakcji stroboskopu.")
+                        Text("Reguluj natężenie światła, czułość na bas, jasność i prędkość stroboskopu (STROBO działa też przy EQ).")
                     }
                 }
 

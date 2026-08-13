@@ -69,35 +69,39 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
                     }
 
                     if preset.showsMixer {
-                        HStack(alignment: .center, spacing: 10) {
-                            ProMixerVerticalVU(
-                                visualizer: visualizer,
-                                isPlaying: live,
-                                channel: .left,
-                                width: 28,
-                                compact: true,
-                                drive: drive
-                            )
+                        GeometryReader { rowGeo in
+                            let vuW = min(34, max(18, rowGeo.size.width * 0.075))
+                            HStack(alignment: .center, spacing: rowGeo.size.width < 360 ? 6 : 10) {
+                                ProMixerVerticalVU(
+                                    visualizer: visualizer,
+                                    isPlaying: live,
+                                    channel: .left,
+                                    width: vuW,
+                                    compact: true,
+                                    drive: drive
+                                )
 
-                            WinampSpectrumHost(
-                                visualizer: visualizer,
-                                isPlaying: live,
-                                intensity: intensity,
-                                bandCount: bandCount,
-                                compact: true
-                            )
-                            .frame(maxWidth: .infinity)
-                            .frame(height: spectrumHeight)
+                                WinampSpectrumHost(
+                                    visualizer: visualizer,
+                                    isPlaying: live,
+                                    intensity: intensity,
+                                    bandCount: bandCount,
+                                    compact: rowGeo.size.width < 380
+                                )
+                                .frame(maxWidth: .infinity)
+                                .frame(height: max(96, spectrumHeight))
 
-                            ProMixerVerticalVU(
-                                visualizer: visualizer,
-                                isPlaying: live,
-                                channel: .right,
-                                width: 28,
-                                compact: true,
-                                drive: drive
-                            )
+                                ProMixerVerticalVU(
+                                    visualizer: visualizer,
+                                    isPlaying: live,
+                                    channel: .right,
+                                    width: vuW,
+                                    compact: true,
+                                    drive: drive
+                                )
+                            }
                         }
+                        .frame(height: max(108, spectrumHeight + 8))
                         .padding(8)
                         .background {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -166,6 +170,7 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
     let fallbackArtwork: UIImage?
     let canvasSize: CGFloat
     var spectrumHeight: CGFloat = 110
+    var expandSpectrum: Bool = false
     @ViewBuilder var meta: () -> Meta
     @ViewBuilder var status: () -> Status
     @ViewBuilder var storage: () -> Storage
@@ -202,9 +207,11 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                             isPlaying: live,
                             intensity: intensity,
                             bandCount: bandCount,
-                            compact: true
+                            compact: compactMixer
                         )
-                        .frame(height: spectrumHeight)
+                        .frame(minHeight: spectrumHeight)
+                        .frame(maxHeight: expandSpectrum ? .infinity : spectrumHeight)
+                        .layoutPriority(expandSpectrum ? 1 : 0)
                         .padding(8)
                         .background {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -745,50 +752,52 @@ private struct ProMixerVerticalVU: View {
     var compact: Bool = false
     var drive: Double = 0.4
 
-    private let segments = WinampSpectrumStyle.segmentCount
-
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 20, paused: !isPlaying)) { _ in
-            let frame = visualizer.snapshot(isPlaying: isPlaying)
-            let raw: Double = {
-                switch channel {
-                case .left: return frame.bass * (0.75 + drive * 0.35) + frame.beat * (0.2 + drive * 0.2)
-                case .right: return frame.treble * (0.75 + drive * 0.35) + frame.mid * (0.15 + drive * 0.15)
-                }
-            }()
-            let normalized = WinampSpectrumStyle.quantizeLevel(min(isPlaying ? raw : raw * 0.12, 1))
-            let lit = Int(round(normalized * Double(segments)))
+        GeometryReader { geo in
+            let segments = WinampSpectrumStyle.segmentCount
+            let segmentH = max(3, min(compact ? 5 : 6, (geo.size.height - 8) / CGFloat(segments)))
+            TimelineView(.animation(minimumInterval: 1.0 / 20, paused: !isPlaying)) { _ in
+                let frame = visualizer.snapshot(isPlaying: isPlaying)
+                let raw: Double = {
+                    switch channel {
+                    case .left: return frame.bass * (0.75 + drive * 0.35) + frame.beat * (0.2 + drive * 0.2)
+                    case .right: return frame.treble * (0.75 + drive * 0.35) + frame.mid * (0.15 + drive * 0.15)
+                    }
+                }()
+                let normalized = WinampSpectrumStyle.quantizeLevel(min(isPlaying ? raw : raw * 0.12, 1))
+                let lit = Int(round(normalized * Double(segments)))
 
-            VStack(spacing: 2) {
-                ForEach((0..<segments).reversed(), id: \.self) { segment in
-                    let active = segment < lit
-                    let isPeak = segment == lit && lit > 0
-                    RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .fill(
-                            active
-                                ? WinampSpectrumStyle.barColor(segmentFromBottom: segment)
-                                : Color(white: 0.06)
-                        )
-                        .frame(height: compact ? 5 : 6)
-                        .overlay {
-                            if isPeak {
-                                RoundedRectangle(cornerRadius: 1, style: .continuous)
-                                    .fill(WinampSpectrumStyle.peakColor(forLevel: normalized))
+                VStack(spacing: 2) {
+                    ForEach((0..<segments).reversed(), id: \.self) { segment in
+                        let active = segment < lit
+                        let isPeak = segment == lit && lit > 0
+                        RoundedRectangle(cornerRadius: 1, style: .continuous)
+                            .fill(
+                                active
+                                    ? WinampSpectrumStyle.barColor(segmentFromBottom: segment)
+                                    : Color(white: 0.06)
+                            )
+                            .frame(height: segmentH)
+                            .overlay {
+                                if isPeak {
+                                    RoundedRectangle(cornerRadius: 1, style: .continuous)
+                                        .fill(WinampSpectrumStyle.peakColor(forLevel: normalized))
+                                }
                             }
-                        }
-                        .shadow(color: active ? WinampSpectrumStyle.barColor(segmentFromBottom: segment).opacity(0.45) : .clear, radius: 2)
+                            .shadow(color: active ? WinampSpectrumStyle.barColor(segmentFromBottom: segment).opacity(0.45) : .clear, radius: 2)
+                    }
                 }
-            }
-            .padding(4)
-            .frame(width: width)
-            .background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 4))
-            .overlay {
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                .padding(4)
+                .frame(width: width)
+                .background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 4))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                }
             }
         }
-        .frame(maxHeight: .infinity)
-        .frame(minHeight: compact ? 96 : 148)
+        .frame(width: width)
+        .frame(minHeight: compact ? 88 : 120)
     }
 }
 
@@ -985,7 +994,7 @@ struct ProMixerControlStrip: View {
                 effectButton(.vinyl, title: "WINYL", icon: "opticaldisc.fill", led: ProMixerDeckView.labelAmber)
                 effectButton(.cover, title: "OKŁADKA", icon: "square.stack.3d.up.fill", led: EOSTheme.accentSecondary)
                 effectButton(.spectrum, title: "EQ", icon: "waveform.path.ecg", led: ProMixerDeckView.labelGreen)
-                effectButton(.strobe, title: "STROBO", icon: "light.beacon.max.fill", led: EOSTheme.accent)
+                strobeToggleButton()
             }
             .opacity(powered ? 1 : 0.45)
             .allowsHitTesting(powered)
@@ -1029,7 +1038,6 @@ struct ProMixerControlStrip: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) {
                 ui.playerVisualPreset = preset
                 ui.playerMixerPowered = true
-                ui.playerStrobeEnabled = (preset == .strobe)
             }
         } label: {
             VStack(spacing: 5) {
@@ -1076,6 +1084,61 @@ struct ProMixerControlStrip: View {
         }
         .buttonStyle(TransportPressStyle())
         .accessibilityLabel("\(title)\(active ? ", włączony" : "")")
+    }
+
+    private func strobeToggleButton() -> some View {
+        let active = powered && ui.playerStrobeEnabled
+        let led = EOSTheme.accent
+        return Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) {
+                ui.playerStrobeEnabled.toggle()
+                ui.playerMixerPowered = true
+            }
+        } label: {
+            VStack(spacing: 5) {
+                ZStack(alignment: .topTrailing) {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: isLight
+                                    ? (active ? [led.opacity(0.16), led.opacity(0.06)] : [Color.white, Color(white: 0.93)])
+                                    : (active ? [led.opacity(0.28), led.opacity(0.1)] : [Color(white: 0.18), Color(white: 0.08)]),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: compact ? 54 : 62, height: compact ? 40 : 46)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(
+                                    active ? led.opacity(0.55) : (isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.1)),
+                                    lineWidth: active ? 1.4 : 1
+                                )
+                        }
+                        .shadow(color: active ? led.opacity(0.35) : .black.opacity(isLight ? 0.06 : 0.25), radius: active ? 8 : 3, y: 2)
+
+                    Image(systemName: "light.beacon.max.fill")
+                        .font(.system(size: compact ? 14 : 16, weight: .semibold))
+                        .foregroundStyle(active ? led : (isLight ? Color.secondary : Color.white.opacity(0.55)))
+                        .frame(width: compact ? 54 : 62, height: compact ? 40 : 46)
+
+                    Circle()
+                        .fill(active ? led : (isLight ? Color(white: 0.82) : Color(white: 0.18)))
+                        .frame(width: 7, height: 7)
+                        .shadow(color: active ? led.opacity(0.9) : .clear, radius: 4)
+                        .offset(x: -6, y: 6)
+                }
+
+                Text("STROBO")
+                    .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(active ? led : (isLight ? Color.secondary : Color.white.opacity(0.45)))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+        }
+        .buttonStyle(TransportPressStyle())
+        .accessibilityLabel("Stroboskop\(active ? ", włączony" : "")")
     }
 }
 

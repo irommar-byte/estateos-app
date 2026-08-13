@@ -160,7 +160,12 @@ final class WinampSpectrumUIView: UIView {
     }
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: compact ? 176 : 208)
+        CGSize(width: UIView.noIntrinsicMetric, height: compact ? 160 : 208)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        setNeedsDisplay()
     }
 
     override func draw(_ rect: CGRect) {
@@ -168,24 +173,32 @@ final class WinampSpectrumUIView: UIView {
         ctx.setFillColor(UIColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1).cgColor)
         ctx.fill(rect)
 
-        let pad: CGFloat = 10
-        let headerH: CGFloat = 16
-        let labelH: CGFloat = 14
-        let vuH: CGFloat = compact ? 56 : 70
-        let gap: CGFloat = 8
-        let channelGap: CGFloat = 10
-        let contentW = rect.width - pad * 2
-        let channelW = (contentW - channelGap * 2) / 3
+        let narrow = rect.width < 340
+        let pad: CGFloat = narrow ? 6 : 10
+        let headerH: CGFloat = narrow ? 14 : 16
+        let labelH: CGFloat = narrow ? 12 : 14
+        let gap: CGFloat = narrow ? 5 : 8
+        let channelGap: CGFloat = narrow ? 4 : (rect.width < 390 ? 6 : 10)
+        let contentW = max(0, rect.width - pad * 2)
+        var channelW = max(18, (contentW - channelGap * 2) / 3)
+        if channelW * 3 + channelGap * 2 > contentW {
+            channelW = max(16, (contentW - channelGap * 2) / 3)
+        }
+
+        let headerFontSize: CGFloat = narrow ? 9 : 11
+        let titleFontSize: CGFloat = narrow ? 8 : 10
+        let bandFontSize: CGFloat = narrow ? 6 : (compact ? 6 : 7)
+        let vuH = min(compact ? 56 : 70, max(34, (rect.height - pad * 2 - headerH - labelH - gap - 16) * 0.36))
 
         let headerAttrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 11, weight: .heavy),
+            .font: UIFont.systemFont(ofSize: headerFontSize, weight: .heavy),
             .foregroundColor: UIColor(red: 0.45, green: 0.95, blue: 0.35, alpha: 0.9),
-            .kern: 1.2
+            .kern: 1.0
         ]
         let header = "SPECTRUM EQ" as NSString
         header.draw(at: CGPoint(x: pad, y: pad - 2), withAttributes: headerAttrs)
         let bandAttrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.monospacedDigitSystemFont(ofSize: 9, weight: .semibold),
+            .font: UIFont.monospacedDigitSystemFont(ofSize: narrow ? 8 : 9, weight: .semibold),
             .foregroundColor: UIColor(white: 0.45, alpha: 1)
         ]
         let bandText = "\(bandCount)" as NSString
@@ -199,9 +212,9 @@ final class WinampSpectrumUIView: UIView {
         ]
 
         let titleAttrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 10, weight: .heavy),
+            .font: UIFont.systemFont(ofSize: titleFontSize, weight: .heavy),
             .foregroundColor: UIColor(white: 0.58, alpha: 1),
-            .kern: 0.7
+            .kern: 0.5
         ]
 
         let vuTop = pad + headerH
@@ -246,7 +259,7 @@ final class WinampSpectrumUIView: UIView {
         drawEQBars(in: eqRect.insetBy(dx: 2, dy: 2), levels: levels, peaks: peaks, ctx: ctx)
 
         let labelAttrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.monospacedDigitSystemFont(ofSize: compact ? 6 : 7, weight: .medium),
+            .font: UIFont.monospacedDigitSystemFont(ofSize: bandFontSize, weight: .medium),
             .foregroundColor: UIColor(white: 0.55, alpha: 0.7)
         ]
         let step = max(1, bandCount / 6)
