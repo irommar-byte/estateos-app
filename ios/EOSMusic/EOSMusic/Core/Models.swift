@@ -86,6 +86,19 @@ struct SearchResultItem: Codable, Identifiable, Hashable {
         let hay = "\(title) \(detail ?? "") \(url)".lowercased()
         return hay.contains("serial") || hay.contains("/serial") || hay.contains("sezon")
     }
+
+    /// Etykieta typu treści na kafelku (SERIAL / FILM).
+    var contentTypeBadge: String? {
+        looksLikeSeries ? "SERIAL" : "FILM"
+    }
+
+    func matchesCatalogKind(_ kind: FilmsCatalogKind) -> Bool {
+        switch kind {
+        case .all: return true
+        case .film: return !looksLikeSeries
+        case .serial: return looksLikeSeries
+        }
+    }
 }
 
 struct MusicArtist: Codable, Identifiable, Hashable {

@@ -12,6 +12,7 @@ struct OnlineMovieDetailView: View {
     @State private var infoError: String?
     @State private var showDownloadSheet = false
     @State private var showSeriesEpisodes = false
+    @State private var actorSelection: OnlineMoviesActorSelection?
 
     private var movies: OnlineMoviesController { app.onlineMovies }
     private var downloads: MovieDownloadService { app.movieDownloads }
@@ -74,6 +75,11 @@ struct OnlineMovieDetailView: View {
                     .environmentObject(app)
                     .environmentObject(video)
             }
+        }
+        .navigationDestination(item: $actorSelection) { actor in
+            OnlineMoviesActorResultsView(actorName: actor.name)
+                .environmentObject(app)
+                .environmentObject(video)
         }
         .sheet(isPresented: $showDownloadSheet) {
             if let info {
@@ -231,13 +237,23 @@ struct OnlineMovieDetailView: View {
     @ViewBuilder
     private var castBlock: some View {
         if let cast = meta?.cast, !cast.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 Text("Obsada").font(EOSTypography.headline)
-                Text(cast.prefix(12).map(\.name).joined(separator: " · "))
-                    .font(EOSTypography.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], alignment: .leading, spacing: 8) {
+                    ForEach(cast.prefix(16)) { member in
+                        Button {
+                            actorSelection = OnlineMoviesActorSelection(name: member.name)
+                        } label: {
+                            Text(member.name)
+                                .font(EOSTypography.callout.weight(.medium))
+                                .foregroundStyle(EOSTheme.accent)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(EOSTheme.accent.opacity(0.12), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
         }
     }

@@ -82,12 +82,15 @@ final class OnlineMoviesController: ObservableObject {
         }
     }
 
-    func search(query: String) async throws -> [SearchResultItem] {
-        guard let api else { return [] }
+    func search(query: String, page: Int = 1) async throws -> SearchResponse {
+        guard let api else { throw APIError.unauthorized }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 2 else { return [] }
-        let response = try await api.searchCdaHd(query: trimmed)
-        return response.results
+        guard trimmed.count >= 2 else { throw APIError.server("Zapytanie jest za krótkie.") }
+        return try await api.searchCdaHd(query: trimmed, page: page)
+    }
+
+    func searchResults(query: String) async throws -> [SearchResultItem] {
+        try await search(query: query, page: 1).results
     }
 
     func fetchInfo(url: String) async throws -> VideoInfoResponse {

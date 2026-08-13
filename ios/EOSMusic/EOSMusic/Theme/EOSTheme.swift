@@ -169,7 +169,7 @@ struct PlayerVisualPolicy: Equatable {
             let wantsStrobe = preset == .strobe || strobeEnabled
             return PlayerVisualPolicy(
                 enabled: true,
-                allowStrobe: wantsStrobe && thermal != .critical && thermal != .serious,
+                allowStrobe: wantsStrobe && thermal != .critical,
                 analyzerFPS: preset == .spectrum ? 14 : 12,
                 timelineFPS: wantsStrobe ? 24 : 0,
                 intensityScale: clampedIntensity * 0.75,
@@ -184,17 +184,15 @@ struct PlayerVisualPolicy: Equatable {
         var scale = clampedIntensity
 
         if autoPerformance {
-            if thermal == .critical || thermal == .serious {
-                return PlayerVisualPolicy(
-                    enabled: false,
-                    allowStrobe: false,
-                    analyzerFPS: 0,
-                    timelineFPS: 0,
-                    intensityScale: 0,
-                    restrictionReason: "Urządzenie jest gorące — efekty wstrzymane"
-                )
-            }
-            if thermal == .fair || lowPower {
+            if thermal == .critical {
+                fps = preset == .spectrum ? 10 : 8
+                scale *= 0.45
+                reason = "Urządzenie jest gorące — efekty w trybie oszczędnym"
+            } else if thermal == .serious {
+                fps = preset == .spectrum ? 12 : 10
+                scale *= 0.58
+                reason = "Ciepłe urządzenie — ograniczone efekty"
+            } else if thermal == .fair || lowPower {
                 fps = preset == .spectrum ? 14 : 12
                 scale *= 0.7
                 reason = lowPower
@@ -206,7 +204,7 @@ struct PlayerVisualPolicy: Equatable {
             scale *= 0.8
         }
 
-        let canStrobe = (preset == .strobe || strobeEnabled) && thermal != .critical && thermal != .serious
+        let canStrobe = (preset == .strobe || strobeEnabled) && thermal != .critical
 
         return PlayerVisualPolicy(
             enabled: true,
@@ -241,10 +239,15 @@ struct PlayerVisualAnalysisSync: ViewModifier {
             .onChange(of: syncTrigger) { _, _ in sync() }
             .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)) { _ in
                 thermal = ProcessInfo.processInfo.thermalState
+                sync()
             }
             .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
                 lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+                sync()
             }
+            .onChange(of: ui.playerMixerPowered) { _, _ in sync() }
+            .onChange(of: ui.playerVisualPreset) { _, _ in sync() }
+            .onChange(of: ui.playerStrobeEnabled) { _, _ in sync() }
     }
 
     private var syncTrigger: String {
@@ -616,23 +619,23 @@ struct SettingsChoiceRow: View {
     }
 }
 
-/// Wykrywa uderzenia bitu z analizatora PCM i generuje krótkie okna błysku (klubowy stroboskop).
+/// Wykrywa rytm (bas + mid) z analizatora PCM i generuje krótkie okna błysku.
 final class StrobeBeatDriver: ObservableObject {
-    private var lastBeat: Double = 0
+    private var lastRhythm: Double = 0
     private var flashUntil: TimeInterval = 0
-    private var lastBeatHitAt: TimeInterval = 0
+    private var lastRhythmHitAt: TimeInterval = 0
     private var lastFallbackTick: TimeInterval = 0
 
     func reset() {
-        lastBeat = 0
+        lastRhythm = 0
         flashUntil = 0
-        lastBeatHitAt = 0
+        lastRhythmHitAt = 0
         lastFallbackTick = 0
     }
 
     func flashAmount(
         at time: TimeInterval,
-        beat: Double,
+        rhythm: Double,
         bass: Double,
         level: Double,
         isPlaying: Bool,
@@ -645,30 +648,31 @@ final class StrobeBeatDriver: ObservableObject {
         }
 
         let sens = min(1, max(0.15, sensitivity))
-        let threshold = 0.22 + (1 - sens) * 0.38
-        let bassHit = bass >= (0.38 + (1 - sens) * 0.22) && beat >= threshold * 0.85
-        let beatOnset = (beat >= threshold && lastBeat < threshold - 0.04) || bassHit
+        let threshold = 0.24 + (1 - sens) * 0.34
+        let smoothed = rhythm * 0.62 + lastRhythm * 0.38
+        let rhythmOnset = smoothed >= threshold && lastRhythm < threshold - 0.05
+        let bassPulse = bass >= (0.34 + (1 - sens) * 0.2) && rhythmOnset
 
-        lastBeat = beat * 0.55 + lastBeat * 0.45
+        lastRhythm = smoothed
 
-        if beatOnset {
-            let flashDuration = 0.028 + (1 - speed) * 0.045
+        if rhythmOnset || bassPulse {
+            let flashDuration = 0.034 + (1 - speed) * 0.055
             flashUntil = max(flashUntil, time + flashDuration)
-            lastBeatHitAt = time
+            lastRhythmHitAt = time
         }
 
-        let bpm = 72 + speed * 108
+        let bpm = 68 + speed * 96
         let fallbackInterval = 60.0 / bpm
         if time - lastFallbackTick >= fallbackInterval {
             lastFallbackTick = time
-            if time - lastBeatHitAt > 0.85, level > 0.04 {
-                flashUntil = max(flashUntil, time + 0.032)
+            if time - lastRhythmHitAt > 0.95, level > 0.05, rhythm > 0.12 {
+                flashUntil = max(flashUntil, time + 0.038)
             }
         }
 
         guard time < flashUntil else { return 0 }
         let tail = flashUntil - time
-        let window = 0.03 + (1 - speed) * 0.05
+        let window = 0.04 + (1 - speed) * 0.06
         return min(1, tail / window)
     }
 }

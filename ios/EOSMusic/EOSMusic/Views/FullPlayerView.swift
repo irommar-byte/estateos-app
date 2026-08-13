@@ -111,28 +111,31 @@ private struct PlayerContent: View {
                     policy: policy
                 )
 
-                if let track = engine.currentTrack {
-                    if layout.wide {
-                        widePlayerLayout(track: track, layout: layout)
-                    } else {
-                        narrowPlayerLayout(track: track, layout: layout)
-                    }
-                }
-
-                // Stroboskop na wierzchu całej sceny — błyski widać na całym playerze.
+                // Stroboskop w tle — za UI playera, żeby nie zasłaniać tekstu i kontrolek.
                 if policy.allowStrobe {
                     PlayerStrobeLayer(
                         visualizer: engine.visualizer,
                         isPlaying: engine.isPlaying && !engine.isLoading,
-                        intensity: max(0.7, policy.intensityScale),
+                        intensity: max(0.55, policy.intensityScale),
                         speed: ui.playerStrobeSpeed,
-                        brightness: ui.playerStrobeBrightness,
+                        brightness: ui.playerStrobeBrightness * 0.72,
                         sensitivity: ui.playerSensitivity,
                         trackID: engine.currentTrack?.id,
                         colorScheme: colorScheme
                     )
                     .allowsHitTesting(false)
-                    .zIndex(20)
+                    .zIndex(0)
+                }
+
+                if let track = engine.currentTrack {
+                    Group {
+                        if layout.wide {
+                            widePlayerLayout(track: track, layout: layout)
+                        } else {
+                            narrowPlayerLayout(track: track, layout: layout)
+                        }
+                    }
+                    .zIndex(1)
                 }
             }
         }
@@ -1154,7 +1157,7 @@ private struct PlayerStrobeLayer: View {
             let t = context.date.timeIntervalSinceReferenceDate
             let flash = beatDriver.flashAmount(
                 at: t,
-                beat: frame.beat,
+                rhythm: min(1, frame.bass * 0.48 + frame.mid * 0.34 + frame.level * 0.18 + frame.energy * 0.12),
                 bass: frame.bass,
                 level: frame.level,
                 isPlaying: isPlaying,
@@ -1166,7 +1169,8 @@ private struct PlayerStrobeLayer: View {
                 isPlaying: isPlaying,
                 intensity: intensity,
                 brightness: brightness,
-                colorScheme: colorScheme
+                colorScheme: colorScheme,
+                backgroundMode: true
             )
         }
         .onChange(of: trackID) { _, _ in
@@ -1178,29 +1182,31 @@ private struct PlayerStrobeLayer: View {
     }
 }
 
-/// Klubowy stroboskop: ostre błyski zsynchronizowane z bitem + regulowana jasność.
+/// Klubowy stroboskop: błyski zsynchronizowane z rytmem (bas + mid), nie z ostrym beatem.
 private struct StrobeFlashView: View {
     let flash: Double
     let isPlaying: Bool
     let intensity: Double
     var brightness: Double = 0.72
     var colorScheme: ColorScheme = .dark
+    var backgroundMode: Bool = false
 
     var body: some View {
-        let power = isPlaying ? min(1, flash * brightness * (0.55 + intensity * 0.65)) : 0
+        let bgScale: Double = backgroundMode ? 0.42 : 1
+        let power = isPlaying ? min(1, flash * brightness * (0.55 + intensity * 0.65) * bgScale) : 0
         let isLight = colorScheme == .light
         let flashCore = isLight ? Color.black : Color.white
         let flashAccent = isLight ? EOSTheme.accent : Color.white
 
         ZStack {
-            flashCore.opacity(power * (isLight ? 0.5 : 0.38))
+            flashCore.opacity(power * (isLight ? 0.35 : 0.22))
                 .blendMode(isLight ? .multiply : .plusLighter)
 
             RadialGradient(
                 colors: [
-                    flashAccent.opacity(power * (isLight ? 0.62 : 0.82)),
-                    EOSTheme.accent.opacity(power * 0.65),
-                    EOSTheme.accentSecondary.opacity(power * 0.32),
+                    flashAccent.opacity(power * (isLight ? 0.38 : 0.48)),
+                    EOSTheme.accent.opacity(power * 0.38),
+                    EOSTheme.accentSecondary.opacity(power * 0.18),
                     .clear
                 ],
                 center: .center,
@@ -1209,25 +1215,27 @@ private struct StrobeFlashView: View {
             )
             .blendMode(isLight ? .normal : .plusLighter)
 
-            HStack {
-                Circle()
-                    .fill(flashCore.opacity(power * 0.92))
-                    .frame(width: 120, height: 120)
-                    .blur(radius: 28)
-                    .offset(x: -40, y: -20)
-                Spacer()
-                Circle()
-                    .fill(EOSTheme.accent.opacity(power * 0.95))
-                    .frame(width: 120, height: 120)
-                    .blur(radius: 28)
-                    .offset(x: 40, y: -20)
-            }
-            .frame(maxHeight: .infinity, alignment: .top)
+            if !backgroundMode {
+                HStack {
+                    Circle()
+                        .fill(flashCore.opacity(power * 0.92))
+                        .frame(width: 120, height: 120)
+                        .blur(radius: 28)
+                        .offset(x: -40, y: -20)
+                    Spacer()
+                    Circle()
+                        .fill(EOSTheme.accent.opacity(power * 0.95))
+                        .frame(width: 120, height: 120)
+                        .blur(radius: 28)
+                        .offset(x: 40, y: -20)
+                }
+                .frame(maxHeight: .infinity, alignment: .top)
 
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(flashAccent.opacity(power * 0.92), lineWidth: 2.5)
-                .padding(6)
-                .blendMode(isLight ? .normal : .plusLighter)
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(flashAccent.opacity(power * 0.92), lineWidth: 2.5)
+                    .padding(6)
+                    .blendMode(isLight ? .normal : .plusLighter)
+            }
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)

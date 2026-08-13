@@ -71,7 +71,7 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
                     if preset.showsMixer {
                         GeometryReader { rowGeo in
                             let vuW = min(34, max(18, rowGeo.size.width * 0.075))
-                            HStack(alignment: .center, spacing: rowGeo.size.width < 360 ? 6 : 10) {
+                            HStack(alignment: .bottom, spacing: rowGeo.size.width < 360 ? 6 : 10) {
                                 ProMixerVerticalVU(
                                     visualizer: visualizer,
                                     isPlaying: live,
@@ -80,6 +80,7 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
                                     compact: true,
                                     drive: drive
                                 )
+                                .frame(width: vuW, height: max(96, spectrumHeight))
 
                                 WinampSpectrumHost(
                                     visualizer: visualizer,
@@ -99,6 +100,7 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
                                     compact: true,
                                     drive: drive
                                 )
+                                .frame(width: vuW, height: max(96, spectrumHeight))
                             }
                         }
                         .frame(height: max(108, spectrumHeight + 8))
@@ -204,7 +206,7 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                     if preset.showsMixer {
                         GeometryReader { rowGeo in
                             let vuW = min(28, max(14, rowGeo.size.width * 0.068))
-                            HStack(alignment: .center, spacing: rowGeo.size.width < 360 ? 4 : 6) {
+                            HStack(alignment: .bottom, spacing: rowGeo.size.width < 360 ? 4 : 6) {
                                 ProMixerVerticalVU(
                                     visualizer: visualizer,
                                     isPlaying: live,
@@ -812,8 +814,10 @@ private struct ProMixerVerticalVU: View {
                             .shadow(color: active ? WinampSpectrumStyle.barColor(segmentFromBottom: segment).opacity(0.45) : .clear, radius: 2)
                     }
                 }
-                .padding(4)
-                .frame(width: width)
+                .padding(.horizontal, 4)
+                .padding(.top, 4)
+                .padding(.bottom, 2)
+                .frame(width: width, height: geo.size.height, alignment: .bottom)
                 .background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 4))
                 .overlay {
                     RoundedRectangle(cornerRadius: 4)
@@ -822,7 +826,7 @@ private struct ProMixerVerticalVU: View {
             }
         }
         .frame(width: width)
-        .frame(minHeight: compact ? 88 : 120)
+        .frame(maxHeight: .infinity, alignment: .bottom)
     }
 }
 

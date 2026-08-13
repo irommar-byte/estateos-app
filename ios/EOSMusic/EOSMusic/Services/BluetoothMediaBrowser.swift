@@ -54,14 +54,14 @@ final class BluetoothMediaBrowser: NSObject {
     private var libraryPlaylists: [LibraryPlaylistNode] = []
     private var snapshot: BrowseSnapshot?
     private var isActive = false
-    private var queueBrowseLayout: QueueBrowseLayout = .flatQueue
+    private var queueBrowseLayout: QueueBrowseLayout = .nestedPlaylist
     private var maxBrowseItems = 100
     private var contentLimitsEnforced = false
     private var enforcedContentItemsCount = Int.max
     private var enforcedContentTreeDepth = Int.max
     private let limitsLock = NSLock()
     nonisolated(unsafe) private var threadSafeLimits = (enforced: false, count: 100, depth: 2)
-    nonisolated(unsafe) private var threadSafeQueueLayout: QueueBrowseLayout = .flatQueue
+    nonisolated(unsafe) private var threadSafeQueueLayout: QueueBrowseLayout = .nestedPlaylist
     nonisolated(unsafe) private var threadSafeMaxItems = 100
 
     private let snapshotLock = NSLock()
@@ -155,6 +155,17 @@ final class BluetoothMediaBrowser: NSObject {
 
     private func capped<T>(_ items: [T]) -> [T] {
         Array(items.prefix(maxBrowseItems))
+    }
+
+    private nonisolated func limitedChildCount(_ count: Int, isQueueTracks: Bool = false) -> Int {
+        let config = readRuntimeConfig()
+        let cap = config.maxItems
+        // BMW NBT często zgłasza enforcedContentItemsCount = 1 — wtedy widać tylko bieżący utwór.
+        if isQueueTracks, config.limits.enforced, config.limits.count <= 3 {
+            return min(count, cap)
+        }
+        guard config.limits.enforced else { return min(count, cap) }
+        return min(count, cap, max(1, config.limits.count))
     }
 
     private func rebuildSnapshot() {
@@ -296,8 +307,16 @@ final class BluetoothMediaBrowser: NSObject {
             return
         }
         var ids: [String] = []
-        if case .activeQueue(_, let container, _) = snap.root {
-            ids.append(container.identifier)
+        switch snap.root {
+        case .activeQueue(let layout, let container, _):
+            switch layout {
+            case .nestedPlaylist:
+                ids.append(container.identifier)
+            case .flatQueue:
+                break
+            }
+        case .library:
+            break
         }
         if let trackID = snap.nowPlayingIdentifier {
             ids.append(trackID)
@@ -384,10 +403,10 @@ extension BluetoothMediaBrowser: MPPlayableContentDataSource {
             switch effectiveLayout {
             case .nestedPlaylist:
                 if indexPath.isEmpty { return 1 }
-                if indexPath.count == 1, indexPath[0] == 0 { return limitedChildCount(tracks.count) }
+                if indexPath.count == 1, indexPath[0] == 0 { return limitedChildCount(tracks.count, isQueueTracks: true) }
                 return 0
             case .flatQueue:
-                if indexPath.isEmpty { return limitedChildCount(tracks.count) }
+                if indexPath.isEmpty { return limitedChildCount(tracks.count, isQueueTracks: true) }
                 return 0
             }
 
@@ -449,10 +468,8 @@ extension BluetoothMediaBrowser: MPPlayableContentDataSource {
     }
 
     nonisolated func beginLoadingChildItems(at indexPath: IndexPath, completionHandler: @escaping (Error?) -> Void) {
-        Task { @MainActor in
-            rebuildSnapshot()
-            completionHandler(nil)
-        }
+        // Snapshot jest już w pamięci — synchroniczne zakończenie (BMW timeout → wieczne „pobieranie”).
+        completionHandler(nil)
     }
 
     nonisolated func childItemsDisplayPlaybackProgress(at indexPath: IndexPath) -> Bool {
@@ -540,17 +557,17 @@ extension BluetoothMediaBrowser: MPPlayableContentDelegate {
             enforcedContentTreeDepth = context.enforcedContentTreeDepth
 
             if context.contentLimitsEnforced, context.enforcedContentTreeDepth <= 1 {
+                // Płaska lista utworów gdy głębokość = 1.
                 queueBrowseLayout = .flatQueue
-            } else if context.contentLimitsEnforced, context.enforcedContentTreeDepth >= 2 {
-                // Głębsze head unity — playlista jako folder, potem utwory.
-                queueBrowseLayout = .nestedPlaylist
             } else {
-                // NBT / Apple Music style: płaska lista bieżącej playlisty u roota.
-                queueBrowseLayout = .flatQueue
+                // NBT / BMW: playlista jako folder → utwory (jak Apple Music).
+                queueBrowseLayout = .nestedPlaylist
             }
 
             if context.contentLimitsEnforced {
-                maxBrowseItems = min(max(1, context.enforcedContentItemsCount), 100)
+                let reported = max(1, context.enforcedContentItemsCount)
+                // BMW NBT często zgłasza count=1 — nie tnij kolejki do jednego utworu.
+                maxBrowseItems = reported <= 3 ? 100 : min(reported, 100)
             } else {
                 maxBrowseItems = 100
             }
