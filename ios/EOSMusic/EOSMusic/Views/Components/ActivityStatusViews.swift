@@ -295,15 +295,19 @@ struct PlaybackActivityLine: View {
                         .foregroundStyle(EOSTheme.accent)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(activity.title)
-                        .font(compact ? .caption2.weight(.semibold) : .caption.weight(.semibold))
-                        .foregroundStyle(EOSTheme.textSecondary)
-                        .lineLimit(1)
+                    MarqueeText(
+                        text: activity.title,
+                        font: compact ? .caption2.weight(.semibold) : .caption.weight(.semibold),
+                        foreground: EOSTheme.textSecondary,
+                        speedPointsPerSecond: 26
+                    )
                     if !activity.detail.isEmpty {
-                        Text(activity.detail)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(compact ? 1 : 2)
+                        MarqueeText(
+                            text: activity.detail,
+                            font: .caption2,
+                            foreground: Color.secondary.opacity(0.85),
+                            speedPointsPerSecond: 24
+                        )
                     }
                 }
                 Spacer(minLength: 0)

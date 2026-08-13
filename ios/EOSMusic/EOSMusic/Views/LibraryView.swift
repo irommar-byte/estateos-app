@@ -44,6 +44,30 @@ struct LibraryView: View {
         app.downloadedLibraryTracks.count
     }
 
+    private var deviceBreakdown: StorageBreakdown? {
+        let musicBytes = OfflineMusicStore.shared.totalDownloadedBytes
+        let movieBytes = app.onlineMovies.phoneMovieBytes
+        let musicCount = OfflineMusicStore.shared.downloadedFileCount
+        let movieCount = app.onlineMovies.phoneMovieCount
+        guard let disk = deviceStorage else {
+            if musicBytes + movieBytes <= 0 { return nil }
+            return .libraryOnly(
+                musicBytes: musicBytes,
+                movieBytes: movieBytes,
+                musicCount: musicCount,
+                movieCount: movieCount
+            )
+        }
+        return .disk(
+            musicBytes: musicBytes,
+            movieBytes: movieBytes,
+            musicCount: musicCount,
+            movieCount: movieCount,
+            diskTotal: disk.totalBytes,
+            diskFree: disk.freeBytes
+        )
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -206,7 +230,8 @@ struct LibraryView: View {
                     if category == .downloaded {
                         LibraryDownloadedCategoryRow(
                             count: downloadedCount,
-                            storage: deviceStorage
+                            storage: deviceStorage,
+                            breakdown: deviceBreakdown
                         )
                     } else {
                         LibraryCategoryRow(

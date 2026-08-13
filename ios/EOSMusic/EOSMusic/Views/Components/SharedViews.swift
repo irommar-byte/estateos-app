@@ -418,15 +418,19 @@ struct TrackRowView: View {
             }
             ArtworkImage(url: artworkURL, size: artSize, cornerRadius: artRadius)
             VStack(alignment: .leading, spacing: textSpacing) {
-                Text(title)
-                    .font(titleFont)
-                    .foregroundStyle(isPlaying ? EOSTheme.accent : EOSTheme.textPrimary)
-                    .lineLimit(1)
+                MarqueeText(
+                    text: title,
+                    font: titleFont,
+                    foreground: isPlaying ? EOSTheme.accent : EOSTheme.textPrimary,
+                    speedPointsPerSecond: 28
+                )
                 if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(subtitleFont)
-                        .foregroundStyle(EOSTheme.textSecondary)
-                        .lineLimit(1)
+                    MarqueeText(
+                        text: subtitle,
+                        font: subtitleFont,
+                        foreground: EOSTheme.textSecondary,
+                        speedPointsPerSecond: 24
+                    )
                 }
             }
             Spacer(minLength: 6)

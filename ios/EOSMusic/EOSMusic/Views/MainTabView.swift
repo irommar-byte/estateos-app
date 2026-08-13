@@ -228,17 +228,75 @@ struct ServerMusicAssetsView: View {
         return assets
     }
 
+    private var serverBreakdown: StorageBreakdown? {
+        let musicBytes = Int64(app.serverLibraryBytes)
+        let movieBytes = Int64(app.onlineMovies.serverMovieBytes)
+        let musicCount = app.serverAssetCount
+        let movieCount = app.onlineMovies.serverMovieCount
+        if let total = app.serverDiskTotalBytes, total > 0 {
+            let free = Int64(app.serverDiskFreeBytes ?? max(0, total - Int(musicBytes + movieBytes)))
+            return .disk(
+                musicBytes: musicBytes,
+                movieBytes: movieBytes,
+                musicCount: musicCount,
+                movieCount: movieCount,
+                diskTotal: Int64(total),
+                diskFree: free
+            )
+        }
+        if musicBytes + movieBytes <= 0 { return nil }
+        return .libraryOnly(
+            musicBytes: musicBytes,
+            movieBytes: movieBytes,
+            musicCount: musicCount,
+            movieCount: movieCount
+        )
+    }
+
+    private var serverStorageLibraryOnly: Bool {
+        app.serverDiskTotalBytes == nil || (app.serverDiskTotalBytes ?? 0) <= 0
+    }
+
     var body: some View {
         Group {
-            if app.serverAssets.isEmpty && !isRefreshing {
+            if app.serverAssets.isEmpty && !isRefreshing && app.onlineMovies.serverMovieCount == 0 {
                 ContentUnavailableView(
-                    "Brak muzyki na serwerze",
+                    "Brak mediów na serwerze",
                     systemImage: "externaldrive",
-                    description: Text("Gdy odtworzysz lub dodasz utwór do biblioteki, trwała kopia EOS pojawi się tutaj.")
+                    description: Text("Gdy odtworzysz lub dodasz utwór albo film, trwała kopia EOS pojawi się tutaj.")
                 )
             } else {
                 ScrollViewReader { proxy in
                     List {
+                        if let serverBreakdown {
+                            Section {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Miejsce na serwerze")
+                                        .font(.subheadline.weight(.semibold))
+                                    StorageCapacityBar(
+                                        breakdown: serverBreakdown,
+                                        showsLegend: true,
+                                        libraryOnly: serverStorageLibraryOnly
+                                    )
+                                    HStack(spacing: 12) {
+                                        Label(
+                                            "\(app.serverAssetCount) utw. · \(ByteCountFormatter.string(fromByteCount: Int64(app.serverLibraryBytes), countStyle: .file))",
+                                            systemImage: "music.note"
+                                        )
+                                        Label(
+                                            "\(app.onlineMovies.serverMovieCount) film. · \(ByteCountFormatter.string(fromByteCount: Int64(app.onlineMovies.serverMovieBytes), countStyle: .file))",
+                                            systemImage: "film"
+                                        )
+                                    }
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.85)
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+
                         Section {
                             Picker("Widok", selection: $mode) {
                                 ForEach(ServerBrowseMode.allCases) { item in
@@ -297,10 +355,15 @@ struct ServerMusicAssetsView: View {
         .searchable(text: $query, prompt: "Szukaj na serwerze")
         .task {
             isRefreshing = true
-            await app.refreshServerAssets()
+            async let music: Void = app.refreshServerAssets()
+            async let movies: Void = app.onlineMovies.refreshDownloads()
+            _ = await (music, movies)
             isRefreshing = false
         }
-        .refreshable { await app.refreshServerAssets() }
+        .refreshable {
+            await app.refreshServerAssets()
+            await app.onlineMovies.refreshDownloads()
+        }
         .confirmationDialog(
             "Usunąć utwór z biblioteki serwera?",
             isPresented: Binding(get: { assetToDelete != nil }, set: { if !$0 { assetToDelete = nil } }),
@@ -415,14 +478,18 @@ struct ServerMusicAssetsView: View {
                     cornerRadius: 8
                 )
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(asset.title ?? "Utwór")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text([asset.artist, asset.album].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    MarqueeText(
+                        text: asset.title ?? "Utwór",
+                        font: .body.weight(.semibold),
+                        foreground: .primary,
+                        speedPointsPerSecond: 28
+                    )
+                    MarqueeText(
+                        text: [asset.artist, asset.album].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
+                        font: .caption,
+                        foreground: .secondary,
+                        speedPointsPerSecond: 24
+                    )
                     if let bytes = asset.bytes {
                         Text(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))
                             .font(.caption2)

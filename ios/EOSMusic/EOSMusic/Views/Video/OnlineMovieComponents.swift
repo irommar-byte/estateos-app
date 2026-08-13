@@ -101,12 +101,38 @@ struct OnlineMovieTransferBadge: View {
     }
 }
 
-/// Karta aktora — prostokątna ramka z „pourywanymi” literami (overflow + clip).
+/// Karta aktora — czytelna ramka; długie imiona przewijają się w pętli (marquee).
 struct OnlineMovieActorChip: View {
     let name: String
 
+    private var parts: (first: String, rest: String?) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tokens = trimmed.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        guard tokens.count >= 2 else { return (trimmed, nil) }
+        return (tokens[0], tokens.dropFirst().joined(separator: " "))
+    }
+
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        VStack(alignment: .leading, spacing: 3) {
+            MarqueeText(
+                text: parts.first,
+                font: .system(size: 13, weight: .heavy, design: .rounded),
+                foreground: EOSTheme.textPrimary,
+                speedPointsPerSecond: 24
+            )
+            if let rest = parts.rest, !rest.isEmpty {
+                MarqueeText(
+                    text: rest,
+                    font: .system(size: 11, weight: .semibold, design: .rounded),
+                    foreground: EOSTheme.accent.opacity(0.9),
+                    speedPointsPerSecond: 22
+                )
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .frame(width: 128, height: 58, alignment: .leading)
+        .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(
                     LinearGradient(
@@ -119,7 +145,8 @@ struct OnlineMovieActorChip: View {
                         endPoint: .bottomTrailing
                     )
                 )
-
+        )
+        .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
@@ -133,26 +160,8 @@ struct OnlineMovieActorChip: View {
                     ),
                     lineWidth: 1.2
                 )
-
-            // Literowanie celowo wystaje poza ramkę — efekt „przeniesionych” liter.
-            Text(name.uppercased())
-                .font(.system(size: 15, weight: .heavy, design: .rounded))
-                .tracking(-0.8)
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [EOSTheme.textPrimary, EOSTheme.accent.opacity(0.85)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .frame(width: 132, alignment: .leading)
-                .offset(x: -6, y: 6)
-                .opacity(0.92)
-        }
-        .frame(width: 118, height: 58)
-        .clipped()
+        )
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityLabel(name)
     }
 }

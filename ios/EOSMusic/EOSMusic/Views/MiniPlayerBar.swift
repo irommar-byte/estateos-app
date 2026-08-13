@@ -99,13 +99,20 @@ struct VideoMiniPlayerBar: View {
                         .frame(width: 44, height: 44)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(item.title)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(EOSTheme.textPrimary)
-                                .lineLimit(1)
+                            MarqueeText(
+                                text: item.title,
+                                font: .subheadline.weight(.semibold),
+                                foreground: EOSTheme.textPrimary,
+                                speedPointsPerSecond: 30
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             HStack(spacing: 6) {
-                                Text(video.engine.folderName)
-                                    .lineLimit(1)
+                                MarqueeText(
+                                    text: video.engine.folderName,
+                                    font: .caption,
+                                    foreground: EOSTheme.textSecondary,
+                                    speedPointsPerSecond: 26
+                                )
                                 if video.pipController.isActive {
                                     Label("PiP", systemImage: "pip.fill")
                                         .font(.caption2.weight(.bold))
@@ -116,8 +123,6 @@ struct VideoMiniPlayerBar: View {
                                         .foregroundStyle(EOSTheme.accent)
                                 }
                             }
-                            .font(.caption)
-                            .foregroundStyle(EOSTheme.textSecondary)
                         }
                         Spacer(minLength: 0)
                     }
@@ -262,17 +267,24 @@ private struct MiniPlayerContent: View {
                         )
                             .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(track.title)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(EOSTheme.textPrimary)
-                                .lineLimit(1)
+                            MarqueeText(
+                                text: track.title,
+                                font: .subheadline.weight(.semibold),
+                                foreground: EOSTheme.textPrimary,
+                                speedPointsPerSecond: 30
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
                             if engine.isLoading || statusFlags.isBuffering || statusFlags.activity.phase.showsSpinner {
                                 PlaybackActivityLine(activity: statusFlags.activity, compact: true)
                             } else {
-                                Text(track.artist ?? "")
-                                    .font(.caption)
-                                    .foregroundStyle(EOSTheme.textSecondary)
-                                    .lineLimit(1)
+                                MarqueeText(
+                                    text: track.artist ?? "",
+                                    font: .caption,
+                                    foreground: EOSTheme.textSecondary,
+                                    speedPointsPerSecond: 26
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
                         Spacer(minLength: 0)
@@ -280,10 +292,16 @@ private struct MiniPlayerContent: View {
                 }
                 .buttonStyle(EOSPressableStyle())
 
-                if showsIslandBars {
+                // Hide island bars while buffering/loading — they read as “…” dots and steal space from titles.
+                if showsIslandBars
+                    && engine.isPlaying
+                    && !engine.isLoading
+                    && !statusFlags.isBuffering
+                    && !statusFlags.activity.phase.showsSpinner
+                {
                     DynamicIslandMusicBars(
                         visualizer: engine.visualizer,
-                        isPlaying: engine.isPlaying && !engine.isLoading,
+                        isPlaying: true,
                         compact: true
                     )
                 }

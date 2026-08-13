@@ -196,7 +196,7 @@ struct OnlineMovieDetailView: View {
                     movies.downloadToServer(selection: selection)
                 }
             } label: {
-                Label("Pobierz…", systemImage: "arrow.down.circle")
+                Label("Pobierz", systemImage: "arrow.down.circle")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(OnlineMovieSecondaryButton(emphasized: true))

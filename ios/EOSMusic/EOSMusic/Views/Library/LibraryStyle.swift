@@ -75,6 +75,7 @@ struct LibraryCategoryRow: View {
 struct LibraryDownloadedCategoryRow: View {
     let count: Int
     var storage: StorageSnapshot?
+    var breakdown: StorageBreakdown? = nil
 
     var body: some View {
         HStack(spacing: 16) {
@@ -93,8 +94,13 @@ struct LibraryDownloadedCategoryRow: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                if let storage {
-                    StorageCapacityBar(snapshot: storage)
+                if breakdown != nil || storage != nil {
+                    StorageCapacityBar(
+                        snapshot: storage,
+                        breakdown: breakdown,
+                        showsLegend: false,
+                        libraryOnly: breakdown.map { $0.freeBytes == 0 && $0.otherUsedBytes == 0 } ?? false
+                    )
                 }
             }
 
