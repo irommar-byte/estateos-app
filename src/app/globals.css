@@ -1381,8 +1381,15 @@ html.light .eos-themed-modal .eos-modal-chip:hover {
 }
 
 html.light .eos-themed-modal .eos-modal-chip--selected {
-  border-color: rgba(16, 185, 129, 0.45) !important;
+  border-color: rgba(16, 185, 129, 0.5) !important;
   background-color: var(--eos-accent-soft) !important;
+  color: #047857 !important;
+}
+
+html.light .eos-themed-modal .eos-ask-chip--selected {
+  background: #10b981 !important;
+  border-color: #059669 !important;
+  color: #042f1e !important;
 }
 
 html.light .eos-themed-modal .eos-modal-chip-check {
@@ -1425,12 +1432,45 @@ html.light .eos-themed-modal .eos-modal-chip-check--on {
   border: 1px solid var(--eos-border);
   background: color-mix(in srgb, var(--eos-input) 80%, transparent);
   padding: 0.5rem 0.75rem;
-  transition: border-color 0.2s ease, background-color 0.2s ease;
+  color: var(--eos-text);
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .eos-modal-chip--selected {
-  border-color: rgba(16, 185, 129, 0.45);
+  border-color: rgba(16, 185, 129, 0.5);
   background: var(--eos-accent-soft);
+  color: #047857;
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.12);
+}
+
+html:not(.light) .eos-modal-chip--selected {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(110, 231, 183, 0.45);
+}
+
+/* Ask-seller chips — pill shape, high contrast in both themes */
+.eos-ask-chip {
+  border-radius: 9999px !important;
+  padding: 0.55rem 0.9rem !important;
+  max-width: 100%;
+}
+
+.eos-ask-chip--selected {
+  background: #10b981 !important;
+  border-color: #059669 !important;
+  color: #042f1e !important;
+  -webkit-text-fill-color: #042f1e !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.35) inset,
+    0 8px 20px rgba(16, 185, 129, 0.28) !important;
+}
+
+html:not(.light) .eos-ask-chip--selected {
+  background: #34d399 !important;
+  border-color: #6ee7b7 !important;
+  color: #022c22 !important;
+  -webkit-text-fill-color: #022c22 !important;
 }
 
 .eos-modal-chip-check {
@@ -3413,6 +3453,23 @@ html:not(.light) .eos-car-form-cancel {
 }
 
 /* ── Offer hero bar + favorites (cinematic, light + dark safe) ─────────── */
+.eos-offer-hero-vignette {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, transparent 28%),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.5) 0%, transparent 42%);
+  pointer-events: none;
+}
+
+.eos-offer-hero-title {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.85),
+    0 8px 28px rgba(0, 0, 0, 0.55),
+    0 0 40px rgba(0, 0, 0, 0.35);
+  filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.45));
+}
+
 .eos-offer-hero-bar {
   width: 100%;
   overflow: hidden;
