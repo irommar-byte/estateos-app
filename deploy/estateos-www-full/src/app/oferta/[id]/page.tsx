@@ -42,6 +42,7 @@ import AuctionOfferBanner from "@/components/offer/AuctionOfferBanner";
 import AuctionBidModal from "@/components/offer/AuctionBidModal";
 import ProfileWriteMessageButton from "@/components/contact/ProfileWriteMessageButton";
 import OfferHeroMetaBar from "@/components/offer/OfferHeroMetaBar";
+import LiveOfferHero from "@/components/offer/LiveOfferHero";
 import OfferGuestAskModal from "@/components/offer/OfferGuestAskModal";
 import type { OpenHouseEventRecord } from "@/lib/openHouseTypes";
 import type { AuctionEventRecord } from "@/lib/auctionTypes";
@@ -53,12 +54,12 @@ import {
   isAgentOrAgencySeller,
 } from "@/lib/sellerDisplay";
 import { resolveRentAdminFeeAmount, formatRentAdminFeeCostsLabel } from "@/lib/offers/rentAdminFeeDisplay";
+import { formatAdminFeeDisplay } from "@/lib/money/adminFee";
 import { normalizeListingCurrency } from "@/lib/money/convert";
 import { amenityLabelsFromOffer } from "@/lib/offerAmenities";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import {
   formatAmountWithCurrency,
-  formatOfferSecondaryAmount,
   resolveOfferDisplayAmount,
 } from "@/lib/money/format";
 import { resolveOfferListingPrice } from "@/lib/money/resolveListingPrice";
@@ -435,13 +436,12 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         : "Sprzedaż";
   const adminFeeLabel =
     rentAdminFeeAmount != null
-      ? formatOfferSecondaryAmount({
-          amount: rentAdminFeeAmount,
+      ? formatAdminFeeDisplay({
+          adminFeePln: rentAdminFeeAmount,
           listingCurrency,
-          pricePln: listingCurrency === "PLN" ? rentAdminFeeAmount : null,
           displayPreference: preference,
           rate,
-          locale: dateLocale,
+          locale: dateLocale === "en" ? "en" : "pl",
         })
       : null;
 
@@ -608,11 +608,13 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-[calc(7.5rem+env(safe-area-inset-bottom,0px))] font-sans text-[var(--eos-text)] selection:bg-emerald-500/20 sm:pb-32">
       
       <div className="eos-cinematic-dark relative h-[58svh] min-h-[52svh] w-full overflow-hidden bg-black sm:h-[100dvh] sm:min-h-[100vh]">
-        <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center ${isArchived ? 'opacity-25 blur-2xl grayscale' : isLocked ? 'opacity-60 blur-xl' : 'opacity-60'}`} />
+        <motion.div style={{ y: bgY }} className="absolute inset-0 z-0 overflow-hidden">
+          <LiveOfferHero images={images} disabled={isArchived || isLocked} />
+        </motion.div>
         <div className="absolute inset-0 eos-offer-hero-vignette z-10" />
 
         <div
-          className="pointer-events-none absolute inset-x-0 z-40 px-3 sm:px-6"
+          className="pointer-events-none absolute inset-x-0 z-40 max-h-[min(92%,calc(100%-0.75rem))] overflow-y-auto overscroll-contain px-3 sm:px-6"
           style={{ top: HERO_BELOW_NAV }}
         >
           <div className="mx-auto flex max-w-5xl flex-col gap-2.5 sm:gap-4">
@@ -658,6 +660,12 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   }}
                 />
               </div>
+            ) : null}
+
+            {!isArchived ? (
+              <h1 className="eos-offer-hero-title pointer-events-none hidden max-w-4xl self-center px-2 text-center text-3xl font-light leading-tight tracking-tighter [text-wrap:balance] sm:block sm:text-5xl md:text-5xl lg:text-6xl">
+                {isLocked ? t.beforeLaunchTitle : offer.title}
+              </h1>
             ) : null}
 
             {!isArchived ? (
@@ -750,16 +758,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           </div>
         </div>
 
-        {!isArchived && (
-        <div
-          onClick={() => !isLocked && openGallery(0)}
-          className="absolute inset-x-0 bottom-0 z-20 hidden cursor-pointer flex-col items-center justify-end px-4 pb-16 pt-32 hover:bg-black/10 sm:flex sm:pb-24"
-        >
-          <h1 className="eos-offer-hero-title max-w-7xl text-center text-4xl font-light leading-tight tracking-tighter [text-wrap:balance] sm:text-6xl md:text-[6vw] px-4 sm:px-8 pointer-events-none">
-            {isLocked ? t.beforeLaunchTitle : offer.title}
-          </h1>
-        </div>
-        )}
         {isArchived && (
           <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none px-4">
              <div className="bg-zinc-950/95 backdrop-blur-3xl border border-white/10 p-8 sm:p-12 rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.9)] text-center flex flex-col items-center max-w-lg w-full">

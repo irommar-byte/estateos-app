@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2, MessageCircleQuestion, Phone, Send } from 'lucide-react';
 import EosModal from '@/components/ui/EosModal';
+import { eosBtn } from '@/components/ui/eosButtonStyles';
 
 export type OfferGuestAskCopy = {
   title: string;
@@ -64,11 +65,6 @@ export default function OfferGuestAskModal({
     setError('');
   }, [isOpen, copy.questions, defaultPhone, defaultName]);
 
-  const selectedLabel = useMemo(
-    () => copy.questions.find((q) => q.key === questionKey)?.label || '',
-    [copy.questions, questionKey],
-  );
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy || sent) return;
@@ -112,16 +108,12 @@ export default function OfferGuestAskModal({
     >
       {sent ? (
         <div className="space-y-3 py-4 text-center">
-          <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+          <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-600">
             <Send className="size-6" />
           </div>
           <p className="text-lg font-semibold text-[var(--eos-text)]">{copy.successTitle}</p>
           <p className="text-sm leading-relaxed text-[var(--eos-muted)]">{copy.successBody}</p>
-          <button
-            type="button"
-            onClick={onClose}
-            className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full bg-emerald-500 px-6 text-[12px] font-black uppercase tracking-wider text-white"
-          >
+          <button type="button" onClick={onClose} className={eosBtn('home')}>
             {copy.close}
           </button>
         </div>
@@ -133,7 +125,7 @@ export default function OfferGuestAskModal({
             <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-subtle)]">
               {copy.questionsLabel}
             </p>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2" role="group" aria-label={copy.questionsLabel}>
               {copy.questions.map((q) => {
                 const active = q.key === questionKey;
                 return (
@@ -141,20 +133,14 @@ export default function OfferGuestAskModal({
                     key={q.key}
                     type="button"
                     onClick={() => setQuestionKey(q.key)}
-                    className={`rounded-full border px-3 py-2 text-left text-[12px] font-semibold transition ${
-                      active
-                        ? 'border-emerald-500/45 bg-emerald-500/15 text-emerald-700 dark:text-emerald-200'
-                        : 'border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)] hover:border-[var(--eos-border-strong,var(--eos-border))] hover:text-[var(--eos-text)]'
-                    }`}
+                    aria-pressed={active}
+                    className={`eos-modal-chip eos-ask-chip ${active ? 'eos-modal-chip--selected eos-ask-chip--selected' : ''}`}
                   >
-                    {q.label}
+                    <span className="text-[12px] font-semibold leading-snug">{q.label}</span>
                   </button>
                 );
               })}
             </div>
-            {selectedLabel ? (
-              <p className="mt-2 text-[11px] text-[var(--eos-subtle)]">{selectedLabel}</p>
-            ) : null}
           </div>
 
           <label className="grid gap-1.5 text-sm">
@@ -175,7 +161,7 @@ export default function OfferGuestAskModal({
 
           <label className="grid gap-1.5 text-sm">
             <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-subtle)]">
-              <Phone className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+              <Phone className="size-3.5 text-emerald-600" />
               {copy.phoneLabel}
             </span>
             <input
@@ -191,7 +177,7 @@ export default function OfferGuestAskModal({
 
           <label className="grid gap-1.5 text-sm">
             <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-subtle)]">
-              <MessageCircleQuestion className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+              <MessageCircleQuestion className="size-3.5 text-emerald-600" />
               {copy.messageLabel}
             </span>
             <textarea
@@ -217,16 +203,12 @@ export default function OfferGuestAskModal({
           />
 
           {error ? (
-            <p className="rounded-2xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-700 dark:text-red-200">
+            <p className="rounded-2xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-700">
               {error}
             </p>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-emerald-500 px-5 text-[12px] font-black uppercase tracking-[0.16em] text-white transition hover:bg-emerald-400 disabled:opacity-60"
-          >
+          <button type="submit" disabled={busy} className={eosBtn('home', { block: true, size: 'lg' })}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             {busy ? copy.sending : copy.send}
           </button>
