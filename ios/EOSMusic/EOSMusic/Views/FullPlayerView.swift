@@ -65,6 +65,7 @@ private struct PlayerContent: View {
     var body: some View {
         NavigationStack {
             playerBody
+                .syncPlayerVisualAnalysis()
                 .navigationDestination(item: $artistRoute) { route in
                     ArtistBrowseDestination(artistId: route.artistId, artistName: route.artistName)
                         .environmentObject(app)
@@ -131,6 +132,7 @@ private struct PlayerContent: View {
                         colorScheme: colorScheme
                     )
                     .allowsHitTesting(false)
+                    .zIndex(20)
                 }
             }
         }
@@ -548,10 +550,11 @@ private struct PlayerLayout {
         // Spectrum: mała okładka w headerze — nigdy nie rozjeżdża EQ.
         if preset.showsMixer {
             if wide { return min(128, max(88, height * 0.18)) }
+            if tight { return 64 }
             if height < 620 { return 72 }
-            if height < 700 { return 88 }
-            if height < 780 { return 100 }
-            return isPad ? 118 : 108
+            if height < 700 { return 80 }
+            if height < 780 { return 92 }
+            return isPad ? 118 : 100
         }
         // Winyl / Okładka / Strobe — większy hero, ale nadal w ramce ekranu.
         if wide { return min(260, height * 0.36) }
@@ -570,11 +573,12 @@ private struct PlayerLayout {
         if isPad {
             return min(280, max(160, height * 0.24))
         }
-        if width < 340 { return 88 }
-        if height < 620 { return 96 }
-        if height < 700 { return 112 }
-        if height < 780 { return 128 }
-        return 144
+        // Min ~150 pt — poniżej WinampSpectrumUIView nie ma miejsca na paski EQ (eqRect → 0).
+        if width < 340 { return 150 }
+        if height < 620 { return 152 }
+        if height < 700 { return 168 }
+        if height < 780 { return 184 }
+        return 200
     }
 
     /// Wysokość bloku EQ — na iPadzie i dużych ekranach wypełnia więcej sceny.

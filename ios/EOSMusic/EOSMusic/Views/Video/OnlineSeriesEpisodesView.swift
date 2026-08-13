@@ -73,8 +73,13 @@ struct OnlineSeriesEpisodesView: View {
 
                 episodeList
             }
-            .padding(16)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 24)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollIndicators(.visible)
+        .eosScrollClearance()
         .background(Color(.systemBackground))
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)

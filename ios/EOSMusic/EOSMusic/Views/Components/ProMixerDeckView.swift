@@ -202,16 +202,41 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                     .frame(maxWidth: .infinity)
 
                     if preset.showsMixer {
-                        WinampSpectrumHost(
-                            visualizer: visualizer,
-                            isPlaying: live,
-                            intensity: intensity,
-                            bandCount: bandCount,
-                            compact: compactMixer
-                        )
-                        .frame(minHeight: spectrumHeight)
-                        .frame(maxHeight: expandSpectrum ? .infinity : spectrumHeight)
-                        .layoutPriority(expandSpectrum ? 1 : 0)
+                        GeometryReader { rowGeo in
+                            let vuW = min(28, max(14, rowGeo.size.width * 0.068))
+                            HStack(alignment: .center, spacing: rowGeo.size.width < 360 ? 4 : 6) {
+                                ProMixerVerticalVU(
+                                    visualizer: visualizer,
+                                    isPlaying: live,
+                                    channel: .left,
+                                    width: vuW,
+                                    compact: true,
+                                    drive: drive
+                                )
+                                .frame(width: vuW, height: max(120, spectrumHeight))
+
+                                WinampSpectrumHost(
+                                    visualizer: visualizer,
+                                    isPlaying: live,
+                                    intensity: intensity,
+                                    bandCount: bandCount,
+                                    compact: compactMixer || rowGeo.size.width < 380
+                                )
+                                .frame(maxWidth: .infinity)
+                                .frame(height: max(120, spectrumHeight))
+
+                                ProMixerVerticalVU(
+                                    visualizer: visualizer,
+                                    isPlaying: live,
+                                    channel: .right,
+                                    width: vuW,
+                                    compact: true,
+                                    drive: drive
+                                )
+                                .frame(width: vuW, height: max(120, spectrumHeight))
+                            }
+                        }
+                        .frame(height: max(128, spectrumHeight + 8))
                         .padding(8)
                         .background {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)

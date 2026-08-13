@@ -60,8 +60,12 @@ struct OnlineMovieDetailView: View {
                     }
                 }
                 .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity)
         }
+        .scrollIndicators(.visible)
+        .eosScrollClearance()
         .background(Color(.systemBackground))
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $showSeriesEpisodes) {
@@ -91,29 +95,36 @@ struct OnlineMovieDetailView: View {
     }
 
     private var hero: some View {
-        ZStack(alignment: .bottomLeading) {
-            OnlineMovieBackdrop(url: posterURL)
-                .frame(height: 360)
-                .frame(maxWidth: .infinity)
-                .clipped()
+        GeometryReader { geo in
+            ZStack(alignment: .bottomLeading) {
+                OnlineMovieBackdrop(url: posterURL)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
 
-            LinearGradient(
-                colors: [.clear, Color(.systemBackground).opacity(0.85), Color(.systemBackground)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+                LinearGradient(
+                    colors: [.clear, Color(.systemBackground).opacity(0.85), Color(.systemBackground)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("CDA-HD")
-                    .font(EOSTypography.captionBold)
-                    .tracking(1.1)
-                    .foregroundStyle(EOSTheme.accent)
-                Text(displayTitle)
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                metaChips
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("CDA-HD")
+                        .font(EOSTypography.captionBold)
+                        .tracking(1.1)
+                        .foregroundStyle(EOSTheme.accent)
+                    Text(displayTitle)
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.85)
+                    metaChips
+                }
+                .padding(20)
+                .frame(maxWidth: geo.size.width, alignment: .leading)
             }
-            .padding(20)
         }
+        .frame(height: min(360, UIScreen.main.bounds.height * 0.42))
+        .frame(maxWidth: .infinity)
+        .clipped()
     }
 
     @ViewBuilder
@@ -207,6 +218,8 @@ struct OnlineMovieDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Opis").font(EOSTypography.headline)
                 Text(description).font(EOSTypography.body).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else if isLoadingInfo {
             ProgressView("Wczytuję szczegóły…")
@@ -223,6 +236,8 @@ struct OnlineMovieDetailView: View {
                 Text(cast.prefix(12).map(\.name).joined(separator: " · "))
                     .font(EOSTypography.callout)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -328,20 +343,29 @@ struct OnlineMovieBackdrop: View {
     @State private var image: UIImage?
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [EOSTheme.accent.opacity(0.35), EOSTheme.accentSecondary.opacity(0.4), .black.opacity(0.8)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            if let image {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else {
-                Image(systemName: "film")
-                    .font(.system(size: 42, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.55))
+        GeometryReader { geo in
+            ZStack {
+                LinearGradient(
+                    colors: [EOSTheme.accent.opacity(0.35), EOSTheme.accentSecondary.opacity(0.4), .black.opacity(0.8)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                } else {
+                    Image(systemName: "film")
+                        .font(.system(size: 42, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipped()
         }
+        .clipped()
         .task(id: url?.absoluteString) {
             guard let url else { image = nil; return }
             if let cached = RemoteImageCache.image(for: url, maxPixelSize: 900) {

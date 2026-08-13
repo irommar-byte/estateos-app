@@ -64,6 +64,7 @@ struct OnlineMoviesHomeView: View {
             await movies.refreshHome()
             await movies.refreshDownloads()
         }
+        .eosScrollClearance()
         .searchable(text: $searchText, prompt: "Szukaj w CDA-HD")
         .onChange(of: searchText) { _, value in
             Task { await runSearch(value) }

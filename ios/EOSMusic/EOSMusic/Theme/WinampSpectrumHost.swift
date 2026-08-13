@@ -160,7 +160,7 @@ final class WinampSpectrumUIView: UIView {
     }
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: compact ? 160 : 208)
+        CGSize(width: UIView.noIntrinsicMetric, height: compact ? 150 : 208)
     }
 
     override func layoutSubviews() {
@@ -175,20 +175,27 @@ final class WinampSpectrumUIView: UIView {
 
         let narrow = rect.width < 340
         let pad: CGFloat = narrow ? 6 : 10
-        let headerH: CGFloat = narrow ? 14 : 16
-        let labelH: CGFloat = narrow ? 12 : 14
-        let gap: CGFloat = narrow ? 5 : 8
+        let headerH: CGFloat = narrow ? 12 : 16
+        let labelH: CGFloat = narrow ? 10 : 14
+        let gap: CGFloat = narrow ? 4 : 8
         let channelGap: CGFloat = narrow ? 4 : (rect.width < 390 ? 6 : 10)
+        let bandLabelReserve: CGFloat = narrow ? 12 : 14
         let contentW = max(0, rect.width - pad * 2)
         var channelW = max(18, (contentW - channelGap * 2) / 3)
         if channelW * 3 + channelGap * 2 > contentW {
-            channelW = max(16, (contentW - channelGap * 2) / 3)
+            channelW = max(14, (contentW - channelGap * 2) / 3)
         }
 
         let headerFontSize: CGFloat = narrow ? 9 : 11
         let titleFontSize: CGFloat = narrow ? 8 : 10
         let bandFontSize: CGFloat = narrow ? 6 : (compact ? 6 : 7)
-        let vuH = min(compact ? 56 : 70, max(34, (rect.height - pad * 2 - headerH - labelH - gap - 16) * 0.36))
+
+        // Reserve EQ strip first — on iPhone the view is often ~150 pt tall; old math gave eqRect.height = 0.
+        let minEQH: CGFloat = compact ? 36 : 44
+        let usableH = max(0, rect.height - pad * 2 - headerH - bandLabelReserve)
+        let eqH = max(minEQH, usableH * (compact ? 0.42 : 0.48))
+        let vuBlockH = max(24, usableH - eqH - labelH - gap)
+        let vuH = min(compact ? 48 : 62, vuBlockH)
 
         let headerAttrs: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: headerFontSize, weight: .heavy),
@@ -242,7 +249,7 @@ final class WinampSpectrumUIView: UIView {
         }
 
         let eqTop = vuTop + labelH + vuH + gap
-        let eqRect = CGRect(x: pad, y: eqTop, width: contentW, height: max(0, rect.height - eqTop - pad - 14))
+        let eqRect = CGRect(x: pad, y: eqTop, width: contentW, height: max(minEQH, rect.height - eqTop - pad - bandLabelReserve))
         ctx.setFillColor(UIColor.black.withAlphaComponent(0.55).cgColor)
         ctx.fill(eqRect.insetBy(dx: -2, dy: -2))
         ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.08).cgColor)
