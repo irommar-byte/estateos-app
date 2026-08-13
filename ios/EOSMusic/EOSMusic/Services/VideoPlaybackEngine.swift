@@ -56,6 +56,9 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     private var audioLifecycleObservers: [NSObjectProtocol] = []
     /// Remembers play intent across audio interruptions.
     private var wantsPlayback = false
+    /// VLC wyciszony i wstrzymany — AVPlayer (PiP / AirPlay) jest jedynym źródłem dźwięku.
+    private(set) var isSuspendedForAVKit = false
+    private var vlcVolumeBeforeHandoff: Int32 = 100
     /// Folder whose security-scoped access is currently held via `beginAccess`.
     private var accessedFolderId: UUID?
 
@@ -84,7 +87,10 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         audioLifecycleObservers = [
             center.addObserver(forName: .eosAudioSessionNeedsResume, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in
-                    guard let self, self.wantsPlayback, self.currentItem != nil else { return }
+                    guard let self,
+                          self.wantsPlayback,
+                          !self.isSuspendedForAVKit,
+                          self.currentItem != nil else { return }
                     AudioSession.activateForPlayback()
                     self.player.play()
                     self.isPlaying = true
@@ -310,7 +316,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         errorMessage = nil
         hasEnded = false
         wantsPlayback = true
-        AudioSession.activateForPlayback()
+        AudioSession.activateForVideoPlayback()
         loadCurrent(autoplay: true)
     }
 
@@ -333,10 +339,67 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         }
     }
 
-    func pauseForPictureInPicture() {
+    func suspendForAVKitHandoff() {
+        wantsPlayback = isPlaying || player.isPlaying
+        isSuspendedForAVKit = true
+        vlcVolumeBeforeHandoff = player.audio?.volume ?? Int32(volumeLevel)
+        player.audio?.volume = 0
         player.pause()
         isPlaying = false
         clearBuffering()
+    }
+
+    func enforceAVKitSuspension() {
+        guard isSuspendedForAVKit else { return }
+        player.audio?.volume = 0
+        if player.isPlaying {
+            player.pause()
+        }
+        if isPlaying {
+            isPlaying = false
+        }
+    }
+
+    func resumeFromAVKitHandoff(at seconds: Double, resume: Bool) {
+        isSuspendedForAVKit = false
+        player.audio?.volume = vlcVolumeBeforeHandoff
+        resumeAfterPictureInPicture(at: seconds, resume: resume)
+    }
+
+    func pauseForPictureInPicture() {
+        suspendForAVKitHandoff()
+    }
+
+    func pauseForExternalPlayback() {
+        suspendForAVKitHandoff()
+    }
+
+    func resumeAfterExternalPlayback(at seconds: Double, resume: Bool) {
+        isSuspendedForAVKit = false
+        player.audio?.volume = vlcVolumeBeforeHandoff
+        seek(to: seconds, resume: resume)
+        if !resume {
+            player.pause()
+            isPlaying = false
+        }
+        kickVideoOutput()
+    }
+
+    func syncExternalPlayback(time: Double, isPlaying playing: Bool) {
+        guard !isUserSeeking else { return }
+        guard time.isFinite, time >= 0 else { return }
+        if abs(time - lastPublishedTime) >= 0.15 {
+            currentTime = time
+            lastPublishedTime = time
+        }
+        if playing != isPlaying {
+            isPlaying = playing
+        }
+        if playing { clearBuffering() }
+    }
+
+    func markExternalPlaybackEnded() {
+        markEnded()
     }
 
     func resumeAfterPictureInPicture(at seconds: Double, resume: Bool) {
@@ -555,6 +618,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         aspectApplyTask = nil
         thumbnailGenerator.cancel()
         wantsPlayback = false
+        isSuspendedForAVKit = false
         player.stop()
         isPlaying = false
         hasEnded = false
@@ -998,6 +1062,12 @@ extension VideoPlaybackEngine: VLCMediaPlayerDelegate {
             case .buffering:
                 noteBuffering()
             case .playing:
+                if isSuspendedForAVKit {
+                    player.pause()
+                    player.audio?.volume = 0
+                    isPlaying = false
+                    return
+                }
                 clearBuffering()
                 isPlaying = true
                 hasEnded = false

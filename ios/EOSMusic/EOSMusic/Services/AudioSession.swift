@@ -14,8 +14,6 @@ enum AudioSession {
         installObserversIfNeeded()
         let session = AVAudioSession.sharedInstance()
 
-        // Avoid setCategory/setActive churn while already playing — that hitch is exactly
-        // what users hear when switching apps / collapsing Control Center.
         if !force,
            configuredForPlayback,
            session.category == .playback {
@@ -34,7 +32,6 @@ enum AudioSession {
             configuredForPlayback = true
         } catch {
             configuredForPlayback = false
-            // Retry once after a short delay — common after route flips.
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 do {
@@ -52,15 +49,31 @@ enum AudioSession {
         }
     }
 
+    static func activateForVideoPlayback(force: Bool = false) {
+        installObserversIfNeeded()
+        let session = AVAudioSession.sharedInstance()
+        do {
+            if session.category != .playback || session.mode != .moviePlayback || force {
+                try session.setCategory(
+                    .playback,
+                    mode: .moviePlayback,
+                    options: [.allowAirPlay, .allowBluetoothA2DP]
+                )
+            }
+            try session.setActive(true, options: [])
+            configuredForPlayback = true
+        } catch {
+            activateForPlayback(force: force)
+        }
+    }
+
     /// Re-assert category after returning from background / other apps.
-    /// Only forces a full reconfigure if something else stole the session.
     static func reinforceIfNeeded() {
         let session = AVAudioSession.sharedInstance()
         if session.category != .playback {
             activateForPlayback(force: true)
             return
         }
-        // Soft nudge — setActive only when category is already correct.
         do {
             try session.setActive(true, options: [])
             configuredForPlayback = true
@@ -100,9 +113,6 @@ enum AudioSession {
                 NotificationCenter.default.post(name: .eosAudioSessionNeedsResume, object: nil)
             }
             .store(in: &cancellables)
-
-        // Do NOT reinforce on every didBecomeActive — that re-activates the session and
-        // can glitch continuous background playback. Foreground uses willEnterForeground.
     }
 
     private static func handleInterruption(_ note: Notification) {
@@ -141,12 +151,16 @@ enum AudioSession {
 
         switch reason {
         case .oldDeviceUnavailable:
-            // Headphones unplugged — pause (Apple Music behavior).
-            NotificationCenter.default.post(name: .eosAudioSessionRouteLost, object: nil)
+            let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+            let switchingToExternal = outputs.contains { port in
+                port.portType == .airPlay || port.portType == .HDMI || port.portType == .AVB
+            }
+            if !switchingToExternal {
+                NotificationCenter.default.post(name: .eosAudioSessionRouteLost, object: nil)
+            }
         case .newDeviceAvailable:
             activateForPlayback(force: true)
         case .categoryChange, .override:
-            // Soft — category may already be ours after a system flip.
             reinforceIfNeeded()
         default:
             break
