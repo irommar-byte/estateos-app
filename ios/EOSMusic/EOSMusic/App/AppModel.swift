@@ -37,6 +37,7 @@ final class AppModel: ObservableObject {
     let downloads = MusicDownloadService()
     let onlineMovies = OnlineMoviesController()
     let movieDownloads = MovieDownloadService()
+    let serverDownloads = ServerAccountDownloadsMonitor()
     let sources = MusicSourcesStore()
     let network = NetworkReachability.shared
 
@@ -57,6 +58,7 @@ final class AppModel: ObservableObject {
             || downloads.bulkServerQueue != nil
             || MusicDownloadService.hasActiveDownloads
             || movieDownloads.isRunning
+            || serverDownloads.hasActiveServerWork
     }
 
     func isMovieDownloaded(url: String) -> Bool {
@@ -96,6 +98,7 @@ final class AppModel: ObservableObject {
     init() {
         onlineMovies.attach(api: api)
         movieDownloads.attach(api: api, onlineMovies: onlineMovies)
+        serverDownloads.attach(api: api, musicDownloads: downloads, movieDownloads: movieDownloads)
         BluetoothMediaBrowser.shared.playFromLibrary = { [weak self] tracks, index, folder in
             await self?.playTracks(tracks, startIndex: index, folder: folder)
         }
@@ -113,6 +116,10 @@ final class AppModel: ObservableObject {
             .store(in: &cancellables)
         movieDownloads.objectWillChange
             .throttle(for: .milliseconds(280), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        serverDownloads.objectWillChange
+            .throttle(for: .milliseconds(400), scheduler: RunLoop.main, latest: true)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         // sources.objectWillChange is not fanned out — SourcesView observes MusicSourcesStore directly.
@@ -162,8 +169,10 @@ final class AppModel: ObservableObject {
             user = try await api.me()
             await syncLocalAppleLink(from: user)
             hydrateLibraryFromCacheIfNeeded()
+            serverDownloads.start()
             Task { await refreshWorkspace(soft: true) }
             Task { await onlineMovies.refreshDownloads() }
+            Task { await serverDownloads.refreshOnce() }
         } catch {
             // Only clear session on auth failure; network blips keep the user in-app.
             if case APIError.unauthorized = error {
@@ -177,7 +186,9 @@ final class AppModel: ObservableObject {
                 // Keep cached session user so Login isn't forced on a blip.
                 user = session.user
                 hydrateLibraryFromCacheIfNeeded()
+                serverDownloads.start()
                 Task { await refreshWorkspace(soft: true) }
+                Task { await serverDownloads.refreshOnce() }
             }
         }
     }
@@ -191,7 +202,9 @@ final class AppModel: ObservableObject {
             CredentialsStore.clear()
         }
         // Enter the app immediately; playlist sync continues in background.
+        serverDownloads.start()
         Task { await refreshWorkspace(soft: true) }
+        Task { await serverDownloads.refreshOnce() }
     }
 
     func loginWithApple(identityToken: String, login: String? = nil, password: String? = nil, linkOnly: Bool = false) async throws {
@@ -203,6 +216,8 @@ final class AppModel: ObservableObject {
         )
         user = session.user
         Task { await refreshWorkspace(soft: true) }
+        serverDownloads.start()
+        Task { await serverDownloads.refreshOnce() }
     }
 
     func linkAppleAccount(identityToken: String, login: String? = nil, password: String? = nil) async throws {
@@ -261,6 +276,7 @@ final class AppModel: ObservableObject {
         playback.stop()
         sources.endAllAccess()
         isFullPlayerPresented = false
+        serverDownloads.stop()
         api.setToken(nil)
         SessionStore.clear()
         AppleSignInService.shared.clearLink()

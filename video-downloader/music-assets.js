@@ -376,6 +376,7 @@ export async function ensureMusicAsset({
   downloadsRoot,
   friendlyError,
   waitUntilPlayable = false,
+  intent = "play",
 }) {
   if (!userKey) {
     const err = new Error("Zaloguj się, aby odtwarzać i zapisywać muzykę w bibliotece EOS.");
@@ -452,6 +453,12 @@ export async function ensureMusicAsset({
   // In-flight acquisition
   if (activeAcquire.has(inflightKey)) {
     const jobId = activeAcquire.get(inflightKey);
+    const existing = jobs.get(jobId);
+    if (existing && intent === "download") {
+      existing.intent = "download";
+      existing.listInQueue = true;
+      if (!existing.queuedAt) existing.queuedAt = Date.now();
+    }
     if (waitUntilPlayable) {
       const job = await waitPlayable(jobId);
       return pack(jobId, { reused: true, ready: true, job });
@@ -475,17 +482,22 @@ export async function ensureMusicAsset({
     return pack(assetId, { reused: true, ready: playable(existingJob), job: existingJob });
   }
 
+  const downloadIntent = intent === "download" ? "download" : "play";
   const job = {
     id: assetId,
     kind: "music",
     purpose: "download",
+    intent: downloadIntent,
+    listInQueue: downloadIntent === "download",
     persistent: true,
     userKey,
     folderId: folderId || null,
     trackUrl: trackUrl || url,
+    url,
     assetId,
     status: "starting",
     progress: 0,
+    queuedAt: Date.now(),
     clients: new Set(),
     partPath: null,
     persisting: false,

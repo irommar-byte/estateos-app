@@ -50,6 +50,10 @@ struct EOSMusicApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                     AudioSession.reinforceIfNeeded()
                     BluetoothMediaBrowser.shared.reloadQueue(from: app.playback.engine)
+                    app.serverDownloads.setForeground(true)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+                    app.serverDownloads.setForeground(false)
                 }
         }
     }

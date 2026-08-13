@@ -307,7 +307,8 @@ final class MusicDownloadService: ObservableObject {
         let ensure = try await api.startMusicPlay(
             url: url,
             folderId: folderId,
-            trackUrl: url
+            trackUrl: url,
+            intent: "download"
         )
         let jobId = ensure.jobId
         if ensure.ready != true {
@@ -489,7 +490,12 @@ final class MusicDownloadService: ObservableObject {
         try await coordinator.enqueueDownload(trackUrl: url) {
             let jobId: String = try await self.coordinator.withPhaseSlot(trackUrl: url, kind: .serverAcquire) {
                 self.states[url] = .acquiringServer(progress: 3)
-                let ensure = try await api.startMusicPlay(url: url, folderId: folderId, trackUrl: url)
+                let ensure = try await api.startMusicPlay(
+                    url: url,
+                    folderId: folderId,
+                    trackUrl: url,
+                    intent: "download"
+                )
                 if ensure.ready != true {
                     try await self.pollServerAcquire(jobId: ensure.jobId, trackUrl: url, api: api)
                 } else {
@@ -744,5 +750,98 @@ final class MusicDownloadService: ObservableObject {
             try await Task.sleep(nanoseconds: 700_000_000)
         }
         throw APIError.server("Przekroczono czas zapisu na serwerze.")
+    }
+
+    /// Sync from GET /api/downloads/active — shows server acquire progress started on any device.
+    func applyRemoteServerDownloads(_ remote: [ActiveServerDownload]) {
+        let remoteURLs = Set(remote.map(\.url).filter { !$0.isEmpty })
+        var touched = false
+
+        for item in remote where item.isMusic && !item.url.isEmpty {
+            if offline.isAvailable(item.url) {
+                if states[item.url] != .done {
+                    states[item.url] = .done
+                    wasOnServer[item.url] = true
+                    touched = true
+                }
+                continue
+            }
+            // Don't interrupt a local phone pull.
+            if case .downloading = states[item.url] { continue }
+            // Local acquire task owns the row while it's actively polling.
+            if activeTasks[item.url] != nil { continue }
+
+            if item.isFailed {
+                let message = item.error ?? "Pobieranie anulowane."
+                if states[item.url] != .failed(message) {
+                    states[item.url] = .failed(message)
+                    touched = true
+                }
+                continue
+            }
+
+            if item.isTerminal {
+                wasOnServer[item.url] = true
+                if states[item.url] != .onServer && states[item.url] != .done {
+                    states[item.url] = .onServer
+                    touched = true
+                }
+                continue
+            }
+
+            let pct = item.progressPercent
+            let next = TrackDownloadUIState.acquiringServer(progress: max(3, pct))
+            if states[item.url] != next {
+                states[item.url] = next
+                wasOnServer[item.url] = true
+                touched = true
+            }
+        }
+
+        // Clear stale remote-only acquiring states when the account queue no longer lists them.
+        for (url, state) in states {
+            guard case .acquiringServer = state else { continue }
+            if activeTasks[url] != nil { continue }
+            if bulkServerTask != nil { continue }
+            if remoteURLs.contains(url) { continue }
+            states[url] = wasOnServer[url] == true ? .onServer : .idle
+            touched = true
+        }
+
+        // Rebuild bulk panel from remote music items when local bulk task isn't driving it.
+        if bulkServerTask == nil {
+            let activeRemote = remote.filter { $0.isMusic && !$0.isTerminal && !$0.url.isEmpty }
+            if activeRemote.isEmpty {
+                if bulkServerQueue != nil {
+                    bulkServerQueue = nil
+                    touched = true
+                }
+            } else {
+                let completed = remote.filter { $0.isMusic && $0.isTerminal && !$0.isFailed }.count
+                let total = max(remote.filter(\.isMusic).count, activeRemote.count)
+                let current = activeRemote[0]
+                let pending = activeRemote.dropFirst().map {
+                    ServerQueueItem(url: $0.url, folderId: $0.folderId ?? "", title: $0.title)
+                }
+                let next = BulkServerQueueProgress(
+                    label: "Kolejka konta (serwery)",
+                    completed: completed,
+                    total: total,
+                    active: ServerQueueItem(
+                        url: current.url,
+                        folderId: current.folderId ?? "",
+                        title: current.title
+                    ),
+                    pending: Array(pending),
+                    activeProgress: current.progressPercent
+                )
+                if bulkServerQueue != next {
+                    bulkServerQueue = next
+                    touched = true
+                }
+            }
+        }
+
+        if touched { objectWillChange.send() }
     }
 }

@@ -122,6 +122,11 @@ import {
   assetFileReady,
   restoreJobFromAsset,
 } from "./music-assets.js";
+import {
+  listActiveDownloads,
+  markJobListed,
+  noteJobProgress,
+} from "./download-queue.js";
 
 const require = createRequire(import.meta.url);
 // yt-dlp-wrap ships as CommonJS; normalize the default export for ESM.
@@ -2686,8 +2691,17 @@ function canAccessPlay(req, job) {
 }
 
 function sendEvent(job, payload) {
+  noteJobProgress(job, payload || {});
+  // Movie downloads with a user always belong to the account queue.
+  if (job?.userKey && job?.kind === "movie" && job?.purpose === "download") {
+    markJobListed(job, {
+      kind: "movie",
+      title: job.movieTitle || job.name,
+      url: job.movieUrl,
+    });
+  }
   const data = `data: ${JSON.stringify(payload)}\n\n`;
-  for (const res of job.clients) res.write(data);
+  for (const res of job.clients || []) res.write(data);
 }
 
 // --- App ---------------------------------------------------------------------
@@ -4979,11 +4993,12 @@ app.post("/api/music/upload-local", express.json({ limit: "96mb" }), async (req,
 
 // POST /api/music/play { url, folderId?, trackUrl? } — trwały asset EOS (ensure)
 app.post("/api/music/play", async (req, res) => {
-  const { url, folderId, trackUrl } = req.body || {};
+  const { url, folderId, trackUrl, intent } = req.body || {};
   if (!url || !/^https?:\/\//i.test(url) || !/music\.apple\.com/i.test(url)) {
     return res.status(400).json({ error: "Podaj link utworu Apple Music." });
   }
   const userKey = favoritesUserKeyFromReq(req);
+  const downloadIntent = intent === "download" ? "download" : "play";
   try {
     const result = await ensureMusicAsset({
       userKey,
@@ -4995,7 +5010,8 @@ app.post("/api/music/play", async (req, res) => {
       ensurePlayToken,
       downloadsRoot: MUSIC_PLAYLIST_DOWNLOADS_DIR,
       friendlyError: friendlyAppleMusicError,
-      waitUntilPlayable: true,
+      waitUntilPlayable: downloadIntent !== "download",
+      intent: downloadIntent,
     });
     res.json({
       jobId: result.jobId,
@@ -5546,6 +5562,7 @@ app.post("/api/download", async (req, res) => {
         downloadsRoot: MUSIC_PLAYLIST_DOWNLOADS_DIR,
         friendlyError: friendlyAppleMusicError,
         waitUntilPlayable: false,
+        intent: "download",
       });
       return res.json({
         jobId: result.jobId,
@@ -5801,6 +5818,18 @@ app.post("/api/preview", async (req, res) => {
 });
 
 // GET /api/job/:jobId — status zadania (pobieranie / podgląd) dla klientów tvOS
+// GET /api/downloads/active — wspólna kolejka pobierań konta (muzyka + filmy)
+app.get("/api/downloads/active", (req, res) => {
+  const userKey = favoritesUserKeyFromReq(req);
+  if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
+  try {
+    const summary = listActiveDownloads(jobs, userKey);
+    res.json(summary);
+  } catch (err) {
+    res.status(500).json({ error: err?.message || "Nie udało się wczytać kolejki." });
+  }
+});
+
 app.get("/api/job/:jobId", (req, res) => {
   let job = jobs.get(req.params.jobId);
   if (!job || (job.kind === "movie" && !movieJobReady(job))) {
@@ -5825,9 +5854,12 @@ app.get("/api/job/:jobId", (req, res) => {
     jobId: job.id,
     status: job.status || (ready ? "done" : "starting"),
     progress: cdaPending ? (job.progress ?? 35) : (ready ? 100 : (job.progress ?? 0)),
-    name: job.name || "",
+    name: job.name || job.movieTitle || "",
     error: job.error || null,
     purpose: job.purpose || "download",
+    kind: job.kind || null,
+    intent: job.intent || null,
+    url: job.trackUrl || job.movieUrl || job.url || null,
     ready,
     fullReady,
     cdaFullPending: cdaPending,
@@ -5887,13 +5919,27 @@ app.post("/api/cancel/:jobId", (req, res) => {
     }
   } catch {}
 
+  job.cancelled = true;
   sendEvent(job, {
     status: "cancelled",
     error: "Pobieranie anulowane.",
     purpose: job.purpose,
   });
 
-  jobs.delete(job.id);
+  const keepListed = !!(job.listInQueue || (job.kind === "movie" && job.userKey && job.purpose === "download"));
+  if (keepListed) {
+    job.finishedAt = Date.now();
+    job.status = "cancelled";
+    job.clients = new Set();
+    jobs.set(job.id, job);
+    setTimeout(() => {
+      const cur = jobs.get(job.id);
+      if (cur && cur.status === "cancelled") jobs.delete(job.id);
+    }, 8000);
+  } else {
+    jobs.delete(job.id);
+  }
+
   res.json({ ok: true, cancelled: true });
 });
 

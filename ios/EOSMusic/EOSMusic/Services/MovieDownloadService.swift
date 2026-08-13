@@ -69,6 +69,8 @@ struct MovieDownloadBatch: Identifiable, Equatable {
     let destination: OnlineMovieDownloadDestination
     var isCancelled = false
     var isFinished = false
+    /// `true` when the batch was reconstructed from GET /api/downloads/active (other device / app relaunch).
+    var isRemoteSynced = false
 }
 
 @MainActor
@@ -84,6 +86,8 @@ final class MovieDownloadService: ObservableObject {
     private var lastProgressSample: (date: Date, percent: Double)?
     private weak var api: MusicAPIClient?
     private weak var onlineMovies: OnlineMoviesController?
+    /// jobId keyed by item url — used when syncing remote progress into a local batch.
+    private var remoteJobIdsByURL: [String: String] = [:]
 
     func attach(api: MusicAPIClient, onlineMovies: OnlineMoviesController) {
         self.api = api
@@ -92,6 +96,14 @@ final class MovieDownloadService: ObservableObject {
 
     var isRunning: Bool {
         guard let batch = activeBatch else { return false }
+        if batch.isRemoteSynced {
+            return !batch.isFinished && !batch.isCancelled && batch.items.contains {
+                switch $0.state {
+                case .pending, .downloading, .pullingPhone: return true
+                default: return false
+                }
+            }
+        }
         return !batch.isFinished && !batch.isCancelled && batchTask != nil
     }
 
@@ -259,6 +271,11 @@ final class MovieDownloadService: ObservableObject {
         }
         activeBatch = batch
         cancelCurrentNetworkWork()
+        // Also cancel any remote-synced job ids we know about.
+        let jobIds = Set(remoteJobIdsByURL.values)
+        for jobId in jobIds {
+            Task { try? await api?.cancelJob(jobId: jobId) }
+        }
         batchTask?.cancel()
         statusMessage = "Zatrzymano pobieranie."
     }
@@ -287,6 +304,10 @@ final class MovieDownloadService: ObservableObject {
 
         batch.items[index].state = .cancelled
         activeBatch = batch
+
+        if let jobId = remoteJobIdsByURL[id] ?? remoteJobIdsByURL[batch.items[index].url] {
+            Task { try? await api?.cancelJob(jobId: jobId) }
+        }
 
         if wasActive {
             cancelCurrentNetworkWork()
@@ -560,6 +581,103 @@ final class MovieDownloadService: ObservableObject {
         formatter.allowedUnits = [.useKB, .useMB, .useGB]
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
+    }
+
+    /// Merge GET /api/downloads/active movie jobs into the queue UI (cross-device + after relaunch).
+    func applyRemoteServerDownloads(_ remote: [ActiveServerDownload]) {
+        let movies = remote.filter { $0.isMovie && !$0.url.isEmpty }
+        remoteJobIdsByURL = Dictionary(uniqueKeysWithValues: movies.map { ($0.url, $0.jobId) })
+
+        // Local batch runner owns sequencing — only refresh progress for matching URLs.
+        if batchTask != nil, var batch = activeBatch, !batch.isRemoteSynced {
+            var changed = false
+            for item in movies {
+                guard let index = batch.items.firstIndex(where: { $0.url == item.url }) else { continue }
+                switch batch.items[index].state {
+                case .pullingPhone:
+                    continue // phone phase is local-only
+                case .done, .skipped, .cancelled:
+                    continue
+                default:
+                    break
+                }
+                if item.isFailed {
+                    batch.items[index].state = .failed(item.error ?? "Anulowano")
+                    changed = true
+                    continue
+                }
+                if item.isTerminal {
+                    // Keep downloading→done transition in runBatch (link + optional phone pull).
+                    applyProgress(itemIndex: index, phone: false, percent: 100)
+                    continue
+                }
+                applyProgress(itemIndex: index, phone: false, percent: item.progressPercent)
+                changed = true
+            }
+            if changed { activeBatch = batch }
+            return
+        }
+
+        // No local runner — reconstruct a server-only batch from the account queue.
+        let live = movies.filter { !$0.isTerminal }
+        let recentDone = movies.filter { $0.isTerminal && !$0.isFailed }
+        if live.isEmpty && recentDone.isEmpty {
+            if activeBatch?.isRemoteSynced == true {
+                if var batch = activeBatch {
+                    batch.isFinished = true
+                    activeBatch = batch
+                }
+            }
+            return
+        }
+
+        let all = live + recentDone
+        var items: [MovieDownloadQueueItem] = all.map { remote in
+            var item = MovieDownloadQueueItem(
+                url: remote.url,
+                title: remote.title,
+                thumbnail: remote.thumbnail,
+                source: nil,
+                state: .pending
+            )
+            if remote.isFailed {
+                item.state = .failed(remote.error ?? "Błąd")
+            } else if remote.isTerminal {
+                item.state = .done
+            } else {
+                item.state = .downloading(progress: remote.progressPercent)
+            }
+            return item
+        }
+
+        if let existing = activeBatch, existing.isRemoteSynced {
+            // Preserve cancelled local marks.
+            for index in items.indices {
+                if let prev = existing.items.first(where: { $0.url == items[index].url }),
+                   case .cancelled = prev.state {
+                    items[index].state = .cancelled
+                }
+            }
+        }
+
+        let batch = MovieDownloadBatch(
+            id: activeBatch?.isRemoteSynced == true ? (activeBatch?.id ?? UUID()) : UUID(),
+            label: "Pobieranie na serwerze EOS",
+            thumbnail: items.first?.thumbnail,
+            contextKey: "account-server-queue",
+            items: items,
+            format: .videoMP4,
+            quality: MediaQualityOption(id: "best", label: "Best"),
+            destination: .server,
+            isCancelled: false,
+            isFinished: live.isEmpty,
+            isRemoteSynced: true
+        )
+        activeBatch = batch
+        if let active = live.first {
+            noteProgress(active.progressPercent)
+        }
+        statusMessage = live.isEmpty ? "Gotowe na serwerze." : nil
     }
 }
 

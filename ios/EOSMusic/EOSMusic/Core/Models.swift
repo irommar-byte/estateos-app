@@ -159,6 +159,50 @@ struct JobStatusResponse: Codable {
     let progress: Double?
     let error: String?
     let ready: Bool?
+    let kind: String?
+    let intent: String?
+    let url: String?
+    let name: String?
+}
+
+struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
+    var id: String { jobId }
+    let jobId: String
+    let kind: String
+    let status: String
+    let progress: Double
+    let title: String
+    let url: String
+    let thumbnail: String?
+    let error: String?
+    let ready: Bool?
+    let folderId: String?
+    let assetId: String?
+    let queuedAt: Double?
+    let finishedAt: Double?
+
+    var isMusic: Bool { kind == "music" }
+    var isMovie: Bool { kind == "movie" }
+
+    var isTerminal: Bool {
+        let s = status.lowercased()
+        return s == "done" || s == "error" || s == "cancelled" || ready == true
+    }
+
+    var isFailed: Bool {
+        let s = status.lowercased()
+        return s == "error" || s == "cancelled"
+    }
+
+    var progressPercent: Double {
+        min(100, max(0, progress <= 1 && progress > 0 ? progress * 100 : progress))
+    }
+}
+
+struct ActiveServerDownloadsResponse: Codable {
+    let items: [ActiveServerDownload]
+    let music: [ActiveServerDownload]
+    let movies: [ActiveServerDownload]
 }
 
 struct DownloadStartResponse: Codable {

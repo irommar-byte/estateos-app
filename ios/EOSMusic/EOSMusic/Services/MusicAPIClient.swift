@@ -4,6 +4,8 @@ import Foundation
 final class MusicAPIClient {
     private var token: String?
 
+    var isAuthenticated: Bool { token != nil }
+
     func setToken(_ token: String?) {
         self.token = token
     }
@@ -171,11 +173,21 @@ final class MusicAPIClient {
 
     // MARK: - Playback
 
-    func startMusicPlay(url: String, folderId: String? = nil, trackUrl: String? = nil) async throws -> DownloadStartResponse {
-        var body: [String: Any] = ["url": url]
+    func startMusicPlay(
+        url: String,
+        folderId: String? = nil,
+        trackUrl: String? = nil,
+        intent: String = "play"
+    ) async throws -> DownloadStartResponse {
+        var body: [String: Any] = ["url": url, "intent": intent]
         if let folderId { body["folderId"] = folderId }
         if let trackUrl { body["trackUrl"] = trackUrl }
         return try await request("POST", path: "/api/music/play", body: body)
+    }
+
+    /// Shared account queue — server-side music + movie downloads in flight.
+    func fetchActiveServerDownloads() async throws -> ActiveServerDownloadsResponse {
+        try await request("GET", path: "/api/downloads/active")
     }
 
     /// Upload pliku otwartego z Plików / „Otwórz w EOS Music” na serwer EOS.
@@ -482,7 +494,7 @@ final class MusicAPIClient {
             req.timeoutInterval = 90
         } else if path.hasPrefix("/api/cda-hd/") || path.hasPrefix("/api/films/") || path.hasPrefix("/api/search") {
             req.timeoutInterval = 60
-        } else if path.hasPrefix("/api/download") || path.hasPrefix("/api/job/") {
+        } else if path.hasPrefix("/api/download") || path.hasPrefix("/api/job/") || path.hasPrefix("/api/downloads/") {
             req.timeoutInterval = 45
         } else if path.hasPrefix("/api/music/library") || path.hasPrefix("/api/music/assets") {
             req.timeoutInterval = 45
