@@ -448,6 +448,26 @@ final class MusicPlaybackEngine: ObservableObject {
         BluetoothMediaBrowser.shared.reloadQueue(from: self)
     }
 
+    /// Wyślij metadane kolejki do BMW zanim pierwszy utwór zacznie grać (NBT czyta listę przy starcie sesji).
+    func publishInitialCarMetadata() {
+        guard !queue.isEmpty else { return }
+        let queueIndex = playOrder[safe: orderCursor] ?? playOrder.first ?? 0
+        let track = queue[queueIndex]
+        nowPlaying.update(
+            track: track,
+            duration: max(0, track.duration ?? 0),
+            elapsed: 0,
+            isPlaying: false,
+            queueIndex: orderCursor,
+            queueCount: playOrder.count,
+            collectionTitle: queueSourceTitle,
+            collectionPersistentSeed: folderId ?? queueSourceTitle,
+            externalContentIdentifier: BluetoothMediaBrowser.queueContentIdentifier(orderIndex: orderCursor),
+            force: true
+        )
+        BluetoothMediaBrowser.shared.preparePlaybackSession(engine: self)
+    }
+
     func start() async {
         guard !queue.isEmpty else {
             errorMessage = "Pusta playlista."
@@ -1329,6 +1349,7 @@ final class MusicPlaybackEngine: ObservableObject {
             queueIndex: orderCursor,
             queueCount: playOrder.count,
             collectionTitle: queueSourceTitle,
+            collectionPersistentSeed: folderId ?? queueSourceTitle,
             externalContentIdentifier: BluetoothMediaBrowser.queueContentIdentifier(orderIndex: orderCursor),
             repeatMode: repeatMode,
             shuffleEnabled: shuffleEnabled,

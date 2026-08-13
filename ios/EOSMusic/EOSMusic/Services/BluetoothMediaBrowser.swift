@@ -54,14 +54,14 @@ final class BluetoothMediaBrowser: NSObject {
     private var libraryPlaylists: [LibraryPlaylistNode] = []
     private var snapshot: BrowseSnapshot?
     private var isActive = false
-    private var queueBrowseLayout: QueueBrowseLayout = .nestedPlaylist
+    private var queueBrowseLayout: QueueBrowseLayout = .flatQueue
     private var maxBrowseItems = 100
     private var contentLimitsEnforced = false
     private var enforcedContentItemsCount = Int.max
     private var enforcedContentTreeDepth = Int.max
     private let limitsLock = NSLock()
     nonisolated(unsafe) private var threadSafeLimits = (enforced: false, count: 100, depth: 2)
-    nonisolated(unsafe) private var threadSafeQueueLayout: QueueBrowseLayout = .nestedPlaylist
+    nonisolated(unsafe) private var threadSafeQueueLayout: QueueBrowseLayout = .flatQueue
     nonisolated(unsafe) private var threadSafeMaxItems = 100
 
     private let snapshotLock = NSLock()
@@ -86,6 +86,21 @@ final class BluetoothMediaBrowser: NSObject {
 
     static func activePlaylistContainerIdentifier() -> String {
         "eos-queue-root"
+    }
+
+    static func stablePersistentID(_ seed: String) -> NSNumber {
+        var hasher = Hasher()
+        hasher.combine(seed)
+        let raw = UInt64(bitPattern: Int64(hasher.finalize()))
+        return NSNumber(value: raw)
+    }
+
+    /// Opublikuj kolejkę zanim AVPlayer wystartuje — NBT czyta listę przy pierwszym połączeniu BT.
+    func preparePlaybackSession(engine: MusicPlaybackEngine) {
+        attach(engine: engine)
+        let manager = MPPlayableContentManager.shared()
+        manager.beginUpdates()
+        manager.endUpdates()
     }
 
     func activate() {
@@ -166,7 +181,7 @@ final class BluetoothMediaBrowser: NSObject {
                         : nbtTitle(subtitleParts.joined(separator: " · "), maxLength: 64),
                     isContainer: false,
                     isPlayable: true,
-                    isStreaming: true,
+                    isStreaming: false,
                     playbackProgress: progress,
                     orderIndex: row.orderIndex,
                     libraryFolderId: nil,
@@ -218,7 +233,7 @@ final class BluetoothMediaBrowser: NSObject {
                             : nbtTitle(subtitleParts.joined(separator: " · "), maxLength: 64),
                         isContainer: false,
                         isPlayable: true,
-                        isStreaming: true,
+                        isStreaming: false,
                         playbackProgress: nil,
                         orderIndex: nil,
                         libraryFolderId: node.folder.id,
@@ -276,11 +291,18 @@ final class BluetoothMediaBrowser: NSObject {
 
     private func updateNowPlayingIdentifiers(from snap: BrowseSnapshot?) {
         guard isActive else { return }
-        if let id = snap?.nowPlayingIdentifier {
-            MPPlayableContentManager.shared().nowPlayingIdentifiers = [id]
-        } else {
+        guard let snap else {
             MPPlayableContentManager.shared().nowPlayingIdentifiers = []
+            return
         }
+        var ids: [String] = []
+        if case .activeQueue(_, let container, _) = snap.root {
+            ids.append(container.identifier)
+        }
+        if let trackID = snap.nowPlayingIdentifier {
+            ids.append(trackID)
+        }
+        MPPlayableContentManager.shared().nowPlayingIdentifiers = ids
     }
 
     private func notifyContentChanged() {
@@ -519,8 +541,12 @@ extension BluetoothMediaBrowser: MPPlayableContentDelegate {
 
             if context.contentLimitsEnforced, context.enforcedContentTreeDepth <= 1 {
                 queueBrowseLayout = .flatQueue
-            } else {
+            } else if context.contentLimitsEnforced, context.enforcedContentTreeDepth >= 2 {
+                // Głębsze head unity — playlista jako folder, potem utwory.
                 queueBrowseLayout = .nestedPlaylist
+            } else {
+                // NBT / Apple Music style: płaska lista bieżącej playlisty u roota.
+                queueBrowseLayout = .flatQueue
             }
 
             if context.contentLimitsEnforced {

@@ -65,7 +65,7 @@ final class MusicPlaybackService: ObservableObject {
         )
         newEngine.offlineOnly = offlineOnly
         engine = newEngine
-        BluetoothMediaBrowser.shared.attach(engine: newEngine)
+        newEngine.publishInitialCarMetadata()
         await newEngine.start()
     }
 

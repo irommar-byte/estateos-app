@@ -87,6 +87,7 @@ final class NowPlayingCenter {
         queueIndex: Int,
         queueCount: Int,
         collectionTitle: String? = nil,
+        collectionPersistentSeed: String? = nil,
         externalContentIdentifier: String? = nil,
         repeatMode: RepeatMode = .off,
         shuffleEnabled: Bool = false,
@@ -147,9 +148,25 @@ final class NowPlayingCenter {
         if duration > 0 {
             info[MPMediaItemPropertyPlaybackDuration] = duration
         }
-        if queueCount > 0 {
+        info[MPMediaItemPropertyPersistentID] = BluetoothMediaBrowser.stablePersistentID(track.id)
+        if let collectionPersistentSeed, !collectionPersistentSeed.isEmpty {
+            info[MPMediaItemPropertyAlbumPersistentID] = BluetoothMediaBrowser.stablePersistentID(collectionPersistentSeed)
+        }
+        if queueCount > 1 {
             info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = queueIndex
             info[MPNowPlayingInfoPropertyPlaybackQueueCount] = queueCount
+            // NBT HUD / iDrive przewijają playlistę pokrętłem po tych polach (jak Apple Music).
+            info[MPMediaItemPropertyAlbumTrackNumber] = queueIndex + 1
+            info[MPMediaItemPropertyAlbumTrackCount] = queueCount
+            info[MPNowPlayingInfoPropertyChapterNumber] = queueIndex + 1
+            info[MPNowPlayingInfoPropertyChapterCount] = queueCount
+        } else {
+            info.removeValue(forKey: MPNowPlayingInfoPropertyPlaybackQueueIndex)
+            info.removeValue(forKey: MPNowPlayingInfoPropertyPlaybackQueueCount)
+            info.removeValue(forKey: MPMediaItemPropertyAlbumTrackNumber)
+            info.removeValue(forKey: MPMediaItemPropertyAlbumTrackCount)
+            info.removeValue(forKey: MPNowPlayingInfoPropertyChapterNumber)
+            info.removeValue(forKey: MPNowPlayingInfoPropertyChapterCount)
         }
         if let externalContentIdentifier, !externalContentIdentifier.isEmpty {
             info[MPNowPlayingInfoPropertyExternalContentIdentifier] = externalContentIdentifier
