@@ -63,6 +63,10 @@ final class AppModel: ObservableObject {
         onlineMovies.jobId(for: url) != nil
     }
 
+    func isMovieOnPhone(url: String) -> Bool {
+        onlineMovies.transferState(for: url) == .onPhone
+    }
+
     var downloadedLibraryTracks: [MusicTrack] {
         LibraryData.allLocalDownloads(from: musicTracks) { isOfflineAvailable($0) }
     }

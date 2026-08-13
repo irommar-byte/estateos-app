@@ -44,6 +44,68 @@ struct StorageSnapshot: Equatable {
     }
 }
 
+/// Podział zajętości: muzyka / filmy / reszta / wolne.
+struct StorageBreakdown: Equatable {
+    var musicBytes: Int64
+    var movieBytes: Int64
+    var otherUsedBytes: Int64
+    var freeBytes: Int64
+    var musicCount: Int
+    var movieCount: Int
+
+    var totalBytes: Int64 { musicBytes + movieBytes + otherUsedBytes + freeBytes }
+    var libraryBytes: Int64 { musicBytes + movieBytes }
+    var usedBytes: Int64 { musicBytes + movieBytes + otherUsedBytes }
+
+    /// Tylko biblioteka (muzyka+filmy) — gdy nie znamy pojemności dysku.
+    static func libraryOnly(musicBytes: Int64, movieBytes: Int64, musicCount: Int, movieCount: Int) -> StorageBreakdown {
+        StorageBreakdown(
+            musicBytes: max(0, musicBytes),
+            movieBytes: max(0, movieBytes),
+            otherUsedBytes: 0,
+            freeBytes: 0,
+            musicCount: musicCount,
+            movieCount: movieCount
+        )
+    }
+
+    static func disk(
+        musicBytes: Int64,
+        movieBytes: Int64,
+        musicCount: Int,
+        movieCount: Int,
+        diskTotal: Int64,
+        diskFree: Int64
+    ) -> StorageBreakdown {
+        let music = max(0, musicBytes)
+        let movies = max(0, movieBytes)
+        let free = max(0, diskFree)
+        let total = max(diskTotal, music + movies + free)
+        let other = max(0, total - free - music - movies)
+        return StorageBreakdown(
+            musicBytes: music,
+            movieBytes: movies,
+            otherUsedBytes: other,
+            freeBytes: free,
+            musicCount: musicCount,
+            movieCount: movieCount
+        )
+    }
+
+    var subtitleLine: String {
+        var parts: [String] = []
+        if musicCount > 0 || musicBytes > 0 {
+            parts.append("\(musicCount) utw.")
+        }
+        if movieCount > 0 || movieBytes > 0 {
+            parts.append("\(movieCount) filmów")
+        }
+        if parts.isEmpty { return "Brak pobranych pozycji" }
+        let size = ByteCountFormatter.string(fromByteCount: libraryBytes, countStyle: .file)
+        return parts.joined(separator: " · ") + " · \(size)"
+    }
+}
+
 enum StorageCapacityReader {
     static func deviceVolume(for url: URL = AppDocuments.root) -> StorageSnapshot? {
         guard let values = try? url.resourceValues(forKeys: [
@@ -65,7 +127,6 @@ enum StorageCapacityReader {
         diskFreeBytes: Int?
     ) -> StorageSnapshot? {
         guard let total = diskTotalBytes, total > 0 else {
-            // Brak danych z API — nie pokazuj wymyślonego limitu.
             return nil
         }
         let free = max(0, diskFreeBytes ?? (total - libraryBytes))
@@ -73,7 +134,6 @@ enum StorageCapacityReader {
         return StorageSnapshot(usedBytes: Int64(used), totalBytes: Int64(total))
     }
 
-    /// Pasek biblioteki serwerowej gdy znamy tylko rozmiar biblioteki (bez dysku VPS).
     static func serverLibraryOnly(libraryBytes: Int) -> StorageSnapshot? {
         guard libraryBytes > 0 else { return nil }
         return StorageSnapshot(usedBytes: Int64(libraryBytes), totalBytes: Int64(libraryBytes))
@@ -81,48 +141,156 @@ enum StorageCapacityReader {
 }
 
 struct StorageCapacityBar: View {
-    let snapshot: StorageSnapshot
+    var snapshot: StorageSnapshot? = nil
+    var breakdown: StorageBreakdown? = nil
     var showsLegend = false
-    /// Gdy true, pasek pokazuje tylko zajętą bibliotekę (bez % wolnego dysku).
     var libraryOnly = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            PremiumGroovedMeter(fraction: snapshot.usedFraction, tint: snapshot.levelColor)
-
-            HStack {
-                if libraryOnly {
-                    Text("\(ByteCountFormatter.string(fromByteCount: snapshot.usedBytes, countStyle: .file)) na serwerze")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text(snapshot.freeLabel)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(snapshot.levelColor)
-                    Spacer()
-                    Text("\(ByteCountFormatter.string(fromByteCount: snapshot.usedBytes, countStyle: .file)) zajęte")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            if let breakdown {
+                let libOnly = libraryOnly || (breakdown.freeBytes == 0 && breakdown.otherUsedBytes == 0)
+                SegmentedStorageMeter(breakdown: breakdown, libraryOnly: libOnly)
+                breakdownLabels(breakdown, libraryOnlyMode: libOnly)
+            } else if let snapshot {
+                PremiumGroovedMeter(fraction: snapshot.usedFraction, tint: snapshot.levelColor)
+                snapshotLabels(snapshot)
             }
 
             if showsLegend {
-                Text("Zielony = sporo wolnego · żółty = mało · czerwony = krytycznie mało")
+                Text("Różowy = muzyka · niebieski = filmy · szary = reszta dysku")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(libraryOnly ? "Rozmiar biblioteki serwerowej" : "Pozostałe miejsce")
-        .accessibilityValue(
-            libraryOnly
-                ? ByteCountFormatter.string(fromByteCount: snapshot.usedBytes, countStyle: .file)
-                : snapshot.freeLabel
-        )
+    }
+
+    @ViewBuilder
+    private func breakdownLabels(_ breakdown: StorageBreakdown, libraryOnlyMode: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                legendDot(StorageSegmentColor.music, "Muzyka \(ByteCountFormatter.string(fromByteCount: breakdown.musicBytes, countStyle: .file))")
+                legendDot(StorageSegmentColor.movies, "Filmy \(ByteCountFormatter.string(fromByteCount: breakdown.movieBytes, countStyle: .file))")
+            }
+            HStack {
+                if libraryOnlyMode {
+                    Text("\(ByteCountFormatter.string(fromByteCount: breakdown.libraryBytes, countStyle: .file)) łącznie")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("\(ByteCountFormatter.string(fromByteCount: breakdown.freeBytes, countStyle: .file)) wolne")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color(red: 0.20, green: 0.78, blue: 0.35))
+                    Spacer()
+                    Text("\(ByteCountFormatter.string(fromByteCount: breakdown.usedBytes, countStyle: .file)) zajęte")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func legendDot(_ color: Color, _ text: String) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(text)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    @ViewBuilder
+    private func snapshotLabels(_ snapshot: StorageSnapshot) -> some View {
+        HStack {
+            if libraryOnly {
+                Text("\(ByteCountFormatter.string(fromByteCount: snapshot.usedBytes, countStyle: .file)) na serwerze")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(snapshot.freeLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(snapshot.levelColor)
+                Spacer()
+                Text("\(ByteCountFormatter.string(fromByteCount: snapshot.usedBytes, countStyle: .file)) zajęte")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
-/// Premium recessed meter — grooved track + glossy fill (Apple hardware style).
+enum StorageSegmentColor {
+    static let music = Color(red: 1.0, green: 0.22, blue: 0.37)
+    static let movies = Color(red: 0.20, green: 0.55, blue: 0.98)
+    static let other = Color(white: 0.55)
+}
+
+struct SegmentedStorageMeter: View {
+    let breakdown: StorageBreakdown
+    var libraryOnly = false
+    var height: CGFloat = 10
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let total: Double = {
+                if libraryOnly {
+                    return max(1, Double(max(breakdown.libraryBytes, 1)))
+                }
+                return max(1, Double(max(breakdown.totalBytes, 1)))
+            }()
+            let musicW = width * Double(breakdown.musicBytes) / total
+            let movieW = width * Double(breakdown.movieBytes) / total
+            let otherW = libraryOnly ? 0 : width * Double(breakdown.otherUsedBytes) / total
+
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.black.opacity(0.22),
+                                Color(uiColor: .tertiarySystemFill),
+                                Color.white.opacity(0.08)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .stroke(Color.black.opacity(0.18), lineWidth: 0.8)
+                    }
+
+                HStack(spacing: 0) {
+                    segment(width: musicW, color: StorageSegmentColor.music)
+                    segment(width: movieW, color: StorageSegmentColor.movies)
+                    if !libraryOnly {
+                        segment(width: otherW, color: StorageSegmentColor.other.opacity(0.55))
+                    }
+                    Spacer(minLength: 0)
+                }
+                .clipShape(Capsule(style: .continuous))
+            }
+        }
+        .frame(height: height)
+    }
+
+    private func segment(width: CGFloat, color: Color) -> some View {
+        Capsule(style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [color.opacity(0.7), color, color.opacity(0.9)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .frame(width: max(0, width))
+            .shadow(color: color.opacity(0.25), radius: 2, y: 1)
+    }
+}
+
 struct PremiumGroovedMeter: View {
     let fraction: Double
     var tint: Color = Color(red: 0.20, green: 0.78, blue: 0.35)
@@ -184,7 +352,6 @@ struct PremiumGroovedMeter: View {
     }
 }
 
-/// Vertical VU / EQ channel with grooved housing.
 struct PremiumGroovedChannel: View {
     let level: Double
     let peak: Double

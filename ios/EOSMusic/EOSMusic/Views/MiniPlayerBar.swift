@@ -103,10 +103,21 @@ struct VideoMiniPlayerBar: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(EOSTheme.textPrimary)
                                 .lineLimit(1)
-                            Text(video.engine.folderName)
-                                .font(.caption)
-                                .foregroundStyle(EOSTheme.textSecondary)
-                                .lineLimit(1)
+                            HStack(spacing: 6) {
+                                Text(video.engine.folderName)
+                                    .lineLimit(1)
+                                if video.pipController.isActive {
+                                    Label("PiP", systemImage: "pip.fill")
+                                        .font(.caption2.weight(.bold))
+                                        .foregroundStyle(EOSTheme.accent)
+                                } else if video.pipController.isExternalPlaybackActive {
+                                    Label("AirPlay", systemImage: "airplayvideo")
+                                        .font(.caption2.weight(.bold))
+                                        .foregroundStyle(EOSTheme.accent)
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(EOSTheme.textSecondary)
                         }
                         Spacer(minLength: 0)
                     }
@@ -114,8 +125,12 @@ struct VideoMiniPlayerBar: View {
                 .buttonStyle(EOSPressableStyle())
 
                 Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    video.engine.togglePlayPause()
+                    if video.pipController.isActive || video.pipController.isExternalPlaybackActive {
+                        video.pipController.toggleExternalPlayPause()
+                    } else {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        video.engine.togglePlayPause()
+                    }
                 } label: {
                     Image(systemName: video.engine.isPlaying ? "pause.fill" : "play.fill")
                         .font(.title3)

@@ -93,7 +93,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>34</string>
+	<string>40</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
@@ -130,6 +130,8 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>UIBrowsableContentSupportsSectionedBrowsing</key>
+	<true/>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UILaunchScreen</key>

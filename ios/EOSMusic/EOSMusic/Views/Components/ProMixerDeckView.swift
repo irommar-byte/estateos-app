@@ -138,6 +138,7 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
                 isPlaying: live,
                 preset: preset,
                 policy: policy,
+                visualizer: visualizer,
                 canvasSize: canvasSize
             )
         } else {
@@ -153,7 +154,7 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
     }
 }
 
-/// Kompaktowa konsola — iPhone. Wszystko w jednym ekranie, bez scrolla i overlapów.
+/// Kompaktowa konsola — iPhone / iPad portrait. Wypełnia dostępną wysokość.
 struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
     let visualizer: PlayerAudioVisualizer
     let isPlaying: Bool
@@ -178,6 +179,13 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
     @ViewBuilder var storage: () -> Storage
 
     private var live: Bool { isPlaying && !isLoading }
+
+    private var eqHeight: CGFloat {
+        if expandSpectrum {
+            return max(140, spectrumHeight)
+        }
+        return max(96, min(spectrumHeight, 136))
+    }
 
     var body: some View {
         VStack(spacing: compactMixer ? 6 : 8) {
@@ -205,17 +213,17 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
 
                     if preset.showsMixer {
                         GeometryReader { rowGeo in
-                            let vuW = min(28, max(14, rowGeo.size.width * 0.068))
+                            let vuW = min(expandSpectrum ? 34 : 28, max(14, rowGeo.size.width * 0.068))
                             HStack(alignment: .bottom, spacing: rowGeo.size.width < 360 ? 4 : 6) {
                                 ProMixerVerticalVU(
                                     visualizer: visualizer,
                                     isPlaying: live,
                                     channel: .left,
                                     width: vuW,
-                                    compact: true,
+                                    compact: !expandSpectrum,
                                     drive: drive
                                 )
-                                .frame(width: vuW, height: max(120, spectrumHeight))
+                                .frame(width: vuW, height: eqHeight)
 
                                 WinampSpectrumHost(
                                     visualizer: visualizer,
@@ -225,20 +233,20 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                                     compact: compactMixer || rowGeo.size.width < 380
                                 )
                                 .frame(maxWidth: .infinity)
-                                .frame(height: max(120, spectrumHeight))
+                                .frame(height: eqHeight)
 
                                 ProMixerVerticalVU(
                                     visualizer: visualizer,
                                     isPlaying: live,
                                     channel: .right,
                                     width: vuW,
-                                    compact: true,
+                                    compact: !expandSpectrum,
                                     drive: drive
                                 )
-                                .frame(width: vuW, height: max(120, spectrumHeight))
+                                .frame(width: vuW, height: eqHeight)
                             }
                         }
-                        .frame(height: max(128, spectrumHeight + 8))
+                        .frame(height: eqHeight + 8)
                         .padding(8)
                         .background {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -250,15 +258,22 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                         }
 
                         ProMixerStereoBridge(visualizer: visualizer, isPlaying: live)
+                    } else if expandSpectrum {
+                        // Cover / vinyl — zabierz wolną przestrzeń pod hero, żeby nie było pustki.
+                        Spacer(minLength: 0)
                     }
                 }
                 .padding(compactMixer ? 10 : 12)
+                .frame(maxWidth: .infinity)
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            storage()
 
             ProMixerControlStrip(compact: true)
         }
         .padding(4)
+        .frame(maxWidth: .infinity)
         .background { ProMixerStageBackground() }
     }
 
@@ -271,6 +286,7 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                 isPlaying: live,
                 preset: preset,
                 policy: policy,
+                visualizer: visualizer,
                 canvasSize: canvasSize
             )
         } else {
@@ -292,6 +308,7 @@ private struct PlayerHeroArtworkBridge: View {
     let isPlaying: Bool
     let preset: PlayerVisualPreset
     let policy: PlayerVisualPolicy
+    let visualizer: PlayerAudioVisualizer
     var canvasSize: CGFloat
 
     var body: some View {
@@ -312,6 +329,15 @@ private struct PlayerHeroArtworkBridge: View {
                     isPlaying: isPlaying,
                     size: canvasSize
                 )
+            } else if preset == .cover {
+                MixerBeatPulseCover(
+                    artworkURL: artworkURL,
+                    fallbackImage: fallbackImage,
+                    isPlaying: isPlaying,
+                    visualizer: visualizer,
+                    policy: policy,
+                    canvasSize: canvasSize
+                )
             } else {
                 MixerBreathingCover(
                     artworkURL: artworkURL,
@@ -322,6 +348,68 @@ private struct PlayerHeroArtworkBridge: View {
             }
         }
         .frame(width: canvasSize, height: canvasSize)
+    }
+}
+
+/// Okładka w rytm BT / beat — skalowanie i glow z analizatora.
+private struct MixerBeatPulseCover: View {
+    let artworkURL: URL?
+    var fallbackImage: UIImage?
+    let isPlaying: Bool
+    let visualizer: PlayerAudioVisualizer
+    let policy: PlayerVisualPolicy
+    let canvasSize: CGFloat
+
+    var body: some View {
+        let fps = max(10, min(24, policy.timelineFPS))
+        TimelineView(.animation(minimumInterval: 1.0 / fps, paused: !isPlaying)) { _ in
+            let audio = visualizer.snapshot(isPlaying: isPlaying)
+            let intensity = max(0.55, policy.intensityScale)
+            let drive = audio.visualDrive(isStrong: true, intensity: intensity)
+            let beat = min(1, (audio.beat * 1.55 + drive * 0.28) * intensity)
+            let pulse = isPlaying
+                ? 1 + CGFloat(beat) * 0.065 + CGFloat(drive) * 0.02
+                : 1
+            let glow = isPlaying ? (0.18 + drive * 0.28 + beat * 0.32) : 0.1
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                EOSTheme.accent.opacity(0.55 * glow),
+                                EOSTheme.accentSecondary.opacity(0.28 * glow),
+                                .clear
+                            ],
+                            center: .center,
+                            startRadius: canvasSize * 0.08,
+                            endRadius: canvasSize * 0.72
+                        )
+                    )
+                    .frame(width: canvasSize * 1.16, height: canvasSize * 1.16)
+                    .blur(radius: 18)
+                    .scaleEffect(pulse)
+
+                ArtworkImage(
+                    url: artworkURL,
+                    size: canvasSize * 0.86,
+                    cornerRadius: 16,
+                    allowAnimated: true,
+                    fallbackImage: fallbackImage
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.18 + beat * 0.12), lineWidth: 1)
+                }
+                .shadow(
+                    color: EOSTheme.accent.opacity(glow),
+                    radius: 14 + CGFloat(beat) * 16,
+                    y: 8
+                )
+                .scaleEffect(pulse)
+            }
+            .animation(.easeOut(duration: 0.07), value: beat)
+        }
     }
 }
 

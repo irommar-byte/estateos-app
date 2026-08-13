@@ -35,18 +35,19 @@ struct OnlineMovieDetailView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     actionButtons
 
-                    if downloads.activeBatch != nil {
-                        MovieDownloadQueueBanner(service: downloads)
-                    }
-
                     if transfer.isBusy {
-                        ProgressView(value: transfer.progressPercent, total: 100) {
-                            Text(transferLabel)
-                                .font(EOSTypography.caption)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                OnlineMovieTransferBadge(state: transfer)
+                                Text(transferLabel)
+                                    .font(EOSTypography.caption.weight(.semibold))
+                                Spacer(minLength: 0)
+                                Button("Anuluj") { movies.cancelTransfer(url: selection.url) }
+                                    .font(EOSTypography.caption.weight(.semibold))
+                            }
+                            ProgressView(value: transfer.progressPercent, total: 100)
+                                .tint(EOSTheme.accent)
                         }
-                        .tint(EOSTheme.accent)
-                        Button("Anuluj") { movies.cancelTransfer(url: selection.url) }
-                            .font(EOSTypography.caption.weight(.semibold))
                     }
 
                     if case .failed(let message) = transfer {
@@ -237,22 +238,22 @@ struct OnlineMovieDetailView: View {
     @ViewBuilder
     private var castBlock: some View {
         if let cast = meta?.cast, !cast.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Obsada").font(EOSTypography.headline)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], alignment: .leading, spacing: 8) {
-                    ForEach(cast.prefix(16)) { member in
-                        Button {
-                            actorSelection = OnlineMoviesActorSelection(name: member.name)
-                        } label: {
-                            Text(member.name)
-                                .font(EOSTypography.callout.weight(.medium))
-                                .foregroundStyle(EOSTheme.accent)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(EOSTheme.accent.opacity(0.12), in: Capsule())
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Obsada")
+                    .font(.system(.title3, design: .rounded, weight: .bold))
+                    .tracking(0.3)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(cast.prefix(20)) { member in
+                            Button {
+                                actorSelection = OnlineMoviesActorSelection(name: member.name)
+                            } label: {
+                                OnlineMovieActorChip(name: member.name)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .padding(.vertical, 2)
                 }
             }
         }

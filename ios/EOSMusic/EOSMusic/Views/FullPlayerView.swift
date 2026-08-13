@@ -159,35 +159,44 @@ private struct PlayerContent: View {
         VStack(spacing: 0) {
             playerChrome(track: track, layout: layout)
 
-            VStack(spacing: 0) {
-                Spacer(minLength: layout.topGap)
-                ProMixerNarrowConsole(
-                    visualizer: engine.visualizer,
-                    isPlaying: engine.isPlaying,
-                    isLoading: engine.isLoading,
-                    intensity: mixerIntensity,
-                    drive: ui.playerDrive,
-                    bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
-                    compactMixer: layout.compactMixer,
-                    queueLabel: engine.queuePositionLabel,
-                    onQueueTap: { showQueueSheet = true },
-                    onServer: app.isOnServer(track.url) || track.isOnServer,
-                    effectsActive: effectsActive,
-                    preset: preset,
-                    policy: policy,
-                    artworkURL: track.artworkURL,
-                    fallbackArtwork: engine.displayArtwork,
-                    canvasSize: layout.discSize,
-                    spectrumHeight: layout.spectrumBlockHeight,
-                    expandSpectrum: layout.isPad
-                ) {
-                    trackMeta(track: track, layout: layout, includeStorage: false)
-                } status: {
-                    playerStatusSection(layout: layout)
-                } storage: {
-                    EmptyView()
+            GeometryReader { geo in
+                let fillH = max(220, geo.size.height)
+                let hero = layout.heroCanvasSize(availableHeight: fillH)
+                let eqH = layout.spectrumFillHeight(availableHeight: fillH)
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: layout.topGap)
+                        ProMixerNarrowConsole(
+                            visualizer: engine.visualizer,
+                            isPlaying: engine.isPlaying,
+                            isLoading: engine.isLoading,
+                            intensity: mixerIntensity,
+                            drive: ui.playerDrive,
+                            bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
+                            compactMixer: layout.compactMixer,
+                            queueLabel: engine.queuePositionLabel,
+                            onQueueTap: { showQueueSheet = true },
+                            onServer: app.isOnServer(track.url) || track.isOnServer,
+                            effectsActive: effectsActive,
+                            preset: preset,
+                            policy: policy,
+                            artworkURL: track.artworkURL,
+                            fallbackArtwork: engine.displayArtwork,
+                            canvasSize: hero,
+                            spectrumHeight: eqH,
+                            expandSpectrum: layout.isPad || fillH > 640
+                        ) {
+                            trackMeta(track: track, layout: layout, includeStorage: false)
+                        } status: {
+                            playerStatusSection(layout: layout)
+                        } storage: {
+                            EmptyView()
+                        }
+                        Spacer(minLength: layout.bottomGap)
+                    }
+                    .frame(minHeight: fillH)
                 }
-                Spacer(minLength: layout.bottomGap)
             }
             .frame(maxHeight: .infinity)
 
@@ -203,34 +212,41 @@ private struct PlayerContent: View {
         VStack(spacing: 0) {
             playerChrome(track: track, layout: layout)
 
-            VStack(spacing: 0) {
-                Spacer(minLength: layout.topGap)
-                ProMixerWideConsole(
-                    visualizer: engine.visualizer,
-                    isPlaying: engine.isPlaying,
-                    isLoading: engine.isLoading,
-                    intensity: mixerIntensity,
-                    drive: ui.playerDrive,
-                    bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
-                    compactMixer: layout.compactMixer,
-                    queueLabel: engine.queuePositionLabel,
-                    onQueueTap: { showQueueSheet = true },
-                    onServer: app.isOnServer(track.url) || track.isOnServer,
-                    effectsActive: effectsActive,
-                    preset: preset,
-                    policy: policy,
-                    artworkURL: track.artworkURL,
-                    fallbackArtwork: engine.displayArtwork,
-                    canvasSize: layout.discSize,
-                    spectrumHeight: layout.spectrumBlockHeight
-                ) {
-                    trackMeta(track: track, layout: layout, includeStorage: false)
-                } status: {
-                    playerStatusSection(layout: layout)
-                } storage: {
-                    EmptyView()
+            GeometryReader { geo in
+                let fillH = max(240, geo.size.height)
+                let hero = layout.heroCanvasSize(availableHeight: fillH)
+                let eqH = layout.spectrumFillHeight(availableHeight: fillH)
+
+                VStack(spacing: 0) {
+                    Spacer(minLength: layout.topGap)
+                    ProMixerWideConsole(
+                        visualizer: engine.visualizer,
+                        isPlaying: engine.isPlaying,
+                        isLoading: engine.isLoading,
+                        intensity: mixerIntensity,
+                        drive: ui.playerDrive,
+                        bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
+                        compactMixer: layout.compactMixer,
+                        queueLabel: engine.queuePositionLabel,
+                        onQueueTap: { showQueueSheet = true },
+                        onServer: app.isOnServer(track.url) || track.isOnServer,
+                        effectsActive: effectsActive,
+                        preset: preset,
+                        policy: policy,
+                        artworkURL: track.artworkURL,
+                        fallbackArtwork: engine.displayArtwork,
+                        canvasSize: hero,
+                        spectrumHeight: eqH
+                    ) {
+                        trackMeta(track: track, layout: layout, includeStorage: false)
+                    } status: {
+                        playerStatusSection(layout: layout)
+                    } storage: {
+                        EmptyView()
+                    }
+                    Spacer(minLength: layout.bottomGap)
                 }
-                Spacer(minLength: layout.bottomGap)
+                .frame(height: fillH)
             }
             .frame(maxHeight: .infinity)
 
@@ -250,6 +266,7 @@ private struct PlayerContent: View {
             isPlaying: engine.isPlaying && !engine.isLoading,
             preset: preset,
             policy: policy,
+            visualizer: engine.visualizer,
             canvasSize: layout.discSize
         )
 
@@ -550,49 +567,82 @@ private struct PlayerLayout {
     var compactMixer: Bool { tight || height < 820 }
 
     var discSize: CGFloat {
-        // Spectrum: mała okładka w headerze — nigdy nie rozjeżdża EQ.
+        // Spectrum: kompaktowa okładka w headerze — EQ zajmuje resztę.
         if preset.showsMixer {
-            if wide { return min(128, max(88, height * 0.18)) }
-            if tight { return 64 }
+            if wide { return min(148, max(96, height * 0.16)) }
+            if tight { return isPad ? 96 : 64 }
+            if isPad { return min(140, max(100, height * 0.12)) }
             if height < 620 { return 72 }
             if height < 700 { return 80 }
             if height < 780 { return 92 }
-            return isPad ? 118 : 100
+            return 100
         }
-        // Winyl / Okładka / Strobe — większy hero, ale nadal w ramce ekranu.
-        if wide { return min(260, height * 0.36) }
-        if height < 620 { return 148 }
-        if height < 700 { return 176 }
-        if height < 780 { return 210 }
-        return isPad ? 250 : 228
+        // Winyl / Okładka / Strobe — duży hero wypełniający środek ekranu.
+        if wide { return min(360, height * 0.48) }
+        if isPad {
+            return min(width * 0.62, height * 0.42, 480)
+        }
+        if height < 620 { return 168 }
+        if height < 700 { return 200 }
+        if height < 780 { return 236 }
+        return min(width * 0.78, 280)
+    }
+
+    /// Rozmiar hero względem realnej wolnej wysokości (między chrome a transportem).
+    func heroCanvasSize(availableHeight: CGFloat) -> CGFloat {
+        if preset.showsMixer {
+            if isPad { return min(150, max(discSize, availableHeight * 0.14)) }
+            return discSize
+        }
+        // Cover / vinyl — zajmij większość wolnej przestrzeni.
+        let target = availableHeight * (isPad ? 0.62 : 0.55)
+        let capped = min(width * (isPad ? 0.72 : 0.86), target, isPad ? 520 : 340)
+        return max(discSize, capped)
+    }
+
+    func spectrumFillHeight(availableHeight: CGFloat) -> CGFloat {
+        guard preset.showsMixer else { return spectrumBlockHeight }
+        if isPad || availableHeight > 640 {
+            // Na dużym ekranie EQ wypełnia środek zamiast zostawiać pustkę.
+            let reserved: CGFloat = (isPad ? 210 : 180) // artwork + meta + control strip
+            return max(spectrumBlockHeight, availableHeight - reserved)
+        }
+        return spectrumBlockHeight
     }
 
     var spectrumHeight: CGFloat {
         if wide {
             if height < 560 { return 120 }
-            if height < 700 { return 150 }
-            return isPad ? min(240, height * 0.22) : 176
+            if height < 700 { return 160 }
+            return isPad ? min(280, height * 0.26) : 176
         }
         if isPad {
-            return min(280, max(160, height * 0.24))
+            return min(360, max(200, height * 0.32))
         }
-        // Min ~150 pt — poniżej WinampSpectrumUIView nie ma miejsca na paski EQ (eqRect → 0).
-        if width < 340 { return 150 }
-        if height < 620 { return 152 }
-        if height < 700 { return 168 }
-        if height < 780 { return 184 }
-        return 200
+        if width < 340 { return 128 }
+        if height < 620 { return 128 }
+        if height < 700 { return 132 }
+        if height < 780 { return 136 }
+        return 140
     }
 
-    /// Wysokość bloku EQ — na iPadzie i dużych ekranach wypełnia więcej sceny.
+    /// Wysokość bloku EQ — na iPhone ograniczona, żeby nie ucinać transportu.
     var spectrumBlockHeight: CGFloat {
+        let ideal: CGFloat
         if isPad {
-            return min(320, max(170, height * 0.28))
+            ideal = min(380, max(200, height * 0.34))
+        } else if wide {
+            ideal = spectrumHeight
+        } else {
+            ideal = spectrumHeight
         }
-        if wide {
-            return spectrumHeight
-        }
-        return spectrumHeight
+
+        guard preset.showsMixer, !isPad else { return ideal }
+
+        // chrome ~52 + transport ~210 + meta/status ~90 + okładka + pasek efektów ~72
+        let reserved = 52 + 210 + 90 + discSize + 72
+        let maxEQ = max(108, height - reserved)
+        return min(ideal, maxEQ)
     }
 
     var sideVUWidth: CGFloat {
@@ -705,6 +755,7 @@ private struct PlayerHeroArtwork: View {
     let isPlaying: Bool
     let preset: PlayerVisualPreset
     let policy: PlayerVisualPolicy
+    var visualizer: PlayerAudioVisualizer? = nil
     var canvasSize: CGFloat = 286
 
     var body: some View {
@@ -721,6 +772,15 @@ private struct PlayerHeroArtwork: View {
                     .shadow(color: EOSTheme.accent.opacity(0.14), radius: 16, y: 8)
             } else if preset == .vinyl {
                 VinylHero(artworkURL: artworkURL, fallbackImage: fallbackImage, isPlaying: isPlaying, canvasSize: canvasSize)
+            } else if preset == .cover, let visualizer {
+                CoverBeatHero(
+                    artworkURL: artworkURL,
+                    fallbackImage: fallbackImage,
+                    isPlaying: isPlaying,
+                    visualizer: visualizer,
+                    policy: policy,
+                    canvasSize: canvasSize
+                )
             } else if preset == .cover {
                 CoverHero(artworkURL: artworkURL, fallbackImage: fallbackImage, isPlaying: isPlaying, canvasSize: canvasSize, lively: true)
             } else {
@@ -729,6 +789,33 @@ private struct PlayerHeroArtwork: View {
             }
         }
         .frame(width: canvasSize, height: canvasSize)
+    }
+}
+
+private struct CoverBeatHero: View {
+    let artworkURL: URL?
+    var fallbackImage: UIImage? = nil
+    let isPlaying: Bool
+    let visualizer: PlayerAudioVisualizer
+    let policy: PlayerVisualPolicy
+    var canvasSize: CGFloat = 286
+
+    var body: some View {
+        let fps = max(10, min(24, policy.timelineFPS))
+        TimelineView(.animation(minimumInterval: 1.0 / fps, paused: !isPlaying)) { _ in
+            let audio = visualizer.snapshot(isPlaying: isPlaying)
+            let intensity = max(0.55, policy.intensityScale)
+            let drive = audio.visualDrive(isStrong: true, intensity: intensity)
+            let beat = min(1, (audio.beat * 1.55 + drive * 0.28) * intensity)
+            PulsingCoverArtwork(
+                artworkURL: artworkURL,
+                isPlaying: isPlaying,
+                drive: drive,
+                beat: beat,
+                canvasSize: canvasSize,
+                lively: true
+            )
+        }
     }
 }
 

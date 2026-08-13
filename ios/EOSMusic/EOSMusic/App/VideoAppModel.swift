@@ -47,9 +47,8 @@ final class VideoAppModel: ObservableObject {
         pipController.onRestore = { [weak self] in
             self?.expandPlayer()
         }
-        pipController.onFallbackMinimize = { [weak self] in
-            self?.minimizePlayer()
-        }
+        // Nie chowaj playera gdy PiP się nie uruchomi — użytkownik zostaje na pełnym ekranie z komunikatem.
+        pipController.onFallbackMinimize = nil
     }
 
     var folders: [ConnectedVideoFolder] { sources.folders }
@@ -131,11 +130,11 @@ final class VideoAppModel: ObservableObject {
     }
 
     func stopAndClosePlayer() {
-        pipController.stopAndDiscard()
+        pipController.stopAndDiscard(engine: engine)
         engine.stop()
         isPlayerPresented = false
         OrientationLock.shared.lockPortrait()
-        // VLC may have rewritten AVAudioSession — reclaim music-ready category.
+        AudioSession.deactivateLeavingForOtherApp()
         AudioSession.activateForPlayback()
     }
 

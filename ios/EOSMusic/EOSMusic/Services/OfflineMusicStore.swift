@@ -38,6 +38,12 @@ final class OfflineMusicStore: ObservableObject {
 
     var downloadedFileCount: Int { entries.count }
 
+    var totalDownloadedBytes: Int64 {
+        entries.keys.reduce(Int64(0)) { sum, url in
+            sum + (fileSize(for: url) ?? 0)
+        }
+    }
+
     func isAvailable(_ trackUrl: String) -> Bool {
         localURL(for: trackUrl) != nil
     }

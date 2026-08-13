@@ -139,6 +139,8 @@ struct MovieDownload: Codable, Identifiable, Hashable {
     let downloadJobId: String?
     let filename: String?
     let downloadedAt: Double?
+    /// Rozmiar pliku na serwerze (bajty) — z `/api/movies/downloads`.
+    let bytes: Int?
 
     var isDownloaded: Bool {
         guard let downloadJobId, !downloadJobId.isEmpty else { return false }
@@ -174,6 +176,14 @@ struct MovieDownload: Codable, Identifiable, Hashable {
 struct MovieDownloadsResponse: Codable {
     let folder: String?
     let downloads: [MovieDownload]
+    let count: Int?
+    let totalBytes: Int?
+
+    var resolvedCount: Int { count ?? downloads.count }
+    var resolvedTotalBytes: Int {
+        if let totalBytes { return totalBytes }
+        return downloads.reduce(0) { $0 + ($1.bytes ?? 0) }
+    }
 }
 
 struct MoviePlayTokenResponse: Codable {

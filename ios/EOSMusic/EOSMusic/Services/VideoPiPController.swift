@@ -27,6 +27,8 @@ final class VideoPiPController: NSObject, ObservableObject {
     private weak var engine: VideoPlaybackEngine?
     private var sourceWasPlaying = false
     private var isTransferringBack = false
+    /// Pełne zamknięcie playera — nie wznawiaj VLC po `stopPictureInPicture`.
+    private var isDiscardingPlayback = false
     private var startTask: Task<Void, Never>?
     private var externalTask: Task<Void, Never>?
     private var routeObserver: NSObjectProtocol?
@@ -165,6 +167,19 @@ final class VideoPiPController: NSObject, ObservableObject {
             pip.canStartPictureInPictureAutomaticallyFromInline = false
             controller = pip
         }
+    }
+
+    /// Nagłówki HTTP dla streamów EOS (token w URL + sesja Bearer dla /api/file/).
+    private static func authenticatedRequest(for url: URL) -> URLRequest? {
+        var request = URLRequest(url: url)
+        request.setValue(AppConfig.userAgent, forHTTPHeaderField: "User-Agent")
+        let path = url.path.lowercased()
+        if path.contains("/api/file/") || path.contains("/api/movies/stream/") {
+            if let token = SessionStore.load()?.token {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+        }
+        return request
     }
 
     // MARK: - AirPlay video (AVPlayer external playback)
@@ -308,7 +323,12 @@ final class VideoPiPController: NSObject, ObservableObject {
     private func loadAVPlayerItem(from engine: VideoPlaybackEngine, autoplay: Bool) async -> Bool {
         guard let url = engine.currentPlayableURL else { return false }
 
-        let asset = AVURLAsset(url: url)
+        let asset: AVURLAsset
+        if let request = Self.authenticatedRequest(for: url) {
+            asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": request.allHTTPHeaderFields ?? [:]])
+        } else {
+            asset = AVURLAsset(url: url)
+        }
         let playable = (try? await asset.load(.isPlayable)) == true
         guard playable else { return false }
 
@@ -429,9 +449,9 @@ final class VideoPiPController: NSObject, ObservableObject {
             return
         }
 
-        // Non-Apple containers: don't show a blocking alert — float via mini-player.
+        // Non-Apple containers: brak systemowego PiP — poinformuj użytkownika.
         guard Self.isApplePiPContainer(url) else {
-            onFallbackMinimize?()
+            errorMessage = "PiP wymaga MP4/MOV/HLS. Ten format (\(url.pathExtension.isEmpty ? "?" : url.pathExtension.uppercased())) — użyj Pobierz MP4 lub lustrzane odbicie."
             return
         }
 
@@ -450,18 +470,23 @@ final class VideoPiPController: NSObject, ObservableObject {
                 }
             }
 
-            let asset = AVURLAsset(url: url)
+            let asset: AVURLAsset
+            if let request = Self.authenticatedRequest(for: url) {
+                asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": request.allHTTPHeaderFields ?? [:]])
+            } else {
+                asset = AVURLAsset(url: url)
+            }
             let playable = (try? await asset.load(.isPlayable)) == true
             guard !Task.isCancelled else { return }
             guard playable else {
                 self.transferBackToVLC()
-                self.onFallbackMinimize?()
+                self.errorMessage = "Ten stream nie obsługuje PiP w EOS — spróbuj MP4 lub pobierz na serwer."
                 return
             }
 
             guard await self.loadAVPlayerItem(from: engine, autoplay: false) else {
                 self.transferBackToVLC()
-                self.onFallbackMinimize?()
+                self.errorMessage = "Nie udało się przygotować PiP dla tego źródła."
                 return
             }
 
@@ -472,7 +497,7 @@ final class VideoPiPController: NSObject, ObservableObject {
                 self.avPlayer.play()
                 guard await self.waitUntilAVPlayerHasVideo(maxSeconds: 4.5) else {
                     self.transferBackToVLC()
-                    self.onFallbackMinimize?()
+                    self.errorMessage = "PiP: brak klatek wideo — spróbuj ponownie za chwilę."
                     return
                 }
             } else {
@@ -512,41 +537,71 @@ final class VideoPiPController: NSObject, ObservableObject {
         controller?.stopPictureInPicture()
     }
 
-    func stopAndDiscard() {
+    /// Pełne zatrzymanie PiP / AirPlay — bez wznawiania VLC (zatrzyma `engine.stop()`).
+    func stopAndDiscard(engine: VideoPlaybackEngine? = nil) {
+        isDiscardingPlayback = true
         startTask?.cancel()
         externalTask?.cancel()
         stopPiPTimeObserver()
         stopExternalTimeObserver()
-        endExternalPlayback(transferToVLC: false)
-        engine = nil
+
         avPlayer.pause()
         avPlayer.replaceCurrentItem(with: nil)
+
+        if isExternalPlaybackActive, let engine {
+            engine.cancelAVKitHandoff()
+        }
+
+        let pipWasActive = isActive
         controller?.stopPictureInPicture()
+
+        if let engine, engine.isSuspendedForAVKit {
+            engine.cancelAVKitHandoff()
+        }
+
         isPreparing = false
         isActive = false
+        isExternalPlaybackActive = false
+        externalDeviceName = nil
+        airPlayNotice = nil
+        self.engine = nil
+
+        if !pipWasActive {
+            isDiscardingPlayback = false
+        }
+    }
+
+    func stopAndDiscard() {
+        stopAndDiscard(engine: engine)
     }
 
     func clearError() {
         errorMessage = nil
     }
 
+    func clearAirPlayNotice() {
+        airPlayNotice = nil
+    }
+
     private func transferBackToVLC() {
+        guard !isDiscardingPlayback else { return }
         guard !isTransferringBack else { return }
+        guard let engineRef = engine, engineRef.currentItem != nil else {
+            engine = nil
+            return
+        }
         isTransferringBack = true
         stopPiPTimeObserver()
         stopExternalTimeObserver()
         let seconds = avPlayer.currentTime().seconds
         let shouldResume = avPlayer.rate > 0 || sourceWasPlaying
-        let engineRef = engine
         avPlayer.pause()
         avPlayer.replaceCurrentItem(with: nil)
-        if let engineRef {
-            engineRef.resumeFromAVKitHandoff(
-                at: seconds.isFinite ? seconds : engineRef.currentTime,
-                resume: shouldResume
-            )
-            engineRef.kickVideoOutput()
-        }
+        engineRef.resumeFromAVKitHandoff(
+            at: seconds.isFinite ? seconds : engineRef.currentTime,
+            resume: shouldResume
+        )
+        engineRef.kickVideoOutput()
         engine = nil
         isTransferringBack = false
     }
@@ -594,7 +649,7 @@ extension VideoPiPController: AVPictureInPictureControllerDelegate {
             isPreparing = false
             isActive = false
             transferBackToVLC()
-            onFallbackMinimize?()
+            errorMessage = "PiP niedostępny: \(error.localizedDescription)"
         }
     }
 
@@ -603,9 +658,12 @@ extension VideoPiPController: AVPictureInPictureControllerDelegate {
     ) {
         Task { @MainActor in
             stopPiPTimeObserver()
-            transferBackToVLC()
+            if !isDiscardingPlayback {
+                transferBackToVLC()
+            }
             isPreparing = false
             isActive = false
+            isDiscardingPlayback = false
         }
     }
 
@@ -626,7 +684,7 @@ struct VideoPiPLayerHost: UIViewRepresentable {
     @ObservedObject var controller: VideoPiPController
 
     func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: CGRect(x: 0, y: 0, width: 64, height: 36))
+        let view = UIView(frame: CGRect(x: 0, y: 0, width: 128, height: 72))
         view.backgroundColor = .clear
         view.isUserInteractionEnabled = false
         controller.attach(to: view)

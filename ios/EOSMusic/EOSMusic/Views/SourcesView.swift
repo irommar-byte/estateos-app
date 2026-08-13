@@ -53,27 +53,76 @@ private struct SourcesViewBody: View {
     }
 
     private var localDeviceSubtitle: String {
-        let count = OfflineMusicStore.shared.downloadedFileCount
-        if count == 0 { return "Utwory pobrane w EOS Music" }
-        return "Pobrane · \(count) utworów"
+        let music = OfflineMusicStore.shared.downloadedFileCount
+        let movies = app.onlineMovies.phoneMovieCount
+        if music == 0 && movies == 0 { return "Utwory i filmy pobrane w EOS Music" }
+        var parts: [String] = []
+        if music > 0 { parts.append("\(music) utw.") }
+        if movies > 0 { parts.append("\(movies) filmów") }
+        return "Pobrane · " + parts.joined(separator: " · ")
     }
 
     private var serverLibrarySubtitle: String {
-        let count = app.serverAssetCount
-        if count == 0 { return "Muzyka zapisana trwale na serwerze" }
-        let size = ByteCountFormatter.string(fromByteCount: Int64(app.serverLibraryBytes), countStyle: .file)
-        return "\(count) utworów · \(size)"
+        let music = app.serverAssetCount
+        let movies = app.onlineMovies.serverMovieCount
+        if music == 0 && movies == 0 { return "Muzyka i filmy zapisane trwale na serwerze" }
+        var parts: [String] = []
+        if music > 0 { parts.append("\(music) utw.") }
+        if movies > 0 { parts.append("\(movies) filmów") }
+        let size = ByteCountFormatter.string(
+            fromByteCount: Int64(app.serverLibraryBytes + app.onlineMovies.serverMovieBytes),
+            countStyle: .file
+        )
+        return parts.joined(separator: " · ") + " · \(size)"
     }
 
-    private var serverStorage: StorageSnapshot? {
-        if let disk = StorageCapacityReader.serverDisk(
-            libraryBytes: app.serverLibraryBytes,
-            diskTotalBytes: app.serverDiskTotalBytes,
-            diskFreeBytes: app.serverDiskFreeBytes
-        ) {
-            return disk
+    private var deviceBreakdown: StorageBreakdown? {
+        let musicBytes = OfflineMusicStore.shared.totalDownloadedBytes
+        let movieBytes = app.onlineMovies.phoneMovieBytes
+        let musicCount = OfflineMusicStore.shared.downloadedFileCount
+        let movieCount = app.onlineMovies.phoneMovieCount
+        guard let disk = deviceStorage else {
+            if musicBytes + movieBytes <= 0 { return nil }
+            return .libraryOnly(
+                musicBytes: musicBytes,
+                movieBytes: movieBytes,
+                musicCount: musicCount,
+                movieCount: movieCount
+            )
         }
-        return StorageCapacityReader.serverLibraryOnly(libraryBytes: app.serverLibraryBytes)
+        return .disk(
+            musicBytes: musicBytes,
+            movieBytes: movieBytes,
+            musicCount: musicCount,
+            movieCount: movieCount,
+            diskTotal: disk.totalBytes,
+            diskFree: disk.freeBytes
+        )
+    }
+
+    private var serverBreakdown: StorageBreakdown? {
+        let musicBytes = Int64(app.serverLibraryBytes)
+        let movieBytes = Int64(app.onlineMovies.serverMovieBytes)
+        let musicCount = app.serverAssetCount
+        let movieCount = app.onlineMovies.serverMovieCount
+        if let total = app.serverDiskTotalBytes, total > 0 {
+            let free = Int64(app.serverDiskFreeBytes ?? max(0, total - Int(musicBytes + movieBytes)))
+            return .disk(
+                musicBytes: musicBytes,
+                movieBytes: movieBytes,
+                musicCount: musicCount,
+                movieCount: movieCount,
+                diskTotal: Int64(total),
+                diskFree: free
+            )
+        }
+        if musicBytes + movieBytes <= 0 { return nil }
+        return .libraryOnly(
+            musicBytes: musicBytes,
+            movieBytes: movieBytes,
+            musicCount: musicCount,
+            movieCount: movieCount
+        )
     }
 
     private var serverStorageIsLibraryOnly: Bool {
@@ -96,7 +145,7 @@ private struct SourcesViewBody: View {
                             subtitle: localDeviceSubtitle,
                             systemImage: "iphone",
                             tint: Color(white: 0.45),
-                            storage: deviceStorage
+                            breakdown: deviceBreakdown
                         )
                     }
                     .disabled(isEditing)
@@ -109,7 +158,7 @@ private struct SourcesViewBody: View {
                             subtitle: serverLibrarySubtitle,
                             systemImage: "externaldrive.fill.badge.checkmark",
                             tint: EOSTheme.accent,
-                            storage: serverStorage,
+                            breakdown: serverBreakdown,
                             storageLibraryOnly: serverStorageIsLibraryOnly
                         )
                     }
@@ -117,7 +166,7 @@ private struct SourcesViewBody: View {
                 } header: {
                     Text("Biblioteka")
                 } footer: {
-                    Text("Pobrane = offline na telefonie. Serwer EOS = trwała kopia w chmurze — stream i pobranie na każde urządzenie.")
+                    Text("Paski: różowy = muzyka, niebieski = filmy. Pobrane = offline na telefonie. Serwer EOS = trwała kopia w chmurze.")
                 }
 
                 Section {
@@ -191,6 +240,8 @@ private struct SourcesViewBody: View {
             .task {
                 refreshStorageStats()
                 await app.refreshServerAssets()
+                await app.onlineMovies.refreshDownloads()
+                refreshStorageStats()
             }
             .onAppear {
                 refreshStorageStats()

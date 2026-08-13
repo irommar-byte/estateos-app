@@ -29,7 +29,8 @@ struct FilesLocationRow: View {
     let subtitle: String
     let systemImage: String
     let tint: Color
-    var storage: StorageSnapshot?
+    var storage: StorageSnapshot? = nil
+    var breakdown: StorageBreakdown? = nil
     var storageLibraryOnly = false
 
     var body: some View {
@@ -46,9 +47,13 @@ struct FilesLocationRow: View {
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if let storage {
-                    StorageCapacityBar(snapshot: storage, libraryOnly: storageLibraryOnly)
-                        .padding(.top, 6)
+                if breakdown != nil || storage != nil {
+                    StorageCapacityBar(
+                        snapshot: storage,
+                        breakdown: breakdown,
+                        libraryOnly: storageLibraryOnly
+                    )
+                    .padding(.top, 6)
                 }
             }
             Spacer(minLength: 0)

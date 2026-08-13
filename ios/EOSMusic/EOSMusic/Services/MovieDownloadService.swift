@@ -2,12 +2,14 @@ import Foundation
 import UIKit
 
 enum MovieDownloadItemState: Equatable {
+    case idle
     case pending
     case downloading(progress: Double)
     case pullingPhone(progress: Double)
     case done
     case failed(String)
     case skipped
+    case cancelled
 }
 
 struct MovieDownloadQueueItem: Identifiable, Equatable {
@@ -32,6 +34,28 @@ struct MovieDownloadQueueItem: Identifiable, Equatable {
         self.source = source
         self.state = state
     }
+
+    var progressPercent: Double? {
+        switch state {
+        case .downloading(let p), .pullingPhone(let p):
+            return min(100, max(0, p <= 1 ? p * 100 : p))
+        default:
+            return nil
+        }
+    }
+
+    var phaseBadge: String? {
+        switch state {
+        case .downloading: return "SERWER"
+        case .pullingPhone: return "iPHONE"
+        case .pending: return "KOLEJKA"
+        case .done: return "GOTOWE"
+        case .skipped: return "POMINIĘTE"
+        case .cancelled: return "ANULOWANE"
+        case .failed: return "BŁĄD"
+        case .idle: return nil
+        }
+    }
 }
 
 struct MovieDownloadBatch: Identifiable, Equatable {
@@ -54,6 +78,10 @@ final class MovieDownloadService: ObservableObject {
 
     private var batchTask: Task<Void, Never>?
     private var currentJobId: String?
+    private var currentPhoneTrackKey: String?
+    private var cancelledItemIds = Set<String>()
+    private var progressAnchor: (date: Date, percent: Double)?
+    private var lastProgressSample: (date: Date, percent: Double)?
     private weak var api: MusicAPIClient?
     private weak var onlineMovies: OnlineMoviesController?
 
@@ -75,7 +103,35 @@ final class MovieDownloadService: ObservableObject {
     }
 
     func itemState(for url: String) -> MovieDownloadItemState {
-        activeBatch?.items.first(where: { $0.id == url })?.state ?? .pending
+        activeBatch?.items.first(where: { $0.id == url })?.state ?? .idle
+    }
+
+    /// Postęp bieżącej pozycji (0…100) — serwer lub telefon.
+    var activeItemProgress: Double? {
+        activeBatch?.items.first(where: { $0.progressPercent != nil })?.progressPercent
+    }
+
+    var activeItemPhaseLabel: String? {
+        guard let item = activeBatch?.items.first(where: {
+            switch $0.state {
+            case .downloading, .pullingPhone: return true
+            default: return false
+            }
+        }) else { return nil }
+        switch item.state {
+        case .downloading: return "Zapis na serwerze EOS"
+        case .pullingPhone: return "Kopiuję na iPhone"
+        default: return nil
+        }
+    }
+
+    var activeItemPhaseBadge: String? {
+        activeBatch?.items.first(where: {
+            switch $0.state {
+            case .downloading, .pullingPhone: return true
+            default: return false
+            }
+        })?.phaseBadge
     }
 
     var failedCount: Int {
@@ -101,7 +157,7 @@ final class MovieDownloadService: ObservableObject {
         var sum = 0.0
         for item in batch.items {
             switch item.state {
-            case .done, .skipped:
+            case .done, .skipped, .cancelled:
                 sum += 1
             case .downloading(let p), .pullingPhone(let p):
                 let pct = p <= 1 ? p * 100 : p
@@ -122,6 +178,47 @@ final class MovieDownloadService: ObservableObject {
         })?.title
     }
 
+    /// Szacunek pozostałego czasu dla aktywnej pozycji.
+    var activeETASeconds: TimeInterval? {
+        guard let a = progressAnchor, let b = lastProgressSample else { return nil }
+        let dp = b.percent - a.percent
+        let dt = b.date.timeIntervalSince(a.date)
+        guard dp >= 1.0, dt >= 1.2 else { return nil }
+        let rate = dp / dt
+        guard rate > 0.05 else { return nil }
+        let remaining = (100 - b.percent) / rate
+        guard remaining.isFinite, remaining > 0, remaining < 24 * 3600 else { return nil }
+        return remaining
+    }
+
+    var activeETALabel: String? {
+        guard let seconds = activeETASeconds else { return nil }
+        return Self.formatETA(seconds)
+    }
+
+    /// Szacunek bajtów na podstawie jakości i % (gdy API nie podaje rozmiaru w locie).
+    var activeBytesLabel: String? {
+        guard let pct = activeItemProgress,
+              let total = activeBatch?.quality.sizeBytes,
+              total > 0 else { return nil }
+        let done = Int((Double(total) * pct / 100.0).rounded())
+        return "\(Self.formatBytes(done)) / \(Self.formatBytes(total))"
+    }
+
+    var activeDetailLine: String {
+        var parts: [String] = []
+        if let pct = activeItemProgress {
+            parts.append(String(format: "%.0f%%", pct))
+        }
+        if let bytes = activeBytesLabel {
+            parts.append(bytes)
+        }
+        if let eta = activeETALabel {
+            parts.append("pozostało \(eta)")
+        }
+        return parts.joined(separator: " · ")
+    }
+
     func startBatch(
         items: [MovieDownloadQueueItem],
         label: String,
@@ -133,6 +230,8 @@ final class MovieDownloadService: ObservableObject {
     ) {
         guard !items.isEmpty else { return }
         batchTask?.cancel()
+        cancelledItemIds.removeAll()
+        resetProgressTiming()
         statusMessage = nil
         activeBatch = MovieDownloadBatch(
             id: UUID(),
@@ -150,18 +249,66 @@ final class MovieDownloadService: ObservableObject {
     func cancelBatch() {
         guard var batch = activeBatch else { return }
         batch.isCancelled = true
-        activeBatch = batch
-        if let currentJobId {
-            Task { try? await api?.cancelJob(jobId: currentJobId) }
+        for index in batch.items.indices {
+            switch batch.items[index].state {
+            case .pending, .downloading, .pullingPhone:
+                batch.items[index].state = .cancelled
+            default:
+                break
+            }
         }
+        activeBatch = batch
+        cancelCurrentNetworkWork()
         batchTask?.cancel()
         statusMessage = "Zatrzymano pobieranie."
+    }
+
+    /// Anuluje pojedynczą pozycję w kolejce (lub aktywną).
+    func cancelItem(id: String) {
+        guard var batch = activeBatch else { return }
+        guard let index = batch.items.firstIndex(where: { $0.id == id }) else { return }
+
+        switch batch.items[index].state {
+        case .done, .skipped, .cancelled:
+            return
+        case .failed:
+            return
+        default:
+            break
+        }
+
+        cancelledItemIds.insert(id)
+        let wasActive: Bool = {
+            switch batch.items[index].state {
+            case .downloading, .pullingPhone: return true
+            default: return false
+            }
+        }()
+
+        batch.items[index].state = .cancelled
+        activeBatch = batch
+
+        if wasActive {
+            cancelCurrentNetworkWork()
+            // runBatch wyjdzie z wait/pull przez cancel i przejdzie dalej
+        }
     }
 
     func clearFinishedBatch() {
         guard activeBatch?.isFinished == true || activeBatch?.isCancelled == true else { return }
         activeBatch = nil
         statusMessage = nil
+        cancelledItemIds.removeAll()
+        resetProgressTiming()
+    }
+
+    private func cancelCurrentNetworkWork() {
+        if let currentJobId {
+            Task { try? await api?.cancelJob(jobId: currentJobId) }
+        }
+        if let key = currentPhoneTrackKey {
+            BackgroundTransferService.shared.cancel(trackKey: key)
+        }
     }
 
     private func runBatch() async {
@@ -171,16 +318,67 @@ final class MovieDownloadService: ObservableObject {
 
         for index in batch.items.indices {
             if Task.isCancelled || batch.isCancelled { break }
+            if cancelledItemIds.contains(batch.items[index].id) {
+                batch.items[index].state = .cancelled
+                activeBatch = batch
+                continue
+            }
 
             let item = batch.items[index]
-            if onlineMovies.jobId(for: item.url) != nil {
-                batch.items[index].state = .skipped
-                activeBatch = batch
+            if case .cancelled = item.state { continue }
+
+            resetProgressTiming()
+
+            if let existingJobId = onlineMovies.jobId(for: item.url) {
+                if batch.destination == .serverAndPhone {
+                    batch.items[index].state = .pullingPhone(progress: 0)
+                    activeBatch = batch
+                    do {
+                        try await onlineMovies.pullToPhoneAfterServer(
+                            selection: OnlineMovieSelection(
+                                title: item.title,
+                                url: item.url,
+                                thumbnail: item.thumbnail,
+                                source: item.source,
+                                detail: nil,
+                                duration: nil,
+                                isSerial: false
+                            ),
+                            jobId: existingJobId,
+                            onProgress: { [weak self] pct in
+                                Task { @MainActor in
+                                    self?.applyProgress(itemIndex: index, phone: true, percent: pct)
+                                }
+                            }
+                        )
+                        if cancelledItemIds.contains(item.id) || activeBatch?.isCancelled == true {
+                            markCancelled(index: index)
+                        } else {
+                            batch = activeBatch ?? batch
+                            batch.items[index].state = .done
+                            activeBatch = batch
+                        }
+                    } catch is CancellationError {
+                        markCancelled(index: index)
+                    } catch {
+                        if cancelledItemIds.contains(item.id) || activeBatch?.isCancelled == true {
+                            markCancelled(index: index)
+                        } else {
+                            batch = activeBatch ?? batch
+                            batch.items[index].state = .failed(error.localizedDescription)
+                            activeBatch = batch
+                        }
+                    }
+                } else {
+                    batch.items[index].state = .skipped
+                    activeBatch = batch
+                }
                 continue
             }
 
             batch.items[index].state = .downloading(progress: 0)
             activeBatch = batch
+            noteProgress(0)
 
             do {
                 let height = MediaQualityOption.apiHeight(for: batch.quality, options: batch.quality.id == "best" ? [] : [batch.quality])
@@ -196,11 +394,23 @@ final class MovieDownloadService: ObservableObject {
                 )
                 currentJobId = start.jobId
 
+                if cancelledItemIds.contains(item.id) || Task.isCancelled || activeBatch?.isCancelled == true {
+                    try? await api.cancelJob(jobId: start.jobId)
+                    markCancelled(index: index)
+                    currentJobId = nil
+                    continue
+                }
+
                 if start.ready != true {
                     try await waitForJob(jobId: start.jobId, itemIndex: index)
                 } else {
-                    batch.items[index].state = .downloading(progress: 100)
-                    activeBatch = batch
+                    applyProgress(itemIndex: index, phone: false, percent: 100)
+                }
+
+                if cancelledItemIds.contains(item.id) || Task.isCancelled || activeBatch?.isCancelled == true {
+                    markCancelled(index: index)
+                    currentJobId = nil
+                    continue
                 }
 
                 _ = try await api.linkMovieDownload(
@@ -213,8 +423,13 @@ final class MovieDownloadService: ObservableObject {
                 await onlineMovies.refreshDownloads()
 
                 if batch.destination == .serverAndPhone {
+                    batch = activeBatch ?? batch
                     batch.items[index].state = .pullingPhone(progress: 0)
                     activeBatch = batch
+                    resetProgressTiming()
+                    noteProgress(0)
+                    let phoneKey = "movie:\(item.url)"
+                    currentPhoneTrackKey = phoneKey
                     try await onlineMovies.pullToPhoneAfterServer(
                         selection: OnlineMovieSelection(
                             title: item.title,
@@ -228,29 +443,41 @@ final class MovieDownloadService: ObservableObject {
                         jobId: start.jobId,
                         onProgress: { [weak self] pct in
                             Task { @MainActor in
-                                guard var b = self?.activeBatch else { return }
-                                b.items[index].state = .pullingPhone(progress: pct)
-                                self?.activeBatch = b
+                                self?.applyProgress(itemIndex: index, phone: true, percent: pct)
                             }
                         }
                     )
+                    currentPhoneTrackKey = nil
                 }
 
-                batch.items[index].state = .done
-                activeBatch = batch
+                if cancelledItemIds.contains(item.id) || activeBatch?.isCancelled == true {
+                    markCancelled(index: index)
+                } else {
+                    batch = activeBatch ?? batch
+                    batch.items[index].state = .done
+                    activeBatch = batch
+                }
+            } catch is CancellationError {
+                markCancelled(index: index)
             } catch {
-                if batch.isCancelled || Task.isCancelled { break }
-                batch.items[index].state = .failed(error.localizedDescription)
-                activeBatch = batch
-                statusMessage = "Nie udało się pobrać «\(item.title)»."
+                if cancelledItemIds.contains(item.id) || batch.isCancelled || Task.isCancelled || activeBatch?.isCancelled == true {
+                    markCancelled(index: index)
+                } else {
+                    batch = activeBatch ?? batch
+                    batch.items[index].state = .failed(error.localizedDescription)
+                    activeBatch = batch
+                    statusMessage = "Nie udało się pobrać «\(item.title)»."
+                }
             }
             currentJobId = nil
+            currentPhoneTrackKey = nil
         }
 
+        batch = activeBatch ?? batch
         batch.isFinished = true
         activeBatch = batch
         if batch.isCancelled {
-            statusMessage = "Zatrzymano — \(completedCount)/\(batch.items.count) na serwerze."
+            statusMessage = "Zatrzymano — \(completedCount)/\(batch.items.count) gotowe."
         } else if failedCount > 0 {
             statusMessage = "Błędy: \(failedCount)/\(batch.items.count). Reszta w MOVIES/."
         } else {
@@ -258,6 +485,38 @@ final class MovieDownloadService: ObservableObject {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
         batchTask = nil
+        resetProgressTiming()
+    }
+
+    private func markCancelled(index: Int) {
+        guard var batch = activeBatch, batch.items.indices.contains(index) else { return }
+        batch.items[index].state = .cancelled
+        activeBatch = batch
+    }
+
+    private func applyProgress(itemIndex: Int, phone: Bool, percent: Double) {
+        guard var batch = activeBatch, batch.items.indices.contains(itemIndex) else { return }
+        let id = batch.items[itemIndex].id
+        if cancelledItemIds.contains(id) || batch.isCancelled { return }
+        let pct = min(max(percent, 0), 100)
+        batch.items[itemIndex].state = phone ? .pullingPhone(progress: pct) : .downloading(progress: pct)
+        activeBatch = batch
+        noteProgress(pct)
+    }
+
+    private func noteProgress(_ percent: Double) {
+        let now = Date()
+        if let last = lastProgressSample, percent + 0.2 < last.percent {
+            progressAnchor = (now, percent)
+        } else if progressAnchor == nil {
+            progressAnchor = (now, percent)
+        }
+        lastProgressSample = (now, percent)
+    }
+
+    private func resetProgressTiming() {
+        progressAnchor = nil
+        lastProgressSample = nil
     }
 
     private func waitForJob(jobId: String, itemIndex: Int) async throws {
@@ -266,12 +525,14 @@ final class MovieDownloadService: ObservableObject {
         var poll = 0
         while Date() < deadline {
             if Task.isCancelled || activeBatch?.isCancelled == true {
-                throw APIError.server("Anulowano.")
+                throw CancellationError()
+            }
+            if let id = activeBatch?.items[safe: itemIndex]?.id, cancelledItemIds.contains(id) {
+                throw CancellationError()
             }
             let job = try await api.fetchJobStatus(jobId: jobId)
-            if let progress = job.progress, var batch = activeBatch {
-                batch.items[itemIndex].state = .downloading(progress: min(max(progress, 0), 100))
-                activeBatch = batch
+            if let progress = job.progress {
+                applyProgress(itemIndex: itemIndex, phone: false, percent: progress)
             }
             if job.status == "error" {
                 throw APIError.server(job.error ?? "Pobieranie nie powiodło się.")
@@ -282,5 +543,28 @@ final class MovieDownloadService: ObservableObject {
             try await Task.sleep(nanoseconds: delay)
         }
         throw APIError.server("Przekroczono czas oczekiwania na pobranie.")
+    }
+
+    static func formatETA(_ seconds: TimeInterval) -> String {
+        let s = Int(seconds.rounded())
+        if s < 60 { return "< 1 min" }
+        let m = s / 60
+        if m < 60 { return "\(m) min" }
+        let h = m / 60
+        let rm = m % 60
+        return rm > 0 ? "\(h) godz. \(rm) min" : "\(h) godz."
+    }
+
+    static func formatBytes(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }

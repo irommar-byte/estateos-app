@@ -122,6 +122,10 @@ struct VideoPlayerView: View {
             keysFocused = true
             engine.prepareExpandRestore()
             engine.scheduleExpandRestore()
+            video.pipController.prepareAirPlayHandoff(for: engine)
+        }
+        .onChange(of: engine.currentPlayableURL) { _, _ in
+            video.pipController.prepareAirPlayHandoff(for: engine)
         }
         .onDisappear {
             hideTask?.cancel()
@@ -168,6 +172,17 @@ struct VideoPlayerView: View {
             Button("OK", role: .cancel) { video.pipController.clearError() }
         } message: {
             Text(video.pipController.errorMessage ?? "")
+        }
+        .alert(
+            "AirPlay",
+            isPresented: Binding(
+                get: { video.pipController.airPlayNotice != nil },
+                set: { if !$0 { video.pipController.clearAirPlayNotice() } }
+            )
+        ) {
+            Button("OK", role: .cancel) { video.pipController.clearAirPlayNotice() }
+        } message: {
+            Text(video.pipController.airPlayNotice ?? "")
         }
     }
 
@@ -290,7 +305,9 @@ struct VideoPlayerView: View {
                 .accessibilityLabel("Picture in Picture")
                 .accessibilityHint("Odtwarzaj w małym oknie nad innymi aplikacjami")
 
-                AirPlayRouteButton()
+                AirPlayRouteButton {
+                    video.pipController.prepareAirPlayHandoff(for: engine)
+                }
                     .frame(width: 40, height: 40)
                     .background(.ultraThinMaterial.opacity(0.55), in: Circle())
                     .accessibilityLabel("AirPlay")
@@ -843,15 +860,32 @@ final class PlayerDrawableView: UIView {
 // MARK: - AirPlay + keyboard
 
 struct AirPlayRouteButton: UIViewRepresentable {
-    func makeUIView(context: Context) -> UIView {
+    var onPrepare: () -> Void = {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPrepare: onPrepare)
+    }
+
+    func makeUIView(context: Context) -> AVRoutePickerView {
         let picker = AVRoutePickerView()
         picker.tintColor = .white
         picker.activeTintColor = UIColor(EOSTheme.accent)
         picker.prioritizesVideoDevices = true
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped))
+        tap.cancelsTouchesInView = false
+        picker.addGestureRecognizer(tap)
         return picker
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
+        context.coordinator.onPrepare = onPrepare
+    }
+
+    final class Coordinator: NSObject {
+        var onPrepare: () -> Void
+        init(onPrepare: @escaping () -> Void) { self.onPrepare = onPrepare }
+        @objc func tapped() { onPrepare() }
+    }
 }
 
 /// UIKit key commands — reliable in Simulator and with hardware keyboards.

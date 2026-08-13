@@ -221,6 +221,33 @@ function reconcileDownloadsFromDisk(store, moviesDir) {
   return changed;
 }
 
+function fileBytesForDownload(entry, moviesDir) {
+  if (!moviesDir || !entry) return 0;
+  const candidates = [];
+  if (entry.filename) candidates.push(path.join(moviesDir, entry.filename));
+  if (entry.downloadJobId) {
+    const suffix = String(entry.downloadJobId).slice(0, 8);
+    try {
+      for (const filePath of listMp4Files(moviesDir)) {
+        if (path.basename(filePath).includes(suffix) || filePath.includes(suffix)) {
+          candidates.push(filePath);
+          break;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  for (const filePath of candidates) {
+    try {
+      if (fs.existsSync(filePath)) return fs.statSync(filePath).size || 0;
+    } catch {
+      /* ignore */
+    }
+  }
+  return Number(entry.bytes) || 0;
+}
+
 export function listMovieDownloads(req, downloadsRoot = null) {
   const userKey = userKeyFromReq(req);
   const store = readStore(userKey);
@@ -230,7 +257,22 @@ export function listMovieDownloads(req, downloadsRoot = null) {
   }
   return store.downloads
     .filter((d) => d.downloadJobId)
-    .sort((a, b) => (b.downloadedAt || 0) - (a.downloadedAt || 0));
+    .sort((a, b) => (b.downloadedAt || 0) - (a.downloadedAt || 0))
+    .map((d) => {
+      const bytes = fileBytesForDownload(d, moviesDir);
+      return { ...d, bytes };
+    });
+}
+
+export function summarizeMovieDownloads(req, downloadsRoot = null) {
+  const downloads = listMovieDownloads(req, downloadsRoot);
+  const totalBytes = downloads.reduce((sum, d) => sum + (Number(d.bytes) || 0), 0);
+  return {
+    folder: MOVIES_FOLDER_NAME,
+    count: downloads.length,
+    totalBytes,
+    downloads,
+  };
 }
 
 export function findDownloadByUrl(userKey, url) {

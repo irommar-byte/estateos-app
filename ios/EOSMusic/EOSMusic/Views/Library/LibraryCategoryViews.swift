@@ -718,6 +718,7 @@ private struct SharePayload: Identifiable {
     let items: [Any]
 
     static func file(_ url: URL) -> SharePayload { SharePayload(items: [url]) }
+    static func files(_ urls: [URL]) -> SharePayload { SharePayload(items: urls) }
     static func text(_ string: String) -> SharePayload { SharePayload(items: [string]) }
 }
 
@@ -748,7 +749,9 @@ struct LibraryDownloadedView: View {
     @State private var deviceStorage: StorageSnapshot?
     @State private var mode: DownloadedBrowseMode = .songs
     @State private var editMode: EditMode = .inactive
+    @State private var selectedURLs: Set<String> = []
     @State private var trackPendingDelete: MusicTrack?
+    @State private var pendingBulkDelete = false
     @State private var cachedTracks: [MusicTrack] = []
     @State private var cachedSections: [(key: String, items: [MusicTrack])] = []
     @State private var sizeByURL: [String: Int64] = [:]
@@ -765,6 +768,25 @@ struct LibraryDownloadedView: View {
         }
     }
 
+    private var selectedTracks: [MusicTrack] {
+        filteredTracks.filter { selectedURLs.contains($0.url) }
+    }
+
+    private var selectedBytes: Int64 {
+        selectedTracks.reduce(Int64(0)) { $0 + (sizeByURL[$1.url] ?? 0) }
+    }
+
+    private var tracksCountLabel: String {
+        let n = filteredTracks.count
+        switch n {
+        case 1: return "1 utwór"
+        case 2...4: return "\(n) utwory"
+        default: return "\(n) utworów"
+        }
+    }
+
+    private var isSelecting: Bool { editMode == .active }
+
     var body: some View {
         Group {
             if cachedTracks.isEmpty {
@@ -777,14 +799,14 @@ struct LibraryDownloadedView: View {
                 ContentUnavailableView.search(text: query)
             } else {
                 ScrollViewReader { proxy in
-                    List {
+                    List(selection: $selectedURLs) {
                         Section {
                             if let deviceStorage {
                                 StorageCapacityBar(snapshot: deviceStorage, showsLegend: true)
                                     .padding(.vertical, 2)
                             }
                             HStack {
-                                Label("\(filteredTracks.count) utworów", systemImage: "arrow.down.circle.fill")
+                                Label(tracksCountLabel, systemImage: "arrow.down.circle.fill")
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                 Spacer()
@@ -793,12 +815,16 @@ struct LibraryDownloadedView: View {
                                     .foregroundStyle(.secondary)
                             }
 
-                            Button {
-                                Task { await play(track: filteredTracks[0]) }
-                            } label: {
-                                Label("Odtwórz wszystko", systemImage: "play.fill")
-                                    .font(.headline)
-                                    .foregroundStyle(EOSTheme.accent)
+                            if !isSelecting {
+                                Button {
+                                    Task { await play(track: filteredTracks[0]) }
+                                } label: {
+                                    Label("Odtwórz wszystko", systemImage: "play.fill")
+                                        .font(.headline)
+                                        .foregroundStyle(EOSTheme.accent)
+                                }
+                            } else {
+                                selectionSummaryRow
                             }
                         } header: {
                             Text("Na tym iPhonie")
@@ -813,6 +839,7 @@ struct LibraryDownloadedView: View {
                             .pickerStyle(.segmented)
                             .listRowBackground(Color.clear)
                             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                            .disabled(isSelecting)
                         }
 
                         ForEach(cachedSections, id: \.key) { section in
@@ -825,6 +852,7 @@ struct LibraryDownloadedView: View {
                                             sectionTracks: section.items,
                                             useLocalIndex: false
                                         )
+                                        .tag(track.url)
                                     }
                                     .onDelete { offsets in
                                         deleteOffsets(offsets, in: section.items)
@@ -845,6 +873,7 @@ struct LibraryDownloadedView: View {
                                                 sectionTracks: section.items,
                                                 useLocalIndex: true
                                             )
+                                            .tag(track.url)
                                         }
                                         .onDelete { offsets in
                                             deleteOffsets(offsets, in: section.items)
@@ -859,20 +888,58 @@ struct LibraryDownloadedView: View {
                     .listStyle(.insetGrouped)
                     .environment(\.editMode, $editMode)
                     .modifier(AlphabetJumpOverlay(
-                        sections: mode == .songs ? cachedSections.map(\.key) : [],
+                        sections: mode == .songs && !isSelecting ? cachedSections.map(\.key) : [],
                         proxy: proxy
                     ))
                 }
             }
         }
-        .navigationTitle("Pobrane")
+        .navigationTitle(isSelecting ? "Wybierz utwory" : "Pobrane")
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $query, prompt: "Szukaj w pobranych")
         .eosScrollClearance()
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                if isSelecting {
+                    Button(selectedURLs.count == filteredTracks.count ? "Odznacz" : "Zaznacz wszystkie") {
+                        if selectedURLs.count == filteredTracks.count {
+                            selectedURLs.removeAll()
+                        } else {
+                            selectedURLs = Set(filteredTracks.map(\.url))
+                        }
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    }
+                    .disabled(filteredTracks.isEmpty)
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 EditButton()
                     .disabled(cachedTracks.isEmpty)
+            }
+            ToolbarItemGroup(placement: .bottomBar) {
+                if isSelecting {
+                    Button {
+                        shareSelected()
+                    } label: {
+                        Label("Udostępnij", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(selectedURLs.isEmpty)
+
+                    Spacer()
+
+                    Text(selectionToolbarLabel)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button(role: .destructive) {
+                        pendingBulkDelete = true
+                    } label: {
+                        Label("Usuń", systemImage: "trash")
+                    }
+                    .disabled(selectedURLs.isEmpty)
+                }
             }
         }
         .onAppear {
@@ -882,7 +949,15 @@ struct LibraryDownloadedView: View {
         .onChange(of: offlineStore.entries.count) { _, _ in rebuildCache() }
         .onChange(of: app.musicTracks.count) { _, _ in rebuildCache() }
         .onChange(of: query) { _, _ in rebuildCache() }
-        .onChange(of: mode) { _, _ in rebuildCache() }
+        .onChange(of: mode) { _, _ in
+            selectedURLs.removeAll()
+            rebuildCache()
+        }
+        .onChange(of: editMode) { _, mode in
+            if mode == .inactive {
+                selectedURLs.removeAll()
+            }
+        }
         .sheet(item: $sharePayload) { payload in
             ActivityView(activityItems: payload.items)
         }
@@ -903,11 +978,74 @@ struct LibraryDownloadedView: View {
                 Text("„\(track.title)” zniknie z urządzenia. Kopia na serwerze EOS pozostanie.")
             }
         }
+        .confirmationDialog(
+            "Usunąć zaznaczone?",
+            isPresented: $pendingBulkDelete,
+            titleVisibility: .visible
+        ) {
+            Button(bulkDeleteButtonTitle, role: .destructive) {
+                Task { await deleteSelected() }
+            }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text(bulkDeleteMessage)
+        }
         .alert("Błąd", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private var selectionSummaryRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(EOSTheme.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(selectionToolbarLabel)
+                    .font(.subheadline.weight(.semibold))
+                if selectedBytes > 0 {
+                    Text(ByteCountFormatter.string(fromByteCount: selectedBytes, countStyle: .file))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Dotknij utworów, aby zaznaczyć")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+            if !selectedURLs.isEmpty {
+                Button("Odtwórz") {
+                    Task { await playSelected() }
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(EOSTheme.accent)
+            }
+        }
+    }
+
+    private var selectionToolbarLabel: String {
+        let n = selectedURLs.count
+        switch n {
+        case 0: return "Nic nie zaznaczono"
+        case 1: return "1 zaznaczony"
+        case 2...4: return "\(n) zaznaczone"
+        default: return "\(n) zaznaczonych"
+        }
+    }
+
+    private var bulkDeleteButtonTitle: String {
+        let n = selectedURLs.count
+        return n == 1 ? "Usuń 1 utwór" : "Usuń \(n) utworów"
+    }
+
+    private var bulkDeleteMessage: String {
+        let n = selectedURLs.count
+        let size = selectedBytes > 0
+            ? " (\(ByteCountFormatter.string(fromByteCount: selectedBytes, countStyle: .file)))"
+            : ""
+        return "Zaznaczone utwory (\(n))\(size) znikną z urządzenia. Kopie na serwerze EOS pozostaną."
     }
 
     private func rebuildCache() {
@@ -1051,61 +1189,94 @@ struct LibraryDownloadedView: View {
             }
         }()
 
-        Button {
-            Task { await playDownloaded(track: track, sectionTracks: sectionTracks) }
-        } label: {
-            TrackRowView(
-                index: displayIndex,
-                title: track.title,
-                subtitle: subtitle.isEmpty ? nil : subtitle,
-                duration: track.duration,
-                // Don't fetch remote covers while flinging offline lists — was freezing scroll.
-                artworkURL: nil,
-                isPlaying: app.playback.engine?.currentTrack?.url == track.url,
-                downloadState: .done,
-                detailLabel: sizeLabel,
-                showsOfflineBadge: true
-            )
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            Button {
-                Task { await playDownloaded(track: track, sectionTracks: sectionTracks) }
-            } label: {
-                Label("Odtwórz", systemImage: "play.fill")
-            }
-            if let sizeLabel {
-                Text("Rozmiar: \(sizeLabel)")
-            }
-            Button {
-                let text: String = {
-                    if let artist = track.artist, !artist.isEmpty {
-                        return "\(track.title) — \(artist)"
-                    }
-                    return track.title
-                }()
-                sharePayload = .text(text)
-            } label: {
-                Label("Udostępnij", systemImage: "square.and.arrow.up")
-            }
-            if let local = OfflineMusicStore.shared.localURL(for: track.url) {
+        Group {
+            if isSelecting {
+                TrackRowView(
+                    index: displayIndex,
+                    title: track.title,
+                    subtitle: subtitle.isEmpty ? nil : subtitle,
+                    duration: track.duration,
+                    artworkURL: nil,
+                    isPlaying: app.playback.engine?.currentTrack?.url == track.url,
+                    downloadState: .done,
+                    detailLabel: sizeLabel,
+                    showsOfflineBadge: true
+                )
+                .contentShape(Rectangle())
+            } else {
                 Button {
-                    sharePayload = .file(local)
+                    Task { await playDownloaded(track: track, sectionTracks: sectionTracks) }
                 } label: {
-                    Label("Wyślij plik", systemImage: "paperplane")
+                    TrackRowView(
+                        index: displayIndex,
+                        title: track.title,
+                        subtitle: subtitle.isEmpty ? nil : subtitle,
+                        duration: track.duration,
+                        artworkURL: nil,
+                        isPlaying: app.playback.engine?.currentTrack?.url == track.url,
+                        downloadState: .done,
+                        detailLabel: sizeLabel,
+                        showsOfflineBadge: true
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .contextMenu {
+            if !isSelecting {
+                Button {
+                    Task { await playDownloaded(track: track, sectionTracks: sectionTracks) }
+                } label: {
+                    Label("Odtwórz", systemImage: "play.fill")
+                }
+                if let sizeLabel {
+                    Text("Rozmiar: \(sizeLabel)")
+                }
+                Button {
+                    let text: String = {
+                        if let artist = track.artist, !artist.isEmpty {
+                            return "\(track.title) — \(artist)"
+                        }
+                        return track.title
+                    }()
+                    sharePayload = .text(text)
+                } label: {
+                    Label("Udostępnij", systemImage: "square.and.arrow.up")
+                }
+                if let local = OfflineMusicStore.shared.localURL(for: track.url) {
+                    Button {
+                        sharePayload = .file(local)
+                    } label: {
+                        Label("Wyślij plik", systemImage: "paperplane")
+                    }
+                }
+                Button {
+                    selectedURLs = [track.url]
+                    editMode = .active
+                } label: {
+                    Label("Zaznacz…", systemImage: "checkmark.circle")
+                }
+                Button(role: .destructive) {
+                    trackPendingDelete = track
+                } label: {
+                    Label("Usuń z iPhone’a", systemImage: "trash")
                 }
             }
-            Button(role: .destructive) {
-                trackPendingDelete = track
-            } label: {
-                Label("Usuń z iPhone’a", systemImage: "trash")
-            }
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button(role: .destructive) {
-                trackPendingDelete = track
-            } label: {
-                Label("Usuń", systemImage: "trash")
+        .swipeActions(edge: .trailing, allowsFullSwipe: !isSelecting) {
+            if !isSelecting {
+                Button(role: .destructive) {
+                    trackPendingDelete = track
+                } label: {
+                    Label("Usuń", systemImage: "trash")
+                }
+                Button {
+                    selectedURLs = [track.url]
+                    editMode = .active
+                } label: {
+                    Label("Zaznacz", systemImage: "checkmark.circle")
+                }
+                .tint(EOSTheme.accent)
             }
         }
     }
@@ -1141,9 +1312,35 @@ struct LibraryDownloadedView: View {
         await app.playTracks(playQueue, startIndex: index, folder: folder)
     }
 
+    private func playSelected() async {
+        let queue = selectedTracks
+        guard let first = queue.first else { return }
+        await app.playTracks(queue, startIndex: 0, folder: app.musicFolders.first(where: { $0.id == first.folderId }))
+    }
+
+    private func shareSelected() {
+        let urls = selectedTracks.compactMap { OfflineMusicStore.shared.localURL(for: $0.url) }
+        guard !urls.isEmpty else {
+            errorMessage = "Brak lokalnych plików do udostępnienia."
+            return
+        }
+        sharePayload = .files(urls)
+    }
+
+    private func deleteSelected() async {
+        let tracks = selectedTracks
+        for track in tracks {
+            await deleteDownloaded(track)
+        }
+        selectedURLs.removeAll()
+        editMode = .inactive
+        deviceStorage = StorageCapacityReader.deviceVolume()
+    }
+
     private func deleteDownloaded(_ track: MusicTrack) async {
         app.cancelDownload(for: track.url)
         app.removeOfflineDownload(for: track.url)
+        selectedURLs.remove(track.url)
         deviceStorage = StorageCapacityReader.deviceVolume()
     }
 }

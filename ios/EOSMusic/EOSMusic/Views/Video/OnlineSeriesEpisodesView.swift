@@ -67,10 +67,6 @@ struct OnlineSeriesEpisodesView: View {
                     seasonPicker
                 }
 
-                if let batch = downloads.activeBatch, downloads.batchMatches(contextKey: info.webpageUrl) {
-                    MovieDownloadQueueBanner(service: downloads)
-                }
-
                 episodeList
             }
             .padding(.horizontal, 16)
@@ -110,17 +106,18 @@ struct OnlineSeriesEpisodesView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 statChip("\(allEpisodes.count) odc.", icon: "list.number")
-                statChip("\(downloadedCount) na serwerze", icon: "server.rack")
+                statChip("\(downloadedOnServerCount) serwer", icon: "server.rack")
+                statChip("\(downloadedOnPhoneCount) iPhone", icon: "iphone")
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     bulkButton("Cały serial") {
-                        prepareDownload(allEpisodes.filter { !isDownloaded($0) }, label: displayTitle)
+                        prepareDownload(allEpisodes.filter { !app.isMovieOnPhone(url: $0.url) }, label: displayTitle)
                     }
                     if let season = selectedSeason {
                         bulkButton("Ten sezon") {
-                            prepareDownload(season.episodes.filter { !isDownloaded($0) }, label: "\(displayTitle) · \(season.title)")
+                            prepareDownload(season.episodes.filter { !app.isMovieOnPhone(url: $0.url) }, label: "\(displayTitle) · \(season.title)")
                         }
                     }
                     Button(isSelectionMode ? "Anuluj wybór" : "Wybierz odcinki") {
@@ -173,7 +170,8 @@ struct OnlineSeriesEpisodesView: View {
     }
 
     private func episodeRow(_ episode: EpisodeItem) -> some View {
-        let downloaded = isDownloaded(episode)
+        let onServer = isDownloaded(episode)
+        let onPhone = app.isMovieOnPhone(url: episode.url)
         let batchState = downloads.itemState(for: episode.url)
         return HStack(spacing: 12) {
             if isSelectionMode {
@@ -191,13 +189,10 @@ struct OnlineSeriesEpisodesView: View {
                     .font(EOSTypography.subheadline.weight(.semibold))
                     .lineLimit(2)
                 HStack(spacing: 6) {
-                    if downloaded {
-                        Text("SERWER")
-                            .font(.system(size: 9, weight: .bold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(EOSTheme.accent.opacity(0.85), in: Capsule())
-                            .foregroundStyle(.white)
+                    if onPhone {
+                        MovieStorageLocationBadge(kind: .phone)
+                    } else if onServer {
+                        MovieStorageLocationBadge(kind: .server)
                     }
                     batchStatusLabel(batchState)
                 }
@@ -219,7 +214,7 @@ struct OnlineSeriesEpisodesView: View {
                 Button("Pobierz…") {
                     prepareDownload([episode], label: serverDownloadTitle(seriesTitle: displayTitle, episode: episode))
                 }
-                if downloaded {
+                if onServer {
                     Button("Usuń z serwera", role: .destructive) {
                         Task { await movies.deleteServerDownload(url: episode.url) }
                     }
@@ -242,17 +237,15 @@ struct OnlineSeriesEpisodesView: View {
     private func batchStatusLabel(_ state: MovieDownloadItemState) -> some View {
         switch state {
         case .downloading(let p):
-            Text(String(format: "SERWER %.0f%%", p))
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(EOSTheme.accent)
+            MovieStorageLocationBadge(kind: .serverProgress(p))
         case .pullingPhone(let p):
-            Text(String(format: "TEL %.0f%%", p))
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.green)
+            MovieStorageLocationBadge(kind: .phoneProgress(p))
         case .pending:
-            Text("KOLEJKA")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.orange)
+            MovieStorageLocationBadge(kind: .queue)
+        case .cancelled:
+            MovieStorageLocationBadge(kind: .cancelled)
+        case .failed:
+            MovieStorageLocationBadge(kind: .error)
         default:
             EmptyView()
         }
@@ -284,8 +277,17 @@ struct OnlineSeriesEpisodesView: View {
         quality: MediaQualityOption,
         destination: OnlineMovieDownloadDestination
     ) {
+        let eligible = episodes.filter { ep in
+            switch destination {
+            case .server:
+                return !isDownloaded(ep)
+            case .serverAndPhone:
+                return !app.isMovieOnPhone(url: ep.url)
+            }
+        }
+        guard !eligible.isEmpty else { return }
         let options = info.qualityOptions(for: format)
-        let items = episodes.map { ep in
+        let items = eligible.map { ep in
             MovieDownloadQueueItem(
                 url: ep.url,
                 title: serverDownloadTitle(seriesTitle: displayTitle, episode: ep),
@@ -323,8 +325,12 @@ struct OnlineSeriesEpisodesView: View {
         app.isMovieDownloaded(url: episode.url)
     }
 
-    private var downloadedCount: Int {
+    private var downloadedOnServerCount: Int {
         allEpisodes.filter { isDownloaded($0) }.count
+    }
+
+    private var downloadedOnPhoneCount: Int {
+        allEpisodes.filter { app.isMovieOnPhone(url: $0.url) }.count
     }
 
     private func toggleSelection(_ episode: EpisodeItem) {
@@ -347,9 +353,16 @@ struct MovieDownloadQueueBanner: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label(service.isRunning ? "Pobieranie serialu" : "Kolejka filmów", systemImage: "arrow.down.circle.fill")
+                Label(service.isRunning ? "Pobieranie" : "Kolejka filmów", systemImage: "arrow.down.circle.fill")
                     .font(EOSTypography.subheadline.weight(.semibold))
                 Spacer()
+                if let badge = service.activeItemPhaseBadge {
+                    MovieStorageLocationBadge(
+                        kind: badge == "iPHONE"
+                            ? .phoneProgress(service.activeItemProgress ?? 0)
+                            : .serverProgress(service.activeItemProgress ?? 0)
+                    )
+                }
                 Text("\(service.completedCount)/\(service.totalCount)")
                     .font(EOSTypography.caption.monospacedDigit().weight(.bold))
                 if service.isRunning {
@@ -363,10 +376,16 @@ struct MovieDownloadQueueBanner: View {
             ProgressView(value: service.overallProgress)
                 .tint(EOSTheme.accent)
             if let title = service.activeItemTitle {
-                Text("Teraz: \(title)")
+                Text(title)
                     .font(EOSTypography.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+            }
+            let detail = service.activeDetailLine
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(12)

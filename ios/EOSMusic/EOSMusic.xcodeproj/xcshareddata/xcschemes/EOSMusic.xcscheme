@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "D760A50EA7CF4387A7DD7B74"
+               BlueprintIdentifier = "9D80B0B7BA924999B164172B"
                BuildableName = "EOSMusic.app"
                BlueprintName = "EOSMusic"
                ReferencedContainer = "container:EOSMusic.xcodeproj">
@@ -33,7 +33,7 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "79C4996792AB4CBA8245BCEE"
+               BlueprintIdentifier = "B139968B24324CE68A0261FA"
                BuildableName = "EOSMusicTests.xctest"
                BlueprintName = "EOSMusicTests"
                ReferencedContainer = "container:EOSMusic.xcodeproj">
@@ -55,7 +55,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "D760A50EA7CF4387A7DD7B74"
+            BlueprintIdentifier = "9D80B0B7BA924999B164172B"
             BuildableName = "EOSMusic.app"
             BlueprintName = "EOSMusic"
             ReferencedContainer = "container:EOSMusic.xcodeproj">
@@ -72,7 +72,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "D760A50EA7CF4387A7DD7B74"
+            BlueprintIdentifier = "9D80B0B7BA924999B164172B"
             BuildableName = "EOSMusic.app"
             BlueprintName = "EOSMusic"
             ReferencedContainer = "container:EOSMusic.xcodeproj">

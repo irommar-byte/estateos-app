@@ -1,9 +1,20 @@
 import AVFoundation
 import Foundation
 import MediaPlayer
+import os
 
 /// Eksponuje kolejkę odtwarzania i bibliotekę playlist do BMW iDrive / NBT / HUD przez Bluetooth (AVRCP browse).
-/// NBT (nie-Evo) wymaga zagnieżdżonej struktury: playlista → utwory oraz stabilnych identyfikatorów kolejki.
+///
+/// Różnica vs Apple Music:
+/// - Apple Music = systemowy iPod/iAP — auto pokazuje całą playlistę.
+/// - My = `MPPlayableContentManager` (trzecia aplikacja). NBT często zgłasza
+///   `enforcedContentItemsCount = 1` i/lub `enforcedContentTreeDepth = 1`.
+///
+/// Strategia jak Apple Music w UI samochodu:
+/// 1. Zawsze **zagnieżdżona** playlista → utwory (1 kontener w root = „mieści się” w limicie 1).
+/// 2. Wewnątrz kontenera **nigdy** nie tnij kolejki do 1 — ignoruj fałszywy limit NBT.
+/// 3. `nowPlayingIdentifiers` = kontener + **wszystkie** utwory kolejki (nie tylko bieżący).
+/// 4. Nie przeładowuj drzewa przy każdym ticku czasu — tylko przy zmianie kolejki/utworu.
 @MainActor
 final class BluetoothMediaBrowser: NSObject {
     static let shared = BluetoothMediaBrowser()
@@ -12,7 +23,6 @@ final class BluetoothMediaBrowser: NSObject {
 
     var playFromLibrary: LibraryPlayHandler?
 
-    /// NBT domyślnie: jeden kontener playlisty, w środku utwory (jak Apple Music).
     private enum QueueBrowseLayout: Sendable {
         case nestedPlaylist
         case flatQueue
@@ -54,6 +64,7 @@ final class BluetoothMediaBrowser: NSObject {
     private var libraryPlaylists: [LibraryPlaylistNode] = []
     private var snapshot: BrowseSnapshot?
     private var isActive = false
+    /// Zawsze nested dla aktywnej kolejki — flat + NBT count=1 = tylko 1 utwór na ekranie.
     private var queueBrowseLayout: QueueBrowseLayout = .nestedPlaylist
     private var maxBrowseItems = 100
     private var contentLimitsEnforced = false
@@ -67,6 +78,10 @@ final class BluetoothMediaBrowser: NSObject {
     private let snapshotLock = NSLock()
     nonisolated(unsafe) private var threadSafeSnapshot: BrowseSnapshot?
     private var routeObserver: NSObjectProtocol?
+    private var lastQueueSignature: String?
+    private var lastProgressPublishAt: Date = .distantPast
+
+    private static let log = Logger(subsystem: "pl.nostalgie.eosmusic", category: "BTBrowse")
 
     private override init() {
         super.init()
@@ -98,9 +113,7 @@ final class BluetoothMediaBrowser: NSObject {
     /// Opublikuj kolejkę zanim AVPlayer wystartuje — NBT czyta listę przy pierwszym połączeniu BT.
     func preparePlaybackSession(engine: MusicPlaybackEngine) {
         attach(engine: engine)
-        let manager = MPPlayableContentManager.shared()
-        manager.beginUpdates()
-        manager.endUpdates()
+        notifyContentChanged()
     }
 
     func activate() {
@@ -112,11 +125,12 @@ final class BluetoothMediaBrowser: NSObject {
         installRouteObserverIfNeeded()
         publishRuntimeConfig()
         notifyContentChanged()
+        Self.log.info("BT browse activated")
     }
 
     func attach(engine: MusicPlaybackEngine?) {
         self.engine = engine
-        rebuildSnapshot()
+        rebuildSnapshot(forceNotify: true)
     }
 
     func updateLibrary(folders: [MusicFolder], tracks: [MusicTrack]) {
@@ -126,12 +140,21 @@ final class BluetoothMediaBrowser: NSObject {
             guard !folderTracks.isEmpty else { return nil }
             return LibraryPlaylistNode(folder: folder, tracks: folderTracks)
         }
-        rebuildSnapshot()
+        rebuildSnapshot(forceNotify: true)
     }
 
     func reloadQueue(from engine: MusicPlaybackEngine? = nil) {
         if let engine { self.engine = engine }
-        rebuildSnapshot()
+        rebuildSnapshot(forceNotify: false)
+    }
+
+    /// Lekki update postępu bieżącego utworu — bez pełnego przeładowania drzewa (NBT tego nie lubi).
+    func touchCurrentProgress(from engine: MusicPlaybackEngine) {
+        self.engine = engine
+        let now = Date()
+        guard now.timeIntervalSince(lastProgressPublishAt) >= 4 else { return }
+        lastProgressPublishAt = now
+        rebuildSnapshot(forceNotify: false, progressOnly: true)
     }
 
     private func installRouteObserverIfNeeded() {
@@ -142,7 +165,7 @@ final class BluetoothMediaBrowser: NSObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.rebuildSnapshot()
+                self?.rebuildSnapshot(forceNotify: true)
             }
         }
     }
@@ -157,18 +180,29 @@ final class BluetoothMediaBrowser: NSObject {
         Array(items.prefix(maxBrowseItems))
     }
 
-    private nonisolated func limitedChildCount(_ count: Int, isQueueTracks: Bool = false) -> Int {
+    /// Limit dzieci w drzewie. Dla utworów aktywnej kolejki **nigdy** nie stosuj
+    /// `enforcedContentItemsCount` z NBT (często = 1 → tylko bieżący utwór).
+    private nonisolated func childCount(requested: Int, isActiveQueueTracks: Bool) -> Int {
         let config = readRuntimeConfig()
-        let cap = config.maxItems
-        // BMW NBT często zgłasza enforcedContentItemsCount = 1 — wtedy widać tylko bieżący utwór.
-        if isQueueTracks, config.limits.enforced, config.limits.count <= 3 {
-            return min(count, cap)
+        let hardCap = max(1, config.maxItems)
+        if isActiveQueueTracks {
+            return min(requested, hardCap)
         }
-        guard config.limits.enforced else { return min(count, cap) }
-        return min(count, cap, max(1, config.limits.count))
+        guard config.limits.enforced else { return min(requested, hardCap) }
+        // Biblioteka: respektuj sensowny limit auta, ale nie tnij do absurdalnego 1–3.
+        let reported = max(1, config.limits.count)
+        if reported <= 3 {
+            return min(requested, hardCap)
+        }
+        return min(requested, hardCap, reported)
     }
 
-    private func rebuildSnapshot() {
+    private func queueSignature(rows: [PlaybackQueueRow], currentID: String?, layout: QueueBrowseLayout) -> String {
+        let ids = rows.map(\.track.id).joined(separator: "|")
+        return "\(layout)-\(rows.count)-\(currentID ?? "-")-\(ids.hashValue)"
+    }
+
+    private func rebuildSnapshot(forceNotify: Bool, progressOnly: Bool = false) {
         let snap: BrowseSnapshot?
 
         if let engine, !engine.playbackQueueRows.isEmpty {
@@ -176,6 +210,10 @@ final class BluetoothMediaBrowser: NSObject {
             let duration = engine.liveDuration()
             let elapsed = engine.livePlaybackTime()
             let playlistTitle = engine.queueSourceTitle ?? "Kolejka odtwarzania"
+
+            // Zawsze nested dla kolejki — Apple Music też pokazuje playlistę jako folder.
+            let layout: QueueBrowseLayout = .nestedPlaylist
+            queueBrowseLayout = layout
 
             let trackItems = rows.map { row -> BrowseItem in
                 let subtitleParts = [row.track.artist, row.track.album].compactMap { $0 }.filter { !$0.isEmpty }
@@ -188,7 +226,7 @@ final class BluetoothMediaBrowser: NSObject {
                     identifier: Self.queueContentIdentifier(orderIndex: row.orderIndex),
                     title: nbtTitle(prefix + row.track.title),
                     subtitle: subtitleParts.isEmpty
-                        ? "Utwór \(row.displayNumber)"
+                        ? "Utwór \(row.displayNumber)/\(rows.count)"
                         : nbtTitle(subtitleParts.joined(separator: " · "), maxLength: 64),
                     isContainer: false,
                     isPlayable: true,
@@ -214,10 +252,28 @@ final class BluetoothMediaBrowser: NSObject {
             )
 
             let currentID = rows.first(where: \.isCurrent).map { Self.queueContentIdentifier(orderIndex: $0.orderIndex) }
+            let signature = queueSignature(rows: rows, currentID: currentID, layout: layout)
+            let structureChanged = signature != lastQueueSignature
+
             snap = BrowseSnapshot(
-                root: .activeQueue(layout: queueBrowseLayout, container: container, tracks: trackItems),
+                root: .activeQueue(layout: layout, container: container, tracks: trackItems),
                 nowPlayingIdentifier: currentID
             )
+
+            snapshot = snap
+            publishSnapshot(snap)
+            publishRuntimeConfig()
+            updateNowPlayingIdentifiers(from: snap)
+
+            if forceNotify || structureChanged {
+                lastQueueSignature = signature
+                notifyContentChanged()
+                Self.log.info(
+                    "Queue published tracks=\(trackItems.count, privacy: .public) current=\(currentID ?? "-", privacy: .public) limits=\(self.contentLimitsEnforced, privacy: .public)/\(self.enforcedContentItemsCount, privacy: .public)/depth=\(self.enforcedContentTreeDepth, privacy: .public)"
+                )
+            } else if progressOnly {
+                // Tylko metadane postępu — bez beginUpdates (NBT resetuje listę).
+            }
         } else if !libraryPlaylists.isEmpty {
             let playlistItems = libraryPlaylists.map { node -> BrowseItem in
                 BrowseItem(
@@ -260,14 +316,23 @@ final class BluetoothMediaBrowser: NSObject {
                 ),
                 nowPlayingIdentifier: nil
             )
+            lastQueueSignature = nil
+            snapshot = snap
+            publishSnapshot(snap)
+            updateNowPlayingIdentifiers(from: snap)
+            if forceNotify {
+                notifyContentChanged()
+            }
         } else {
             snap = nil
+            lastQueueSignature = nil
+            snapshot = nil
+            publishSnapshot(nil)
+            updateNowPlayingIdentifiers(from: nil)
+            if forceNotify {
+                notifyContentChanged()
+            }
         }
-
-        snapshot = snap
-        publishSnapshot(snap)
-        updateNowPlayingIdentifiers(from: snap)
-        notifyContentChanged()
     }
 
     private func publishRuntimeConfig() {
@@ -306,20 +371,28 @@ final class BluetoothMediaBrowser: NSObject {
             MPPlayableContentManager.shared().nowPlayingIdentifiers = []
             return
         }
+
         var ids: [String] = []
         switch snap.root {
-        case .activeQueue(let layout, let container, _):
-            switch layout {
-            case .nestedPlaylist:
-                ids.append(container.identifier)
-            case .flatQueue:
-                break
+        case .activeQueue(_, let container, let tracks):
+            // Kontener playlisty + CAŁA kolejka — NBT/iDrive przewija tę listę jak Apple Music.
+            ids.append(container.identifier)
+            if let current = snap.nowPlayingIdentifier {
+                ids.append(current)
+                for track in tracks where track.identifier != current {
+                    ids.append(track.identifier)
+                }
+            } else {
+                ids.append(contentsOf: tracks.map(\.identifier))
             }
         case .library:
-            break
+            if let trackID = snap.nowPlayingIdentifier {
+                ids.append(trackID)
+            }
         }
-        if let trackID = snap.nowPlayingIdentifier {
-            ids.append(trackID)
+        // Twardy limit identyfikatorów — niektóre head-unity crashują przy bardzo długich tablicach.
+        if ids.count > 120 {
+            ids = Array(ids.prefix(120))
         }
         MPPlayableContentManager.shared().nowPlayingIdentifiers = ids
     }
@@ -329,13 +402,6 @@ final class BluetoothMediaBrowser: NSObject {
         let manager = MPPlayableContentManager.shared()
         manager.beginUpdates()
         manager.endUpdates()
-    }
-
-    private nonisolated func limitedChildCount(_ count: Int) -> Int {
-        let config = readRuntimeConfig()
-        let cap = config.maxItems
-        guard config.limits.enforced else { return min(count, cap) }
-        return min(count, cap, max(1, config.limits.count))
     }
 
     private nonisolated func makeContentItem(_ item: BrowseItem) -> MPContentItem {
@@ -399,26 +465,30 @@ extension BluetoothMediaBrowser: MPPlayableContentDataSource {
 
         switch snap.root {
         case .activeQueue(let queueLayout, _, let tracks):
-            let effectiveLayout = queueLayout
-            switch effectiveLayout {
+            switch queueLayout {
             case .nestedPlaylist:
+                // Root: 1 playlista (pasuje do NBT count=1). Wewnątrz: pełna kolejka.
                 if indexPath.isEmpty { return 1 }
-                if indexPath.count == 1, indexPath[0] == 0 { return limitedChildCount(tracks.count, isQueueTracks: true) }
+                if indexPath.count == 1, indexPath[0] == 0 {
+                    return childCount(requested: tracks.count, isActiveQueueTracks: true)
+                }
                 return 0
             case .flatQueue:
-                if indexPath.isEmpty { return limitedChildCount(tracks.count, isQueueTracks: true) }
+                if indexPath.isEmpty {
+                    return childCount(requested: tracks.count, isActiveQueueTracks: true)
+                }
                 return 0
             }
 
         case .library(let playlistItems, let trackItemsByPlaylist, _):
             if indexPath.isEmpty {
                 if readRuntimeConfig().limits.enforced, readRuntimeConfig().limits.depth <= 1 {
-                    return limitedChildCount(trackItemsByPlaylist.first?.count ?? 0)
+                    return childCount(requested: trackItemsByPlaylist.first?.count ?? 0, isActiveQueueTracks: false)
                 }
-                return limitedChildCount(playlistItems.count)
+                return childCount(requested: playlistItems.count, isActiveQueueTracks: false)
             }
             if indexPath.count == 1, trackItemsByPlaylist.indices.contains(indexPath[0]) {
-                return limitedChildCount(trackItemsByPlaylist[indexPath[0]].count)
+                return childCount(requested: trackItemsByPlaylist[indexPath[0]].count, isActiveQueueTracks: false)
             }
             return 0
         }
@@ -468,7 +538,7 @@ extension BluetoothMediaBrowser: MPPlayableContentDataSource {
     }
 
     nonisolated func beginLoadingChildItems(at indexPath: IndexPath, completionHandler: @escaping (Error?) -> Void) {
-        // Snapshot jest już w pamięci — synchroniczne zakończenie (BMW timeout → wieczne „pobieranie”).
+        // Snapshot już w pamięci — synchronicznie (async → wieczne „pobieranie” na NBT).
         completionHandler(nil)
     }
 
@@ -477,9 +547,9 @@ extension BluetoothMediaBrowser: MPPlayableContentDataSource {
         guard case .activeQueue(let layout, _, let tracks) = snap.root else { return false }
         switch layout {
         case .flatQueue:
-            return indexPath.count == 1 && tracks.indices.contains(indexPath[0]) && tracks[indexPath[0]].playbackProgress != nil
+            return indexPath.isEmpty && !tracks.isEmpty
         case .nestedPlaylist:
-            return indexPath.count == 2 && indexPath[0] == 0 && tracks.indices.contains(indexPath[1]) && tracks[indexPath[1]].playbackProgress != nil
+            return indexPath.count == 1 && indexPath[0] == 0 && !tracks.isEmpty
         }
     }
 }
@@ -504,6 +574,18 @@ extension BluetoothMediaBrowser: MPPlayableContentDelegate {
                     return
                 }
                 await engine.jumpToOrderIndex(orderIndex)
+                completionHandler(nil)
+                return
+            }
+
+            // Klik w kontener playlisty = graj od bieżącego / od początku.
+            if case .activeQueue(_, _, let tracks) = snap.root,
+               indexPath.count == 1, indexPath[0] == 0,
+               let engine, !tracks.isEmpty {
+                let start = tracks.first(where: { $0.identifier == snap.nowPlayingIdentifier })?.orderIndex
+                    ?? tracks.first?.orderIndex
+                    ?? 0
+                await engine.jumpToOrderIndex(start)
                 completionHandler(nil)
                 return
             }
@@ -542,7 +624,7 @@ extension BluetoothMediaBrowser: MPPlayableContentDelegate {
         initializePlaybackQueueWithCompletionHandler completionHandler: @escaping (Error?) -> Void
     ) {
         Task { @MainActor in
-            rebuildSnapshot()
+            rebuildSnapshot(forceNotify: true)
             completionHandler(nil)
         }
     }
@@ -556,24 +638,23 @@ extension BluetoothMediaBrowser: MPPlayableContentDelegate {
             enforcedContentItemsCount = context.enforcedContentItemsCount
             enforcedContentTreeDepth = context.enforcedContentTreeDepth
 
-            if context.contentLimitsEnforced, context.enforcedContentTreeDepth <= 1 {
-                // Płaska lista utworów gdy głębokość = 1.
-                queueBrowseLayout = .flatQueue
-            } else {
-                // NBT / BMW: playlista jako folder → utwory (jak Apple Music).
-                queueBrowseLayout = .nestedPlaylist
-            }
+            // NIGDY nie przełączaj aktywnej kolejki na flatQueue — przy count=1 ginie cała playlista.
+            queueBrowseLayout = .nestedPlaylist
 
             if context.contentLimitsEnforced {
                 let reported = max(1, context.enforcedContentItemsCount)
-                // BMW NBT często zgłasza count=1 — nie tnij kolejki do jednego utworu.
-                maxBrowseItems = reported <= 3 ? 100 : min(reported, 100)
+                // NBT często zgłasza 1 — nie używaj tego jako limitu kolejki.
+                maxBrowseItems = reported <= 3 ? 100 : min(max(reported, 20), 100)
             } else {
                 maxBrowseItems = 100
             }
 
+            Self.log.info(
+                "Context update enforced=\(context.contentLimitsEnforced, privacy: .public) count=\(context.enforcedContentItemsCount, privacy: .public) depth=\(context.enforcedContentTreeDepth, privacy: .public) endpoint=\(context.endpointAvailable, privacy: .public)"
+            )
+
             publishRuntimeConfig()
-            rebuildSnapshot()
+            rebuildSnapshot(forceNotify: true)
         }
     }
 }

@@ -54,7 +54,7 @@ struct RootView: View {
         // Keep AVPlayerLayer alive outside the video fullScreenCover so PiP survives minimize.
         .background {
             VideoPiPLayerHost(controller: video.pipController)
-                .frame(width: 64, height: 36)
+                .frame(width: 128, height: 72)
                 .opacity(0.02)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)

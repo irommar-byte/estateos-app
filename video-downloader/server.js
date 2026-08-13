@@ -48,6 +48,7 @@ import {
 } from "./movies-favorites.js";
 import {
   listMovieDownloads,
+  summarizeMovieDownloads,
   linkMovieDownload,
   linkMovieDownloadByKey,
   deleteMovieDownload,
@@ -4706,10 +4707,8 @@ app.delete("/api/favorites", (req, res) => {
 app.get("/api/movies/downloads", (req, res) => {
   try {
     reconcileSessionStorage(req, mergeMoviesLibraryStoreKey);
-    res.json({
-      folder: MOVIES_FOLDER_NAME,
-      downloads: listMovieDownloads(req, MUSIC_PLAYLIST_DOWNLOADS_DIR),
-    });
+    const summary = summarizeMovieDownloads(req, MUSIC_PLAYLIST_DOWNLOADS_DIR);
+    res.json(summary);
   } catch (err) {
     const code = /Brak konta/i.test(err.message || "") ? 401 : 400;
     res.status(code).json({ error: err.message || "Nie udało się wczytać pobranych filmów." });

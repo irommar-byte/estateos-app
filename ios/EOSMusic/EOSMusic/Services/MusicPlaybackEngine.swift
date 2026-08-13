@@ -1356,7 +1356,12 @@ final class MusicPlaybackEngine: ObservableObject {
             supplemental: supplementalNowPlayingMetadata,
             force: force
         )
-        BluetoothMediaBrowser.shared.reloadQueue(from: self)
+        // Nie przeładowuj drzewa BT przy każdym ticku czasu — NBT wtedy zostawia tylko bieżący utwór.
+        if force {
+            BluetoothMediaBrowser.shared.reloadQueue(from: self)
+        } else {
+            BluetoothMediaBrowser.shared.touchCurrentProgress(from: self)
+        }
     }
 
     private func hydratePlaybackMetadata(from item: AVPlayerItem, queueIndex: Int, generation: Int) async {

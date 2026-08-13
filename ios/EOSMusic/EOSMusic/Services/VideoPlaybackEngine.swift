@@ -90,7 +90,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                     guard let self,
                           self.wantsPlayback,
                           !self.isSuspendedForAVKit,
-                          self.currentItem != nil else { return }
+                          self.currentItem != nil,
+                          !self.queue.isEmpty else { return }
                     AudioSession.activateForPlayback()
                     self.player.play()
                     self.isPlaying = true
@@ -364,6 +365,15 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         isSuspendedForAVKit = false
         player.audio?.volume = vlcVolumeBeforeHandoff
         resumeAfterPictureInPicture(at: seconds, resume: resume)
+    }
+
+    /// PiP/AirPlay anulowane — nie wznawiaj VLC (pełne stop robi `stop()`).
+    func cancelAVKitHandoff() {
+        isSuspendedForAVKit = false
+        wantsPlayback = false
+        player.audio?.volume = vlcVolumeBeforeHandoff
+        player.pause()
+        isPlaying = false
     }
 
     func pauseForPictureInPicture() {

@@ -5,6 +5,8 @@ import UIKit
 final class OnlineMoviesController: ObservableObject {
     @Published private(set) var shelves: [FilmsHomeShelf] = []
     @Published private(set) var downloads: [MovieDownload] = []
+    @Published private(set) var serverMovieCount: Int = 0
+    @Published private(set) var serverMovieBytes: Int = 0
     @Published private(set) var isLoadingHome = false
     @Published private(set) var isLoadingDownloads = false
     @Published private(set) var homeError: String?
@@ -25,6 +27,8 @@ final class OnlineMoviesController: ObservableObject {
     func reset() {
         shelves = []
         downloads = []
+        serverMovieCount = 0
+        serverMovieBytes = 0
         homeError = nil
         statusMessage = nil
         transferStates = [:]
@@ -74,12 +78,57 @@ final class OnlineMoviesController: ObservableObject {
         do {
             let response = try await api.fetchMovieDownloads()
             downloads = response.downloads.filter(\.isDownloaded)
+            serverMovieCount = response.resolvedCount
+            serverMovieBytes = response.resolvedTotalBytes
+            if serverMovieCount == 0 {
+                serverMovieCount = downloads.count
+            }
+            if serverMovieBytes == 0 {
+                serverMovieBytes = downloads.reduce(0) { $0 + ($1.bytes ?? 0) }
+            }
         } catch {
             // Keep previous list; surface only when empty.
             if downloads.isEmpty {
                 statusMessage = error.localizedDescription
             }
         }
+    }
+
+    /// Liczba filmów zapisanych lokalnie na tym urządzeniu.
+    var phoneMovieCount: Int {
+        phoneFilePaths().count
+    }
+
+    /// Suma bajtów filmów na iPhonie (importy + skopiowane z serwera).
+    var phoneMovieBytes: Int64 {
+        phoneFilePaths().reduce(Int64(0)) { sum, path in
+            let url = URL(fileURLWithPath: path)
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            return sum + Int64(size)
+        }
+    }
+
+    private func phoneFilePaths() -> [String] {
+        AppDocuments.ensureStructure()
+        var paths = Set<String>()
+        let map = UserDefaults.standard.dictionary(forKey: Self.phoneMapKey) as? [String: String] ?? [:]
+        for path in map.values {
+            if FileManager.default.fileExists(atPath: path) {
+                paths.insert(path)
+            }
+        }
+        if let enumerator = FileManager.default.enumerator(
+            at: AppDocuments.videoImports,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            for case let fileURL as URL in enumerator {
+                let ext = fileURL.pathExtension.lowercased()
+                guard ["mp4", "m4v", "mov", "mkv"].contains(ext) else { continue }
+                paths.insert(fileURL.path)
+            }
+        }
+        return Array(paths)
     }
 
     func search(query: String, page: Int = 1) async throws -> SearchResponse {
