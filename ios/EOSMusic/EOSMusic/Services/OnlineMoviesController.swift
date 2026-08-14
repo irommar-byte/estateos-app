@@ -651,7 +651,11 @@ final class OnlineMoviesController: ObservableObject {
 
     private static let phoneMapKey = "onlineMovies.phoneFiles"
 
-    private func phoneFileURL(for sourceURL: String) -> URL? {
+    func isAvailableOffline(url: String) -> Bool {
+        phoneFileURL(for: url) != nil
+    }
+
+    func phoneFileURL(for sourceURL: String) -> URL? {
         let map = UserDefaults.standard.dictionary(forKey: Self.phoneMapKey) as? [String: String] ?? [:]
         if let path = map[sourceURL], FileManager.default.fileExists(atPath: path) {
             return URL(fileURLWithPath: path)

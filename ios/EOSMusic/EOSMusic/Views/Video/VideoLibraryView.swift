@@ -32,7 +32,7 @@ struct VideoLibraryView: View {
 
                 VStack(spacing: 0) {
                     Picker("Sekcja", selection: $section) {
-                        ForEach(VideoLibrarySection.allCases) { item in
+                        ForEach(visibleSections) { item in
                             Text(item.title).tag(item)
                         }
                     }
@@ -92,7 +92,21 @@ struct VideoLibraryView: View {
             } message: {
                 Text(video.libraryError ?? "")
             }
+            .onChange(of: app.isOfflinePlaybackActive) { _, offline in
+                if offline, section == .online {
+                    section = .downloads
+                }
+            }
+            .onAppear {
+                if app.isOfflinePlaybackActive, section == .online {
+                    section = .downloads
+                }
+            }
         }
+    }
+
+    private var visibleSections: [VideoLibrarySection] {
+        app.isOfflinePlaybackActive ? [.downloads, .folders] : VideoLibrarySection.allCases
     }
 
     private var cinematicBackground: some View {

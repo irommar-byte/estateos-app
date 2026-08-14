@@ -37,8 +37,9 @@ struct OnlineSeriesEpisodesView: View {
     private var displayTitle: String { info.cdaHd?.title ?? info.title }
 
     private var seasonSections: [SeasonSection] {
+        let raw: [SeasonSection]
         if let seasons = info.seasons, !seasons.isEmpty {
-            return seasons.enumerated().map { index, season in
+            raw = seasons.enumerated().map { index, season in
                 SeasonSection(
                     id: season.seasonNumber ?? index + 1,
                     number: season.seasonNumber ?? index + 1,
@@ -46,11 +47,18 @@ struct OnlineSeriesEpisodesView: View {
                     episodes: season.episodes ?? []
                 )
             }
+        } else {
+            let grouped = Dictionary(grouping: info.playableEpisodes) { $0.seasonNumber ?? 1 }
+            raw = grouped.keys.sorted().map { sn in
+                let episodes = (grouped[sn] ?? []).sorted { ($0.episodeNumber ?? 0) < ($1.episodeNumber ?? 0) }
+                return SeasonSection(id: sn, number: sn, title: "Sezon \(sn)", episodes: episodes)
+            }
         }
-        let grouped = Dictionary(grouping: info.playableEpisodes) { $0.seasonNumber ?? 1 }
-        return grouped.keys.sorted().map { sn in
-            let episodes = (grouped[sn] ?? []).sorted { ($0.episodeNumber ?? 0) < ($1.episodeNumber ?? 0) }
-            return SeasonSection(id: sn, number: sn, title: "Sezon \(sn)", episodes: episodes)
+        guard app.isOfflinePlaybackActive else { return raw }
+        return raw.compactMap { section in
+            let episodes = section.episodes.filter { app.isMovieOnPhone(url: $0.url) }
+            guard !episodes.isEmpty else { return nil }
+            return SeasonSection(id: section.id, number: section.number, title: section.title, episodes: episodes)
         }
     }
 
@@ -158,12 +166,14 @@ struct OnlineSeriesEpisodesView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    bulkButton("Cały serial") {
-                        prepareDownload(allEpisodes.filter { !app.isMovieOnPhone(url: $0.url) }, label: displayTitle)
-                    }
-                    if let season = selectedSeason {
-                        bulkButton("Ten sezon") {
-                            prepareDownload(season.episodes.filter { !app.isMovieOnPhone(url: $0.url) }, label: "\(displayTitle) · \(season.title)")
+                    if !app.isOfflinePlaybackActive {
+                        bulkButton("Cały serial") {
+                            prepareDownload(allEpisodes.filter { !app.isMovieOnPhone(url: $0.url) }, label: displayTitle)
+                        }
+                        if let season = selectedSeason {
+                            bulkButton("Ten sezon") {
+                                prepareDownload(season.episodes.filter { !app.isMovieOnPhone(url: $0.url) }, label: "\(displayTitle) · \(season.title)")
+                            }
                         }
                     }
                     Button(isSelectionMode ? "Anuluj wybór" : "Wybierz odcinki") {
@@ -172,6 +182,7 @@ struct OnlineSeriesEpisodesView: View {
                     }
                     .font(EOSTypography.caption.weight(.semibold))
                     .buttonStyle(.bordered)
+                    .disabled(app.isOfflinePlaybackActive)
 
                     if isSelectionMode, !selectedEpisodeIDs.isEmpty {
                         bulkButton("Pobierz (\(selectedEpisodeIDs.count))") {
@@ -207,13 +218,29 @@ struct OnlineSeriesEpisodesView: View {
     }
 
     private var episodeList: some View {
-        let episodes = selectedSeason?.episodes ?? info.playableEpisodes
+        let episodes = visibleEpisodes
         return VStack(spacing: 10) {
-            ForEach(episodes) { episode in
-                episodeRow(episode)
-                    .id(episode.url)
+            if app.isOfflinePlaybackActive, episodes.isEmpty {
+                ContentUnavailableView(
+                    "Brak odcinków na iPhonie",
+                    systemImage: "iphone.slash",
+                    description: Text("W trybie Offline widać tylko odcinki skopiowane na to urządzenie (Serwer + iPhone).")
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+            } else {
+                ForEach(episodes) { episode in
+                    episodeRow(episode)
+                        .id(episode.url)
+                }
             }
         }
+    }
+
+    private var visibleEpisodes: [EpisodeItem] {
+        let episodes = selectedSeason?.episodes ?? info.playableEpisodes
+        guard app.isOfflinePlaybackActive else { return episodes }
+        return episodes.filter { app.isMovieOnPhone(url: $0.url) }
     }
 
     private func episodeRow(_ episode: EpisodeItem) -> some View {
@@ -245,10 +272,10 @@ struct OnlineSeriesEpisodesView: View {
                     .font(EOSTypography.subheadline.weight(.semibold))
                     .lineLimit(2)
                 HStack(spacing: 6) {
-                    if highlighted {
-                        Text("Pobrany")
+                    if highlighted || onPhone || onServer {
+                        Text(onPhone ? "Na iPhonie" : "Pobrany")
                             .font(.caption2.weight(.bold))
-                            .foregroundStyle(EOSTheme.accent)
+                            .foregroundStyle(onPhone ? Color.green : EOSTheme.accent)
                     }
                     if onPhone {
                         MovieStorageLocationBadge(kind: .phone)
@@ -271,10 +298,12 @@ struct OnlineSeriesEpisodesView: View {
             .disabled(movies.playbackLaunchPhase.isBusy)
 
             Menu {
-                Button("Oglądaj ze źródła") {
-                    Task { await playEpisode(episode, preferSavedCopy: false) }
+                if !app.isOfflinePlaybackActive {
+                    Button("Oglądaj ze źródła") {
+                        Task { await playEpisode(episode, preferSavedCopy: false) }
+                    }
                 }
-                if onServer {
+                if onServer, !app.isOfflinePlaybackActive {
                     Button("Odtwórz z serwera") {
                         Task { await playEpisode(episode, preferSavedCopy: true) }
                     }
@@ -284,10 +313,12 @@ struct OnlineSeriesEpisodesView: View {
                         Task { await playEpisode(episode, preferSavedCopy: true) }
                     }
                 }
-                Button("Pobierz…") {
-                    prepareDownload([episode], label: serverDownloadTitle(seriesTitle: displayTitle, episode: episode))
+                if !app.isOfflinePlaybackActive {
+                    Button("Pobierz…") {
+                        prepareDownload([episode], label: serverDownloadTitle(seriesTitle: displayTitle, episode: episode))
+                    }
                 }
-                if onServer {
+                if onServer, !app.isOfflinePlaybackActive {
                     Button("Usuń z serwera", role: .destructive) {
                         Task { await movies.deleteServerDownload(url: episode.url) }
                     }

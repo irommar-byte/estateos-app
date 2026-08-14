@@ -130,7 +130,7 @@ private struct GlobalOfflineModeBar: View {
 
     private var statusCaption: String {
         if ui.offlineModeEnabled {
-            return "Offline · Biblioteka, Szukaj i player pokazują tylko pobrane."
+            return "Offline · muzyka i filmy: tylko pliki zapisane na tym iPhonie."
         }
         if !app.network.isOnline {
             return "Brak sieci · włącz Offline, aby przeglądać pobrane."

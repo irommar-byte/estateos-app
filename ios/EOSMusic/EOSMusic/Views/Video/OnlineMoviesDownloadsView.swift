@@ -10,7 +10,7 @@ struct OnlineMoviesDownloadsView: View {
     private var movies: OnlineMoviesController { app.onlineMovies }
 
     private var grouped: [(series: String, items: [MovieDownload])] {
-        let dict = Dictionary(grouping: movies.downloads) { download in
+        let dict = Dictionary(grouping: visibleDownloads) { download in
             download.seriesFolderName ?? "Filmy"
         }
         return dict.keys.sorted().map { key in
@@ -18,16 +18,27 @@ struct OnlineMoviesDownloadsView: View {
         }
     }
 
+    private var visibleDownloads: [MovieDownload] {
+        if app.isOfflinePlaybackActive {
+            return movies.downloads.filter { movies.isAvailableOffline(url: $0.url) }
+        }
+        return movies.downloads
+    }
+
     var body: some View {
         Group {
-            if movies.isLoadingDownloads && movies.downloads.isEmpty {
+            if movies.isLoadingDownloads && visibleDownloads.isEmpty {
                 ProgressView("Ładuję pobrane…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if movies.downloads.isEmpty {
+            } else if visibleDownloads.isEmpty {
                 ContentUnavailableView(
-                    "Brak filmów na serwerze",
-                    systemImage: "externaldrive",
-                    description: Text("Pobierz z EOS™LIBRARY — pliki trafią do MOVIES/Serial/Sezon/ na VPS.")
+                    app.isOfflinePlaybackActive ? "Brak filmów na iPhonie" : "Brak filmów na serwerze",
+                    systemImage: app.isOfflinePlaybackActive ? "iphone.slash" : "externaldrive",
+                    description: Text(
+                        app.isOfflinePlaybackActive
+                            ? "Tryb Offline pokazuje tylko kopie na tym urządzeniu. W Online pobierz z opcją „Serwer + iPhone” albo dodaj folder z plikami."
+                            : "Pobierz z EOS™LIBRARY — pliki trafią do MOVIES/Serial/Sezon/ na VPS."
+                    )
                 )
             } else {
                 List {

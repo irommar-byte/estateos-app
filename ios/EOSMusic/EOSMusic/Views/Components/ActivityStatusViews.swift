@@ -129,6 +129,10 @@ struct MovieDownloadQueuePanel: View {
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(EOSTheme.accent)
                     }
+                } else if case .done = item.state {
+                    Text("Pobrany")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(EOSTheme.accent)
                 } else if case .pending = item.state {
                     Text("W kolejce")
                         .font(.system(size: 10, weight: .medium))

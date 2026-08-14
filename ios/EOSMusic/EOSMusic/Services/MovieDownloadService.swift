@@ -937,7 +937,8 @@ final class MovieDownloadService: ObservableObject {
         batchTask = nil
         resetProgressTiming()
         persistBatch(force: true)
-        // Keep the terminal snapshot until the user dismisses the queue.
+        await onlineMovies.refreshDownloads()
+        // Keep the terminal snapshot until the user taps OK.
     }
 
     /// Fire-and-forget server jobs for all pending items so EOS keeps working when the app is suspended.
@@ -1178,14 +1179,40 @@ final class MovieDownloadService: ObservableObject {
             return
         }
 
-        // No local runner — reconstruct a server-only batch from the account queue.
+        // No local runner — reconstruct a server-only batch from live account jobs.
+        // Finished-only snapshots must not come back after the user taps OK.
         let live = movies.filter { !$0.isTerminal }
         let recentDone = movies.filter { $0.isTerminal && !$0.isFailed }
-        if live.isEmpty && recentDone.isEmpty {
-            if activeBatch?.isRemoteSynced == true {
-                if var batch = activeBatch {
-                    batch.isFinished = true
+
+        if live.isEmpty {
+            if var batch = activeBatch, batch.isRemoteSynced, batchTask == nil {
+                var changed = !batch.isFinished
+                for index in batch.items.indices {
+                    switch batch.items[index].state {
+                    case .done, .skipped, .cancelled, .failed:
+                        continue
+                    default:
+                        break
+                    }
+                    let url = batch.items[index].url
+                    if let remote = recentDone.first(where: { MovieURLMatching.urlsMatch($0.url, url) }) {
+                        let landed = onlineMovies.map {
+                            verifyMovieLanded(item: batch.items[index], in: $0.downloads)
+                        } ?? true
+                        batch.items[index].state = landed ? .done : .downloading(progress: 99)
+                        if !landed {
+                            verifyRemoteTerminal(item: batch.items[index], jobId: remote.jobId)
+                        }
+                    } else {
+                        batch.items[index].state = .done
+                    }
+                    changed = true
+                }
+                batch.isFinished = true
+                if changed {
                     activeBatch = batch
+                    statusMessage = "Gotowe na serwerze."
+                    Task { await self.onlineMovies?.refreshDownloads() }
                 }
             }
             return
@@ -1219,9 +1246,8 @@ final class MovieDownloadService: ObservableObject {
         }
 
         if let existing = activeBatch, existing.isRemoteSynced {
-            // Preserve cancelled local marks.
             for index in items.indices {
-                if let prev = existing.items.first(where: { $0.url == items[index].url }),
+                if let prev = existing.items.first(where: { MovieURLMatching.urlsMatch($0.url, items[index].url) }),
                    case .cancelled = prev.state {
                     items[index].state = .cancelled
                 }
@@ -1238,14 +1264,14 @@ final class MovieDownloadService: ObservableObject {
             quality: MediaQualityOption(id: "best", label: "Best"),
             destination: .server,
             isCancelled: false,
-            isFinished: live.isEmpty,
+            isFinished: false,
             isRemoteSynced: true
         )
         activeBatch = batch
         if let active = live.first {
             noteProgress(active.progressPercent)
         }
-        statusMessage = live.isEmpty ? "Gotowe na serwerze." : nil
+        statusMessage = nil
     }
 }
 
