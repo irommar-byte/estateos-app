@@ -2748,14 +2748,14 @@ export default function ClientForm({
         )}
         {actionModal !== "none" && actionModal !== "payment_success" && actionModal !== "oferta_plus" && actionModal !== "verify" && actionModal !== "success" && actionModal !== "limit" && (
           <div className="fixed inset-0 z-[999999] flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4 bg-black/90 backdrop-blur-xl">
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-10 max-w-lg w-full shadow-2xl relative text-center">
-              <button onClick={() => setActionModal("none")} className="absolute top-6 right-6 text-zinc-500 hover:text-white transition-colors"><X size={24} /></button>
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="eos-themed-modal relative w-full max-w-lg rounded-[3rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-10 text-center shadow-[var(--eos-shadow-strong)]">
+              <button onClick={() => setActionModal("none")} className="absolute top-6 right-6 text-[var(--eos-subtle)] transition-colors hover:text-[var(--eos-text)]"><X size={24} /></button>
 {actionModal === "error" && (
                 <>
-                  <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/30"><AlertCircle className="text-red-500" size={40} /></div>
-                  <h2 className="text-3xl font-black text-white mb-4">{ao.modalErrorTitle}</h2>
-                  <p className="text-[var(--eos-muted)] mb-8 leading-relaxed">{serverErrorMessage || ao.serverErrorHint}</p>
-                  <button onClick={handleFixDataFromErrorModal} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-red-500 font-black uppercase tracking-widest rounded-2xl transition-all duration-300">{ao.modalFixData}</button>
+                  <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10"><AlertCircle className="text-red-500" size={40} /></div>
+                  <h2 className="mb-4 text-3xl font-black text-[var(--eos-text)]">{ao.modalErrorTitle}</h2>
+                  <p className="mb-8 leading-relaxed text-[var(--eos-muted)]">{serverErrorMessage || ao.serverErrorHint}</p>
+                  <button onClick={handleFixDataFromErrorModal} className="w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] py-4 font-black uppercase tracking-widest text-[var(--eos-text)] transition-all duration-300 hover:border-red-500/40 hover:bg-red-500 hover:text-white">{ao.modalFixData}</button>
                 </>
               )}
 </motion.div>

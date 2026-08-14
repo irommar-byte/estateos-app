@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { getBestUserAvatarUrl } from "@/lib/userAvatar";
+import { eosBtn } from "@/components/ui/eosButtonStyles";
 
 type Agency = {
   id: number;
@@ -233,15 +234,16 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-start justify-center overflow-y-auto bg-black/85 p-4 pt-16 backdrop-blur-md">
-      <div className="relative flex w-full max-w-xl flex-col rounded-[2rem] border border-white/10 bg-[#0a0a0a] p-6 shadow-2xl sm:max-h-[90vh] sm:p-8">
+    <div className="fixed inset-0 z-[99999] flex items-start justify-center overflow-y-auto p-4 pt-16">
+      <div className="eos-modal-backdrop absolute inset-0" onClick={onClose} />
+      <div className="eos-themed-modal relative flex w-full max-w-xl flex-col rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-strong)] sm:max-h-[90vh] sm:p-8">
         <button
           type="button"
           onClick={() => {
             onClose();
             setStep(1);
           }}
-          className="absolute right-5 top-5 text-white/40 hover:text-white"
+          className="absolute right-5 top-5 text-[var(--eos-subtle)] hover:text-[var(--eos-text)]"
         >
           <X className="size-5" />
         </button>
@@ -250,25 +252,25 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
           <div className="py-6 text-center">
             <CheckCircle2 className="mx-auto size-12 text-emerald-400" />
             <p className="mt-4 text-2xl font-black text-emerald-400">Zapytanie wysłane</p>
-            <p className="mt-3 text-sm leading-relaxed text-white/60">
+            <p className="mt-3 text-sm leading-relaxed text-[var(--eos-muted)]">
               Agencja otrzymała powiadomienie i przeanalizuje Twoje ogłoszenie. Gdy prześle warunki
               współpracy, dostaniesz alert — zaakceptujesz je jednym kliknięciem w panelu CRM.
             </p>
-            <p className="mt-4 text-xs text-white/40">
+            <p className="mt-4 text-xs text-[var(--eos-subtle)]">
               Do tego czasu oferta pozostaje u Ciebie. Nic nie zmienia się bez Twojej zgody.
             </p>
           </div>
         ) : step === 1 ? (
           <>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400">Concierge</p>
-            <h3 className="mt-2 text-2xl font-black text-white">Oddaj sprzedaż profesjonalnej agencji</h3>
-            <p className="mt-3 text-sm leading-relaxed text-white/55">
+            <h3 className="mt-2 text-2xl font-black text-[var(--eos-text)]">Oddaj sprzedaż profesjonalnej agencji</h3>
+            <p className="mt-3 text-sm leading-relaxed text-[var(--eos-muted)]">
               {offerTitle ? `„${offerTitle}”` : `Oferta #${offerId}`} — wybierz biuro, które przejmie
               kontakt z kupującymi i doprowadzi transakcję do końca.
             </p>
 
-            <div className="mt-6 space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
-              <p className="flex items-center gap-2 font-bold text-white">
+            <div className="mt-6 space-y-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 text-sm text-[var(--eos-muted)]">
+              <p className="flex items-center gap-2 font-bold text-[var(--eos-text)]">
                 <Shield className="size-4 text-emerald-400" />
                 Co się stanie?
               </p>
@@ -288,7 +290,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
             <button
               type="button"
               onClick={() => setStep(2)}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-4 text-sm font-black uppercase tracking-widest text-black"
+              className={eosBtn("home", { block: true, className: "mt-6" })}
             >
               Wybierz agencję <ChevronRight className="size-4" />
             </button>
@@ -298,12 +300,12 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
             <button
               type="button"
               onClick={() => setStep(2)}
-              className="mb-3 text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white"
+              className="mb-3 text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)] hover:text-[var(--eos-text)]"
             >
               ← Wróć do listy biur
             </button>
-            <h3 className="text-xl font-black text-white">Profil biura</h3>
-            <p className="mt-2 text-sm text-white/50">Sprawdź doświadczenie i portfolio przed wysłaniem zapytania.</p>
+            <h3 className="text-xl font-black text-[var(--eos-text)]">Profil biura</h3>
+            <p className="mt-2 text-sm text-[var(--eos-muted)]">Sprawdź doświadczenie i portfolio przed wysłaniem zapytania.</p>
 
             <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
               {detailLoading ? (
@@ -321,8 +323,8 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
                       )}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xl font-black text-white">{detail.displayName}</p>
-                      <p className="mt-1 flex items-center gap-2 text-xs text-white/50">
+                      <p className="text-xl font-black text-[var(--eos-text)]">{detail.displayName}</p>
+                      <p className="mt-1 flex items-center gap-2 text-xs text-[var(--eos-muted)]">
                         {detail.stats.averageRating != null ? (
                           <>
                             <Star className="size-3.5 fill-amber-400 text-amber-400" />
@@ -335,22 +337,22 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
                   </div>
 
                   <div className="grid grid-cols-3 gap-2">
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
-                      <p className="text-lg font-black text-white">{detail.stats.activeListings}</p>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-white/40">Oferty</p>
+                    <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3 text-center">
+                      <p className="text-lg font-black text-[var(--eos-text)]">{detail.stats.activeListings}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">Oferty</p>
                     </div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
-                      <p className="text-lg font-black text-white">{detail.stats.activeAgents}</p>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-white/40">Agenci</p>
+                    <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3 text-center">
+                      <p className="text-lg font-black text-[var(--eos-text)]">{detail.stats.activeAgents}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">Agenci</p>
                     </div>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
-                      <p className="text-lg font-black text-white">{detail.stats.conciergeManaged}</p>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-white/40">Concierge</p>
+                    <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3 text-center">
+                      <p className="text-lg font-black text-[var(--eos-text)]">{detail.stats.conciergeManaged}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">Concierge</p>
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
-                    <p className="font-bold text-white">Portfolio</p>
+                  <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 text-sm text-[var(--eos-muted)]">
+                    <p className="font-bold text-[var(--eos-text)]">Portfolio</p>
                     <p className="mt-2">
                       Sprzedaż: {detail.offerBreakdown.sell} · Wynajem: {detail.offerBreakdown.rent}
                     </p>
@@ -360,8 +362,8 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
                   </div>
 
                   {(detail.address || detail.phone || detail.website) && (
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
-                      <p className="font-bold text-white">Kontakt</p>
+                    <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 text-sm text-[var(--eos-muted)]">
+                      <p className="font-bold text-[var(--eos-text)]">Kontakt</p>
                       {detail.address ? (
                         <p className="mt-2 flex items-start gap-2">
                           <MapPin className="mt-0.5 size-4 shrink-0 text-emerald-400" />
@@ -384,15 +386,15 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
 
                   {detail.reviews.length > 0 ? (
                     <div className="space-y-2">
-                      <p className="text-sm font-bold text-white">Opinie klientów</p>
+                      <p className="text-sm font-bold text-[var(--eos-text)]">Opinie klientów</p>
                       {detail.reviews.map((r) => (
-                        <div key={r.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                          <p className="flex items-center gap-2 text-xs text-white/50">
+                        <div key={r.id} className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3">
+                          <p className="flex items-center gap-2 text-xs text-[var(--eos-muted)]">
                             <Star className="size-3 fill-amber-400 text-amber-400" />
                             {r.rating}
                             {r.authorName ? ` · ${r.authorName}` : ""}
                           </p>
-                          {r.comment ? <p className="mt-2 text-sm leading-relaxed text-white/70">{r.comment}</p> : null}
+                          {r.comment ? <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{r.comment}</p> : null}
                         </div>
                       ))}
                     </div>
@@ -400,12 +402,12 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
 
                   {detail.offers.length > 0 ? (
                     <div className="space-y-2">
-                      <p className="text-sm font-bold text-white">Przykładowe oferty</p>
+                      <p className="text-sm font-bold text-[var(--eos-text)]">Przykładowe oferty</p>
                       {detail.offers.map((o) => (
-                        <div key={o.id} className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                        <div key={o.id} className="flex items-start justify-between gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3">
                           <div className="min-w-0">
-                            <p className="truncate font-bold text-white">{o.title}</p>
-                            <p className="text-xs text-white/45">
+                            <p className="truncate font-bold text-[var(--eos-text)]">{o.title}</p>
+                            <p className="text-xs text-[var(--eos-subtle)]">
                               {[o.city, o.district].filter(Boolean).join(", ")}
                               {o.rooms ? ` · ${o.rooms} pok.` : ""}
                               {o.area ? ` · ${o.area} m²` : ""}
@@ -418,7 +420,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
                   ) : null}
                 </div>
               ) : (
-                <p className="py-8 text-sm text-white/50">Nie udało się wczytać profilu biura.</p>
+                <p className="py-8 text-sm text-[var(--eos-muted)]">Nie udało się wczytać profilu biura.</p>
               )}
             </div>
 
@@ -426,7 +428,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
               type="button"
               disabled={submitting || detailLoading || !detail}
               onClick={() => void requestTransfer()}
-              className="mt-4 flex w-full items-center justify-center rounded-2xl bg-emerald-500 py-4 text-sm font-black uppercase tracking-widest text-black disabled:opacity-50"
+              className={eosBtn("home", { block: true, className: "mt-4" })}
             >
               {submitting ? <Loader2 className="size-5 animate-spin" /> : "Wyślij zapytanie do tego biura"}
             </button>
@@ -436,12 +438,12 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
             <button
               type="button"
               onClick={() => setStep(1)}
-              className="mb-3 text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white"
+              className="mb-3 text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)] hover:text-[var(--eos-text)]"
             >
               ← Wróć do wyjaśnienia
             </button>
-            <h3 className="text-xl font-black text-white">Wybierz biuro</h3>
-            <p className="mt-2 text-sm text-white/50">Dotknij biuro, aby zobaczyć szczegóły przed wysłaniem zapytania.</p>
+            <h3 className="text-xl font-black text-[var(--eos-text)]">Wybierz biuro</h3>
+            <p className="mt-2 text-sm text-[var(--eos-muted)]">Dotknij biuro, aby zobaczyć szczegóły przed wysłaniem zapytania.</p>
             {loading ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="size-6 animate-spin text-emerald-500" />
@@ -455,7 +457,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
                       key={a.id}
                       type="button"
                       onClick={() => void openDetail(a)}
-                      className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition hover:border-emerald-500/40"
+                      className="flex w-full items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 text-left transition hover:border-emerald-500/40"
                     >
                       <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black">
                         {avatar ? (
@@ -465,8 +467,8 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-bold text-white">{a.displayName}</p>
-                        <p className="text-[10px] text-white/40">
+                        <p className="truncate font-bold text-[var(--eos-text)]">{a.displayName}</p>
+                        <p className="text-[10px] text-[var(--eos-subtle)]">
                           {a.averageRating != null ? `${a.averageRating} ★ · ` : ""}
                           {a.reviewsCount} opinii · {a.activeListings} ofert
                         </p>
@@ -474,7 +476,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
                           <p className="text-[10px] font-bold text-emerald-400">{a.conciergeManaged} przekazań Concierge</p>
                         ) : null}
                       </div>
-                      <ChevronRight className="size-4 text-white/30" />
+                      <ChevronRight className="size-4 text-[var(--eos-subtle)]" />
                     </button>
                   );
                 })}

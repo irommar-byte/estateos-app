@@ -1,12 +1,12 @@
-
 'use client';
 import { useUserMode } from '@/contexts/UserModeContext';
 import { X, Crown, Shield, Zap } from 'lucide-react';
-
 import { useState } from 'react';
+import { eosBtn } from '@/components/ui/eosButtonStyles';
 
 export default function UpgradeModal() {
   const [isLoading, setIsLoading] = useState(false);
+  const { isUpgradeModalOpen, setIsUpgradeModalOpen, upgradeModalType } = useUserMode();
 
   const handlePayment = async () => {
     setIsLoading(true);
@@ -23,44 +23,59 @@ export default function UpgradeModal() {
       setIsLoading(false);
     }
   };
-  const { isUpgradeModalOpen, setIsUpgradeModalOpen, upgradeModalType } = useUserMode();
 
   if (!isUpgradeModalOpen) return null;
 
+  const isAgency = upgradeModalType === 'AGENCY';
+  const planName = isAgency ? 'Agencja' : 'Investor Pro';
+
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-lg bg-[#0a0a0a] border border-white/10 rounded-[32px] p-8 shadow-2xl overflow-hidden">
-        {/* Dekoracja tła */}
-        <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/10 blur-[100px]" />
-        
-        <button onClick={() => setIsUpgradeModalOpen(false)} className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Zamknij"
+        className="eos-modal-backdrop absolute inset-0"
+        onClick={() => setIsUpgradeModalOpen(false)}
+      />
+      <div className="eos-themed-modal relative w-full max-w-lg overflow-hidden rounded-[32px] border border-[var(--eos-border)] bg-[var(--eos-card)] p-8 shadow-[var(--eos-shadow-strong)]">
+        <button
+          type="button"
+          onClick={() => setIsUpgradeModalOpen(false)}
+          className="absolute right-6 top-6 text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
+        >
           <X size={24} />
         </button>
 
         <div className="flex flex-col items-center text-center">
-          <div className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-2xl flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(52,211,153,0.3)]">
-            {upgradeModalType === 'AGENCY' ? <Shield className="text-black" size={32} /> : <Crown className="text-black" size={32} />}
+          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500 text-black shadow-[0_0_30px_rgba(52,211,153,0.25)]">
+            {isAgency ? <Shield size={32} /> : <Crown size={32} />}
           </div>
 
-          <h2 className="text-2xl font-black uppercase tracking-tighter text-white mb-2">
-            Subscription required {upgradeModalType === 'AGENCY' ? 'AGENCJA' : 'INWESTOR PRO'}
+          <h2 className="mb-2 text-2xl font-black uppercase tracking-tighter text-[var(--eos-text)]">
+            Wymagana subskrypcja {planName}
           </h2>
-          
-          <p className="text-white/60 text-sm mb-8 leading-relaxed">
-            Mode {upgradeModalType === 'AGENCY' ? 'Agency' : 'Owner'} is available only for verified users with an active premium plan.
+
+          <p className="mb-8 text-sm leading-relaxed text-[var(--eos-muted)]">
+            Tryb {isAgency ? 'Agencja' : 'Właściciel / Investor Pro'} jest dostępny dla zweryfikowanych użytkowników
+            z aktywnym planem premium.
           </p>
 
           <div className="w-full space-y-3">
-            <button 
-              onClick={handlePayment} 
+            <button
+              type="button"
+              onClick={handlePayment}
               disabled={isLoading}
-              className="w-full py-4 bg-emerald-500 text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-emerald-400 transition-all flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(52,211,153,0.4)] hover:shadow-[0_0_30px_rgba(52,211,153,0.8)] disabled:opacity-50"
+              className={eosBtn('home', { block: true, size: 'lg' })}
             >
-              <Zap size={18} className="fill-black" /> 
-              {isLoading ? 'Connecting to payment gateway...' : 'Pay for plan now'}
+              <Zap size={18} />
+              {isLoading ? 'Łączenie z płatnością…' : 'Opłać plan teraz'}
             </button>
-            <button onClick={() => setIsUpgradeModalOpen(false)} className="w-full py-4 bg-white/5 text-white/40 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-white/10 transition-all">
-              Maybe later
+            <button
+              type="button"
+              onClick={() => setIsUpgradeModalOpen(false)}
+              className={eosBtn('secondary', { block: true })}
+            >
+              Może później
             </button>
           </div>
         </div>

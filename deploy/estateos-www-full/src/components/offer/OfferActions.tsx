@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CalendarDays, Handshake, X, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { eosBtn } from '@/components/ui/eosButtonStyles';
 
 type OfferActionsProps = {
   offerId: number;
@@ -54,19 +55,22 @@ export default function OfferActions({ offerId, currentUserId }: OfferActionsPro
     }
   };
 
+  const fieldClass =
+    'eos-modal-field w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 text-[var(--eos-text)] outline-none transition-colors focus:border-emerald-500';
+
   return (
     <>
       {/* GŁÓWNE PRZYCISKI NA STRONIE OFERTY */}
       <div className="flex flex-col sm:flex-row gap-4 mt-8">
         <button 
           onClick={() => setActiveModal('visit')}
-          className="flex-1 py-4 bg-white/10 hover:bg-white/15 border border-white/20 text-white font-black uppercase tracking-widest rounded-2xl flex justify-center items-center gap-3 transition-all"
+          className={eosBtn('secondary', { className: 'flex-1 justify-center gap-3' })}
         >
           <CalendarDays size={20} className="text-emerald-500" /> Umów wizytę
         </button>
         <button 
           onClick={() => setActiveModal('bid')}
-          className="flex-1 py-4 bg-gradient-to-r from-[#D4AF37] to-[#B5952F] hover:opacity-90 text-black font-black uppercase tracking-widest rounded-2xl flex justify-center items-center gap-3 transition-all shadow-[0_0_20px_rgba(212,175,55,0.3)]"
+          className={eosBtn('promote', { className: 'flex-1 justify-center gap-3' })}
         >
           <Handshake size={20} /> Zaproponuj Cenę
         </button>
@@ -75,21 +79,25 @@ export default function OfferActions({ offerId, currentUserId }: OfferActionsPro
       {/* MODAL (WIZYTA LUB OFERTA) */}
       <AnimatePresence>
         {activeModal !== 'none' && (
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+            <div className="eos-modal-backdrop absolute inset-0" onClick={() => setActiveModal('none')} />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-8 max-w-sm w-full shadow-2xl relative"
+              className="eos-themed-modal relative w-full max-w-sm rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-8 shadow-[var(--eos-shadow-strong)]"
             >
-              <button onClick={() => setActiveModal('none')} className="absolute top-6 right-6 text-white/30 hover:text-white transition-colors">
+              <button
+                onClick={() => setActiveModal('none')}
+                className="absolute top-6 right-6 text-[var(--eos-subtle)] transition-colors hover:text-[var(--eos-text)]"
+              >
                 <X size={20} />
               </button>
 
-              <h3 className="text-xl font-black text-white mb-2">
+              <h3 className="mb-2 text-xl font-black text-[var(--eos-text)]">
                 {activeModal === 'visit' ? 'Wybierz termin' : 'Twoja propozycja'}
               </h3>
-              <p className="text-white/50 text-xs font-medium mb-6">
+              <p className="mb-6 text-xs font-medium text-[var(--eos-muted)]">
                 {activeModal === 'visit' 
                   ? 'Właściciel otrzyma prośbę o spotkanie w Deal Roomie.' 
                   : 'Właściciel natychmiast zobaczy Twoją ofertę i będzie mógł ją zaakceptować.'}
@@ -98,25 +106,31 @@ export default function OfferActions({ offerId, currentUserId }: OfferActionsPro
               {activeModal === 'visit' ? (
                 <div className="space-y-4">
                   <div>
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2">Data</label>
-                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-emerald-500 transition-colors" />
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">Data</label>
+                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className={fieldClass} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2">Godzina</label>
-                    <input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-emerald-500 transition-colors" />
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">Godzina</label>
+                    <input type="time" value={time} onChange={e => setTime(e.target.value)} className={fieldClass} />
                   </div>
                 </div>
               ) : (
                 <div>
-                  <label className="text-[10px] font-bold text-[#D4AF37]/60 uppercase tracking-widest block mb-2">Kwota (PLN)</label>
-                  <input type="number" placeholder="np. 850000" value={amount} onChange={e => setAmount(e.target.value)} className="w-full bg-[#D4AF37]/5 border border-[#D4AF37]/20 rounded-xl p-4 text-white text-xl font-black focus:outline-none focus:border-[#D4AF37] transition-colors" />
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-amber-600">Kwota (PLN)</label>
+                  <input
+                    type="number"
+                    placeholder="np. 850000"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    className={`${fieldClass} border-amber-500/30 bg-amber-500/5 text-xl font-black focus:border-amber-500`}
+                  />
                 </div>
               )}
 
               <button 
                 onClick={handleSubmit}
                 disabled={loading || (activeModal === 'visit' ? (!date || !time) : !amount)}
-                className="w-full py-4 mt-8 bg-emerald-500 disabled:bg-white/5 disabled:text-white/20 text-black font-black uppercase tracking-widest rounded-xl flex justify-center items-center gap-2 transition-all"
+                className={eosBtn('home', { block: true, className: 'mt-8' })}
               >
                 {loading ? <Loader2 className="animate-spin" size={18} /> : 'Wyślij do właściciela'}
               </button>
