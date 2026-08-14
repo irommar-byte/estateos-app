@@ -4,6 +4,7 @@ import { useState, useEffect, FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Mail, Send, X, CheckCircle2, AlertCircle } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
+import { eosBtn } from "@/components/ui/eosButtonStyles";
 
 type Props = {
   isOpen: boolean;
@@ -17,6 +18,9 @@ const TOPICS = [
   "topicPartnership",
   "topicOther",
 ] as const;
+
+const fieldClass =
+  "eos-modal-field w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)] placeholder:text-[var(--eos-subtle)] outline-none transition-colors focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30";
 
 export default function ContactModal({ isOpen, onClose }: Props) {
   const { dict } = useLocale();
@@ -93,9 +97,10 @@ export default function ContactModal({ isOpen, onClose }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-3xl sm:p-6 dark:bg-black/80"
+        className="fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto p-4 sm:p-6"
         onClick={onClose}
       >
+        <div className="eos-modal-backdrop absolute inset-0" />
         <motion.div
           initial={{ scale: 0.96, y: 16 }}
           animate={{ scale: 1, y: 0 }}
@@ -103,27 +108,25 @@ export default function ContactModal({ isOpen, onClose }: Props) {
           onClick={(e) => e.stopPropagation()}
           className="eos-themed-modal relative my-auto w-full max-w-lg overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-strong)]"
         >
-          <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-emerald-500/15 blur-[100px]" />
-
-          <div className="relative border-b border-white/5 p-6 sm:p-8">
+          <div className="relative border-b border-[var(--eos-border)] p-6 sm:p-8">
             <button
               type="button"
               onClick={onClose}
-              className="absolute right-4 top-4 rounded-full p-2 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+              className="absolute right-4 top-4 rounded-full p-2 text-[var(--eos-muted)] transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)]"
               aria-label={c.close}
             >
               <X size={20} />
             </button>
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+            <div className="flex items-start gap-4 pr-10">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600">
                 <Mail size={22} />
               </div>
               <div>
-                <h2 className="text-2xl font-bold tracking-tight text-white">{c.title}</h2>
-                <p className="mt-2 text-sm leading-relaxed text-white/50">{c.subtitle}</p>
+                <h2 className="text-2xl font-bold tracking-tight text-[var(--eos-text)]">{c.title}</h2>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{c.subtitle}</p>
                 <a
                   href={`mailto:${c.emailTo}`}
-                  className="mt-3 inline-block text-xs font-semibold uppercase tracking-widest text-emerald-400 transition-colors hover:text-emerald-300"
+                  className="mt-3 inline-block text-xs font-semibold uppercase tracking-widest text-emerald-600 transition-colors hover:text-emerald-500"
                 >
                   {c.emailTo}
                 </a>
@@ -134,13 +137,9 @@ export default function ContactModal({ isOpen, onClose }: Props) {
           <div className="relative p-6 sm:p-8">
             {status === "success" ? (
               <div className="flex flex-col items-center gap-4 py-6 text-center">
-                <CheckCircle2 className="text-emerald-400" size={48} />
-                <p className="text-sm leading-relaxed text-white/70">{c.success}</p>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="mt-2 rounded-xl border border-white/10 px-6 py-2.5 text-xs font-bold uppercase tracking-widest text-white/70 transition-colors hover:border-white/20 hover:text-white"
-                >
+                <CheckCircle2 className="text-emerald-500" size={48} />
+                <p className="text-sm leading-relaxed text-[var(--eos-muted)]">{c.success}</p>
+                <button type="button" onClick={onClose} className={eosBtn("secondary")}>
                   {c.close}
                 </button>
               </div>
@@ -151,7 +150,7 @@ export default function ContactModal({ isOpen, onClose }: Props) {
                 </div>
 
                 <label className="block">
-                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
                     {c.name}
                   </span>
                   <input
@@ -159,12 +158,12 @@ export default function ContactModal({ isOpen, onClose }: Props) {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder={c.namePlaceholder}
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none transition-colors focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30"
+                    className={fieldClass}
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
                     {c.email}
                   </span>
                   <input
@@ -173,21 +172,21 @@ export default function ContactModal({ isOpen, onClose }: Props) {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder={c.emailPlaceholder}
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none transition-colors focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30"
+                    className={fieldClass}
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
                     {c.topic}
                   </span>
                   <select
                     value={topic}
                     onChange={(e) => setTopic(e.target.value as (typeof TOPICS)[number])}
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition-colors focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30"
+                    className={fieldClass}
                   >
                     {TOPICS.map((t) => (
-                      <option key={t} value={t} className="bg-[#111]">
+                      <option key={t} value={t}>
                         {topicLabel(t)}
                       </option>
                     ))}
@@ -195,7 +194,7 @@ export default function ContactModal({ isOpen, onClose }: Props) {
                 </label>
 
                 <label className="block">
-                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
                     {c.message}
                   </span>
                   <textarea
@@ -204,12 +203,12 @@ export default function ContactModal({ isOpen, onClose }: Props) {
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     placeholder={c.messagePlaceholder}
-                    className="w-full resize-y rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none transition-colors focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30"
+                    className={`${fieldClass} resize-y`}
                   />
                 </label>
 
                 {status === "error" && (
-                  <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200/90">
+                  <div className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">
                     <AlertCircle size={18} className="mt-0.5 shrink-0" />
                     <span>{c.error}</span>
                   </div>
@@ -218,17 +217,13 @@ export default function ContactModal({ isOpen, onClose }: Props) {
                 {mailtoFallback && (
                   <a
                     href={mailtoFallback}
-                    className="block text-center text-xs font-semibold uppercase tracking-widest text-emerald-400 hover:text-emerald-300"
+                    className="block text-center text-xs font-semibold uppercase tracking-widest text-emerald-600 hover:text-emerald-500"
                   >
                     {c.fallbackMailto}
                   </a>
                 )}
 
-                <button
-                  type="submit"
-                  disabled={status === "sending"}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 text-xs font-bold uppercase tracking-[0.2em] text-white shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:bg-emerald-500 disabled:opacity-60"
-                >
+                <button type="submit" disabled={status === "sending"} className={eosBtn("home", { block: true, size: "lg" })}>
                   <Send size={16} />
                   {status === "sending" ? c.sending : c.send}
                 </button>

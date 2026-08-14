@@ -72,13 +72,13 @@ export default function PlanningPresentationCalendar({
 
   return (
     <>
-      <div className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-5 md:p-7 shadow-2xl relative overflow-hidden">
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6 border-b border-white/5 pb-5">
+      <div className="bg-[var(--eos-card)] border border-[var(--eos-border)] rounded-[2rem] p-5 md:p-7 shadow-2xl relative overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6 border-b border-[var(--eos-border)] pb-5">
           <div>
-            <h2 className="text-xl md:text-2xl font-black text-white tracking-tighter flex items-center gap-2.5">
+            <h2 className="text-xl md:text-2xl font-black text-[var(--eos-text)] tracking-tighter flex items-center gap-2.5">
               <Calendar className="text-emerald-500 w-6 h-6" /> Kalendarz Prezentacji
             </h2>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mt-1">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)] mt-1">
               Podgląd rezerwacji i negocjacji
             </p>
           </div>
@@ -86,19 +86,19 @@ export default function PlanningPresentationCalendar({
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_10px_rgba(250,204,21,0.7)]" />
-              <span className="text-[9px] uppercase tracking-widest font-black text-white/50">
+              <span className="text-[9px] uppercase tracking-widest font-black text-[var(--eos-muted)]">
                 Do akceptacji
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-amber-500/80 shadow-[0_0_8px_rgba(245,158,11,0.4)]" />
-              <span className="text-[9px] uppercase tracking-widest font-black text-white/45">
+              <span className="text-[9px] uppercase tracking-widest font-black text-[var(--eos-subtle)]">
                 Twoja propozycja
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.6)]" />
-              <span className="text-[9px] uppercase tracking-widest font-black text-white/50">
+              <span className="text-[9px] uppercase tracking-widest font-black text-[var(--eos-muted)]">
                 Zatwierdzone
               </span>
             </div>
@@ -110,7 +110,7 @@ export default function PlanningPresentationCalendar({
             <button
               type="button"
               onClick={() => shiftYear(-1)}
-              className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-colors text-[10px] font-black uppercase tracking-widest"
+              className="p-2 rounded-xl bg-[var(--eos-input)] border border-[var(--eos-border)] text-[var(--eos-muted)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)] transition-colors text-[10px] font-black uppercase tracking-widest"
               aria-label="Poprzedni rok"
             >
               «
@@ -118,7 +118,7 @@ export default function PlanningPresentationCalendar({
             <button
               type="button"
               onClick={() => shiftMonth(-1)}
-              className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-white hover:border-white/20 transition-colors"
+              className="p-2 rounded-xl bg-[var(--eos-input)] border border-[var(--eos-border)] text-[var(--eos-muted)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)] transition-colors"
               aria-label="Poprzedni miesiąc"
             >
               <ChevronLeft size={18} />
@@ -126,7 +126,7 @@ export default function PlanningPresentationCalendar({
           </div>
 
           <div className="text-center min-w-[160px]">
-            <p className="text-sm md:text-base font-black text-white capitalize tracking-tight">{monthLabel}</p>
+            <p className="text-sm md:text-base font-black text-[var(--eos-text)] capitalize tracking-tight">{monthLabel}</p>
             <button
               type="button"
               onClick={() => {
@@ -143,7 +143,7 @@ export default function PlanningPresentationCalendar({
             <button
               type="button"
               onClick={() => shiftMonth(1)}
-              className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:text-white hover:border-white/20 transition-colors"
+              className="p-2 rounded-xl bg-[var(--eos-input)] border border-[var(--eos-border)] text-[var(--eos-muted)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)] transition-colors"
               aria-label="Następny miesiąc"
             >
               <ChevronRight size={18} />
@@ -151,7 +151,7 @@ export default function PlanningPresentationCalendar({
             <button
               type="button"
               onClick={() => shiftYear(1)}
-              className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-colors text-[10px] font-black uppercase tracking-widest"
+              className="p-2 rounded-xl bg-[var(--eos-input)] border border-[var(--eos-border)] text-[var(--eos-muted)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)] transition-colors text-[10px] font-black uppercase tracking-widest"
               aria-label="Następny rok"
             >
               »
@@ -163,7 +163,7 @@ export default function PlanningPresentationCalendar({
           {WEEKDAYS.map((wd) => (
             <div
               key={wd}
-              className="text-center text-[9px] font-black uppercase tracking-widest text-white/30 py-1"
+              className="text-center text-[9px] font-black uppercase tracking-widest text-[var(--eos-subtle)] py-1"
             >
               {wd}
             </div>
@@ -189,13 +189,13 @@ export default function PlanningPresentationCalendar({
                   isToday
                     ? 'border-emerald-500/50 bg-emerald-500/[0.08] shadow-[0_0_20px_rgba(16,185,129,0.12)]'
                     : inMonth
-                      ? 'border-white/8 bg-[#111] hover:border-white/20'
-                      : 'border-white/[0.03] bg-[#0c0c0c] opacity-45'
+                      ? 'border-white/8 bg-[var(--eos-input)] hover:border-[var(--eos-border)]'
+                      : 'border-[var(--eos-border)] bg-[var(--eos-input)] opacity-45'
                 }`}
               >
                 <span
                   className={`text-[11px] sm:text-sm font-black leading-none ${
-                    isToday ? 'text-emerald-400' : inMonth ? 'text-white' : 'text-white/35'
+                    isToday ? 'text-emerald-400' : inMonth ? 'text-[var(--eos-text)]' : 'text-[var(--eos-subtle)]'
                   }`}
                 >
                   {d.getDate()}
@@ -220,7 +220,7 @@ export default function PlanningPresentationCalendar({
                     />
                   )}
                   {!hasAccepted && !hasPendingNegotiation && !hasWaitingMine && inMonth && (
-                    <span className="w-1 h-1 rounded-full bg-white/10" />
+                    <span className="w-1 h-1 rounded-full bg-[var(--eos-input)]" />
                   )}
                 </div>
               </button>
@@ -228,7 +228,7 @@ export default function PlanningPresentationCalendar({
           })}
         </div>
 
-        <p className="mt-5 text-center text-white/30 text-[11px] leading-relaxed border-t border-white/5 pt-4">
+        <p className="mt-5 text-center text-[var(--eos-subtle)] text-[11px] leading-relaxed border-t border-[var(--eos-border)] pt-4">
           Kliknij dzień, aby zobaczyć prezentacje i negocjacje terminu. Żółta lampka mruga, gdy czeka Twoja
           akceptacja.
         </p>
@@ -240,19 +240,20 @@ export default function PlanningPresentationCalendar({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[99999] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6"
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6"
             onClick={() => setSelectedDate(null)}
           >
+            <div className="eos-modal-backdrop absolute inset-0" />
             <motion.div
               initial={{ scale: 0.96, y: 16 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.96, y: 16 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] w-full max-w-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.85)]"
+              className="eos-themed-modal relative w-full max-w-2xl overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-strong)]"
             >
-              <div className="p-5 md:p-7 border-b border-white/5 flex justify-between items-start gap-4 bg-gradient-to-r from-emerald-500/10 to-transparent">
+              <div className="p-5 md:p-7 border-b border-[var(--eos-border)] flex justify-between items-start gap-4 bg-gradient-to-r from-emerald-500/10 to-transparent">
                 <div>
-                  <h3 className="text-xl md:text-2xl font-black text-white tracking-tighter">Plan Dnia</h3>
+                  <h3 className="text-xl md:text-2xl font-black text-[var(--eos-text)] tracking-tighter">Plan Dnia</h3>
                   <p className="text-emerald-500 font-bold uppercase tracking-widest text-[10px] mt-1">
                     {selectedDate.toLocaleDateString('pl-PL', {
                       weekday: 'long',
@@ -265,7 +266,7 @@ export default function PlanningPresentationCalendar({
                 <button
                   type="button"
                   onClick={() => setSelectedDate(null)}
-                  className="p-2.5 bg-white/5 hover:bg-red-500/90 hover:text-white rounded-full transition-colors text-white/50 shrink-0"
+                  className="p-2.5 bg-[var(--eos-input)] hover:bg-red-500/90 hover:text-[var(--eos-text)] rounded-full transition-colors text-[var(--eos-muted)] shrink-0"
                 >
                   <X size={18} />
                 </button>
@@ -273,7 +274,7 @@ export default function PlanningPresentationCalendar({
 
               <div className="p-5 md:p-7 max-h-[62vh] overflow-y-auto custom-scrollbar space-y-3">
                 {selectedDayApps.length === 0 ? (
-                  <p className="text-center py-12 text-white/30 font-bold uppercase tracking-widest text-xs">
+                  <p className="text-center py-12 text-[var(--eos-subtle)] font-bold uppercase tracking-widest text-xs">
                     Brak spotkań i negocjacji na ten dzień.
                   </p>
                 ) : (
@@ -291,11 +292,11 @@ export default function PlanningPresentationCalendar({
                     return (
                       <div
                         key={app.id}
-                        className="bg-[#111] border border-white/10 rounded-2xl p-4 flex flex-col gap-3"
+                        className="bg-[var(--eos-input)] border border-[var(--eos-border)] rounded-2xl p-4 flex flex-col gap-3"
                       >
                         <div className="flex flex-wrap items-center gap-2">
                           <Clock size={14} className="text-emerald-500 shrink-0" />
-                          <span className="font-black text-lg text-white">{time}</span>
+                          <span className="font-black text-lg text-[var(--eos-text)]">{time}</span>
                           {app.needsMyResponse && (
                             <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-[8px] font-black uppercase tracking-widest rounded-full border border-yellow-500/35 animate-pulse">
                               Do akceptacji
@@ -318,18 +319,18 @@ export default function PlanningPresentationCalendar({
                             <img
                               src={app.offerImageUrl}
                               alt=""
-                              className="w-14 h-14 rounded-xl object-cover border border-white/10 shrink-0"
+                              className="w-14 h-14 rounded-xl object-cover border border-[var(--eos-border)] shrink-0"
                             />
                           ) : (
-                            <div className="w-14 h-14 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                              <Building2 size={20} className="text-white/30" />
+                            <div className="w-14 h-14 rounded-xl bg-[var(--eos-input)] border border-[var(--eos-border)] flex items-center justify-center shrink-0">
+                              <Building2 size={20} className="text-[var(--eos-subtle)]" />
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-white leading-snug truncate">
+                            <p className="text-sm font-bold text-[var(--eos-text)] leading-snug truncate">
                               {app.offerTitle}
                             </p>
-                            <p className="text-[11px] text-white/45 mt-0.5 line-clamp-2">
+                            <p className="text-[11px] text-[var(--eos-subtle)] mt-0.5 line-clamp-2">
                               {app.offerAddress || 'Adres po akceptacji terminu'}
                             </p>
                             {app.offerId ? (
@@ -345,18 +346,18 @@ export default function PlanningPresentationCalendar({
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between gap-3 pt-1 border-t border-white/5">
+                        <div className="flex items-center justify-between gap-3 pt-1 border-t border-[var(--eos-border)]">
                           <div className="flex items-center gap-2 min-w-0">
                             <div className="w-8 h-8 rounded-full bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center shrink-0">
                               <User size={14} className="text-emerald-500" />
                             </div>
                             <div className="min-w-0">
-                              <p className="text-[10px] text-white/40 uppercase tracking-widest font-black">
+                              <p className="text-[10px] text-[var(--eos-subtle)] uppercase tracking-widest font-black">
                                 {app.needsMyResponse ? 'Propozycja od' : 'Kontrahent'}
                               </p>
-                              <p className="text-xs font-bold text-white truncate">{cpName}</p>
+                              <p className="text-xs font-bold text-[var(--eos-text)] truncate">{cpName}</p>
                               {cp?.email ? (
-                                <p className="text-[10px] text-white/40 truncate">{cp.email}</p>
+                                <p className="text-[10px] text-[var(--eos-subtle)] truncate">{cp.email}</p>
                               ) : null}
                             </div>
                           </div>

@@ -31,6 +31,7 @@ import {
   detectFinalAcceptanceContext,
   isDealTransactionFinalized,
 } from '@/lib/dealPriceNegotiationUi';
+import { eosBtn } from '@/components/ui/eosButtonStyles';
 
 export default function DealRoom({ dealId, currentUserId }: { dealId: number, currentUserId: number }) {
   const [deal, setDeal] = useState<any>(null);
@@ -850,10 +851,11 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
       <AnimatePresence>
         {bidActionModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-            <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0b0b0d] p-6 shadow-2xl">
-              <h4 className="text-white font-black text-lg mb-2 leading-tight">Decyzja negocjacyjna — cena</h4>
-              <p className="text-white/70 text-sm leading-relaxed mb-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] flex items-center justify-center overflow-y-auto p-4">
+            <div className="eos-modal-backdrop absolute inset-0" />
+            <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} className="eos-themed-modal relative w-full max-w-md rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-strong)]">
+              <h4 className="mb-2 text-lg font-black leading-tight text-[var(--eos-text)]">Decyzja negocjacyjna — cena</h4>
+              <p className="mb-4 text-sm leading-relaxed text-[var(--eos-muted)]">
                 {bidActionModal.action === 'ACCEPT' && isFinalizationReady && `Sfinalizujesz sprzedaż za ${Number(activeBid?.amount || 0).toLocaleString('pl-PL')} PLN. Oferta zostanie zdjęta z rynku.`}
                 {bidActionModal.action === 'ACCEPT' && ownerNeedsFinalDecision && `Potwierdzasz ostateczną sprzedaż za ${Number(activeBid?.amount || finalAcceptanceContext?.amount || 0).toLocaleString('pl-PL')} PLN.`}
                 {bidActionModal.action === 'ACCEPT' && !isFinalizationReady && !ownerNeedsFinalDecision && isBuyer && `Zgadzasz się na ${Number(activeBid?.amount || 0).toLocaleString('pl-PL')} PLN. Właściciel musi jeszcze potwierdzić sprzedaż.`}
@@ -866,11 +868,11 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                   value={counterBidAmount}
                   onChange={(e) => setCounterBidAmount(e.target.value.replace(/[^\d.,]/g, ''))}
                   placeholder="np. 485000"
-                  className="w-full rounded-xl border border-white/15 bg-black/40 px-4 py-3 text-white outline-none mb-4"
+                  className="eos-modal-field mb-4 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)] outline-none"
                 />
               )}
-              <div className="flex gap-2 justify-end">
-                <button onClick={() => { setBidActionModal(null); setCounterBidAmount(''); }} className="px-4 py-2 rounded-xl border border-white/15 text-white/70 text-xs font-black uppercase tracking-widest">Anuluj</button>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => { setBidActionModal(null); setCounterBidAmount(''); }} className={eosBtn('secondary', { size: 'sm' })}>Anuluj</button>
                 <button
                   disabled={!!actionLoading}
                   onClick={async () => {
@@ -899,7 +901,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                     setBidActionModal(null);
                     setCounterBidAmount('');
                   }}
-                  className="px-4 py-2 rounded-xl bg-emerald-500 text-black text-xs font-black uppercase tracking-widest disabled:opacity-40"
+                  className={eosBtn('home', { size: 'sm' })}
                 >
                   Potwierdź
                 </button>
@@ -911,9 +913,10 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
       <AnimatePresence>
         {appointmentActionModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-            <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} className={`w-full rounded-3xl border border-white/10 bg-[#0b0b0d] p-6 shadow-2xl ${appointmentActionModal.action === 'RESCHEDULE' ? 'max-w-lg' : 'max-w-md'}`}>
-              <h4 className="text-white font-black text-lg mb-2 leading-tight">Decyzja negocjacyjna — termin</h4>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] flex items-center justify-center overflow-y-auto p-4">
+            <div className="eos-modal-backdrop absolute inset-0" />
+            <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} className={`eos-themed-modal relative w-full rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-strong)] ${appointmentActionModal.action === 'RESCHEDULE' ? 'max-w-lg' : 'max-w-md'}`}>
+              <h4 className="mb-2 text-lg font-black leading-tight text-[var(--eos-text)]">Decyzja negocjacyjna — termin</h4>
               {appointmentActionModal.action === 'RESCHEDULE' ? (
                 <DealRoomAppointmentPicker
                   loading={!!actionLoading}
@@ -928,19 +931,19 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                 />
               ) : (
                 <>
-                  <p className="text-white/70 text-sm leading-relaxed mb-4">
+                  <p className="mb-4 text-sm leading-relaxed text-[var(--eos-muted)]">
                     {appointmentActionModal.action === 'ACCEPT' && `Akceptujesz termin: ${activeAppointment?.proposedDate ? new Date(activeAppointment.proposedDate).toLocaleString('pl-PL') : '-'}.`}
                     {appointmentActionModal.action === 'DECLINE' && 'Odrzucasz zaproponowany termin.'}
                   </p>
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={() => setAppointmentActionModal(null)} className="px-4 py-2 rounded-xl border border-white/15 text-white/70 text-xs font-black uppercase tracking-widest">Anuluj</button>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setAppointmentActionModal(null)} className={eosBtn('secondary', { size: 'sm' })}>Anuluj</button>
                     <button
                       disabled={!!actionLoading}
                       onClick={async () => {
                         await respondAppointment(appointmentActionModal.appointmentId, appointmentActionModal.action);
                         setAppointmentActionModal(null);
                       }}
-                      className="px-4 py-2 rounded-xl bg-emerald-500 text-black text-xs font-black uppercase tracking-widest disabled:opacity-40"
+                      className={eosBtn('home', { size: 'sm' })}
                     >
                       Potwierdź
                     </button>

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Gift, ShoppingBag, Sparkles, Ticket, X } from "lucide-react";
 import { PAKIET_PLUS_PRICE_LABEL, PUBLICATION_DURATION_DAYS } from "@/lib/publicationConstants";
+import { eosBtn } from "@/components/ui/eosButtonStyles";
 
 type WalletCoupon = {
   id: string;
@@ -119,11 +120,12 @@ export default function PublicationWalletModal({ isOpen, onClose }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[999999] overflow-y-auto overscroll-contain bg-black/72 backdrop-blur-xl"
+        className="fixed inset-0 z-[999999] overflow-y-auto overscroll-contain"
         onClick={onClose}
       >
+        <div className="eos-modal-backdrop absolute inset-0" />
         <div
-          className="flex min-h-full items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
+          className="relative flex min-h-full items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
           onClick={onClose}
         >
         <motion.div
@@ -131,15 +133,14 @@ export default function PublicationWalletModal({ isOpen, onClose }: Props) {
           animate={{ y: 0, scale: 1 }}
           exit={{ y: 24, scale: 0.98 }}
           onClick={(e) => e.stopPropagation()}
-          className="flex max-h-[min(90dvh,760px)] w-full max-w-lg flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#0a0a0a] shadow-[0_30px_80px_rgba(0,0,0,0.65)]"
+          className="eos-themed-modal flex max-h-[min(90dvh,760px)] w-full max-w-lg flex-col overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-strong)]"
         >
-          <div className="relative shrink-0 overflow-hidden border-b border-white/5 p-6">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-amber-500/10 via-transparent to-emerald-500/10" />
+          <div className="relative shrink-0 overflow-hidden border-b border-[var(--eos-border)] p-6">
             <div className="relative flex items-start justify-between gap-4">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-400/90">Portfel EOS</p>
-                <h3 className="mt-1 text-xl font-black text-white">Twoje kredyty publikacji</h3>
-                <p className="mt-2 text-sm text-white/50 leading-relaxed">
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-600">Portfel EOS</p>
+                <h3 className="mt-1 text-xl font-black text-[var(--eos-text)]">Twoje kredyty publikacji</h3>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">
                   {loading
                     ? "Ładowanie salda…"
                     : `${plusCredits} kredytów Plus · ${coupons.length} ${coupons.length === 1 ? "kupon" : "kupony"} bonusowe`}
@@ -148,7 +149,7 @@ export default function PublicationWalletModal({ isOpen, onClose }: Props) {
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-full p-2 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+                className="rounded-full p-2 text-[var(--eos-muted)] transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)]"
                 aria-label="Zamknij"
               >
                 <X size={20} />
@@ -156,74 +157,74 @@ export default function PublicationWalletModal({ isOpen, onClose }: Props) {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+          <div className="custom-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
             {loadError ? (
-              <p className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-center text-xs text-red-200/90">{loadError}</p>
+              <p className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-center text-xs text-red-700">{loadError}</p>
             ) : null}
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-4">
-                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400/80">Kredyty Plus</p>
-                <p className="mt-2 text-3xl font-black tabular-nums text-emerald-300">{loading ? "…" : plusCredits}</p>
-                {expiryLabel ? <p className="mt-1 text-[10px] text-white/40">Ważne do {expiryLabel}</p> : null}
+              <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4">
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-700">Kredyty Plus</p>
+                <p className="mt-2 text-3xl font-black tabular-nums text-emerald-700">{loading ? "…" : plusCredits}</p>
+                {expiryLabel ? <p className="mt-1 text-[10px] text-[var(--eos-muted)]">Ważne do {expiryLabel}</p> : null}
               </div>
-              <div className="rounded-2xl border border-orange-500/25 bg-orange-500/5 p-4">
-                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-400/80">Kupony</p>
-                <p className="mt-2 text-3xl font-black tabular-nums text-orange-300">{loading ? "…" : coupons.length}</p>
-                <p className="mt-1 text-[10px] text-white/40">{PUBLICATION_DURATION_DAYS} dni / publikacja</p>
+              <div className="rounded-2xl border border-orange-500/25 bg-orange-500/10 p-4">
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-700">Kupony</p>
+                <p className="mt-2 text-3xl font-black tabular-nums text-orange-700">{loading ? "…" : coupons.length}</p>
+                <p className="mt-1 text-[10px] text-[var(--eos-muted)]">{PUBLICATION_DURATION_DAYS} dni / publikacja</p>
               </div>
             </div>
 
             {coupons.length > 0 ? (
               <div>
-                <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">
+                <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">
                   <Ticket size={14} /> Kupony bonusowe
                 </p>
                 <div className="space-y-2">
                   {coupons.map((coupon) => (
                     <div
                       key={coupon.id}
-                      className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                      className="flex items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4"
                     >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/20 text-blue-400">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/15 text-sky-600">
                         <Gift size={18} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-bold text-white">{coupon.title}</p>
+                          <p className="text-sm font-bold text-[var(--eos-text)]">{coupon.title}</p>
                           {coupon.pillLabel ? (
-                            <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-blue-300">
+                            <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-sky-700">
                               {coupon.pillLabel}
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-1 text-xs text-white/45">{coupon.subtitle}</p>
-                        {coupon.meta ? <p className="mt-1 text-[10px] font-medium text-emerald-400/85">{coupon.meta}</p> : null}
+                        <p className="mt-1 text-xs text-[var(--eos-muted)]">{coupon.subtitle}</p>
+                        {coupon.meta ? <p className="mt-1 text-[10px] font-medium text-emerald-600">{coupon.meta}</p> : null}
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
             ) : (
-              <p className="rounded-2xl border border-dashed border-white/10 bg-black/25 px-4 py-3 text-center text-xs text-white/40">
+              <p className="rounded-2xl border border-dashed border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-center text-xs text-[var(--eos-muted)]">
                 Brak aktywnych kuponów bonusowych.
               </p>
             )}
 
             <div>
-              <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
+              <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
                 <Sparkles size={14} /> Pakiet Plus
               </p>
               {hasPlusCredit ? (
                 <div className="mb-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-                  <p className="text-sm font-bold text-white">Aktywny kredyt Plus</p>
-                  <p className="mt-1 text-xs text-white/45">
+                  <p className="text-sm font-bold text-[var(--eos-text)]">Aktywny kredyt Plus</p>
+                  <p className="mt-1 text-xs text-[var(--eos-muted)]">
                     {plusCredits} publikacja do wykorzystania · {PUBLICATION_DURATION_DAYS} dni na rynku
                     {expiryLabel ? ` · ważne do ${expiryLabel}` : ""}
                   </p>
                 </div>
               ) : (
-                <p className="mb-2 rounded-2xl border border-dashed border-white/10 bg-black/25 px-4 py-3 text-xs text-white/40">
+                <p className="mb-2 rounded-2xl border border-dashed border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-xs text-[var(--eos-muted)]">
                   Brak aktywnego kredytu Plus — możesz dokupić poniżej.
                 </p>
               )}
@@ -231,27 +232,21 @@ export default function PublicationWalletModal({ isOpen, onClose }: Props) {
                 type="button"
                 disabled={buyingPlus}
                 onClick={() => void startPakietPlusCheckout()}
-                className="flex w-full items-center gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-600/90 p-4 text-left transition-all hover:bg-emerald-500 disabled:opacity-60"
+                className={eosBtn("home", { block: true, size: "lg", className: "justify-start gap-3 !normal-case !tracking-normal" })}
               >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black/20 text-white">
-                  <ShoppingBag size={18} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-white">Kup Pakiet Plus</p>
-                  <p className="mt-1 text-xs text-emerald-100/75">
+                <ShoppingBag size={18} />
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block text-sm font-bold">Kup Pakiet Plus</span>
+                  <span className="mt-0.5 block text-[11px] font-semibold opacity-80">
                     1 dodatkowa publikacja · {PAKIET_PLUS_PRICE_LABEL} · {PUBLICATION_DURATION_DAYS} dni
-                  </p>
-                </div>
+                  </span>
+                </span>
               </button>
             </div>
           </div>
 
-          <div className="shrink-0 border-t border-white/5 p-6">
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full rounded-xl border border-white/10 py-3 text-[10px] font-black uppercase tracking-widest text-white/60 hover:bg-white/5"
-            >
+          <div className="shrink-0 border-t border-[var(--eos-border)] p-6">
+            <button type="button" onClick={onClose} className={eosBtn("secondary", { block: true })}>
               Zamknij
             </button>
           </div>

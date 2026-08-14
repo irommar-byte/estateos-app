@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ExternalLink, Loader2, Save } from "lucide-react";
 import EosModal from "@/components/ui/EosModal";
+import { eosBtn } from "@/components/ui/eosButtonStyles";
 
 type Props = {
   open: boolean;
@@ -124,7 +125,7 @@ export default function OfferPrivateCommentModal({ open, offerId, offerTitle, on
                   type="button"
                   onClick={() => void save()}
                   disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-black disabled:opacity-60"
+                  className={eosBtn("home", { size: "sm" })}
                 >
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                   Zapisz komentarz
@@ -133,9 +134,9 @@ export default function OfferPrivateCommentModal({ open, offerId, offerTitle, on
             </div>
 
             <div className="rounded-2xl border border-blue-500/25 bg-blue-500/5 p-4 space-y-3">
-              <p className="text-[11px] font-black uppercase tracking-widest text-blue-300">Oryginalne dane z importu</p>
+              <p className="text-[11px] font-black uppercase tracking-widest text-sky-600">Oryginalne dane z importu</p>
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="rounded-full border border-white/15 px-3 py-1 bg-black/25 text-white/80">
+                <span className="eos-modal-chip">
                   Źródło: {note?.importSource || "brak"}
                 </span>
                 {note?.sourceIsActive === false ? (
@@ -148,7 +149,7 @@ export default function OfferPrivateCommentModal({ open, offerId, offerTitle, on
                     Link źródłowy aktywny
                   </span>
                 ) : (
-                  <span className="rounded-full border border-white/15 px-3 py-1 bg-black/25 text-white/70">
+                  <span className="eos-modal-chip">
                     Status linku: niezweryfikowany
                   </span>
                 )}
@@ -166,8 +167,8 @@ export default function OfferPrivateCommentModal({ open, offerId, offerTitle, on
               ) : null}
 
               {parsedSnapshot?.contactHints ? (
-                <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/80">
-                  <p className="font-black uppercase tracking-widest text-[10px] text-white/55 mb-2">Kontakt źródłowy</p>
+                <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3 text-xs text-[var(--eos-muted)]">
+                  <p className="font-black uppercase tracking-widest text-[10px] text-[var(--eos-muted)] mb-2">Kontakt źródłowy</p>
                   <p>Firma / osoba: {String((parsedSnapshot.contactHints as Record<string, unknown>)?.agencyName || "—")}</p>
                   <p>Telefon: {String((parsedSnapshot.contactHints as Record<string, unknown>)?.phone || "—")}</p>
                   <p>Adres: {String((parsedSnapshot.contactHints as Record<string, unknown>)?.address || "—")}</p>
@@ -175,18 +176,18 @@ export default function OfferPrivateCommentModal({ open, offerId, offerTitle, on
               ) : null}
 
               {parsedSnapshot?.descriptionOriginalText ? (
-                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                  <p className="font-black uppercase tracking-widest text-[10px] text-white/55 mb-2">
+                <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3">
+                  <p className="font-black uppercase tracking-widest text-[10px] text-[var(--eos-muted)] mb-2">
                     Oryginalny opis (bez zmian)
                   </p>
-                  <p className="text-xs text-white/80 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                  <p className="text-xs text-[var(--eos-muted)] whitespace-pre-wrap max-h-48 overflow-y-auto">
                     {String(parsedSnapshot.descriptionOriginalText)}
                   </p>
                 </div>
               ) : null}
 
-              <details className="rounded-xl border border-white/10 bg-black/20 p-3">
-                <summary className="cursor-pointer text-xs font-black uppercase tracking-widest text-white/60">
+              <details className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3">
+                <summary className="cursor-pointer text-xs font-black uppercase tracking-widest text-[var(--eos-muted)]">
                   Pełny surowy JSON importu
                 </summary>
                 <pre className="mt-3 text-[11px] text-emerald-300/90 whitespace-pre-wrap break-words max-h-72 overflow-y-auto">

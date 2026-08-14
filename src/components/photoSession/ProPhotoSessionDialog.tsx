@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { buildHours, buildNextDays, createPhotoSession, formatDateTime } from '@/lib/photoSessionWeb';
+import { eosBtn } from '@/components/ui/eosButtonStyles';
 
 type DraftContext = {
   propertyLabel?: string;
@@ -62,27 +63,28 @@ export default function ProPhotoSessionDialog({ open, onClose, onSubmitted, draf
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/60 p-4 sm:items-center">
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-2xl">
+    <div className="fixed inset-0 z-[120] flex items-end justify-center p-4 sm:items-center">
+      <button type="button" aria-label="Zamknij" className="eos-modal-backdrop absolute inset-0" onClick={resetAndClose} />
+      <div className="eos-themed-modal relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-strong)]">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">EstateOS Studio</p>
-            <h2 className="mt-1 text-2xl font-black">Profesjonalna sesja zdjęciowa</h2>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">EstateOS Studio</p>
+            <h2 className="mt-1 text-2xl font-black text-[var(--eos-text)]">Profesjonalna sesja zdjęciowa</h2>
           </div>
-          <button type="button" onClick={resetAndClose} className="rounded-full border border-[var(--eos-border)] px-3 py-1 text-sm">
-            ✕
+          <button type="button" onClick={resetAndClose} className={eosBtn('secondary', { size: 'sm' })}>
+            Zamknij
           </button>
         </div>
 
         {draft?.propertyLabel ? (
-          <p className="mb-4 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 text-sm text-[var(--eos-muted)]">
+          <p className="mb-4 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-muted)]">
             {draft.propertyLabel}
           </p>
         ) : null}
 
         {step === 1 ? (
           <div>
-            <p className="mb-3 text-sm font-bold">Wybierz dzień</p>
+            <p className="mb-3 text-sm font-bold text-[var(--eos-text)]">Wybierz dzień</p>
             <div className="flex flex-wrap gap-2">
               {dates.map((d) => {
                 const active = selectedDate?.toDateString() === d.toDateString();
@@ -91,11 +93,11 @@ export default function ProPhotoSessionDialog({ open, onClose, onSubmitted, draf
                     key={d.toISOString()}
                     type="button"
                     onClick={() => setSelectedDate(d)}
-                    className={`rounded-xl border px-3 py-2 text-sm font-bold ${
-                      active ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200' : 'border-[var(--eos-border)]'
-                    }`}
+                    className={`eos-modal-chip eos-ask-chip ${active ? 'eos-modal-chip--selected eos-ask-chip--selected' : ''}`}
                   >
-                    {d.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    <span className="text-sm font-bold">
+                      {d.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </span>
                   </button>
                 );
               })}
@@ -104,7 +106,7 @@ export default function ProPhotoSessionDialog({ open, onClose, onSubmitted, draf
               type="button"
               disabled={!selectedDate}
               onClick={() => setStep(2)}
-              className="mt-4 w-full rounded-full bg-emerald-500 py-3 text-xs font-black uppercase tracking-wider text-black disabled:opacity-40"
+              className={eosBtn('home', { block: true, className: 'mt-4' })}
             >
               Dalej
             </button>
@@ -113,7 +115,7 @@ export default function ProPhotoSessionDialog({ open, onClose, onSubmitted, draf
 
         {step === 2 ? (
           <div>
-            <p className="mb-3 text-sm font-bold">Wybierz godzinę</p>
+            <p className="mb-3 text-sm font-bold text-[var(--eos-text)]">Wybierz godzinę</p>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
               {hours.map((h) => {
                 const active = selectedHour === h;
@@ -122,24 +124,22 @@ export default function ProPhotoSessionDialog({ open, onClose, onSubmitted, draf
                     key={h}
                     type="button"
                     onClick={() => setSelectedHour(h)}
-                    className={`rounded-xl border py-2 text-sm font-bold ${
-                      active ? 'border-emerald-400 bg-emerald-500/20' : 'border-[var(--eos-border)]'
-                    }`}
+                    className={`eos-modal-chip eos-ask-chip justify-center ${active ? 'eos-modal-chip--selected eos-ask-chip--selected' : ''}`}
                   >
-                    {h}
+                    <span className="text-sm font-bold">{h}</span>
                   </button>
                 );
               })}
             </div>
             <div className="mt-4 flex gap-2">
-              <button type="button" onClick={() => setStep(1)} className="flex-1 rounded-full border border-[var(--eos-border)] py-3 text-xs font-black uppercase">
+              <button type="button" onClick={() => setStep(1)} className={eosBtn('secondary', { className: 'flex-1' })}>
                 Wstecz
               </button>
               <button
                 type="button"
                 disabled={!selectedHour}
                 onClick={() => setStep(3)}
-                className="flex-1 rounded-full bg-emerald-500 py-3 text-xs font-black uppercase text-black disabled:opacity-40"
+                className={eosBtn('home', { className: 'flex-1' })}
               >
                 Dalej
               </button>
@@ -164,19 +164,19 @@ export default function ProPhotoSessionDialog({ open, onClose, onSubmitted, draf
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Uwagi do sesji (opcjonalnie)"
-              className="mt-3 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 text-sm"
+              className="eos-modal-field mt-3 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
               rows={3}
             />
-            {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
+            {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
             <div className="mt-4 flex gap-2">
-              <button type="button" onClick={() => setStep(2)} className="flex-1 rounded-full border border-[var(--eos-border)] py-3 text-xs font-black uppercase">
+              <button type="button" onClick={() => setStep(2)} className={eosBtn('secondary', { className: 'flex-1' })}>
                 Wstecz
               </button>
               <button
                 type="button"
                 disabled={loading}
                 onClick={() => void submit()}
-                className="flex-1 rounded-full bg-emerald-500 py-3 text-xs font-black uppercase text-black disabled:opacity-60"
+                className={eosBtn('home', { className: 'flex-1' })}
               >
                 {loading ? 'Wysyłanie…' : 'Wyślij propozycję'}
               </button>

@@ -4,6 +4,7 @@ import { X, Briefcase, ShieldCheck, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { getOfferModalsDictionary } from "@/i18n/offerModalsDictionary";
+import { eosBtn } from "@/components/ui/eosButtonStyles";
 
 export default function BiddingModal({ offerId, currentPrice, onClose }: { offerId: string, currentPrice: number, onClose: () => void }) {
   const { locale } = useLocale();
@@ -102,14 +103,14 @@ export default function BiddingModal({ offerId, currentPrice, onClose }: { offer
                     type="button"
                     onClick={handleSubmit} 
                     disabled={isSubmitting || !bidAmount} 
-                    className="group relative flex w-full cursor-pointer items-center justify-center gap-3 overflow-hidden rounded-[2rem] bg-white px-4 py-5 text-black shadow-[0_20px_50px_rgba(255,255,255,0.2)] transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-30"
+                    className={eosBtn("primary", { block: true, size: "lg" })}
                   >
                     {isSubmitting ? (
-                       <Loader2 className="relative z-10 animate-spin text-black" size={22}/>
+                       <Loader2 className="animate-spin" size={22}/>
                     ) : (
                        <>
-                         <Briefcase size={22} className="relative z-10 transition-transform group-hover:scale-110" /> 
-                         <span className="relative z-10 text-sm font-black uppercase tracking-[0.2em] sm:text-base">{m.bidding.submitCta}</span>
+                         <Briefcase size={22} /> 
+                         <span>{m.bidding.submitCta}</span>
                        </>
                     )}
                   </button>
