@@ -84,6 +84,12 @@ struct RootView: View {
             if wasOpen && !isOpen {
                 video.syncMinimizedStateAfterDismiss()
             }
+            if isOpen {
+                OrientationLock.shared.followDeviceForVideo()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+            syncVideoOrientationToDevice()
         }
         .confirmationDialog(
             "Otwórz plik",
@@ -112,6 +118,18 @@ struct RootView: View {
             if let prompt = app.externalOpenPrompt {
                 Text(prompt.fileName)
             }
+        }
+    }
+
+    private func syncVideoOrientationToDevice() {
+        let orientation = UIDevice.current.orientation
+        guard orientation.isLandscape || orientation.isPortrait else { return }
+        guard video.engine.currentItem != nil else { return }
+        if orientation.isLandscape, !video.isPlayerPresented {
+            video.expandPlayer()
+        }
+        if video.isPlayerPresented {
+            OrientationLock.shared.followDeviceForVideo()
         }
     }
 }

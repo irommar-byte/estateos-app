@@ -150,7 +150,7 @@ struct VideoPlayerView: View {
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .onAppear {
-            OrientationLock.shared.unlockAll()
+            OrientationLock.shared.followDeviceForVideo()
             controlsVisible = true
             scheduleHide()
             keysFocused = true

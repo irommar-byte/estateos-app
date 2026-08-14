@@ -261,9 +261,24 @@ function friendlyError(err) {
     return "Brak miejsca na dysku serwera — pobieranie nie może się dokończyć. Anuluj zadania i zwolnij miejsce na VPS.";
   if (/unsupported platform:\s*linux/i.test(msg))
     return "Ciasteczka z przeglądarki nie działają na serwerze Linux. Zaloguj się w «Konta portali» albo wklej cookies.txt.";
+  if (/resolve-stream przekroczyła/i.test(msg))
+    return "Serwer nie zdążył otworzyć źródła — Cloudflare jest zajęty. Ponów tę jedną pozycję, nie całą listę naraz.";
+  if (/FlareSolverr/i.test(msg))
+    return "CDA-HD chwilowo blokuje serwer (Cloudflare). Poczekaj chwilę i ponów tę pozycję.";
+  if (/ffmpeg HLS|HLS zakończył/i.test(msg))
+    return "Zapis strumienia wideo nie powiódł się. Sprawdź miejsce na serwerze i ponów.";
+  if (/Nie udało się zapisać kolejki/i.test(msg))
+    return "Brak miejsca na kolejkę pobierania. Zwolnij przestrzeń na serwerze i ponów.";
 
   const line = msg.match(/^ERROR: (.+)$/m)?.[1];
-  return line || "Nie udało się przetworzyć linku. Sprawdź adres i spróbuj ponownie.";
+  if (line && !/^\[debug\]/i.test(line)) return line;
+  try {
+    const free = movieStorageAvailableBytes();
+    if (free < 512 * 1024 * 1024) {
+      return `Za mało miejsca na serwerze (${(free / (1024 ** 3)).toFixed(1)} GB wolne). Poczekaj aż skończy się bieżące pobieranie albo zwolnij pliki.`;
+    }
+  } catch {}
+  return "Serwer nie pobrał tego odcinka. Ponów jedną pozycję — nie całą listę naraz.";
 }
 
 /** Metadata without forcing `-f best` (breaks CDA and similar sites). */
@@ -2885,7 +2900,7 @@ const MOVIE_JOB_RESERVE_BYTES = Number(process.env.MOVIE_JOB_RESERVE_BYTES || 12
 const MOVIE_STORAGE_ABORT_BYTES = Number(process.env.MOVIE_STORAGE_ABORT_BYTES || 256 * 1024 * 1024);
 const movieDownloadQueue = new DurableMovieJobQueue({
   filePath: MOVIE_QUEUE_FILE,
-  maxConcurrent: Number(process.env.MOVIE_DOWNLOAD_CONCURRENCY || 2),
+  maxConcurrent: Number(process.env.MOVIE_DOWNLOAD_CONCURRENCY || 1),
   runner: runQueuedMirrorMovieDownload,
   onError: failQueuedMovieDownload,
   onPersistError: (error) => console.error("movie queue persist:", error?.message || error),
@@ -2993,7 +3008,7 @@ async function runQueuedMirrorMovieDownload(record) {
 
   let mirror;
   try {
-    mirror = await withTimeout(getMirrorStream(sourceUrl), 180_000, "resolve-stream");
+    mirror = await withTimeout(getMirrorStream(sourceUrl), 360_000, "resolve-stream");
   } finally {
     clearInterval(heartbeat);
   }
@@ -4181,8 +4196,8 @@ async function resolveCdaHdOrderedForPaging({ mode, type, page, pageSize }) {
   }
 
   try {
-    if (isCdaHdSolveLockBusy()) {
-      return { ordered, cached: !!cached, disk: !!disk, growSkipped: "solve-lock" };
+    if (isCdaHdSolveLockBusy() || movieDownloadQueue.runningCount() > 0) {
+      return { ordered, cached: !!cached, disk: !!disk, growSkipped: "busy" };
     }
     // Filmy/seriale filtrują pulę — bierzemy zapas z listingu, żeby page 2+ nie była pusta.
     const growTarget = type === "all" ? minNeeded : Math.min(240, minNeeded * 3);

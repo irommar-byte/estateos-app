@@ -6,32 +6,59 @@ final class OrientationLock {
     static let shared = OrientationLock()
 
     private(set) var mask: UIInterfaceOrientationMask = .portrait
+    private var generatingOrientation = false
 
     func lockPortrait() {
         mask = .portrait
-        apply(orientation: .portrait)
+        stopGenerating()
+        request(orientations: .portrait)
     }
 
     func unlockAll() {
+        followDeviceForVideo()
+    }
+
+    /// While a film is on screen, follow the physical device so landscape becomes true fullscreen.
+    func followDeviceForVideo() {
         mask = .allButUpsideDown
-        // Do not force a specific orientation — follow the device (portrait for vertical videos).
-        guard let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first else { return }
-        let prefs = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: .allButUpsideDown)
-        scene.requestGeometryUpdate(prefs) { _ in }
+        startGenerating()
+        let requested: UIInterfaceOrientationMask
+        switch UIDevice.current.orientation {
+        case .landscapeLeft:
+            requested = .landscapeRight
+        case .landscapeRight:
+            requested = .landscapeLeft
+        case .portrait:
+            requested = .portrait
+        default:
+            requested = .allButUpsideDown
+        }
+        request(orientations: requested)
     }
 
     func preferLandscape() {
-        mask = .landscape
-        apply(orientation: .landscapeRight)
+        mask = .allButUpsideDown
+        startGenerating()
+        request(orientations: .landscape)
     }
 
-    private func apply(orientation: UIInterfaceOrientation) {
+    private func startGenerating() {
+        guard !generatingOrientation else { return }
+        generatingOrientation = true
+        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+    }
+
+    private func stopGenerating() {
+        guard generatingOrientation else { return }
+        generatingOrientation = false
+        UIDevice.current.endGeneratingDeviceOrientationNotifications()
+    }
+
+    private func request(orientations: UIInterfaceOrientationMask) {
         guard let scene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first else { return }
-        let prefs = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: orientation == .portrait ? .portrait : .landscape)
+        let prefs = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: orientations)
         scene.requestGeometryUpdate(prefs) { _ in }
         UIViewController.attemptRotationToDeviceOrientation()
     }
