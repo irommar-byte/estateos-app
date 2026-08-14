@@ -1,6 +1,6 @@
 (function () {
-  const INJECT_BUILD = "20260814140339";
-  const UI_VERSION = "20260814140339";
+  const INJECT_BUILD = "20260814140542";
+  const UI_VERSION = "20260814140542";
 
   if (window.__nostalgieMoviesBuild === INJECT_BUILD) return;
 
