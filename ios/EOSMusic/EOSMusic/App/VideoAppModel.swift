@@ -17,8 +17,12 @@ final class VideoAppModel: ObservableObject {
 
     /// Called by host app to pause music when video starts.
     var onWillStartPlayback: (() -> Void)?
+    var onDidStopPlayback: (() -> Void)?
+    /// iPad: music fullScreenCover must dismiss before video UI can mount.
+    var deferPlayerPresentation = false
 
     private var cancellables = Set<AnyCancellable>()
+    private var presentTask: Task<Void, Never>?
 
     init() {
         sources.objectWillChange
@@ -77,17 +81,13 @@ final class VideoAppModel: ObservableObject {
             return
         }
         videosByFolder[folder.id] = items
-        onWillStartPlayback?()
-        OrientationLock.shared.unlockAll()
-        engine.play(
+        beginPlayback(
             session: VideoPlaybackSession(
                 items: items,
                 startIndex: startIndex,
                 folderName: folder.name
-            ),
-            sources: sources
+            )
         )
-        isPlayerPresented = true
     }
 
     func playItem(_ item: VideoItem, in folder: ConnectedVideoFolder) {
@@ -99,8 +99,6 @@ final class VideoAppModel: ObservableObject {
 
     /// Stream / odtwórz pojedynczy plik (lokalny lub HTTP z EOS™LIBRARY).
     func playStandalone(url: URL, title: String, folderName: String = EOSLibraryBrand.displayName) {
-        onWillStartPlayback?()
-        OrientationLock.shared.unlockAll()
         let item = VideoItem(
             id: url.absoluteString,
             title: title,
@@ -109,11 +107,54 @@ final class VideoAppModel: ObservableObject {
             fileSize: nil,
             folderId: UUID()
         )
-        engine.play(
-            session: VideoPlaybackSession(items: [item], startIndex: 0, folderName: folderName),
-            sources: sources
+        beginPlayback(
+            session: VideoPlaybackSession(items: [item], startIndex: 0, folderName: folderName)
         )
+    }
+
+    /// Fire-and-forget entry used by local library and external-open flows.
+    func beginPlayback(session: VideoPlaybackSession) {
+        presentTask?.cancel()
+        presentTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.presentAndStart(session: session)
+        }
+    }
+
+    /// Awaitable launch used by online movies. Success means that the player is visible,
+    /// VLC owns a real drawable and the media start request has been accepted.
+    func beginPlaybackAndWait(session: VideoPlaybackSession) async -> Bool {
+        presentTask?.cancel()
+        presentTask = nil
+        await presentAndStart(session: session)
+        guard !Task.isCancelled else { return false }
+        return await engine.waitForPresentedPlayback()
+    }
+
+    private func presentAndStart(session: VideoPlaybackSession) async {
+        pipController.clearAirPlayNotice()
+        pipController.clearError()
+        onWillStartPlayback?()
+        let waitForMusicDismiss = deferPlayerPresentation
+        deferPlayerPresentation = false
+        OrientationLock.shared.unlockAll()
+
+        if waitForMusicDismiss {
+            // Let the music sheet/cover finish dismissal before mounting the video surface.
+            try? await Task.sleep(nanoseconds: 450_000_000)
+        }
+        guard !Task.isCancelled else { return }
         isPlayerPresented = true
+        // Yield one render pass. VideoPlaybackEngine will additionally wait for non-zero bounds.
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        engine.play(session: session, sources: sources)
+    }
+
+    /// Gdy UI zniknie bez minimizePlayer() — zachowaj obraz na ukrytym drawable.
+    func syncMinimizedStateAfterDismiss() {
+        guard !isPlayerPresented, engine.currentItem != nil else { return }
+        engine.parkDrawable()
     }
 
     func minimizePlayer() {
@@ -130,8 +171,11 @@ final class VideoAppModel: ObservableObject {
     }
 
     func stopAndClosePlayer() {
+        presentTask?.cancel()
+        presentTask = nil
         pipController.stopAndDiscard(engine: engine)
         engine.stop()
+        onDidStopPlayback?()
         isPlayerPresented = false
         OrientationLock.shared.lockPortrait()
         AudioSession.deactivateLeavingForOtherApp()
@@ -154,7 +198,6 @@ final class VideoAppModel: ObservableObject {
     }
 
     func openExternalVideo(at url: URL) async {
-        onWillStartPlayback?()
         do {
             let displayName = url.deletingPathExtension().lastPathComponent
             try connectFolder(name: displayName.isEmpty ? url.lastPathComponent : displayName, url: url)

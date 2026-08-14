@@ -1522,7 +1522,7 @@ private final class WinampFFTProcessor {
     private let size = 512
     private let binCount = 256
     private let log2n: vDSP_Length = 9
-    private let setup: FFTSetup
+    private let setup: FFTSetup?
     private var window: [Float]
     private var input: [Float]
     private var real: [Float]
@@ -1530,10 +1530,7 @@ private final class WinampFFTProcessor {
     private var magnitudes: [Float]
 
     init() {
-        guard let setup = vDSP_create_fftsetup(9, FFTRadix(kFFTRadix2)) else {
-            fatalError("WinampFFTProcessor: brak FFT setup")
-        }
-        self.setup = setup
+        setup = vDSP_create_fftsetup(9, FFTRadix(kFFTRadix2))
         window = [Float](repeating: 0, count: 512)
         input = [Float](repeating: 0, count: 512)
         real = [Float](repeating: 0, count: 256)
@@ -1543,10 +1540,13 @@ private final class WinampFFTProcessor {
     }
 
     deinit {
-        vDSP_destroy_fftsetup(setup)
+        if let setup {
+            vDSP_destroy_fftsetup(setup)
+        }
     }
 
     func spectrumBytes(from samples: [Float], count: Int, scale: Float) -> [UInt8] {
+        guard let setup else { return [UInt8](repeating: 0, count: binCount) }
         guard count >= 64 else { return [UInt8](repeating: 0, count: binCount) }
         let start = max(0, count - size)
         input.withUnsafeMutableBufferPointer { dst in

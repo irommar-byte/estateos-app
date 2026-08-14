@@ -54,6 +54,7 @@ import {
   deleteMovieDownload,
   findDownloadByJobId,
   findDownloadByUrl,
+  normalizeMovieUrlKey,
   resolvePersistedMovieFile,
   moviesDownloadDir,
   buildMovieFilename,
@@ -2709,8 +2710,47 @@ function canAccessPlay(req, job) {
   return false;
 }
 
+const MOVIE_JOB_IDLE_MS = 15 * 60 * 1000;
+
+function isStalledMovieDownload(job, now = Date.now()) {
+  if (!job || job.kind !== "movie" || job.purpose !== "download") return false;
+  if (job.ready || job.status === "done" || job.status === "error" || job.status === "cancelled") return false;
+  const anchor = Number(job.lastProgressAt || job.queuedAt || job.createdAt || 0);
+  return anchor > 0 && now - anchor > MOVIE_JOB_IDLE_MS;
+}
+
+function failStalledMovieDownload(job) {
+  if (!isStalledMovieDownload(job)) return false;
+  stopJobTransfer(job);
+  job.cancelled = false;
+  const message = "Pobieranie zatrzymało się na serwerze. Uruchom ponownie tę pozycję.";
+  job.status = "error";
+  job.error = message;
+  sendEvent(job, { status: "error", phase: "error", error: message });
+  return true;
+}
+
+function reapStalledMovieDownloads() {
+  for (const job of jobs.values()) failStalledMovieDownload(job);
+}
+
 function sendEvent(job, payload) {
-  noteJobProgress(job, payload || {});
+  let event = { ...(payload || {}) };
+  if (
+    job?.kind === "movie" &&
+    job?.purpose === "download" &&
+    (event.status === "done" || event.ready === true)
+  ) {
+    let verified = false;
+    try {
+      verified = !!job.file && fs.existsSync(job.file) && fs.statSync(job.file).size > 0;
+    } catch {}
+    if (!verified) {
+      event = { ...event, status: "processing", progress: 99, phase: "finalizing", ready: false };
+      job.ready = false;
+    }
+  }
+  noteJobProgress(job, event);
   // Movie downloads with a user always belong to the account queue.
   if (job?.userKey && job?.kind === "movie" && job?.purpose === "download") {
     markJobListed(job, {
@@ -2719,7 +2759,7 @@ function sendEvent(job, payload) {
       url: job.movieUrl,
     });
   }
-  const data = `data: ${JSON.stringify(payload)}\n\n`;
+  const data = `data: ${JSON.stringify(event)}\n\n`;
   for (const res of job.clients || []) res.write(data);
 }
 
@@ -5568,9 +5608,15 @@ app.post("/api/download", async (req, res) => {
       }
     }
     for (const active of jobs.values()) {
+      const sameMovie =
+        normalizeMovieUrlKey(active.movieUrl) === normalizeMovieUrlKey(movieDownload.url) &&
+        active.userKey === movieDownload.userKey;
+      if (sameMovie && isStalledMovieDownload(active)) {
+        failStalledMovieDownload(active);
+        continue;
+      }
       if (
-        active.movieUrl === movieDownload.url &&
-        active.userKey === movieDownload.userKey &&
+        sameMovie &&
         !active.cancelled &&
         active.status !== "error" &&
         active.status !== "done"
@@ -6220,7 +6266,9 @@ ensureBinary()
     ytDlp = new YTDlpWrap(BINARY_PATH);
     app.listen(PORT, "0.0.0.0", () => {
       cleanupStaleJobDirs();
+      reapStalledMovieDownloads();
       setInterval(cleanupStaleJobDirs, 30 * 60 * 1000);
+      setInterval(reapStalledMovieDownloads, 60 * 1000);
       startCdaHdBackgroundJobs();
       const lan = getLanIPv4();
       console.log(`\n▶  Pobieralnia filmów działa: http://localhost:${PORT}`);

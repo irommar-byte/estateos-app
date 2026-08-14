@@ -21,6 +21,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     @Published private(set) var signalInfo = VideoSignalInfo()
     @Published private(set) var currentPlayableURL: URL?
     @Published private(set) var playbackOrigin: MediaPlaybackOrigin = .unknown
+    @Published private(set) var isDrawableReady = false
     /// 0…200 — VLC scale (100 = normal). Shown in HUD for keyboard volume.
     @Published private(set) var volumeLevel: Int = 100
     @Published var rate: VideoPlaybackRate = .normal {
@@ -46,11 +47,15 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     private var sourcesRef: VideoSourcesStore?
     private var bufferingRevealTask: Task<Void, Never>?
     private var videoKickTask: Task<Void, Never>?
+    private var mediaLoadTask: Task<Void, Never>?
+    private var pendingInitialAutoplay = false
+    private var mediaLoadGeneration: UInt64 = 0
     private var isLocalFile = true
     private var aspectApplyTask: Task<Void, Never>?
     private var isParkingDrawable = false
-    /// After fullScreenCover reopen — wait for non-zero host bounds before remount.
+    /// After minimize reopen — wait for non-zero host bounds before remount.
     private var pendingExpandRestore = false
+    var needsExpandRestore: Bool { pendingExpandRestore }
     private var isExpandRestoring = false
     /// Exact seconds to resume after minimize (captured in `parkDrawable`).
     private var parkedResumeTime: Double = 0
@@ -116,7 +121,13 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         player.drawable = host.videoSurface
         host.setNeedsLayout()
         host.layoutIfNeeded()
+        isDrawableReady = host.bounds.width > 8 && host.bounds.height > 8
         applyAspect(force: true)
+        if pendingInitialAutoplay, isDrawableReady {
+            pendingInitialAutoplay = false
+            loadCurrent(autoplay: true)
+            return
+        }
         if wasParked {
             scheduleExpandRestore()
         }
@@ -235,6 +246,14 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.applyAspect(force: false)
+                self.isDrawableReady = host !== self.parkedHost
+                    && host.bounds.width > 8
+                    && host.bounds.height > 8
+                if self.pendingInitialAutoplay, self.isDrawableReady {
+                    self.pendingInitialAutoplay = false
+                    self.loadCurrent(autoplay: true)
+                    return
+                }
                 if self.pendingExpandRestore,
                    !self.isExpandRestoring,
                    host !== self.parkedHost,
@@ -311,6 +330,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     }
 
     func play(session: VideoPlaybackSession, sources: VideoSourcesStore) {
+        mediaLoadTask?.cancel()
+        mediaLoadGeneration &+= 1
         sourcesRef = sources
         queue = session.items
         folderName = session.folderName
@@ -319,7 +340,38 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         hasEnded = false
         wantsPlayback = true
         AudioSession.activateForVideoPlayback()
-        loadCurrent(autoplay: true)
+        let hasVisibleHost = hostView !== parkedHost
+            && (hostView?.bounds.width ?? 0) > 8
+            && (hostView?.bounds.height ?? 0) > 8
+        isDrawableReady = hasVisibleHost
+        if hasVisibleHost {
+            pendingInitialAutoplay = false
+            loadCurrent(autoplay: true)
+        } else {
+            pendingInitialAutoplay = true
+            isPlaying = false
+            isBuffering = true
+        }
+    }
+
+    /// Waits for the real on-screen VLC surface and the media start request.
+    /// This is the presentation gate used by movie launch UI — no polling of unrelated flags.
+    func waitForPresentedPlayback(timeout: TimeInterval = 15) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if Task.isCancelled { return false }
+            if errorMessage != nil { return false }
+            if isDrawableReady, currentPlayableURL != nil, isPlaying {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        if errorMessage == nil {
+            errorMessage = isDrawableReady
+                ? "Film nie rozpoczął odtwarzania. Spróbuj ponownie."
+                : "Nie udało się przygotować obrazu odtwarzacza."
+        }
+        return false
     }
 
     func togglePlayPause() {
@@ -490,9 +542,12 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             let target = seconds
             let shouldResume = resume ?? true
             hasEnded = false
-            loadCurrent(autoplay: false)
-            Task { @MainActor in
+            loadCurrent(autoplay: false, cancelPendingKick: true)
+            videoKickTask?.cancel()
+            let generation = mediaLoadGeneration
+            videoKickTask = Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 120_000_000)
+                guard !Task.isCancelled, self.mediaLoadGeneration == generation else { return }
                 applySeek(to: target)
                 if shouldResume {
                     player.play()
@@ -624,9 +679,14 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         videoKickTask?.cancel()
         bufferingRevealTask?.cancel()
         aspectApplyTask?.cancel()
+        mediaLoadTask?.cancel()
         videoKickTask = nil
         bufferingRevealTask = nil
         aspectApplyTask = nil
+        mediaLoadTask = nil
+        mediaLoadGeneration &+= 1
+        pendingInitialAutoplay = false
+        isDrawableReady = false
         thumbnailGenerator.cancel()
         wantsPlayback = false
         isSuspendedForAVKit = false
@@ -697,6 +757,9 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             // Tear down fully so .ended / .stopped can start cleanly again.
             bufferingRevealTask?.cancel()
             aspectApplyTask?.cancel()
+            mediaLoadTask?.cancel()
+            mediaLoadGeneration &+= 1
+            let generation = mediaLoadGeneration
             if cancelPendingKick {
                 videoKickTask?.cancel()
             }
@@ -729,11 +792,13 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                 wantsPlayback = true
                 AudioSession.activateForVideoPlayback()
                 // Deferred play is required after stop/ended on MobileVLCKit.
-                Task { @MainActor in
+                mediaLoadTask = Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 40_000_000)
+                    guard !Task.isCancelled, self.mediaLoadGeneration == generation else { return }
                     self.player.play()
                     if !self.player.isPlaying {
                         try? await Task.sleep(nanoseconds: 100_000_000)
+                        guard !Task.isCancelled, self.mediaLoadGeneration == generation else { return }
                         self.player.play()
                     }
                     self.isPlaying = true
@@ -742,16 +807,17 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                     self.refreshSignalInfo()
                     self.applyAspect(force: true)
                     self.syncTime(force: true)
-                    // VLC often reports videoSize slightly after first frames.
                     try? await Task.sleep(nanoseconds: 250_000_000)
+                    guard !Task.isCancelled, self.mediaLoadGeneration == generation else { return }
                     self.refreshSignalInfo()
                     self.applyAspect(force: true)
                     self.prepareFilmstrip(for: url)
                 }
             } else {
                 isPlaying = false
-                Task { @MainActor in
+                mediaLoadTask = Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 150_000_000)
+                    guard !Task.isCancelled, self.mediaLoadGeneration == generation else { return }
                     self.refreshTracks()
                     self.refreshSignalInfo()
                     self.applyAspect(force: true)

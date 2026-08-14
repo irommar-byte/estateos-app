@@ -123,6 +123,55 @@ struct PlayerEffectsSheet: View {
                 }
 
                 Section {
+                    Picker(selection: $ui.playerSpectrumBandCount) {
+                        Text("16 słupków").tag(16)
+                        Text("24 słupki").tag(24)
+                        Text("32 słupki").tag(32)
+                    } label: {
+                        Label("Liczba słupków EQ", systemImage: "chart.bar.fill")
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Label("Szerokość słupków", systemImage: "arrow.left.and.right")
+                                .font(.subheadline.weight(.medium))
+                            Spacer()
+                            Text("\(Int(ui.playerSpectrumBarScale * 100))%")
+                                .font(.caption.monospacedDigit().weight(.bold))
+                                .foregroundStyle(EOSTheme.accent)
+                        }
+                        Slider(value: $ui.playerSpectrumBarScale, in: 0.5...1.5)
+                            .tint(EOSTheme.accent)
+                    }
+                    .padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Label("Segmenty VU L/R", systemImage: "slider.vertical.3")
+                                .font(.subheadline.weight(.medium))
+                            Spacer()
+                            Text("\(ui.playerSideVUSegments)")
+                                .font(.caption.monospacedDigit().weight(.bold))
+                                .foregroundStyle(EOSTheme.accent)
+                        }
+                        Slider(
+                            value: Binding(
+                                get: { Double(ui.playerSideVUSegments) },
+                                set: { ui.playerSideVUSegments = Int($0.rounded()) }
+                            ),
+                            in: 12...32,
+                            step: 1
+                        )
+                        .tint(EOSTheme.accent)
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text("Spectrum EQ / Mikser")
+                } footer: {
+                    Text("Reguluj gęstość i grubość słupków w środku oraz wysokość bocznych wskaźników L/R (efekt miksera DJ).")
+                }
+
+                Section {
                     Toggle(isOn: $ui.playerAutoPerformance.animation(EOSMotion.snappy)) {
                         Label {
                             VStack(alignment: .leading, spacing: 2) {

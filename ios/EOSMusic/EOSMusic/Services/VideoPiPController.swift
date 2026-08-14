@@ -3,6 +3,16 @@ import AVKit
 import SwiftUI
 import UIKit
 
+enum VideoHandoffState: Equatable {
+    case idle
+    case preparingPiP
+    case preparingAirPlay
+    case pictureInPicture
+    case airPlay
+    case restoringVLC
+    case failed(String)
+}
+
 /// Stable hybrid PiP: AVPlayer handles system PiP for Apple-compatible files,
 /// while VLC remains the main player and resumes at the exact PiP position.
 @MainActor
@@ -14,6 +24,7 @@ final class VideoPiPController: NSObject, ObservableObject {
     @Published private(set) var isExternalPlaybackActive = false
     @Published private(set) var externalDeviceName: String?
     @Published private(set) var airPlayNotice: String?
+    @Published private(set) var handoffState: VideoHandoffState = .idle
 
     var onStarted: (() -> Void)?
     var onRestore: (() -> Void)?
@@ -38,6 +49,30 @@ final class VideoPiPController: NSObject, ObservableObject {
     private var externalEndObserver: NSObjectProtocol?
     private var rateObserver: NSKeyValueObservation?
     private var externalActiveObserver: NSKeyValueObservation?
+
+    private func setHandoffState(_ state: VideoHandoffState) {
+        handoffState = state
+        switch state {
+        case .preparingPiP, .preparingAirPlay:
+            isPreparing = true
+        default:
+            isPreparing = false
+        }
+    }
+
+    private func failHandoff(_ message: String, airPlay: Bool) {
+        avPlayer.pause()
+        avPlayer.isMuted = false
+        if let engine, engine.isSuspendedForAVKit {
+            engine.resumeFromAVKitHandoff(at: engine.currentTime, resume: sourceWasPlaying)
+        }
+        setHandoffState(.failed(message))
+        if airPlay {
+            airPlayNotice = message
+        } else {
+            errorMessage = message
+        }
+    }
 
     override init() {
         super.init()
@@ -81,9 +116,12 @@ final class VideoPiPController: NSObject, ObservableObject {
     }
 
     /// Przed wyborem trasy AirPlay — wczytaj AVPlayer, żeby TV dostało wideo, nie sam dźwięk z VLC.
-    func prepareAirPlayHandoff(for engine: VideoPlaybackEngine) {
+    /// `userInitiated`: komunikat tylko gdy użytkownik sam kliknął AirPlay — nigdy przy starcie filmu.
+    func prepareAirPlayHandoff(for engine: VideoPlaybackEngine, userInitiated: Bool = false) {
         guard supportsCurrentItem(engine) else {
-            airPlayNotice = airPlayAudioOnlyHint(for: engine.currentPlayableURL)
+            if userInitiated {
+                airPlayNotice = airPlayAudioOnlyHint(for: engine.currentPlayableURL)
+            }
             return
         }
         airPlayNotice = nil
@@ -98,7 +136,6 @@ final class VideoPiPController: NSObject, ObservableObject {
         externalTask = Task { @MainActor [weak self] in
             guard let self else { return }
             guard await self.loadAVPlayerItem(from: engine, autoplay: false) else { return }
-            // Warm a frame so route picker can offer video AirPlay, not audio-only.
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 self.avPlayer.preroll(atRate: 1) { _ in continuation.resume() }
             }
@@ -284,12 +321,8 @@ final class VideoPiPController: NSObject, ObservableObject {
 
     private static func isAirPlayVideoRoute(_ session: AVAudioSession) -> Bool {
         session.currentRoute.outputs.contains { port in
-            switch port.portType {
-            case .airPlay, .HDMI, .AVB:
-                return true
-            default:
-                return false
-            }
+            // HDMI/AVB na Macu i iPadzie z monitorem to zwykły ekran — nie Apple TV.
+            port.portType == .airPlay
         }
     }
 
@@ -313,28 +346,41 @@ final class VideoPiPController: NSObject, ObservableObject {
 
         guard Self.isApplePiPContainer(url) else {
             airPlayNotice = airPlayAudioOnlyHint(for: url)
+            setHandoffState(.failed(airPlayNotice ?? "Nieobsługiwany format AirPlay."))
             return
         }
 
-        isPreparing = true
+        setHandoffState(.preparingAirPlay)
         airPlayNotice = nil
         self.engine = engine
         sourceWasPlaying = engine.isPlaying
 
         AudioSession.activateForVideoPlayback(force: true)
-        engine.suspendForAVKitHandoff()
-        let loaded = await loadAVPlayerItem(from: engine, autoplay: true)
+        // Warm AVPlayer silently while VLC remains the sole audible source.
+        avPlayer.isMuted = true
+        let loaded = await loadAVPlayerItem(from: engine, autoplay: false)
         guard loaded else {
-            engine.resumeFromAVKitHandoff(at: engine.currentTime, resume: sourceWasPlaying)
-            isPreparing = false
-            airPlayNotice = "Nie udało się uruchomić AirPlay wideo dla tego źródła."
+            failHandoff("Nie udało się uruchomić AirPlay wideo dla tego źródła.", airPlay: true)
             return
         }
 
         if let host = hostView {
             attach(to: host)
         }
-        _ = await waitUntilAVPlayerHasVideo(maxSeconds: 3.5)
+        if sourceWasPlaying {
+            avPlayer.play()
+        } else {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                avPlayer.preroll(atRate: 1) { _ in continuation.resume() }
+            }
+        }
+        let hasVideo = await waitUntilAVPlayerHasVideo(maxSeconds: 5.0)
+        avPlayer.pause()
+        guard hasVideo else {
+            failHandoff("AirPlay nie otrzymał klatki wideo. VLC pozostaje aktywny.", airPlay: true)
+            return
+        }
+
         for _ in 0..<40 {
             if avPlayer.isExternalPlaybackActive || Self.isAirPlayVideoRoute(AVAudioSession.sharedInstance()) {
                 break
@@ -345,19 +391,19 @@ final class VideoPiPController: NSObject, ObservableObject {
         let routeOK = Self.isAirPlayVideoRoute(AVAudioSession.sharedInstance())
         let avOK = avPlayer.isExternalPlaybackActive
         guard routeOK || avOK else {
-            avPlayer.pause()
-            engine.resumeFromAVKitHandoff(at: engine.currentTime, resume: sourceWasPlaying)
-            isPreparing = false
-            airPlayNotice = "AirPlay wideo nie przejął streamu. Spróbuj ponownie albo użyj Lustrzanego odbicia."
+            failHandoff("AirPlay wideo nie przejął streamu. Spróbuj ponownie albo użyj Lustrzanego odbicia.", airPlay: true)
             return
         }
 
-        if !avPlayer.isExternalPlaybackActive, sourceWasPlaying || routeOK {
+        // Atomic ownership handoff: AVPlayer is ready first, only now silence VLC.
+        engine.suspendForAVKitHandoff()
+        avPlayer.isMuted = false
+        if sourceWasPlaying || routeOK {
             avPlayer.play()
         }
 
         isExternalPlaybackActive = true
-        isPreparing = false
+        setHandoffState(.airPlay)
         externalDeviceName = Self.airPlayOutputName(AVAudioSession.sharedInstance())
             ?? "AirPlay"
         startExternalTimeObserver()
@@ -369,6 +415,7 @@ final class VideoPiPController: NSObject, ObservableObject {
         guard isExternalPlaybackActive || avPlayer.currentItem != nil else { return }
         isEndingExternal = true
         defer { isEndingExternal = false }
+        setHandoffState(.restoringVLC)
         stopExternalTimeObserver()
 
         let seconds = avPlayer.currentTime().seconds
@@ -376,6 +423,7 @@ final class VideoPiPController: NSObject, ObservableObject {
         let engineRef = engine
 
         avPlayer.pause()
+        avPlayer.isMuted = false
         avPlayer.replaceCurrentItem(with: nil)
         isExternalPlaybackActive = false
         externalDeviceName = nil
@@ -387,6 +435,7 @@ final class VideoPiPController: NSObject, ObservableObject {
                 resume: shouldResume
             )
         }
+        setHandoffState(.idle)
         objectWillChange.send()
     }
 
@@ -401,12 +450,13 @@ final class VideoPiPController: NSObject, ObservableObject {
             asset = AVURLAsset(url: url)
         }
         let playable = (try? await asset.load(.isPlayable)) == true
-        guard playable else { return false }
+        guard playable, !Task.isCancelled else { return false }
 
         let item = AVPlayerItem(asset: asset)
         avPlayer.replaceCurrentItem(with: item)
 
         for _ in 0..<40 {
+            if Task.isCancelled { return false }
             if item.status == .readyToPlay { break }
             if item.status == .failed { return false }
             try? await Task.sleep(nanoseconds: 50_000_000)
@@ -526,7 +576,7 @@ final class VideoPiPController: NSObject, ObservableObject {
             return
         }
 
-        isPreparing = true
+        setHandoffState(.preparingPiP)
         errorMessage = nil
         self.engine = engine
         sourceWasPlaying = engine.isPlaying
@@ -535,12 +585,6 @@ final class VideoPiPController: NSObject, ObservableObject {
         startTask?.cancel()
         startTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer {
-                if !self.isActive {
-                    self.isPreparing = false
-                }
-            }
-
             let asset: AVURLAsset
             if let request = Self.authenticatedRequest(for: url) {
                 asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": request.allHTTPHeaderFields ?? [:]])
@@ -550,39 +594,45 @@ final class VideoPiPController: NSObject, ObservableObject {
             let playable = (try? await asset.load(.isPlayable)) == true
             guard !Task.isCancelled else { return }
             guard playable else {
-                self.transferBackToVLC()
-                self.errorMessage = "Ten stream nie obsługuje PiP w EOS — spróbuj MP4 lub pobierz na serwer."
+                self.failHandoff("Ten stream nie obsługuje PiP w EOS — spróbuj MP4 lub pobierz na serwer.", airPlay: false)
                 return
             }
 
+            self.avPlayer.isMuted = true
             guard await self.loadAVPlayerItem(from: engine, autoplay: false) else {
-                self.transferBackToVLC()
-                self.errorMessage = "Nie udało się przygotować PiP dla tego źródła."
+                self.failHandoff("Nie udało się przygotować PiP dla tego źródła.", airPlay: false)
                 return
             }
 
             AudioSession.activateForVideoPlayback()
-            engine.suspendForAVKitHandoff()
-
             if self.sourceWasPlaying {
                 self.avPlayer.play()
                 guard await self.waitUntilAVPlayerHasVideo(maxSeconds: 8.0) else {
-                    self.transferBackToVLC()
-                    self.errorMessage = "PiP: brak klatek wideo — spróbuj ponownie za chwilę."
+                    self.failHandoff("PiP: brak klatek wideo — VLC pozostaje aktywny.", airPlay: false)
                     return
                 }
+                self.avPlayer.pause()
             } else {
                 await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                     self.avPlayer.preroll(atRate: 1) { _ in continuation.resume() }
                 }
                 self.avPlayer.pause()
-                _ = await self.waitUntilAVPlayerHasVideo(maxSeconds: 4.0)
+                guard await self.waitUntilAVPlayerHasVideo(maxSeconds: 4.0) else {
+                    self.failHandoff("PiP nie otrzymał gotowej klatki wideo.", airPlay: false)
+                    return
+                }
             }
 
             if let host = self.hostView {
                 self.attach(to: host)
             } else {
                 self.ensureController()
+            }
+            // AVPlayer has a frame; hand off audio/video ownership only now.
+            engine.suspendForAVKitHandoff()
+            self.avPlayer.isMuted = false
+            if self.sourceWasPlaying {
+                self.avPlayer.play()
             }
             self.ensureVLCSilentDuringPiP()
 
@@ -599,8 +649,7 @@ final class VideoPiPController: NSObject, ObservableObject {
                 try? await Task.sleep(nanoseconds: 80_000_000)
             }
 
-            self.transferBackToVLC()
-            self.errorMessage = "PiP nie jest jeszcze gotowy. Spróbuj ponownie za chwilę."
+            self.failHandoff("PiP nie jest jeszcze gotowy. VLC zostało przywrócone.", airPlay: false)
         }
         await startTask?.value
     }
@@ -619,6 +668,7 @@ final class VideoPiPController: NSObject, ObservableObject {
         stopExternalTimeObserver()
 
         avPlayer.pause()
+        avPlayer.isMuted = false
         avPlayer.replaceCurrentItem(with: nil)
 
         if isExternalPlaybackActive, let engine {
@@ -632,7 +682,7 @@ final class VideoPiPController: NSObject, ObservableObject {
             engine.cancelAVKitHandoff()
         }
 
-        isPreparing = false
+        setHandoffState(.idle)
         isActive = false
         isExternalPlaybackActive = false
         externalDeviceName = nil
@@ -664,11 +714,13 @@ final class VideoPiPController: NSObject, ObservableObject {
             return
         }
         isTransferringBack = true
+        setHandoffState(.restoringVLC)
         stopPiPTimeObserver()
         stopExternalTimeObserver()
         let seconds = avPlayer.currentTime().seconds
         let shouldResume = avPlayer.rate > 0 || sourceWasPlaying
         avPlayer.pause()
+        avPlayer.isMuted = false
         avPlayer.replaceCurrentItem(with: nil)
         engineRef.resumeFromAVKitHandoff(
             at: seconds.isFinite ? seconds : engineRef.currentTime,
@@ -677,6 +729,7 @@ final class VideoPiPController: NSObject, ObservableObject {
         engineRef.kickVideoOutput()
         engine = nil
         isTransferringBack = false
+        setHandoffState(.idle)
     }
 }
 
@@ -685,8 +738,8 @@ extension VideoPiPController: AVPictureInPictureControllerDelegate {
         _ pictureInPictureController: AVPictureInPictureController
     ) {
         Task { @MainActor in
-            isPreparing = false
             isActive = true
+            setHandoffState(.pictureInPicture)
             ensureVLCSilentDuringPiP()
             if sourceWasPlaying, avPlayer.rate == 0 {
                 avPlayer.play()
@@ -719,10 +772,11 @@ extension VideoPiPController: AVPictureInPictureControllerDelegate {
         failedToStartPictureInPictureWithError error: Error
     ) {
         Task { @MainActor in
-            isPreparing = false
             isActive = false
             transferBackToVLC()
-            errorMessage = "PiP niedostępny: \(error.localizedDescription)"
+            let message = "PiP niedostępny: \(error.localizedDescription)"
+            errorMessage = message
+            setHandoffState(.failed(message))
         }
     }
 
@@ -734,9 +788,11 @@ extension VideoPiPController: AVPictureInPictureControllerDelegate {
             if !isDiscardingPlayback {
                 transferBackToVLC()
             }
-            isPreparing = false
             isActive = false
             isDiscardingPlayback = false
+            if !isTransferringBack {
+                setHandoffState(.idle)
+            }
         }
     }
 

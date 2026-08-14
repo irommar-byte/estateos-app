@@ -23,8 +23,14 @@ struct EOSMusicApp: App {
                     BluetoothMediaBrowser.shared.activate()
                     video.onWillStartPlayback = {
                         app.playback.stop()
-                        app.isFullPlayerPresented = false
-                        AudioSession.activateForPlayback()
+                        if app.isFullPlayerPresented {
+                            video.deferPlayerPresentation = true
+                            app.isFullPlayerPresented = false
+                        }
+                        AudioSession.activateForVideoPlayback()
+                    }
+                    video.onDidStopPlayback = {
+                        app.onlineMovies.clearEpisodeStreamContext()
                     }
                     // Single ownership of AppModel.offlineModeEnabled ← UIPreferences.
                     app.configureOfflineMode(from: ui)

@@ -21,6 +21,8 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
     let intensity: Double
     let drive: Double
     let bandCount: Int
+    var barScale: Double = 1.0
+    var sideVUSegments: Int = 24
     let compactMixer: Bool
     let queueLabel: String
     var onQueueTap: (() -> Void)? = nil
@@ -78,7 +80,8 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
                                     channel: .left,
                                     width: vuW,
                                     compact: true,
-                                    drive: drive
+                                    drive: drive,
+                                    segmentCount: sideVUSegments
                                 )
                                 .frame(width: vuW, height: max(96, spectrumHeight))
 
@@ -87,6 +90,7 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
                                     isPlaying: live,
                                     intensity: intensity,
                                     bandCount: bandCount,
+                                    barScale: barScale,
                                     compact: rowGeo.size.width < 380
                                 )
                                 .frame(maxWidth: .infinity)
@@ -98,7 +102,8 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
                                     channel: .right,
                                     width: vuW,
                                     compact: true,
-                                    drive: drive
+                                    drive: drive,
+                                    segmentCount: sideVUSegments
                                 )
                                 .frame(width: vuW, height: max(96, spectrumHeight))
                             }
@@ -162,6 +167,8 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
     let intensity: Double
     let drive: Double
     let bandCount: Int
+    var barScale: Double = 1.0
+    var sideVUSegments: Int = 24
     let compactMixer: Bool
     let queueLabel: String
     var onQueueTap: (() -> Void)? = nil
@@ -221,7 +228,8 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                                     channel: .left,
                                     width: vuW,
                                     compact: !expandSpectrum,
-                                    drive: drive
+                                    drive: drive,
+                                    segmentCount: sideVUSegments
                                 )
                                 .frame(width: vuW, height: eqHeight)
 
@@ -230,6 +238,7 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                                     isPlaying: live,
                                     intensity: intensity,
                                     bandCount: bandCount,
+                                    barScale: barScale,
                                     compact: compactMixer || rowGeo.size.width < 380
                                 )
                                 .frame(maxWidth: .infinity)
@@ -241,7 +250,8 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                                     channel: .right,
                                     width: vuW,
                                     compact: !expandSpectrum,
-                                    drive: drive
+                                    drive: drive,
+                                    segmentCount: sideVUSegments
                                 )
                                 .frame(width: vuW, height: eqHeight)
                             }
@@ -866,30 +876,44 @@ private struct ProMixerVerticalVU: View {
     let width: CGFloat
     var compact: Bool = false
     var drive: Double = 0.4
+    var segmentCount: Int = 24
 
     var body: some View {
         GeometryReader { geo in
-            let segments = WinampSpectrumStyle.segmentCount
-            let segmentH = max(3, min(compact ? 5 : 6, (geo.size.height - 8) / CGFloat(segments)))
-            TimelineView(.animation(minimumInterval: 1.0 / 20, paused: !isPlaying)) { _ in
+            let segments = min(32, max(12, segmentCount))
+            let segmentH = max(2, (geo.size.height - CGFloat(segments + 1)) / CGFloat(segments))
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !isPlaying)) { _ in
                 let frame = visualizer.snapshot(isPlaying: isPlaying)
                 let raw: Double = {
                     switch channel {
-                    case .left: return frame.bass * (0.75 + drive * 0.35) + frame.beat * (0.2 + drive * 0.2)
-                    case .right: return frame.treble * (0.75 + drive * 0.35) + frame.mid * (0.15 + drive * 0.15)
+                    case .left:
+                        return max(
+                            frame.bass,
+                            frame.beat * 0.92,
+                            frame.level * 0.68,
+                            frame.mid * 0.38
+                        )
+                    case .right:
+                        return max(
+                            frame.treble,
+                            frame.mid * 0.88,
+                            frame.level * 0.62,
+                            frame.bass * 0.28
+                        )
                     }
                 }()
-                let normalized = WinampSpectrumStyle.quantizeLevel(min(isPlaying ? raw : raw * 0.12, 1))
+                let boosted = raw * (0.78 + drive * 0.52)
+                let normalized = min(1, max(0, isPlaying ? boosted : boosted * 0.1))
                 let lit = Int(round(normalized * Double(segments)))
 
-                VStack(spacing: 2) {
+                VStack(spacing: 1) {
                     ForEach((0..<segments).reversed(), id: \.self) { segment in
                         let active = segment < lit
                         let isPeak = segment == lit && lit > 0
                         RoundedRectangle(cornerRadius: 1, style: .continuous)
                             .fill(
                                 active
-                                    ? WinampSpectrumStyle.barColor(segmentFromBottom: segment)
+                                    ? WinampSpectrumStyle.barColor(segmentFromBottom: segment, totalSegments: segments)
                                     : Color(white: 0.06)
                             )
                             .frame(height: segmentH)
@@ -899,12 +923,11 @@ private struct ProMixerVerticalVU: View {
                                         .fill(WinampSpectrumStyle.peakColor(forLevel: normalized))
                                 }
                             }
-                            .shadow(color: active ? WinampSpectrumStyle.barColor(segmentFromBottom: segment).opacity(0.45) : .clear, radius: 2)
+                            .shadow(color: active ? WinampSpectrumStyle.barColor(segmentFromBottom: segment, totalSegments: segments).opacity(0.45) : .clear, radius: 2)
                     }
                 }
-                .padding(.horizontal, 4)
-                .padding(.top, 4)
-                .padding(.bottom, 2)
+                .padding(.horizontal, 3)
+                .padding(.vertical, 3)
                 .frame(width: width, height: geo.size.height, alignment: .bottom)
                 .background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 4))
                 .overlay {
@@ -925,6 +948,8 @@ private struct ProMixerMasterSection: View {
     let isPlaying: Bool
     let intensity: Double
     let bandCount: Int
+    var barScale: Double = 1.0
+    var sideVUSegments: Int = 24
     let compactMixer: Bool
     let effectsActive: Bool
 

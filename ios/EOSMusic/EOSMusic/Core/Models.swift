@@ -180,6 +180,8 @@ struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
     let assetId: String?
     let queuedAt: Double?
     let finishedAt: Double?
+    let phase: String?
+    let updatedAt: Double?
 
     var isMusic: Bool { kind == "music" }
     var isMovie: Bool { kind == "movie" }

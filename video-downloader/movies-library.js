@@ -14,6 +14,23 @@ const DATA_DIR =
 
 export const MOVIES_FOLDER_NAME = "MOVIES";
 
+export function normalizeMovieUrlKey(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    url.protocol = "https:";
+    url.hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+    url.search = "";
+    url.hash = "";
+    let pathname = url.pathname.toLowerCase().replace(/\/+$/, "") || "/";
+    if (pathname.endsWith("-online")) pathname = pathname.slice(0, -"-online".length);
+    return `${url.hostname}${pathname}`;
+  } catch {
+    return value.toLowerCase().replace(/\/+$/, "").replace(/-online$/, "");
+  }
+}
+
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
@@ -278,7 +295,8 @@ export function summarizeMovieDownloads(req, downloadsRoot = null) {
 
 export function findDownloadByUrl(userKey, url) {
   const store = readStore(userKey);
-  return store.downloads.find((d) => d.url === url) || null;
+  const key = normalizeMovieUrlKey(url);
+  return store.downloads.find((d) => normalizeMovieUrlKey(d.url) === key) || null;
 }
 
 export function findDownloadByJobId(userKey, jobId) {
@@ -298,7 +316,8 @@ export function linkMovieDownloadByKey(userKey, raw, downloadsRoot = null) {
   if (!url || !downloadJobId) throw new Error("Brak danych pobrania filmu.");
 
   const store = readStore(userKey);
-  const existing = store.downloads.find((d) => d.url === url);
+  const key = normalizeMovieUrlKey(url);
+  const existing = store.downloads.find((d) => normalizeMovieUrlKey(d.url) === key);
   const previousJobId = existing?.downloadJobId;
   const previousFilename = existing?.filename;
   const next = normalizeDownload({

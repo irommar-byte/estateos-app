@@ -26,6 +26,15 @@ struct RootView: View {
                 MainTabView()
                     .transition(.opacity)
             }
+
+            if video.isPlayerPresented {
+                VideoPlayerView(engine: video.engine)
+                    .environmentObject(video)
+                    .environmentObject(app)
+                    .ignoresSafeArea()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .zIndex(200)
+            }
         }
         .animation(.easeInOut(duration: 0.55), value: showLaunchIntro)
         .task {
@@ -61,17 +70,20 @@ struct RootView: View {
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.86), value: app.toast?.id)
         .modifier(MusicPlayerPresentation(
-            isPresented: $app.isFullPlayerPresented,
+            isPresented: Binding(
+                get: { app.isFullPlayerPresented && !video.isPlayerPresented },
+                set: { app.isFullPlayerPresented = $0 }
+            ),
             useFullScreen: prefersFullScreenPlayer
         ) {
             FullPlayerView()
                 .environmentObject(app)
                 .environmentObject(ui)
         })
-        .fullScreenCover(isPresented: $video.isPlayerPresented) {
-            VideoPlayerView(engine: video.engine)
-                .environmentObject(video)
-                .environmentObject(app)
+        .onChange(of: video.isPlayerPresented) { wasOpen, isOpen in
+            if wasOpen && !isOpen {
+                video.syncMinimizedStateAfterDismiss()
+            }
         }
         .confirmationDialog(
             "Otwórz plik",

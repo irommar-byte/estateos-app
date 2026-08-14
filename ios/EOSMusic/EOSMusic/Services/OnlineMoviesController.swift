@@ -1,6 +1,37 @@
 import Foundation
 import UIKit
 
+enum MoviePlaybackLaunchPhase: Equatable {
+    case idle
+    case preparing(message: String, progress: Double?)
+    case presenting
+    case playing
+    case failed(String)
+    case cancelled
+
+    var isBusy: Bool {
+        switch self {
+        case .preparing, .presenting: return true
+        default: return false
+        }
+    }
+
+    var message: String? {
+        switch self {
+        case .preparing(let message, _): return message
+        case .presenting: return "Otwieram odtwarzacz…"
+        case .failed(let message): return message
+        case .cancelled: return "Anulowano uruchamianie."
+        case .idle, .playing: return nil
+        }
+    }
+
+    var progress: Double? {
+        guard case .preparing(_, let progress) = self else { return nil }
+        return progress
+    }
+}
+
 @MainActor
 final class OnlineMoviesController: ObservableObject {
     @Published private(set) var shelves: [FilmsHomeShelf] = []
@@ -13,15 +44,18 @@ final class OnlineMoviesController: ObservableObject {
     @Published private(set) var transferStates: [String: OnlineMovieTransferState] = [:]
     @Published private(set) var isPreparingStream = false
     @Published private(set) var streamPrepareProgress: Double = 0
+    @Published private(set) var playbackLaunchPhase: MoviePlaybackLaunchPhase = .idle
     @Published var statusMessage: String?
 
     private weak var api: MusicAPIClient?
-    private var activeTasks: [String: Task<Void, Never>] = [:]
-    private var streamTask: Task<Void, Never>?
+    private weak var movieDownloads: MovieDownloadService?
+    private var streamTask: Task<Bool, Never>?
+    private var streamLaunchID: UUID?
     private let transfers = BackgroundTransferService.shared
 
-    func attach(api: MusicAPIClient) {
+    func attach(api: MusicAPIClient, movieDownloads: MovieDownloadService? = nil) {
         self.api = api
+        self.movieDownloads = movieDownloads
     }
 
     func reset() {
@@ -34,13 +68,32 @@ final class OnlineMoviesController: ObservableObject {
         transferStates = [:]
         isPreparingStream = false
         streamPrepareProgress = 0
+        playbackLaunchPhase = .idle
         streamTask?.cancel()
         streamTask = nil
-        for task in activeTasks.values { task.cancel() }
-        activeTasks.removeAll()
+        for url in transferStates.keys {
+            transfers.cancel(trackKey: "movie:\(url)")
+        }
     }
 
     func transferState(for url: String, title: String? = nil) -> OnlineMovieTransferState {
+        if let state = movieDownloads?.itemState(for: url) {
+            switch state {
+            case .pending, .queuedOnServer:
+                return .acquiringServer(progress: 0)
+            case .downloading(let progress):
+                return .acquiringServer(progress: max(0, progress))
+            case .pullingPhone(let progress):
+                return .downloadingPhone(progress: max(0, progress))
+            case .failed(let message):
+                return .failed(message)
+            case .done:
+                if phoneFileURL(for: url) != nil { return .onPhone }
+                if downloadEntry(for: url, title: title) != nil { return .onServer }
+            case .idle, .skipped, .cancelled:
+                break
+            }
+        }
         if let state = transferStates[url] { return state }
         if let keyed = transferStates.first(where: { MovieURLMatching.urlsMatch($0.key, url) })?.value {
             return keyed
@@ -165,11 +218,7 @@ final class OnlineMoviesController: ObservableObject {
         selection: OnlineMovieSelection,
         height: Int = 720
     ) {
-        let key = selection.url
-        activeTasks[key]?.cancel()
-        activeTasks[key] = Task {
-            await runServerAcquire(selection: selection, height: height, alsoPhone: false)
-        }
+        startUnifiedDownload(selection: selection, height: height, destination: .server)
     }
 
     func downloadToPhone(
@@ -177,19 +226,13 @@ final class OnlineMoviesController: ObservableObject {
         height: Int = 720,
         video: VideoAppModel
     ) {
-        let key = selection.url
-        activeTasks[key]?.cancel()
-        activeTasks[key] = Task {
-            await runServerAcquire(selection: selection, height: height, alsoPhone: true, video: video)
-        }
+        _ = video
+        startUnifiedDownload(selection: selection, height: height, destination: .serverAndPhone)
     }
 
     func cancelTransfer(url: String) {
-        activeTasks[url]?.cancel()
-        activeTasks[url] = nil
-        if case .acquiringServer = transferStates[url], let jobId = jobId(for: url) {
-            Task { try? await api?.cancelJob(jobId: jobId) }
-        }
+        movieDownloads?.cancelItem(id: url)
+        transfers.cancel(trackKey: "movie:\(url)")
         if downloads.contains(where: { $0.url == url && $0.isDownloaded }) {
             transferStates[url] = .onServer
         } else if phoneFileURL(for: url) != nil {
@@ -199,7 +242,43 @@ final class OnlineMoviesController: ObservableObject {
         }
     }
 
+    private func startUnifiedDownload(
+        selection: OnlineMovieSelection,
+        height: Int,
+        destination: OnlineMovieDownloadDestination
+    ) {
+        let quality = MediaQualityOption(
+            id: height > 0 ? "\(height)" : "best",
+            label: height > 0 ? "\(height)p" : "Best",
+            height: height > 0 ? height : nil
+        )
+        movieDownloads?.startBatch(
+            items: [
+                MovieDownloadQueueItem(
+                    url: selection.url,
+                    title: selection.title,
+                    thumbnail: selection.thumbnail,
+                    source: selection.source
+                )
+            ],
+            label: selection.title,
+            thumbnail: selection.thumbnail,
+            contextKey: selection.url,
+            format: .videoMP4,
+            quality: quality,
+            destination: destination
+        )
+    }
+
+    private func setPlaybackPhase(_ phase: MoviePlaybackLaunchPhase) {
+        playbackLaunchPhase = phase
+        isPreparingStream = phase.isBusy
+        streamPrepareProgress = phase.progress ?? 0
+    }
+
     /// Stream online bez pobierania — `/api/preview` → `/api/play`.
+    /// Awaiting this method reaches a terminal launch result; callers never poll flags.
+    @discardableResult
     func watchStream(
         selection: OnlineMovieSelection,
         height: Int = 720,
@@ -207,10 +286,15 @@ final class OnlineMoviesController: ObservableObject {
         episodeQueue: [EpisodeItem]? = nil,
         seriesTitle: String? = nil,
         preferSavedCopy: Bool = true
-    ) {
+    ) async -> Bool {
         streamTask?.cancel()
-        streamTask = Task {
-            await runWatchStream(
+        let launchID = UUID()
+        streamLaunchID = launchID
+        setPlaybackPhase(.preparing(message: "Uruchamiam stream…", progress: nil))
+        statusMessage = nil
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return false }
+            return await self.runWatchStream(
                 selection: selection,
                 height: height,
                 video: video,
@@ -219,39 +303,60 @@ final class OnlineMoviesController: ObservableObject {
                 preferSavedCopy: preferSavedCopy
             )
         }
+        streamTask = task
+        let result = await task.value
+        if streamLaunchID == launchID {
+            streamTask = nil
+            streamLaunchID = nil
+        }
+        return result
     }
 
     func cancelStreamPrepare() {
         streamTask?.cancel()
         streamTask = nil
-        isPreparingStream = false
-        streamPrepareProgress = 0
-        statusMessage = "Anulowano uruchamianie streamu."
+        streamLaunchID = nil
+        setPlaybackPhase(.cancelled)
+        statusMessage = nil
     }
 
-    func playFromServer(selection: OnlineMovieSelection, video: VideoAppModel) async {
-        guard let api else { return }
+    @discardableResult
+    func playFromServer(selection: OnlineMovieSelection, video: VideoAppModel) async -> Bool {
+        guard let api else {
+            setPlaybackPhase(.failed("Brak połączenia z serwerem EOS."))
+            return false
+        }
+        setPlaybackPhase(.preparing(message: "Uruchamiam z serwera…", progress: nil))
         do {
             guard let existing = self.jobId(for: selection.url, title: selection.title) else {
-                statusMessage = "Najpierw pobierz film na serwer."
-                return
+                setPlaybackPhase(.failed("Nie znaleziono gotowego pliku na serwerze."))
+                return false
             }
-            statusMessage = "Uruchamiam z serwera…"
             let token = try await api.moviePlayToken(jobId: existing)
             let streamURL = api.movieStreamURL(jobId: existing, token: token.token)
-            statusMessage = nil
-            await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
+            setPlaybackPhase(.presenting)
+            let started = await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
+            setPlaybackPhase(started ? .playing : .failed(video.engine.errorMessage ?? "Nie udało się uruchomić pliku z serwera."))
+            return started
+        } catch is CancellationError {
+            setPlaybackPhase(.cancelled)
+            return false
         } catch {
-            statusMessage = error.localizedDescription
+            setPlaybackPhase(.failed(error.localizedDescription))
+            return false
         }
     }
 
-    func playFromPhone(selection: OnlineMovieSelection, video: VideoAppModel) async {
+    @discardableResult
+    func playFromPhone(selection: OnlineMovieSelection, video: VideoAppModel) async -> Bool {
         guard let local = phoneFileURL(for: selection.url) else {
-            statusMessage = "Brak kopii na telefonie."
-            return
+            setPlaybackPhase(.failed("Brak kopii na tym urządzeniu."))
+            return false
         }
-        await playRemoteOrLocal(url: local, title: selection.title, video: video)
+        setPlaybackPhase(.presenting)
+        let started = await playRemoteOrLocal(url: local, title: selection.title, video: video)
+        setPlaybackPhase(started ? .playing : .failed(video.engine.errorMessage ?? "Nie udało się otworzyć kopii na urządzeniu."))
+        return started
     }
 
     private func runWatchStream(
@@ -261,30 +366,28 @@ final class OnlineMoviesController: ObservableObject {
         episodeQueue: [EpisodeItem]? = nil,
         seriesTitle: String? = nil,
         preferSavedCopy: Bool = true
-    ) async {
-        guard let api else { return }
-        isPreparingStream = true
-        streamPrepareProgress = 0
-        statusMessage = "Uruchamiam stream…"
-        defer {
-            isPreparingStream = false
-            streamTask = nil
+    ) async -> Bool {
+        guard let api else {
+            setPlaybackPhase(.failed("Brak połączenia z serwerem EOS."))
+            return false
         }
 
         do {
             // Lokalna kopia / serwer — tylko gdy użytkownik nie wybrał źródła na żywo.
             if preferSavedCopy, let local = phoneFileURL(for: selection.url) {
-                statusMessage = nil
-                await playRemoteOrLocal(url: local, title: selection.title, video: video)
-                return
+                setPlaybackPhase(.presenting)
+                let started = await playRemoteOrLocal(url: local, title: selection.title, video: video)
+                setPlaybackPhase(started ? .playing : .failed(video.engine.errorMessage ?? "Nie udało się otworzyć kopii na urządzeniu."))
+                return started
             }
             if preferSavedCopy, let existing = jobId(for: selection.url, title: selection.title) {
-                statusMessage = "Uruchamiam z serwera…"
+                setPlaybackPhase(.preparing(message: "Uruchamiam z serwera…", progress: nil))
                 let token = try await api.moviePlayToken(jobId: existing)
                 let streamURL = api.movieStreamURL(jobId: existing, token: token.token)
-                statusMessage = nil
+                setPlaybackPhase(.presenting)
+                let started: Bool
                 if let queue = episodeQueue, queue.count > 1 {
-                    await playEpisodeQueue(
+                    started = await playEpisodeQueue(
                         episodes: queue,
                         startURL: selection.url,
                         streamURLForEpisode: { ep in
@@ -294,44 +397,50 @@ final class OnlineMoviesController: ObservableObject {
                         video: video
                     )
                 } else {
-                    await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
+                    started = await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
                 }
-                return
+                setPlaybackPhase(started ? .playing : .failed(video.engine.errorMessage ?? "Nie udało się uruchomić pliku z serwera."))
+                return started
             }
 
             let preview = try await api.startPreview(url: selection.url, height: height)
             if preview.instant != true {
                 try await api.waitForPreviewReady(jobId: preview.jobId) { [weak self] progress in
                     Task { @MainActor in
-                        self?.streamPrepareProgress = progress
-                        self?.statusMessage = String(format: "Przygotowuję stream… %.0f%%", progress)
+                        self?.setPlaybackPhase(.preparing(
+                            message: "Przygotowuję stream…",
+                            progress: progress
+                        ))
                     }
                 }
-            } else {
-                streamPrepareProgress = 100
             }
 
             let token = try await api.previewPlayToken(jobId: preview.jobId)
             let streamURL = api.previewStreamURL(jobId: token.jobId, token: token.token)
-            statusMessage = nil
+            setPlaybackPhase(.presenting)
+            let started: Bool
             if let queue = episodeQueue, !queue.isEmpty {
-                await playEpisodeQueue(
+                started = await playEpisodeQueue(
                     episodes: queue,
                     startURL: selection.url,
                     streamURLForEpisode: { ep in
-                        if ep.url == selection.url { return streamURL }
+                        if MovieURLMatching.urlsMatch(ep.url, selection.url) { return streamURL }
                         return nil
                     },
                     seriesTitle: seriesTitle ?? selection.title,
                     video: video
                 )
             } else {
-                await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
+                started = await playRemoteOrLocal(url: streamURL, title: selection.title, video: video)
             }
+            setPlaybackPhase(started ? .playing : .failed(video.engine.errorMessage ?? "Nie udało się uruchomić obrazu."))
+            return started
         } catch is CancellationError {
-            // cancelled
+            setPlaybackPhase(.cancelled)
+            return false
         } catch {
-            statusMessage = error.localizedDescription
+            setPlaybackPhase(.failed(error.localizedDescription))
+            return false
         }
     }
 
@@ -352,84 +461,20 @@ final class OnlineMoviesController: ObservableObject {
 
     // MARK: - Private
 
-    private func runServerAcquire(
-        selection: OnlineMovieSelection,
-        height: Int,
-        alsoPhone: Bool,
-        video: VideoAppModel? = nil
-    ) async {
-        guard let api else { return }
-        let key = selection.url
-        transferStates[key] = .acquiringServer(progress: 0)
-        statusMessage = alsoPhone ? "Pobieram na serwer, potem na telefon…" : "Pobieram na serwer…"
-
-        do {
-            var start = try await api.startMovieDownload(
-                url: selection.url,
-                height: height,
-                title: selection.title,
-                thumbnail: selection.thumbnail,
-                source: selection.source
-            )
-
-            if start.ready != true {
-                let deadline = Date().addingTimeInterval(45 * 60)
-                while Date() < deadline {
-                    try Task.checkCancellation()
-                    let job = try await api.fetchJobStatus(jobId: start.jobId)
-                    if job.status == "error" {
-                        throw APIError.server(job.error ?? "Pobieranie nie powiodło się.")
-                    }
-                    if job.status == "processing" {
-                        transferStates[key] = .acquiringServer(progress: min(job.progress ?? 99, 99))
-                    } else {
-                        let pct = max(0, min(job.status == "done" ? 100 : 99, job.progress ?? 0))
-                        transferStates[key] = .acquiringServer(progress: pct)
-                    }
-                    if job.ready == true || job.status == "done" { break }
-                    try await Task.sleep(nanoseconds: 900_000_000)
-                }
-            } else {
-                transferStates[key] = .acquiringServer(progress: 100)
-            }
-
-            _ = try await api.linkMovieDownload(
-                url: selection.url,
-                title: selection.title,
-                downloadJobId: start.jobId,
-                thumbnail: selection.thumbnail,
-                source: selection.source
-            )
-            await refreshDownloads()
-            let landed = downloads.contains {
-                $0.url == selection.url && (($0.bytes ?? 0) > 0 || ($0.downloadJobId?.isEmpty == false))
-            }
-            guard landed else {
-                throw APIError.server("Film nie pojawił się w MOVIES/ na serwerze — spróbuj ponownie.")
-            }
-            transferStates[key] = .onServer
-            statusMessage = "Film jest na serwerze."
-
-            if alsoPhone, let video {
-                try await pullToPhone(selection: selection, jobId: start.jobId, video: video)
-            }
-        } catch is CancellationError {
-            // cancelled
-        } catch {
-            transferStates[key] = .failed(error.localizedDescription)
-            statusMessage = error.localizedDescription
-        }
-
-        activeTasks[key] = nil
-    }
-
     func pullToPhoneAfterServer(
         selection: OnlineMovieSelection,
         jobId: String,
         video: VideoAppModel? = nil,
-        onProgress: ((Double) -> Void)? = nil
+        onProgress: ((Double) -> Void)? = nil,
+        onIndeterminateProgress: ((Int64) -> Void)? = nil
     ) async throws {
-        try await pullToPhone(selection: selection, jobId: jobId, video: video, onProgress: onProgress)
+        try await pullToPhone(
+            selection: selection,
+            jobId: jobId,
+            video: video,
+            onProgress: onProgress,
+            onIndeterminateProgress: onIndeterminateProgress
+        )
     }
 
     /// Odtwarzaj serial jak playlistę Netflix — auto-następny odcinek w VideoPlayerView.
@@ -439,12 +484,11 @@ final class OnlineMoviesController: ObservableObject {
         streamURLForEpisode: (EpisodeItem) -> URL?,
         seriesTitle: String,
         video: VideoAppModel
-    ) async {
+    ) async -> Bool {
         guard let startIdx = episodes.firstIndex(where: {
             MovieURLMatching.urlsMatch($0.url, startURL)
         }) else {
-            statusMessage = "Nie znaleziono odcinka w kolejce."
-            return
+            return false
         }
 
         let slice = Array(episodes[startIdx...])
@@ -470,8 +514,7 @@ final class OnlineMoviesController: ObservableObject {
         }
 
         guard let firstPlayable = items.firstIndex(where: { $0.fileURL != nil }) else {
-            statusMessage = "Nie udało się uruchomić odtwarzania."
-            return
+            return false
         }
 
         episodeStreamContext = EpisodeStreamContext(
@@ -480,17 +523,13 @@ final class OnlineMoviesController: ObservableObject {
             streamHeight: 720
         )
 
-        video.onWillStartPlayback?()
-        OrientationLock.shared.unlockAll()
-        video.engine.play(
+        return await video.beginPlaybackAndWait(
             session: VideoPlaybackSession(
                 items: items,
                 startIndex: firstPlayable,
                 folderName: seriesTitle
-            ),
-            sources: video.sources
+            )
         )
-        video.isPlayerPresented = true
     }
 
     private struct EpisodeStreamContext {
@@ -500,6 +539,13 @@ final class OnlineMoviesController: ObservableObject {
     }
 
     private var episodeStreamContext: EpisodeStreamContext?
+
+    func clearEpisodeStreamContext() {
+        episodeStreamContext = nil
+        if playbackLaunchPhase == .playing {
+            setPlaybackPhase(.idle)
+        }
+    }
 
     func advanceToNextStreamingEpisode(video: VideoAppModel) async {
         guard episodeStreamContext != nil else {
@@ -525,7 +571,8 @@ final class OnlineMoviesController: ObservableObject {
         selection: OnlineMovieSelection,
         jobId: String,
         video: VideoAppModel? = nil,
-        onProgress: ((Double) -> Void)? = nil
+        onProgress: ((Double) -> Void)? = nil,
+        onIndeterminateProgress: ((Int64) -> Void)? = nil
     ) async throws {
         guard let api else { return }
         let key = selection.url
@@ -556,6 +603,9 @@ final class OnlineMoviesController: ObservableObject {
                 Task { @MainActor in
                     self.transferStates[key] = .downloadingPhone(progress: pct)
                 }
+            },
+            onIndeterminateProgress: { bytes in
+                onIndeterminateProgress?(bytes)
             }
         )
 
@@ -576,19 +626,25 @@ final class OnlineMoviesController: ObservableObject {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
-    private func playRemoteOrLocal(url: URL, title: String, video: VideoAppModel) async {
-        if url.isFileURL {
-            do {
-                try video.connectFolder(name: title, url: url)
-                guard let folder = video.folders.last else { return }
-                await video.refreshFolder(folder)
-                video.play(folder: folder, startIndex: 0)
-            } catch {
-                statusMessage = error.localizedDescription
-            }
-        } else {
-            video.playStandalone(url: url, title: title)
-        }
+    private func playRemoteOrLocal(url: URL, title: String, video: VideoAppModel) async -> Bool {
+        // A registered phone copy already lives in our sandbox; play it directly instead
+        // of copying it into another imported folder on every tap.
+        episodeStreamContext = nil
+        let item = VideoItem(
+            id: url.absoluteString,
+            title: title,
+            relativePath: title,
+            fileURL: url,
+            fileSize: nil,
+            folderId: UUID()
+        )
+        return await video.beginPlaybackAndWait(
+            session: VideoPlaybackSession(
+                items: [item],
+                startIndex: 0,
+                folderName: url.isFileURL ? "Na urządzeniu" : EOSLibraryBrand.displayName
+            )
+        )
     }
 
     // MARK: - Phone registry

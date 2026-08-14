@@ -122,6 +122,13 @@ struct MovieDownloadQueuePanel: View {
                             }
                         }
                     }
+                } else if case .pullingPhone(let progress) = item.state, progress < 0 {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text(service.activeBytesLabel.map { "Kopiuję · \($0)" } ?? "Kopiuję na urządzenie…")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(EOSTheme.accent)
+                    }
                 } else if case .pending = item.state {
                     Text("W kolejce")
                         .font(.system(size: 10, weight: .medium))
@@ -130,10 +137,25 @@ struct MovieDownloadQueuePanel: View {
                     Text("Na serwerze EOS")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(EOSTheme.accent.opacity(0.85))
+                } else if case .failed(let message) = item.state {
+                    Text(message)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.red.opacity(0.88))
+                        .lineLimit(2)
                 }
             }
             Spacer(minLength: 0)
-            if canCancel(item) {
+            if case .failed = item.state {
+                Button {
+                    service.retryItem(id: item.id)
+                } label: {
+                    Image(systemName: "arrow.clockwise.circle.fill")
+                        .font(.body)
+                        .foregroundStyle(EOSTheme.accent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Ponów pobieranie")
+            } else if canCancel(item) {
                 Button {
                     service.cancelItem(id: item.id)
                 } label: {

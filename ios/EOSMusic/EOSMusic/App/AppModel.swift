@@ -100,7 +100,7 @@ final class AppModel: ObservableObject {
     private var workspaceRefreshGeneration = 0
 
     init() {
-        onlineMovies.attach(api: api)
+        onlineMovies.attach(api: api, movieDownloads: movieDownloads)
         movieDownloads.attach(api: api, onlineMovies: onlineMovies)
         serverDownloads.attach(api: api, musicDownloads: downloads, movieDownloads: movieDownloads)
         BluetoothMediaBrowser.shared.playFromLibrary = { [weak self] tracks, index, folder in
@@ -193,6 +193,7 @@ final class AppModel: ObservableObject {
                 hydrateLibraryFromCacheIfNeeded()
                 serverDownloads.start()
                 Task { await refreshWorkspace(soft: true) }
+                Task { await onlineMovies.refreshDownloads() }
                 await serverDownloads.refreshOnce()
                 movieDownloads.resumePersistedBatchIfNeeded()
             }
@@ -295,7 +296,7 @@ final class AppModel: ObservableObject {
         librarySyncMessage = nil
         LibraryCacheStore.clear()
         onlineMovies.reset()
-        movieDownloads.clearFinishedBatch()
+        movieDownloads.resetForLogout()
     }
 
     private func hydrateLibraryFromCacheIfNeeded() {

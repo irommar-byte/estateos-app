@@ -29,6 +29,8 @@ struct OnlineSeriesEpisodesView: View {
     @State private var playingEpisodeID: String?
     @State private var selectedHeight = 720
     @State private var playErrorMessage: String?
+    @State private var retryEpisode: EpisodeItem?
+    @State private var retryPreferSavedCopy = true
 
     private var movies: OnlineMoviesController { app.onlineMovies }
     private var downloads: MovieDownloadService { app.movieDownloads }
@@ -94,15 +96,20 @@ struct OnlineSeriesEpisodesView: View {
             }
         }
         .overlay {
-            if playingEpisodeID != nil || movies.isPreparingStream {
+            if movies.playbackLaunchPhase.isBusy {
                 ZStack {
                     Color.black.opacity(0.45).ignoresSafeArea()
                     VStack(spacing: 12) {
-                        ProgressView(movies.statusMessage ?? "Uruchamiam odcinek…")
-                        if movies.isPreparingStream, movies.streamPrepareProgress > 0 {
-                            ProgressView(value: movies.streamPrepareProgress, total: 100)
+                        ProgressView()
+                            .controlSize(.large)
+                        Text(movies.playbackLaunchPhase.message ?? "Uruchamiam odcinek…")
+                            .font(.subheadline.weight(.semibold))
+                        if let progress = movies.playbackLaunchPhase.progress {
+                            ProgressView(value: progress, total: 100)
                                 .frame(width: 180)
                         }
+                        Button("Anuluj") { movies.cancelStreamPrepare() }
+                            .font(.caption.weight(.semibold))
                     }
                     .padding(24)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
@@ -124,7 +131,17 @@ struct OnlineSeriesEpisodesView: View {
                 set: { if !$0 { playErrorMessage = nil } }
             )
         ) {
-            Button("OK", role: .cancel) { playErrorMessage = nil }
+            if let retryEpisode {
+                Button("Spróbuj ponownie") {
+                    let preferSaved = retryPreferSavedCopy
+                    playErrorMessage = nil
+                    Task { await playEpisode(retryEpisode, preferSavedCopy: preferSaved) }
+                }
+            }
+            Button("Anuluj", role: .cancel) {
+                playErrorMessage = nil
+                retryEpisode = nil
+            }
         } message: {
             Text(playErrorMessage ?? "")
         }
@@ -251,7 +268,7 @@ struct OnlineSeriesEpisodesView: View {
                     .font(.title2)
                     .foregroundStyle(EOSTheme.accent)
             }
-            .disabled(playingEpisodeID != nil || movies.isPreparingStream)
+            .disabled(movies.playbackLaunchPhase.isBusy)
 
             Menu {
                 Button("Oglądaj ze źródła") {
@@ -349,7 +366,6 @@ struct OnlineSeriesEpisodesView: View {
             }
         }
         guard !eligible.isEmpty else { return }
-        let options = info.qualityOptions(for: format)
         let items = eligible.map { ep in
             MovieDownloadQueueItem(
                 url: ep.url,
@@ -373,40 +389,27 @@ struct OnlineSeriesEpisodesView: View {
         playingEpisodeID = episode.id
         defer { playingEpisodeID = nil }
         let selection = OnlineMovieSelection(episode: episode, source: info.source)
+        let started: Bool
 
         if preferSavedCopy, app.isMovieOnPhone(url: episode.url) {
-            await movies.playFromPhone(selection: selection, video: video)
-            if !video.isPlayerPresented {
-                playErrorMessage = movies.statusMessage ?? "Nie udało się odtworzyć kopii z telefonu."
-            }
-            return
-        }
-        if preferSavedCopy, movies.jobId(for: episode.url, title: episode.title) != nil {
-            await movies.playFromServer(selection: selection, video: video)
-            if !video.isPlayerPresented {
-                playErrorMessage = movies.statusMessage
-                    ?? "Nie udało się odtworzyć pliku z serwera."
-            }
-            return
+            started = await movies.playFromPhone(selection: selection, video: video)
+        } else if preferSavedCopy, movies.jobId(for: episode.url, title: episode.title) != nil {
+            started = await movies.playFromServer(selection: selection, video: video)
+        } else {
+            started = await movies.watchStream(
+                selection: selection,
+                height: selectedHeight,
+                video: video,
+                episodeQueue: allEpisodes,
+                seriesTitle: displayTitle,
+                preferSavedCopy: preferSavedCopy
+            )
         }
 
-        movies.watchStream(
-            selection: selection,
-            height: selectedHeight,
-            video: video,
-            episodeQueue: allEpisodes,
-            seriesTitle: displayTitle,
-            preferSavedCopy: preferSavedCopy
-        )
-        // Czekaj na start / błąd — wcześniej overlay znikał po 0.3s i wyglądało jak „martwy” Play.
-        for _ in 0..<180 {
-            if video.isPlayerPresented { return }
-            if !movies.isPreparingStream { break }
-            try? await Task.sleep(nanoseconds: 200_000_000)
-        }
-        if !video.isPlayerPresented {
-            playErrorMessage = movies.statusMessage
-                ?? "Nie udało się uruchomić odcinka. Jeśli jest na serwerze — odśwież listę i spróbuj ponownie."
+        if !started, case .failed(let message) = movies.playbackLaunchPhase {
+            retryEpisode = episode
+            retryPreferSavedCopy = preferSavedCopy
+            playErrorMessage = message
         }
     }
 

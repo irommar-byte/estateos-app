@@ -37,7 +37,11 @@ private struct PlayerContent: View {
 
     init(engine: MusicPlaybackEngine) {
         self.engine = engine
-        engine.setSpectrumBandCount(MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard)
+    }
+
+    private func applySpectrumPreferences() {
+        let bands = ui.playerSpectrumBandCount
+        engine.setSpectrumBandCount(bands >= 32 ? 32 : 24)
     }
 
     private var preset: PlayerVisualPreset { ui.playerVisualPreset }
@@ -153,6 +157,8 @@ private struct PlayerContent: View {
         .sheet(isPresented: $showQueueSheet) {
             PlaybackQueueSheet(engine: engine)
         }
+        .onAppear { applySpectrumPreferences() }
+        .onChange(of: ui.playerSpectrumBandCount) { _, _ in applySpectrumPreferences() }
     }
 
     private func narrowPlayerLayout(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
@@ -164,38 +170,28 @@ private struct PlayerContent: View {
                 let hero = layout.heroCanvasSize(availableHeight: fillH)
                 let eqH = layout.spectrumFillHeight(availableHeight: fillH)
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        Spacer(minLength: layout.topGap)
-                        ProMixerNarrowConsole(
-                            visualizer: engine.visualizer,
-                            isPlaying: engine.isPlaying,
-                            isLoading: engine.isLoading,
-                            intensity: mixerIntensity,
-                            drive: ui.playerDrive,
-                            bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
-                            compactMixer: layout.compactMixer,
-                            queueLabel: engine.queuePositionLabel,
-                            onQueueTap: { showQueueSheet = true },
-                            onServer: app.isOnServer(track.url) || track.isOnServer,
-                            effectsActive: effectsActive,
-                            preset: preset,
-                            policy: policy,
-                            artworkURL: track.artworkURL,
-                            fallbackArtwork: engine.displayArtwork,
-                            canvasSize: hero,
-                            spectrumHeight: eqH,
-                            expandSpectrum: layout.isPad || fillH > 640
-                        ) {
-                            trackMeta(track: track, layout: layout, includeStorage: false)
-                        } status: {
-                            playerStatusSection(layout: layout)
-                        } storage: {
-                            EmptyView()
+                Group {
+                    if layout.isPad {
+                        narrowMixerStack(
+                            track: track,
+                            layout: layout,
+                            fillH: fillH,
+                            hero: hero,
+                            eqH: eqH
+                        )
+                        .frame(height: fillH)
+                    } else {
+                        ScrollView(.vertical, showsIndicators: false) {
+                            narrowMixerStack(
+                                track: track,
+                                layout: layout,
+                                fillH: fillH,
+                                hero: hero,
+                                eqH: eqH
+                            )
+                            .frame(minHeight: fillH)
                         }
-                        Spacer(minLength: layout.bottomGap)
                     }
-                    .frame(minHeight: fillH)
                 }
             }
             .frame(maxHeight: .infinity)
@@ -206,6 +202,48 @@ private struct PlayerContent: View {
         .padding(.horizontal, layout.horizontalPadding)
         .frame(maxWidth: layout.maxContentWidth)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func narrowMixerStack(
+        track: MusicPlaybackTrack,
+        layout: PlayerLayout,
+        fillH: CGFloat,
+        hero: CGFloat,
+        eqH: CGFloat
+    ) -> some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: layout.topGap)
+            ProMixerNarrowConsole(
+                visualizer: engine.visualizer,
+                isPlaying: engine.isPlaying,
+                isLoading: engine.isLoading,
+                intensity: mixerIntensity,
+                drive: ui.playerDrive,
+                bandCount: ui.playerSpectrumBandCount,
+                barScale: ui.playerSpectrumBarScale,
+                sideVUSegments: ui.playerSideVUSegments,
+                compactMixer: layout.compactMixer,
+                queueLabel: engine.queuePositionLabel,
+                onQueueTap: { showQueueSheet = true },
+                onServer: app.isOnServer(track.url) || track.isOnServer,
+                effectsActive: effectsActive,
+                preset: preset,
+                policy: policy,
+                artworkURL: track.artworkURL,
+                fallbackArtwork: engine.displayArtwork,
+                canvasSize: hero,
+                spectrumHeight: eqH,
+                expandSpectrum: layout.isPad || fillH > 640
+            ) {
+                trackMeta(track: track, layout: layout, includeStorage: false)
+            } status: {
+                playerStatusSection(layout: layout)
+            } storage: {
+                EmptyView()
+            }
+            Spacer(minLength: layout.bottomGap)
+        }
     }
 
     private func widePlayerLayout(track: MusicPlaybackTrack, layout: PlayerLayout) -> some View {
@@ -225,7 +263,9 @@ private struct PlayerContent: View {
                         isLoading: engine.isLoading,
                         intensity: mixerIntensity,
                         drive: ui.playerDrive,
-                        bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
+                        bandCount: ui.playerSpectrumBandCount,
+                        barScale: ui.playerSpectrumBarScale,
+                        sideVUSegments: ui.playerSideVUSegments,
                         compactMixer: layout.compactMixer,
                         queueLabel: engine.queuePositionLabel,
                         onQueueTap: { showQueueSheet = true },
@@ -286,7 +326,8 @@ private struct PlayerContent: View {
                     visualizer: engine.visualizer,
                     isPlaying: engine.isPlaying && !engine.isLoading,
                     intensity: policy.intensityScale,
-                    bandCount: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard,
+                    bandCount: ui.playerSpectrumBandCount,
+                    barScale: ui.playerSpectrumBarScale,
                     compact: layout.compactMixer
                 )
                 .frame(height: layout.compactMixer ? 176 : 208)
@@ -595,7 +636,7 @@ private struct PlayerLayout {
     /// Rozmiar hero względem realnej wolnej wysokości (między chrome a transportem).
     func heroCanvasSize(availableHeight: CGFloat) -> CGFloat {
         if preset.showsMixer {
-            if isPad { return min(150, max(discSize, availableHeight * 0.14)) }
+            if isPad { return min(132, max(discSize, availableHeight * 0.11)) }
             return discSize
         }
         // Cover / vinyl — zajmij większość wolnej przestrzeni.
@@ -607,8 +648,8 @@ private struct PlayerLayout {
     func spectrumFillHeight(availableHeight: CGFloat) -> CGFloat {
         guard preset.showsMixer else { return spectrumBlockHeight }
         if isPad || availableHeight > 640 {
-            // Na dużym ekranie EQ wypełnia środek zamiast zostawiać pustkę.
-            let reserved: CGFloat = (isPad ? 210 : 180) // artwork + meta + control strip
+            // Na dużym ekranie EQ wypełnia środek bez przewijania.
+            let reserved: CGFloat = isPad ? 188 : 180
             return max(spectrumBlockHeight, availableHeight - reserved)
         }
         return spectrumBlockHeight

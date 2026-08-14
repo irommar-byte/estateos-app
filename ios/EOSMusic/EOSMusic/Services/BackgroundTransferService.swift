@@ -8,6 +8,7 @@ final class BackgroundTransferService: NSObject, URLSessionDownloadDelegate, @un
     private struct Pending {
         let continuation: CheckedContinuation<URL, Error>
         let onProgress: (@Sendable (Double) -> Void)?
+        let onIndeterminateProgress: (@Sendable (Int64) -> Void)?
         let partURL: URL
         var observation: NSKeyValueObservation?
     }
@@ -57,7 +58,8 @@ final class BackgroundTransferService: NSObject, URLSessionDownloadDelegate, @un
         request: URLRequest,
         partURL: URL,
         trackKey: String? = nil,
-        onProgress: (@Sendable (Double) -> Void)? = nil
+        onProgress: (@Sendable (Double) -> Void)? = nil,
+        onIndeterminateProgress: (@Sendable (Int64) -> Void)? = nil
     ) async throws -> URL {
         if FileManager.default.fileExists(atPath: partURL.path) {
             try? FileManager.default.removeItem(at: partURL)
@@ -75,6 +77,7 @@ final class BackgroundTransferService: NSObject, URLSessionDownloadDelegate, @un
             let pending = Pending(
                 continuation: continuation,
                 onProgress: onProgress,
+                onIndeterminateProgress: onIndeterminateProgress,
                 partURL: partURL,
                 observation: nil
             )
@@ -87,6 +90,7 @@ final class BackgroundTransferService: NSObject, URLSessionDownloadDelegate, @un
 
             // KVO as a backup progress path (delegate also reports bytes).
             let observation = task.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
+                guard progress.totalUnitCount > 0 else { return }
                 let fraction = min(1, max(0, progress.fractionCompleted))
                 self?.lock.lock()
                 let callback = self?.pendingByTaskId[task.taskIdentifier]?.onProgress
@@ -105,7 +109,7 @@ final class BackgroundTransferService: NSObject, URLSessionDownloadDelegate, @un
     func cancel(trackKey: String) {
         lock.lock()
         let taskId = taskIdByTrackKey.removeValue(forKey: trackKey)
-        let pending = taskId.flatMap { pendingByTaskId[$0] }
+        let pending = taskId.flatMap { pendingByTaskId.removeValue(forKey: $0) }
         lock.unlock()
 
         if let taskId {
@@ -114,7 +118,9 @@ final class BackgroundTransferService: NSObject, URLSessionDownloadDelegate, @un
             }
         }
         if let pending {
+            pending.observation?.invalidate()
             cleanupPart(pending.partURL)
+            pending.continuation.resume(throwing: CancellationError())
         }
     }
 
@@ -150,12 +156,15 @@ final class BackgroundTransferService: NSObject, URLSessionDownloadDelegate, @un
         totalBytesWritten: Int64,
         totalBytesExpectedToWrite: Int64
     ) {
-        guard totalBytesExpectedToWrite > 0 else { return }
-        let fraction = min(1, max(0, Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)))
         lock.lock()
-        let callback = pendingByTaskId[downloadTask.taskIdentifier]?.onProgress
+        let pending = pendingByTaskId[downloadTask.taskIdentifier]
         lock.unlock()
-        callback?(fraction)
+        if totalBytesExpectedToWrite > 0 {
+            let fraction = min(1, max(0, Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)))
+            pending?.onProgress?(fraction)
+        } else {
+            pending?.onIndeterminateProgress?(totalBytesWritten)
+        }
     }
 
     func urlSession(

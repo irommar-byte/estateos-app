@@ -34,6 +34,8 @@ export function markJobListed(job, { kind, title, url } = {}) {
     }
   }
   if (!job.queuedAt) job.queuedAt = Date.now();
+  if (!job.lastProgressAt) job.lastProgressAt = job.queuedAt;
+  if (!job.phase) job.phase = "queued";
 }
 
 /**
@@ -41,16 +43,39 @@ export function markJobListed(job, { kind, title, url } = {}) {
  */
 export function noteJobProgress(job, payload = {}) {
   if (!job) return;
-  if (payload.status != null) job.status = payload.status;
-  if (payload.progress != null) job.progress = Number(payload.progress) || 0;
+  const previousStatus = String(job.status || "");
+  const previousProgress = Number(job.progress);
+  const nextStatus = payload.status != null ? String(payload.status) : previousStatus;
+  const nextProgress = payload.progress != null ? Number(payload.progress) : previousProgress;
+
+  if (payload.status != null) job.status = nextStatus;
+  if (Number.isFinite(nextProgress)) job.progress = nextProgress;
   if (payload.error != null) job.error = payload.error;
   if (payload.ready === true) job.ready = true;
-  if (payload.status === "done" || payload.ready === true) {
+  if (payload.phase) {
+    job.phase = String(payload.phase);
+  } else if (nextStatus === "processing") {
+    job.phase = "processing";
+  } else if (nextStatus === "done" || payload.ready === true) {
+    job.phase = "ready";
+  } else if (nextStatus === "error" || nextStatus === "cancelled") {
+    job.phase = nextStatus;
+  } else if (!job.phase) {
+    job.phase = "downloading";
+  }
+
+  const madeProgress = Number.isFinite(nextProgress)
+    && (!Number.isFinite(previousProgress) || nextProgress > previousProgress + 0.05);
+  if (madeProgress || nextStatus !== previousStatus || payload.heartbeat === true) {
+    job.lastProgressAt = Date.now();
+  }
+
+  if (nextStatus === "done" || payload.ready === true) {
     if (!job.finishedAt) job.finishedAt = Date.now();
     job.progress = 100;
     job.ready = true;
   }
-  if (payload.status === "error" || payload.status === "cancelled") {
+  if (nextStatus === "error" || nextStatus === "cancelled") {
     job.finishedAt = Date.now();
   }
 }
@@ -110,6 +135,8 @@ function serializeJob(job) {
     assetId: job.assetId || (kind === "music" ? job.id : null),
     queuedAt: job.queuedAt || null,
     finishedAt: job.finishedAt || null,
+    phase: job.phase || null,
+    updatedAt: job.lastProgressAt || job.queuedAt || null,
   };
 }
 

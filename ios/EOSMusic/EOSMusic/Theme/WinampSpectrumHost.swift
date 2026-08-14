@@ -8,6 +8,7 @@ struct WinampSpectrumHost: UIViewRepresentable {
     var isPlaying: Bool
     var intensity: Double
     var bandCount: Int
+    var barScale: Double = 1.0
     var compact: Bool
 
     func makeUIView(context: Context) -> WinampSpectrumUIView {
@@ -17,6 +18,7 @@ struct WinampSpectrumHost: UIViewRepresentable {
             isPlaying: isPlaying,
             intensity: intensity,
             bandCount: bandCount,
+            barScale: barScale,
             compact: compact
         )
         return view
@@ -28,6 +30,7 @@ struct WinampSpectrumHost: UIViewRepresentable {
             isPlaying: isPlaying,
             intensity: intensity,
             bandCount: bandCount,
+            barScale: barScale,
             compact: compact
         )
     }
@@ -44,6 +47,7 @@ final class WinampSpectrumUIView: UIView {
     private var isPlaying = false
     private var intensity: Double = 1
     private var bandCount = MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard
+    private var barScale: Double = 1.0
     private var compact = false
     private var lastDrawAt: CFTimeInterval = 0
     private let targetFPS: CFTimeInterval = 30
@@ -87,23 +91,27 @@ final class WinampSpectrumUIView: UIView {
         isPlaying: Bool,
         intensity: Double,
         bandCount: Int,
+        barScale: Double,
         compact: Bool
     ) {
         self.visualizer = visualizer
         let nextBands = max(8, min(MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountMax, bandCount))
+        let nextScale = min(1.5, max(0.5, barScale))
         let bandChanged = self.bandCount != nextBands
+        let scaleChanged = abs(self.barScale - nextScale) > 0.02
         let playingChanged = self.isPlaying != isPlaying
         let compactChanged = self.compact != compact
         let intensityChanged = abs(self.intensity - intensity) > 0.01
 
         // Idempotent — SwiftUI may call updateUIView often; never restart the link needlessly.
-        guard bandChanged || playingChanged || compactChanged || intensityChanged || (displayLink == nil && isPlaying) else {
+        guard bandChanged || scaleChanged || playingChanged || compactChanged || intensityChanged || (displayLink == nil && isPlaying) else {
             return
         }
 
         self.isPlaying = isPlaying
         self.intensity = intensity
         self.bandCount = nextBands
+        self.barScale = nextScale
         self.compact = compact
         if bandChanged {
             envelope.reset()
@@ -314,9 +322,12 @@ final class WinampSpectrumUIView: UIView {
         guard bandCount > 0, rect.width > 0, rect.height > 0 else { return }
         let spacing: CGFloat = 1
         let totalSpacing = spacing * CGFloat(max(0, bandCount - 1))
-        let barW = max(1, (rect.width - totalSpacing) / CGFloat(bandCount))
+        let baseBarW = max(1, (rect.width - totalSpacing) / CGFloat(bandCount))
+        let barW = min(baseBarW * CGFloat(barScale), rect.width / max(1, CGFloat(bandCount) * 0.55))
+        let clusterW = barW * CGFloat(bandCount) + totalSpacing
+        let startX = rect.minX + max(0, (rect.width - clusterW) / 2)
         for index in 0..<bandCount {
-            let x = rect.minX + CGFloat(index) * (barW + spacing)
+            let x = startX + CGFloat(index) * (barW + spacing)
             let level = index < levels.count ? levels[index] : 0
             let peak = index < peaks.count ? peaks[index] : 0
             drawBarColumn(

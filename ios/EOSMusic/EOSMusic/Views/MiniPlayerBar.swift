@@ -79,6 +79,7 @@ struct MiniPlayerTabInset: ViewModifier {
 }
 
 struct VideoMiniPlayerBar: View {
+    @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var video: VideoAppModel
     @Environment(\.colorScheme) private var colorScheme
 
@@ -146,7 +147,9 @@ struct VideoMiniPlayerBar: View {
                 .buttonStyle(EOSPressableStyle())
 
                 Button {
-                    video.engine.playNext(sources: video.sources)
+                    Task {
+                        await app.onlineMovies.advanceToNextStreamingEpisode(video: video)
+                    }
                 } label: {
                     Image(systemName: "forward.fill")
                         .foregroundStyle(EOSTheme.textSecondary)

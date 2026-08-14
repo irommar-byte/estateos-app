@@ -38,6 +38,10 @@ final class ServerAccountDownloadsMonitor: ObservableObject {
                 if self.isForeground, self.api?.isAuthenticated == true {
                     await self.refreshOnce()
                 }
+                if !self.isForeground {
+                    try? await Task.sleep(nanoseconds: 30_000_000_000)
+                    continue
+                }
                 let ns: UInt64 = self.hasActiveServerWork ? 1_200_000_000 : 3_500_000_000
                 try? await Task.sleep(nanoseconds: ns)
             }

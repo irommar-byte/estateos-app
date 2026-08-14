@@ -17,6 +17,7 @@ struct VideoPlayerView: View {
     @State private var isScrubbing = false
     @State private var volumeHUD: String?
     @State private var volumeHUDTask: Task<Void, Never>?
+    @State private var advanceTask: Task<Void, Never>?
     @FocusState private var keysFocused: Bool
 
     init(engine: VideoPlaybackEngine) {
@@ -97,6 +98,16 @@ struct VideoPlayerView: View {
                         .allowsHitTesting(false)
                 }
 
+                if let notice = video.pipController.airPlayNotice {
+                    playerNoticeBanner(title: "AirPlay", text: notice) {
+                        video.pipController.clearAirPlayNotice()
+                    }
+                } else if let pipError = video.pipController.errorMessage {
+                    playerNoticeBanner(title: "Picture in Picture", text: pipError) {
+                        video.pipController.clearError()
+                    }
+                }
+
                 if controlsVisible {
                     controlsOverlay(landscape: landscape)
                         .transition(.opacity)
@@ -143,28 +154,27 @@ struct VideoPlayerView: View {
             controlsVisible = true
             scheduleHide()
             keysFocused = true
-            engine.prepareExpandRestore()
-            engine.scheduleExpandRestore()
-            video.pipController.prepareAirPlayHandoff(for: engine)
-        }
-        .onChange(of: engine.currentPlayableURL) { _, _ in
-            video.pipController.prepareAirPlayHandoff(for: engine)
-        }
-        .onChange(of: engine.isPlaying) { _, playing in
-            if playing {
-                video.pipController.prepareAirPlayHandoff(for: engine)
+            // Tylko po schowaniu (PiP / mini) — NIE przy pierwszym Oglądaj.
+            // scheduleExpandRestore zrywa drawable i robi czarny ekran z dźwiękiem w tle.
+            if engine.needsExpandRestore {
+                engine.scheduleExpandRestore()
             }
         }
         .onDisappear {
             hideTask?.cancel()
             volumeHUDTask?.cancel()
+            advanceTask?.cancel()
+            if !video.isPlayerPresented {
+                video.syncMinimizedStateAfterDismiss()
+            }
         }
         .onChange(of: engine.hasEnded) { _, ended in
             if ended {
                 withAnimation(.easeInOut(duration: 0.2)) { controlsVisible = true }
                 hideTask?.cancel()
                 if engine.hasNext {
-                    Task {
+                    advanceTask?.cancel()
+                    advanceTask = Task {
                         await app.onlineMovies.advanceToNextStreamingEpisode(video: video)
                     }
                 }
@@ -190,28 +200,35 @@ struct VideoPlayerView: View {
             }
             Button("Anuluj", role: .cancel) {}
         }
-        .alert(
-            "Picture in Picture",
-            isPresented: Binding(
-                get: { video.pipController.errorMessage != nil },
-                set: { if !$0 { video.pipController.clearError() } }
-            )
-        ) {
-            Button("OK", role: .cancel) { video.pipController.clearError() }
-        } message: {
-            Text(video.pipController.errorMessage ?? "")
+    }
+
+    @ViewBuilder
+    private func playerNoticeBanner(title: String, text: String, dismiss: @escaping () -> Void) -> some View {
+        VStack {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.caption.weight(.bold))
+                    Text(text)
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Button("OK", action: dismiss)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.white.opacity(0.18), in: Capsule())
+            }
+            .foregroundStyle(.white)
+            .padding(14)
+            .background(.ultraThinMaterial.opacity(0.92), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 16)
+            .padding(.top, 56)
+            Spacer()
         }
-        .alert(
-            "AirPlay",
-            isPresented: Binding(
-                get: { video.pipController.airPlayNotice != nil },
-                set: { if !$0 { video.pipController.clearAirPlayNotice() } }
-            )
-        ) {
-            Button("OK", role: .cancel) { video.pipController.clearAirPlayNotice() }
-        } message: {
-            Text(video.pipController.airPlayNotice ?? "")
-        }
+        .allowsHitTesting(true)
+        .zIndex(50)
     }
 
     private func handleKeyPlayPause() {
@@ -340,7 +357,7 @@ struct VideoPlayerView: View {
                 .accessibilityHint("Odtwarzaj w małym oknie nad innymi aplikacjami")
 
                 AirPlayRouteButton {
-                    video.pipController.prepareAirPlayHandoff(for: engine)
+                    video.pipController.prepareAirPlayHandoff(for: engine, userInitiated: true)
                 }
                     .frame(width: 40, height: 40)
                     .background(.ultraThinMaterial.opacity(0.55), in: Circle())

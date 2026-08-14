@@ -13,6 +13,7 @@ struct OnlineMovieDetailView: View {
     @State private var showDownloadSheet = false
     @State private var showSeriesEpisodes = false
     @State private var actorSelection: OnlineMoviesActorSelection?
+    @State private var playbackError: String?
 
     private var movies: OnlineMoviesController { app.onlineMovies }
     private var downloads: MovieDownloadService { app.movieDownloads }
@@ -99,6 +100,21 @@ struct OnlineMovieDetailView: View {
             await loadInfo()
             await movies.refreshDownloads()
         }
+        .alert(
+            "Odtwarzanie",
+            isPresented: Binding(
+                get: { playbackError != nil },
+                set: { if !$0 { playbackError = nil } }
+            )
+        ) {
+            Button("Spróbuj ponownie") {
+                playbackError = nil
+                Task { await watchSource() }
+            }
+            Button("Anuluj", role: .cancel) { playbackError = nil }
+        } message: {
+            Text(playbackError ?? "")
+        }
     }
 
     private var hero: some View {
@@ -172,21 +188,26 @@ struct OnlineMovieDetailView: View {
             }
 
             Button {
-                movies.watchStream(selection: selection, height: 720, video: video, preferSavedCopy: false)
+                Task { await watchSource() }
             } label: {
-                Label(movies.isPreparingStream ? "Uruchamiam…" : "Oglądaj ze źródła", systemImage: "dot.radiowaves.left.and.right")
+                Label(movies.playbackLaunchPhase.isBusy ? "Uruchamiam…" : "Oglądaj ze źródła", systemImage: "dot.radiowaves.left.and.right")
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(OnlineMoviePrimaryButton())
-            .disabled(movies.isPreparingStream || transfer.isBusy)
+            .disabled(movies.playbackLaunchPhase.isBusy || transfer.isBusy)
 
-            if movies.isPreparingStream {
-                ProgressView(value: movies.streamPrepareProgress, total: 100) {
-                    Text("Przygotowuję stream…").font(EOSTypography.caption)
+            if movies.playbackLaunchPhase.isBusy {
+                if let progress = movies.playbackLaunchPhase.progress {
+                    ProgressView(value: progress, total: 100) {
+                        Text(movies.playbackLaunchPhase.message ?? "Przygotowuję stream…")
+                            .font(EOSTypography.caption)
+                    }
+                    .tint(EOSTheme.accent)
+                } else {
+                    ProgressView(movies.playbackLaunchPhase.message ?? "Uruchamiam…")
                 }
-                .tint(EOSTheme.accent)
                 Button("Anuluj") { movies.cancelStreamPrepare() }
                     .font(EOSTypography.caption.weight(.semibold))
             }
@@ -196,8 +217,6 @@ struct OnlineMovieDetailView: View {
             Button {
                 if info != nil {
                     showDownloadSheet = true
-                } else {
-                    movies.downloadToServer(selection: selection)
                 }
             } label: {
                 Label("Pobierz", systemImage: "arrow.down.circle")
@@ -205,14 +224,21 @@ struct OnlineMovieDetailView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(OnlineMovieSecondaryButton(emphasized: true))
-            .disabled(transfer.isBusy || movies.isPreparingStream || info == nil)
+            .disabled(transfer.isBusy || movies.playbackLaunchPhase.isBusy || info == nil)
         }
     }
 
     @ViewBuilder
     private var playbackButtons: some View {
         if case .onPhone = transfer {
-            Button { Task { await movies.playFromPhone(selection: selection, video: video) } } label: {
+            Button {
+                Task {
+                    let started = await movies.playFromPhone(selection: selection, video: video)
+                    if !started, case .failed(let message) = movies.playbackLaunchPhase {
+                        playbackError = message
+                    }
+                }
+            } label: {
                 Label("Odtwórz z telefonu", systemImage: "iphone")
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
@@ -221,7 +247,14 @@ struct OnlineMovieDetailView: View {
             .buttonStyle(OnlineMovieSecondaryButton())
         }
         if movies.jobId(for: selection.url, title: selection.title) != nil {
-            Button { Task { await movies.playFromServer(selection: selection, video: video) } } label: {
+            Button {
+                Task {
+                    let started = await movies.playFromServer(selection: selection, video: video)
+                    if !started, case .failed(let message) = movies.playbackLaunchPhase {
+                        playbackError = message
+                    }
+                }
+            } label: {
                 Label("Odtwórz z serwera", systemImage: "server.rack")
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
@@ -299,13 +332,24 @@ struct OnlineMovieDetailView: View {
         }
     }
 
+    private func watchSource() async {
+        let started = await movies.watchStream(
+            selection: selection,
+            height: 720,
+            video: video,
+            preferSavedCopy: false
+        )
+        if !started, case .failed(let message) = movies.playbackLaunchPhase {
+            playbackError = message
+        }
+    }
+
     private func startSingleDownload(
         format: MediaDownloadFormat,
         quality: MediaQualityOption,
         destination: OnlineMovieDownloadDestination
     ) {
         guard let info else { return }
-        let options = info.qualityOptions(for: format)
 
         // Serial: nie linkuj URL strony /tvshows/ — pobieraj konkretny odcinek (inaczej „1/1 OK” i „0 serwer”).
         if info.isSeries {
@@ -319,14 +363,6 @@ struct OnlineMovieDetailView: View {
                 thumbnail: episode.thumbnail ?? selection.thumbnail ?? info.thumbnail,
                 source: selection.source
             )
-            if destination == .serverAndPhone {
-                movies.downloadToPhone(
-                    selection: OnlineMovieSelection(episode: episode, source: selection.source),
-                    height: MediaQualityOption.apiHeight(for: quality, options: options),
-                    video: video
-                )
-                return
-            }
             downloads.startBatch(
                 items: [item],
                 label: displayTitle,
@@ -334,7 +370,7 @@ struct OnlineMovieDetailView: View {
                 contextKey: info.webpageUrl,
                 format: format,
                 quality: quality,
-                destination: .server
+                destination: destination
             )
             return
         }
@@ -345,10 +381,6 @@ struct OnlineMovieDetailView: View {
             thumbnail: selection.thumbnail ?? info.thumbnail,
             source: selection.source
         )
-        if destination == .serverAndPhone {
-            movies.downloadToPhone(selection: selection, height: MediaQualityOption.apiHeight(for: quality, options: options), video: video)
-            return
-        }
         downloads.startBatch(
             items: [item],
             label: displayTitle,
@@ -356,7 +388,7 @@ struct OnlineMovieDetailView: View {
             contextKey: selection.url,
             format: format,
             quality: quality,
-            destination: .server
+            destination: destination
         )
     }
 

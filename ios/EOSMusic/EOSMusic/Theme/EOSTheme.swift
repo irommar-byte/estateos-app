@@ -379,6 +379,18 @@ final class UIPreferences: ObservableObject {
     @Published var playerAutoPerformance: Bool {
         didSet { UserDefaults.standard.set(playerAutoPerformance, forKey: Self.autoPerfKey) }
     }
+    /// Spectrum EQ: liczba słupków (16 / 24 / 32).
+    @Published var playerSpectrumBandCount: Int {
+        didSet { UserDefaults.standard.set(playerSpectrumBandCount, forKey: Self.spectrumBandsKey) }
+    }
+    /// Spectrum EQ: szerokość słupków (0.5…1.5).
+    @Published var playerSpectrumBarScale: Double {
+        didSet { UserDefaults.standard.set(playerSpectrumBarScale, forKey: Self.spectrumBarScaleKey) }
+    }
+    /// Boczne VU L/R: liczba segmentów LED (12…32).
+    @Published var playerSideVUSegments: Int {
+        didSet { UserDefaults.standard.set(playerSideVUSegments, forKey: Self.sideVUSegmentsKey) }
+    }
     @Published var ultraCompact: Bool {
         didSet { UserDefaults.standard.set(ultraCompact, forKey: Self.ultraCompactKey) }
     }
@@ -404,6 +416,9 @@ final class UIPreferences: ObservableObject {
     private static let strobeSpeedKey = "ui.playerStrobeSpeed"
     private static let strobeBrightnessKey = "ui.playerStrobeBrightness"
     private static let autoPerfKey = "ui.playerAutoPerformance"
+    private static let spectrumBandsKey = "ui.playerSpectrumBandCount"
+    private static let spectrumBarScaleKey = "ui.playerSpectrumBarScale"
+    private static let sideVUSegmentsKey = "ui.playerSideVUSegments"
     private static let offlineModeKey = "ui.offlineModeEnabled"
 
     init() {
@@ -447,6 +462,23 @@ final class UIPreferences: ObservableObject {
             playerAutoPerformance = UserDefaults.standard.bool(forKey: Self.autoPerfKey)
         } else {
             playerAutoPerformance = true
+        }
+        if UserDefaults.standard.object(forKey: Self.spectrumBandsKey) != nil {
+            let stored = UserDefaults.standard.integer(forKey: Self.spectrumBandsKey)
+            playerSpectrumBandCount = [16, 24, 32].contains(stored) ? stored : 24
+        } else {
+            playerSpectrumBandCount = 24
+        }
+        if UserDefaults.standard.object(forKey: Self.spectrumBarScaleKey) != nil {
+            playerSpectrumBarScale = min(1.5, max(0.5, UserDefaults.standard.double(forKey: Self.spectrumBarScaleKey)))
+        } else {
+            playerSpectrumBarScale = 1.0
+        }
+        if UserDefaults.standard.object(forKey: Self.sideVUSegmentsKey) != nil {
+            let stored = UserDefaults.standard.integer(forKey: Self.sideVUSegmentsKey)
+            playerSideVUSegments = min(32, max(12, stored))
+        } else {
+            playerSideVUSegments = 24
         }
         if UserDefaults.standard.object(forKey: Self.ultraCompactKey) != nil {
             ultraCompact = UserDefaults.standard.bool(forKey: Self.ultraCompactKey)
