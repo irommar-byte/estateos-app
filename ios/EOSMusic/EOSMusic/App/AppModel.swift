@@ -176,7 +176,8 @@ final class AppModel: ObservableObject {
             serverDownloads.start()
             Task { await refreshWorkspace(soft: true) }
             Task { await onlineMovies.refreshDownloads() }
-            Task { await serverDownloads.refreshOnce() }
+            await serverDownloads.refreshOnce()
+            movieDownloads.resumePersistedBatchIfNeeded()
         } catch {
             // Only clear session on auth failure; network blips keep the user in-app.
             if case APIError.unauthorized = error {
@@ -192,7 +193,8 @@ final class AppModel: ObservableObject {
                 hydrateLibraryFromCacheIfNeeded()
                 serverDownloads.start()
                 Task { await refreshWorkspace(soft: true) }
-                Task { await serverDownloads.refreshOnce() }
+                await serverDownloads.refreshOnce()
+                movieDownloads.resumePersistedBatchIfNeeded()
             }
         }
     }
@@ -208,7 +210,8 @@ final class AppModel: ObservableObject {
         // Enter the app immediately; playlist sync continues in background.
         serverDownloads.start()
         Task { await refreshWorkspace(soft: true) }
-        Task { await serverDownloads.refreshOnce() }
+        await serverDownloads.refreshOnce()
+        movieDownloads.resumePersistedBatchIfNeeded()
     }
 
     func loginWithApple(identityToken: String, login: String? = nil, password: String? = nil, linkOnly: Bool = false) async throws {
@@ -221,7 +224,8 @@ final class AppModel: ObservableObject {
         user = session.user
         Task { await refreshWorkspace(soft: true) }
         serverDownloads.start()
-        Task { await serverDownloads.refreshOnce() }
+        await serverDownloads.refreshOnce()
+        movieDownloads.resumePersistedBatchIfNeeded()
     }
 
     func linkAppleAccount(identityToken: String, login: String? = nil, password: String? = nil) async throws {

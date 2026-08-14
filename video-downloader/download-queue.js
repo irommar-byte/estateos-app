@@ -5,7 +5,7 @@
  * plain playback acquires stay hidden so other devices don't show false "downloads".
  */
 
-const RECENT_DONE_MS = 45_000;
+const RECENT_DONE_MS = 10 * 60 * 1000; // 10 min — show completed jobs after app relaunch
 
 function isTerminalDone(job) {
   const status = String(job?.status || "");

@@ -4,6 +4,8 @@ import UIKit
 enum MovieDownloadItemState: Equatable {
     case idle
     case pending
+    /// Submitted to EOS server — download continues even when the app is closed.
+    case queuedOnServer
     case downloading(progress: Double)
     case pullingPhone(progress: Double)
     case done
@@ -49,6 +51,7 @@ struct MovieDownloadQueueItem: Identifiable, Equatable {
         case .downloading: return "SERWER"
         case .pullingPhone: return "iPHONE"
         case .pending: return "KOLEJKA"
+        case .queuedOnServer: return "SERWER"
         case .done: return "GOTOWE"
         case .skipped: return "POMINIĘTE"
         case .cancelled: return "ANULOWANE"
@@ -73,6 +76,161 @@ struct MovieDownloadBatch: Identifiable, Equatable {
     var isRemoteSynced = false
 }
 
+// MARK: - Persistence (survives app kill / hours in background)
+
+private struct PersistedMovieDownloadSnapshot: Codable {
+    let batch: PersistedMovieDownloadBatch
+    let jobIdsByURL: [String: String]
+    let cancelledItemIds: [String]
+    let savedAt: Date
+}
+
+private struct PersistedMovieDownloadBatch: Codable {
+    let id: UUID
+    let label: String
+    let thumbnail: String?
+    let contextKey: String?
+    let items: [PersistedMovieDownloadQueueItem]
+    let formatId: String
+    let formatKind: String
+    let formatContainer: String
+    let formatLabel: String
+    let quality: MediaQualityOption
+    let destinationRaw: String
+    let isCancelled: Bool
+    let isFinished: Bool
+}
+
+private struct PersistedMovieDownloadQueueItem: Codable {
+    let url: String
+    let title: String
+    let thumbnail: String?
+    let source: String?
+    let stateTag: String
+    let progress: Double?
+    let error: String?
+}
+
+private enum MovieDownloadPersistence {
+    static let key = "eos.movieDownloadBatch.v1"
+
+    static func save(
+        batch: MovieDownloadBatch,
+        jobIdsByURL: [String: String],
+        cancelledItemIds: Set<String>
+    ) {
+        let snapshot = PersistedMovieDownloadSnapshot(
+            batch: PersistedMovieDownloadBatch(batch: batch),
+            jobIdsByURL: jobIdsByURL,
+            cancelledItemIds: Array(cancelledItemIds),
+            savedAt: Date()
+        )
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+
+    static func load() -> PersistedMovieDownloadSnapshot? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(PersistedMovieDownloadSnapshot.self, from: data)
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+}
+
+private extension PersistedMovieDownloadBatch {
+    init(batch: MovieDownloadBatch) {
+        id = batch.id
+        label = batch.label
+        thumbnail = batch.thumbnail
+        contextKey = batch.contextKey
+        items = batch.items.map { PersistedMovieDownloadQueueItem(item: $0) }
+        formatId = batch.format.id
+        formatKind = batch.format.kind
+        formatContainer = batch.format.container
+        formatLabel = batch.format.label
+        quality = batch.quality
+        destinationRaw = batch.destination == .serverAndPhone ? "serverAndPhone" : "server"
+        isCancelled = batch.isCancelled
+        isFinished = batch.isFinished
+    }
+
+    func restore() -> MovieDownloadBatch {
+        MovieDownloadBatch(
+            id: id,
+            label: label,
+            thumbnail: thumbnail,
+            contextKey: contextKey,
+            items: items.map { $0.restore() },
+            format: MediaDownloadFormat(
+                id: formatId,
+                kind: formatKind,
+                container: formatContainer,
+                label: formatLabel
+            ),
+            quality: quality,
+            destination: destinationRaw == "serverAndPhone" ? .serverAndPhone : .server,
+            isCancelled: isCancelled,
+            isFinished: isFinished,
+            isRemoteSynced: false
+        )
+    }
+}
+
+private extension PersistedMovieDownloadQueueItem {
+    init(item: MovieDownloadQueueItem) {
+        url = item.url
+        title = item.title
+        thumbnail = item.thumbnail
+        source = item.source
+        var prog: Double?
+        var err: String?
+        switch item.state {
+        case .idle: stateTag = "idle"
+        case .pending: stateTag = "pending"
+        case .queuedOnServer: stateTag = "queuedOnServer"
+        case .downloading(let p):
+            stateTag = "downloading"
+            prog = p
+        case .pullingPhone(let p):
+            stateTag = "pullingPhone"
+            prog = p
+        case .done: stateTag = "done"
+        case .failed(let msg):
+            stateTag = "failed"
+            err = msg
+        case .skipped: stateTag = "skipped"
+        case .cancelled: stateTag = "cancelled"
+        }
+        progress = prog
+        error = err
+    }
+
+    func restore() -> MovieDownloadQueueItem {
+        var item = MovieDownloadQueueItem(
+            url: url,
+            title: title,
+            thumbnail: thumbnail,
+            source: source,
+            state: .pending
+        )
+        switch stateTag {
+        case "idle": item.state = .idle
+        case "pending": item.state = .pending
+        case "queuedOnServer": item.state = .queuedOnServer
+        case "downloading": item.state = .downloading(progress: progress ?? 0)
+        case "pullingPhone": item.state = .pullingPhone(progress: progress ?? 0)
+        case "done": item.state = .done
+        case "failed": item.state = .failed(error ?? "Błąd pobierania")
+        case "skipped": item.state = .skipped
+        case "cancelled": item.state = .cancelled
+        default: item.state = .pending
+        }
+        return item
+    }
+}
+
 @MainActor
 final class MovieDownloadService: ObservableObject {
     @Published private(set) var activeBatch: MovieDownloadBatch?
@@ -88,10 +246,33 @@ final class MovieDownloadService: ObservableObject {
     private weak var onlineMovies: OnlineMoviesController?
     /// jobId keyed by item url — used when syncing remote progress into a local batch.
     private var remoteJobIdsByURL: [String: String] = [:]
+    /// jobIds submitted to EOS server (persisted — survives app kill).
+    private var itemJobIds: [String: String] = [:]
 
     func attach(api: MusicAPIClient, onlineMovies: OnlineMoviesController) {
         self.api = api
         self.onlineMovies = onlineMovies
+    }
+
+    var hasPersistedUnfinishedBatch: Bool {
+        guard let snap = MovieDownloadPersistence.load() else { return false }
+        return !snap.batch.isFinished && !snap.batch.isCancelled
+    }
+
+    /// Resume a batch saved before app kill / long background.
+    func resumePersistedBatchIfNeeded() {
+        guard batchTask == nil else { return }
+        guard let snap = MovieDownloadPersistence.load() else { return }
+        if snap.batch.isFinished || snap.batch.isCancelled {
+            MovieDownloadPersistence.clear()
+            return
+        }
+        itemJobIds = snap.jobIdsByURL
+        remoteJobIdsByURL.merge(snap.jobIdsByURL) { _, new in new }
+        cancelledItemIds = Set(snap.cancelledItemIds)
+        activeBatch = snap.batch.restore()
+        statusMessage = "Wznawiam pobieranie (\(completedCount)/\(totalCount))…"
+        batchTask = Task { await runBatch() }
     }
 
     var isRunning: Bool {
@@ -99,7 +280,7 @@ final class MovieDownloadService: ObservableObject {
         if batch.isRemoteSynced {
             return !batch.isFinished && !batch.isCancelled && batch.items.contains {
                 switch $0.state {
-                case .pending, .downloading, .pullingPhone: return true
+                case .pending, .queuedOnServer, .downloading, .pullingPhone: return true
                 default: return false
                 }
             }
@@ -174,6 +355,8 @@ final class MovieDownloadService: ObservableObject {
             case .downloading(let p), .pullingPhone(let p):
                 let pct = p <= 1 ? p * 100 : p
                 sum += min(max(pct, 0), 100) / 100
+            case .queuedOnServer:
+                sum += 0.02
             default:
                 break
             }
@@ -184,7 +367,7 @@ final class MovieDownloadService: ObservableObject {
     var activeItemTitle: String? {
         activeBatch?.items.first(where: {
             switch $0.state {
-            case .downloading, .pullingPhone: return true
+            case .downloading, .pullingPhone, .queuedOnServer: return true
             default: return false
             }
         })?.title
@@ -255,6 +438,8 @@ final class MovieDownloadService: ObservableObject {
             quality: quality,
             destination: destination
         )
+        itemJobIds.removeAll()
+        persistBatch()
         batchTask = Task { await runBatch() }
     }
 
@@ -263,7 +448,7 @@ final class MovieDownloadService: ObservableObject {
         batch.isCancelled = true
         for index in batch.items.indices {
             switch batch.items[index].state {
-            case .pending, .downloading, .pullingPhone:
+            case .pending, .queuedOnServer, .downloading, .pullingPhone:
                 batch.items[index].state = .cancelled
             default:
                 break
@@ -278,6 +463,7 @@ final class MovieDownloadService: ObservableObject {
         }
         batchTask?.cancel()
         statusMessage = "Zatrzymano pobieranie."
+        persistBatch()
     }
 
     /// Anuluje pojedynczą pozycję w kolejce (lub aktywną).
@@ -320,7 +506,21 @@ final class MovieDownloadService: ObservableObject {
         activeBatch = nil
         statusMessage = nil
         cancelledItemIds.removeAll()
+        itemJobIds.removeAll()
         resetProgressTiming()
+        MovieDownloadPersistence.clear()
+    }
+
+    private func persistBatch() {
+        guard let batch = activeBatch else {
+            MovieDownloadPersistence.clear()
+            return
+        }
+        MovieDownloadPersistence.save(
+            batch: batch,
+            jobIdsByURL: itemJobIds,
+            cancelledItemIds: cancelledItemIds
+        )
     }
 
     private func cancelCurrentNetworkWork() {
@@ -337,16 +537,24 @@ final class MovieDownloadService: ObservableObject {
         guard var batch = activeBatch else { return }
         await onlineMovies.refreshDownloads()
 
+        // Submit every pending item to EOS server immediately — downloads continue when the app is closed.
+        await enqueueAllPendingOnServer()
+
         for index in batch.items.indices {
             if Task.isCancelled || batch.isCancelled { break }
+            batch = activeBatch ?? batch
             if cancelledItemIds.contains(batch.items[index].id) {
                 batch.items[index].state = .cancelled
                 activeBatch = batch
+                persistBatch()
                 continue
             }
 
             let item = batch.items[index]
             if case .cancelled = item.state { continue }
+            if case .done = item.state { continue }
+            if case .skipped = item.state { continue }
+            if case .failed = item.state { continue }
 
             resetProgressTiming()
 
@@ -354,6 +562,7 @@ final class MovieDownloadService: ObservableObject {
                 if batch.destination == .serverAndPhone {
                     batch.items[index].state = .pullingPhone(progress: 0)
                     activeBatch = batch
+                    persistBatch()
                     do {
                         try await onlineMovies.pullToPhoneAfterServer(
                             selection: OnlineMovieSelection(
@@ -378,6 +587,7 @@ final class MovieDownloadService: ObservableObject {
                             batch = activeBatch ?? batch
                             batch.items[index].state = .done
                             activeBatch = batch
+                            persistBatch()
                         }
                     } catch is CancellationError {
                         markCancelled(index: index)
@@ -388,11 +598,13 @@ final class MovieDownloadService: ObservableObject {
                             batch = activeBatch ?? batch
                             batch.items[index].state = .failed(error.localizedDescription)
                             activeBatch = batch
+                            persistBatch()
                         }
                     }
                 } else {
                     batch.items[index].state = .skipped
                     activeBatch = batch
+                    persistBatch()
                 }
                 continue
             }
@@ -400,30 +612,48 @@ final class MovieDownloadService: ObservableObject {
             batch.items[index].state = .downloading(progress: 0)
             activeBatch = batch
             noteProgress(0)
+            persistBatch()
 
             do {
-                let height = MediaQualityOption.apiHeight(for: batch.quality, options: batch.quality.id == "best" ? [] : [batch.quality])
-                let start = try await api.startMovieDownload(
-                    url: item.url,
-                    height: height,
-                    title: item.title,
-                    thumbnail: item.thumbnail,
-                    source: item.source,
-                    kind: batch.format.kind,
-                    container: batch.format.container,
-                    audioBitrate: batch.format.kind == "audio" ? (batch.quality.bitrate ?? 0) : nil
-                )
-                currentJobId = start.jobId
+                let startJobId: String
+                let alreadyReady: Bool
+
+                if let known = itemJobIds[item.url] ?? remoteJobIdsByURL[item.url] {
+                    startJobId = known
+                    alreadyReady = false
+                } else {
+                    let height = MediaQualityOption.apiHeight(
+                        for: batch.quality,
+                        options: batch.quality.id == "best" ? [] : [batch.quality]
+                    )
+                    let start = try await api.startMovieDownload(
+                        url: item.url,
+                        height: height,
+                        title: item.title,
+                        thumbnail: item.thumbnail,
+                        source: item.source,
+                        kind: batch.format.kind,
+                        container: batch.format.container,
+                        audioBitrate: batch.format.kind == "audio" ? (batch.quality.bitrate ?? 0) : nil
+                    )
+                    startJobId = start.jobId
+                    itemJobIds[item.url] = start.jobId
+                    remoteJobIdsByURL[item.url] = start.jobId
+                    persistBatch()
+                    alreadyReady = start.ready == true
+                }
+
+                currentJobId = startJobId
 
                 if cancelledItemIds.contains(item.id) || Task.isCancelled || activeBatch?.isCancelled == true {
-                    try? await api.cancelJob(jobId: start.jobId)
+                    try? await api.cancelJob(jobId: startJobId)
                     markCancelled(index: index)
                     currentJobId = nil
                     continue
                 }
 
-                if start.ready != true {
-                    try await waitForJob(jobId: start.jobId, itemIndex: index)
+                if !alreadyReady {
+                    try await waitForJob(jobId: startJobId, itemIndex: index)
                 } else {
                     applyProgress(itemIndex: index, phone: false, percent: 100)
                 }
@@ -437,7 +667,7 @@ final class MovieDownloadService: ObservableObject {
                 _ = try await api.linkMovieDownload(
                     url: item.url,
                     title: item.title,
-                    downloadJobId: start.jobId,
+                    downloadJobId: startJobId,
                     thumbnail: item.thumbnail,
                     source: item.source
                 )
@@ -456,6 +686,7 @@ final class MovieDownloadService: ObservableObject {
                     activeBatch = batch
                     resetProgressTiming()
                     noteProgress(0)
+                    persistBatch()
                     let phoneKey = "movie:\(item.url)"
                     currentPhoneTrackKey = phoneKey
                     try await onlineMovies.pullToPhoneAfterServer(
@@ -468,7 +699,7 @@ final class MovieDownloadService: ObservableObject {
                             duration: nil,
                             isSerial: false
                         ),
-                        jobId: start.jobId,
+                        jobId: startJobId,
                         onProgress: { [weak self] pct in
                             Task { @MainActor in
                                 self?.applyProgress(itemIndex: index, phone: true, percent: pct)
@@ -484,6 +715,7 @@ final class MovieDownloadService: ObservableObject {
                     batch = activeBatch ?? batch
                     batch.items[index].state = .done
                     activeBatch = batch
+                    persistBatch()
                 }
             } catch is CancellationError {
                 markCancelled(index: index)
@@ -495,6 +727,7 @@ final class MovieDownloadService: ObservableObject {
                     batch.items[index].state = .failed(error.localizedDescription)
                     activeBatch = batch
                     statusMessage = "Nie udało się pobrać «\(item.title)»."
+                    persistBatch()
                 }
             }
             currentJobId = nil
@@ -514,12 +747,73 @@ final class MovieDownloadService: ObservableObject {
         }
         batchTask = nil
         resetProgressTiming()
+        persistBatch()
+        MovieDownloadPersistence.clear()
+    }
+
+    /// Fire-and-forget server jobs for all pending items so EOS keeps working when the app is suspended.
+    private func enqueueAllPendingOnServer() async {
+        guard let api, let onlineMovies else { return }
+        guard var batch = activeBatch, !batch.isRemoteSynced else { return }
+
+        await onlineMovies.refreshDownloads()
+
+        for index in batch.items.indices {
+            if Task.isCancelled || batch.isCancelled { break }
+            let item = batch.items[index]
+            if cancelledItemIds.contains(item.id) { continue }
+            switch item.state {
+            case .done, .skipped, .cancelled, .failed, .pullingPhone:
+                continue
+            default:
+                break
+            }
+            if onlineMovies.jobId(for: item.url) != nil { continue }
+            if itemJobIds[item.url] != nil {
+                if case .pending = batch.items[index].state {
+                    batch.items[index].state = .queuedOnServer
+                }
+                continue
+            }
+
+            do {
+                let height = MediaQualityOption.apiHeight(
+                    for: batch.quality,
+                    options: batch.quality.id == "best" ? [] : [batch.quality]
+                )
+                let start = try await api.startMovieDownload(
+                    url: item.url,
+                    height: height,
+                    title: item.title,
+                    thumbnail: item.thumbnail,
+                    source: item.source,
+                    kind: batch.format.kind,
+                    container: batch.format.container,
+                    audioBitrate: batch.format.kind == "audio" ? (batch.quality.bitrate ?? 0) : nil
+                )
+                itemJobIds[item.url] = start.jobId
+                remoteJobIdsByURL[item.url] = start.jobId
+                if start.ready != true {
+                    batch.items[index].state = .queuedOnServer
+                }
+                activeBatch = batch
+                persistBatch()
+            } catch {
+                // runBatch will retry this item in the sequential pass.
+                continue
+            }
+
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+        activeBatch = batch
+        persistBatch()
     }
 
     private func markCancelled(index: Int) {
         guard var batch = activeBatch, batch.items.indices.contains(index) else { return }
         batch.items[index].state = .cancelled
         activeBatch = batch
+        persistBatch()
     }
 
     private func applyProgress(itemIndex: Int, phone: Bool, percent: Double) {
@@ -530,6 +824,7 @@ final class MovieDownloadService: ObservableObject {
         batch.items[itemIndex].state = phone ? .pullingPhone(progress: pct) : .downloading(progress: pct)
         activeBatch = batch
         noteProgress(pct)
+        persistBatch()
     }
 
     private func noteProgress(_ percent: Double) {
@@ -549,9 +844,13 @@ final class MovieDownloadService: ObservableObject {
 
     private func waitForJob(jobId: String, itemIndex: Int) async throws {
         guard let api else { return }
-        let deadline = Date().addingTimeInterval(45 * 60)
+        let absoluteDeadline = Date().addingTimeInterval(8 * 3600)
+        let maxIdle: TimeInterval = 45 * 60
         var poll = 0
-        while Date() < deadline {
+        var lastProgress: Double = -1
+        var lastProgressAt = Date()
+
+        while Date() < absoluteDeadline {
             if Task.isCancelled || activeBatch?.isCancelled == true {
                 throw CancellationError()
             }
@@ -562,21 +861,37 @@ final class MovieDownloadService: ObservableObject {
             if job.status == "error" {
                 throw APIError.server(job.error ?? "Pobieranie nie powiodło się.")
             }
-            // processing / remux / persist — keep UI under 100% so it doesn't look stuck at done.
+
+            let rawProgress = job.progress ?? 0
+            if rawProgress > lastProgress + 0.3 {
+                lastProgress = rawProgress
+                lastProgressAt = Date()
+            }
+
             if job.status == "processing" {
                 applyProgress(itemIndex: itemIndex, phone: false, percent: min(job.progress ?? 99, 99))
             } else if let progress = job.progress {
-                applyProgress(itemIndex: itemIndex, phone: false, percent: min(progress, job.status == "done" ? 100 : 99))
+                applyProgress(
+                    itemIndex: itemIndex,
+                    phone: false,
+                    percent: min(progress, job.status == "done" ? 100 : 99)
+                )
             }
+
             if job.ready == true || job.status == "done" {
                 applyProgress(itemIndex: itemIndex, phone: false, percent: 100)
                 return
             }
+
+            if Date().timeIntervalSince(lastProgressAt) > maxIdle {
+                throw APIError.server("Pobieranie zatrzymało się — brak postępu przez 45 min.")
+            }
+
             poll += 1
             let delay: UInt64 = poll < 30 ? 500_000_000 : 1_000_000_000
             try await Task.sleep(nanoseconds: delay)
         }
-        throw APIError.server("Przekroczono czas oczekiwania na pobranie.")
+        throw APIError.server("Przekroczono czas oczekiwania na pobranie (8 h).")
     }
 
     static func formatETA(_ seconds: TimeInterval) -> String {
@@ -600,12 +915,15 @@ final class MovieDownloadService: ObservableObject {
     func applyRemoteServerDownloads(_ remote: [ActiveServerDownload]) {
         let movies = remote.filter { $0.isMovie && !$0.url.isEmpty }
         remoteJobIdsByURL = Dictionary(uniqueKeysWithValues: movies.map { ($0.url, $0.jobId) })
+        for movie in movies {
+            itemJobIds[movie.url] = movie.jobId
+        }
 
-        // Local batch runner owns sequencing — only refresh progress for matching URLs.
+        // Local batch runner owns sequencing — refresh progress for matching URLs.
         if batchTask != nil, var batch = activeBatch, !batch.isRemoteSynced {
             var changed = false
             for item in movies {
-                guard let index = batch.items.firstIndex(where: { $0.url == item.url }) else { continue }
+                guard let index = batch.items.firstIndex(where: { MovieURLMatching.urlsMatch($0.url, item.url) }) else { continue }
                 switch batch.items[index].state {
                 case .pullingPhone:
                     continue // phone phase is local-only
@@ -620,14 +938,22 @@ final class MovieDownloadService: ObservableObject {
                     continue
                 }
                 if item.isTerminal {
-                    // Keep downloading→done transition in runBatch (link + optional phone pull).
                     applyProgress(itemIndex: index, phone: false, percent: 100)
                     continue
                 }
                 applyProgress(itemIndex: index, phone: false, percent: item.progressPercent)
                 changed = true
             }
-            if changed { activeBatch = batch }
+            if changed {
+                activeBatch = batch
+                persistBatch()
+            }
+            return
+        }
+
+        // Persisted batch without live runner — restart orchestration.
+        if batchTask == nil, hasPersistedUnfinishedBatch, activeBatch == nil || activeBatch?.isRemoteSynced == true {
+            resumePersistedBatchIfNeeded()
             return
         }
 

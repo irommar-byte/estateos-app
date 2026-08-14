@@ -126,6 +126,10 @@ struct MovieDownloadQueuePanel: View {
                     Text("W kolejce")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
+                } else if case .queuedOnServer = item.state {
+                    Text("Na serwerze EOS")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(EOSTheme.accent.opacity(0.85))
                 }
             }
             Spacer(minLength: 0)
@@ -147,7 +151,7 @@ struct MovieDownloadQueuePanel: View {
     private func canCancel(_ item: MovieDownloadQueueItem) -> Bool {
         guard service.isRunning else { return false }
         switch item.state {
-        case .pending, .downloading, .pullingPhone:
+        case .pending, .queuedOnServer, .downloading, .pullingPhone:
             return true
         default:
             return false
@@ -164,6 +168,8 @@ struct MovieDownloadQueuePanel: View {
             return .phoneProgress(pct)
         case .pending:
             return .queue
+        case .queuedOnServer:
+            return .serverProgress(0)
         case .done:
             return batch.destination == .serverAndPhone ? .phone : .server
         case .skipped:

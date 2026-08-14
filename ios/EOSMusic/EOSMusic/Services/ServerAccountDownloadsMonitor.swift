@@ -54,7 +54,10 @@ final class ServerAccountDownloadsMonitor: ObservableObject {
     func setForeground(_ active: Bool) {
         isForeground = active
         if active {
-            Task { await refreshOnce() }
+            Task {
+                await refreshOnce()
+                movieDownloads?.resumePersistedBatchIfNeeded()
+            }
         }
     }
 

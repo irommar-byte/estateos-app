@@ -10,7 +10,6 @@
 		00D93498AC984CADBE4D6297 /* CatalogTrackRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23819C86375D425F81D04A75 /* CatalogTrackRow.swift */; };
 		04E9C846F92346189B3C1A0D /* AlbumDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF59EC8ADD784E56AFA3600D /* AlbumDetailView.swift */; };
 		08CE5375D3C44B678ECED188 /* SharedViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4EDDDD2F198482CA8732179 /* SharedViews.swift */; };
-		A91C2B3D4E5F608192A3B4C5 /* BreathingSourceBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02D3E4F5061728293B4C5D6 /* BreathingSourceBadge.swift */; };
 		0F4B935CC8EB44589D8E17DB /* OnlineMovieComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 441B26F76F9F4301AAD3DA07 /* OnlineMovieComponents.swift */; };
 		10469AB5E2EB4CA6BFD02949 /* GoogleDriveConnectionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16BBF8908FE04A35A1E519E2 /* GoogleDriveConnectionSheet.swift */; };
 		10BA8F7AB95045A99747FD73 /* OnlineMoviesController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F065721D09E84636828B0FE5 /* OnlineMoviesController.swift */; };
@@ -68,6 +67,7 @@
 		A3A9EAEA583A482AB4F0C62C /* MusicPlaybackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E15B1A3F82374B7F98B5D067 /* MusicPlaybackService.swift */; };
 		A6EF1A99869E4F0DB5DD80E2 /* QnapDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CAEAFC1993B48D5B5B5F14E /* QnapDiscoveryService.swift */; };
 		A8C9DFF282E144E1BB5CCBE9 /* OnlineMoviesDownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5C85CD87D604CD6A51AC290 /* OnlineMoviesDownloadsView.swift */; };
+		A91C2B3D4E5F608192A3B4C5 /* BreathingSourceBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B02D3E4F5061728293B4C5D6 /* BreathingSourceBadge.swift */; };
 		AA1226DB8B4F478D9815A565 /* VideoPiPController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA417501A19B411991EBACC6 /* VideoPiPController.swift */; };
 		AE8C7C276B8146ED947D0476 /* GoogleDriveAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B424F20337E49B2BA8F7D1B /* GoogleDriveAuthService.swift */; };
 		AE955A13BD8544888123970A /* QnapWebDAVDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B01693C06BB4275BE7F105E /* QnapWebDAVDefaults.swift */; };
@@ -213,6 +213,7 @@
 		A90BDEC0B1654D75852D9E07 /* GoogleDriveFolderPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveFolderPickerView.swift; sourceTree = "<group>"; };
 		A9E91537DD5B4F748699961E /* OpenedAudioImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenedAudioImportService.swift; sourceTree = "<group>"; };
 		AD4E6568DA6B4478AB26820B /* GoogleOAuth.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = GoogleOAuth.plist; sourceTree = "<group>"; };
+		B02D3E4F5061728293B4C5D6 /* BreathingSourceBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreathingSourceBadge.swift; sourceTree = "<group>"; };
 		B1B9780C07F3428F94C182DE /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		B3469FD08B05423C94A4A583 /* EOSMusicApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EOSMusicApp.swift; sourceTree = "<group>"; };
 		BD555B3E306A4D5A9B5A1FAC /* LibraryCategoryViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCategoryViews.swift; sourceTree = "<group>"; };
@@ -224,7 +225,6 @@
 		D1BC69E974CF402FA0C9A182 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		D71387C3A5964D6B8080341A /* ActivityStatusViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityStatusViews.swift; sourceTree = "<group>"; };
 		D984FABAACAE4CF6B028760B /* OnlineOfflineModeGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineOfflineModeGlyph.swift; sourceTree = "<group>"; };
-		B02D3E4F5061728293B4C5D6 /* BreathingSourceBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreathingSourceBadge.swift; sourceTree = "<group>"; };
 		DA03C5AA15E942279BDBFCD3 /* ICloudConnectionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudConnectionSheet.swift; sourceTree = "<group>"; };
 		E15B1A3F82374B7F98B5D067 /* MusicPlaybackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlaybackService.swift; sourceTree = "<group>"; };
 		E18CC6299A4E43D08D625357 /* MiniPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerBar.swift; sourceTree = "<group>"; };
