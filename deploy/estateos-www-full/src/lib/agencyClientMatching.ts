@@ -53,12 +53,21 @@ export async function refreshAgencyClientMatches(clientId: number) {
 
   upserts.sort((a, b) => b.score - a.score);
 
+  const existingBefore = await prisma.agencyClientMatch.findMany({
+    where: { clientId },
+    select: { offerId: true },
+  });
+  const existingOfferIds = new Set(existingBefore.map((e) => e.offerId));
+  const newlyCreated: { offerId: number; score: number }[] = [];
+
   for (const row of upserts.slice(0, 100)) {
+    const wasNew = !existingOfferIds.has(row.offerId);
     await prisma.agencyClientMatch.upsert({
       where: { clientId_offerId: { clientId, offerId: row.offerId } },
       create: { clientId, offerId: row.offerId, score: row.score },
       update: { score: row.score },
     });
+    if (wasNew) newlyCreated.push(row);
   }
 
   const keepIds = new Set(upserts.slice(0, 100).map((u) => u.offerId));
@@ -81,12 +90,28 @@ export async function refreshAgencyClientMatches(clientId: number) {
         kind: 'MATCH_REFRESH',
         title: 'Odświeżono dopasowania',
         body: `Znaleziono ${upserts.length} ofert spełniających kryteria klienta.`,
-        metadata: { count: upserts.length },
+        metadata: { count: upserts.length, newCount: newlyCreated.length },
       },
     });
   }
 
-  return { upserted: upserts.length, matches: upserts };
+  if (newlyCreated.length > 0) {
+    const { sendNotification } = await import('@/lib/core/notification.core');
+    const top = newlyCreated.sort((a, b) => b.score - a.score)[0];
+    await sendNotification({
+      userId: client.agencyUserId,
+      type: 'CRM_EVENT',
+      title: 'Nowe dopasowanie do klienta',
+      body: `${client.firstName} ${client.lastName}: ${newlyCreated.length} nowych ofert (top ${top.score}%).`,
+      data: {
+        clientId,
+        href: `/moje-konto/crm?tab=klienci&clientId=${clientId}`,
+      },
+      idempotencyKey: `client-match-${clientId}-${top.offerId}-${newlyCreated.length}`,
+    }).catch(() => {});
+  }
+
+  return { upserted: upserts.length, newMatches: newlyCreated.length, matches: upserts };
 }
 
 export async function buildAgencyClientReport(agencyUserId: number) {

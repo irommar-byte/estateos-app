@@ -10,6 +10,39 @@ import {
 import { generatePortalToken } from '@/lib/agencyClientNotify';
 import { parsePesel } from '@/lib/pesel';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
+import { sendTransactionalEmail } from '@/lib/email/transactional';
+import { sendNotification } from '@/lib/core/notification.core';
+import { resolveSellerPersonName } from '@/lib/sellerDisplay';
+
+function buildAcquisitionIcs(params: {
+  title: string;
+  startsAt: Date;
+  location?: string | null;
+  description?: string | null;
+}): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmt = (d: Date) =>
+    `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+  const ends = new Date(params.startsAt.getTime() + 60 * 60 * 1000);
+  const uid = `acq-${Date.now()}@estateos.pl`;
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//EstateOS//CRM//PL',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${fmt(new Date())}`,
+    `DTSTART:${fmt(params.startsAt)}`,
+    `DTEND:${fmt(ends)}`,
+    `SUMMARY:${params.title.replace(/\n/g, ' ')}`,
+  ];
+  if (params.location) lines.push(`LOCATION:${params.location.replace(/\n/g, ' ')}`);
+  if (params.description) lines.push(`DESCRIPTION:${params.description.replace(/\n/g, '\\n')}`);
+  lines.push('END:VEVENT', 'END:VCALENDAR');
+  return lines.join('\r\n');
+}
 
 function normalizePhone(raw: unknown): string | null {
   const input = String(raw || '').trim();
@@ -117,7 +150,13 @@ export async function POST(req: Request) {
       notes: body.notes ? String(body.notes).trim() : null,
       portalToken: generatePortalToken(),
       ...(type === 'SELLER'
-        ? {}
+        ? {
+            sellerCity: body.sellerCity ? String(body.sellerCity).trim() : null,
+            sellerPrice:
+              body.sellerPrice != null && Number.isFinite(Number(body.sellerPrice))
+                ? Number(body.sellerPrice)
+                : null,
+          }
         : {}),
       ...(type === 'BUYER' && body.buyerFilters
         ? {
@@ -142,6 +181,70 @@ export async function POST(req: Request) {
 
   if (type === 'BUYER') {
     await refreshAgencyClientMatches(client.id);
+  }
+
+  const meeting = body.acquisitionMeeting;
+  if (
+    type === 'SELLER' &&
+    meeting &&
+    typeof meeting === 'object' &&
+    typeof meeting.startsAt === 'string'
+  ) {
+    const startsAt = new Date(meeting.startsAt);
+    if (!Number.isNaN(startsAt.getTime())) {
+      const location = meeting.location ? String(meeting.location).trim() : '';
+      const notes = meeting.notes ? String(meeting.notes).trim() : '';
+      await prisma.agencyClientActivity.create({
+        data: {
+          clientId: client.id,
+          agencyUserId,
+          kind: 'ACQUISITION_MEETING',
+          title: `Pozyskanie · ${firstName} ${lastName}`,
+          body: [location, notes].filter(Boolean).join(' · ') || 'Spotkanie pozyskania',
+          metadata: {
+            startsAt: startsAt.toISOString(),
+            location: location || null,
+            notes: notes || null,
+          },
+        },
+      });
+
+      await sendNotification({
+        userId: agencyUserId,
+        type: 'CRM_EVENT',
+        title: 'Spotkanie pozyskania',
+        body: `${firstName} ${lastName} · ${startsAt.toLocaleString('pl-PL')}`,
+        data: { clientId: client.id, href: `/moje-konto/crm?tab=klienci&clientId=${client.id}` },
+        idempotencyKey: `acq-meet-${client.id}-${startsAt.toISOString()}`,
+      }).catch(() => {});
+
+      if (emailRaw) {
+        const agent = await prisma.user.findUnique({
+          where: { id: agencyUserId },
+          select: { name: true, companyName: true, email: true, phone: true },
+        });
+        const agentName = resolveSellerPersonName(agent) || agent?.name || 'Twój agent';
+        const agencyName = agent?.companyName?.trim() || 'EstateOS';
+        const ics = buildAcquisitionIcs({
+          title: `Pozyskanie nieruchomości · ${agencyName}`,
+          startsAt,
+          location,
+          description: notes || `Spotkanie z agentem ${agentName}`,
+        });
+        await sendTransactionalEmail({
+          to: emailRaw,
+          subject: `Spotkanie pozyskania · ${agencyName}`,
+          html: `<div style="font-family:-apple-system,sans-serif;padding:24px"><p>Witaj ${firstName},</p><p>Umówiliśmy wstępne spotkanie w sprawie nieruchomości.</p><p><strong>${startsAt.toLocaleString('pl-PL')}</strong>${location ? `<br/>${location}` : ''}</p><p>${notes || ''}</p><p>Pozdrawiam,<br/><strong>${agentName}</strong><br/>${agencyName}</p><p style="color:#6b7280;font-size:12px">W załączniku plik kalendarza (.ics).</p></div>`,
+          attachments: [
+            {
+              filename: 'spotkanie-pozyskanie.ics',
+              content: ics,
+              contentType: 'text/calendar; charset=utf-8',
+            },
+          ],
+        }).catch(() => {});
+      }
+    }
   }
 
   const fresh = await prisma.agencyClient.findUnique({

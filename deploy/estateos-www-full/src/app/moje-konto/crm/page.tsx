@@ -1,5 +1,4 @@
 "use client";
-import PasskeyToggle from "@/components/PasskeyToggle";
 import DealRoom from "@/components/crm/DealRoom";
 import { Check } from "lucide-react";
 import { useUserMode } from '@/contexts/UserModeContext';
@@ -30,7 +29,9 @@ import CrmSectionTabBar, { type CrmSectionTabId } from "@/components/crm/CrmSect
 import CrmLeadInbox from "@/components/crm/CrmLeadInbox";
 import DelegatedOffersPanel from "@/components/crm/DelegatedOffersPanel";
 import AgencyTransferModal from "@/components/crm/AgencyTransferModal";
-import ProfileAgencyOfficeCard, { type AgencyMembershipUi } from "@/components/crm/ProfileAgencyOfficeCard";
+import { type AgencyMembershipUi } from "@/components/crm/ProfileAgencyOfficeCard";
+import CrmIdentityHeader from "@/components/crm/CrmIdentityHeader";
+import CrmDayBrief from "@/components/crm/CrmDayBrief";
 import AgencyGrowthBanner from "@/components/crm/AgencyGrowthBanner";
 import PortalImportProfileGuide from "@/components/onboarding/PortalImportProfileGuide";
 import type { PartnerGrowthInsight } from "@/lib/partnerGrowth";
@@ -1245,96 +1246,41 @@ export default function CRMDashboard() {
           <AgencyGrowthBanner insight={agencyGrowthInsight} compact />
         ) : null}
 
-        {isAgencyWorkspace && agencyMembership ? (
-          <ProfileAgencyOfficeCard membership={agencyMembership} personName={personName} />
-        ) : isAgencyWorkspace ? (
-          <div className="mb-6 flex flex-col gap-3 rounded-[1.75rem] border border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="mb-1 text-[10px] font-black uppercase tracking-[0.25em] text-emerald-400">Biuro nieruchomości</p>
-              <p className="max-w-xl text-sm text-[var(--eos-muted)]">
-                Zarządzaj firmą, zatwierdzaj pracowników i rozdysponuj kredyty publikacji w jednym panelu.
-              </p>
-            </div>
-            <Link
-              href="/moje-konto/firma"
-              className="shrink-0 rounded-xl bg-emerald-500 px-6 py-3 text-center text-[10px] font-black uppercase tracking-[0.2em] text-black hover:bg-emerald-400"
-            >
-              Panel firmy
-            </Link>
-          </div>
-        ) : null}
-        
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 px-1 sm:px-2 md:px-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--eos-subtle)] mb-2">{c.accountEyebrow}</p>
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border border-white/15 bg-white/5 shadow-[0_0_18px_rgba(0,0,0,0.35)] shrink-0">
-                {avatarSrc ? (
-                  <img
-                    src={avatarSrc}
-                    alt={`Awatar ${personName}`}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-sm font-black text-emerald-400">
-                    {avatarInitial}
-                  </div>
-                )}
-              </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl md:text-5xl font-black tracking-tighter text-white break-words max-w-full">
-                  {accountHeadlines.primary}
-                </h1>
-                {accountHeadlines.secondary ? (
-                  <p className="mt-1 text-sm font-semibold text-[var(--eos-muted)]">{accountHeadlines.secondary}</p>
-                ) : null}
-              </div>
-              <EliteStatusBadges subject={currentUser} isDark={isDarkTheme} compact className="mt-1" />
-              {currentUser?.id && (
-                <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 bg-gradient-to-r from-white/5 to-transparent border border-[var(--eos-border)] rounded-xl shadow-inner mt-2 md:mt-0 transition-all hover:border-emerald-500/30">
-                   <span className="text-[9px] uppercase tracking-[0.2em] text-[var(--eos-subtle)] font-bold">{c.userIdLabel}</span>
-                   <span className="text-xs sm:text-sm md:text-base font-black text-emerald-500 tracking-widest drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">{currentUser.id}</span>
-                </div>
-              )}
-            </div>
-            {!reviewsLoading && reviewsData && (
-              <>
-                <button onClick={() => setIsReviewsModalOpen(true)} className="mt-3 flex items-center gap-2 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 px-3 py-1.5 rounded-full transition-colors group cursor-pointer">
-                   <Star size={14} className={`${reviewsData.totalReviews > 0 ? 'text-yellow-500 fill-yellow-500 group-hover:animate-pulse' : 'text-[var(--eos-subtle)]'}`} />
-                   <span className="text-[10px] font-black text-yellow-500">
-                     {reviewsData.totalReviews > 0 ? `${reviewsData.averageRating.toFixed(1)} / 5.0` : c.reviewsNone}
-                   </span>
-                   {reviewsData.totalReviews > 0 ? (
-                     <span className="text-[9px] text-yellow-500/50 uppercase tracking-widest border-l border-yellow-500/20 pl-2 ml-1">{c.seeProfile} ({reviewsData.totalReviews})</span>
-                   ) : null}
-                </button>
-                <div className="mt-2">
-                  {verificationStatus === "verified" ? (
-                    <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/12 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">
-                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-black">✓</span>
-                      {c.verification.verifiedBadge}
-                    </span>
-                  ) : (
-                    <Link
-                      href="/moje-konto/weryfikacja"
-                      className="inline-flex items-center gap-2 rounded-full border border-amber-500/35 bg-amber-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-amber-300 hover:bg-amber-500/15"
-                    >
-                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-amber-400/60 text-[9px]">
-                        !
-                      </span>
-                      {verificationStatus === "email"
-                        ? c.verification.confirmEmail
-                        : c.verification.confirmPhone}
-                    </Link>
-                  )}
-                </div>
-                <div className="mt-3 w-full max-w-[420px]">
-                  <PasskeyToggle onProfileRefresh={refreshCurrentUserFromBackend} />
-                </div>
-              </>
-            )}
-          </div>
-        </motion.div>
+        <CrmIdentityHeader
+          personName={personName}
+          accountPrimary={accountHeadlines.primary}
+          accountSecondary={accountHeadlines.secondary}
+          avatarSrc={avatarSrc}
+          avatarInitial={avatarInitial}
+          currentUser={currentUser}
+          userId={currentUser?.id}
+          isDarkTheme={isDarkTheme}
+          verificationStatus={verificationStatus}
+          verificationLabels={{
+            verifiedBadge: c.verification.verifiedBadge,
+            confirmEmail: c.verification.confirmEmail,
+            confirmPhone: c.verification.confirmPhone,
+            seeProfile: c.seeProfile,
+            reviewsNone: c.reviewsNone,
+            userIdLabel: c.userIdLabel,
+          }}
+          reviewsData={reviewsData}
+          reviewsLoading={reviewsLoading}
+          onOpenReviews={() => setIsReviewsModalOpen(true)}
+          membership={agencyMembership}
+          isAgencyWorkspace={!!isAgencyWorkspace}
+          onPasskeyRefresh={refreshCurrentUserFromBackend}
+        />
+
+        <CrmDayBrief
+          personName={personName}
+          onAddClient={() => {
+            handleTabSwitch('klienci' as CrmTab);
+            window.setTimeout(() => window.dispatchEvent(new Event('crm-open-add-client')), 50);
+          }}
+          onOpenClients={() => handleTabSwitch('klienci' as CrmTab)}
+          onOpenPlanning={() => handleTabSwitch('planowanie' as CrmTab)}
+        />
 
         <ProStatusBar user={currentUser} compact />
 

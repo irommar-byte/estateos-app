@@ -4,6 +4,11 @@ type EmailParams = {
   to: string;
   subject: string;
   html: string;
+  attachments?: Array<{
+    filename: string;
+    content: string | Buffer;
+    contentType?: string;
+  }>;
 };
 
 function asBoolEnv(value: string | undefined, defaultValue: boolean) {
@@ -53,6 +58,7 @@ export async function sendTransactionalEmail(params: EmailParams): Promise<boole
       to: params.to,
       subject: params.subject,
       html: params.html,
+      ...(params.attachments?.length ? { attachments: params.attachments } : {}),
     });
     return true;
   } catch (error) {

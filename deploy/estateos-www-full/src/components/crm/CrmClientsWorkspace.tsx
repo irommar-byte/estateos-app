@@ -26,12 +26,14 @@ import {
   MessageCircle,
   PhoneCall,
   Clock3,
-  SlidersHorizontal,
+  Contact2,
+  IdCard,
 } from "lucide-react";
 import AgencyClientFormModal from "@/components/crm/AgencyClientFormModal";
 import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { AgencyClientListItem } from "@/lib/agencyClientShape";
+import { eosBtn } from "@/components/ui/eosButtonStyles";
 
 function clientNeedsContactVerification(client: Pick<AgencyClientListItem, 'linkedUserId' | 'emailVerifiedAt' | 'phoneVerifiedAt'>) {
   if (client.linkedUserId) return false;
@@ -131,6 +133,14 @@ export default function CrmClientsWorkspace() {
   const [query, setQuery] = useState("");
   const [onlyAttention, setOnlyAttention] = useState(false);
   const [sortBy, setSortBy] = useState<"recent" | "name" | "match">("recent");
+  const [cardBusyId, setCardBusyId] = useState<number | null>(null);
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    const open = () => setFormOpen(true);
+    window.addEventListener("crm-open-add-client", open);
+    return () => window.removeEventListener("crm-open-add-client", open);
+  }, []);
 
   const offerHref = (offerId: number, portalToken?: string | null) => {
     if (portalToken) return `/oferta/${offerId}?portal=${encodeURIComponent(portalToken)}`;
@@ -175,6 +185,27 @@ export default function CrmClientsWorkspace() {
     if (selectedId) void loadDetail(selectedId);
     else setDetail(null);
   }, [selectedId, loadDetail]);
+
+  const sendBusinessCard = async (clientId: number) => {
+    setCardBusyId(clientId);
+    setToast("");
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send_business_card" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(json?.error || "Nie udało się wysłać wizytówki."));
+      setToast(`Wysłano wizytówkę na ${json.email || "e-mail klienta"}`);
+      if (selectedId === clientId) void loadDetail(clientId);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Błąd wysyłki wizytówki.");
+    } finally {
+      setCardBusyId(null);
+      window.setTimeout(() => setToast(""), 4500);
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -401,12 +432,18 @@ export default function CrmClientsWorkspace() {
         <button
           type="button"
           onClick={() => setFormOpen(true)}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-b from-emerald-300 to-emerald-600 px-6 py-3 text-[11px] font-black uppercase tracking-[0.14em] text-black shadow-[0_12px_32px_rgba(16,185,129,0.28)] transition hover:scale-[1.02]"
+          className={eosBtn("home", { className: "shadow-[0_12px_32px_rgba(16,185,129,0.28)]" })}
         >
           <UserPlus className="size-4" />
           {cl.addClient}
         </button>
       </div>
+
+      {toast ? (
+        <p className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700">
+          {toast}
+        </p>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <div className="rounded-[1.25rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/75 p-3">
@@ -461,6 +498,7 @@ export default function CrmClientsWorkspace() {
                     <th className="px-3 py-2">Weryfikacja</th>
                     <th className="px-3 py-2">Analityka</th>
                     <th className="px-3 py-2">Aktualizacja</th>
+                    <th className="px-3 py-2">Wizytówka</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -475,6 +513,11 @@ export default function CrmClientsWorkspace() {
                       <td className="px-3 py-3">
                         <p className="font-semibold text-[var(--eos-text)]">{client.firstName} {client.lastName}</p>
                         <p className="mt-1 text-xs text-[var(--eos-muted)]">{client.email || "—"} · {client.phone || "—"}</p>
+                        {client.type === "BUYER" && client.matchCount > 0 ? (
+                          <span className="mt-1 inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
+                            {client.matchCount} dopasowań
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                         {client.type === "BUYER" ? "Kupujący" : "Sprzedający"}
@@ -528,6 +571,24 @@ export default function CrmClientsWorkspace() {
                       <td className="px-3 py-3 text-xs text-[var(--eos-muted)]">
                         {new Date(client.updatedAt).toLocaleDateString("pl-PL")}
                       </td>
+                      <td className="px-3 py-3">
+                        <button
+                          type="button"
+                          disabled={!client.email || cardBusyId === client.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void sendBusinessCard(client.id);
+                          }}
+                          title={client.email ? "Wyślij wizytówkę e-mailem" : "Brak e-maila klienta"}
+                          className={eosBtn("secondary", {
+                            size: "sm",
+                            className: "disabled:opacity-40",
+                          })}
+                        >
+                          <IdCard className="size-3.5" />
+                          {cardBusyId === client.id ? "…" : "Wyślij"}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -573,17 +634,28 @@ export default function CrmClientsWorkspace() {
                 </button>
               </div>
 
-              {detail.portalUrl ? (
-                <Link
-                  href={detail.portalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-text)]"
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!detail.email || cardBusyId === detail.id}
+                  onClick={() => void sendBusinessCard(detail.id)}
+                  className={eosBtn("home", { size: "sm" })}
                 >
-                  Otwórz panel klienta
-                  <ExternalLink className="size-3.5" />
-                </Link>
-              ) : null}
+                  <Contact2 className="size-3.5" />
+                  {cardBusyId === detail.id ? "Wysyłanie…" : "Wyślij wizytówkę"}
+                </button>
+                {detail.portalUrl ? (
+                  <Link
+                    href={detail.portalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={eosBtn("secondary", { size: "sm" })}
+                  >
+                    Panel klienta
+                    <ExternalLink className="size-3.5" />
+                  </Link>
+                ) : null}
+              </div>
 
               <div className="grid gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4 sm:grid-cols-3">
                 <a
