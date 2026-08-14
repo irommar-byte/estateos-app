@@ -6,13 +6,15 @@ import path from "node:path";
  * so the concurrency cap covers the whole download rather than only process startup.
  */
 export class DurableMovieJobQueue {
-  constructor({ filePath, maxConcurrent = 2, runner, onError = null }) {
+  constructor({ filePath, maxConcurrent = 2, runner, onError = null, onPersistError = null }) {
     if (!filePath) throw new Error("DurableMovieJobQueue requires filePath");
     if (typeof runner !== "function") throw new Error("DurableMovieJobQueue requires runner");
     this.filePath = filePath;
     this.maxConcurrent = Math.max(1, Number(maxConcurrent) || 2);
     this.runner = runner;
     this.onError = onError;
+    this.onPersistError = onPersistError;
+    this.lastPersistError = null;
     this.records = new Map();
     this.pumping = false;
     this.load();
@@ -53,7 +55,10 @@ export class DurableMovieJobQueue {
       attempts: Number(record.attempts) || 0,
     };
     this.records.set(next.id, next);
-    this.persist();
+    if (!this.persist()) {
+      this.records.delete(next.id);
+      throw this.lastPersistError || new Error("Nie udało się zapisać kolejki pobierania.");
+    }
     this.pump();
     return next;
   }
@@ -84,7 +89,11 @@ export class DurableMovieJobQueue {
         record.startedAt = Date.now();
         record.attempts = (Number(record.attempts) || 0) + 1;
         this.records.set(record.id, record);
-        this.persist();
+        if (!this.persist()) {
+          record.state = "queued";
+          this.records.set(record.id, record);
+          break;
+        }
         Promise.resolve()
           .then(() => this.runner(record))
           .catch((error) => {
@@ -106,9 +115,18 @@ export class DurableMovieJobQueue {
   }
 
   persist() {
-    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
     const temp = `${this.filePath}.tmp`;
-    fs.writeFileSync(temp, JSON.stringify(this.list(), null, 2) + "\n");
-    fs.renameSync(temp, this.filePath);
+    try {
+      fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+      fs.writeFileSync(temp, JSON.stringify(this.list(), null, 2) + "\n");
+      fs.renameSync(temp, this.filePath);
+      this.lastPersistError = null;
+      return true;
+    } catch (error) {
+      this.lastPersistError = error;
+      try { fs.rmSync(temp, { force: true }); } catch {}
+      this.onPersistError?.(error);
+      return false;
+    }
   }
 }

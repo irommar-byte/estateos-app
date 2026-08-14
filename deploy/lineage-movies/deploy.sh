@@ -178,15 +178,15 @@ check() {
   local body=""
   local attempt
   for attempt in 1 2 3 4 5; do
-    body=$(curl -fsS "$url" 2>/dev/null) && break
-    sleep 1
+    body=$(curl -fsS "$url" 2>/dev/null || true)
+    if [ -n "$body" ] && printf '%s' "$body" | grep -qF "$pattern"; then
+      echo "  OK $label"
+      return
+    fi
+    sleep 2
   done
-  if [ -n "$body" ] && printf '%s' "$body" | grep -qF "$pattern"; then
-    echo "  OK $label"
-  else
-    echo "  FAIL $label (missing: $pattern)"
-    FAIL=1
-  fi
+  echo "  FAIL $label (missing: $pattern)"
+  FAIL=1
 }
 
 check "inject.js INJECT_BUILD" "INJECT_BUILD = \"$BUILD_ID\"" "https://lineage.mycloudnas.com/admin_pro/movies/inject.js"

@@ -2687,12 +2687,30 @@ let ytDlp;
 const jobs = new Map();
 
 const MOVIE_QUEUE_FILE = path.join(DOWNLOAD_DIR, "_movie-job-queue.json");
+const MOVIE_STORAGE_FLOOR_BYTES = Number(process.env.MOVIE_STORAGE_FLOOR_BYTES || 512 * 1024 * 1024);
+const MOVIE_JOB_RESERVE_BYTES = Number(process.env.MOVIE_JOB_RESERVE_BYTES || 900 * 1024 * 1024);
 const movieDownloadQueue = new DurableMovieJobQueue({
   filePath: MOVIE_QUEUE_FILE,
   maxConcurrent: Number(process.env.MOVIE_DOWNLOAD_CONCURRENCY || 2),
   runner: runQueuedMirrorMovieDownload,
   onError: failQueuedMovieDownload,
+  onPersistError: (error) => console.error("movie queue persist:", error?.message || error),
 });
+
+function assertMovieStorageAvailable() {
+  const stats = fs.statfsSync(DOWNLOAD_DIR);
+  const available = Number(stats.bavail) * Number(stats.bsize);
+  const reservations = (movieDownloadQueue.list().length + 1) * MOVIE_JOB_RESERVE_BYTES;
+  const required = MOVIE_STORAGE_FLOOR_BYTES + reservations;
+  if (available >= required) return;
+  const availableGB = (available / (1024 ** 3)).toFixed(1);
+  const requiredGB = (required / (1024 ** 3)).toFixed(1);
+  const error = new Error(
+    `Za mało miejsca na bezpieczne pobranie filmu (${availableGB} GB wolne, wymagane ${requiredGB} GB).`
+  );
+  error.statusCode = 507;
+  throw error;
+}
 
 function makeQueuedMovieJob(record) {
   const movie = record.payload.movieDownload || {};
@@ -5747,8 +5765,13 @@ app.post("/api/download", async (req, res) => {
 
   if (isMirrorHost(url)) {
     if (movieDownload) {
-      const queued = enqueueMirrorMovieDownload({ jobId, sourceUrl: url, movieDownload });
-      return res.json({ jobId, queued: true, status: queued.status, progress: queued.progress });
+      try {
+        assertMovieStorageAvailable();
+        const queued = enqueueMirrorMovieDownload({ jobId, sourceUrl: url, movieDownload });
+        return res.json({ jobId, queued: true, status: queued.status, progress: queued.progress });
+      } catch (error) {
+        return res.status(Number(error?.statusCode) || 500).json({ error: friendlyError(error) });
+      }
     }
     try {
       const mirror = await getMirrorStream(url);

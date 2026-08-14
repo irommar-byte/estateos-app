@@ -50,3 +50,19 @@ test("restores interrupted running records as queued after restart", async () =>
   assert.deepEqual(restoredStarts, ["episode"]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+
+test("persistence failure never starts a non-durable transfer", async () => {
+  let started = false;
+  const errors = [];
+  const queue = new DurableMovieJobQueue({
+    filePath: "/dev/null/movie-queue.json",
+    runner: async () => { started = true; },
+    onPersistError: (error) => errors.push(error),
+  });
+  assert.throws(() => queue.enqueue({ id: "unsafe", payload: { sourceUrl: "x" } }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(started, false);
+  assert.equal(queue.get("unsafe"), null);
+  assert.ok(errors.length >= 1);
+});
