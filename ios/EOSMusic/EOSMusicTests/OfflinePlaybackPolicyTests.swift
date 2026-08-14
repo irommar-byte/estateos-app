@@ -88,3 +88,62 @@ final class TrackMetadataConflictTests: XCTestCase {
         )
     }
 }
+
+final class VideoHandoffContractTests: XCTestCase {
+    func testVLCCannotSuspendBeforeAVPlayerAndVideoAreReady() {
+        XCTAssertFalse(
+            VideoHandoffPolicy.canSuspendVLC(
+                avPlayerReady: false,
+                hasVideoFrame: true,
+                destinationAvailable: true
+            )
+        )
+        XCTAssertFalse(
+            VideoHandoffPolicy.canSuspendVLC(
+                avPlayerReady: true,
+                hasVideoFrame: false,
+                destinationAvailable: true
+            )
+        )
+        XCTAssertFalse(
+            VideoHandoffPolicy.canSuspendVLC(
+                avPlayerReady: true,
+                hasVideoFrame: true,
+                destinationAvailable: false
+            )
+        )
+    }
+
+    func testVLCSuspendsOnlyAfterAtomicHandoffGate() {
+        XCTAssertTrue(
+            VideoHandoffPolicy.canSuspendVLC(
+                avPlayerReady: true,
+                hasVideoFrame: true,
+                destinationAvailable: true
+            )
+        )
+    }
+
+    func testOnlyActivePiPOrAirPlayOwnsAVPlayerTransport() {
+        XCTAssertTrue(VideoHandoffState.pictureInPicture.avPlayerOwnsTransport)
+        XCTAssertTrue(VideoHandoffState.airPlay.avPlayerOwnsTransport)
+        XCTAssertFalse(VideoHandoffState.preparingPiP.avPlayerOwnsTransport)
+        XCTAssertFalse(VideoHandoffState.restoringVLC.avPlayerOwnsTransport)
+        XCTAssertFalse(VideoHandoffState.failed("test").avPlayerOwnsTransport)
+    }
+
+    func testHandoffTransitionStatesAreExplicit() {
+        XCTAssertTrue(VideoHandoffState.preparingPiP.isTransitioning)
+        XCTAssertTrue(VideoHandoffState.preparingAirPlay.isTransitioning)
+        XCTAssertTrue(VideoHandoffState.restoringVLC.isTransitioning)
+        XCTAssertFalse(VideoHandoffState.pictureInPicture.isTransitioning)
+        XCTAssertFalse(VideoHandoffState.airPlay.isTransitioning)
+    }
+
+    @MainActor
+    func testSupportedContainerContract() {
+        XCTAssertTrue(VideoPiPController.isApplePiPContainer(URL(string: "https://example.com/movie.mp4")!))
+        XCTAssertTrue(VideoPiPController.isApplePiPContainer(URL(string: "https://example.com/api/play/job")!))
+        XCTAssertFalse(VideoPiPController.isApplePiPContainer(URL(fileURLWithPath: "/tmp/movie.mkv")))
+    }
+}

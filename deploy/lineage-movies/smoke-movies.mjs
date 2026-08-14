@@ -87,6 +87,99 @@ async function api(method, urlPath, { body, token, timeoutMs = 45000 } = {}) {
 }
 
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitForTerminalJob(jobId, { token, timeoutMs = 90 * 60 * 1000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+  while (Date.now() < deadline) {
+    const status = await api("GET", `/api/job/${jobId}`, { token, timeoutMs: 15000 });
+    last = status.json;
+    if (last?.status === "error" || last?.status === "cancelled") return last;
+    if (last?.ready === true || last?.status === "done") return last;
+    await sleep(1500);
+  }
+  return { status: "timeout", error: `timeout waiting for ${jobId}`, last };
+}
+
+async function verifyEpisodePreview(episode) {
+  const prefix = `westworld ${episode.title}`;
+  const start = await api("POST", "/api/preview", {
+    body: { url: episode.url, height: 720 },
+    timeoutMs: 120000,
+  });
+  assert(start.res.ok && start.json?.jobId, `${prefix} preview start`, JSON.stringify(start.json));
+  if (!start.json?.jobId) return;
+  const terminal = await waitForTerminalJob(start.json.jobId, { timeoutMs: 3 * 60 * 1000 });
+  assert(terminal?.ready === true || terminal?.status === "done", `${prefix} preview ready`, JSON.stringify(terminal));
+  if (!(terminal?.ready === true || terminal?.status === "done")) return;
+  const playToken = await api("GET", `/api/play-token/${start.json.jobId}`, { timeoutMs: 15000 });
+  assert(playToken.res.ok && playToken.json?.token, `${prefix} preview token`);
+  if (!playToken.json?.token) return;
+  const play = await fetch(`${BASE}/api/play/${start.json.jobId}?token=${encodeURIComponent(playToken.json.token)}`, {
+    headers: { Range: "bytes=0-2047" },
+    signal: AbortSignal.timeout(30000),
+    redirect: "manual",
+  });
+  const bytes = play.status === 200 || play.status === 206 ? Buffer.from(await play.arrayBuffer()) : Buffer.alloc(0);
+  assert(
+    play.status === 200 || play.status === 206 || (play.status >= 300 && play.status < 400),
+    `${prefix} preview range`,
+    `HTTP ${play.status} ${bytes.length}B`
+  );
+}
+
+async function startEpisodeDownload(episode) {
+  return api("POST", "/api/download", {
+    token,
+    body: {
+      url: episode.url,
+      title: `Westworld · Sezon 1 · ${episode.title}`,
+      thumbnail: episode.thumbnail || "",
+      source: "cda-hd",
+      kind: "video",
+      container: "mp4",
+      height: 720,
+    },
+    timeoutMs: 120000,
+  });
+}
+
+async function verifyEpisodeDownload(episode) {
+  const prefix = `westworld ${episode.title}`;
+  const first = await startEpisodeDownload(episode);
+  assert(first.res.ok && first.json?.jobId, `${prefix} download start`, JSON.stringify(first.json));
+  if (!first.json?.jobId) return;
+
+  const duplicate = await startEpisodeDownload(episode);
+  assert(
+    duplicate.res.ok && duplicate.json?.jobId === first.json.jobId && duplicate.json?.reused === true,
+    `${prefix} duplicate reuse`,
+    JSON.stringify(duplicate.json)
+  );
+
+  const terminal = first.json.ready === true
+    ? { status: "done", ready: true }
+    : await waitForTerminalJob(first.json.jobId, { token });
+  assert(terminal?.ready === true || terminal?.status === "done", `${prefix} terminal file`, JSON.stringify(terminal));
+  if (!(terminal?.ready === true || terminal?.status === "done")) return;
+
+  const playToken = await api("GET", `/api/movies/play-token/${first.json.jobId}`, { token, timeoutMs: 15000 });
+  assert(playToken.res.ok && playToken.json?.token, `${prefix} server play token`);
+  if (!playToken.json?.token) return;
+  const stream = await fetch(`${BASE}/api/movies/stream/${first.json.jobId}?token=${encodeURIComponent(playToken.json.token)}`, {
+    headers: { Range: "bytes=0-4095" },
+    signal: AbortSignal.timeout(30000),
+  });
+  const bytes = Buffer.from(await stream.arrayBuffer());
+  assert(
+    stream.status === 206 && bytes.length > 0 && Number(stream.headers.get("content-length") || 0) === bytes.length,
+    `${prefix} server range`,
+    `HTTP ${stream.status} ${bytes.length}B len=${stream.headers.get("content-length")}`
+  );
+}
+
+
 async function ensureSmokeOfflineMovie() {
   const downloadsRoot = process.env.MUSIC_PLAYLIST_DOWNLOADS_DIR || "/home/rommar/lineage-movies/downloads";
   const dir = path.join(downloadsRoot, "MOVIES");
@@ -293,6 +386,37 @@ if (sampleDownload?.downloadJobId) {
           "preview play",
           `HTTP ${play.status}`
         );
+      }
+    }
+  }
+}
+
+if (process.env.SMOKE_WESTWORLD_FULL !== "0") {
+  const series = await api("POST", "/api/info", {
+    body: { url: "https://cda-hd.cc/tvshows/westworld/" },
+    timeoutMs: 120000,
+  });
+  const episodes = series.json?.episodes || series.json?.seasons?.flatMap((season) => season.episodes || []) || [];
+  const wanted = [
+    episodes.find((episode) => /Chestnut/i.test(episode.title || "")),
+    episodes.find((episode) => /Dissonance Theory/i.test(episode.title || "")),
+  ].filter(Boolean);
+  assert(series.res.ok && wanted.length === 2, "westworld target episodes resolved", `found=${wanted.length}`);
+  if (wanted.length === 2) {
+    for (const episode of wanted) await verifyEpisodePreview(episode);
+    await Promise.all(wanted.map(verifyEpisodeDownload));
+
+    const cancelEpisode = episodes.find((episode) => /Contrapasso/i.test(episode.title || ""));
+    if (cancelEpisode) {
+      const cancelStart = await startEpisodeDownload(cancelEpisode);
+      assert(cancelStart.res.ok && cancelStart.json?.jobId, "westworld queued cancel start");
+      if (cancelStart.json?.jobId && cancelStart.json?.ready !== true) {
+        const cancelled = await api("POST", `/api/cancel/${cancelStart.json.jobId}`, { token, timeoutMs: 15000 });
+        assert(cancelled.res.ok, "westworld queued cancel request", JSON.stringify(cancelled.json));
+        const status = await api("GET", `/api/job/${cancelStart.json.jobId}`, { token, timeoutMs: 15000 });
+        assert(status.json?.status === "cancelled", "westworld queued cancel terminal", JSON.stringify(status.json));
+      } else {
+        ok("westworld queued cancel", "existing file reused — cancellation not destructive");
       }
     }
   }

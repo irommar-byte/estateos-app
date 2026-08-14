@@ -128,6 +128,7 @@ import {
   markJobListed,
   noteJobProgress,
 } from "./download-queue.js";
+import { DurableMovieJobQueue } from "./movie-job-queue.js";
 
 const require = createRequire(import.meta.url);
 // yt-dlp-wrap ships as CommonJS; normalize the default export for ESM.
@@ -2685,6 +2686,88 @@ let ytDlp;
 /** @type {Map<string, {status:string, progress:number, file?:string, name?:string, error?:string, clients:Set<import('express').Response>}>} */
 const jobs = new Map();
 
+const MOVIE_QUEUE_FILE = path.join(DOWNLOAD_DIR, "_movie-job-queue.json");
+const movieDownloadQueue = new DurableMovieJobQueue({
+  filePath: MOVIE_QUEUE_FILE,
+  maxConcurrent: Number(process.env.MOVIE_DOWNLOAD_CONCURRENCY || 2),
+  runner: runQueuedMirrorMovieDownload,
+  onError: failQueuedMovieDownload,
+});
+
+function makeQueuedMovieJob(record) {
+  const movie = record.payload.movieDownload || {};
+  return {
+    id: record.id, purpose: "download", kind: "movie", persistent: true,
+    userKey: movie.userKey || null,
+    movieUrl: movie.url || record.payload.sourceUrl,
+    movieTitle: movie.title || "Film",
+    movieThumbnail: movie.thumbnail || "",
+    movieSource: movie.source || "",
+    name: movie.title || "Film", status: "queued", phase: "queued", progress: 0,
+    queuedAt: record.enqueuedAt || Date.now(),
+    lastProgressAt: record.enqueuedAt || Date.now(),
+    clients: new Set(),
+  };
+}
+
+function restoreQueuedMovieJobs() {
+  for (const record of movieDownloadQueue.list()) {
+    if (!jobs.has(record.id)) jobs.set(record.id, makeQueuedMovieJob(record));
+  }
+}
+
+function enqueueMirrorMovieDownload({ jobId, sourceUrl, movieDownload }) {
+  const record = movieDownloadQueue.enqueue({
+    id: jobId, payload: { type: "mirror", sourceUrl, movieDownload }, enqueuedAt: Date.now(),
+  });
+  const job = makeQueuedMovieJob(record);
+  jobs.set(jobId, job);
+  markJobListed(job, { kind: "movie", title: job.movieTitle, url: job.movieUrl });
+  return job;
+}
+
+async function runQueuedMirrorMovieDownload(record) {
+  const { sourceUrl, movieDownload } = record.payload || {};
+  if (!sourceUrl || !movieDownload) throw new Error("Niepełny zapis kolejki pobierania.");
+  const previous = jobs.get(record.id) || makeQueuedMovieJob(record);
+  previous.status = "starting";
+  previous.phase = "resolving";
+  previous.lastProgressAt = Date.now();
+  jobs.set(record.id, previous);
+  sendEvent(previous, { status: "starting", phase: "resolving", progress: 0, heartbeat: true });
+
+  const mirror = await getMirrorStream(sourceUrl);
+  const streamType = mirror.stream.type || detectStreamType(mirror.stream.url);
+  const isHls = streamType === "hls" || /\.m3u8?(\?|$)/i.test(mirror.stream.url);
+  const clients = previous.clients || new Set();
+  const job = isHls
+    ? startHlsMovieDownloadJob({
+        jobId: record.id, streamUrl: mirror.stream.url, referer: mirror.stream.referer,
+        title: movieDownload.title || mirror.title, movieDownload,
+      })
+    : startMirrorDownloadJob({
+        jobId: record.id, streamUrl: mirror.stream.url, streamReferer: mirror.stream.referer,
+        name: mirror.title, userKey: movieDownload.userKey, movieUrl: movieDownload.url,
+        movieTitle: movieDownload.title, movieThumbnail: movieDownload.thumbnail,
+        movieSource: movieDownload.source,
+      });
+  if (job) {
+    job.clients = clients;
+    job.queuedAt = record.enqueuedAt || job.queuedAt || Date.now();
+    job.lastProgressAt = Date.now();
+    job.phase = "downloading";
+    markJobListed(job, { kind: "movie", title: job.movieTitle, url: job.movieUrl });
+  }
+}
+
+function failQueuedMovieDownload(record, error) {
+  const job = jobs.get(record.id) || makeQueuedMovieJob(record);
+  job.status = "error";
+  job.error = friendlyError(error);
+  jobs.set(record.id, job);
+  sendEvent(job, { status: "error", phase: "error", error: job.error });
+}
+
 const PLAY_TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
 
 function ensurePlayToken(job) {
@@ -2714,6 +2797,7 @@ const MOVIE_JOB_IDLE_MS = 15 * 60 * 1000;
 
 function isStalledMovieDownload(job, now = Date.now()) {
   if (!job || job.kind !== "movie" || job.purpose !== "download") return false;
+  if (job.status === "queued" || job.phase === "queued") return false;
   if (job.ready || job.status === "done" || job.status === "error" || job.status === "cancelled") return false;
   const anchor = Number(job.lastProgressAt || job.queuedAt || job.createdAt || 0);
   return anchor > 0 && now - anchor > MOVIE_JOB_IDLE_MS;
@@ -2751,6 +2835,12 @@ function sendEvent(job, payload) {
     }
   }
   noteJobProgress(job, event);
+  if (
+    job?.kind === "movie" && job?.purpose === "download" &&
+    (event.status === "done" || event.status === "error" || event.status === "cancelled" || event.ready === true)
+  ) {
+    movieDownloadQueue.complete(job.id);
+  }
   // Movie downloads with a user always belong to the account queue.
   if (job?.userKey && job?.kind === "movie" && job?.purpose === "download") {
     markJobListed(job, {
@@ -5656,31 +5746,18 @@ app.post("/api/download", async (req, res) => {
   }
 
   if (isMirrorHost(url)) {
+    if (movieDownload) {
+      const queued = enqueueMirrorMovieDownload({ jobId, sourceUrl: url, movieDownload });
+      return res.json({ jobId, queued: true, status: queued.status, progress: queued.progress });
+    }
     try {
       const mirror = await getMirrorStream(url);
       const streamType = mirror.stream.type || detectStreamType(mirror.stream.url);
-      const isHls =
-        streamType === "hls" || /\.m3u8?(\?|$)/i.test(mirror.stream.url);
+      const isHls = streamType === "hls" || /\.m3u8?(\?|$)/i.test(mirror.stream.url);
       if (isHls) {
-        startHlsMovieDownloadJob({
-          jobId,
-          streamUrl: mirror.stream.url,
-          referer: mirror.stream.referer,
-          title: movieDownload?.title || mirror.title,
-          movieDownload,
-        });
+        startHlsMovieDownloadJob({ jobId, streamUrl: mirror.stream.url, referer: mirror.stream.referer, title: mirror.title });
       } else {
-        startMirrorDownloadJob({
-          jobId,
-          streamUrl: mirror.stream.url,
-          streamReferer: mirror.stream.referer,
-          name: mirror.title,
-          userKey: movieDownload?.userKey,
-          movieUrl: movieDownload?.url,
-          movieTitle: movieDownload?.title,
-          movieThumbnail: movieDownload?.thumbnail,
-          movieSource: movieDownload?.source,
-        });
+        startMirrorDownloadJob({ jobId, streamUrl: mirror.stream.url, streamReferer: mirror.stream.referer, name: mirror.title });
       }
       return res.json({ jobId });
     } catch (err) {
@@ -6265,6 +6342,8 @@ ensureBinary()
   .then(() => {
     ytDlp = new YTDlpWrap(BINARY_PATH);
     app.listen(PORT, "0.0.0.0", () => {
+      restoreQueuedMovieJobs();
+      movieDownloadQueue.start();
       cleanupStaleJobDirs();
       reapStalledMovieDownloads();
       setInterval(cleanupStaleJobDirs, 30 * 60 * 1000);

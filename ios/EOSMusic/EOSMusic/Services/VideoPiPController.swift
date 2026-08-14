@@ -11,6 +11,30 @@ enum VideoHandoffState: Equatable {
     case airPlay
     case restoringVLC
     case failed(String)
+
+    var isTransitioning: Bool {
+        switch self {
+        case .preparingPiP, .preparingAirPlay, .restoringVLC: return true
+        default: return false
+        }
+    }
+
+    var avPlayerOwnsTransport: Bool {
+        switch self {
+        case .pictureInPicture, .airPlay: return true
+        default: return false
+        }
+    }
+}
+
+enum VideoHandoffPolicy {
+    static func canSuspendVLC(
+        avPlayerReady: Bool,
+        hasVideoFrame: Bool,
+        destinationAvailable: Bool
+    ) -> Bool {
+        avPlayerReady && hasVideoFrame && destinationAvailable
+    }
 }
 
 /// Stable hybrid PiP: AVPlayer handles system PiP for Apple-compatible files,
@@ -52,12 +76,7 @@ final class VideoPiPController: NSObject, ObservableObject {
 
     private func setHandoffState(_ state: VideoHandoffState) {
         handoffState = state
-        switch state {
-        case .preparingPiP, .preparingAirPlay:
-            isPreparing = true
-        default:
-            isPreparing = false
-        }
+        isPreparing = state.isTransitioning && state != .restoringVLC
     }
 
     private func failHandoff(_ message: String, airPlay: Bool) {
@@ -390,7 +409,11 @@ final class VideoPiPController: NSObject, ObservableObject {
 
         let routeOK = Self.isAirPlayVideoRoute(AVAudioSession.sharedInstance())
         let avOK = avPlayer.isExternalPlaybackActive
-        guard routeOK || avOK else {
+        guard VideoHandoffPolicy.canSuspendVLC(
+            avPlayerReady: avPlayer.currentItem?.status == .readyToPlay,
+            hasVideoFrame: hasVideo,
+            destinationAvailable: routeOK || avOK
+        ) else {
             failHandoff("AirPlay wideo nie przejął streamu. Spróbuj ponownie albo użyj Lustrzanego odbicia.", airPlay: true)
             return
         }
@@ -627,6 +650,14 @@ final class VideoPiPController: NSObject, ObservableObject {
                 self.attach(to: host)
             } else {
                 self.ensureController()
+            }
+            guard VideoHandoffPolicy.canSuspendVLC(
+                avPlayerReady: self.avPlayer.currentItem?.status == .readyToPlay,
+                hasVideoFrame: true,
+                destinationAvailable: self.isSystemSupported
+            ) else {
+                self.failHandoff("PiP nie jest gotowy do bezpiecznego przejęcia obrazu.", airPlay: false)
+                return
             }
             // AVPlayer has a frame; hand off audio/video ownership only now.
             engine.suspendForAVKitHandoff()

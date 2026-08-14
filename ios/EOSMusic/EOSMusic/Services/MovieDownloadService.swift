@@ -1187,6 +1187,8 @@ final class MovieDownloadService: ObservableObject {
                 if !landed {
                     verifyRemoteTerminal(item: item, jobId: remote.jobId)
                 }
+            } else if remote.phase == "queued" || remote.status == "queued" {
+                item.state = .queuedOnServer
             } else {
                 item.state = .downloading(progress: remote.progressPercent)
             }
