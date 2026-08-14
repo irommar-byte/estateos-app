@@ -179,7 +179,7 @@ check() {
   local attempt
   for attempt in $(seq 1 30); do
     body=$(curl -fsS "$url" 2>/dev/null || true)
-    if [ -n "$body" ] && printf '%s' "$body" | grep -qF "$pattern"; then
+    if [ -n "$body" ] && [[ "$body" == *"$pattern"* ]]; then
       echo "  OK $label"
       return
     fi

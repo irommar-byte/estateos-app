@@ -37,7 +37,7 @@ location = /panel.php {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header Accept-Encoding "";
-    sub_filter '</head>' '<script src="/admin_pro/movies/inject.js?v=20260814134547" defer></script></head>';
+    sub_filter '</head>' '<script src="/admin_pro/movies/inject.js?v=20260814135604" defer></script></head>';
     sub_filter_once on;
     sub_filter_types text/html;
 }
