@@ -432,7 +432,7 @@ if (process.env.SMOKE_WESTWORLD_FULL !== "0") {
         assert(cancelled.res.ok, "westworld queued cancel request", JSON.stringify(cancelled.json));
         const status = await api("GET", `/api/job/${cancelStart.json.jobId}`, { token, timeoutMs: 15000 });
         assert(status.json?.status === "cancelled", "westworld queued cancel terminal", JSON.stringify(status.json));
-        await sleep(4000);
+        await sleep(17000);
         assert(
           !fs.existsSync(path.join(DOWNLOADS_ROOT, "jobs", cancelStart.json.jobId)),
           "westworld queued cancel artifacts removed"

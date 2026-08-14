@@ -2867,6 +2867,7 @@ function sendEvent(job, payload) {
   ) {
     movieDownloadQueue.complete(job.id);
     cleanupTerminalMovieWorkspace(job, event.status === "cancelled" ? 1500 : 3000);
+    cleanupTerminalMovieWorkspace(job, 15000);
   }
   // Movie downloads with a user always belong to the account queue.
   if (job?.userKey && job?.kind === "movie" && job?.purpose === "download") {
