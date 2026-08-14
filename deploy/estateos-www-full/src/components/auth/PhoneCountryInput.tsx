@@ -1,7 +1,5 @@
-'use client';
-
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Phone } from 'lucide-react';
+import { Check, ChevronDown, Phone, X } from 'lucide-react';
 import {
   DEFAULT_PHONE_REGION_ISO,
   PHONE_REGIONS,
@@ -15,7 +13,7 @@ type PhoneCountryInputProps = {
   valueE164: string;
   onChangeE164: (e164: string) => void;
   disabled?: boolean;
-  status?: 'idle' | 'checking' | 'available' | 'taken';
+  status?: 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
   onFocusChange?: (focused: boolean) => void;
   hideLabel?: boolean;
   inputClassName?: string;
@@ -53,11 +51,20 @@ export default function PhoneCountryInput({
   }, [region, localDigits, onChangeE164, valueE164]);
 
   const borderClass =
-    status === 'taken'
-      ? 'border-red-500/50'
+    status === 'taken' || status === 'invalid'
+      ? 'border-red-500/55'
       : status === 'available'
-        ? 'border-emerald-500/50'
+        ? 'border-emerald-500/55'
         : 'border-[var(--eos-border-strong)] focus-within:border-emerald-500';
+
+  const statusIcon =
+    status === 'available' ? (
+      <Check className="size-4 text-emerald-500" strokeWidth={3} />
+    ) : status === 'taken' || status === 'invalid' ? (
+      <X className="size-4 text-red-500" strokeWidth={3} />
+    ) : status === 'checking' ? (
+      <span className="size-3.5 animate-spin rounded-full border-2 border-emerald-500/30 border-t-emerald-500" />
+    ) : null;
 
   return (
     <div ref={rootRef} className={`relative ${wrapperClassName}`}>
@@ -98,6 +105,11 @@ export default function PhoneCountryInput({
             setLocalDigits(digits);
           }}
         />
+        {statusIcon ? (
+          <div className="flex shrink-0 items-center pr-3" aria-hidden>
+            {statusIcon}
+          </div>
+        ) : null}
       </div>
 
       {open && (
@@ -125,10 +137,15 @@ export default function PhoneCountryInput({
         <p className="eos-muted-copy mt-2 text-[10px] font-bold uppercase tracking-widest">Sprawdzam numer…</p>
       )}
       {status === 'available' && (
-        <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-emerald-500">Numer dostępny</p>
+        <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-emerald-500">Numer wolny w CRM</p>
       )}
       {status === 'taken' && (
-        <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-red-500">Numer już w użyciu</p>
+        <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-amber-600">
+          Numer już w bazie klientów
+        </p>
+      )}
+      {status === 'invalid' && (
+        <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-red-500">Nieprawidłowy numer</p>
       )}
     </div>
   );

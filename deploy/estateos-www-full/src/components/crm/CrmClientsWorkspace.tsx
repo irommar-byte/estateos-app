@@ -387,39 +387,39 @@ export default function CrmClientsWorkspace() {
           { label: cl.statsMatches, value: report?.totalMatches ?? "—", icon: Target },
           { label: cl.statsOutreach, value: report?.outreachLast30Days ?? "—", icon: Send },
         ].map((card) => (
-          <div
+          <motion.div
             key={card.label}
-            className="min-w-0 rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/80 p-5 shadow-[var(--eos-shadow-soft)] backdrop-blur-xl"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="min-w-0 rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-5 shadow-[0_18px_48px_rgba(0,0,0,0.12),0_4px_14px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl"
           >
-            <card.icon className="mb-3 size-5 text-emerald-500" />
+            <card.icon className="mb-3 size-5 text-emerald-500 drop-shadow-[0_4px_10px_rgba(16,185,129,0.35)]" />
             <p className="text-2xl font-black tabular-nums text-[var(--eos-text)]">{card.value}</p>
             <p className="mt-1 break-words text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--eos-muted)]">
               {card.label}
             </p>
-          </div>
+          </motion.div>
         ))}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[var(--eos-muted)]">Weryfikacja e-mail</p>
-          <p className="mt-2 text-2xl font-black text-[var(--eos-text)]">{analytics.emailPct}%</p>
-        </div>
-        <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[var(--eos-muted)]">Weryfikacja telefonu</p>
-          <p className="mt-2 text-2xl font-black text-[var(--eos-text)]">{analytics.phonePct}%</p>
-        </div>
-        <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[var(--eos-muted)]">Klienci z dopasowaniami</p>
-          <p className="mt-2 text-2xl font-black text-[var(--eos-text)]">{analytics.matchPct}%</p>
-        </div>
-        <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[var(--eos-muted)]">Do dokończenia</p>
-          <p className="mt-2 text-2xl font-black text-[var(--eos-text)]">{analytics.pendingVerification}</p>
-        </div>
+        {[
+          { label: "Weryfikacja e-mail", value: `${analytics.emailPct}%` },
+          { label: "Weryfikacja telefonu", value: `${analytics.phonePct}%` },
+          { label: "Klienci z dopasowaniami", value: `${analytics.matchPct}%` },
+          { label: "Do dokończenia", value: analytics.pendingVerification },
+        ].map((card) => (
+          <div
+            key={card.label}
+            className="rounded-2xl border border-[var(--eos-border)] bg-gradient-to-b from-[var(--eos-card)] to-[var(--eos-input)]/40 p-4 shadow-[0_12px_32px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.05)]"
+          >
+            <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[var(--eos-muted)]">{card.label}</p>
+            <p className="mt-2 text-2xl font-black text-[var(--eos-text)]">{card.value}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="min-w-0 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)]/60 p-4 text-xs text-[var(--eos-muted)]">
+      <div className="min-w-0 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)]/70 p-4 text-xs text-[var(--eos-muted)] shadow-[0_10px_28px_rgba(0,0,0,0.06)]">
         <p className="font-bold text-[var(--eos-text)]">Jak czytać analitykę CRM:</p>
         <p className="mt-1 break-words leading-relaxed">
           % e-mail/telefon = udział klientów ze zweryfikowanym kontaktem. % dopasowań = udział klientów z min. 1 aktywnym match-em.
@@ -448,9 +448,9 @@ export default function CrmClientsWorkspace() {
       ) : null}
 
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-        <div className="min-w-0 rounded-[1.25rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/75 p-3">
+        <div className="min-w-0 rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/85 p-3 shadow-[0_20px_50px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.05)]">
           <div className="mb-3 grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-            <label className="flex min-w-0 items-center gap-2 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 px-3 py-2">
+            <label className="flex min-w-0 items-center gap-2 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/50 px-3 py-2 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]">
               <Search className="size-4 shrink-0 text-[var(--eos-muted)]" />
               <input
                 value={query}
@@ -599,7 +599,7 @@ export default function CrmClientsWorkspace() {
           )}
         </div>
 
-        <div className="relative min-h-[420px] min-w-0 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/80 p-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-xl sm:p-6">
+        <div className="relative min-h-[420px] min-w-0 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-4 shadow-[0_24px_60px_rgba(0,0,0,0.12),0_6px_18px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl sm:p-6">
           {scanning ? (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-[1.75rem] bg-[var(--eos-card)]/90 px-4 backdrop-blur-sm">
               <motion.div
@@ -1019,7 +1019,7 @@ export default function CrmClientsWorkspace() {
       </div>
 
       {report?.topMatches?.length ? (
-        <div className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/60 p-6">
+        <div className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/75 p-6 shadow-[0_18px_48px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.05)]">
           <p className="mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
             <BarChart3 className="size-4 text-emerald-500" />
             {cl.reportTopMatches}
