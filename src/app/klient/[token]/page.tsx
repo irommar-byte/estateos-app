@@ -11,7 +11,28 @@ import {
   CheckCircle2,
   Building2,
   ExternalLink,
+  SlidersHorizontal,
 } from "lucide-react";
+
+type SearchCriteria = {
+  location: string;
+  minArea: string;
+  maxBudget: string;
+  propertyType: string;
+  transactionType: string;
+  threshold: string;
+  districts: string[];
+  amenities: string[];
+  calibrationMode: "MAP" | "CITY";
+} | null;
+
+type PortalMessage = {
+  id: number;
+  content: string;
+  createdAt: string;
+  fromAgent: boolean;
+  fromMe: boolean;
+};
 
 type PortalData = {
   clientName: string;
@@ -20,6 +41,8 @@ type PortalData = {
   agentName: string;
   agentPhone: string | null;
   agentEmail: string | null;
+  searchCriteria: SearchCriteria;
+  canChat: boolean;
   matches: Array<{
     id: number;
     score: number;
@@ -64,6 +87,9 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const [error, setError] = useState("");
   const [feedbackDraft, setFeedbackDraft] = useState<Record<number, string>>({});
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [messages, setMessages] = useState<PortalMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
 
   useEffect(() => {
     void params.then((p) => setToken(p.token));
@@ -89,9 +115,30 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     }
   }, [token]);
 
+  const loadMessages = useCallback(async () => {
+    if (!token || !portal?.canChat) return;
+    try {
+      const res = await fetch(`/api/crm/client-portal/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list_messages" }),
+      });
+      const json = await res.json();
+      if (res.ok && Array.isArray(json.messages)) {
+        setMessages(json.messages);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [token, portal?.canChat]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadMessages();
+  }, [loadMessages]);
 
   const submitFeedback = async (matchId: number) => {
     const feedback = feedbackDraft[matchId]?.trim();
@@ -110,6 +157,27 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       alert(e instanceof Error ? e.message : "Błąd");
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const sendChat = async () => {
+    const content = chatDraft.trim();
+    if (!token || !content || chatBusy) return;
+    setChatBusy(true);
+    try {
+      const res = await fetch(`/api/crm/client-portal/${token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send_message", content }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Nie udało się wysłać");
+      setChatDraft("");
+      await loadMessages();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Błąd");
+    } finally {
+      setChatBusy(false);
     }
   };
 
@@ -139,6 +207,8 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     );
   }
 
+  const criteria = portal.searchCriteria;
+
   return (
     <main className="min-h-screen bg-[var(--eos-bg)] pt-28 pb-32 text-[var(--eos-text)]">
     <div className="mx-auto max-w-3xl space-y-8 px-4 sm:px-6">
@@ -156,6 +226,45 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           </p>
         )}
       </header>
+
+      {portal.type === "BUYER" && criteria ? (
+        <section className="rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
+          <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--eos-text)]">
+            <SlidersHorizontal className="size-5 text-emerald-500" />
+            Twoje kryteria poszukiwań
+          </h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl bg-[var(--eos-input)]/50 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Lokalizacja</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{criteria.location}</p>
+            </div>
+            <div className="rounded-xl bg-[var(--eos-input)]/50 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Budżet</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{criteria.maxBudget}</p>
+            </div>
+            <div className="rounded-xl bg-[var(--eos-input)]/50 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Typ</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">
+                {criteria.transactionType} · {criteria.propertyType}
+              </p>
+            </div>
+            <div className="rounded-xl bg-[var(--eos-input)]/50 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Metraż</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{criteria.minArea}</p>
+            </div>
+          </div>
+          {criteria.districts?.length ? (
+            <p className="mt-3 text-xs text-[var(--eos-muted)]">
+              Dzielnice: {criteria.districts.join(", ")}
+            </p>
+          ) : null}
+          {criteria.amenities?.length ? (
+            <p className="mt-1 text-xs text-[var(--eos-muted)]">
+              Udogodnienia: {criteria.amenities.join(", ")}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {portal.type === "SELLER" ? (
         <section className="space-y-4">
@@ -262,6 +371,69 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           )}
         </section>
       )}
+
+      <section className="rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-[var(--eos-text)]">
+          <MessageSquare className="size-5 text-emerald-500" />
+          Wiadomości z agentem
+        </h2>
+        {portal.canChat ? (
+          <>
+            <div className="mt-4 max-h-72 space-y-2 overflow-y-auto rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/30 p-3">
+              {messages.length === 0 ? (
+                <p className="py-6 text-center text-sm text-[var(--eos-muted)]">
+                  Napisz do agenta — rozmowa trafi do jego Contact w EstateOS.
+                </p>
+              ) : (
+                messages.map((m) => (
+                  <div
+                    key={m.id}
+                    className={`rounded-xl px-3 py-2 text-sm ${
+                      m.fromMe
+                        ? "ml-8 bg-emerald-500/15 text-[var(--eos-text)]"
+                        : "mr-8 bg-[var(--eos-card)] text-[var(--eos-text)]"
+                    }`}
+                  >
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                      {m.fromMe ? "Ty" : portal.agentName}
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap">{m.content}</p>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <input
+                value={chatDraft}
+                onChange={(e) => setChatDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void sendChat();
+                  }
+                }}
+                placeholder="Napisz wiadomość do agenta…"
+                className="flex-1 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)]"
+              />
+              <button
+                type="button"
+                disabled={chatBusy || !chatDraft.trim()}
+                onClick={() => void sendChat()}
+                className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+              >
+                <Send className="size-3" />
+                Wyślij
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="mt-3 text-sm text-[var(--eos-muted)]">
+            Czat będzie dostępny, gdy agent powiąże Twoje konto EstateOS. Możesz też skontaktować się bezpośrednio:
+            {" "}
+            {portal.agentPhone || portal.agentEmail || "dane kontaktowe agenta."}
+          </p>
+        )}
+      </section>
 
       {portal.activities.length > 0 ? (
         <section>

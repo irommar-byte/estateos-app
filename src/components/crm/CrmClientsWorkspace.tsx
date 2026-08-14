@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import AgencyClientFormModal from "@/components/crm/AgencyClientFormModal";
 import CrmEmailPreviewModal from "@/components/crm/CrmEmailPreviewModal";
+import OpenContactThreadButton from "@/components/contact/OpenContactThreadButton";
 import { useLocale } from "@/contexts/LocaleContext";
 import type { AgencyClientListItem } from "@/lib/agencyClientShape";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
@@ -655,6 +656,15 @@ export default function CrmClientsWorkspace() {
                     Panel klienta
                     <ExternalLink className="size-3.5" />
                   </Link>
+                ) : null}
+                {detail.linkedUserId ? (
+                  <OpenContactThreadButton
+                    peerUserId={detail.linkedUserId}
+                    peerName={`${detail.firstName} ${detail.lastName}`.trim()}
+                    label="Napisz do klienta"
+                    returnTo="/moje-konto/crm?tab=klienci"
+                    className={eosBtn("secondary", { size: "sm" })}
+                  />
                 ) : null}
               </div>
 

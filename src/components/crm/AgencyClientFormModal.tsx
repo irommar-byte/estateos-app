@@ -3,12 +3,17 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ShoppingBag, Home, ChevronLeft, Check, Radar, CalendarDays, MapPin } from "lucide-react";
-import { defaultWebRadarFilters, type WebRadarFilters } from "@/lib/radarCalibrationWeb";
+import { X, ShoppingBag, Home, ChevronLeft, Check, Radar, CalendarDays, MapPin, SlidersHorizontal } from "lucide-react";
+import {
+  defaultWebRadarFilters,
+  formatRadarSummary,
+  type WebRadarFilters,
+} from "@/lib/radarCalibrationWeb";
 import { parsePesel } from "@/lib/pesel";
 import PhoneCountryInput from "@/components/auth/PhoneCountryInput";
 import { useLocale } from "@/contexts/LocaleContext";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
+import CrmRadarCalibrationModal from "@/components/crm/CrmRadarCalibrationModal";
 
 type Props = {
   open: boolean;
@@ -33,6 +38,11 @@ export default function AgencyClientFormModal({
   const [error, setError] = useState("");
   const [phoneE164, setPhoneE164] = useState("");
   const [buyerFilters, setBuyerFilters] = useState<WebRadarFilters>(defaultWebRadarFilters());
+  const [radarOpen, setRadarOpen] = useState(false);
+  const [radarCatalog, setRadarCatalog] = useState<{
+    strictCities: string[];
+    strictCityDistricts: Record<string, string[]>;
+  }>({ strictCities: [], strictCityDistricts: {} });
   const [meeting, setMeeting] = useState({
     enabled: false,
     date: "",
@@ -61,6 +71,7 @@ export default function AgencyClientFormModal({
     setError("");
     setPhoneE164("");
     setScanning(false);
+    setRadarOpen(false);
     setBuyerFilters(defaultWebRadarFilters());
     setMeeting({ enabled: false, date: "", time: "10:00", location: "", note: "" });
     setForm({
@@ -73,10 +84,24 @@ export default function AgencyClientFormModal({
       sellerCity: "",
       sellerPrice: "",
     });
+    void (async () => {
+      try {
+        const res = await fetch("/api/location/districts", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        setRadarCatalog({
+          strictCities: Array.isArray(data?.strictCities) ? data.strictCities : [],
+          strictCityDistricts: data?.strictCityDistricts || {},
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
   }, [open, initialType]);
 
   const peselData = parsePesel(form.pesel);
   const maxStep = 3;
+  const buyerSummary = formatRadarSummary(buyerFilters);
 
   const submit = async () => {
     setSaving(true);
@@ -106,7 +131,9 @@ export default function AgencyClientFormModal({
           ...(type === "SELLER"
             ? {
                 sellerCity: form.sellerCity || null,
-                sellerPrice: form.sellerPrice ? Number(String(form.sellerPrice).replace(/\s/g, "").replace(",", ".")) : null,
+                sellerPrice: form.sellerPrice
+                  ? Number(String(form.sellerPrice).replace(/\s/g, "").replace(",", "."))
+                  : null,
                 acquisitionMeeting,
               }
             : {}),
@@ -168,17 +195,23 @@ export default function AgencyClientFormModal({
                     </p>
                     <h2 className="mt-1 text-2xl font-bold text-[var(--eos-text)]">{cl.formTitle}</h2>
                   </div>
-                  <button type="button" onClick={onClose} className="rounded-full p-2 text-[var(--eos-muted)] hover:bg-[var(--eos-input)]">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-full p-2 text-[var(--eos-muted)] hover:bg-[var(--eos-input)]"
+                  >
                     <X className="size-5" />
                   </button>
                 </div>
 
                 {step === 1 ? (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {([
-                      { key: "BUYER" as const, icon: ShoppingBag, title: cl.typeBuyerTitle, body: cl.typeBuyerBody },
-                      { key: "SELLER" as const, icon: Home, title: cl.typeSellerTitle, body: cl.typeSellerBody },
-                    ]).map((opt) => (
+                    {(
+                      [
+                        { key: "BUYER" as const, icon: ShoppingBag, title: cl.typeBuyerTitle, body: cl.typeBuyerBody },
+                        { key: "SELLER" as const, icon: Home, title: cl.typeSellerTitle, body: cl.typeSellerBody },
+                      ] as const
+                    ).map((opt) => (
                       <button
                         key={opt.key}
                         type="button"
@@ -199,9 +232,11 @@ export default function AgencyClientFormModal({
 
                 {step === 2 ? (
                   <div className="space-y-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <label className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">{cl.firstName}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                          {cl.firstName}
+                        </span>
                         <input
                           value={form.firstName}
                           onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
@@ -209,7 +244,9 @@ export default function AgencyClientFormModal({
                         />
                       </label>
                       <label className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">{cl.lastName}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                          {cl.lastName}
+                        </span>
                         <input
                           value={form.lastName}
                           onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
@@ -218,7 +255,9 @@ export default function AgencyClientFormModal({
                       </label>
                     </div>
                     <label className="block">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">{cl.email}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                        {cl.email}
+                      </span>
                       <input
                         type="email"
                         value={form.email}
@@ -226,23 +265,33 @@ export default function AgencyClientFormModal({
                         className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
                       />
                     </label>
-                    <label className="block">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">{cl.phone}</span>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                        {cl.phone}
+                      </span>
                       <div className="mt-2">
                         <PhoneCountryInput valueE164={phoneE164} onChangeE164={setPhoneE164} />
                       </div>
-                    </label>
+                    </div>
                     <label className="block">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">PESEL (opcjonalnie)</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                        PESEL (opcjonalnie)
+                      </span>
                       <input
                         value={form.pesel}
-                        onChange={(e) => setForm((f) => ({ ...f, pesel: e.target.value.replace(/[^\d]/g, "").slice(0, 11) }))}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            pesel: e.target.value.replace(/[^\d]/g, "").slice(0, 11),
+                          }))
+                        }
                         className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
                       />
                       {form.pesel.length > 0 ? (
                         peselData ? (
                           <p className="mt-2 text-xs font-semibold text-emerald-600">
-                            PESEL poprawny · {peselData.gender === "M" ? "Mężczyzna" : "Kobieta"} · {peselData.birthDate}
+                            PESEL poprawny · {peselData.gender === "M" ? "Mężczyzna" : "Kobieta"} ·{" "}
+                            {peselData.birthDate}
                           </p>
                         ) : (
                           <p className="mt-2 text-xs font-semibold text-red-500">PESEL niepoprawny</p>
@@ -250,7 +299,9 @@ export default function AgencyClientFormModal({
                       ) : null}
                     </label>
                     <label className="block">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">{cl.notes}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                        {cl.notes}
+                      </span>
                       <textarea
                         value={form.notes}
                         onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
@@ -264,84 +315,42 @@ export default function AgencyClientFormModal({
                 {step === 3 && type === "BUYER" ? (
                   <div className="space-y-4">
                     <p className="text-sm text-[var(--eos-muted)]">
-                      Ustaw kryteria wyszukiwania — system będzie dopasowywał oferty i pokaże Ci alerty w CRM.
+                      Ustaw pełne kryteria wyszukiwania (mapa lub miasto + dzielnice, budżet, udogodnienia) —
+                      system będzie dopasowywał oferty w CRM.
                     </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">Miasto</span>
-                        <input
-                          value={buyerFilters.city}
-                          onChange={(e) => setBuyerFilters((f) => ({ ...f, city: e.target.value }))}
-                          className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">Transakcja</span>
-                        <select
-                          value={buyerFilters.transactionType}
-                          onChange={(e) =>
-                            setBuyerFilters((f) => ({
-                              ...f,
-                              transactionType: e.target.value as "SELL" | "RENT",
-                            }))
-                          }
-                          className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
-                        >
-                          <option value="SELL">Kupno</option>
-                          <option value="RENT">Wynajem</option>
-                        </select>
-                      </label>
-                      <label className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">Typ nieruchomości</span>
-                        <select
-                          value={buyerFilters.propertyType}
-                          onChange={(e) => setBuyerFilters((f) => ({ ...f, propertyType: e.target.value }))}
-                          className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
-                        >
-                          <option value="FLAT">Mieszkanie</option>
-                          <option value="HOUSE">Dom</option>
-                          <option value="PLOT">Działka</option>
-                          <option value="COMMERCIAL">Lokal</option>
-                        </select>
-                      </label>
-                      <label className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">Max cena (PLN)</span>
-                        <input
-                          type="number"
-                          value={buyerFilters.maxPrice || ""}
-                          onChange={(e) =>
-                            setBuyerFilters((f) => ({ ...f, maxPrice: Number(e.target.value) || 0 }))
-                          }
-                          className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">Min. metraż</span>
-                        <input
-                          type="number"
-                          value={buyerFilters.minArea || ""}
-                          onChange={(e) =>
-                            setBuyerFilters((f) => ({ ...f, minArea: Number(e.target.value) || 0 }))
-                          }
-                          className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">Próg dopasowania %</span>
-                        <input
-                          type="number"
-                          min={50}
-                          max={100}
-                          value={buyerFilters.matchThreshold}
-                          onChange={(e) =>
-                            setBuyerFilters((f) => ({
-                              ...f,
-                              matchThreshold: Math.max(50, Math.min(100, Number(e.target.value) || 70)),
-                            }))
-                          }
-                          className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
-                        />
-                      </label>
+                    <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
+                      <div className="grid gap-2 text-sm">
+                        <p>
+                          <span className="text-[var(--eos-muted)]">Lokalizacja:</span>{" "}
+                          <strong>{buyerSummary.location}</strong>
+                        </p>
+                        <p>
+                          <span className="text-[var(--eos-muted)]">Typ:</span>{" "}
+                          <strong>
+                            {buyerSummary.transactionType} · {buyerSummary.propertyType}
+                          </strong>
+                        </p>
+                        <p>
+                          <span className="text-[var(--eos-muted)]">Budżet:</span>{" "}
+                          <strong>{buyerSummary.maxBudget}</strong>
+                        </p>
+                        <p>
+                          <span className="text-[var(--eos-muted)]">Metraż:</span>{" "}
+                          <strong>{buyerSummary.minArea}</strong>
+                        </p>
+                        <p>
+                          <span className="text-[var(--eos-muted)]">Próg:</span>{" "}
+                          <strong>{buyerSummary.threshold}</strong>
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setRadarOpen(true)}
+                        className={eosBtn("home", { className: "mt-4 w-full", size: "sm" })}
+                      >
+                        <SlidersHorizontal className="size-3.5" />
+                        Kalibruj radar klienta
+                      </button>
                     </div>
                   </div>
                 ) : null}
@@ -350,7 +359,9 @@ export default function AgencyClientFormModal({
                   <div className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2">
                       <label className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">Miasto / lokalizacja</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                          Miasto / lokalizacja
+                        </span>
                         <input
                           value={form.sellerCity}
                           onChange={(e) => setForm((f) => ({ ...f, sellerCity: e.target.value }))}
@@ -358,7 +369,9 @@ export default function AgencyClientFormModal({
                         />
                       </label>
                       <label className="block">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">Szacowana cena</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                          Szacowana cena
+                        </span>
                         <input
                           value={form.sellerPrice}
                           onChange={(e) => setForm((f) => ({ ...f, sellerPrice: e.target.value }))}
@@ -383,7 +396,9 @@ export default function AgencyClientFormModal({
                         <div className="mt-4 space-y-3">
                           <div className="grid gap-3 sm:grid-cols-2">
                             <label className="block">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">Data</span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                                Data
+                              </span>
                               <input
                                 type="date"
                                 value={meeting.date}
@@ -392,7 +407,9 @@ export default function AgencyClientFormModal({
                               />
                             </label>
                             <label className="block">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">Godzina</span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
+                                Godzina
+                              </span>
                               <input
                                 type="time"
                                 value={meeting.time}
@@ -424,7 +441,8 @@ export default function AgencyClientFormModal({
                             />
                           </label>
                           <p className="text-xs text-[var(--eos-muted)]">
-                            Po zapisaniu termin trafi do Twojego dnia w CRM, a klient dostanie e-mail (jeśli podał adres).
+                            Po zapisaniu termin trafi do Twojego dnia w CRM, a klient dostanie e-mail (jeśli podał
+                            adres).
                           </p>
                         </div>
                       ) : null}
@@ -436,7 +454,11 @@ export default function AgencyClientFormModal({
 
                 <div className="mt-8 flex flex-wrap gap-3">
                   {step > 1 ? (
-                    <button type="button" onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)} className={eosBtn("secondary")}>
+                    <button
+                      type="button"
+                      onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)}
+                      className={eosBtn("secondary")}
+                    >
                       <ChevronLeft className="size-4" />
                       {cl.back}
                     </button>
@@ -469,6 +491,18 @@ export default function AgencyClientFormModal({
               </>
             )}
           </motion.div>
+
+          <CrmRadarCalibrationModal
+            open={radarOpen}
+            onClose={() => setRadarOpen(false)}
+            initialFilters={buyerFilters}
+            catalog={radarCatalog}
+            saving={false}
+            onSave={async (filters) => {
+              setBuyerFilters(filters);
+              setRadarOpen(false);
+            }}
+          />
         </motion.div>
       ) : null}
     </AnimatePresence>,
