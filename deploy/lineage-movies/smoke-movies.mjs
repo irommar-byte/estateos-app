@@ -13,6 +13,7 @@ const JWT_SECRET = process.env.MOVIES_JWT_SECRET || "lineage-movies-jwt-prod-set
 const LOGIN = process.env.SMOKE_LOGIN || "rommar";
 const USER_ID = process.env.SMOKE_USER_ID || `player:${LOGIN}`;
 const ROOT = process.env.MOVIES_ROOT || path.resolve(process.cwd(), "video-downloader");
+const DOWNLOADS_ROOT = process.env.MUSIC_PLAYLIST_DOWNLOADS_DIR || "/home/rommar/lineage-movies/downloads";
 
 const results = [];
 const ok = (name, detail = "") => {
@@ -191,8 +192,7 @@ async function verifyEpisodeDownload(episode) {
 
 
 async function ensureSmokeOfflineMovie() {
-  const downloadsRoot = process.env.MUSIC_PLAYLIST_DOWNLOADS_DIR || "/home/rommar/lineage-movies/downloads";
-  const dir = path.join(downloadsRoot, "MOVIES");
+  const dir = path.join(DOWNLOADS_ROOT, "MOVIES");
   fs.mkdirSync(dir, { recursive: true });
   const jobId = "00000000-smoke-test-offline-play-0001";
   const filename = "Smoke Offline Play-00000000.mp4";
@@ -432,6 +432,11 @@ if (process.env.SMOKE_WESTWORLD_FULL !== "0") {
         assert(cancelled.res.ok, "westworld queued cancel request", JSON.stringify(cancelled.json));
         const status = await api("GET", `/api/job/${cancelStart.json.jobId}`, { token, timeoutMs: 15000 });
         assert(status.json?.status === "cancelled", "westworld queued cancel terminal", JSON.stringify(status.json));
+        await sleep(4000);
+        assert(
+          !fs.existsSync(path.join(DOWNLOADS_ROOT, "jobs", cancelStart.json.jobId)),
+          "westworld queued cancel artifacts removed"
+        );
       } else {
         ok("westworld queued cancel", "existing file reused — cancellation not destructive");
       }

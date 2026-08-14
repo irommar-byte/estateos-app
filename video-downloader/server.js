@@ -2712,6 +2712,14 @@ function assertMovieStorageAvailable() {
   throw error;
 }
 
+function cleanupTerminalMovieWorkspace(job, delayMs = 2000) {
+  if (!job || job.kind !== "movie" || job.purpose !== "download") return;
+  const jobDir = path.join(DOWNLOAD_DIR, String(job.id || ""));
+  setTimeout(() => {
+    try { fs.rmSync(jobDir, { recursive: true, force: true }); } catch {}
+  }, Math.max(0, delayMs));
+}
+
 function makeQueuedMovieJob(record) {
   const movie = record.payload.movieDownload || {};
   return {
@@ -2858,6 +2866,7 @@ function sendEvent(job, payload) {
     (event.status === "done" || event.status === "error" || event.status === "cancelled" || event.ready === true)
   ) {
     movieDownloadQueue.complete(job.id);
+    cleanupTerminalMovieWorkspace(job, event.status === "cancelled" ? 1500 : 3000);
   }
   // Movie downloads with a user always belong to the account queue.
   if (job?.userKey && job?.kind === "movie" && job?.purpose === "download") {
@@ -6078,6 +6087,9 @@ app.get("/api/progress/:jobId", (req, res) => {
 app.post("/api/cancel/:jobId", (req, res) => {
   const job = jobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: "Zadanie nie istnieje." });
+  if (job.ready === true || job.status === "done") {
+    return res.status(409).json({ error: "Pobieranie jest już zakończone." });
+  }
 
   stopJobTransfer(job);
 
@@ -6098,6 +6110,7 @@ app.post("/api/cancel/:jobId", (req, res) => {
   } catch {}
 
   job.cancelled = true;
+  cleanupTerminalMovieWorkspace(job, 0);
   sendEvent(job, {
     status: "cancelled",
     error: "Pobieranie anulowane.",
