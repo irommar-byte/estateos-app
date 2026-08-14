@@ -61,6 +61,13 @@ struct FavoriteItem: Codable, Identifiable, Hashable {
     let source: String?
     let detail: String?
     let duration: Double?
+
+    var isMovie: Bool {
+        let t = type.lowercased()
+        return t == "movie" || t == "video" || t == "film"
+    }
+
+    var isMusic: Bool { !isMovie }
 }
 
 struct FavoritesResponse: Codable {
@@ -201,7 +208,7 @@ struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
 
     var isTerminal: Bool {
         let s = status.lowercased()
-        return s == "done" || s == "error" || s == "cancelled" || ready == true
+        return s == "done" || s == "error" || s == "cancelled"
     }
 
     var isFailed: Bool {
@@ -745,6 +752,19 @@ extension SearchResultItem {
             thumbnail: thumbnail,
             source: source ?? "apple-music",
             detail: uploader ?? detail,
+            duration: duration
+        )
+    }
+
+    var movieFavoriteItem: FavoriteItem {
+        FavoriteItem(
+            id: url,
+            type: "movie",
+            url: url,
+            title: title,
+            thumbnail: thumbnail,
+            source: source ?? "cda-hd",
+            detail: detail,
             duration: duration
         )
     }

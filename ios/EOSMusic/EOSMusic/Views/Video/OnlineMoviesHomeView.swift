@@ -30,6 +30,10 @@ struct OnlineMoviesHomeView: View {
                         .padding(.vertical, 80)
                 }
 
+                if !movieFavorites.isEmpty, searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    movieFavoritesShelf
+                }
+
                 if let error = movies.homeError, movies.shelves.isEmpty {
                     ContentUnavailableView(
                         "\(EOSLibraryBrand.displayName) niedostępne",
@@ -127,73 +131,108 @@ struct OnlineMoviesHomeView: View {
         .animation(.easeOut(duration: 0.25), value: movies.statusMessage)
     }
 
+    private var movieFavorites: [FavoriteItem] {
+        app.favoriteItems.filter(\.isMovie)
+    }
+
     private func heroBanner(_ item: SearchResultItem) -> some View {
-        Button {
-            selection = OnlineMovieSelection(item: item)
-        } label: {
-            ZStack(alignment: .bottomLeading) {
-                OnlineMovieBackdrop(url: item.artworkURL)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 420)
-                    .clipped()
+        ZStack(alignment: .topTrailing) {
+            Button {
+                selection = OnlineMovieSelection(item: item)
+            } label: {
+                ZStack(alignment: .bottomLeading) {
+                    OnlineMovieBackdrop(url: item.artworkURL)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 420)
+                        .clipped()
 
-                LinearGradient(
-                    colors: [
-                        .clear,
-                        Color.black.opacity(0.35),
-                        Color.black.opacity(0.92),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                    LinearGradient(
+                        colors: [
+                            .clear,
+                            Color.black.opacity(0.35),
+                            Color.black.opacity(0.92),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(EOSLibraryBrand.displayName)
-                        .font(EOSTypography.captionBold)
-                        .tracking(1.2)
-                        .foregroundStyle(EOSTheme.accent)
-                    Text(item.title)
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .lineLimit(3)
-                    if let detail = item.detail, !detail.isEmpty {
-                        Text(detail)
-                            .font(EOSTypography.subheadline)
-                            .foregroundStyle(.white.opacity(0.72))
-                            .lineLimit(2)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(EOSLibraryBrand.displayName)
+                            .font(EOSTypography.captionBold)
+                            .tracking(1.2)
+                            .foregroundStyle(EOSTheme.accent)
+                        Text(item.title)
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(3)
+                        if let detail = item.detail, !detail.isEmpty {
+                            Text(detail)
+                                .font(EOSTypography.subheadline)
+                                .foregroundStyle(.white.opacity(0.72))
+                                .lineLimit(2)
+                        }
+                        HStack(spacing: 10) {
+                            Label("Zobacz", systemImage: "play.fill")
+                                .font(EOSTypography.subheadline.weight(.semibold))
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(.white, in: Capsule())
+                                .foregroundStyle(.black)
+                            if item.looksLikeSeries {
+                                Text("SERIAL")
+                                    .font(EOSTypography.microLabel.weight(.bold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(EOSTheme.accent.opacity(0.9), in: Capsule())
+                                    .foregroundStyle(.white)
+                            } else {
+                                Text("FILM")
+                                    .font(EOSTypography.microLabel.weight(.bold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.white.opacity(0.18), in: Capsule())
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .padding(.top, 4)
                     }
-                    HStack(spacing: 10) {
-                        Label("Zobacz", systemImage: "play.fill")
-                            .font(EOSTypography.subheadline.weight(.semibold))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(.white, in: Capsule())
-                            .foregroundStyle(.black)
-                        if item.looksLikeSeries {
-                            Text("SERIAL")
-                                .font(EOSTypography.microLabel.weight(.bold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(EOSTheme.accent.opacity(0.9), in: Capsule())
-                                .foregroundStyle(.white)
-                        } else {
-                            Text("FILM")
-                                .font(EOSTypography.microLabel.weight(.bold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color.white.opacity(0.18), in: Capsule())
-                                .foregroundStyle(.white)
+                    .padding(20)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .padding(.horizontal, 16)
+                .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
+            }
+            .buttonStyle(.plain)
+
+            FavoriteButton(item: item.movieFavoriteItem, size: 18)
+                .padding(10)
+                .background(.ultraThinMaterial, in: Circle())
+                .padding(.trailing, 28)
+                .padding(.top, 18)
+        }
+    }
+
+    private var movieFavoritesShelf: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Ulubione")
+                .font(EOSTypography.title3)
+                .padding(.horizontal, 16)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 12) {
+                    ForEach(movieFavorites) { item in
+                        MoviePosterWithHeart(
+                            title: item.title,
+                            thumbnail: item.thumbnail,
+                            favoriteItem: item,
+                            badge: "♥"
+                        ) {
+                            selection = OnlineMovieSelection(favorite: item)
                         }
                     }
-                    .padding(.top, 4)
                 }
-                .padding(20)
+                .padding(.horizontal, 16)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .padding(.horizontal, 16)
-            .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
         }
-        .buttonStyle(.plain)
     }
 
     private var downloadsShelf: some View {
@@ -204,16 +243,14 @@ struct OnlineMoviesHomeView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 12) {
                     ForEach(movies.downloads) { download in
-                        Button {
+                        MoviePosterWithHeart(
+                            title: download.title,
+                            thumbnail: download.thumbnail,
+                            favoriteItem: download.favoriteItem,
+                            badge: "SERWER"
+                        ) {
                             selection = OnlineMovieSelection(download: download)
-                        } label: {
-                            OnlineMoviePosterCard(
-                                title: download.title,
-                                thumbnail: download.thumbnail,
-                                badge: "SERWER"
-                            )
                         }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -244,12 +281,9 @@ struct OnlineMoviesHomeView: View {
                 spacing: 16
             ) {
                 ForEach(searchResults) { item in
-                    Button {
+                    MoviePosterWithHeart(item: item) {
                         selection = OnlineMovieSelection(item: item)
-                    } label: {
-                        OnlineMoviePosterCard(item: item)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
@@ -342,6 +376,64 @@ struct OnlineMoviePosterCard: View {
     }
 }
 
+struct MoviePosterWithHeart: View {
+    let title: String
+    let thumbnail: String?
+    let favoriteItem: FavoriteItem
+    var badge: String? = nil
+    var rating: Double? = nil
+    var showRating: Bool = false
+    let onSelect: () -> Void
+
+    init(item: SearchResultItem, showRating: Bool = false, onSelect: @escaping () -> Void) {
+        title = item.title
+        thumbnail = item.thumbnail
+        favoriteItem = item.movieFavoriteItem
+        badge = item.contentTypeBadge
+        rating = item.rating
+        self.showRating = showRating
+        self.onSelect = onSelect
+    }
+
+    init(
+        title: String,
+        thumbnail: String?,
+        favoriteItem: FavoriteItem,
+        badge: String? = nil,
+        rating: Double? = nil,
+        showRating: Bool = false,
+        onSelect: @escaping () -> Void
+    ) {
+        self.title = title
+        self.thumbnail = thumbnail
+        self.favoriteItem = favoriteItem
+        self.badge = badge
+        self.rating = rating
+        self.showRating = showRating
+        self.onSelect = onSelect
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Button(action: onSelect) {
+                OnlineMoviePosterCard(
+                    title: title,
+                    thumbnail: thumbnail,
+                    badge: badge,
+                    rating: rating,
+                    showRating: showRating
+                )
+            }
+            .buttonStyle(.plain)
+
+            FavoriteButton(item: favoriteItem, size: 14)
+                .padding(7)
+                .background(.ultraThinMaterial, in: Circle())
+                .padding(6)
+        }
+    }
+}
+
 // MARK: - Taśma z nieskończonym przewijaniem
 
 private struct OnlineMoviesShelfRow: View {
@@ -394,12 +486,9 @@ private struct OnlineMoviesShelfRow: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 12) {
                     ForEach(items) { item in
-                        Button {
+                        MoviePosterWithHeart(item: item, showRating: showRatings) {
                             onSelect(item)
-                        } label: {
-                            OnlineMoviePosterCard(item: item, showRating: showRatings)
                         }
-                        .buttonStyle(.plain)
                         .onAppear {
                             if item.id == items.last?.id {
                                 Task { await loadMoreIfNeeded() }
@@ -480,12 +569,9 @@ struct OnlineMoviesCatalogView: View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 12)], spacing: 16) {
                 ForEach(items) { item in
-                    Button {
+                    MoviePosterWithHeart(item: item, showRating: mode == .topRated) {
                         selection = OnlineMovieSelection(item: item)
-                    } label: {
-                        OnlineMoviePosterCard(item: item, showRating: mode == .topRated)
                     }
-                    .buttonStyle(.plain)
                     .onAppear {
                         if item.id == items.last?.id, hasMore, !isLoading {
                             Task { await loadMore() }
@@ -594,12 +680,9 @@ struct OnlineMoviesActorResultsView: View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 12)], spacing: 16) {
                 ForEach(items) { item in
-                    Button {
+                    MoviePosterWithHeart(item: item) {
                         selection = OnlineMovieSelection(item: item)
-                    } label: {
-                        OnlineMoviePosterCard(item: item)
                     }
-                    .buttonStyle(.plain)
                     .onAppear {
                         if item.id == items.last?.id, hasMore, !isLoading {
                             Task { await loadMore() }

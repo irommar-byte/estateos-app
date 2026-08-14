@@ -491,6 +491,7 @@ struct VideoPlayerView: View {
                         engine.seek(to: time, resume: true)
                         engine.isUserSeeking = false
                         isScrubbing = false
+                        engine.captureScrubPreview()
                         bumpControls()
                     }
                 }
@@ -621,7 +622,18 @@ private struct VideoScrubber: View {
     }
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
+            if dragTime != nil {
+                GeometryReader { geo in
+                    previewBubble
+                        .position(
+                            x: min(max(84, geo.size.width * progress), max(84, geo.size.width - 84)),
+                            y: geo.size.height / 2
+                        )
+                }
+                .frame(height: 112)
+            }
+
             HStack {
                 Text(formatClock(displayTime))
                     .font(.caption.monospacedDigit().weight(.semibold))
@@ -660,16 +672,6 @@ private struct VideoScrubber: View {
                 )
                 .frame(maxHeight: .infinity, alignment: .center)
                 .contentShape(Rectangle())
-                .overlay(alignment: .topLeading) {
-                    if dragTime != nil {
-                        previewBubble
-                            .offset(
-                                x: min(max(0, width * progress - 80), max(0, width - 160)),
-                                y: -104
-                            )
-                            .transition(.scale(scale: 0.92).combined(with: .opacity))
-                    }
-                }
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { gesture in

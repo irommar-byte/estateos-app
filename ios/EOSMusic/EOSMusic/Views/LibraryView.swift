@@ -256,7 +256,9 @@ struct LibraryView: View {
         guard app.isOfflinePlaybackActive else { return nil }
         switch category {
         case .favorites:
-            let n = app.favoriteItems.filter { $0.type == "music" && app.isOfflineAvailable($0.url) }.count
+            let music = app.favoriteItems.filter { $0.isMusic && app.isOfflineAvailable($0.url) }.count
+            let movies = app.favoriteItems.filter { $0.isMovie && app.isMovieOnPhone(url: $0.url) }.count
+            let n = music + movies
             return n > 0 ? "\(n) offline" : "Brak offline"
         case .playlists:
             let n = app.libraryFoldersForBrowsing.count

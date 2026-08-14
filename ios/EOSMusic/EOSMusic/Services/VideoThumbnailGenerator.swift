@@ -62,11 +62,23 @@ final class VideoThumbnailGenerator: NSObject, ObservableObject, @preconcurrency
         activeThumbnailer?.delegate = nil
         activeThumbnailer = nil
         pendingFrames = []
+        frames = []
         isGenerating = false
     }
 
     func nearestFrame(to fraction: Double) -> VideoThumbnailFrame? {
         frames.min { abs($0.fraction - fraction) < abs($1.fraction - fraction) }
+    }
+
+    func ingestLiveFrame(_ image: UIImage, fraction: Double) {
+        guard !isGenerating else { return }
+        let clamped = min(0.999, max(0, fraction))
+        let bucket = (clamped * 16).rounded() / 16
+        var next = frames.filter { abs($0.fraction - bucket) > 0.03 }
+        next.append(VideoThumbnailFrame(fraction: bucket, image: image))
+        next.sort { $0.fraction < $1.fraction }
+        frames = Array(next.prefix(Self.maxFrames))
+        isGenerating = false
     }
 
     private func generateWithAVFoundation(url: URL, duration: Double, id: UUID) {

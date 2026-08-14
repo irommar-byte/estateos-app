@@ -621,14 +621,11 @@ final class MovieDownloadService: ObservableObject {
     }
 
     private func verifyMovieLanded(item: MovieDownloadQueueItem, in downloads: [MovieDownload]) -> Bool {
-        if downloads.contains(where: {
-            MovieURLMatching.urlsMatch($0.url, item.url)
-                && (($0.bytes ?? 0) > 0 || !($0.downloadJobId?.isEmpty ?? true))
-        }) {
-            return true
+        if let match = downloads.first(where: { MovieURLMatching.urlsMatch($0.url, item.url) }) {
+            return match.hasLandedFile
         }
         if let matched = MovieURLMatching.download(matching: item.url, title: item.title, in: downloads) {
-            return (matched.bytes ?? 0) > 0 || matched.isDownloaded
+            return matched.hasLandedFile
         }
         return false
     }
@@ -822,7 +819,7 @@ final class MovieDownloadService: ObservableObject {
                     startJobId = start.jobId
                     itemJobIds[key] = start.jobId
                     persistBatch()
-                    alreadyReady = start.ready == true
+                    alreadyReady = start.status?.lowercased() == "done"
                 }
 
                 currentJobId = startJobId
@@ -1095,7 +1092,7 @@ final class MovieDownloadService: ObservableObject {
                 )
             }
 
-            if job.ready == true || job.status == "done" {
+            if job.status.lowercased() == "done" {
                 // 100% is reserved for a verified file in MOVIES/. Linking follows.
                 applyProgress(itemIndex: itemIndex, phone: false, percent: 99)
                 return
@@ -1187,31 +1184,51 @@ final class MovieDownloadService: ObservableObject {
         if live.isEmpty {
             if var batch = activeBatch, batch.isRemoteSynced, batchTask == nil {
                 var changed = !batch.isFinished
+                var landedCount = 0
+                var missingCount = 0
                 for index in batch.items.indices {
                     switch batch.items[index].state {
-                    case .done, .skipped, .cancelled, .failed:
+                    case .skipped, .cancelled:
+                        continue
+                    case .done:
+                        landedCount += 1
                         continue
                     default:
                         break
                     }
                     let url = batch.items[index].url
-                    if let remote = recentDone.first(where: { MovieURLMatching.urlsMatch($0.url, url) }) {
-                        let landed = onlineMovies.map {
-                            verifyMovieLanded(item: batch.items[index], in: $0.downloads)
-                        } ?? true
-                        batch.items[index].state = landed ? .done : .downloading(progress: 99)
-                        if !landed {
-                            verifyRemoteTerminal(item: batch.items[index], jobId: remote.jobId)
-                        }
-                    } else {
+                    let landed = onlineMovies.map {
+                        verifyMovieLanded(item: batch.items[index], in: $0.downloads)
+                    } ?? false
+                    if landed {
                         batch.items[index].state = .done
+                        landedCount += 1
+                    } else if let remote = recentDone.first(where: { MovieURLMatching.urlsMatch($0.url, url) }) {
+                        batch.items[index].state = .downloading(progress: 99)
+                        verifyRemoteTerminal(item: batch.items[index], jobId: remote.jobId)
+                        missingCount += 1
+                    } else {
+                        batch.items[index].state = .failed("Brak pliku w MOVIES/ na serwerze.")
+                        missingCount += 1
                     }
                     changed = true
                 }
-                batch.isFinished = true
+                let pending = batch.items.contains {
+                    switch $0.state {
+                    case .pending, .queuedOnServer, .downloading, .pullingPhone: return true
+                    default: return false
+                    }
+                }
+                batch.isFinished = !pending
                 if changed {
                     activeBatch = batch
-                    statusMessage = "Gotowe na serwerze."
+                    if pending {
+                        statusMessage = "Dokańczam zapis na serwerze…"
+                    } else if missingCount > 0 {
+                        statusMessage = "Nie zapisano \(missingCount) z \(batch.items.count) na serwerze."
+                    } else {
+                        statusMessage = "Gotowe — \(landedCount) na serwerze."
+                    }
                     Task { await self.onlineMovies?.refreshDownloads() }
                 }
             }

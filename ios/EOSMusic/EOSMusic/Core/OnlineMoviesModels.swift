@@ -74,22 +74,35 @@ enum MovieURLMatching {
         title: String? = nil,
         in downloads: [MovieDownload]
     ) -> MovieDownload? {
-        if let exact = downloads.first(where: { urlsMatch($0.url, url) && $0.isDownloaded }) {
+        if let exact = downloads.first(where: { urlsMatch($0.url, url) && $0.hasLandedFile }) {
             return exact
         }
-        let needle = (title ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        guard needle.count >= 6 else { return nil }
-        return downloads.first { download in
-            guard download.isDownloaded else { return false }
-            let hay = download.title.lowercased()
-            if hay.contains(needle) || needle.contains(hay) { return true }
-            if let file = download.filename?.lowercased(), file.contains(needle.replacingOccurrences(of: " ", with: "_")) {
-                return true
-            }
-            return false
+        guard let distinctive = distinctiveEpisodeName(title), distinctive.count >= 8 else { return nil }
+        let hits = downloads.filter { download in
+            guard download.hasLandedFile else { return false }
+            let hay = foldedToken("\(download.title) \(download.filename ?? "")")
+            return hay.contains(distinctive)
         }
+        return hits.count == 1 ? hits[0] : nil
+    }
+
+    /// "Odcinek Trace Decay" / "Westworld · Sezon 1 · Trace Decay" → "trace decay"
+    static func distinctiveEpisodeName(_ title: String?) -> String? {
+        guard var text = title?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              text.count >= 6 else { return nil }
+        if let last = text.split(separator: "·").last {
+            text = last.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        text = text.replacingOccurrences(of: #"^odcinek\s+"#, with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"^episode\s+"#, with: "", options: .regularExpression)
+        let folded = foldedToken(text)
+        return folded.count >= 8 ? folded : nil
+    }
+
+    static func foldedToken(_ text: String) -> String {
+        text.lowercased()
+            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -220,9 +233,17 @@ struct MovieDownload: Codable, Identifiable, Hashable {
     /// Rozmiar pliku na serwerze (bajty) — z `/api/movies/downloads`.
     let bytes: Int?
 
-    var isDownloaded: Bool {
-        guard let downloadJobId, !downloadJobId.isEmpty else { return false }
-        return true
+    var isDownloaded: Bool { hasLandedFile }
+
+    /// Real file on EOS — not a job stub without bytes.
+    var hasLandedFile: Bool {
+        if let bytes {
+            return bytes > 400_000
+        }
+        guard let filename, !filename.isEmpty else { return false }
+        let ext = URL(fileURLWithPath: filename).pathExtension.lowercased()
+        let videoExts: Set<String> = ["mp4", "mkv", "m4v", "mov", "webm"]
+        return videoExts.contains(ext)
     }
 
     var isOnServer: Bool { isDownloaded }
@@ -256,6 +277,19 @@ struct MovieDownload: Codable, Identifiable, Hashable {
         if let filename, filename.localizedCaseInsensitiveContains("/Sezon ") { return true }
         let t = title.lowercased()
         return t.contains(" · sezon ") || t.contains(" · odcinek") || t.contains(" odc. ")
+    }
+
+    var favoriteItem: FavoriteItem {
+        FavoriteItem(
+            id: url,
+            type: "movie",
+            url: url,
+            title: title,
+            thumbnail: thumbnail,
+            source: source ?? "cda-hd",
+            detail: seriesFolderName,
+            duration: nil
+        )
     }
 }
 
@@ -343,6 +377,19 @@ struct EpisodeItem: Codable, Identifiable, Hashable {
     let duration: Double?
     let seasonNumber: Int?
     let episodeNumber: Int?
+
+    func favoriteItem(seriesTitle: String) -> FavoriteItem {
+        FavoriteItem(
+            id: url,
+            type: "movie",
+            url: url,
+            title: serverDownloadTitle(seriesTitle: seriesTitle, episode: self),
+            thumbnail: thumbnail,
+            source: "cda-hd",
+            detail: seriesTitle,
+            duration: duration
+        )
+    }
 }
 
 struct MediaQualityOption: Codable, Hashable, Identifiable {
@@ -615,6 +662,30 @@ struct OnlineMovieSelection: Identifiable, Hashable {
         detail = nil
         duration = episode.duration
         isSerial = false
+    }
+
+    init(favorite: FavoriteItem) {
+        title = favorite.title
+        url = favorite.url
+        thumbnail = favorite.thumbnail
+        source = favorite.source ?? "cda-hd"
+        detail = favorite.detail
+        duration = favorite.duration
+        let path = favorite.url.lowercased()
+        isSerial = path.contains("/tvshows/") || path.contains("/episode/")
+    }
+
+    var favoriteItem: FavoriteItem {
+        FavoriteItem(
+            id: url,
+            type: "movie",
+            url: url,
+            title: title,
+            thumbnail: thumbnail,
+            source: source ?? "cda-hd",
+            detail: detail,
+            duration: duration
+        )
     }
 }
 

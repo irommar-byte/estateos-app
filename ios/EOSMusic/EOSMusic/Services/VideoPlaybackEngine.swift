@@ -67,6 +67,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     private var vlcVolumeBeforeHandoff: Int32 = 100
     /// Folder whose security-scoped access is currently held via `beginAccess`.
     private var accessedFolderId: UUID?
+    private var lastStripCaptureAt: Double = -30
+    private var pendingSnapshotFraction: Double?
 
     var currentItem: VideoItem? {
         guard queue.indices.contains(currentIndex) else { return nil }
@@ -573,6 +575,10 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         currentTime = clamped
         lastPublishedTime = clamped
         hasEnded = false
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            self?.captureStripFrame(force: true)
+        }
     }
 
     func playNext(sources: VideoSourcesStore) {
@@ -834,11 +840,10 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
 
     private func prepareFilmstrip(for url: URL) {
         guard currentPlayableURL == url else { return }
-        // Remote HTTP: 20 thumbnail seeks fight VLC for the same MP4 and stall playback.
-        guard url.isFileURL else {
-            thumbnailGenerator.cancel()
-            return
-        }
+        lastStripCaptureAt = -30
+        pendingSnapshotFraction = nil
+        // Remote HTTP: extra VLC seeks stall playback. Capture frames from the playing picture.
+        guard url.isFileURL else { return }
         let knownDuration = max(
             duration,
             (player.media?.length.value?.doubleValue ?? 0) / 1000.0
@@ -857,6 +862,35 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             return
         }
         thumbnailGenerator.generate(url: url, duration: knownDuration, count: 20)
+    }
+
+    func captureScrubPreview() {
+        captureStripFrame(force: true)
+    }
+
+    private func maybeCaptureStripFrame() {
+        guard duration > 1, currentTime > 0.4, !isUserSeeking else { return }
+        guard currentTime - lastStripCaptureAt >= 1.6 else { return }
+        lastStripCaptureAt = currentTime
+        captureStripFrame(force: false)
+    }
+
+    private func captureStripFrame(force: Bool) {
+        guard duration > 1 else { return }
+        if isUserSeeking, !force { return }
+        let fraction = min(0.999, max(0, currentTime / duration))
+        pendingSnapshotFraction = fraction
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("eos-filmstrip", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let path = dir.appendingPathComponent("frame-\(Int(fraction * 1000)).jpg").path
+        player.saveVideoSnapshot(at: path, withWidth: 240, andHeight: 140)
+        ingestLastSnapshotIfAvailable()
+    }
+
+    private func ingestLastSnapshotIfAvailable() {
+        guard let image = player.lastSnapshot, image.size.width > 8, image.size.height > 8 else { return }
+        let fraction = pendingSnapshotFraction ?? min(0.999, max(0, duration > 0 ? currentTime / duration : 0))
+        thumbnailGenerator.ingestLiveFrame(image, fraction: fraction)
     }
 
     private func noteBuffering() {
@@ -1141,6 +1175,9 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         let playing = player.isPlaying
         if playing != isPlaying { isPlaying = playing }
         if playing { clearBuffering() }
+        if playing, !isUserSeeking {
+            maybeCaptureStripFrame()
+        }
     }
 }
 
@@ -1190,6 +1227,12 @@ extension VideoPlaybackEngine: VLCMediaPlayerDelegate {
     nonisolated func mediaPlayerTimeChanged(_ aNotification: Notification) {
         Task { @MainActor in
             syncTime(force: false)
+        }
+    }
+
+    nonisolated func mediaPlayerSnapshot(_ aNotification: Notification) {
+        Task { @MainActor in
+            ingestLastSnapshotIfAvailable()
         }
     }
 }

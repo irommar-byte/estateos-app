@@ -71,6 +71,11 @@ struct OnlineMovieDetailView: View {
         .eosScrollClearance()
         .background(Color(.systemBackground))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                FavoriteButton(item: selection.favoriteItem, size: 20)
+            }
+        }
         .navigationDestination(isPresented: $showSeriesEpisodes) {
             if let info {
                 OnlineSeriesEpisodesView(info: info)

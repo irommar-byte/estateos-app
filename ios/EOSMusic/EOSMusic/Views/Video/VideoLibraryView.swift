@@ -12,6 +12,7 @@ struct VideoLibraryView: View {
         case online
         case folders
         case downloads
+        case favorites
 
         var id: String { rawValue }
 
@@ -20,6 +21,7 @@ struct VideoLibraryView: View {
             case .online: return EOSLibraryBrand.displayName
             case .folders: return "Foldery"
             case .downloads: return "Pobrane"
+            case .favorites: return "Ulubione"
             }
         }
     }
@@ -50,6 +52,10 @@ struct VideoLibraryView: View {
                         foldersList
                     case .downloads:
                         OnlineMoviesDownloadsView()
+                            .environmentObject(app)
+                            .environmentObject(video)
+                    case .favorites:
+                        FavoritesView(initialSegment: .movies)
                             .environmentObject(app)
                             .environmentObject(video)
                     }
@@ -106,7 +112,7 @@ struct VideoLibraryView: View {
     }
 
     private var visibleSections: [VideoLibrarySection] {
-        app.isOfflinePlaybackActive ? [.downloads, .folders] : VideoLibrarySection.allCases
+        app.isOfflinePlaybackActive ? [.downloads, .folders, .favorites] : VideoLibrarySection.allCases
     }
 
     private var cinematicBackground: some View {

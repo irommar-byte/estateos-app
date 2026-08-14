@@ -297,6 +297,9 @@ struct OnlineSeriesEpisodesView: View {
             }
             .disabled(movies.playbackLaunchPhase.isBusy)
 
+            FavoriteButton(item: episode.favoriteItem(seriesTitle: displayTitle), size: 17)
+                .frame(width: 32, height: 36)
+
             Menu {
                 if !app.isOfflinePlaybackActive {
                     Button("Oglądaj ze źródła") {
@@ -317,6 +320,14 @@ struct OnlineSeriesEpisodesView: View {
                     Button("Pobierz…") {
                         prepareDownload([episode], label: serverDownloadTitle(seriesTitle: displayTitle, episode: episode))
                     }
+                }
+                Button {
+                    Task { await app.toggleFavorite(episode.favoriteItem(seriesTitle: displayTitle)) }
+                } label: {
+                    Label(
+                        app.isFavorite(episode.url) ? "Usuń z ulubionych" : "Dodaj do ulubionych",
+                        systemImage: app.isFavorite(episode.url) ? "heart.slash" : "heart"
+                    )
                 }
                 if onServer, !app.isOfflinePlaybackActive {
                     Button("Usuń z serwera", role: .destructive) {
