@@ -379,7 +379,7 @@ export default function CrmClientsWorkspace() {
   }, [detail]);
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 max-w-full space-y-6 overflow-x-clip">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: cl.statsBuyers, value: report?.buyers ?? "—", icon: ShoppingBag },
@@ -389,11 +389,11 @@ export default function CrmClientsWorkspace() {
         ].map((card) => (
           <div
             key={card.label}
-            className="rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/80 p-5 shadow-[var(--eos-shadow-soft)] backdrop-blur-xl"
+            className="min-w-0 rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/80 p-5 shadow-[var(--eos-shadow-soft)] backdrop-blur-xl"
           >
             <card.icon className="mb-3 size-5 text-emerald-500" />
             <p className="text-2xl font-black tabular-nums text-[var(--eos-text)]">{card.value}</p>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--eos-muted)]">
+            <p className="mt-1 break-words text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--eos-muted)]">
               {card.label}
             </p>
           </div>
@@ -419,22 +419,22 @@ export default function CrmClientsWorkspace() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)]/60 p-4 text-xs text-[var(--eos-muted)]">
+      <div className="min-w-0 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)]/60 p-4 text-xs text-[var(--eos-muted)]">
         <p className="font-bold text-[var(--eos-text)]">Jak czytać analitykę CRM:</p>
-        <p className="mt-1">
+        <p className="mt-1 break-words leading-relaxed">
           % e-mail/telefon = udział klientów ze zweryfikowanym kontaktem. % dopasowań = udział klientów z min. 1 aktywnym match-em.
           Status online liczony jest po ostatnim logowaniu klienta (aktywność w ciągu 10 min): teraz online {onlineCount}/{clients.length}.
         </p>
       </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs font-bold uppercase tracking-[0.15em] text-[var(--eos-muted)]">
+      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="min-w-0 break-words text-xs font-bold uppercase tracking-[0.15em] text-[var(--eos-muted)]">
           Wszystkie kontakty CRM
         </p>
         <button
           type="button"
           onClick={() => setFormOpen(true)}
-          className={eosBtn("home", { className: "shadow-[0_12px_32px_rgba(16,185,129,0.28)]" })}
+          className={eosBtn("home", { className: "w-full shrink-0 shadow-[0_12px_32px_rgba(16,185,129,0.28)] sm:w-auto" })}
         >
           <UserPlus className="size-4" />
           {cl.addClient}
@@ -447,16 +447,16 @@ export default function CrmClientsWorkspace() {
         </p>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-        <div className="rounded-[1.25rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/75 p-3">
-          <div className="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-            <label className="flex items-center gap-2 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 px-3 py-2">
-              <Search className="size-4 text-[var(--eos-muted)]" />
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <div className="min-w-0 rounded-[1.25rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/75 p-3">
+          <div className="mb-3 grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <label className="flex min-w-0 items-center gap-2 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 px-3 py-2">
+              <Search className="size-4 shrink-0 text-[var(--eos-muted)]" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Szukaj: imię, e-mail, telefon"
-                className="w-full bg-transparent text-sm text-[var(--eos-text)] outline-none placeholder:text-[var(--eos-muted)]"
+                className="min-w-0 w-full bg-transparent text-sm text-[var(--eos-text)] outline-none placeholder:text-[var(--eos-muted)]"
               />
             </label>
             <button
@@ -468,13 +468,13 @@ export default function CrmClientsWorkspace() {
                   : "border-[var(--eos-border)] text-[var(--eos-muted)]"
               }`}
             >
-              <SlidersHorizontal className="size-3.5" />
+              <SlidersHorizontal className="size-3.5 shrink-0" />
               Priorytet
             </button>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as "recent" | "name" | "match")}
-              className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 px-3 py-2 text-xs font-semibold text-[var(--eos-text)] outline-none"
+              className="min-w-0 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 px-3 py-2 text-xs font-semibold text-[var(--eos-text)] outline-none"
             >
               <option value="recent">Sort: ostatnia aktywność</option>
               <option value="name">Sort: nazwa A-Z</option>
@@ -484,13 +484,13 @@ export default function CrmClientsWorkspace() {
           {loading ? (
             <p className="text-sm text-[var(--eos-muted)]">{cl.loading}</p>
           ) : filtered.length === 0 ? (
-            <div className="rounded-[1.25rem] border border-dashed border-[var(--eos-border)] bg-[var(--eos-card)]/50 p-10 text-center">
-              <p className="text-lg font-semibold text-[var(--eos-text)]">{cl.emptyTitle}</p>
-              <p className="mt-2 text-sm text-[var(--eos-muted)]">{cl.emptyBody}</p>
+            <div className="rounded-[1.25rem] border border-dashed border-[var(--eos-border)] bg-[var(--eos-card)]/50 px-4 py-8 text-center sm:p-10">
+              <p className="break-words text-lg font-semibold text-[var(--eos-text)]">{cl.emptyTitle}</p>
+              <p className="mt-2 break-words text-sm leading-relaxed text-[var(--eos-muted)]">{cl.emptyBody}</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left">
+            <div className="-mx-1 max-w-full overflow-x-auto overscroll-x-contain px-1 touch-pan-x">
+              <table className="w-full min-w-[44rem] text-left">
                 <thead>
                   <tr className="border-b border-[var(--eos-border)] text-[10px] uppercase tracking-[0.14em] text-[var(--eos-muted)]">
                     <th className="px-3 py-2">Klient</th>
@@ -512,9 +512,9 @@ export default function CrmClientsWorkspace() {
                         selectedId === client.id ? "bg-emerald-500/10" : ""
                       }`}
                     >
-                      <td className="px-3 py-3">
-                        <p className="font-semibold text-[var(--eos-text)]">{client.firstName} {client.lastName}</p>
-                        <p className="mt-1 text-xs text-[var(--eos-muted)]">{client.email || "—"} · {client.phone || "—"}</p>
+                      <td className="max-w-[11rem] px-3 py-3">
+                        <p className="break-words font-semibold text-[var(--eos-text)]">{client.firstName} {client.lastName}</p>
+                        <p className="mt-1 break-all text-xs text-[var(--eos-muted)]">{client.email || "—"} · {client.phone || "—"}</p>
                         {client.type === "BUYER" && client.matchCount > 0 ? (
                           <span className="mt-1 inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
                             {client.matchCount} dopasowań
@@ -599,35 +599,35 @@ export default function CrmClientsWorkspace() {
           )}
         </div>
 
-        <div className="relative rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/80 p-6 shadow-[var(--eos-shadow-soft)] backdrop-blur-xl min-h-[420px]">
+        <div className="relative min-h-[420px] min-w-0 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/80 p-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-xl sm:p-6">
           {scanning ? (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-[1.75rem] bg-[var(--eos-card)]/90 backdrop-blur-sm">
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-[1.75rem] bg-[var(--eos-card)]/90 px-4 backdrop-blur-sm">
               <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
               >
                 <Radar className="size-10 text-emerald-500" />
               </motion.div>
-              <p className="mt-4 text-sm font-semibold text-[var(--eos-text)]">{cl.scanningMatches}</p>
+              <p className="mt-4 break-words text-center text-sm font-semibold text-[var(--eos-text)]">{cl.scanningMatches}</p>
             </div>
           ) : null}
 
           {!selectedId ? (
-            <div className="flex h-full min-h-[360px] flex-col items-center justify-center text-center">
-              <Sparkles className="mb-4 size-10 text-emerald-500/60" />
-              <p className="text-lg font-semibold text-[var(--eos-text)]">{cl.selectClientTitle}</p>
-              <p className="mt-2 max-w-sm text-sm text-[var(--eos-muted)]">{cl.selectClientBody}</p>
+            <div className="flex h-full min-h-[280px] flex-col items-center justify-center px-2 py-8 text-center sm:min-h-[360px] sm:px-4">
+              <Sparkles className="mb-4 size-10 shrink-0 text-emerald-500/60" />
+              <p className="max-w-full break-words text-lg font-semibold text-[var(--eos-text)]">{cl.selectClientTitle}</p>
+              <p className="mt-2 max-w-sm break-words text-sm leading-relaxed text-[var(--eos-muted)]">{cl.selectClientBody}</p>
             </div>
           ) : detailLoading || !detail ? (
             <p className="text-sm text-[var(--eos-muted)]">{cl.loading}</p>
           ) : (
-            <div className="space-y-6">
+            <div className="min-w-0 space-y-6">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
                     {detail.type === "BUYER" ? cl.buyerBadge : cl.sellerBadge}
                   </p>
-                  <h3 className="mt-1 text-2xl font-bold text-[var(--eos-text)]">
+                  <h3 className="mt-1 break-words text-xl font-bold text-[var(--eos-text)] sm:text-2xl">
                     {detail.firstName} {detail.lastName}
                   </h3>
                 </div>
@@ -913,7 +913,7 @@ export default function CrmClientsWorkspace() {
                               />
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <p className="font-semibold text-[var(--eos-text)]">{m.offer.title}</p>
+                                  <p className="break-words font-semibold text-[var(--eos-text)]">{m.offer.title}</p>
                                   {sent ? (
                                     <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
                                       {cl.sentBadge}

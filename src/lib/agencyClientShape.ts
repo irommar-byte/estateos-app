@@ -97,7 +97,8 @@ export function buyerPrefToWebRadarFilters(
     requireParking: !!pref?.requireParking,
     requireFurnished: !!pref?.requireFurnished,
     requireTwoLevel: false,
-    pushNotifications: true,
+    // Client buyer prefs are CRM match criteria only — not personal radar push.
+    pushNotifications: false,
     matchThreshold: pref?.minMatchThreshold ?? 70,
     lat: pref?.lat ?? null,
     lng: pref?.lng ?? null,

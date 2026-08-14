@@ -3,17 +3,19 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ShoppingBag, Home, ChevronLeft, Check, Radar, CalendarDays, MapPin, SlidersHorizontal } from "lucide-react";
+import { X, ShoppingBag, Home, ChevronLeft, Check, Radar, CalendarDays, MapPin } from "lucide-react";
 import {
   defaultWebRadarFilters,
-  formatRadarSummary,
   type WebRadarFilters,
 } from "@/lib/radarCalibrationWeb";
 import { parsePesel } from "@/lib/pesel";
 import PhoneCountryInput from "@/components/auth/PhoneCountryInput";
 import { useLocale } from "@/contexts/LocaleContext";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
-import CrmRadarCalibrationModal from "@/components/crm/CrmRadarCalibrationModal";
+import AgencyClientCriteriaEditor, {
+  buyerCriteriaReady,
+} from "@/components/crm/AgencyClientCriteriaEditor";
+import { canonicalizeCity } from "@/lib/location/locationCatalog";
 
 type Props = {
   open: boolean;
@@ -37,9 +39,11 @@ export default function AgencyClientFormModal({
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
   const [phoneE164, setPhoneE164] = useState("");
-  const [buyerFilters, setBuyerFilters] = useState<WebRadarFilters>(defaultWebRadarFilters());
-  const [radarOpen, setRadarOpen] = useState(false);
-  const [radarCatalog, setRadarCatalog] = useState<{
+  const [buyerFilters, setBuyerFilters] = useState<WebRadarFilters>(() => ({
+    ...defaultWebRadarFilters(),
+    pushNotifications: false,
+  }));
+  const [criteriaCatalog, setCriteriaCatalog] = useState<{
     strictCities: string[];
     strictCityDistricts: Record<string, string[]>;
   }>({ strictCities: [], strictCityDistricts: {} });
@@ -71,8 +75,7 @@ export default function AgencyClientFormModal({
     setError("");
     setPhoneE164("");
     setScanning(false);
-    setRadarOpen(false);
-    setBuyerFilters(defaultWebRadarFilters());
+    setBuyerFilters({ ...defaultWebRadarFilters(), pushNotifications: false });
     setMeeting({ enabled: false, date: "", time: "10:00", location: "", note: "" });
     setForm({
       firstName: "",
@@ -89,7 +92,7 @@ export default function AgencyClientFormModal({
         const res = await fetch("/api/location/districts", { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
-        setRadarCatalog({
+        setCriteriaCatalog({
           strictCities: Array.isArray(data?.strictCities) ? data.strictCities : [],
           strictCityDistricts: data?.strictCityDistricts || {},
         });
@@ -101,7 +104,11 @@ export default function AgencyClientFormModal({
 
   const peselData = parsePesel(form.pesel);
   const maxStep = 3;
-  const buyerSummary = formatRadarSummary(buyerFilters);
+  const districtCount =
+    criteriaCatalog.strictCityDistricts?.[buyerFilters.city]?.length ||
+    criteriaCatalog.strictCityDistricts?.[canonicalizeCity(buyerFilters.city) || ""]?.length ||
+    0;
+  const buyerStepReady = type !== "BUYER" || buyerCriteriaReady(buyerFilters, districtCount);
 
   const submit = async () => {
     setSaving(true);
@@ -127,7 +134,9 @@ export default function AgencyClientFormModal({
           phone: phoneE164 || form.phone,
           pesel: form.pesel,
           notes: form.notes,
-          ...(type === "BUYER" ? { buyerFilters } : {}),
+          ...(type === "BUYER"
+            ? { buyerFilters: { ...buyerFilters, pushNotifications: false } }
+            : {}),
           ...(type === "SELLER"
             ? {
                 sellerCity: form.sellerCity || null,
@@ -163,16 +172,20 @@ export default function AgencyClientFormModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[99990] flex items-end justify-center p-4 sm:items-center"
-          onClick={scanning ? undefined : onClose}
+          className="fixed inset-0 z-[99990] flex items-end justify-center overflow-y-auto overscroll-y-contain p-3 sm:items-center sm:p-4"
         >
-          <div className="eos-modal-backdrop absolute inset-0" />
+          {/* Backdrop only — never put onClose on a React ancestor of portaled children (map picker). */}
+          <div
+            className="eos-modal-backdrop absolute inset-0"
+            onClick={scanning ? undefined : onClose}
+            aria-hidden
+          />
           <motion.div
             initial={{ y: 40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 24, opacity: 0 }}
             onClick={(e) => e.stopPropagation()}
-            className="eos-themed-modal relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-strong)] sm:p-8"
+            className="eos-themed-modal relative my-auto max-h-[min(92vh,900px)] w-full max-w-xl overflow-y-auto overscroll-y-contain rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 shadow-[var(--eos-shadow-strong)] sm:p-8"
           >
             {scanning ? (
               <div className="flex flex-col items-center py-12 text-center">
@@ -183,22 +196,24 @@ export default function AgencyClientFormModal({
                 >
                   <Radar className="size-9 text-emerald-500" />
                 </motion.div>
-                <p className="text-lg font-bold text-[var(--eos-text)]">{cl.scanningTitle}</p>
-                <p className="mt-2 max-w-xs text-sm text-[var(--eos-muted)]">{cl.scanningBody}</p>
+                <p className="text-lg font-bold text-[var(--eos-text)] break-words">{cl.scanningTitle}</p>
+                <p className="mt-2 max-w-xs text-sm text-[var(--eos-muted)] break-words">{cl.scanningBody}</p>
               </div>
             ) : (
               <>
-                <div className="mb-6 flex items-center justify-between">
-                  <div>
+                <div className="mb-6 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-500">
                       {cl.formEyebrow} · krok {step}/{maxStep}
                     </p>
-                    <h2 className="mt-1 text-2xl font-bold text-[var(--eos-text)]">{cl.formTitle}</h2>
+                    <h2 className="mt-1 text-xl font-bold text-[var(--eos-text)] break-words sm:text-2xl">
+                      {cl.formTitle}
+                    </h2>
                   </div>
                   <button
                     type="button"
                     onClick={onClose}
-                    className="rounded-full p-2 text-[var(--eos-muted)] hover:bg-[var(--eos-input)]"
+                    className="shrink-0 rounded-full p-2 text-[var(--eos-muted)] hover:bg-[var(--eos-input)]"
                   >
                     <X className="size-5" />
                   </button>
@@ -223,8 +238,8 @@ export default function AgencyClientFormModal({
                         }`}
                       >
                         <opt.icon className="mb-3 size-6 text-emerald-500" />
-                        <p className="font-bold text-[var(--eos-text)]">{opt.title}</p>
-                        <p className="mt-2 text-sm text-[var(--eos-muted)]">{opt.body}</p>
+                        <p className="font-bold text-[var(--eos-text)] break-words">{opt.title}</p>
+                        <p className="mt-2 text-sm text-[var(--eos-muted)] break-words">{opt.body}</p>
                       </button>
                     ))}
                   </div>
@@ -233,7 +248,7 @@ export default function AgencyClientFormModal({
                 {step === 2 ? (
                   <div className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="block">
+                      <label className="block min-w-0">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                           {cl.firstName}
                         </span>
@@ -243,7 +258,7 @@ export default function AgencyClientFormModal({
                           className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
                         />
                       </label>
-                      <label className="block">
+                      <label className="block min-w-0">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                           {cl.lastName}
                         </span>
@@ -254,7 +269,7 @@ export default function AgencyClientFormModal({
                         />
                       </label>
                     </div>
-                    <label className="block">
+                    <label className="block min-w-0">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                         {cl.email}
                       </span>
@@ -265,7 +280,7 @@ export default function AgencyClientFormModal({
                         className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
                       />
                     </label>
-                    <div>
+                    <div className="min-w-0">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                         {cl.phone}
                       </span>
@@ -273,7 +288,7 @@ export default function AgencyClientFormModal({
                         <PhoneCountryInput valueE164={phoneE164} onChangeE164={setPhoneE164} />
                       </div>
                     </div>
-                    <label className="block">
+                    <label className="block min-w-0">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                         PESEL (opcjonalnie)
                       </span>
@@ -289,7 +304,7 @@ export default function AgencyClientFormModal({
                       />
                       {form.pesel.length > 0 ? (
                         peselData ? (
-                          <p className="mt-2 text-xs font-semibold text-emerald-600">
+                          <p className="mt-2 text-xs font-semibold text-emerald-600 break-words">
                             PESEL poprawny · {peselData.gender === "M" ? "Mężczyzna" : "Kobieta"} ·{" "}
                             {peselData.birthDate}
                           </p>
@@ -298,7 +313,7 @@ export default function AgencyClientFormModal({
                         )
                       ) : null}
                     </label>
-                    <label className="block">
+                    <label className="block min-w-0">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                         {cl.notes}
                       </span>
@@ -313,52 +328,24 @@ export default function AgencyClientFormModal({
                 ) : null}
 
                 {step === 3 && type === "BUYER" ? (
-                  <div className="space-y-4">
-                    <p className="text-sm text-[var(--eos-muted)]">
-                      Ustaw pełne kryteria wyszukiwania (mapa lub miasto + dzielnice, budżet, udogodnienia) —
-                      system będzie dopasowywał oferty w CRM.
+                  <div className="min-w-0 space-y-4">
+                    <p className="text-sm text-[var(--eos-muted)] break-words">
+                      Ustaw kryteria wyszukiwania (mapa lub miasto + dzielnice, budżet, udogodnienia) —
+                      system dopasuje oferty w CRM. Kontakt z klientem idzie e-mailem.
                     </p>
-                    <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
-                      <div className="grid gap-2 text-sm">
-                        <p>
-                          <span className="text-[var(--eos-muted)]">Lokalizacja:</span>{" "}
-                          <strong>{buyerSummary.location}</strong>
-                        </p>
-                        <p>
-                          <span className="text-[var(--eos-muted)]">Typ:</span>{" "}
-                          <strong>
-                            {buyerSummary.transactionType} · {buyerSummary.propertyType}
-                          </strong>
-                        </p>
-                        <p>
-                          <span className="text-[var(--eos-muted)]">Budżet:</span>{" "}
-                          <strong>{buyerSummary.maxBudget}</strong>
-                        </p>
-                        <p>
-                          <span className="text-[var(--eos-muted)]">Metraż:</span>{" "}
-                          <strong>{buyerSummary.minArea}</strong>
-                        </p>
-                        <p>
-                          <span className="text-[var(--eos-muted)]">Próg:</span>{" "}
-                          <strong>{buyerSummary.threshold}</strong>
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setRadarOpen(true)}
-                        className={eosBtn("home", { className: "mt-4 w-full", size: "sm" })}
-                      >
-                        <SlidersHorizontal className="size-3.5" />
-                        Kalibruj radar klienta
-                      </button>
-                    </div>
+                    <AgencyClientCriteriaEditor
+                      compact
+                      value={buyerFilters}
+                      onChange={setBuyerFilters}
+                      catalog={criteriaCatalog}
+                    />
                   </div>
                 ) : null}
 
                 {step === 3 && type === "SELLER" ? (
                   <div className="space-y-4">
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="block">
+                      <label className="block min-w-0">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                           Miasto / lokalizacja
                         </span>
@@ -368,7 +355,7 @@ export default function AgencyClientFormModal({
                           className="eos-modal-field mt-2 w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-[var(--eos-text)]"
                         />
                       </label>
-                      <label className="block">
+                      <label className="block min-w-0">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                           Szacowana cena
                         </span>
@@ -388,14 +375,14 @@ export default function AgencyClientFormModal({
                           onChange={(e) => setMeeting((m) => ({ ...m, enabled: e.target.checked }))}
                           className="size-4 accent-emerald-500"
                         />
-                        <span className="text-sm font-bold text-[var(--eos-text)]">
+                        <span className="text-sm font-bold text-[var(--eos-text)] break-words">
                           Umów wstępne spotkanie pozyskania
                         </span>
                       </label>
                       {meeting.enabled ? (
                         <div className="mt-4 space-y-3">
                           <div className="grid gap-3 sm:grid-cols-2">
-                            <label className="block">
+                            <label className="block min-w-0">
                               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                                 Data
                               </span>
@@ -406,7 +393,7 @@ export default function AgencyClientFormModal({
                                 className="eos-modal-field mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2.5 text-[var(--eos-text)]"
                               />
                             </label>
-                            <label className="block">
+                            <label className="block min-w-0">
                               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                                 Godzina
                               </span>
@@ -418,7 +405,7 @@ export default function AgencyClientFormModal({
                               />
                             </label>
                           </div>
-                          <label className="block">
+                          <label className="block min-w-0">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                               <MapPin className="mr-1 inline size-3" /> Lokalizacja
                             </span>
@@ -429,7 +416,7 @@ export default function AgencyClientFormModal({
                               className="eos-modal-field mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2.5 text-[var(--eos-text)]"
                             />
                           </label>
-                          <label className="block">
+                          <label className="block min-w-0">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                               <CalendarDays className="mr-1 inline size-3" /> Notatka do kalendarza
                             </span>
@@ -440,7 +427,7 @@ export default function AgencyClientFormModal({
                               className="eos-modal-field mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2.5 text-[var(--eos-text)]"
                             />
                           </label>
-                          <p className="text-xs text-[var(--eos-muted)]">
+                          <p className="text-xs text-[var(--eos-muted)] break-words">
                             Po zapisaniu termin trafi do Twojego dnia w CRM, a klient dostanie e-mail (jeśli podał
                             adres).
                           </p>
@@ -450,7 +437,7 @@ export default function AgencyClientFormModal({
                   </div>
                 ) : null}
 
-                {error ? <p className="mt-4 text-sm text-red-500">{error}</p> : null}
+                {error ? <p className="mt-4 text-sm text-red-500 break-words">{error}</p> : null}
 
                 <div className="mt-8 flex flex-wrap gap-3">
                   {step > 1 ? (
@@ -477,6 +464,7 @@ export default function AgencyClientFormModal({
                       type="button"
                       disabled={
                         saving ||
+                        !buyerStepReady ||
                         (form.pesel.length > 0 && !peselData) ||
                         (type === "SELLER" && meeting.enabled && (!meeting.date || !meeting.time))
                       }
@@ -491,18 +479,6 @@ export default function AgencyClientFormModal({
               </>
             )}
           </motion.div>
-
-          <CrmRadarCalibrationModal
-            open={radarOpen}
-            onClose={() => setRadarOpen(false)}
-            initialFilters={buyerFilters}
-            catalog={radarCatalog}
-            saving={false}
-            onSave={async (filters) => {
-              setBuyerFilters(filters);
-              setRadarOpen(false);
-            }}
-          />
         </motion.div>
       ) : null}
     </AnimatePresence>,

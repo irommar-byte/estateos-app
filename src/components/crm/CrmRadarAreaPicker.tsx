@@ -209,6 +209,8 @@ export default function CrmRadarAreaPicker({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[10000000] flex flex-col bg-black"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           <div className="relative z-20 flex items-center justify-between border-b border-white/10 bg-black/80 px-5 py-4 backdrop-blur-md">
             <div className="flex items-center gap-3">

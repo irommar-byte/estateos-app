@@ -190,6 +190,8 @@ export default function CrmRadarCalibrationModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="crm-radar-calibration-title"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           <div className="flex min-h-full items-start justify-center px-4 py-6 sm:py-10">
           <motion.div
