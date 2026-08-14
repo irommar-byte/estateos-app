@@ -7,9 +7,10 @@ import { useTheme } from '@/contexts/ThemeContext';
 
 type PasskeyToggleProps = {
   onProfileRefresh?: () => Promise<void> | void;
+  compact?: boolean;
 };
 
-export default function PasskeyToggle({ onProfileRefresh }: PasskeyToggleProps) {
+export default function PasskeyToggle({ onProfileRefresh, compact = false }: PasskeyToggleProps) {
   const { resolvedTheme } = useTheme();
   const isLight = resolvedTheme === 'light';
 
@@ -113,6 +114,13 @@ export default function PasskeyToggle({ onProfileRefresh }: PasskeyToggleProps) 
   };
 
   if (isCheckingPasskey) {
+    if (compact) {
+      return (
+        <div className="flex h-12 items-center justify-center rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]">
+          <Loader2 className="animate-spin text-[var(--eos-muted)]" size={16} />
+        </div>
+      );
+    }
     return (
       <div
         className={`eos-passkey-toggle w-full md:w-[480px] rounded-[2.5rem] p-6 flex items-center justify-center h-[100px] border ${
@@ -122,6 +130,51 @@ export default function PasskeyToggle({ onProfileRefresh }: PasskeyToggleProps) 
         }`}
       >
         <Loader2 className={`animate-spin ${isLight ? 'text-[var(--eos-muted)]' : 'text-white/20'}`} size={24} />
+      </div>
+    );
+  }
+
+  if (compact) {
+    return (
+      <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--eos-border)] ${
+                hasPasskey ? 'bg-emerald-500/15 text-emerald-600' : 'bg-[var(--eos-card)] text-[var(--eos-muted)]'
+              }`}
+            >
+              {isRegistering ? <Loader2 size={16} className="animate-spin" /> : <Fingerprint size={16} />}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-[11px] font-black text-[var(--eos-text)]">Face ID / Touch ID</p>
+              <p
+                className={`text-[9px] font-black uppercase tracking-wider ${
+                  hasPasskey ? 'text-emerald-600' : 'text-[var(--eos-subtle)]'
+                }`}
+              >
+                {hasPasskey ? 'Aktywne' : 'Wyłączone'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={hasPasskey ? handleDeletePasskey : handleRegisterPasskey}
+            disabled={isRegistering}
+            aria-pressed={hasPasskey}
+            aria-label={hasPasskey ? 'Wyłącz logowanie Face ID' : 'Włącz logowanie Face ID'}
+            className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+              hasPasskey ? 'bg-emerald-500' : 'bg-[var(--eos-subtle)]/30'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                hasPasskey ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+        {errorMessage ? <p className="mt-2 text-[10px] font-semibold text-red-600">{errorMessage}</p> : null}
       </div>
     );
   }

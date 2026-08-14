@@ -13,6 +13,7 @@ import {
   buildAgencyClientEmailPreview,
   buildPortalUrl,
 } from '@/lib/agencyClientNotify';
+import { sendAgencyClientBusinessCard } from '@/lib/agencyClientBusinessCard';
 import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { sendSMS } from '@/lib/sms';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
@@ -288,6 +289,20 @@ export async function POST(req: Request, ctx: RouteCtx) {
       customMessage: body.message,
     });
     return NextResponse.json({ success: true, ...result });
+  }
+
+  if (action === 'send_business_card') {
+    try {
+      const result = await sendAgencyClientBusinessCard({
+        clientId,
+        agencyUserId,
+        customMessage: typeof body.message === 'string' ? body.message : undefined,
+      });
+      return NextResponse.json({ success: true, ...result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nie udało się wysłać wizytówki.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
   }
 
   if (action === 'link_offer') {
