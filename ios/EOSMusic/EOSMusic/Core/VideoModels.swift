@@ -9,6 +9,17 @@ func isVideoFileName(_ name: String) -> Bool {
     videoExtensions.contains((name as NSString).pathExtension.lowercased())
 }
 
+/// `inbox-ABCD1234-Title` (possibly nested from repeated Open In) → `Title`
+func cleanedImportedMediaTitle(from url: URL) -> String {
+    var name = url.deletingPathExtension().lastPathComponent
+    let pattern = #"^inbox-[A-Fa-f0-9]{8}-"#
+    while let range = name.range(of: pattern, options: .regularExpression) {
+        name = String(name[range.upperBound...])
+    }
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? url.lastPathComponent : trimmed
+}
+
 enum VideoSourceKind: String, Codable, Hashable {
     /// Security-scoped folder from Pliki / USB / iCloud.
     case folderBookmark

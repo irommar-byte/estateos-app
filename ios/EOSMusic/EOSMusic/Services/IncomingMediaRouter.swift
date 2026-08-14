@@ -51,7 +51,17 @@ enum IncomingMediaRouter {
         }
 
         if videoCapable {
-            Task { await video.openExternalVideo(at: staged) }
+            Task {
+                do {
+                    try await video.openExternalVideo(at: staged)
+                } catch {
+                    app.presentToast(MusicToast(
+                        systemImage: "exclamationmark.triangle",
+                        title: "Nie udało się otworzyć wideo",
+                        subtitle: error.localizedDescription
+                    ))
+                }
+            }
             return true
         }
 

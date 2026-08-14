@@ -187,28 +187,29 @@ final class VideoAppModel: ObservableObject {
         stopAndClosePlayer()
     }
 
-    func connectFolder(name: String, url: URL) throws {
-        try sources.connectFolder(name: name, folderURL: url)
+    @discardableResult
+    func connectFolder(name: String, url: URL) throws -> ConnectedVideoFolder {
+        let folder = try sources.connectFolder(name: name, folderURL: url)
         foldersVersion += 1
         objectWillChange.send()
-        if let folder = sources.folders.first(where: { $0.name == name })
-            ?? sources.folders.last {
-            Task { await refreshFolder(folder) }
-        }
+        Task { await refreshFolder(folder) }
+        return folder
     }
 
-    func openExternalVideo(at url: URL) async {
+    func openExternalVideo(at url: URL) async throws {
+        let title = cleanedImportedMediaTitle(from: url)
+        guard FileManager.default.isReadableFile(atPath: url.path) else {
+            throw APIError.server("Plik nie jest już dostępny.")
+        }
+
         do {
-            let displayName = url.deletingPathExtension().lastPathComponent
-            try connectFolder(name: displayName.isEmpty ? url.lastPathComponent : displayName, url: url)
-            guard let folder = sources.folders.last else {
-                libraryError = "Nie udało się dodać pliku wideo."
-                return
-            }
+            let folder = try connectFolder(name: title, url: url)
             await refreshFolder(folder)
             play(folder: folder, startIndex: 0)
             libraryError = nil
         } catch {
+            // Staged inbox file is already playable — don't block Open In on library copy.
+            playStandalone(url: url, title: title, folderName: "Importowane")
             libraryError = error.localizedDescription
         }
     }

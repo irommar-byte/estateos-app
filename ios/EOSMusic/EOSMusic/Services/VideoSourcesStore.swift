@@ -12,7 +12,8 @@ final class VideoSourcesStore: ObservableObject {
         load()
     }
 
-    func connectFolder(name: String, folderURL: URL) throws {
+    @discardableResult
+    func connectFolder(name: String, folderURL: URL) throws -> ConnectedVideoFolder {
         let accessed = folderURL.startAccessingSecurityScopedResource()
         defer { if accessed { folderURL.stopAccessingSecurityScopedResource() } }
 
@@ -20,10 +21,9 @@ final class VideoSourcesStore: ObservableObject {
         let isDirectory = values?.isDirectory == true || folderURL.hasDirectoryPath
 
         if isDirectory {
-            try connectExternalFolder(name: name, folderURL: folderURL)
-        } else {
-            try connectSandboxFile(name: name, fileURL: folderURL)
+            return try connectExternalFolder(name: name, folderURL: folderURL)
         }
+        return try connectSandboxFile(name: name, fileURL: folderURL)
     }
 
     func reconnectFolder(folderId: UUID, folderURL: URL) throws {
@@ -167,7 +167,7 @@ final class VideoSourcesStore: ObservableObject {
 
     // MARK: - Connect helpers
 
-    private func connectExternalFolder(name: String, folderURL: URL) throws {
+    private func connectExternalFolder(name: String, folderURL: URL) throws -> ConnectedVideoFolder {
         let bookmark = try makeSecurityScopedBookmark(from: folderURL)
         // Validate immediately while scope is live.
         var isStale = false
@@ -193,16 +193,17 @@ final class VideoSourcesStore: ObservableObject {
         folders.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         save()
         objectWillChange.send()
+        return folder
     }
 
-    private func connectSandboxFile(name: String, fileURL: URL) throws {
+    private func connectSandboxFile(name: String, fileURL: URL) throws -> ConnectedVideoFolder {
         guard isVideoFileName(fileURL.lastPathComponent) else {
             throw APIError.server("To nie jest obsługiwany plik wideo.")
         }
         let id = UUID()
         let rel = try copyIntoSandbox(fileURL: fileURL, folderId: id)
         let display = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? (fileURL.deletingPathExtension().lastPathComponent)
+            ? cleanedImportedMediaTitle(from: fileURL)
             : name
         let folder = ConnectedVideoFolder(
             id: id,
@@ -216,6 +217,7 @@ final class VideoSourcesStore: ObservableObject {
         folders.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         save()
         objectWillChange.send()
+        return folder
     }
 
     private func copyIntoSandbox(fileURL: URL, folderId: UUID) throws -> String {
@@ -226,8 +228,36 @@ final class VideoSourcesStore: ObservableObject {
         if FileManager.default.fileExists(atPath: dest.path) {
             try FileManager.default.removeItem(at: dest)
         }
-        try FileManager.default.copyItem(at: fileURL, to: dest)
-        return "\(AppDocuments.videoFolderName)/Imports/\(folderId.uuidString)/\(fileURL.lastPathComponent)"
+
+        let sourcePath = fileURL.standardizedFileURL.path
+        let alreadyInSandbox = sourcePath.hasPrefix(AppDocuments.root.standardizedFileURL.path)
+
+        if alreadyInSandbox {
+            // Inbox staging already copied the file — never duplicate a multi-GB movie.
+            if sourcePath == dest.standardizedFileURL.path {
+                return relativeDocumentsPath(for: dest)
+            }
+            do {
+                try FileManager.default.moveItem(at: fileURL, to: dest)
+            } catch {
+                if FileManager.default.fileExists(atPath: fileURL.path) {
+                    return relativeDocumentsPath(for: fileURL)
+                }
+                throw error
+            }
+        } else {
+            try FileManager.default.copyItem(at: fileURL, to: dest)
+        }
+        return relativeDocumentsPath(for: dest)
+    }
+
+    private func relativeDocumentsPath(for url: URL) -> String {
+        let root = AppDocuments.root.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        if path.hasPrefix(root + "/") {
+            return String(path.dropFirst(root.count + 1))
+        }
+        return "\(AppDocuments.videoFolderName)/Imports/\(url.lastPathComponent)"
     }
 
     private func listSandboxFile(_ folder: ConnectedVideoFolder) throws -> [VideoItem] {

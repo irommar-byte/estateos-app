@@ -807,15 +807,27 @@ final class AppModel: ObservableObject {
         externalOpenPrompt = nil
     }
 
-    func resolveExternalOpen(as kind: ExternalMediaKind, video: VideoAppModel) async {
-        guard let prompt = externalOpenPrompt else { return }
-        let url = prompt.sourceURL
+    func resolveExternalOpen(
+        _ prompt: ExternalOpenPrompt?,
+        as kind: ExternalMediaKind,
+        video: VideoAppModel
+    ) async {
+        guard let prompt else { return }
         dismissExternalOpenPrompt()
+        let url = prompt.sourceURL
         switch kind {
         case .audio:
             await playExternalAudioFile(at: url)
         case .video:
-            await video.openExternalVideo(at: url)
+            do {
+                try await video.openExternalVideo(at: url)
+            } catch {
+                presentToast(MusicToast(
+                    systemImage: "exclamationmark.triangle",
+                    title: "Nie udało się otworzyć wideo",
+                    subtitle: error.localizedDescription
+                ))
+            }
         }
     }
 

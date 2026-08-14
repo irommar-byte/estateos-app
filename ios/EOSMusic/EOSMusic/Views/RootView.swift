@@ -95,12 +95,14 @@ struct RootView: View {
         ) {
             if app.externalOpenPrompt?.suggestedAudio == true {
                 Button("Odtwórz jako muzykę") {
-                    Task { await app.resolveExternalOpen(as: .audio, video: video) }
+                    let prompt = app.externalOpenPrompt
+                    Task { await app.resolveExternalOpen(prompt, as: .audio, video: video) }
                 }
             }
             if app.externalOpenPrompt?.suggestedVideo == true {
                 Button("Odtwórz jako wideo") {
-                    Task { await app.resolveExternalOpen(as: .video, video: video) }
+                    let prompt = app.externalOpenPrompt
+                    Task { await app.resolveExternalOpen(prompt, as: .video, video: video) }
                 }
             }
             Button("Anuluj", role: .cancel) {
